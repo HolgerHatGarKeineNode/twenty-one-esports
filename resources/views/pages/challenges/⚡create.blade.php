@@ -454,7 +454,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             </div>
 
             {{-- Summary --}}
-            <aside class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:sticky lg:top-6 lg:px-6" :class="step === 5 ? '' : 'max-lg:hidden'" data-test="challenge-summary" x-data="nostrAction({ pubkey: @js($me->pubkey) })">
+            <aside class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:sticky lg:top-6 lg:px-6" :class="step === 5 ? '' : 'max-lg:hidden'" data-test="challenge-summary" x-data="nostrAction({ pubkey: @js($me->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
                 @if ($picked)
                     @php($opp = $picked['lineup'])
                     <span class="flex items-start gap-3">

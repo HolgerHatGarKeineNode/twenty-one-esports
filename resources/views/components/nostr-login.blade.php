@@ -12,6 +12,8 @@
             'failed' => __('Login failed. Please try again.'),
             'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
             'signRejected' => __('The confirmation was not given. Please try again.'),
+            'unreachable' => __('Your signer did not answer. Check that it is unlocked and online, then try again.'),
+            'signerFailed' => __('Your signer could not sign this (:reason). Please try again.'),
             'googleFailed' => __('Google login did not work. Please try again or use Nostr.'),
             'connectAborted' => __('Connecting the signer was cancelled or timed out.'),
         ]),

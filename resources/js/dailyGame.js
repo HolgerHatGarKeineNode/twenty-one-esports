@@ -10,6 +10,7 @@
  */
 import { Chess } from 'chess.js';
 import { ensureSigner } from './nostrSign.js';
+import { signerMessage, signTemplate } from './signing.js';
 import { boardKey } from './hotkeys.js';
 import { moveSound, playSound } from './sounds.js';
 
@@ -268,25 +269,14 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
                     return;
                 }
-                // Plain data, not Alpine's reactive proxy: NIP-07 extensions
-                // (nos2x, Alby) structured-clone the draft via postMessage, and a
-                // proxy throws DataCloneError there.
-                const template = JSON.parse(JSON.stringify(this.pending.template));
+                // signTemplate hands the signer a plain copy: pending.template is
+                // Alpine's reactive proxy, which NIP-07 extensions (nos2x, Alby)
+                // cannot structured-clone for their postMessage.
                 let event;
                 try {
-                    event = JSON.parse(JSON.stringify(await window.nostr.signEvent({
-                        kind: template.kind,
-                        created_at: Math.max(template.created_at, Math.floor(Date.now() / 1000)),
-                        tags: template.tags,
-                        content: template.content,
-                    })));
-                } catch {
-                    this.error = this.t.signer.rejected;
-
-                    return;
-                }
-                if (this.t.pubkey && event.pubkey !== this.t.pubkey) {
-                    this.error = this.t.signer.wrongKey;
+                    event = await signTemplate(this.pending.template, { pubkey: this.t.pubkey });
+                } catch (error) {
+                    this.error = signerMessage(this.t.signer, error);
 
                     return;
                 }

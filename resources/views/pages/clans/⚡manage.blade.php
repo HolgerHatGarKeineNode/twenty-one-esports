@@ -362,12 +362,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $rating = ClanStatsPreview::clanRating($tag);
     $hash = ClanStatsPreview::hashrate($tag);
     $captains = $members->filter(fn ($member) => $member->role === ClanRole::Captain)->map(fn ($member) => $member->user->displayName().($member->user_id === $clan->owner_id ? ' ('.__('owner').')' : ''))->implode(', ');
-    $messages = [
-        'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
-        'rejected' => __('The confirmation was not given. Please try again.'),
-        'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
-        'failed' => __('That did not work. Please try again.'),
-    ];
+    $messages = \App\Support\Nostr\SignerMessages::labels();
 @endphp
 
 <div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"

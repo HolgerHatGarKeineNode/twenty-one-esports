@@ -9,6 +9,7 @@ import { dailyGame } from './dailyGame.js';
 import { gameChat } from './gameChat.js';
 import { boardKey } from './hotkeys.js';
 import { ensureSigner } from './nostrSign.js';
+import { signTemplate } from './signing.js';
 import { moveSound, playSound, sounds } from './sounds.js';
 
 const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
@@ -165,15 +166,8 @@ window.chessBoardCells = boardCells;
 async function signQuietly(template, pubkey) {
     if (typeof window.nostr?.signEvent !== 'function' || !template) return null;
     try {
-        const event = JSON.parse(JSON.stringify(await window.nostr.signEvent({
-            kind: template.kind,
-            created_at: Math.max(template.created_at, Math.floor(Date.now() / 1000)),
-            // Plain copy: extensions structured-clone the draft, a proxy throws.
-            tags: JSON.parse(JSON.stringify(template.tags)),
-            content: template.content,
-        })));
-
-        return pubkey && event.pubkey !== pubkey ? null : event;
+        // signTemplate signs a plain copy and logs a refusal with its reason (console.warn).
+        return await signTemplate(template, { pubkey });
     } catch {
         return null;
     }

@@ -56,8 +56,9 @@ final class TestSigner
                     // reactive Alpine proxy throws DataCloneError there. Do the same.
                     signEvent: async (draft) => post('/__test/nostr/__USER__/sign', structuredClone(draft)),
                     nip44: {
-                        encrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'encrypt', pubkey, text }).then((r) => r.result),
-                        decrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'decrypt', pubkey, text }).then((r) => r.result),
+                        // The same postMessage path as signEvent in an extension.
+                        encrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip44', structuredClone({ op: 'encrypt', pubkey, text })).then((r) => r.result),
+                        decrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip44', structuredClone({ op: 'decrypt', pubkey, text })).then((r) => r.result),
                     },
                 };
             })();

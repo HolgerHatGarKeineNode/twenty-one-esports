@@ -123,12 +123,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
 @endphp
 
 <div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"
-     x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js([
-         'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
-         'rejected' => __('The confirmation was not given. Please try again.'),
-         'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
-         'failed' => __('That did not work. Please try again.'),
-     ]) })">
+     x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clan invite') }}</h1>
         <span class="text-[13px] text-ink-2">{{ __(':clan wants you in its roster', ['clan' => $clan->name]) }}</span>

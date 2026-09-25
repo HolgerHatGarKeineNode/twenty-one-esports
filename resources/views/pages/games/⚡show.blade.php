@@ -11,6 +11,7 @@ use App\Support\Chess\GameRecords;
 use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
+use App\Support\Nostr\SignerMessages;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -394,11 +395,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                 'back' => __(':name is back after :s s.', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
             ],
             'claimSeconds' => (int) config('esports.chess.disconnect_claim_seconds'),
-            'signer' => [
-                'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
-                'rejected' => __('The confirmation was not given. Please try again.'),
-                'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
-            ],
+            'signer' => SignerMessages::labels(),
             'pubkey' => auth()->user()?->pubkey,
         ];
     }

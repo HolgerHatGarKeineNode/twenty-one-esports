@@ -469,7 +469,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     {{-- Challenge, still open: answer, withdraw or wait --}}
     @if ($m->status === SeriesStatus::Open)
-        <section aria-labelledby="answer-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" x-data="nostrAction({ pubkey: @js($viewer->pubkey) })" data-test="answer-card">
+        <section aria-labelledby="answer-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" data-test="answer-card">
             <h2 id="answer-h" class="m-0 text-[15px] font-bold">{{ __('Challenge from :clan', ['clan' => $m->challenger_name]) }}</h2>
             @if ($m->message)<p class="m-0 text-[13px] text-ink-2">“{{ $m->message }}”</p>@endif
             <span class="text-xs text-ink-2">{{ __('Answer by :time', ['time' => SeriesPresenter::time($m->respond_by, $viewer)]) }}</span>
@@ -694,7 +694,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {{-- Check the result (the other captain) --}}
     @if ($toAnswer)
         @php($reportWins = $report->score())
-        <section id="check" aria-labelledby="check-h" class="grid grid-cols-1 gap-5 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#3A2A12] lg:grid-cols-2 lg:px-6" x-data="nostrAction({ pubkey: @js($viewer->pubkey) })" data-test="check-result">
+        <section id="check" aria-labelledby="check-h" class="grid grid-cols-1 gap-5 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#3A2A12] lg:grid-cols-2 lg:px-6" x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" data-test="check-result">
             <div class="flex flex-col gap-3">
                 <h2 id="check-h" class="m-0 text-[15px] font-bold">{{ __('Check the result from :clan', ['clan' => $m->sideName($report->side)]) }}</h2>
                 <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="reported-score">
@@ -741,7 +741,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     @if ($editable)
         <div x-show="submit" x-cloak class="fixed inset-0 z-40 flex items-end justify-center bg-[rgba(10,10,11,.7)] lg:items-center" x-on:keydown.escape.window="submit = false">
             <section role="dialog" aria-modal="true" aria-labelledby="submit-h" class="flex max-h-[90svh] w-full max-w-[560px] flex-col gap-4 overflow-y-auto rounded-t-2xl bg-card px-5 py-6 shadow-ring lg:rounded-lg lg:px-6"
-                     x-data="nostrAction({ pubkey: @js($viewer->pubkey) })" x-on:click.outside="submit = false" data-test="submit-dialog">
+                     x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" x-on:click.outside="submit = false" data-test="submit-dialog">
                 <span class="flex items-center gap-3"><span class="flex size-10 items-center justify-center rounded-md bg-win-tint text-win"><x-icon name="shield-check" :size="20" /></span><h2 id="submit-h" class="m-0 text-lg font-bold">{{ __('Submit final score') }}</h2></span>
                 @if ($draft !== null)
                     @php($draftWins = SeriesMatch::seriesScore($draft['games']))

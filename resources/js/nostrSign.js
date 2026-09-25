@@ -12,11 +12,15 @@
  * ConvertEmptyStringsToNull must never touch a signed payload.
  */
 import { connectMill, dropFailedBunker, hasNostrExtension } from './millAuth.js';
+import { signerMessage, signTemplate } from './signing.js';
 
+// Fallbacks only; pages pass the translated set (App\Support\Nostr\SignerMessages).
 const DEFAULT_MESSAGES = {
     noSigner: 'No Nostr signer found. Install a Nostr browser extension or use a remote signer.',
     rejected: 'The confirmation was not given. Please try again.',
+    unreachable: 'Your signer did not answer. Check that it is unlocked and online, then try again.',
     wrongKey: 'This signer holds a different key than the one you logged in with.',
+    signerFailed: 'Your signer could not sign this (:reason). Please try again.',
     failed: 'That did not work. Please try again.',
 };
 
@@ -27,7 +31,8 @@ export async function ensureSigner() {
 
     try {
         await connectMill({ methods: ['nip46', 'pomegranate'], pomegranate: true });
-    } catch {
+    } catch (error) {
+        console.warn('[signer] connecting a remote signer failed:', error);
         dropFailedBunker();
 
         return false;
@@ -71,34 +76,18 @@ function nostrAction({ pubkey = null, messages = {} } = {}) {
 
                 const signed = [];
                 for (const template of templates) {
-                    let event;
                     try {
-                        event = await window.nostr.signEvent({
-                            kind: template.kind,
-                            created_at: Math.max(template.created_at, Math.floor(Date.now() / 1000)),
-                            tags: template.tags,
-                            content: template.content,
-                        });
-                    } catch {
-                        this.error = this.messages.rejected;
+                        signed.push(await signTemplate(template, { pubkey }));
+                    } catch (error) {
+                        this.error = signerMessage(this.messages, error);
 
                         return;
                     }
-
-                    // Extensions may hand back proxies; a JSON round trip gives a plain object.
-                    event = JSON.parse(JSON.stringify(event));
-
-                    if (pubkey && event.pubkey !== pubkey) {
-                        this.error = this.messages.wrongKey;
-
-                        return;
-                    }
-
-                    signed.push(event);
                 }
 
                 await this.$wire[submit](...args, JSON.stringify(signed));
-            } catch {
+            } catch (error) {
+                console.warn('[signer] signed action failed:', error);
                 this.error = this.messages.failed;
             } finally {
                 this.busy = false;

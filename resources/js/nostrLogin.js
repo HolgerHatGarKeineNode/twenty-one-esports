@@ -11,6 +11,7 @@
  * the session id rotates on login, so no 419 races (see the portal history).
  */
 import { connectMill, dropFailedBunker, hasNostrExtension } from './millAuth.js';
+import { signerMessage, signTemplate } from './signing.js';
 
 const PROFILE_WAIT_MS = 1500;
 
@@ -18,6 +19,8 @@ const DEFAULT_MESSAGES = {
     failed: 'Login failed. Please try again.',
     noSigner: 'No Nostr signer found. Install a Nostr browser extension or use a remote signer.',
     signRejected: 'The signature was not given. Please try again.',
+    unreachable: 'Your signer did not answer. Check that it is unlocked and online, then try again.',
+    signerFailed: 'Your signer could not sign this (:reason). Please try again.',
     googleFailed: 'Google login did not work. Please try again or use Nostr.',
     connectAborted: 'Connecting the signer was cancelled or timed out.',
 };
@@ -105,6 +108,7 @@ export default ({ messages = {}, challengeUrl = '/auth/nostr/challenge' } = {}) 
         try {
             await connectMill({ methods: ['pomegranate'], pomegranate: true });
         } catch (error) {
+            console.warn('[login] Google signer did not connect:', error);
             dropFailedBunker();
             this.busy = false;
             if (error?.message !== 'cancelled') {
@@ -129,6 +133,7 @@ export default ({ messages = {}, challengeUrl = '/auth/nostr/challenge' } = {}) 
             try {
                 await connectMill({ methods: ['nip46'] });
             } catch (error) {
+                console.warn('[login] remote signer did not connect:', error);
                 dropFailedBunker();
                 this.busy = false;
                 if (error?.message !== 'cancelled') {
@@ -152,11 +157,12 @@ export default ({ messages = {}, challengeUrl = '/auth/nostr/challenge' } = {}) 
 
             const challenge = await postJson(challengeUrl);
 
-            let signed;
+            let event;
             try {
-                signed = await window.nostr.signEvent({
+                // A plain object back: some extensions return proxies (cloneInto)
+                // that fetch cannot serialise reliably.
+                event = await signTemplate({
                     kind: challenge.kind,
-                    created_at: Math.floor(Date.now() / 1000),
                     tags: [
                         ['u', challenge.url],
                         ['method', challenge.method],
@@ -164,22 +170,20 @@ export default ({ messages = {}, challengeUrl = '/auth/nostr/challenge' } = {}) 
                     ],
                     content: '',
                 });
-            } catch {
-                this.fail(this.messages.signRejected);
+            } catch (error) {
+                this.fail(signerMessage({ ...this.messages, rejected: this.messages.signRejected }, error));
 
                 return;
             }
 
-            // Some extensions return proxies (cloneInto) that fetch cannot
-            // serialise reliably; a JSON round trip gives a plain object.
-            const event = JSON.parse(JSON.stringify(signed));
             const profile = await fetchProfile(event.pubkey, challenge.profile_relays);
 
             const result = await postJson(challenge.url, { event, profile });
 
             // Full page load: fresh document, fresh CSRF token after the session rotation.
             window.location.assign(result.redirect);
-        } catch {
+        } catch (error) {
+            console.warn('[login] login failed:', error);
             this.fail(this.messages.failed);
         }
     },

@@ -215,12 +215,7 @@ new #[Title('Start a clan')] #[Layout('layouts::app', ['section' => 'clans'])] c
     </div>
 
     <form wire:submit.prevent class="flex flex-col gap-[18px] rounded-lg bg-card p-4 lg:p-6"
-          x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js([
-              'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
-              'rejected' => __('The confirmation was not given. Please try again.'),
-              'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
-              'failed' => __('That did not work. Please try again.'),
-          ]) })">
+          x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
 
         {{-- Portal meetup import (optional) --}}
         <div class="flex flex-col gap-2.5 rounded-md bg-ground p-4 shadow-ring">
