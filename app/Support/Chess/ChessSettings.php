@@ -35,6 +35,7 @@ final readonly class ChessSettings
     public function __construct(
         public string $board = 'house',
         public bool $coordinates = true,
+        public bool $pieceNames = true,
         public bool $alwaysQueen = false,
         public bool $doubleCheck = true,
         public bool $push = true,
@@ -73,6 +74,7 @@ final readonly class ChessSettings
         return new self(
             board: in_array($values['board'] ?? null, self::BOARDS, true) ? $values['board'] : $defaults->board,
             coordinates: $bool('coordinates', $defaults->coordinates),
+            pieceNames: $bool('pieceNames', $defaults->pieceNames),
             alwaysQueen: $bool('alwaysQueen', $defaults->alwaysQueen),
             doubleCheck: $bool('doubleCheck', $defaults->doubleCheck),
             push: $bool('push', $defaults->push),
@@ -85,13 +87,14 @@ final readonly class ChessSettings
     }
 
     /**
-     * @return array{board: string, coordinates: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
+     * @return array{board: string, coordinates: bool, pieceNames: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
      */
     public function toArray(): array
     {
         return [
             'board' => $this->board,
             'coordinates' => $this->coordinates,
+            'pieceNames' => $this->pieceNames,
             'alwaysQueen' => $this->alwaysQueen,
             'doubleCheck' => $this->doubleCheck,
             'push' => $this->push,

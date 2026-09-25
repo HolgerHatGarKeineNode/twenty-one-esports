@@ -153,6 +153,13 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and($copy['left'])->toBeGreaterThanOrEqual(0.0)
         ->and($copy['right'])->toBeLessThanOrEqual((float) $copy['vw']);
 
+    // Piece names on hover (a help for new players): pointing at e5 names it,
+    // leaving the board clears it.
+    $white->locator('[data-square=e5]')->hover();
+    BrowserWait::until($white, '() => document.querySelector("[data-test=piece-tip]")?.innerText === "Black pawn"', 2_000);
+    $white->locator('[data-test=clock-top]')->hover();
+    BrowserWait::until($white, '() => ! document.querySelector("[data-test=piece-tip]")?.checkVisibility()', 2_000);
+
     // Captured pieces: the row is there on both strips, empty so far, and the
     // bundle computes captures (a won knight pair and pawn: +6).
     expect($white->evaluate('() => document.querySelector("[data-test=captured-top]")?.getAttribute("aria-label")'))->toBe('Nothing captured yet')

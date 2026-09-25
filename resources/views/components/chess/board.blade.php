@@ -10,11 +10,23 @@
     piece set waits for its license check. Below lg the board runs edge to
     edge without the cube faces (MobileChessGame), from lg on it is the cube.
     frame: #3A2C14 live/waiting, #F7931A finished (kit section 1).
+
+    Piece names on hover (chess setting `pieceNames`, on by default and for
+    guests): a help for new players, mouse only so a tap never leaves a label.
 --}}
-<div role="img" data-bleed x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg cursor-default select-none') }} style="background: {{ $frame }}">
+@php
+    $pieceNames = auth()->user()?->chessSettings()->pieceNames ?? true;
+    $names = [
+        'w' => ['k' => __('White king'), 'q' => __('White queen'), 'r' => __('White rook'), 'b' => __('White bishop'), 'n' => __('White knight'), 'p' => __('White pawn')],
+        'b' => ['k' => __('Black king'), 'q' => __('Black queen'), 'r' => __('Black rook'), 'b' => __('Black bishop'), 'n' => __('Black knight'), 'p' => __('Black pawn')],
+    ];
+@endphp
+<div role="img" data-bleed x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg cursor-default select-none') }} style="background: {{ $frame }}"
+     @if ($pieceNames) x-data="{ tip: null, pieceNames: @js($names) }" x-on:pointerleave="tip = null" @endif>
     <div class="grid size-full grid-cols-8 grid-rows-8">
         <template x-for="c in cells" :key="c.name">
             <div aria-hidden="true" class="relative" :style="`background: ${c.bg}; box-shadow: ${c.ring}`"
+                 @if ($pieceNames) x-on:pointerenter="tip = $event.pointerType === 'mouse' && c.type ? { text: pieceNames[c.color][c.type], x: $el.offsetLeft + $el.offsetWidth / 2, y: $el.offsetTop } : null" data-piece-tip @endif
                  @if ($playable) x-on:click="clickSquare(c.name)" :data-square="c.name" :class="c.hot && 'cursor-pointer'" @endif>
                 <span class="absolute top-0.5 left-1 text-[11px] font-bold" :style="`color: ${c.coordC}`" x-text="c.rank"></span>
                 <span class="absolute right-1 bottom-px text-[11px] font-bold" :style="`color: ${c.coordC}`" x-text="c.file"></span>
@@ -23,5 +35,10 @@
             </div>
         </template>
     </div>
+    @if ($pieceNames)
+        <span x-show="tip" x-cloak aria-hidden="true" data-test="piece-tip"
+              class="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-sm bg-[#17171B] px-2 py-1 text-xs whitespace-nowrap text-ink shadow-ring"
+              :style="tip && `left: ${tip.x}px; top: ${tip.y - 4}px`" x-text="tip?.text"></span>
+    @endif
     {{ $slot }}
 </div>

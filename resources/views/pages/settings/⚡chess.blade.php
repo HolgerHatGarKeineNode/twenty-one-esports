@@ -30,7 +30,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
 
     public function toggle(string $key): void
     {
-        abort_unless(in_array($key, ['coordinates', 'alwaysQueen', 'doubleCheck', 'dm', 'sound'], true), 422);
+        abort_unless(in_array($key, ['coordinates', 'pieceNames', 'alwaysQueen', 'doubleCheck', 'dm', 'sound'], true), 422);
 
         $settings = $this->settings()->toArray();
         $settings[$key] = ! $settings[$key];
@@ -208,6 +208,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
             </div>
 
             @include('pages.settings.partials.switch', ['label' => __('Coordinates'), 'hint' => __('a–h and 1–8 along the edge'), 'on' => $settings->coordinates, 'action' => "toggle('coordinates')", 'test' => 'coordinates'])
+            @include('pages.settings.partials.switch', ['label' => __('Piece names'), 'hint' => __('the name of a piece when you point at it, a help for new players'), 'on' => $settings->pieceNames, 'action' => "toggle('pieceNames')", 'test' => 'piece-names'])
         </section>
 
         {{-- During the game, daily chess, notifications --}}

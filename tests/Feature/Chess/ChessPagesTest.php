@@ -163,3 +163,17 @@ test('a finished game keeps the players\' chat open, spectators get none', funct
         ->assertSee('data-test="chess-game-done"', false)
         ->assertDontSee('data-test="chat"', false);
 })->with(['live' => [false], 'daily' => [true]]);
+
+test('piece names on hover are on by default and follow the chess setting', function () {
+    $game = ChessGame::factory()->create();
+
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertSee('data-test="piece-tip"', false)
+        ->assertSee(__('White queen'), false);
+
+    Livewire::actingAs($game->white)->test('pages::settings.chess')->call('toggle', 'pieceNames');
+
+    expect($game->white->refresh()->chessSettings()->pieceNames)->toBeFalse();
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertDontSee('data-test="piece-tip"', false);
+});

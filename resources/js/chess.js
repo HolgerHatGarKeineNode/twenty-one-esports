@@ -74,6 +74,7 @@ export function boardCells(fen, o = {}) {
             outline: white ? String.fromCodePoint(0x2654 + idx) + VS16 : '',
             fill: white ? '#FFFFFF' : '#0A0A0B',
             label: name + (ch ? ': ' + (white ? 'white' : 'black') + ' ' + PIECE_NAMES[ch.toLowerCase()] : ''),
+            type: ch ? ch.toLowerCase() : null,
             coordC: light ? theme.cl : theme.cd,
             dot: (o.dots || []).includes(name),
             // Clickable: a piece of the side that may move now, or a legal target.
