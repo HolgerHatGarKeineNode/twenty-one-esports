@@ -45,11 +45,15 @@
                 </a>
                 <a href="{{ route('me.correspondence') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                     <x-icon name="clock" :size="18" class="text-ink-2" />
-                    {{ __('Daily chess') }}
+                    {{ __('Your daily games') }}
                 </a>
                 <a href="{{ route('gaming.edit') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                     <x-icon name="user" :size="18" class="text-ink-2" />
                     {{ __('Settings') }}
+                </a>
+                <a href="{{ route('settings.chess') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="mobile-chess-settings">
+                    <x-icon name="chess" :size="18" class="text-ink-2" />
+                    {{ __('Chess settings') }}
                 </a>
                 @can('admin')
                     <a href="{{ route('admin.admins') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">

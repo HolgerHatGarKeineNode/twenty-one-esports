@@ -30,7 +30,32 @@
             </span>
         </a>
 
-        <span class="hidden h-7 shrink-0 items-center whitespace-nowrap rounded-md bg-btc-chip px-2.5 text-xs text-btc-hi xl:flex">{{ $section === 'chess' ? __('Chess') : __('All games') }} ▾</span>
+        {{-- Games menu: every page of a game, including the ones that have no nav icon. --}}
+        <flux:dropdown position="bottom" align="start" class="hidden shrink-0 xl:block">
+            <button type="button" class="flex h-7 cursor-pointer items-center whitespace-nowrap rounded-md bg-btc-chip px-2.5 text-xs text-btc-hi" data-test="games-menu">{{ $section === 'chess' ? __('Chess') : __('All games') }} ▾</button>
+
+            <flux:menu>
+                <flux:menu.group :heading="__('Chess')">
+                    <flux:menu.item :href="route('chess.lobby')" icon="bolt">{{ __('Play blitz') }}</flux:menu.item>
+                    @auth
+                        <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Your daily games') }}</flux:menu.item>
+                        <flux:menu.item :href="route('chess.challenge')" icon="paper-airplane">{{ __('Challenge a player') }}</flux:menu.item>
+                    @endauth
+                    <flux:menu.item :href="route('ladder.show', ['chess', 'blitz'])" icon="chart-bar">{{ __('Chess ladder') }}</flux:menu.item>
+                    @auth
+                        <flux:menu.item :href="route('settings.chess')" icon="cog-6-tooth">{{ __('Chess settings') }}</flux:menu.item>
+                    @endauth
+                </flux:menu.group>
+                <flux:menu.separator />
+                <flux:menu.group heading="Rocket League">
+                    <flux:menu.item :href="route('games.rocket-league')" icon="trophy">{{ __('Overview') }}</flux:menu.item>
+                    <flux:menu.item :href="route('matches.index')" icon="list-bullet">{{ __('Matches') }}</flux:menu.item>
+                    @auth
+                        <flux:menu.item :href="route('challenges.create')" icon="paper-airplane">{{ __('Challenge a clan') }}</flux:menu.item>
+                    @endauth
+                </flux:menu.group>
+            </flux:menu>
+        </flux:dropdown>
 
         <nav class="flex gap-1" aria-label="{{ __('Main navigation') }}">
             @foreach ($items as [$key, $label, $href])
@@ -68,8 +93,9 @@
 
                 <flux:menu>
                     <flux:menu.item :href="route('dashboard')" icon="user">{{ __('Your page') }}</flux:menu.item>
-                    <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Daily chess') }}</flux:menu.item>
+                    <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Your daily games') }}</flux:menu.item>
                     <flux:menu.item :href="route('gaming.edit')" icon="cog-6-tooth">{{ __('Settings') }}</flux:menu.item>
+                    <flux:menu.item :href="route('settings.chess')" icon="adjustments-horizontal">{{ __('Chess settings') }}</flux:menu.item>
                     @can('admin')
                         <flux:menu.item :href="route('admin.admins')" icon="shield-check">{{ __('Admin') }}</flux:menu.item>
                     @endcan

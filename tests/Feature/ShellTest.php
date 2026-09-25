@@ -99,3 +99,16 @@ test('the account menu links to the admin area only for admins', function (bool 
         ? $response->assertSee('href="'.route('admin.admins').'"', false)
         : $response->assertDontSee(route('admin.admins'), false);
 })->with(['admin' => true, 'player' => false]);
+
+test('the games menu and the account menus link every chess page, so none is found only by chance', function () {
+    $user = \App\Models\User::factory()->create();
+
+    $html = $this->actingAs($user)->get(route('clans.index'))->assertOk()->getContent();
+
+    expect($html)->toContain('data-test="games-menu"')
+        ->toContain('href="'.route('me.correspondence').'"')
+        ->toContain('href="'.route('settings.chess').'"')
+        ->toContain('href="'.route('chess.challenge').'"')
+        ->toContain('href="'.route('ladder.show', ['chess', 'blitz']).'"')
+        ->toContain('data-test="mobile-chess-settings"');
+});
