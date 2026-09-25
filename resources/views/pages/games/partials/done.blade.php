@@ -136,6 +136,12 @@
          class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,496px)_300px_minmax(0,1fr)] lg:gap-7">
         <div class="flex flex-col gap-4">
             <x-chess.board frame="#F7931A" class="lg:mt-4 lg:max-w-[480px]" />
+            {{-- Captured pieces at the replayed position --}}
+            <div class="flex flex-col gap-1 text-xs lg:max-w-[480px]" data-test="replay-captured">
+                @foreach (['w' => __('White'), 'b' => __('Black')] as $side => $sideName)
+                    <span class="flex min-h-5 items-center gap-2"><span class="w-12 shrink-0 text-ink-3">{{ $sideName }}</span><x-chess.captured fen="fens[index]" color="'{{ $side }}'" /></span>
+                @endforeach
+            </div>
             <div class="flex items-center gap-3">
                 <button type="button" aria-label="{{ __('First move') }}" x-on:click="go(0)" class="btn-w flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink"><x-icon name="first" :size="16" /></button>
                 <button type="button" aria-label="{{ __('Previous move') }}" x-on:click="go(index - 1)" class="btn-w flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink"><x-icon name="prev" :size="16" /></button>

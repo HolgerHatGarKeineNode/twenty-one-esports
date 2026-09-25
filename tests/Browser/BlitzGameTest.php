@@ -153,6 +153,11 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and($copy['left'])->toBeGreaterThanOrEqual(0.0)
         ->and($copy['right'])->toBeLessThanOrEqual((float) $copy['vw']);
 
+    // Captured pieces: the row is there on both strips, empty so far, and the
+    // bundle computes captures (a won knight pair and pawn: +6).
+    expect($white->evaluate('() => document.querySelector("[data-test=captured-top]")?.getAttribute("aria-label")'))->toBe('Nothing captured yet')
+        ->and($white->evaluate('() => window.chessCaptured("r1bqkb1r/ppp1pppp/8/8/2PP4/8/PP3PPP/RNBQKBNR b KQkq - 0 5", "w").lead'))->toBe('+6');
+
     // Clocks: Black's runs on both boards, and both show the same time.
     $game->refresh();
     $clockWhite = board($white, '[g.state.clock.running, Math.round(g.remaining("b"))]');

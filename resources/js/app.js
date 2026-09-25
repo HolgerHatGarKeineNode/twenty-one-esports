@@ -11,6 +11,7 @@ import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker } from './millAuth.js';
 import './nostrSign.js';
+import './captured.js';
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {

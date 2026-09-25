@@ -120,8 +120,11 @@
                 @php($sideColor = $side === 'top' ? ($color === 'b' ? 'w' : 'b') : ($color === 'b' ? 'b' : 'w'))
                 @php($p = $cards[$sideColor])
                 <div @class(['flex items-center gap-2.5 px-4 lg:shrink-0 lg:px-0', 'order-1' => $side === 'top', 'order-3 lg:order-7 lg:mt-auto' => $side === 'bottom']) data-test="daily-player-{{ $side }}">
-                    <span class="relative flex min-w-0 grow items-center gap-2.5">
-                        <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
+                    <span class="relative flex min-w-0 grow flex-col items-stretch gap-1">
+                        <span class="relative flex min-w-0 items-center gap-2.5">
+                            <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
+                        </span>
+                        <x-chess.captured fen="(pending?.fen ?? state.fen)" color="'{{ $sideColor }}'" data-test="captured-{{ $side }}" />
                     </span>
                     <div role="timer" class="flex h-12 shrink-0 items-center gap-2 rounded-lg px-3"
                          :class="state.turn === '{{ $sideColor }}' ? (low ? 'bg-loss text-on-btc' : 'bg-btc text-on-btc') : 'bg-card text-ink-2 shadow-ring'">

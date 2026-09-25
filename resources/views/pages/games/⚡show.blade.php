@@ -507,8 +507,9 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                     <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color"><span class="max-lg:hidden">{{ __('Solo') }}</span> {{ $p['elo'] }} · <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
                                 </span>
                             @endforeach
-                            <span class="relative hidden shrink-0 text-xs text-ink-2 lg:inline" x-text="materialFor({{ $sideColor }})"></span>
                         </div>
+                        {{-- Captured pieces and material lead, on every screen size --}}
+                        <x-chess.captured fen="state.fen" :color="$sideColor" data-test="captured-{{ $side }}" @class(['col-span-2 lg:px-1', 'lg:order-3' => $side === 'bottom']) />
                         {{-- Clock (kit section 5) --}}
                         <div role="timer" aria-live="off" :aria-label="clock({{ $sideColor }}).aria" data-test="clock-{{ $side }}"
                              :style="`background: ${clock({{ $sideColor }}).bg}; box-shadow: ${clock({{ $sideColor }}).ring}; color: ${clock({{ $sideColor }}).fg}`"
