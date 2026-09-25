@@ -261,6 +261,12 @@ select:focus[data-flux-control] {
         width: 12px;
     }
 
+    /* Chart bars grow from the baseline (Main/RocketLeague `.bar`). */
+    .bar {
+        transform-origin: bottom;
+        animation: bar-grow 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
     .tr:hover {
         background: var(--color-row-hover);
     }
@@ -767,6 +773,12 @@ select:focus[data-flux-control] {
     syntax: '<percentage>';
     inherits: true;
     initial-value: 0%;
+}
+
+@keyframes bar-grow {
+    from {
+        transform: scaleY(0);
+    }
 }
 
 @keyframes bs-shift {

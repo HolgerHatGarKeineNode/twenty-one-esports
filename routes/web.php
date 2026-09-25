@@ -24,6 +24,20 @@ Route::middleware(['auth', 'admin'])->group(function () {
 });
 
 /*
+ * Clans, lineups and invites (P4). `clans/create` is registered before
+ * `clans/{clan}` so "create" is never taken for a clan slug.
+ */
+Route::middleware('auth')->group(function () {
+    Route::livewire('clans/create', 'pages::clans.create')->name('clans.create');
+    Route::livewire('clans/{clan}/manage', 'pages::clans.manage')->name('clans.manage');
+    Route::livewire('invites/{invite}', 'pages::invites.show')->name('invites.show');
+});
+
+Route::livewire('clans', 'pages::clans.index')->name('clans.index');
+Route::livewire('clans/{clan}', 'pages::clans.show')->name('clans.show');
+Route::livewire('games/rocket-league', 'pages::games.rocket-league')->name('games.rocket-league');
+
+/*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
  * shell with a "Coming soon" empty state until its phase builds the real page.
  * `page` is a translation key, `section` marks the active main-navigation item.
@@ -32,14 +46,11 @@ $placeholders = [
     ['chess', 'chess.lobby', 'Chess', 'chess'],
     ['chess/challenge', 'chess.challenge', 'Challenge a friend', 'chess'],
     ['games', 'games.index', 'Live games', 'chess'],
-    ['games/rocket-league', 'games.rocket-league', 'Rocket League', null],
     ['games/{game}', 'games.show', 'Game', 'chess'],
     ['matches', 'matches.index', 'Matches', 'matches'],
     ['matches/{match}', 'matches.show', 'Match', 'matches'],
     ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],
     ['ladder/{game}/{mode}', 'ladder.show', 'Ladder', 'ladder'],
-    ['clans', 'clans.index', 'Clans', 'clans'],
-    ['clans/{clan}', 'clans.show', 'Clan', 'clans'],
     ['players/{npub}', 'players.show', 'Player', null],
     ['challenges/create', 'challenges.create', 'New challenge', null],
     ['rules', 'rules', 'Rules', null],

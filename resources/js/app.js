@@ -8,6 +8,7 @@ import './toasts';
 
 import nostrLogin from './nostrLogin.js';
 import { dropFailedBunker } from './millAuth.js';
+import './nostrSign.js';
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {
