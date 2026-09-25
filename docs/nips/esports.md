@@ -50,6 +50,10 @@ revision 6.
   way, so no revision-5 block changes.
 - Round-6 examples ([Revision 6](#revision-6-a-roster-invitation-and-a-lineup-from-members)) and relay
   proof (R6).
+- **Invite links and join requests** (added 2026-09-26, no new kind, no change to any event): open
+  game links and clan join links are league data ([Invite links](#invite-links)); a join request and a
+  captain's yes never become an event, and the owner's clan event stays the only listing
+  ([Clan](#clan-32150), "Join requests").
 
 ### Changelog of revision 5 (2026-09-25)
 
@@ -404,6 +408,16 @@ pubkey's own Clan Membership (`12150`) points at the clan. Listing alone is an i
 membership event is the acceptance. Rev. 6: the invitation is into the clan's roster only; it names no
 lineup, mode or role. Only the listed player can accept it, since only their key signs their
 membership.
+
+**Join requests (league data).** A player may also ask to join, through a clan's join link
+([Invite links](#invite-links)). The request and a captain's yes stay on the league server: no event
+carries them, and a captain's approval does not list anybody, because only the owner signs `32150`
+(see [Ownership](#ownership-rev-5)). The flow is: request → a captain approves → the **owner** lists
+the player in a new `32150` → the player accepts with their own `12150`. The last two steps are the
+invitation and acceptance above, unchanged, so a relay reader sees an ordinary invitation and cannot
+tell a request from an invitation the owner started. An approved request waits for the owner; while
+the clan is frozen (owner gone), it waits for good. The league shows the requester each step as it is
+(waiting for a captain, waiting for the owner, invited).
 
 The clan tag is a display label, not an identifier: the `d` value identifies a clan. The league
 keeps clan tags unique within the league and refuses a clan event whose `clantag` another clan
@@ -2200,6 +2214,33 @@ Query: `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}` returns the 
 | a player's rank badges (rev. 5) | `{"kinds":[30009],"authors":["<badge key>"],"#p":["<player>"]}`; the awards: `{"kinds":[8],"authors":["<badge key>"],"#p":["<player>"]}` |
 | the bounties on a player (rev. 5) | `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}`; the funding of one: `{"kinds":[9735],"#a":["31923:<league>:bounty/<slug>"]}` |
 
+## Invite links
+
+A shareable link `https://<league>/i/<code>` invites anyone who opens it, logged in or not. It is
+league data only: **no invite link, no acceptance of one and no referral is ever an event.** What a
+link leads to is ordinary protocol data once it happens.
+
+- **The code** is 22 characters of base62 from a cryptographic random source (about 131 bits), not
+  derived from any id. It is the only secret of the link; the league rate-limits the landing page.
+- **Game links are open.** A chess link (blitz or daily) or a Rocket League link does not name the
+  opponent: whoever opens it and accepts plays. A link is for one taker or for several (one game per
+  taker); it expires. The game starts at acceptance, and a series takes its league match number then
+  (the `match` tag, [Terminology](#terminology)), not when the link is made, so an unused link leaves
+  no gap in the numbers.
+- **Casual only.** Every game started from a link is casual. A rated Rocket League challenge (`2150`)
+  names the challenged captains in `p` and is signed by the challenger before anyone could accept, so
+  an open link cannot carry one; casual games produce no match-flow events at all
+  ([Game registry](#game-registry)). A chess game from a link produces the same game notes (`64`)
+  as any casual chess game.
+- **Clan links send a join request**, never a membership (see [Clan](#clan-32150), "Join
+  requests"). Named invitations (the owner lists one player) stay direct.
+- **Referrals** (who invited whom, and whether the account is new) are kept by the league for
+  cosmetic perks later. They never count toward ratings, trust, blocks, rewards or any attested
+  number: a link is the easiest thing to farm.
+- **Previews.** The landing page carries a title, a description and a preview image in plain HTML for
+  messengers and Nostr clients, and asks search engines not to index it. The image is drawn by the
+  league from its own assets; it fetches no picture from a URL a player chose.
+
 ## What is not on Nostr
 
 These stay on the league server, on purpose:
@@ -2229,6 +2270,8 @@ These stay on the league server, on purpose:
 | the anomaly review: analysis, evidence, admin deliberation | may show private data and game patterns; the result is public as `void-block` labels with reasons |
 | the pot ledger (double entry), NWC secrets, the players' Lightning addresses | operational; credits and debits are checkable from receipts and payouts ([Pots and zap targets](#pots-and-zap-targets-rev-5)) |
 | season drafts before they are scheduled; estimator inputs | admin working state; the scheduled season is the announcement, the released one the genesis |
+| invite links, their codes and uses, referrals | a link is a secret to share, not a statement; what it leads to (a game note, an owner's listing, a membership) is public when it happens ([Invite links](#invite-links)) |
+| clan join requests and a captain's approval | only the owner's key lists players; the approval is an instruction to the owner, not a listing ([Clan](#clan-32150)) |
 
 **Implication for publishing.** In the planned flow the client signs, the league validates and then
 publishes. That works for events without `["-"]`. An event with `["-"]` (NIP-70) can only be
