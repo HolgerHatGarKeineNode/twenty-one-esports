@@ -3,6 +3,7 @@
 namespace App\Support\Series;
 
 use App\Enums\LineupRole;
+use App\Enums\NotificationKind;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
@@ -900,7 +901,7 @@ final class SeriesService
         foreach ($lineup->seats->filter(fn (LineupSeat $seat) => $lineup->isActingCaptain($seat->user)) as $seat) {
             $locale = $seat->user->locale ?? config('app.locale');
 
-            $this->notifier->send($seat->user, 'challenge', new Notice(
+            $this->notifier->send($seat->user, NotificationKind::Challenge, new Notice(
                 __('New challenge from :clan', ['clan' => $match->challenger_name], $locale),
                 __(':mode, best of :bo, match :number. Answer by :time.', [
                     'mode' => 'Rocket League '.$match->mode,

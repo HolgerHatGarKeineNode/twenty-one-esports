@@ -72,7 +72,7 @@ enum NotificationKind: string
             self::MatchFound => ['Opponent found', 'the blitz queue paired you, the game starts'],
             self::Invite => ['Blitz invite', 'a friend invites you to a live game'],
             self::InviteAccepted => ['Invite accepted', 'your friend accepted, the game starts'],
-            self::Challenge => ['Challenge received', 'someone challenged you to daily chess'],
+            self::Challenge => ['Challenge received', 'someone challenged you to daily chess or your clan to a match'],
             self::GameStarted => ['Daily game started', 'your daily challenge was accepted'],
             self::YourMove => ['Your move', 'your opponent made their daily move'],
             self::Reminder => ['Deadline reminder', ':hours h before your daily move is due'],
