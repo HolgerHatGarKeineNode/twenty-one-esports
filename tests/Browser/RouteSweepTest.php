@@ -382,9 +382,9 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
                 const as = getComputedStyle(a);
                 if (as.overflowX === 'visible' && as.clip === 'auto' && as.clipPath === 'none') continue;
                 const ar = a.getBoundingClientRect();
-                // Cut by the edge of a horizontal scroller (a tab bar that
-                // scrolls on phones): that edge is the scroll affordance.
-                if (['auto', 'scroll'].includes(as.overflowX) && (left < ar.left || right > ar.right)) scrolledAway = true;
+                // Inside a horizontal scroller that actually overflows (a tab
+                // bar on phones): its edge is the scroll affordance.
+                if (['auto', 'scroll'].includes(as.overflowX) && a.scrollWidth > a.clientWidth) scrolledAway = true;
                 left = Math.max(left, ar.left);
                 right = Math.min(right, ar.right);
             }
