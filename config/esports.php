@@ -145,6 +145,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Series matches (P6, Rocket League)
+    |--------------------------------------------------------------------------
+    |
+    | respond_max_days: latest "reply by" of a challenge (NIP rule 11: 7 days
+    | suggested). plan_max_days: latest suggested start.
+    | now_minutes: "Challenge now" proposes a start this many minutes ahead,
+    | and the other captain has until then to accept.
+    | noshow_minutes: from this long after the start, a captain whose opponent
+    | is not in the lobby can report a no-show (MatchRoom.dc.html: 15 min).
+    | regions: the lobby regions offered in the match room.
+    |
+    */
+
+    'series' => [
+        'respond_max_days' => 7,
+        'plan_max_days' => 14,
+        'now_minutes' => 10,
+        'noshow_minutes' => 15,
+        'regions' => ['EU', 'US-East', 'US-West', 'South America', 'Middle East', 'Oceania', 'Asia'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ladder (rated play)
+    |--------------------------------------------------------------------------
+    |
+    | Rated play needs an open ladder (NIP rule 11), and before Block 0 there
+    | is none: every match is casual and produces no match-flow events (NIP
+    | "Game registry"). P7 opens the ladders from the season genesis and
+    | replaces this seam (App\Support\Series\Ladders). Deliberately not read
+    | from the environment, so no deployment can switch rated play on early;
+    | only tests set it.
+    |
+    */
+
+    'ladder' => [
+        'league_pubkey' => null,
+        'season' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Relays the league publishes to
     |--------------------------------------------------------------------------
     |

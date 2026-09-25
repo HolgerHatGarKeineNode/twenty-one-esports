@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\LineupRole;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use Database\Factories\LineupFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -33,6 +36,9 @@ use Illuminate\Support\Carbon;
 #[Fillable(['clan_id', 'game', 'mode', 'event_id'])]
 class Lineup extends Model
 {
+    /** @use HasFactory<LineupFactory> */
+    use HasFactory;
+
     public const KIND = 32151;
 
     /**
@@ -90,5 +96,52 @@ class Lineup extends Model
     public function isReady(): bool
     {
         return $this->activeCount() >= $this->gameMode()->lineupMinimum();
+    }
+
+    /**
+     * An acting captain of this lineup (NIP "Terminology"): still a member of
+     * the clan, and the lineup's author (the clan owner, who signs lineups in
+     * this league) or seated as its captain.
+     */
+    public function isActingCaptain(?User $user): bool
+    {
+        if ($user === null || $user->clanMember?->clan_id !== $this->clan_id) {
+            return false;
+        }
+
+        if ($this->clan->owner_id === $user->id) {
+            return true;
+        }
+
+        $seat = $this->seats->firstWhere('user_id', $user->id);
+
+        return $seat !== null && $seat->role === LineupRole::Captain && $seat->accepted_at !== null;
+    }
+
+    /**
+     * Accepted seat of a player who is still in the clan (captain, player or sub).
+     */
+    public function activeSeatOf(?User $user): ?LineupSeat
+    {
+        if ($user === null) {
+            return null;
+        }
+
+        $seat = $this->seats->firstWhere('user_id', $user->id);
+
+        return $seat !== null && $seat->isActive($this->clan_id) ? $seat : null;
+    }
+
+    /**
+     * Active seats, captain and players first, subs last, in seat order.
+     *
+     * @return list<LineupSeat>
+     */
+    public function activeSeats(): array
+    {
+        return array_values($this->seats
+            ->filter(fn (LineupSeat $seat) => $seat->isActive($this->clan_id))
+            ->sortBy(fn (LineupSeat $seat) => [$seat->role === LineupRole::Substitute ? 1 : 0, $seat->id])
+            ->all());
     }
 }

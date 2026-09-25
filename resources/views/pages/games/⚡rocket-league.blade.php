@@ -1,7 +1,10 @@
 <?php
 
 use App\Games\GameRegistry;
+use App\Enums\SeriesStatus;
 use App\Models\Clan;
+use App\Models\SeriesMatch;
+use App\Support\Series\SeriesPresenter;
 use App\Support\Clans\ClanStatsPreview;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -12,8 +15,9 @@ use Livewire\Component;
 /*
  * Rocket League game page, 1:1 from RocketLeague.dc.html. The modes and
  * best-of options come from the game registry and the clan list is real.
- * PLACEHOLDER until later phases: Hashrate (P7), series, results and
- * challenges (P6), the next tournament (P8) and the block strip feed (P7).
+ * Series, results, open challenges and series per week are real (P6a).
+ * PLACEHOLDER until later phases: Hashrate (P7), the next tournament (P8)
+ * and the block strip feed (P7).
  * The "what a series is worth" numbers are the Elo formula (K 32) itself.
  */
 new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
@@ -41,6 +45,35 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
     }
 
     /**
+     * Real series for the P6 cards: wins by clan, the latest results, open
+     * challenges and upcoming series, and series per week (last 12 weeks).
+     *
+     * @return array{wins: list<array{0: string, 1: int}>, recent: list<SeriesMatch>, open: list<SeriesMatch>, weeks: list<int>}
+     */
+    #[Computed]
+    public function series(): array
+    {
+        $done = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES);
+        $wins = (clone $done)->get()->countBy(fn (SeriesMatch $match) => $match->sideName((string) $match->winner))->sortDesc();
+        $top = $wins->take(5)->map(fn (int $count, string $clan) => [$clan, $count])->values()->all();
+
+        if ($wins->count() > 5) {
+            $top[] = [__(':n other clans', ['n' => $wins->count() - 5]), (int) $wins->slice(5)->sum()];
+        }
+
+        $since = now()->startOfWeek()->subWeeks(11);
+        $perWeek = SeriesMatch::query()->whereNotNull('start_at')->where('start_at', '>=', $since)->pluck('start_at')
+            ->countBy(fn ($start) => (int) floor($since->diffInWeeks($start)));
+
+        return [
+            'wins' => $top,
+            'recent' => (clone $done)->orderByDesc('finished_at')->limit(6)->get()->all(),
+            'open' => SeriesMatch::query()->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])->orderBy('respond_by')->limit(5)->get()->all(),
+            'weeks' => array_map(fn (int $week) => (int) ($perWeek[$week] ?? 0), range(0, 11)),
+        ];
+    }
+
+    /**
      * Elo change of a win and a loss against an opponent `gap` points away (K 32, scale 400).
      *
      * @return array{win: int, loss: int}
@@ -59,11 +92,12 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
     $rl = $rows->sortByDesc('rl')->values();
     $rlTotal = $rl->sum('rl');
     $weekTotal = $rows->sum('points');
-    $weeks = [4, 5, 8, 5, 5, 6, 11, 8, 5, 7, 21, 14];
-    $cups = [6 => true, 10 => true, 11 => true];
-    $wins = [['Laser Eyes', 17], ['HODL Rockets', 13], ['Mempool Maniacs', 11], ['Orange Pill Squad', 7], ['Block 21', 7], [__('3 other clans'), 5]];
-    $recent = [['#403', 'HODL Rockets', __('2 h ago'), '2:1', '2v2'], ['#402', __('Laser Eyes, to confirm'), __('today'), '3:1', '3v3'], ['#373', 'HODL Rockets', __('yesterday'), '2:0', '2v2'], ['#374', 'Orange Pill Squad', __('2 days ago'), '3:2', '3v3'], ['#370', 'Mempool Maniacs', __('2 days ago'), '2:1', '2v2'], ['#359', 'HODL Rockets', __('5 days ago'), '2:0', '2v2']];
-    $open = [['B21', __('challenges :clan', ['clan' => 'Laser Eyes']), '3v3 · BO3', 974, 'Sat 18:40'], ['OPS', __('challenges :clan', ['clan' => 'HODL Rockets']), '3v3 · BO5', 987, 'Sat 19:10'], ['LNB', __('challenges :clan', ['clan' => 'Stack Sats Crew']), '2v2 · BO3', 986, 'Sun 18:00'], ['B21', '#411 vs Stack Sats Crew', '3v3 · BO3', 974, __('today :time', ['time' => '22:30'])], ['NCE', __('#394 vs LNB, casual'), '2v2 · BO5', 941, __('time open')]];
+    $series = $this->series;
+    $weeks = $series['weeks'];
+    $weekTop = max(1, max($weeks));
+    $wins = $series['wins'];
+    $winTop = max(1, (int) collect($wins)->max(1));
+    $winTotal = max(1, (int) collect($wins)->sum(1));
 @endphp
 
 <div class="flex grow flex-col">
@@ -138,12 +172,12 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
         <section aria-labelledby="rl-weeks" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex items-baseline justify-between"><h2 id="rl-weeks" class="m-0 text-[15px] font-bold">{{ __('Series per week') }}</h2><span class="text-xs text-ink-3">{{ __('all series, last 12 weeks') }}</span></span>
             <div class="grid h-[150px] grid-cols-[24px_minmax(0,1fr)] gap-2">
-                <div class="flex flex-col justify-between text-right text-[11px] text-ink-3"><span>20</span><span>10</span><span>0</span></div>
+                <div class="flex flex-col justify-between text-right text-[11px] text-ink-3"><span>{{ $weekTop }}</span><span>{{ intdiv($weekTop, 2) }}</span><span>0</span></div>
                 <div role="img" aria-label="{{ __('Series per week over the last 12 weeks') }}" class="flex items-end gap-1 border-b border-line lg:gap-2">
                     @foreach ($weeks as $index => $count)
                         <span class="flex h-full min-w-0 flex-1 flex-col justify-end gap-1" title="{{ $count }}">
-                            <span class="text-center text-[10px] whitespace-nowrap text-ink-2">@if (isset($cups[$index]))<span class="hidden lg:inline">Cup · </span>@endif{{ $count }}</span>
-                            <span @class(['bar block', 'bg-btc-hi' => isset($cups[$index]), 'bg-btc' => ! isset($cups[$index])]) style="height: {{ max($count / 22 * 100, 2) }}%; animation-delay: {{ $index * 0.05 }}s"></span>
+                            <span class="text-center text-[10px] whitespace-nowrap text-ink-2">{{ $count }}</span>
+                            <span class="bar block bg-btc" style="height: {{ max($count / $weekTop * 100, 2) }}%; animation-delay: {{ $index * 0.05 }}s"></span>
                         </span>
                     @endforeach
                 </div>
@@ -153,12 +187,13 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
 
         {{-- Wins by clan (P6) --}}
         <section aria-labelledby="rl-wins" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="flex items-baseline justify-between"><h2 id="rl-wins" class="m-0 text-[15px] font-bold">{{ __('Wins by clan') }}</h2><span class="text-xs text-ink-3">{{ __('3v3, since launch') }}</span></span>
+            <span class="flex items-baseline justify-between"><h2 id="rl-wins" class="m-0 text-[15px] font-bold">{{ __('Wins by clan') }}</h2><span class="text-xs text-ink-3">{{ __('all modes, since launch') }}</span></span>
+            @if ($wins === [])<p class="m-0 text-[13px] text-ink-2">{{ __('No series finished yet.') }}</p>@endif
             @foreach ($wins as [$clan, $count])
                 <div class="grid h-7 grid-cols-[120px_minmax(0,1fr)_96px] items-center gap-3 text-[13px] lg:grid-cols-[170px_minmax(0,1fr)_120px]">
                     <span class="truncate">{{ $clan }}</span>
-                    <span class="block h-3.5 rounded-r-sm bg-raised"><span class="block h-3.5 animate-fill rounded-r-sm bg-btc" style="width: {{ $count / 17 * 100 }}%"></span></span>
-                    <span class="text-right text-ink-2">{{ trans_choice(':count win|:count wins', $count) }} · {{ round($count / 60 * 100) }}%</span>
+                    <span class="block h-3.5 rounded-r-sm bg-raised"><span class="block h-3.5 animate-fill rounded-r-sm bg-btc" style="width: {{ $count / $winTop * 100 }}%"></span></span>
+                    <span class="text-right text-ink-2">{{ trans_choice(':count win|:count wins', $count) }} · {{ round($count / $winTotal * 100) }}%</span>
                 </div>
             @endforeach
         </section>
@@ -167,23 +202,27 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
         <section aria-labelledby="rl-latest" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <h2 id="rl-latest" class="m-0 pb-2 text-[15px] font-bold">{{ __('Latest series') }}</h2>
             <div class="grid h-8 grid-cols-[52px_minmax(0,1fr)_40px_36px] items-center gap-3 px-2 text-xs text-ink-2 lg:grid-cols-[64px_minmax(0,1fr)_100px_56px_56px]"><span>{{ __('Match') }}</span><span>{{ __('Winner') }}</span><span class="hidden lg:block">{{ __('When') }}</span><span>{{ __('Score') }}</span><span>{{ __('Mode') }}</span></div>
-            @foreach ($recent as [$height, $winner, $when, $score, $mode])
-                <a href="{{ route('matches.show', ltrim($height, '#')) }}" class="tr grid h-12 grid-cols-[52px_minmax(0,1fr)_40px_36px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[64px_minmax(0,1fr)_100px_56px_56px]">
-                    <span class="text-btc">{{ $height }}</span><span class="truncate">{{ $winner }}</span><span class="hidden text-ink-2 lg:block">{{ $when }}</span><span>{{ $score }}</span><span class="text-ink-2">{{ $mode }}</span>
+            @forelse ($series['recent'] as $match)
+                <a href="{{ route('matches.show', $match) }}" wire:key="rs-{{ $match->id }}" class="tr grid h-12 grid-cols-[52px_minmax(0,1fr)_40px_36px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[64px_minmax(0,1fr)_100px_56px_56px]">
+                    <span class="text-btc">{{ $match->label() }}</span><span class="truncate">{{ in_array($match->winner, SeriesMatch::SIDES, true) ? $match->sideName($match->winner) : __('no winner') }}</span><span class="hidden text-ink-2 lg:block">{{ $match->finished_at?->diffForHumans() }}</span><span>{{ str_replace(' ', '', SeriesPresenter::score($match)['text']) }}</span><span class="text-ink-2">{{ $match->mode }}</span>
                 </a>
-            @endforeach
+            @empty
+                <p class="m-0 px-2 py-2 text-[13px] text-ink-2">{{ __('No series finished yet.') }}</p>
+            @endforelse
         </section>
 
         {{-- Open challenges and next series (P6) --}}
         <section aria-labelledby="rl-open" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex items-baseline justify-between pb-2"><h2 id="rl-open" class="m-0 text-[15px] font-bold">{{ __('Open challenges and next series') }}</h2><a href="{{ route('challenges.create') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('Challenge a clan') }}</a></span>
-            <div class="grid h-8 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 px-2 text-xs text-ink-2 lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]"><span>{{ __('Clan') }}</span><span>{{ __('Format') }}</span><span>Elo</span><span class="hidden text-right lg:block">{{ __('When') }}</span></div>
-            @foreach ($open as [$tag, $what, $format, $elo, $when])
-                <div class="tr grid h-12 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 rounded-sm px-2 text-[13px] lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]">
-                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :tag="$tag" size="sm" /><span class="truncate">{{ $what }}</span></span>
-                    <span class="text-ink-2">{{ $format }}</span><span>{{ $elo }}</span><span class="hidden text-right text-ink-2 lg:block">{{ $when }}</span>
-                </div>
-            @endforeach
+            <div class="grid h-8 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 px-2 text-xs text-ink-2 lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]"><span>{{ __('Clan') }}</span><span>{{ __('Format') }}</span><span>{{ __('Match kind') }}</span><span class="hidden text-right lg:block">{{ __('When') }}</span></div>
+            @forelse ($series['open'] as $match)
+                <a href="{{ route('matches.show', $match) }}" wire:key="os-{{ $match->id }}" class="tr grid h-12 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]">
+                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :tag="$match->challenger_tag" size="sm" /><span class="truncate">{{ $match->status === SeriesStatus::Open ? __('challenges :clan', ['clan' => $match->challenged_name]) : __(':number vs :clan', ['number' => $match->label(), 'clan' => $match->challenged_name]) }}</span></span>
+                    <span class="text-ink-2">{{ $match->mode }} · BO{{ $match->best_of }}</span><span class="text-ink-2">{{ $match->rated ? __('rated') : __('casual') }}</span><span class="hidden text-right text-ink-2 lg:block">{{ SeriesPresenter::when($match, auth()->user()) }}</span>
+                </a>
+            @empty
+                <p class="m-0 px-2 py-2 text-[13px] text-ink-2">{{ __('No open challenge right now.') }}</p>
+            @endforelse
             <p class="m-0 pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Open to every clan. Rated challenges need a mutual opponent connection, casual ones do not.') }}</p>
         </section>
     </div>

@@ -51,18 +51,29 @@ Route::middleware('auth')->group(function () {
 });
 
 /*
+ * Rocket League series (P6a): challenge a lineup, the match list, the public
+ * match page and the room of the two lineups. `{match}` is the league match
+ * number. The detail page resolves it itself, so an unknown number shows the
+ * "not found" state of States.dc.html.
+ */
+Route::middleware('auth')->group(function () {
+    Route::livewire('challenges/create', 'pages::challenges.create')->name('challenges.create');
+    Route::livewire('matches/{match}/room', 'pages::matches.room')->name('matches.room');
+});
+
+Route::livewire('matches', 'pages::matches.index')->name('matches.index');
+Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')->name('matches.show');
+
+/*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
  * shell with a "Coming soon" empty state until its phase builds the real page.
  * `page` is a translation key, `section` marks the active main-navigation item.
  */
 $placeholders = [
     ['games', 'games.index', 'Live games', 'chess'],
-    ['matches', 'matches.index', 'Matches', 'matches'],
-    ['matches/{match}', 'matches.show', 'Match', 'matches'],
     ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],
     ['ladder/{game}/{mode}', 'ladder.show', 'Ladder', 'ladder'],
     ['players/{npub}', 'players.show', 'Player', null],
-    ['challenges/create', 'challenges.create', 'New challenge', null],
     ['rules', 'rules', 'Rules', null],
     ['protocol', 'protocol', 'Open protocol', null],
 ];

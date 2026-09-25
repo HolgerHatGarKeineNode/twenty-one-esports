@@ -21,5 +21,6 @@ class DatabaseSeeder extends Seeder
 
         $this->call(ClanSeeder::class);
         $this->call(ChessGameSeeder::class);
+        $this->call(SeriesMatchSeeder::class);
     }
 }

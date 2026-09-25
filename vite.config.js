@@ -12,6 +12,7 @@ export default defineConfig({
                 'resources/js/echo.js',
                 'resources/js/chess.js',
                 'resources/js/push.js',
+                'resources/js/matchRoom.js',
             ],
             refresh: true,
             fonts: [

@@ -128,6 +128,62 @@ export async function unwrapMessage(signer, wrap, me) {
 }
 
 /**
+ * The unsigned kind-14 message to a group (NIP-17 chat room: the author plus
+ * the `p` set), here the players of both lineups of a series. `match` is the
+ * league match number.
+ */
+export function makeGroupRumor({ sender, recipients, content, match, now = Math.floor(Date.now() / 1000) }) {
+    const rumor = {
+        pubkey: sender,
+        created_at: now,
+        kind: 14,
+        tags: [...recipients.filter((p) => p !== sender).map((p) => ['p', p]), ['match', String(match)]],
+        content,
+    };
+
+    return { ...rumor, id: getEventHash(rumor) };
+}
+
+/**
+ * One group message: the same rumor sealed and wrapped to every member
+ * separately, and once to the sender (NIP-17 "publish to each receiver").
+ */
+export async function wrapGroupMessage(signer, { sender, recipients, content, match, now = Math.floor(Date.now() / 1000) }) {
+    const rumor = makeGroupRumor({ sender, recipients, content, match, now });
+    const targets = [...new Set([...recipients.filter((p) => p !== sender), sender])];
+    const wraps = [];
+
+    for (const target of targets) {
+        wraps.push(giftWrap(await seal(signer, rumor, target, now), target, now));
+    }
+
+    return { rumor, wraps };
+}
+
+/**
+ * The messages of one match room: the right `match`, written by a member of
+ * the room, addressed to me (or written by me), each once, oldest first.
+ * Messages from muted pubkeys are left out.
+ */
+export function roomMessages(rumors, { me, members, match, muted = [] }) {
+    const seen = new Set();
+    const memberSet = new Set(members);
+    const mutedSet = new Set(muted);
+
+    return rumors
+        .filter((rumor) => {
+            if (seen.has(rumor.id)) return false;
+            seen.add(rumor.id);
+            const recipients = rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1]);
+            const forMatch = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
+            const toMe = rumor.pubkey === me || recipients.includes(me);
+
+            return forMatch && toMe && memberSet.has(rumor.pubkey) && recipients.length > 0 && recipients.every((p) => memberSet.has(p)) && !mutedSet.has(rumor.pubkey);
+        })
+        .sort((a, b) => a.created_at - b.created_at);
+}
+
+/**
  * The messages of one game between two players: the right `match`, written
  * by one of the two to the other, each once (a message arrives as the
  * recipient's copy and, for the sender, as her own copy), oldest first.

@@ -2,9 +2,12 @@
 
 namespace App\Support\Nostr;
 
+use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
+use App\Support\Series\Ladders;
+use App\Support\Series\SeriesEvents;
 
 /**
  * Structural validation rules of `docs/nips/esports.md` ("Validation rules")
@@ -19,6 +22,10 @@ use App\Models\Lineup;
  *     ids, the content is PGN. Legality, headers and the move chain are the
  *     league's own record (App\Support\Chess\GameRecords builds the
  *     template from the server-checked game, and the signed note must equal it).
+ *
+ * 11-14 2150-2153, the structure of the rated series flow (P6a; built and
+ *    tested now, used once a ladder is open). League state (captaincy,
+ *    transitions, reserved match number) is checked by SeriesService.
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -46,8 +53,212 @@ final class EsportsEventRules
             Lineup::KIND => $this->lineup($event),
             self::MEMBERSHIP_KIND => $this->membership($event),
             self::GAME_RECORD_KIND => $this->gameRecord($event),
+            SeriesEvents::CHALLENGE => $this->challenge($event),
+            SeriesEvents::ANSWER => $this->answer($event),
+            SeriesEvents::REPORT => $this->report($event),
+            SeriesEvents::RESPONSE => $this->response($event),
             default => 'kind_not_allowed',
         };
+    }
+
+    /**
+     * Rule 11, the structure of a lineup challenge: one challenger and one
+     * challenged lineup of the ladder's game and mode, one ladder, a `bo` the
+     * registry allows, one to three `start` after `created_at`, `respond_by`
+     * after `created_at` and within 7 days, a positive `match`.
+     * Captaincy, clans, season window and the reserved number are league state
+     * ({@see SeriesService}).
+     */
+    private function challenge(SignedEvent $event): ?string
+    {
+        $lineups = ['challenger' => [], 'challenged' => []];
+        $ladders = [];
+
+        foreach ($event->tagsNamed('a') as $a) {
+            $role = $a[2] ?? '';
+
+            if (isset($lineups[$role]) && str_starts_with($a[0] ?? '', Lineup::KIND.':')) {
+                $lineups[$role][] = $a[0];
+            } elseif ($role === '' && str_starts_with($a[0] ?? '', Ladders::KIND.':')) {
+                $ladders[] = $a[0];
+            } else {
+                return 'challenge_a';
+            }
+        }
+
+        if (count($lineups['challenger']) !== 1 || count($lineups['challenged']) !== 1 || count($ladders) !== 1) {
+            return 'challenge_sides';
+        }
+
+        $mode = $this->ladderMode($ladders[0]);
+
+        if ($mode === null) {
+            return 'challenge_ladder';
+        }
+
+        foreach ($lineups as [$address]) {
+            if (! str_ends_with($address, '/'.$mode[0].'/'.$mode[1])) {
+                return 'challenge_lineup_mode';
+            }
+        }
+
+        if (! $mode[2]->allowsBestOf((int) $event->tag('bo')) || (string) (int) $event->tag('bo') !== $event->tag('bo')) {
+            return 'challenge_bo';
+        }
+
+        $starts = $event->tagsNamed('start');
+
+        if ($starts === [] || count($starts) > 3) {
+            return 'challenge_start';
+        }
+
+        foreach ($starts as $start) {
+            if ((int) ($start[0] ?? 0) <= $event->createdAt) {
+                return 'challenge_start';
+            }
+        }
+
+        $respondBy = (int) $event->tag('respond_by');
+
+        if ($respondBy <= $event->createdAt || $respondBy > $event->createdAt + 7 * 86400) {
+            return 'challenge_respond_by';
+        }
+
+        return preg_match('/^[1-9][0-9]*$/', (string) $event->tag('match')) === 1 ? null : 'challenge_match';
+    }
+
+    /**
+     * Rule 12, structure: one `e`, a known `status`, exactly one `start` when
+     * accepted and none otherwise, three `a` references.
+     */
+    private function answer(SignedEvent $event): ?string
+    {
+        $status = $event->tag('status');
+
+        if (count($event->tagsNamed('e')) !== 1 || ! in_array($status, ['accepted', 'declined', 'withdrawn'], true)) {
+            return 'answer_status';
+        }
+
+        if (count($event->tagsNamed('start')) !== ($status === 'accepted' ? 1 : 0)) {
+            return 'answer_start';
+        }
+
+        return count($event->tagsNamed('a')) === 3 ? null : 'answer_a';
+    }
+
+    /**
+     * Rule 13: `score` numbered from 1 and valid for the registry's series
+     * rules, both goal values or none, a roster with side and lineup role,
+     * each side at least the mode's team size, no pubkey twice.
+     */
+    private function report(SignedEvent $event): ?string
+    {
+        $ladder = null;
+
+        foreach ($event->tagsNamed('a') as $a) {
+            if (str_starts_with($a[0] ?? '', Ladders::KIND.':')) {
+                $ladder = $a[0];
+            }
+        }
+
+        $mode = $ladder === null ? null : $this->ladderMode($ladder);
+
+        if ($mode === null || count($event->tagsNamed('e')) !== 1 || count($event->tagsNamed('a')) !== 3) {
+            return 'report_references';
+        }
+
+        $games = [];
+
+        foreach ($event->tagsNamed('score') as $index => $score) {
+            if (($score[0] ?? null) !== (string) ($index + 1)) {
+                return 'report_score_number';
+            }
+
+            $points = [$score[2] ?? '', $score[3] ?? ''];
+
+            if (($points[0] === '') !== ($points[1] === '')) {
+                return 'report_score_points';
+            }
+
+            foreach ($points as $point) {
+                if ($point !== '' && preg_match('/^(0|[1-9][0-9]*)$/', $point) !== 1) {
+                    return 'report_score_points';
+                }
+            }
+
+            $games[] = [
+                'winner' => $score[1] ?? null,
+                'challenger' => $points[0] === '' ? null : (int) $points[0],
+                'challenged' => $points[1] === '' ? null : (int) $points[1],
+                'flags' => array_slice($score, 4),
+            ];
+        }
+
+        // The report does not repeat `bo`: a series valid for any allowed length is structurally fine.
+        $valid = false;
+
+        foreach ($mode[2]->bestOf as $bo) {
+            $valid = $valid || $this->games->get($mode[0])->validateResult($mode[2], ['bo' => $bo, 'games' => $games]) === [];
+        }
+
+        if (! $valid) {
+            return 'report_series';
+        }
+
+        $sides = ['challenger' => 0, 'challenged' => 0];
+        $seen = [];
+
+        foreach ($event->tagsNamed('p') as $p) {
+            if (! NostrKeys::isHexPubkey($p[0] ?? null) || isset($seen[$p[0]])) {
+                return 'report_p';
+            }
+
+            $seen[$p[0]] = true;
+
+            if (! isset($p[2])) {
+                continue;
+            }
+
+            if (! isset($sides[$p[2]]) || ! in_array($p[3] ?? null, ['captain', 'player', 'substitute'], true)) {
+                return 'report_roster';
+            }
+
+            $sides[$p[2]]++;
+        }
+
+        return min($sides) >= $mode[2]->teamSize ? null : 'report_roster_short';
+    }
+
+    /**
+     * Rule 14, structure: `e` report and `e` challenge, a known `status`,
+     * three `a` references.
+     */
+    private function response(SignedEvent $event): ?string
+    {
+        if (count($event->tagsNamed('e')) !== 2 || ! in_array($event->tag('status'), ['confirmed', 'disputed'], true)) {
+            return 'response_status';
+        }
+
+        return count($event->tagsNamed('a')) === 3 ? null : 'response_a';
+    }
+
+    /**
+     * Game, mode and registry entry of a ladder address `32152:<pk>:<game>/<mode>/<season>`.
+     *
+     * @return array{0: string, 1: string, 2: GameMode}|null
+     */
+    private function ladderMode(string $address): ?array
+    {
+        $parts = explode(':', $address, 3);
+        $d = explode('/', $parts[2] ?? '');
+
+        if (count($parts) !== 3 || ! NostrKeys::isHexPubkey($parts[1]) || count($d) !== 3 || $d[2] === '') {
+            return null;
+        }
+
+        $mode = $this->games->mode($d[0], $d[1]);
+
+        return $mode === null || $mode->bestOf === [] ? null : [$d[0], $d[1], $mode];
     }
 
     private function gameRecord(SignedEvent $event): ?string

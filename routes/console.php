@@ -11,6 +11,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
+use App\Support\Series\SeriesService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -173,3 +174,14 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
 })->purpose('Send signed events again to relays that have not accepted them yet');
 
 Schedule::command('nostr:republish')->everyFiveMinutes()->withoutOverlapping();
+
+/*
+ * Series challenges (P6a) whose reply deadline passed end as expired (NIP
+ * state machine: "open | time | expired", no event is signed for it).
+ * Answering an overdue challenge expires it on the spot as well.
+ */
+Artisan::command('series:expire-challenges', function (SeriesService $series) {
+    $this->info('Expired '.$series->expireDue().' challenge(s).');
+})->purpose('Expire series challenges nobody answered in time');
+
+Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping();
