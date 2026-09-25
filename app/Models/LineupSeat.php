@@ -9,8 +9,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * A player listed in a lineup. Listed alone is an invitation; `accepted_at`
- * is set once the player's Clan Membership (kind 12150) names the lineup.
+ * A player the owner placed in a lineup. Only active clan members are placed,
+ * and their Clan Membership (kind 12150) is the consent (NIP rev. 6), so
+ * `accepted_at` is the time of placing. Seats from before rev. 6 kept the
+ * time the player's membership first named the lineup.
  *
  * @property int $id
  * @property int $lineup_id
@@ -50,7 +52,7 @@ class LineupSeat extends Model
     }
 
     /**
-     * An active lineup player: accepted and still a member of the lineup's clan.
+     * An active lineup player: placed (`accepted_at`) and still a member of the lineup's clan.
      */
     public function isActive(int $clanId): bool
     {

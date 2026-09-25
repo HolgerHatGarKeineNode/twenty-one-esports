@@ -33,14 +33,17 @@ use Illuminate\Support\Str;
  * Rebuilding instead of trusting a stored template means a stale browser
  * (someone else changed the clan in between) is refused, not applied.
  *
- * Protocol mapping (docs/nips/esports.md rev. 4):
+ * Protocol mapping (docs/nips/esports.md rev. 6):
  *  - clan 32150, signed by the owner, lists owner/captains/members and the
- *    players with a pending invite ("listing alone is an invitation");
- *  - lineup 32151, signed by the owner (see Lineup), published only once it
- *    lists as many captains + players as the mode needs (rule 8);
+ *    players with a pending invite ("listing alone is an invitation"); an
+ *    invite is into the roster only, never into a lineup;
+ *  - lineup 32151, signed by the owner (see Lineup), lists active members
+ *    only and is published once it has as many captains + players as the
+ *    mode needs (rule 8);
  *  - membership 12150, signed by the player: joining, switching and leaving.
- *    A 12150 names at most one clan, so a player is never in two clans; the
- *    database holds the same rule (`clan_members.user_id` unique).
+ *    It names the clan only; being a member is the consent to be placed in
+ *    its lineups. A 12150 names at most one clan, so a player is never in two
+ *    clans; the database holds the same rule (`clan_members.user_id` unique).
  */
 final class ClanService
 {
@@ -123,110 +126,71 @@ final class ClanService
 
         return ['slug' => $slug, 'templates' => [
             $this->template(Clan::KIND, $clanTags, $draft->description ?? '', $owner, $slug),
-            $this->membershipTemplate($owner, $clanAddress, []),
+            $this->membershipTemplate($owner, $clanAddress),
         ]];
     }
 
-    /* ---------- Invite ---------------------------------------------------------------------------------------- */
+    /* ---------- Invite (into the roster) ----------------------------------------------------------------------- */
 
     /**
      * @return list<array<string, mixed>>
      */
-    public function prepareInvite(User $owner, Clan $clan, string $game, string $mode, User $invitee, LineupRole $role): array
+    public function prepareInvite(User $owner, Clan $clan, User $invitee): array
     {
-        return $this->invitePlan($owner, $clan, $game, $mode, $invitee, $role)['templates'];
+        return $this->invitePlan($owner, $clan, $invitee);
     }
 
     /**
-     * Invite a player into a lineup. The owner can also seat themselves; then
-     * their own membership is part of the plan and no invite is created.
+     * Invite a player into the clan roster: the clan event lists them as a
+     * member ("listing alone is an invitation"). No lineup, mode or role: the
+     * owner places members in lineups once they have joined.
      *
      * @param  list<mixed>  $signed
      *
      * @throws RejectedEvent|ClanRuleViolation
      */
-    public function invite(User $owner, Clan $clan, string $game, string $mode, User $invitee, LineupRole $role, array $signed): ?ClanInvite
+    public function invite(User $owner, Clan $clan, User $invitee, array $signed): ClanInvite
     {
-        $plan = $this->invitePlan($owner, $clan, $game, $mode, $invitee, $role);
-        $events = $this->verify($signed, $plan['templates'], $owner);
-        $byKind = $this->byKind($events);
+        $events = $this->verify($signed, $this->invitePlan($owner, $clan, $invitee), $owner);
 
-        return $this->persist($events, function () use ($owner, $clan, $game, $mode, $invitee, $role, $byKind): ?ClanInvite {
-            $lineup = Lineup::query()->firstOrCreate(['clan_id' => $clan->id, 'game' => $game, 'mode' => $mode]);
-            $self = $invitee->is($owner);
-
-            LineupSeat::query()->create([
-                'lineup_id' => $lineup->id,
-                'user_id' => $invitee->id,
-                'role' => $role,
-                'accepted_at' => $self ? now() : null,
-            ]);
-
-            if (isset($byKind[Clan::KIND])) {
-                $clan->update(['event_id' => $byKind[Clan::KIND]->id]);
-            }
-
-            if (isset($byKind[Lineup::KIND])) {
-                $lineup->update(['event_id' => $byKind[Lineup::KIND]->id]);
-            }
-
-            if ($self) {
-                return null;
+        return $this->persist($events, function () use ($owner, $clan, $invitee, $events): ClanInvite {
+            if ($events !== []) {
+                $clan->update(['event_id' => $events[0]->id]);
             }
 
             return ClanInvite::query()->create([
                 'clan_id' => $clan->id,
-                'lineup_id' => $lineup->id,
                 'inviter_id' => $owner->id,
                 'invitee_id' => $invitee->id,
-                'role' => $role,
                 'status' => InviteStatus::Pending,
             ]);
         });
     }
 
     /**
-     * @return array{templates: list<array<string, mixed>>}
+     * @return list<array<string, mixed>>
      */
-    private function invitePlan(User $owner, Clan $clan, string $game, string $mode, User $invitee, LineupRole $role): array
+    private function invitePlan(User $owner, Clan $clan, User $invitee): array
     {
         $this->assertOwner($owner, $clan);
 
-        $gameMode = $this->games->mode($game, $mode)
-            ?? throw new ClanRuleViolation(__('This game mode does not exist.'));
-
-        $lineup = Lineup::query()->where(['clan_id' => $clan->id, 'game' => $game, 'mode' => $mode])->with('seats.user')->first();
-        $seats = $lineup === null ? collect() : $lineup->seats->sortBy('id')->values();
-        $self = $invitee->is($owner);
-
-        if ($seats->contains('user_id', $invitee->id)) {
-            throw new ClanRuleViolation(__(':name already has a seat in this lineup.', ['name' => $invitee->displayName()]));
+        if (ClanMember::query()->where(['clan_id' => $clan->id, 'user_id' => $invitee->id])->exists()) {
+            throw new ClanRuleViolation(__(':name is already in :clan.', ['name' => $invitee->displayName(), 'clan' => $clan->name]));
         }
 
-        if (! $self && $role === LineupRole::Captain) {
-            throw new ClanRuleViolation(__('Only you can take the captain seat of a lineup.'));
+        if (ClanInvite::query()->where(['clan_id' => $clan->id, 'invitee_id' => $invitee->id, 'status' => InviteStatus::Pending])->exists()) {
+            throw new ClanRuleViolation(__(':name already has an open invite.', ['name' => $invitee->displayName()]));
         }
 
-        $templates = [];
         $listing = $this->clanListing($clan);
 
-        if (! isset($listing[$invitee->pubkey])) {
-            $listing[$invitee->pubkey] = ClanRole::Member;
-            $templates[] = $this->clanTemplate($clan, $listing);
+        if (isset($listing[$invitee->pubkey])) {
+            return [];
         }
 
-        $lineupListing = array_values($seats->map(fn (LineupSeat $seat) => [$seat->user->pubkey, $seat->role])->all());
-        $lineupListing[] = [$invitee->pubkey, $role];
+        $listing[$invitee->pubkey] = ClanRole::Member;
 
-        if ($this->countsTowardsMinimum($lineupListing) >= $gameMode->lineupMinimum()) {
-            $templates[] = $this->lineupTemplate($clan, $game, $mode, $lineupListing);
-        }
-
-        if ($self) {
-            $templates[] = $this->membershipTemplate($owner, $clan->address(), [...$this->acceptedLineupAddresses($owner, $clan), $this->lineupAddress($clan, $game, $mode)]);
-        }
-
-        return ['templates' => $templates];
+        return [$this->clanTemplate($clan, $listing)];
     }
 
     /* ---------- Accept / decline ------------------------------------------------------------------------------ */
@@ -240,8 +204,10 @@ final class ClanService
     }
 
     /**
-     * Join only with a valid signed Clan Membership that names the clan and
-     * the lineup of the invite. Joining another clan leaves the current one.
+     * Join only with a valid signed Clan Membership that names the clan of the
+     * invite, and nothing else. Only the invitee can accept; joining another
+     * clan leaves the current one. The membership is the player's consent to
+     * be placed in the clan's lineups (NIP rev. 6).
      *
      * @param  list<mixed>  $signed
      *
@@ -253,13 +219,9 @@ final class ClanService
         $events = $this->verify($signed, $templates, $player);
 
         $this->persist($events, function () use ($invite, $player): void {
-            if ($player->clanMember()->first()?->clan_id !== $invite->clan_id) {
-                $this->leaveCurrentClan($player, 'switched');
+            $this->leaveCurrentClan($player, 'switched');
 
-                ClanMember::query()->create(['clan_id' => $invite->clan_id, 'user_id' => $player->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
-            }
-
-            LineupSeat::query()->where(['lineup_id' => $invite->lineup_id, 'user_id' => $player->id])->update(['accepted_at' => now()]);
+            ClanMember::query()->create(['clan_id' => $invite->clan_id, 'user_id' => $player->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
 
             $invite->update(['status' => InviteStatus::Accepted, 'responded_at' => now()]);
         });
@@ -277,17 +239,14 @@ final class ClanService
         }
 
         $clan = $invite->clan;
-        $lineup = $invite->lineup;
-        $sameClan = $player->clanMember()->first()?->clan_id === $clan->id;
 
-        if (! $sameClan) {
-            $this->assertCanLeave($player);
+        if ($player->clanMember()->first()?->clan_id === $clan->id) {
+            throw new ClanRuleViolation(__('You are already in :clan.', ['clan' => $clan->name]));
         }
 
-        $lineups = $sameClan ? $this->acceptedLineupAddresses($player, $clan) : [];
-        $lineups[] = $lineup->address();
+        $this->assertCanLeave($player);
 
-        return [$this->membershipTemplate($player, $clan->address(), array_values(array_unique($lineups)))];
+        return [$this->membershipTemplate($player, $clan->address())];
     }
 
     public function decline(ClanInvite $invite, User $player): void
@@ -298,10 +257,102 @@ final class ClanService
             throw new ClanRuleViolation(__('This invite is no longer open.'));
         }
 
-        DB::transaction(function () use ($invite, $player): void {
-            LineupSeat::query()->where(['lineup_id' => $invite->lineup_id, 'user_id' => $player->id])->whereNull('accepted_at')->delete();
-            $invite->update(['status' => InviteStatus::Declined, 'responded_at' => now()]);
+        $invite->update(['status' => InviteStatus::Declined, 'responded_at' => now()]);
+    }
+
+    /* ---------- Lineups (owner only, from active members) ----------------------------------------------------- */
+
+    /**
+     * @param  array<int, LineupRole>  $seats  user id => role
+     * @return list<array<string, mixed>>
+     */
+    public function prepareLineup(User $owner, Clan $clan, string $game, string $mode, array $seats): array
+    {
+        return $this->lineupPlan($owner, $clan, $game, $mode, $seats)['templates'];
+    }
+
+    /**
+     * Set who plays in a lineup. Only active members can be placed; their
+     * membership is the consent, so no player signs anything here. The owner
+     * signs the lineup event once it lists enough captains and players for the
+     * mode (rule 8); below that the lineup is kept in the database only.
+     *
+     * @param  array<int, LineupRole>  $seats  user id => role
+     * @param  list<mixed>  $signed
+     *
+     * @throws RejectedEvent|ClanRuleViolation
+     */
+    public function saveLineup(User $owner, Clan $clan, string $game, string $mode, array $seats, array $signed): Lineup
+    {
+        $plan = $this->lineupPlan($owner, $clan, $game, $mode, $seats);
+        $events = $this->verify($signed, $plan['templates'], $owner);
+
+        return $this->persist($events, function () use ($clan, $game, $mode, $plan, $events): Lineup {
+            $lineup = Lineup::query()->firstOrCreate(['clan_id' => $clan->id, 'game' => $game, 'mode' => $mode]);
+            $roles = [];
+
+            foreach ($plan['seats'] as [$member, $role]) {
+                $roles[$member->user_id] = $role;
+            }
+
+            LineupSeat::query()->where('lineup_id', $lineup->id)->whereNotIn('user_id', array_keys($roles))->delete();
+
+            foreach ($roles as $userId => $role) {
+                $seat = LineupSeat::query()->firstOrNew(['lineup_id' => $lineup->id, 'user_id' => $userId]);
+                $seat->fill(['role' => $role, 'accepted_at' => $seat->accepted_at ?? now()])->save();
+            }
+
+            $lineup->update(['event_id' => $events === [] ? null : $events[0]->id]);
+
+            return $lineup;
         });
+    }
+
+    /**
+     * @param  array<int, LineupRole>  $seats
+     * @return array{templates: list<array<string, mixed>>, seats: list<array{0: ClanMember, 1: LineupRole}>}
+     */
+    private function lineupPlan(User $owner, Clan $clan, string $game, string $mode, array $seats): array
+    {
+        $this->assertOwner($owner, $clan);
+
+        $gameMode = $this->games->mode($game, $mode)
+            ?? throw new ClanRuleViolation(__('This game mode does not exist.'));
+
+        $members = ClanMember::query()->where('clan_id', $clan->id)->with('user')->get()->keyBy('user_id');
+        $placed = [];
+
+        foreach ($seats as $userId => $role) {
+            $member = $members->get($userId)
+                ?? throw new ClanRuleViolation(__('Only players of :clan can be placed in a lineup.', ['clan' => $clan->name]));
+
+            $placed[] = [$member, $role];
+        }
+
+        if (count(array_filter($placed, fn (array $seat) => $seat[1] === LineupRole::Captain)) > 1) {
+            throw new ClanRuleViolation(__('A lineup has one captain.'));
+        }
+
+        // Captain, players, subs; within a role in join order. The same seats
+        // give the same event, whatever order the browser sent them in.
+        usort($placed, fn (array $a, array $b) => [$this->roleOrder($a[1]), $a[0]->joined_at->getTimestamp(), $a[0]->id]
+            <=> [$this->roleOrder($b[1]), $b[0]->joined_at->getTimestamp(), $b[0]->id]);
+
+        $listing = array_map(fn (array $seat) => [$seat[0]->user->pubkey, $seat[1]], $placed);
+        $templates = $this->countsTowardsMinimum($listing) >= $gameMode->lineupMinimum()
+            ? [$this->lineupTemplate($clan, $game, $mode, $listing)]
+            : [];
+
+        return ['templates' => $templates, 'seats' => $placed];
+    }
+
+    private function roleOrder(LineupRole $role): int
+    {
+        return match ($role) {
+            LineupRole::Captain => 0,
+            LineupRole::Player => 1,
+            LineupRole::Substitute => 2,
+        };
     }
 
     /* ---------- Leave ----------------------------------------------------------------------------------------- */
@@ -337,7 +388,7 @@ final class ClanService
 
         $this->assertCanLeave($player);
 
-        return [$this->membershipTemplate($player, null, [])];
+        return [$this->membershipTemplate($player, null)];
     }
 
     /* ---------- Captains and removal (owner only) ------------------------------------------------------------- */
@@ -601,22 +652,15 @@ final class ClanService
     }
 
     /**
-     * @param  list<string>  $lineupAddresses
+     * A Clan Membership names at most the clan (NIP rev. 6): the membership is
+     * the consent to be placed in the clan's lineups, so it never lists them.
+     *
      * @return array<string, mixed>
      */
-    private function membershipTemplate(User $player, ?string $clanAddress, array $lineupAddresses): array
+    private function membershipTemplate(User $player, ?string $clanAddress): array
     {
-        $tags = [];
-
-        if ($clanAddress !== null) {
-            $tags[] = ['a', $clanAddress, ''];
-        }
-
-        foreach ($lineupAddresses as $address) {
-            $tags[] = ['a', $address, ''];
-        }
-
-        $tags[] = ['alt', $clanAddress === null ? 'Esports clan membership: no clan' : 'Esports clan membership and accepted lineups'];
+        $tags = $clanAddress === null ? [] : [['a', $clanAddress, '']];
+        $tags[] = ['alt', $clanAddress === null ? 'Esports clan membership: no clan' : 'Esports clan membership'];
 
         return $this->template(EsportsEventRules::MEMBERSHIP_KIND, $tags, '', $player, null);
     }
@@ -638,22 +682,6 @@ final class ClanService
             'content' => $content,
             'created_at' => max(now()->getTimestamp(), $stored === null ? 0 : (int) $stored + 1),
         ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function acceptedLineupAddresses(User $player, Clan $clan): array
-    {
-        return array_values(LineupSeat::query()->where('user_id', $player->id)->whereNotNull('accepted_at')
-            ->whereIn('lineup_id', Lineup::query()->where('clan_id', $clan->id)->select('id'))
-            ->with('lineup.clan')->orderBy('lineup_id')->get()
-            ->map(fn (LineupSeat $seat) => $seat->lineup->address())->all());
-    }
-
-    private function lineupAddress(Clan $clan, string $game, string $mode): string
-    {
-        return Lineup::KIND.':'.$clan->owner_pubkey.":{$clan->slug}/{$game}/{$mode}";
     }
 
     /**
@@ -700,21 +728,6 @@ final class ClanService
         }
 
         return $events;
-    }
-
-    /**
-     * @param  list<SignedEvent>  $events
-     * @return array<int, SignedEvent>
-     */
-    private function byKind(array $events): array
-    {
-        $byKind = [];
-
-        foreach ($events as $event) {
-            $byKind[$event->kind] = $event;
-        }
-
-        return $byKind;
     }
 
     /**

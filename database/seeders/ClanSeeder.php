@@ -107,19 +107,16 @@ class ClanSeeder extends Seeder
     }
 
     /**
-     * utxo_ute, invited as Laser Eyes 3v3 sub two hours ago (ledger 1.2).
+     * utxo_ute, invited into the Laser Eyes roster two hours ago (ledger 1.2).
      */
     private function pendingInvite(): void
     {
         $clan = Clan::query()->where('clantag', 'LSR')->firstOrFail();
-        $lineup = Lineup::query()->where(['clan_id' => $clan->id, 'mode' => '3v3'])->firstOrFail();
         $ute = $this->player('utxo_ute');
 
-        LineupSeat::query()->firstOrCreate(['lineup_id' => $lineup->id, 'user_id' => $ute->id], ['role' => LineupRole::Substitute]);
-
         ClanInvite::query()->firstOrCreate(
-            ['lineup_id' => $lineup->id, 'invitee_id' => $ute->id],
-            ['clan_id' => $clan->id, 'inviter_id' => $clan->owner_id, 'role' => LineupRole::Substitute, 'status' => InviteStatus::Pending, 'created_at' => now()->subHours(2)],
+            ['clan_id' => $clan->id, 'invitee_id' => $ute->id],
+            ['inviter_id' => $clan->owner_id, 'status' => InviteStatus::Pending, 'created_at' => now()->subHours(2)],
         );
     }
 

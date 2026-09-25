@@ -2,7 +2,6 @@
 
 use App\Enums\ChessEndReason;
 use App\Enums\InviteStatus;
-use App\Enums\LineupRole;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -107,13 +106,11 @@ function sweepFixtures(): array
         // Owned by the swept user, so the member sweep can open the captain-only manage page.
         'clan' => fn (?User $user, array $made): Model => Clan::factory()->create($user === null ? [] : ['owner_id' => $user->id]),
 
-        // An open invite into that clan's 3v3 lineup; the clan owner may view it.
+        // An open invite into that clan's roster; the clan owner may view it.
         'invite' => fn (?User $user, array $made): Model => ClanInvite::query()->create([
             'clan_id' => $made['clan']->getKey(),
-            'lineup_id' => Lineup::query()->create(['clan_id' => $made['clan']->getKey(), 'game' => 'rocket-league', 'mode' => '3v3'])->id,
             'inviter_id' => $made['clan']->getAttribute('owner_id'),
             'invitee_id' => User::factory()->create()->id,
-            'role' => LineupRole::Substitute,
             'status' => InviteStatus::Pending,
         ]),
 

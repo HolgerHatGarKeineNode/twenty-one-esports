@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
 use App\Models\Clan;
+use App\Models\ClanInvite;
+use App\Models\Lineup;
 use App\Models\User;
 use App\Support\Clans\ClanDraft;
 use App\Support\Clans\ClanService;
@@ -57,8 +60,7 @@ test('every clan page survives a Livewire roundtrip', function (string $page, Cl
     $draft = new ClanDraft('Laser Eyes', 'LSR');
     $clan = $service->create($owner, $draft, $signer->signTemplates($service->prepareCreate($owner, $draft)));
     $invitee = User::factory()->create();
-    $invite = $service->invite($owner, $clan, 'rocket-league', '3v3', $invitee, LineupRole::Substitute,
-        $signer->signTemplates($service->prepareInvite($owner, $clan, 'rocket-league', '3v3', $invitee, LineupRole::Substitute)));
+    $invite = $service->invite($owner, $clan, $invitee, $signer->signTemplates($service->prepareInvite($owner, $clan, $invitee)));
 
     Livewire::actingAs($page === 'pages::invites.show' ? $invitee : $owner)
         ->test($page, $params($clan, $invite))
@@ -80,4 +82,95 @@ test('only captains open the manage page, and a tag link finds the clan', functi
     $this->actingAs(User::factory()->create())->get(route('clans.manage', $clan))->assertForbidden();
     $this->actingAs($clan->owner)->get(route('clans.manage', $clan))->assertOk();
     $this->get(route('clans.show', strtolower($clan->clantag)))->assertOk();
+});
+
+/**
+ * A founded clan with the owner and one joined member.
+ *
+ * @return array{0: Clan, 1: User, 2: TestSigner, 3: User}
+ */
+function clanWithMember(): array
+{
+    $service = app(ClanService::class);
+    $signer = new TestSigner;
+    $owner = User::factory()->withPubkey($signer->pubkey)->create();
+    $draft = new ClanDraft('Laser Eyes', 'LSR');
+    $clan = $service->create($owner, $draft, $signer->signTemplates($service->prepareCreate($owner, $draft)));
+
+    $memberSigner = new TestSigner;
+    $member = User::factory()->withPubkey($memberSigner->pubkey)->create(['name' => 'queen_q']);
+    $invite = $service->invite($owner, $clan, $member, $signer->signTemplates($service->prepareInvite($owner, $clan, $member)));
+    $service->accept($invite, $member, $memberSigner->signTemplates($service->prepareAccept($invite, $member)));
+
+    return [$clan, $owner, $signer, $member];
+}
+
+test('the manage page invites a player by npub into the roster and hands out the invite link', function () {
+    [$clan, $owner, $signer] = clanWithMember();
+    $invitee = User::factory()->create();
+    $signed = $signer->signTemplates(app(ClanService::class)->prepareInvite($owner, $clan, $invitee));
+
+    $page = Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->set('player', $invitee->npub)
+        ->call('invite', json_encode($signed))
+        ->assertHasNoErrors();
+
+    $invite = ClanInvite::query()->where('invitee_id', $invitee->id)->sole();
+
+    $page->assertSet('inviteLink', route('invites.show', $invite));
+    expect($invite->status)->toBe(InviteStatus::Pending);
+});
+
+test('the owner builds a lineup on the manage page by picking members from the roster', function () {
+    [$clan, $owner, $signer, $member] = clanWithMember();
+    $seats = [$owner->id => LineupRole::Captain, $member->id => LineupRole::Player];
+    $signed = $signer->signTemplates(app(ClanService::class)->prepareLineup($owner, $clan, 'rocket-league', '2v2', $seats));
+
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('editLineup', '2v2')
+        ->assertSet('picks', [$owner->id => '', $member->id => ''])
+        ->set("picks.{$owner->id}", 'captain')
+        ->set("picks.{$member->id}", 'player')
+        ->call('saveLineup', json_encode($signed))
+        ->assertHasNoErrors()
+        ->assertSet('editing', null)
+        ->assertSee('ready, 2 of 2');
+
+    expect(Lineup::query()->where(['clan_id' => $clan->id, 'mode' => '2v2'])->sole()->seats()->pluck('role', 'user_id')->all())
+        ->toBe([$owner->id => LineupRole::Captain, $member->id => LineupRole::Player]);
+});
+
+test('a player who is not in the roster cannot be slipped into a lineup from the page', function () {
+    [$clan, $owner] = clanWithMember();
+    $stranger = User::factory()->create();
+
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('editLineup', '1v1')
+        ->set("picks.{$stranger->id}", 'player')
+        ->call('saveLineup', '[]')
+        ->assertHasErrors(['lineup' => 'Only players of Laser Eyes can be placed in a lineup.']);
+
+    expect(Lineup::query()->count())->toBe(0);
+});
+
+test('a captain who is not the founder cannot open the lineup builder', function () {
+    [$clan, $owner, $signer, $member] = clanWithMember();
+    $service = app(ClanService::class);
+    $service->makeCaptain($owner, $clan, $member, $signer->signTemplates($service->prepareMakeCaptain($owner, $clan, $member)));
+
+    Livewire::actingAs($member)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('editLineup', '3v3')
+        ->assertForbidden();
+});
+
+test('the invite page speaks of the roster, and only the invitee and the clan captains may open it', function () {
+    [$clan, $owner, $signer] = clanWithMember();
+    $invitee = User::factory()->create();
+    $invite = app(ClanService::class)->invite($owner, $clan, $invitee, $signer->signTemplates(app(ClanService::class)->prepareInvite($owner, $clan, $invitee)));
+
+    $this->actingAs($invitee)->get(route('invites.show', $invite))
+        ->assertSee('Laser Eyes wants you in its roster')
+        ->assertSee('You join the Laser Eyes roster. The owner puts you in its lineups; you can leave the clan at any time.');
+
+    $this->actingAs(User::factory()->create())->get(route('invites.show', $invite))->assertForbidden();
 });

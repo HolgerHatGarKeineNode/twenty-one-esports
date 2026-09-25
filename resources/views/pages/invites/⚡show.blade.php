@@ -1,9 +1,10 @@
 <?php
 
+use App\Enums\ClanRole;
 use App\Enums\InviteStatus;
-use App\Enums\LineupRole;
 use App\Models\ClanInvite;
-use App\Models\LineupSeat;
+use App\Models\ClanMember;
+use App\Models\Lineup;
 use App\Models\User;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
@@ -17,11 +18,13 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
- * Clan invite, 1:1 from InviteAccept.dc.html. The invitee joins only by
- * confirming (signing) their own Clan Membership (kind 12150) that names the
- * clan and the lineup; declining needs no signature. The inviting clan's
- * captains may look at the invite; nobody else. Trust and games played come
- * with P7 (trust ranks) and P6 (series); until then those rows say so.
+ * Clan invite, from InviteAccept.dc.html, roster only since P4b: the invite
+ * brings the player into the clan, not into a lineup. The invitee joins only
+ * by confirming (signing) their own Clan Membership (kind 12150) that names
+ * the clan; the owner places members in lineups afterwards (NIP rev. 6).
+ * Declining needs no signature. The inviting clan's captains may look at the
+ * invite; nobody else. Trust and games played come with P7 (trust ranks) and
+ * P6 (series); until then those rows say so.
  */
 new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     #[Locked]
@@ -38,7 +41,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
     #[Computed]
     public function invite(): ClanInvite
     {
-        return ClanInvite::query()->with(['clan.members.user', 'lineup.seats.user', 'lineup.clan', 'inviter', 'invitee.clanMember.clan'])->findOrFail($this->inviteId);
+        return ClanInvite::query()->with(['clan.members.user', 'clan.lineups.seats.user.clanMember', 'clan.lineups.clan', 'inviter', 'invitee.clanMember.clan'])->findOrFail($this->inviteId);
     }
 
     public function isInvitee(): bool
@@ -100,15 +103,15 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
 @php
     $invite = $this->invite;
     $clan = $invite->clan;
-    $lineup = $invite->lineup;
     $invitee = $invite->invitee;
     $inviter = $invite->inviter;
     $mine = $this->isInvitee();
-    $stats = ClanStatsPreview::lineup($clan->clantag, $lineup->mode);
-    $roleText = $invite->role === LineupRole::Substitute ? __('Sub') : $invite->role->label();
-    $others = $lineup->seats->reject(fn (LineupSeat $seat) => $seat->user_id === $invitee->id);
-    $lineupCaptain = $others->firstWhere('role', LineupRole::Captain)?->user ?? $clan->owner;
-    $players = $others->filter(fn (LineupSeat $seat) => $seat->role === LineupRole::Player && $seat->isActive($clan->id))->map(fn ($seat) => $seat->user->displayName())->implode(', ');
+    $lineups = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, ['3v3', '2v2', '1v1'], true))->values();
+    $lead = $lineups->first();
+    $stats = $lead ? ClanStatsPreview::lineup($clan->clantag, $lead->mode) : null;
+    $members = $clan->members->sortBy(fn (ClanMember $member) => [$member->user_id === $clan->owner_id ? 0 : 1, $member->joined_at->getTimestamp()])->values();
+    $captains = $members->filter(fn (ClanMember $member) => $member->role === ClanRole::Captain)->map(fn (ClanMember $member) => $member->user->displayName())->implode(', ');
+    $lineupSummary = $lineups->map(fn (Lineup $lineup) => $lineup->mode.' '.($lineup->isReady() ? __('ready') : __('needs players')))->implode(', ');
     $current = $invitee->clanMember?->clan;
     $days = (int) $invitee->created_at?->diffInDays(now());
     $status = match ($invite->status) {
@@ -116,7 +119,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
         InviteStatus::Accepted => [__('accepted'), 'border-win-ring text-win bg-win-tint'],
         default => [__('closed'), 'border-line text-ink-2 bg-well'],
     };
-    $membershipTags = [['kind', '12150 '.__('clan membership')], ['a', $clan->address()], ['a', $lineup->address()], ['p', __('signed by :name', ['name' => $invitee->displayName()])]];
+    $membershipTags = [['kind', '12150 '.__('clan membership')], ['a', $clan->address()], ['p', __('confirmed by :name', ['name' => $invitee->displayName()])]];
 @endphp
 
 <div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"
@@ -128,7 +131,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
      ]) })">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clan invite') }}</h1>
-        <span class="text-[13px] text-ink-2">{{ __(':clan wants you as :role', ['clan' => $clan->name, 'role' => $invite->role === LineupRole::Substitute ? __('a sub') : __('a player')]) }}</span>
+        <span class="text-[13px] text-ink-2">{{ __(':clan wants you in its roster', ['clan' => $clan->name]) }}</span>
         <span class="hidden grow lg:block"></span>
         <span class="inline-flex h-[34px] items-center gap-2 rounded-md border px-3 text-[13px] font-bold {{ $status[1] }}">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"></path></svg>{{ $status[0] }}
@@ -137,13 +140,13 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div class="rounded-lg bg-card px-4 lg:px-6">
-            @foreach ([[__('Invited by'), ($inviter?->displayName() ?? '–').', '.__('captain')], [__('Sent'), $invite->created_at?->isToday() ? __('today :time', ['time' => $invite->created_at->format('H:i')]) : $invite->created_at?->translatedFormat('M j, H:i')], [__('Role'), __(':role in the :mode', ['role' => $roleText, 'mode' => $lineup->mode])]] as [$key, $value])
+            @foreach ([[__('Invited by'), ($inviter?->displayName() ?? '–').', '.__('captain')], [__('Sent'), $invite->created_at?->isToday() ? __('today :time', ['time' => $invite->created_at->format('H:i')]) : $invite->created_at?->translatedFormat('M j, H:i')], [__('Invite to'), __('the clan roster, no lineup yet')]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 lg:px-6">
-            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Game') }}</span><span>Rocket League, {{ $lineup->mode }}</span></div>
-            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Ladder') }}</span><span>{{ $stats['series'] === 0 ? __(':mode, Pre-Season, no series yet', ['mode' => $lineup->mode]) : __(':mode, Pre-Season, rank :rank of :of', ['mode' => $lineup->mode, 'rank' => $stats['rank'], 'of' => $stats['of']]) }}</span></div>
+            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Players') }}</span><span>{{ trans_choice(':count player|:count players', $members->count()) }}</span></div>
+            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Lineups') }}</span><span>{{ $lineupSummary ?: __('no lineup yet') }}</span></div>
             <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Captain trust') }}</span>
                 <span @class(['text-win' => $inviter?->is_member, 'text-ink-2' => ! $inviter?->is_member])>{{ $inviter?->is_member ? __('EINUNDZWANZIG member') : __('shown once rated games start') }}</span></div>
         </div>
@@ -164,7 +167,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
         <div class="hidden flex-col items-center gap-1 text-xs lg:flex" aria-hidden="true">
             <span class="text-btc">{{ __('joins') }}</span>
             <span class="block h-0.5 w-full bg-[repeating-linear-gradient(90deg,#F7931A_0_6px,transparent_6px_10px)]"></span>
-            <span class="text-ink-2">{{ __('as :role', ['role' => mb_strtolower($roleText)]) }}</span>
+            <span class="text-ink-2">{{ __('the roster') }}</span>
         </div>
         <div class="rounded-lg bg-card px-4 py-4 lg:px-6">
             <div class="flex items-start justify-between gap-3 pb-2">
@@ -172,12 +175,12 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
                     <span class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] text-xs font-bold text-on-btc">
                         @if ($clan->picture)<img src="{{ $clan->picture }}" alt="" class="size-full object-cover" loading="lazy">@else{{ $clan->clantag }}@endif
                     </span>
-                    <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate text-[15px]">{{ __(':clan, :mode lineup', ['clan' => $clan->name, 'mode' => $lineup->mode]) }}</b>
-                        <x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" /></span>
+                    <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate text-[15px]">{{ $clan->name }} <span class="font-normal text-ink-3">[{{ $clan->clantag }}]</span></b>
+                        @if ($stats)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@endif</span>
                 </span>
                 @if ($clan->isMemberClan())<x-member-badge long class="hidden sm:inline-flex" />@endif
             </div>
-            @foreach ([[__('Captain'), $lineupCaptain?->displayName() ?? '–', 'text-ink'], [__('Players'), $players ?: '–', 'text-ink'], [$roleText, $mine ? __('you, once you accept') : $invitee->displayName(), 'text-btc'], ['Elo', (string) $stats['elo'], 'text-ink']] as [$key, $value, $colour])
+            @foreach ([[__('Owner'), $clan->owner?->displayName() ?? '–', 'text-ink'], [__('Captains'), $captains ?: '–', 'text-ink'], [__('Roster'), $members->map(fn (ClanMember $member) => $member->user->displayName())->implode(', ') ?: '–', 'text-ink'], [__('New'), $mine ? __('you, once you accept') : $invitee->displayName(), 'text-btc']] as [$key, $value, $colour])
                 <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[142px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="{{ $colour }}">{{ $value }}</span></div>
             @endforeach
         </div>
@@ -201,7 +204,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
         <div class="flex flex-col gap-3">
             <h2 class="m-0 text-[15px] font-bold">{{ __('What happens when you accept') }}</h2>
             <p class="m-0 text-[13px] leading-[1.6] text-ink-2">
-                {{ __('You become :role in the :clan :mode.', ['role' => $invite->role === LineupRole::Substitute ? __('a sub') : __('a player'), 'clan' => $clan->name, 'mode' => $lineup->mode]) }}
+                {{ __('You join the :clan roster. The owner puts you in its lineups; you can leave the clan at any time.', ['clan' => $clan->name]) }}
                 {{ $current && $current->id !== $clan->id ? __('You leave :clan: you can be in one clan at a time.', ['clan' => $current->name]) : __('You can be in one clan at a time.') }}
             </p>
             <x-proof :rows="$membershipTags" />
@@ -210,7 +213,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
             @error('invite')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>
             @if ($mine && $invite->isPending())
-                <button type="button" x-on:click="run('prepareAccept', 'accept')" x-bind:disabled="busy"
+                <button type="button" x-on:click="run('prepareAccept', 'accept')" x-bind:disabled="busy" data-test="accept-invite"
                         class="btn-p inline-flex h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-7 text-[15px] font-bold text-on-btc disabled:cursor-wait disabled:opacity-70">
                     <x-icon name="shield-check" :size="18" />{{ __('Confirm and join') }}
                 </button>
