@@ -377,14 +377,18 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
             if (rect.width >= viewport - 1 || el.parentElement.closest('[data-bleed]')) continue;
             let left = rect.left;
             let right = rect.right;
+            let scrolledAway = false;
             for (let a = el.parentElement; a && a !== main; a = a.parentElement) {
                 const as = getComputedStyle(a);
                 if (as.overflowX === 'visible' && as.clip === 'auto' && as.clipPath === 'none') continue;
                 const ar = a.getBoundingClientRect();
+                // Cut by the edge of a horizontal scroller (a tab bar that
+                // scrolls on phones): that edge is the scroll affordance.
+                if (['auto', 'scroll'].includes(as.overflowX) && (left < ar.left || right > ar.right)) scrolledAway = true;
                 left = Math.max(left, ar.left);
                 right = Math.min(right, ar.right);
             }
-            if (right - left <= 1) continue;
+            if (scrolledAway || right - left <= 1) continue;
             const edge = Math.min(left, viewport - right);
             if (edge < side) {
                 side = edge;
