@@ -26,7 +26,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Published as the content of the kind-0 event. Empty values are left out
-    | of the JSON.
+    | of the JSON. The images are the Blossom copies (content-addressed) of
+    | public/images/twentyone/avatar-1024.png and banner.png.
     |
     */
 
@@ -34,8 +35,8 @@ return [
         'name' => 'twentyonesports',
         'display_name' => 'TWENTY ONE Esports',
         'about' => "The esports arm of the German-speaking Bitcoin community EINUNDZWANZIG. A 1v1/2v2 ladder platform for Bitcoiners is in development at esports.einundzwanzig.space. This channel streams 24/7. Login via Nostr.\n\nDer Esports-Zweig der deutschsprachigen Bitcoin-Community EINUNDZWANZIG.",
-        'picture' => 'https://esports.einundzwanzig.space/images/twentyone/avatar-1024.png',
-        'banner' => 'https://esports.einundzwanzig.space/images/twentyone/banner.png',
+        'picture' => 'https://blossom.einundzwanzig.space/c6f8d996841c1a1b81102ff268a9f4408536a17fb35dfb87eb71b407bad41d8f.png',
+        'banner' => 'https://blossom.einundzwanzig.space/3651c44d9e469ec1ceb7cde8581694c86fce248fb5d5eb16ec2cc008b1a3545e.png',
         'website' => 'https://esports.einundzwanzig.space',
         'nip05' => 'esports@esports.einundzwanzig.space',
         'lud16' => null,
@@ -85,7 +86,7 @@ return [
             'd' => 'twentyone-247',
             'title' => 'TWENTY ONE Esports — 24/7 Stream',
             'summary' => '24/7 stream from TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Currently looping our promo video while our Bitcoiner ladder platform is in development. Login via Nostr.',
-            'image' => 'https://esports.einundzwanzig.space/images/twentyone/banner.png',
+            'image' => 'https://blossom.einundzwanzig.space/3651c44d9e469ec1ceb7cde8581694c86fce248fb5d5eb16ec2cc008b1a3545e.png',
             't' => ['bitcoin', 'esports', 'nostr', 'einundzwanzig', 'gaming'],
         ],
 
