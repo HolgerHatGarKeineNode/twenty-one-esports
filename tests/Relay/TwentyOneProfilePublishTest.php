@@ -5,11 +5,8 @@ use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\TwentyOneSigner;
 use swentel\nostr\Key\Key;
 use Tests\Support\TestSigner;
-use Tests\TestCase;
 use WebSocket\Client;
 use WebSocket\Message\Text;
-
-pest()->extend(TestCase::class);
 
 test('a published TWENTY ONE profile can be read back from the local relay', function () {
     $key = new TestSigner;
