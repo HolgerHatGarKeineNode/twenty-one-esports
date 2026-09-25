@@ -215,6 +215,10 @@ test('two players find each other, play over Reverb, survive a reload and end by
 
     // Casual Elo (P7b): both players open the finished game and each page shows
     // the loser (White) at 980, −20 and the winner (Black) at 1020, +20.
+    // Live first: the game-over card of each player shows their own new casual Elo.
+    BrowserWait::until($white, '() => document.querySelector("[data-test=game-over-rating]")?.innerText === "Casual 980 −20"', 5_000);
+    BrowserWait::until($black, '() => document.querySelector("[data-test=game-over-rating]")?.innerText === "Casual 1020 +20"', 5_000);
+
     $ratingText = '() => ["w", "b"].map((c) => document.querySelector(`[data-test=done-rating-${c}]`)?.innerText.replace(/\s+/g, " ").trim())';
     foreach ([$white, $black] as $page) {
         $page->reload();

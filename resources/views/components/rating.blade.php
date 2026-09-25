@@ -1,4 +1,4 @@
-@props(['rating', 'label' => null, 'delta' => null])
+@props(['rating', 'label' => null, 'delta' => null, 'compact' => false])
 
 {{--
     One rating for a player strip or a list (P7b), from App\Support\Rating\Ratings.
@@ -7,6 +7,7 @@
     Casual: "Casual 1016", plus "provisional" below 5 games. A casual rating
     never shows a rank badge: it counts for no rank.
     delta: this game's change, shown as "+16" / "−16" after the value.
+    compact: below sm the word before the value ("Casual", the label) is left out.
 --}}
 @php
     $casual = ($rating['pool'] ?? 'casual') === 'casual';
@@ -15,9 +16,9 @@
 
 <span {{ $attributes->class('inline-flex min-w-0 flex-wrap items-center gap-x-1 whitespace-nowrap') }} data-test="rating" data-pool="{{ $casual ? 'casual' : 'rated' }}">
     @if ($casual)
-        <span>{{ __('Casual') }}</span>
+        <span @class(['max-sm:hidden' => $compact])>{{ __('Casual') }}</span>
     @elseif ($label)
-        <span>{{ $label }}</span>
+        <span @class(['max-sm:hidden' => $compact])>{{ $label }}</span>
     @endif
     <b class="text-ink" data-test="rating-value">{{ $rating['rating'] }}</b>
     @if ($delta !== null)

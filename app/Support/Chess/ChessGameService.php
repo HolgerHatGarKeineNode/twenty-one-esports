@@ -14,6 +14,7 @@ use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
+use App\Models\RatingChange;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
@@ -575,6 +576,7 @@ final class ChessGameService
             'rematchOffer' => $game->rematch_offer,
             'rematchUrl' => $game->rematch_id !== null ? route('games.show', $game->rematch_id) : null,
             'lastMove' => $last === null ? null : $this->moveState($last),
+            'rating' => $game->status === ChessGameStatus::Finished ? $this->ratingChanges($game) : null,
         ];
 
         if ($withMoves) {
@@ -582,6 +584,22 @@ final class ChessGameService
         }
 
         return $state;
+    }
+
+    /**
+     * What this finished game did to each player's rating, for the game-over
+     * card (P7b); a colour is missing when the game moved nothing (farming cap).
+     *
+     * @return array<'w'|'b', array{pool: string, after: int, delta: int}>
+     */
+    private function ratingChanges(ChessGame $game): array
+    {
+        $colors = ['user:'.$game->white_id => 'w', 'user:'.$game->black_id => 'b'];
+
+        return RatingChange::query()->with('rating:id,pool,subject')
+            ->where('source', RatingChange::CHESS)->where('source_id', $game->id)->get()
+            ->mapWithKeys(fn (RatingChange $change) => [$colors[$change->rating->subject] => ['pool' => $change->rating->pool, 'after' => $change->after, 'delta' => $change->delta]])
+            ->all();
     }
 
     /**

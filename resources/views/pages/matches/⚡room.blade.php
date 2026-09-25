@@ -445,7 +445,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     <section aria-label="{{ __('Season chain') }}" class="flex min-h-14 items-center gap-3.5 rounded-lg bg-card px-5 py-3 shadow-[inset_0_0_0_1px_#2A2A30]" data-test="casual-line">
         <x-icon name="lock" :size="18" class="shrink-0 text-ink-2" />
         <span class="flex min-w-0 grow flex-col gap-0.5">
-            <b class="text-sm leading-[1.4]">{{ $m->rated ? __('Rated series') : __('Casual until Block 0 · no rating, no reward') }}</b>
+            <b class="text-sm leading-[1.4]">{{ $m->rated ? __('Rated series') : __('Casual until Block 0 · casual Elo only, no reward') }}</b>
             <span class="text-xs leading-normal text-ink-2">{{ __('Rated play and mining start at Block 0. Until then every series is casual: it counts for no rating, Block Height or Clan Hashrate, and it stays casual even if it ends later.') }}</span>
         </span>
         <a href="{{ route('rules') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs whitespace-nowrap max-lg:hidden">{{ __('How mining works') }}</a>
@@ -473,7 +473,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <span class="text-[13px] text-ink-2">BO{{ $m->best_of }}, {{ $m->mode }}, {{ __('match :number', ['number' => $m->label()]) }}, {{ $m->rated ? __('saved') : __('casual, saved') }}</span>
             </span>
             <span class="flex flex-col gap-1 text-xs leading-normal text-ink-2 lg:items-end lg:text-right">
-                <span>{{ $m->rated ? __('The league record follows.') : __('Casual: no Elo, no Hashrate, no block. Rated series start at Block 0.') }}</span>
+                <span>{{ $m->rated ? __('The league record follows.') : __('Casual: casual Elo only, no Hashrate, no block. Rated series start at Block 0.') }}</span>
                 @if ($m->resolution_reason)<span>{{ __('Admin decision') }}: {{ $m->resolution_reason }}</span>@endif
                 <a href="{{ route('matches.show', $m) }}" class="inline-flex min-h-11 items-center">{{ __('Open the match page') }}</a>
             </span>
