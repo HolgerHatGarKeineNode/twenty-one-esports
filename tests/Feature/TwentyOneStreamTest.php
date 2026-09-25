@@ -25,7 +25,16 @@ beforeEach(function () {
         'twentyone.stream.hls_dir' => $this->dir.'/hls',
         // Any executable passes the start-up check; the tests fake or replace it.
         'twentyone.stream.ffmpeg' => PHP_BINARY,
+        'twentyone.stream.scene.rsvg_convert' => PHP_BINARY,
+        'twentyone.stream.scene.work_dir' => $this->dir.'/work',
+        'twentyone.stream.music.dir' => $this->dir.'/music',
     ]);
+
+    File::ensureDirectoryExists($this->dir.'/music');
+
+    foreach (['a__v1', 'a__v2', 'b__v1', 'c__v1'] as $track) {
+        File::put($this->dir."/music/{$track}.m4a", 'aac');
+    }
 });
 
 afterEach(function () {
@@ -174,7 +183,7 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
         ->and($ended)->not->toBe([])
         ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
         ->and(strpos($output, 'status=ended'))->toBeLessThan(strpos($output, 'ffmpeg stopped'))
-        ->and(File::glob($hlsDir.'/{*,loop/*}', GLOB_BRACE))->toBe([$hlsDir.'/loop', $hlsDir.'/stream.m3u8.state.json'])
+        ->and(File::glob($hlsDir.'/{*,loop/*,scene/*}', GLOB_BRACE))->toBe([$hlsDir.'/loop', $hlsDir.'/scene', $hlsDir.'/stream.m3u8.state.json'])
         ->and($output)->not->toContain($this->nsec)
         ->and($output)->not->toContain($this->key->secret)
         ->and(substr_count($output, 'ffmpeg started'))->toBe(1);

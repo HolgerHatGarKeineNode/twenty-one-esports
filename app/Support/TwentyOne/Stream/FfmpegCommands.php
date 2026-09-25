@@ -80,45 +80,66 @@ final class FfmpegCommands
 
     /**
      * The endless loop (zapstream.md (2)): real-time, no re-encoding, fMP4
-     * HLS into the loop encoder's own directory. Only warnings reach stderr,
+     * HLS into the loop encoder's own directory. The promo's video is copied,
+     * its own audio dropped: the music list is the sound in both modes, so the
+     * audio track stays the same across a switch. Only warnings reach stderr,
      * so a process that runs for weeks does not pile up progress output.
      *
      * @return list<string>
      */
-    public function hls(string $input, string $encoderDir, string $runId): array
+    public function hls(string $input, string $encoderDir, string $runId, string $musicList): array
     {
         return [
             $this->ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
             '-re', '-stream_loop', '-1', '-i', $input,
-            '-map', '0', '-c', 'copy',
+            ...$this->musicInput($musicList),
+            '-map', '0:v', '-map', '1:a', '-c', 'copy',
             ...$this->hlsOutput($encoderDir, $runId),
         ];
     }
 
     /**
-     * The still-image scene: one PNG re-read every second (1 fps), x264
-     * ultrafast/stillimage single-threaded with one IDR per 6 s segment, and a pre-encoded
-     * AAC track copied as is, so the track layout matches the loop.
+     * The still-image scene: PNG frames written to stdin by the supervisor,
+     * one per second, timestamped on arrival (no drift against the real-time
+     * music), x264 stillimage with one IDR per 6 s segment, and the music
+     * copied as is.
      *
      * @return list<string>
      */
-    public function scene(string $image, string $audio, string $encoderDir, string $runId): array
+    public function scene(string $encoderDir, string $runId, string $musicList, int $crf): array
     {
         return [
             $this->ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
-            // No -re on the image: with ffmpeg 9.0.2, `-re -f image2 -loop 1
-            // -framerate 1` wrote no segment for 14 s and more (measured, P1).
-            // The -re audio paces the output through the muxer instead.
-            '-f', 'image2', '-loop', '1', '-framerate', '1', '-i', $image,
-            '-re', '-stream_loop', '-1', '-i', $audio,
+            // Probe only the first frame (the default 5 MB probe is ~50 frames,
+            // i.e. ~50 s) and decode on one thread (PNG frame threading held
+            // back one frame per core, ~22 s here, all measured in P3).
+            '-probesize', '200000', '-analyzeduration', '0', '-threads', '1',
+            '-use_wallclock_as_timestamps', '1', '-f', 'image2pipe', '-c:v', 'png', '-i', 'pipe:0',
+            ...$this->musicInput($musicList),
             '-map', '0:v', '-map', '1:a',
-            // One encoder thread is enough for one frame per second, and x264
-            // frame threading holds back up to one frame per thread (seconds at 1 fps).
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-threads', '1', '-pix_fmt', 'yuv420p',
+            '-fps_mode', 'cfr', '-r', '1',
+            // veryfast, not ultrafast: every segment starts with an IDR of the
+            // whole scene, and ultrafast's IDRs cost 2.5x the bits. No B-frames,
+            // no lookahead, one thread: at 1 fps every frame x264 holds back is
+            // a second of delay (lookahead held the first segment >14 s).
+            // 58 kbit/s of video at CRF 35 on 120 rendered frames (P3).
+            '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage', '-bf', '0', '-threads', '1',
+            '-x264-params', 'rc-lookahead=0:sync-lookahead=0', '-pix_fmt', 'yuv420p',
+            '-crf', (string) $crf,
             '-g', (string) self::SEGMENT_SECONDS, '-keyint_min', (string) self::SEGMENT_SECONDS, '-sc_threshold', '0',
             '-c:a', 'copy',
             ...$this->hlsOutput($encoderDir, $runId),
         ];
+    }
+
+    /**
+     * The shuffled music as an endless real-time input (see MusicPlaylist).
+     *
+     * @return list<string>
+     */
+    private function musicInput(string $musicList): array
+    {
+        return ['-re', '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', $musicList];
     }
 
     /**

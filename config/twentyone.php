@@ -101,6 +101,31 @@ return [
             'initial_seconds' => 5,
             'max_seconds' => 300,
         ],
+
+        /*
+        | Music under the picture in both modes: `<title>__v<n>.m4a` files
+        | (AAC-LC 44.1 kHz stereo). The supervisor writes a shuffled ffconcat
+        | list of about `list_hours`; ffmpeg loops it.
+        */
+        'music' => [
+            'dir' => env('TWENTYONE_STREAM_MUSIC_DIR') ?: storage_path('app/stream/music'),
+            'list_hours' => 12,
+        ],
+
+        /*
+        | The live-game scene: one still per second while a live blitz game
+        | runs, back to the loop `hysteresis_seconds` after the last one ended.
+        | CRF 35 (x264 veryfast, no lookahead) gave 58 kbit/s of video on 120
+        | rendered scene frames with ticking clocks (P3; CRF 32: 68, CRF 36: 55).
+        */
+        'scene' => [
+            'rsvg_convert' => env('TWENTYONE_STREAM_RSVG_CONVERT') ?: 'rsvg-convert',
+            'fonts_dir' => resource_path('fonts/stream'),
+            'work_dir' => storage_path('app/stream/scene'),
+            'url' => 'esports.einundzwanzig.space',
+            'crf' => 35,
+            'hysteresis_seconds' => 60,
+        ],
     ],
 
 ];

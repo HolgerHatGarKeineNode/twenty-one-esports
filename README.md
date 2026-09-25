@@ -49,4 +49,5 @@ requests against `master`.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Fonts and chess pieces used by the stream scene keep their own
+licences, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

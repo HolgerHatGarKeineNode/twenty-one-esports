@@ -3,11 +3,12 @@
 use App\Support\TwentyOne\Stream\Backoff;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 
-test('the loop runs the prepared file into its own run-prefixed fMP4 HLS directory without re-encoding', function () {
-    expect((new FfmpegCommands('/usr/bin/ffmpeg'))->hls('/srv/promo.mp4', '/srv/hls/loop/', '1790000000abcdef'))->toBe([
+test('the loop copies the promo video with the music as sound into its own run-prefixed fMP4 HLS directory', function () {
+    expect((new FfmpegCommands('/usr/bin/ffmpeg'))->hls('/srv/promo.mp4', '/srv/hls/loop/', '1790000000abcdef', '/srv/music.ffconcat'))->toBe([
         '/usr/bin/ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
         '-re', '-stream_loop', '-1', '-i', '/srv/promo.mp4',
-        '-map', '0', '-c', 'copy',
+        '-re', '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', '/srv/music.ffconcat',
+        '-map', '0:v', '-map', '1:a', '-c', 'copy',
         '-f', 'hls', '-hls_time', '6', '-hls_list_size', '9', '-hls_delete_threshold', '2',
         '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', '1790000000abcdef-init.mp4',
         '-hls_flags', 'delete_segments+omit_endlist+temp_file+independent_segments',
@@ -16,16 +17,25 @@ test('the loop runs the prepared file into its own run-prefixed fMP4 HLS directo
     ]);
 });
 
-test('the scene encodes one still per second, paced by the copied audio, into its own run-prefixed directory', function () {
-    $arguments = (new FfmpegCommands('ffmpeg'))->scene('/srv/scene.png', '/srv/silence.m4a', '/srv/hls/scene', '1790000000abcdef');
-    $imageInput = array_search('/srv/scene.png', $arguments);
-    $audioInput = array_search('/srv/silence.m4a', $arguments);
-
-    expect(array_slice($arguments, $imageInput - 7, 8))->toBe(['-f', 'image2', '-loop', '1', '-framerate', '1', '-i', '/srv/scene.png'])
-        ->and(array_slice($arguments, $audioInput - 4, 5))->toBe(['-re', '-stream_loop', '-1', '-i', '/srv/silence.m4a'])
-        ->and(array_slice($arguments, $imageInput - 8, 1))->not->toBe(['-re'])
-        ->and($arguments)->toContain('-c:a', 'copy', '-threads', '1', '/srv/hls/scene/1790000000abcdef-seg-%09d.m4s', '1790000000abcdef-init.mp4')
-        ->and($arguments[array_search('-g', $arguments) + 1])->toBe('6');
+test('the scene encodes piped stills at one per second with the music copied as sound', function () {
+    expect((new FfmpegCommands('ffmpeg'))->scene('/srv/hls/scene', '1790000000abcdef', '/srv/music.ffconcat', 35))->toBe([
+        'ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
+        '-probesize', '200000', '-analyzeduration', '0', '-threads', '1',
+        '-use_wallclock_as_timestamps', '1', '-f', 'image2pipe', '-c:v', 'png', '-i', 'pipe:0',
+        '-re', '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', '/srv/music.ffconcat',
+        '-map', '0:v', '-map', '1:a',
+        '-fps_mode', 'cfr', '-r', '1',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage', '-bf', '0', '-threads', '1',
+        '-x264-params', 'rc-lookahead=0:sync-lookahead=0', '-pix_fmt', 'yuv420p',
+        '-crf', '35',
+        '-g', '6', '-keyint_min', '6', '-sc_threshold', '0',
+        '-c:a', 'copy',
+        '-f', 'hls', '-hls_time', '6', '-hls_list_size', '9', '-hls_delete_threshold', '2',
+        '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', '1790000000abcdef-init.mp4',
+        '-hls_flags', 'delete_segments+omit_endlist+temp_file+independent_segments',
+        '-hls_segment_filename', '/srv/hls/scene/1790000000abcdef-seg-%09d.m4s',
+        '/srv/hls/scene/index.m3u8',
+    ]);
 });
 
 test('every encoder run gets a new id', function () {
