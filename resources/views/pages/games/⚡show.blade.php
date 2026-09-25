@@ -467,7 +467,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
         <div wire:ignore
              x-data="chessGame(@js(['state' => app(ChessGameService::class)->snapshot($game), 'color' => $color, 'labels' => $this->labels()]))"
              x-on:keydown.window="hotkey($event)"
-             @class(['flex flex-col gap-4 px-4 pt-5 pb-8 lg:gap-5 lg:px-12 lg:pt-7 lg:pb-10', 'max-lg:pb-28' => $color !== null])
+             @class(['flex flex-col gap-4 px-4 pb-8 lg:gap-5 lg:px-12 lg:pb-10', 'max-lg:pb-28' => $color !== null])
              data-test="chess-game">
 
             {{-- Title row --}}
@@ -756,7 +756,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                     @endforeach
                 </div>
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Rating'), __('casual, no Elo before Season 1')], [__('Hashrate'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
+                    @foreach ([[__('Rating'), __('casual, no Elo before Block 0')], [__('Hashrate'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

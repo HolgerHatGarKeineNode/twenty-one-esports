@@ -3,7 +3,7 @@
     `section` the active main-navigation item. The real page replaces this in its phase.
 --}}
 <x-layouts::app :title="__($page)" :section="$section">
-    <div class="flex flex-col gap-5 px-4 py-6 lg:px-12 lg:py-8">
+    <div class="flex flex-col gap-5 px-4 pb-6 lg:px-12 lg:pb-8">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __($page) }}</h1>
 
         <div class="rounded-lg shadow-ring-hairline">

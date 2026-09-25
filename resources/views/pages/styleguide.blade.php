@@ -55,7 +55,7 @@
 @endphp
 
 <x-layouts::app :title="__('Styleguide')">
-    <div class="flex flex-col gap-10 px-4 py-6 lg:px-12 lg:py-8">
+    <div class="flex flex-col gap-10 px-4 pb-6 lg:px-12 lg:pb-8">
         <div class="flex flex-col gap-2">
             <h1 class="m-0 font-display text-[28px] font-bold">{{ __('Styleguide') }}</h1>
             <p class="m-0 max-w-[70ch] text-[13px] leading-normal text-ink-2">{{ __('Tokens and shell components of TWENTY ONE, taken from the approved screens. Only visible in local and testing environments.') }}</p>

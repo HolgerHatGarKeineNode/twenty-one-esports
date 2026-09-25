@@ -68,7 +68,7 @@
     $showWhenDue = $state === 'due' ? null : 'display: none';
 @endphp
 
-<x-layouts::app section="home">
+<x-layouts::app section="home" flush>
     <div id="block0" class="flex flex-col"
          @if ($timed) x-data="blockZeroCountdown(@js(['secondsLeft' => $secondsLeft, 'labels' => $labels]))" @endif
          data-state="{{ $state }}">

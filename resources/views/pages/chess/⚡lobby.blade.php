@@ -213,7 +213,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 'invite_closed' => __('That invite is no longer open.'),
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
-                'rated_not_open' => __('Rated games start with Season 1.'),
+                'rated_not_open' => __('Rated games start at Block 0.'),
                 default => __('That did not work, please try again.'),
             };
         }
@@ -240,7 +240,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id]))">
 
-    <div class="grid grid-cols-1 gap-4 px-4 pt-5 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pt-0 lg:pb-10">
+    <div class="grid grid-cols-1 gap-4 px-4 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Mobile title (MobileChessLobby) --}}
         <div class="flex flex-col gap-1 lg:hidden">
             <h1 class="m-0 font-display text-[28px] font-bold">{{ __('Chess') }}</h1>
@@ -322,12 +322,12 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     <span class="flex flex-col items-end gap-1"><b class="font-display text-[28px] leading-none">{{ $this->searching }}</b><b class="text-[13px]">±{{ $range['initial'] }}</b></span>
                 </div>
 
-                {{-- Casual / Rated: rated opens with Season 1 (P7) --}}
+                {{-- Casual / Rated: rated opens at Block 0 (P7) --}}
                 <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
                     <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('no rating') }}</span></span>
-                    <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Season 1') }}</span></span>
+                    <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
                 </div>
-                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Season 1 starts every game is casual: no rating, and you play anyone who is online.') }}</p>
+                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Block 0 every game is casual: no rating, and you play anyone who is online.') }}</p>
 
                 <div class="flex flex-col gap-2 max-lg:hidden">
                     <span class="text-[13px] text-ink-2">{{ __('Opponent strength') }}</span>
@@ -449,7 +449,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         </section>
 
         {{-- Later phases keep their places (ChessLobby row 2) --}}
-        @foreach ([[__('Solo Elo'), __('The blitz ladder opens with Season 1. Until then games are casual.')], [__('Clan Hashrate'), __('Rated games of clan players count for their clan from Season 1.')]] as [$heading, $text])
+        @foreach ([[__('Solo Elo'), __('The blitz ladder opens at Block 0. Until then games are casual.')], [__('Clan Hashrate'), __('Rated games of clan players count for their clan from Block 0.')]] as [$heading, $text])
             <section class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 max-lg:hidden lg:px-6">
                 <span class="flex items-baseline justify-between gap-3"><h2 class="m-0 text-[15px] font-bold">{{ $heading }}</h2><span class="rounded-sm bg-btc-tint px-2 py-0.5 text-[11px] font-bold text-btc">{{ __('coming soon') }}</span></span>
                 <p class="m-0 text-[13px] leading-normal text-ink-2">{{ $text }}</p>

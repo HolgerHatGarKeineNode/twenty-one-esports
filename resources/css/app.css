@@ -20,6 +20,16 @@
     --font-mono: var(--font-face-mono, 'JetBrains Mono'), ui-monospace, monospace;
     --font-sans: var(--font-face-mono, 'JetBrains Mono'), ui-monospace, monospace;
 
+    /*
+     * Page top: the gap between the header's bottom edge and the first
+     * content, applied once on <main> (layouts/app, layouts/minimal).
+     * 20px on narrow screens (MobileChessLobby, MobileLadder: padding-top
+     * 20px), 32px from lg (Clans, ClanShow, Dashboard: padding 32px 48px).
+     * tests/Browser/RouteSweepTest.php holds every page to it.
+     */
+    --spacing-page-top: 1.25rem;
+    --spacing-page-top-lg: 2rem;
+
     /* Surfaces */
     --color-ground: #0A0A0B;
     --color-bar: #111114;

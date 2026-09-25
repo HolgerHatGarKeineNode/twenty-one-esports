@@ -130,7 +130,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
     $switch = fn (bool $on) => $on;
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pt-5 pb-8 lg:px-12 lg:pt-7 lg:pb-10" data-test="chess-settings">
+<div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="chess-settings">
     <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
         <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data x-show="$wire.saved" x-cloak data-test="settings-saved"><x-icon name="check" :size="16" />{{ __('Saved, applies from your next move') }}</span>
@@ -202,7 +202,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                 <h2 id="dg-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('During the game') }}</h2>
                 @include('pages.settings.partials.switch', ['label' => __('Premoves'), 'hint' => __('queue a move while your opponent thinks · coming later'), 'on' => false, 'action' => null, 'test' => 'premoves'])
                 @include('pages.settings.partials.switch', ['label' => __('Always queen'), 'hint' => __('promote without asking'), 'on' => $settings->alwaysQueen, 'action' => "toggle('alwaysQueen')", 'test' => 'always-queen'])
-                @include('pages.settings.partials.switch', ['label' => __('Elo during the game'), 'hint' => __('no Elo before Season 1: every game is casual'), 'on' => false, 'action' => null, 'test' => 'elo'])
+                @include('pages.settings.partials.switch', ['label' => __('Elo during the game'), 'hint' => __('no Elo before Block 0: every game is casual'), 'on' => false, 'action' => null, 'test' => 'elo'])
             </section>
 
             <section aria-labelledby="dc-h" class="flex flex-col rounded-lg bg-card px-6 py-5">

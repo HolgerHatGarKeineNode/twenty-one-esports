@@ -121,7 +121,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pt-5 pb-8 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pt-7 lg:pb-10" data-test="chess-challenge">
+<div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pb-10" data-test="chess-challenge">
     <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Challenge') }}</h1>
         <span class="text-[13px] text-ink-2">{{ __('Daily chess, or a friend who is online') }}</span>
@@ -158,7 +158,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                         <p class="m-0 px-3 py-3 text-[13px] text-ink-2">{{ __('No player found.') }}</p>
                     @endforelse
                 </div>
-                <p class="m-0 text-xs leading-normal text-ink-3">{{ __('Until Season 1 every game is casual: you can challenge anyone, no connection needed.') }}</p>
+                <p class="m-0 text-xs leading-normal text-ink-3">{{ __('Until Block 0 every game is casual: you can challenge anyone, no connection needed.') }}</p>
                 @error('to')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             </section>
 
@@ -195,7 +195,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <h2 id="gt-h" class="m-0 text-[15px] font-bold">{{ __('Game type') }}</h2>
                     <div role="radiogroup" aria-labelledby="gt-h" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
                         <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('no rating') }}</span></span>
-                        <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Season 1') }}</span></span>
+                        <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
                     </div>
                     <p class="m-0 text-xs leading-normal text-ink-2">{{ __('A casual game counts for no rating, Block Height or Clan Hashrate.') }}</p>
                 </div>

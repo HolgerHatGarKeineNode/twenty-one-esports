@@ -34,7 +34,7 @@ final class ChessQueue
         }
 
         if ($rated) {
-            // Rated play starts with Elo and Season 1 (P7); before that every game is casual.
+            // Rated play starts with Elo at Block 0 (P7); before that every game is casual.
             throw new ChessRuleViolation('rated_not_open');
         }
 

@@ -40,7 +40,7 @@
     $publicState = $record === null ? 'unsigned' : ($configured === 0 ? 'no-relay' : ($accepted > 0 ? 'published' : 'retrying'));
 @endphp
 
-<div class="flex flex-col gap-5 px-4 pt-5 pb-8 lg:px-12 lg:pt-7 lg:pb-10" data-test="chess-game-done">
+<div class="flex flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="chess-game-done">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $daily ? __('Daily chess') : __('Game') }}</h1>
         <span class="text-sm text-btc">{{ $game->number() }}</span>
@@ -111,7 +111,7 @@
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Rating'), __('casual, no Elo before Season 1')], [__('Hashrate'), __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
+            @foreach ([[__('Rating'), __('casual, no Elo before Block 0')], [__('Hashrate'), __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>

@@ -208,7 +208,7 @@ new #[Title('Start a clan')] #[Layout('layouts::app', ['section' => 'clans'])] c
     ];
 @endphp
 
-<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 py-6 lg:px-0 lg:py-7">
+<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0 lg:pb-7">
     <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Start a clan') }}</h1>
         <span class="text-[13px] text-ink-2">{{ __('Name and tag are required. You can change everything else later.') }}</span>

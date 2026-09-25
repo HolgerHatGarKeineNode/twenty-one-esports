@@ -19,7 +19,7 @@
                 </span>
             </a>
         </header>
-        <main id="content" class="flex grow flex-col">
+        <main id="content" class="flex grow flex-col pt-page-top lg:pt-page-top-lg">
             {{ $slot }}
         </main>
     </body>

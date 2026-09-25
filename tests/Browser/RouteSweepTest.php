@@ -293,6 +293,132 @@ function recordOverflowViolation(array $data, string $label, array &$violations)
 
 /*
 |--------------------------------------------------------------------------
+| Top spacing under the header
+|--------------------------------------------------------------------------
+|
+| Every page starts its content at least one page-top step below the
+| header's bottom edge: 20px at 375 (MobileChessLobby/MobileLadder
+| `padding-top: 20px`) and 32px at 1440 (Clans/ClanShow/Dashboard
+| `padding: 32px 48px`). The value lives once, as --spacing-page-top*
+| in resources/css/app.css, applied to <main> in layouts/app.blade.php.
+|
+| "First content" is the topmost visible element inside <main> that paints
+| something: its own text, a replaced element (img/svg/canvas/form control),
+| a background, a border or a box-shadow. Transparent wrappers do not count,
+| because their padding is exactly the gap being measured. Screen-reader-only
+| boxes (1px) and fixed overlays are skipped.
+|
+*/
+
+const SWEEP_PAGE_TOP = [375 => 20, 1440 => 32];
+
+/**
+ * Pages whose design starts flush under the header on purpose, by the path
+ * the browser lands on (a redirect such as locale/{locale} is judged by its
+ * target): only the pre-launch home, which opens with its full-bleed Block 0
+ * bar (MainPrelaunch.dc.html, MobileHomePrelaunch.dc.html). The layout opt-out
+ * is `<x-layouts::app flush>`. The NIP-05 JSON endpoint has no header at all
+ * and is not a page.
+ *
+ * @var list<string>
+ */
+const SWEEP_FLUSH_PATHS = ['/'];
+
+/** @var list<string> */
+const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05'];
+
+const SWEEP_GAP_SCRIPT = <<<'JS'
+    async () => {
+        window.scrollTo(0, 0);
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        const header = document.querySelector('body > header');
+        const main = document.getElementById('content');
+        if (!header || !main) {
+            return { gap: null, path: location.pathname, first: !header ? 'no <header>' : 'no <main id="content">' };
+        }
+
+        const paints = (el, style) => {
+            if ([...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim() !== '')) return true;
+            if (['IMG', 'svg', 'CANVAS', 'VIDEO', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'].includes(el.tagName)) return true;
+            if (style.backgroundColor !== 'rgba(0, 0, 0, 0)' || style.backgroundImage !== 'none') return true;
+            if (style.boxShadow !== 'none') return true;
+            return ['Top', 'Right', 'Bottom', 'Left'].some((side) =>
+                parseFloat(style[`border${side}Width`]) > 0 && style[`border${side}Style`] !== 'none');
+        };
+
+        const headerBottom = header.getBoundingClientRect().bottom;
+        let top = Infinity;
+        let first = null;
+
+        for (const el of main.querySelectorAll('*')) {
+            if (el.closest('svg') && el.tagName !== 'svg') continue;
+            if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+            const rect = el.getBoundingClientRect();
+            if (rect.width <= 1 || rect.height <= 1) continue;
+            const style = getComputedStyle(el);
+            if (style.position === 'fixed') continue;
+            if (!paints(el, style)) continue;
+            if (rect.top < top) {
+                top = rect.top;
+                first = el;
+            }
+        }
+
+        if (first === null) {
+            return { gap: null, path: location.pathname, first: 'nothing painted inside <main>' };
+        }
+
+        const name = first.tagName.toLowerCase() + (first.dataset.test ? `[data-test=${first.dataset.test}]` : '')
+            + ' "' + (first.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) + '"';
+
+        return { gap: Math.round((top - headerBottom) * 100) / 100, path: location.pathname, first: name };
+    }
+    JS;
+
+/**
+ * @param  list<string>  &$violations
+ */
+function recordGapViolation(Page $page, string $routeName, string $label, int $width, array &$violations): void
+{
+    if (in_array($routeName, SWEEP_NO_HEADER_ROUTES, true)) {
+        return;
+    }
+
+    // A navigation after load tears the probe's execution context down
+    // mid-frame. Seen once in seven guest sweeps (the page was not
+    // identified); retry on the page it lands on, rethrow anything else.
+    $data = null;
+
+    for ($attempt = 1; $data === null; $attempt++) {
+        try {
+            $data = $page->evaluate(SWEEP_GAP_SCRIPT);
+        } catch (Throwable $e) {
+            if ($attempt === 3 || ! str_contains($e->getMessage(), 'Execution context was destroyed')) {
+                throw $e;
+            }
+
+            usleep(300_000);
+        }
+    }
+
+    if ($data['gap'] === null) {
+        $violations[] = "{$label} at {$width}px: cannot measure the top gap ({$data['first']})";
+
+        return;
+    }
+
+    if (in_array($data['path'], SWEEP_FLUSH_PATHS, true)) {
+        return;
+    }
+
+    if ($data['gap'] < SWEEP_PAGE_TOP[$width]) {
+        $violations[] = "{$label} at {$width}px: content starts {$data['gap']}px under the header, needs >= ".SWEEP_PAGE_TOP[$width]."px (first: {$data['first']})";
+    }
+}
+
+/*
+|--------------------------------------------------------------------------
 | The sweep
 |--------------------------------------------------------------------------
 |
@@ -328,10 +454,12 @@ test('every route renders without console errors, page errors, bad responses or 
 
         recordSweepViolations($mobile, $label, $violations);
         recordOverflowViolation($mobile, "{$label} at 375px", $violations);
+        recordGapViolation($page, $route['name'], $label, 375, $violations);
 
         $page->setViewportSize(1440, 900);
         $desktop = $page->evaluate(SWEEP_READ_SCRIPT);
         recordOverflowViolation($desktop, "{$label} at 1440px", $violations);
+        recordGapViolation($page, $route['name'], $label, 1440, $violations);
         $page->setViewportSize(375, 800);
     }
 
@@ -362,6 +490,19 @@ test('positive control: the sweep fails on an injected JS error', function () {
     expect(collect($violations)->contains(fn (string $v) => str_contains($v, 'injected JS error')))->toBeTrue();
 
     expect(fn () => expect($violations)->toBe([]))->toThrow(ExpectationFailedException::class);
+});
+
+test('positive control: the top-gap probe measures a page that starts flush', function () {
+    // The pre-launch home is the one opt-out: its Block 0 bar sits directly
+    // under the header. The probe must report that as ~0px, or a page that
+    // loses its spacing would pass unnoticed.
+    $page = freshSweepPage(route('home'));
+    $page->setViewportSize(375, 800);
+
+    $data = $page->evaluate(SWEEP_GAP_SCRIPT);
+
+    expect($data['gap'])->toBeLessThan(SWEEP_PAGE_TOP[375])
+        ->and($data['first'])->toContain('prelaunch-bar');
 });
 
 test('positive control: the sweep fails on an injected 500', function () {

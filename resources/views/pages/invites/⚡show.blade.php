@@ -119,7 +119,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
     $membershipTags = [['kind', '12150 '.__('clan membership')], ['a', $clan->address()], ['a', $lineup->address()], ['p', __('signed by :name', ['name' => $invitee->displayName()])]];
 @endphp
 
-<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 py-6 lg:px-0"
+<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"
      x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js([
          'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
          'rejected' => __('The confirmation was not given. Please try again.'),
@@ -143,7 +143,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
         </div>
         <div class="rounded-lg bg-card px-4 lg:px-6">
             <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Game') }}</span><span>Rocket League, {{ $lineup->mode }}</span></div>
-            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Ladder') }}</span><span>{{ $stats['series'] === 0 ? __(':mode, Season 1, no series yet', ['mode' => $lineup->mode]) : __(':mode, Season 1, rank :rank of :of', ['mode' => $lineup->mode, 'rank' => $stats['rank'], 'of' => $stats['of']]) }}</span></div>
+            <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Ladder') }}</span><span>{{ $stats['series'] === 0 ? __(':mode, Pre-Season, no series yet', ['mode' => $lineup->mode]) : __(':mode, Pre-Season, rank :rank of :of', ['mode' => $lineup->mode, 'rank' => $stats['rank'], 'of' => $stats['of']]) }}</span></div>
             <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-sm lg:grid-cols-[170px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Captain trust') }}</span>
                 <span @class(['text-win' => $inviter?->is_member, 'text-ink-2' => ! $inviter?->is_member])>{{ $inviter?->is_member ? __('EINUNDZWANZIG member') : __('shown once rated games start') }}</span></div>
         </div>

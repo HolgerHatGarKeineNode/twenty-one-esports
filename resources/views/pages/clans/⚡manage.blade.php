@@ -288,7 +288,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     ];
 @endphp
 
-<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 py-6 lg:px-0"
+<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"
      x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js($messages) })">
     <div class="flex flex-wrap items-center gap-4">
         {{-- Logo slot: the clan logo replaces the tag tile in the imagery pass. --}}

@@ -23,7 +23,7 @@
     $cards = ['w' => $players['w'], 'b' => $players['b']];
 @endphp
 
-<div wire:ignore x-data="dailyGame(@js($config))" x-on:keydown.window="hotkey($event)" class="flex flex-col gap-3 pt-4 pb-[140px] lg:gap-5 lg:px-12 lg:pt-7 lg:pb-10" data-test="daily-game">
+<div wire:ignore x-data="dailyGame(@js($config))" x-on:keydown.window="hotkey($event)" class="flex flex-col gap-3 pb-[140px] lg:gap-5 lg:px-12 lg:pb-10" data-test="daily-game">
 
     {{-- Title --}}
     <div class="flex flex-col gap-1.5 px-4 lg:px-0">
@@ -59,7 +59,7 @@
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-6 py-2">
-            @foreach ([[__('Daily Elo'), __('casual, no Elo before Season 1'), 'text-ink'], [__('At stake'), __('nothing: a casual game counts for no rating'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
+            @foreach ([[__('Daily Elo'), __('casual, no Elo before Block 0'), 'text-ink'], [__('At stake'), __('nothing: a casual game counts for no rating'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
                 <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm"><span class="text-ink-2">{{ $key }}</span><span class="{{ $tone }} truncate">{{ $value }}</span></div>
             @endforeach
         </div>

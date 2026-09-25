@@ -119,7 +119,7 @@ new #[Title('Clans')] #[Layout('layouts::app', ['section' => 'clans'])] class ex
     }
 }; ?>
 
-<div class="flex grow flex-col gap-4 px-4 py-6 lg:gap-6 lg:px-12 lg:py-8">
+<div class="flex grow flex-col gap-4 px-4 pb-6 lg:gap-6 lg:px-12 lg:pb-8">
     <div class="flex flex-wrap items-center gap-3 lg:flex-nowrap lg:gap-4">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clans') }}</h1>
         <span class="hidden grow lg:block"></span>
@@ -227,7 +227,7 @@ new #[Title('Clans')] #[Layout('layouts::app', ['section' => 'clans'])] class ex
                     <span class="text-xs text-ink-3">{{ __('points from every game, chess and Rocket League') }}</span>
                 </span>
                 <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge">
-                    @foreach (['s' => __('Season 1'), 'w' => __('7 days')] as $key => $label)
+                    @foreach (['s' => __('Pre-Season'), 'w' => __('7 days')] as $key => $label)
                         <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
                                 @class(['h-[42px] cursor-pointer px-3 text-[13px] lg:px-3.5', 'border-l border-edge' => $key === 'w',
                                     'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
@@ -257,7 +257,7 @@ new #[Title('Clans')] #[Layout('layouts::app', ['section' => 'clans'])] class ex
                 <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
             @endforelse
             <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">
-                {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __('Season 1 since Jul 3: :n points.', ['n' => $hash['total']]) }}
+                {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __('Pre-Season: :n points.', ['n' => $hash['total']]) }}
                 {{ __('Win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}
             </p>
         </section>

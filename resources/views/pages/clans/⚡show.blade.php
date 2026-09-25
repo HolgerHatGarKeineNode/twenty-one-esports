@@ -128,7 +128,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $peak = max(1, $contrib->max('points'));
 @endphp
 
-<div class="flex grow flex-col gap-4 px-4 py-6 lg:gap-6 lg:px-12 lg:py-8">
+<div class="flex grow flex-col gap-4 px-4 pb-6 lg:gap-6 lg:px-12 lg:pb-8">
     {{-- Header: tag cube, name, chips, manage --}}
     <div class="flex flex-wrap items-end gap-5 pt-4 lg:flex-nowrap lg:gap-7">
         {{-- Logo slot: the clan logo replaces the tag cube in the imagery pass. --}}
@@ -253,14 +253,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <span class="flex flex-wrap items-center justify-between gap-3">
                 <span class="flex flex-col gap-0.5"><h2 id="hc-h" class="m-0 text-[15px] font-bold">{{ __('Clan Hashrate') }}</h2><span class="text-xs text-ink-3">{{ __('points from every rated game, chess and Rocket League') }}</span></span>
                 <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge">
-                    @foreach (['s' => __('Season 1'), 'w' => __('7 days')] as $key => $label)
+                    @foreach (['s' => __('Pre-Season'), 'w' => __('7 days')] as $key => $label)
                         <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
                                 @class(['h-[42px] cursor-pointer px-3.5 text-[13px]', 'border-l border-edge' => $key === 'w', 'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
                     @endforeach
                 </div>
             </span>
             <div class="grid grid-cols-2 gap-3">
-                @foreach ([['s', __('Season 1'), $hash['season'], $ranks['season']], ['w', __('last 7 days'), $hash['week'], $ranks['week']]] as [$key, $label, $points, $rank])
+                @foreach ([['s', __('Pre-Season'), $hash['season'], $ranks['season']], ['w', __('last 7 days'), $hash['week'], $ranks['week']]] as [$key, $label, $points, $rank])
                     <span @class(['flex flex-col gap-1 rounded-md bg-ground px-4 py-3', 'shadow-[inset_0_0_0_1px_#F7931A]' => $window === $key, 'shadow-ring' => $window !== $key])>
                         <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-2xl">{{ $points }}</b>
                         <span class="text-xs text-ink-3">{{ $rank ? __('#:rank of :of clans', ['rank' => $rank, 'of' => $ranks['clans']]) : __('no points yet') }}</span>
@@ -268,7 +268,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @endforeach
             </div>
             <div class="flex flex-col">
-                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? __('Season 1') : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Share') }}</span></div>
+                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? __('Pre-Season') : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Share') }}</span></div>
                 @foreach ($contrib as $row)
                     <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]" title="{{ $row['name'] }}: {{ $row['points'] }}">
                         <span @class(['truncate', 'text-ink-2' => $row['bonus']])>{{ $row['name'] }}</span>

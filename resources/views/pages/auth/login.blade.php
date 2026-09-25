@@ -14,7 +14,7 @@
 @endphp
 
 <x-layouts::app :title="__('Log in')">
-    <div class="flex grow flex-col items-center gap-6 p-4 lg:flex-row lg:items-start lg:justify-center lg:gap-12 lg:p-12">
+    <div class="flex grow flex-col items-center gap-6 px-4 pb-4 lg:flex-row lg:items-start lg:justify-center lg:gap-12 lg:px-12 lg:pb-12">
         <x-nostr-login class="flex w-full max-w-[460px] flex-col gap-4 rounded-lg bg-card p-5 lg:w-[460px] lg:p-8">
             <div class="flex flex-col items-center gap-3 pb-2 text-center">
                 <x-logo :size="56" />

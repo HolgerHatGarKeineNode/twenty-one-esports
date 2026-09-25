@@ -163,7 +163,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     $rating = (int) config('esports.chess.queue.start_rating');
 @endphp
 
-<div class="flex grow flex-col gap-4 px-4 pt-5 pb-8 lg:px-12 lg:pt-6 lg:pb-6" data-test="correspondence-list">
+<div class="flex grow flex-col gap-4 px-4 pb-8 lg:px-12 lg:pb-6" data-test="correspondence-list">
     <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[40px]">{{ __('Daily chess') }}</h1>
         <span class="text-[13px] text-ink-2">{{ __('your games, 1 move per day, every move saved and verified') }}</span>
@@ -245,7 +245,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     @if ($cards->isEmpty() && $finished->isEmpty() && $this->incoming->isEmpty() && $this->outgoing->isEmpty())
         <section class="flex flex-col items-start gap-3 rounded-lg bg-card px-4 py-6 lg:px-6" data-test="correspondence-empty">
             <b class="font-display text-lg">{{ __('No daily games yet') }}</b>
-            <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge someone: one move a day, at your pace, casual until Season 1.') }}</span>
+            <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge someone: one move a day, at your pace, casual until Block 0.') }}</span>
             <x-button icon="pawn" :href="route('chess.challenge')">{{ __('Start daily chess') }}</x-button>
         </section>
     @endif

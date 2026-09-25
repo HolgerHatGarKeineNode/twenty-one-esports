@@ -1,10 +1,12 @@
-@props(['title' => null, 'section' => null, 'realtime' => false, 'scripts' => []])
+@props(['title' => null, 'section' => null, 'realtime' => false, 'scripts' => [], 'flush' => false])
 
 {{--
     The TWENTY ONE shell: header, content, footer, toast stack.
     `section` marks the active main-navigation item; `realtime` loads Echo
     (Reverb websocket) for pages that listen to broadcasts, and only for those;
-    `scripts` lists extra Vite entries a page needs (e.g. the chess board).
+    `scripts` lists extra Vite entries a page needs (e.g. the chess board);
+    `flush` drops the page-top spacing under the header, for the few designs
+    that start full-bleed (the pre-launch home and its Block 0 bar).
 --}}
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
@@ -16,7 +18,7 @@
 
         <x-shell.header :section="$section" />
 
-        <main id="content" class="flex min-w-0 grow flex-col">
+        <main id="content" @class(['flex min-w-0 grow flex-col', 'pt-page-top lg:pt-page-top-lg' => ! $flush])>
             {{ $slot }}
         </main>
 
