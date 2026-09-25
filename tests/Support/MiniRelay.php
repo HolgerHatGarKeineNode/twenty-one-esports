@@ -34,6 +34,19 @@ final class MiniRelay
     /** @var array<int, array{connection: ConnectionInterface, buffer: MessageBuffer, subscriptions: array<string, list<array<string, mixed>>>}> */
     private array $clients = [];
 
+    /**
+     * Events the relay holds before the first client connects (e.g. a
+     * player's kind-0 profile for tests/Browser/ChatAndDailyTest.php).
+     *
+     * @param  list<array<string, mixed>>  $events
+     */
+    public function seed(array $events): self
+    {
+        array_push($this->events, ...$events);
+
+        return $this;
+    }
+
     public function run(int $port): void
     {
         $negotiator = new ServerNegotiator(new RequestVerifier, new HttpFactory);
