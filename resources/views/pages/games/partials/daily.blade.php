@@ -1,8 +1,14 @@
 {{--
-    A daily chess game while it runs: ChessCorrespondence.dc.html (desktop),
-    MobileChessCorrespondence.dc.html (below lg) and the double-check of
-    ChessOverlays. Driven by resources/js/dailyGame.js. Casual until Elo
-    exists (P7): the Elo and "At stake" rows say so.
+    A daily chess game while it runs, after ChessCorrespondence.dc.html
+    (desktop) and MobileChessCorrespondence.dc.html (below lg), with the
+    double-check of ChessOverlays. Driven by resources/js/dailyGame.js.
+
+    Desktop follows the live game (⚡show): the board on the left, the players
+    around the turn and the moves in the middle column, the chat filling the
+    third column from 87.5rem; the middle column and the chat take the board's
+    height and never grow it, so all of it stays in the first viewport. The
+    game details sit collapsed under the board. Below lg the middle column
+    dissolves (display: contents) and its parts slot around the board by order.
 --}}
 @php
     use App\Support\Nostr\NostrKeys;
@@ -46,54 +52,10 @@
         <span class="text-xs text-ink-2 lg:hidden">{{ __('1 move per day · every move saved and verified') }}</span>
     </div>
 
-    {{-- Details (desktop) --}}
-    <div class="hidden grid-cols-2 gap-5 lg:grid">
-        <div class="rounded-lg bg-card px-6 py-2">
-            @foreach ([
-                [__('Opponent'), $opponentName.($opponentUser?->clanMember?->clan ? ' · '.$opponentUser->clanMember->clan->name : '').($myColorName ? ' · '.__('you play :color', ['color' => $myColorName]) : '')],
-                [__('Time control'), __('Daily chess (1 move/day), max 24 h')],
-                [__('Started'), ($started?->isoFormat('ddd YYYY-MM-DD') ?? '').' · '],
-            ] as $i => [$key, $value])
-                <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm">
-                    <span class="text-ink-2">{{ $key }}</span>
-                    <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>@if ($i === 0 && $color && isset($opponent['npub']))<x-copy-npub :npub="$opponent['npub']" :name="$opponentName" />@endif</span>
-                </div>
-            @endforeach
-        </div>
-        <div class="rounded-lg bg-card px-6 py-2">
-            @foreach ([[__('Daily Elo'), __('casual, no Elo before Block 0'), 'text-ink'], [__('At stake'), __('nothing: a casual game counts for no rating'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
-                <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm"><span class="text-ink-2">{{ $key }}</span><span class="{{ $tone }} truncate">{{ $value }}</span></div>
-            @endforeach
-        </div>
-    </div>
-
-    <div class="grid grid-cols-1 gap-3 lg:mt-4 lg:grid-cols-[560px_minmax(0,1fr)] lg:gap-7">
-        {{-- Board column --}}
-        <div class="flex flex-col gap-3 lg:gap-4">
-            {{-- Player cards with the day clock (mobile) --}}
-            @foreach (['top', 'bottom'] as $side)
-                @php($sideColor = $side === 'top' ? ($color === 'b' ? 'w' : 'b') : ($color === 'b' ? 'b' : 'w'))
-                @php($p = $cards[$sideColor])
-                <div @class(['flex items-center gap-2.5 px-4 lg:hidden', 'order-first' => $side === 'top', 'order-2' => $side === 'bottom']) data-test="daily-player-{{ $side }}">
-                    <span aria-hidden="true" class="size-4 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_#63636A]" style="background: {{ $sideColor === 'w' ? '#FFFFFF' : '#0A0A0B' }}"></span>
-                    <span class="flex min-w-0 grow flex-col gap-0.5">
-                        <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-bold">
-                            <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
-                            @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
-                            @if ($p['member'])<x-member-badge />@endif
-                            @if ($sideColor === $color)<span class="text-[11px] font-normal text-ink-2">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
-                        </span>
-                        <span class="flex items-center gap-1 text-[11px] text-ink-2">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></span>
-                    </span>
-                    <div role="timer" class="flex h-12 shrink-0 items-center gap-2 rounded-lg px-3"
-                         :class="state.turn === '{{ $sideColor }}' ? (low ? 'bg-loss text-on-btc' : 'bg-btc text-on-btc') : 'bg-card text-ink-2 shadow-ring'">
-                        <span class="flex items-center gap-1 text-[11px] font-bold whitespace-nowrap"><x-icon name="warn" :size="14" x-show="state.turn === '{{ $sideColor }}' && low" /><span x-text="state.turn === '{{ $sideColor }}' ? t.clock.running : t.clock.idle"></span></span>
-                        <span class="min-w-[72px] text-right font-display text-[22px] font-bold tabular-nums" x-text="state.turn === '{{ $sideColor }}' ? clockText(leftMs) : '24:00'"></span>
-                    </div>
-                </div>
-            @endforeach
-
-            <div class="order-1 lg:order-none">
+    <div @class(['grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,560px)_380px] lg:gap-x-7 lg:gap-y-5', 'min-[87.5rem]:grid-cols-[560px_380px_minmax(0,1fr)]' => $color])>
+        {{-- Board column: the board, typing a move, draw and resign --}}
+        <div class="max-lg:contents lg:col-start-1 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
+            <div class="order-2 lg:order-none">
                 <x-chess.board :playable="$color !== null" class="lg:mt-4 lg:max-w-[544px]">
                     {{-- Promotion picker --}}
                     <template x-if="promotion">
@@ -136,29 +98,49 @@
                 </form>
             @endif
 
-            {{-- Deadline (mobile) --}}
-            <span class="order-2 -mt-1 px-4 text-[11px] leading-normal text-ink-2 lg:hidden" data-test="daily-deadline">
-                <span x-show="! myTurn">{{ __(':name has until', ['name' => $color ? $opponentName : __('The player to move')]) }}</span><span x-show="myTurn">{{ __('You have until') }}</span>
-                {{ \Illuminate\Support\Carbon::createFromTimestampMs((int) $game->deadline_ms)->timezone($viewer->timezone ?? config('app.timezone'))->isoFormat('ddd YYYY-MM-DD HH:mm') }}.
-                @if ($color)<span x-show="! myTurn">{{ __('No move by then and you win on time.') }}</span><span x-show="myTurn">{{ __('No move by then and you lose on time.') }}</span>@endif
-            </span>
-
-            {{-- Moves strip (mobile) --}}
-            <div tabindex="0" aria-label="{{ __('Move list, newest move on the right') }}" class="order-2 mx-4 flex h-11 flex-row-reverse overflow-x-auto rounded-lg bg-card lg:hidden">
-                <ol class="m-0 flex list-none items-center gap-1 px-2 py-0 text-[13px] whitespace-nowrap">
-                    <template x-if="state.moves.length === 0"><li class="px-1 text-ink-3">{{ __('No moves yet') }}</li></template>
-                    <template x-for="row in moveRows" :key="'s' + row.n">
-                        <li class="flex items-center gap-1"><span class="text-ink-3" x-text="row.n + '.'"></span><span class="rounded-sm px-1.5 py-1" :class="row.wCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.w"></span><span class="rounded-sm px-1.5 py-1" :class="row.bCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.b"></span></li>
-                    </template>
-                </ol>
-            </div>
+            @if ($color)
+                {{-- Draw and resign (not drawn in the design; needed to end a daily game other than on the board) --}}
+                <div class="order-7 mx-4 grid grid-cols-2 gap-2 lg:mx-0 lg:flex lg:max-w-[544px] lg:justify-end">
+                    <x-button variant="quiet" icon="draw" x-on:click="call('offerDraw')" x-bind:disabled="state.drawOffer === color" class="disabled:opacity-50">
+                        <span x-text="state.drawOffer === color ? t.drawOffered : t.offerDraw"></span>
+                    </x-button>
+                    {{-- Second click against misclicks (ChessOverlays "Confirm resignation") --}}
+                    <button type="button" x-data="{ sure: false }" x-on:click="sure ? call('resign') : (sure = true)" x-on:click.outside="sure = false" data-test="daily-resign"
+                            class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] whitespace-nowrap text-loss">
+                        <x-icon name="flag" :size="16" /><span x-text="sure ? @js(__('Click again to resign')) : @js(__('Resign'))"></span>
+                    </button>
+                </div>
+            @endif
         </div>
 
-        {{-- Right column: the move panel and the moves --}}
-        <div class="flex min-h-0 flex-col gap-3 lg:gap-5">
+        {{-- Middle column: players, turn, deadline, moves. Stretches to the board column; the moves list counts only its header and one row, 80px, towards that height, takes the free space up to its own content (max-h-max) and then scrolls; what is left pushes your card down (mt-auto). --}}
+        <div class="max-lg:contents lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-2.5" data-test="daily-side">
+            {{-- Player cards with the day clock: around the board below lg, top and bottom of this column from lg --}}
+            @foreach (['top', 'bottom'] as $side)
+                @php($sideColor = $side === 'top' ? ($color === 'b' ? 'w' : 'b') : ($color === 'b' ? 'b' : 'w'))
+                @php($p = $cards[$sideColor])
+                <div @class(['flex items-center gap-2.5 px-4 lg:shrink-0 lg:px-0', 'order-1' => $side === 'top', 'order-3 lg:order-7 lg:mt-auto' => $side === 'bottom']) data-test="daily-player-{{ $side }}">
+                    <span aria-hidden="true" class="size-4 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_#63636A]" style="background: {{ $sideColor === 'w' ? '#FFFFFF' : '#0A0A0B' }}"></span>
+                    <span class="flex min-w-0 grow flex-col gap-0.5">
+                        <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-bold">
+                            <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
+                            @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
+                            @if ($p['member'])<x-member-badge />@endif
+                            @if ($sideColor === $color)<span class="text-[11px] font-normal text-ink-2">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
+                        </span>
+                        <span class="flex items-center gap-1 text-[11px] text-ink-2">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></span>
+                    </span>
+                    <div role="timer" class="flex h-12 shrink-0 items-center gap-2 rounded-lg px-3"
+                         :class="state.turn === '{{ $sideColor }}' ? (low ? 'bg-loss text-on-btc' : 'bg-btc text-on-btc') : 'bg-card text-ink-2 shadow-ring'">
+                        <span class="flex items-center gap-1 text-[11px] font-bold whitespace-nowrap"><x-icon name="warn" :size="14" x-show="state.turn === '{{ $sideColor }}' && low" /><span x-text="state.turn === '{{ $sideColor }}' ? t.clock.running : t.clock.idle"></span></span>
+                        <span class="min-w-[72px] text-right font-display text-[22px] font-bold tabular-nums" x-text="state.turn === '{{ $sideColor }}' ? clockText(leftMs) : '24:00'"></span>
+                    </div>
+                </div>
+            @endforeach
+
             @if ($color)
                 {{-- Your move --}}
-                <section x-show="myTurn" aria-labelledby="my-h" class="mx-4 flex flex-col gap-3.5 rounded-lg bg-[radial-gradient(120%_160%_at_0%_0%,#2A1F0E_0%,#121215_60%)] px-4 py-4 lg:mx-0 lg:px-6 lg:py-5" data-test="your-move">
+                <section x-show="myTurn" aria-labelledby="my-h" class="order-6 mx-4 flex flex-col gap-3.5 rounded-lg bg-[radial-gradient(120%_160%_at_0%_0%,#2A1F0E_0%,#121215_60%)] px-4 py-4 lg:order-2 lg:mx-0 lg:shrink-0 lg:px-5 lg:py-4" data-test="your-move">
                     <span class="flex flex-wrap items-baseline justify-between gap-2">
                         <span id="my-h" class="text-[15px] font-bold">{{ __('Your move') }}</span>
                         <template x-if="lastMove">
@@ -174,7 +156,7 @@
                     <template x-if="! pending">
                         <span class="text-[13px] text-ink-2">{{ __('Pick a piece on the board, or type the move. Nothing is final until you make it.') }}</span>
                     </template>
-                    <span class="flex flex-wrap gap-3">
+                    <span class="flex flex-wrap gap-2">
                         <button type="button" x-on:click="makeMove()" :disabled="! pending || busy" data-test="make-move"
                                 class="btn-p inline-flex h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-[22px] text-sm font-bold whitespace-nowrap text-on-btc disabled:cursor-not-allowed disabled:opacity-50"><x-icon name="shield-check" :size="18" />{{ __('Make my move') }}</button>
                         <button type="button" x-on:click="clear()" :disabled="! pending || busy"
@@ -186,21 +168,21 @@
 
                 {{-- Their move (MobileChessCorrespondence) --}}
                 <template x-if="! myTurn && lastMove">
-                    <div class="mx-4 flex flex-col gap-1 rounded-lg bg-card px-3 py-2.5 text-[13px] lg:mx-0 lg:px-6 lg:py-4" data-test="their-move">
+                    <div class="order-6 mx-4 flex flex-col gap-1 rounded-lg bg-card px-3 py-2.5 text-[13px] lg:order-2 lg:mx-0 lg:shrink-0 lg:px-4 lg:py-3" data-test="their-move">
                         <span><b x-text="(lastMove.mine ? @js(__('You played')) : @js(__(':name played', ['name' => $opponentName]))) + ' ' + lastMove.label"></b> <span class="text-ink-3" x-text="ago(lastMove.at)"></span></span>
                         <span class="flex items-center gap-1.5 text-xs text-win"><x-icon name="shield-check" :size="14" />{{ __('saved and verified') }}</span>
                     </div>
                 </template>
-                <div x-show="! myTurn" class="mx-4 flex items-center gap-2 lg:mx-0">
+                <div x-show="! myTurn" class="order-6 mx-4 flex items-center gap-2 lg:order-2 lg:mx-0 lg:shrink-0">
                     <span class="min-w-0 grow text-xs leading-normal text-ink-2">{{ __('You can move again once :name has played.', ['name' => $opponentName]) }}</span>
                 </div>
 
                 {{-- Draw offer received --}}
                 <template x-if="state.drawOffer && state.drawOffer !== color">
-                    <div class="mx-4 flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:mx-0 lg:px-6" data-test="daily-draw-offer">
+                    <div class="order-6 mx-4 flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:order-2 lg:mx-0 lg:shrink-0" data-test="daily-draw-offer">
                         <b class="text-[15px]">{{ __(':name offers a draw', ['name' => $opponentName]) }}</b>
                         <span class="text-[13px] text-ink-2">{{ __('A casual game: a draw changes no rating. Moving counts as declining.') }}</span>
-                        <span class="grid grid-cols-2 gap-2 lg:flex">
+                        <span class="grid grid-cols-2 gap-2">
                             <x-button variant="quiet" x-on:click="call('declineDraw')">{{ __('Decline') }}</x-button>
                             <x-button icon="shield-check" x-on:click="call('acceptDraw')">{{ __('Accept draw') }}</x-button>
                         </span>
@@ -208,14 +190,31 @@
                 </template>
             @endif
 
-            {{-- Moves with days --}}
-            <section aria-labelledby="ev-h" class="mx-4 hidden min-h-0 flex-col rounded-lg bg-card lg:mx-0 lg:flex lg:h-[356px]">
-                <span class="flex items-baseline justify-between border-b border-hairline px-5 pt-3.5 pb-2.5"><span id="ev-h" class="text-[15px] font-bold">{{ __('Moves') }}</span><span class="text-xs text-ink-3">{{ __('one per day, each one saved') }}</span></span>
+            {{-- Deadline: next to the turn from lg --}}
+            <span class="order-4 -mt-1 px-4 text-[11px] leading-normal text-ink-2 lg:order-3 lg:mt-0 lg:shrink-0 lg:px-0 lg:text-xs" data-test="daily-deadline">
+                <span x-show="! myTurn">{{ __(':name has until', ['name' => $color ? $opponentName : __('The player to move')]) }}</span><span x-show="myTurn">{{ __('You have until') }}</span>
+                {{ \Illuminate\Support\Carbon::createFromTimestampMs((int) $game->deadline_ms)->timezone($viewer->timezone ?? config('app.timezone'))->isoFormat('ddd YYYY-MM-DD HH:mm') }}.
+                @if ($color)<span x-show="! myTurn">{{ __('No move by then and you win on time.') }}</span><span x-show="myTurn">{{ __('No move by then and you lose on time.') }}</span>@endif
+            </span>
+
+            {{-- Moves strip (mobile) --}}
+            <div tabindex="0" aria-label="{{ __('Move list, newest move on the right') }}" class="order-5 mx-4 flex h-11 flex-row-reverse overflow-x-auto rounded-lg bg-card lg:hidden">
+                <ol class="m-0 flex list-none items-center gap-1 px-2 py-0 text-[13px] whitespace-nowrap">
+                    <template x-if="state.moves.length === 0"><li class="px-1 text-ink-3">{{ __('No moves yet') }}</li></template>
+                    <template x-for="row in moveRows" :key="'s' + row.n">
+                        <li class="flex items-center gap-1"><span class="text-ink-3" x-text="row.n + '.'"></span><span class="rounded-sm px-1.5 py-1" :class="row.wCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.w"></span><span class="rounded-sm px-1.5 py-1" :class="row.bCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.b"></span></li>
+                    </template>
+                </ol>
+            </div>
+
+            {{-- Moves with days (lg): as tall as its rows, scrolls inside once the column is full --}}
+            <section aria-labelledby="ev-h" class="mx-4 hidden min-h-0 flex-col rounded-lg bg-card lg:order-4 lg:mx-0 lg:flex lg:max-h-max lg:min-h-20 lg:grow lg:basis-20">
+                <span class="flex items-baseline justify-between border-b border-hairline px-4 pt-3 pb-2"><span id="ev-h" class="text-[15px] font-bold">{{ __('Moves') }}</span><span class="text-xs text-ink-3">{{ __('one per day, each one saved') }}</span></span>
                 <div tabindex="0" aria-label="{{ __('Move list with days') }}" class="flex min-h-0 grow flex-col-reverse overflow-y-auto">
                     <ol class="m-0 list-none px-3 py-0" data-test="daily-moves">
                         <template x-if="state.moves.length === 0"><li class="px-2 py-4 text-[13px] text-ink-3">{{ __('No moves yet. White starts.') }}</li></template>
                         <template x-for="row in moveRows" :key="row.n">
-                            <li class="grid min-h-14 grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-b border-hairline text-sm">
+                            <li class="grid min-h-9 grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-b border-hairline text-sm last:border-0">
                                 <span class="pl-2 text-ink-3" x-text="row.n + '.'"></span>
                                 <span class="flex min-w-0 items-baseline gap-2 rounded-sm px-2 py-1" :class="row.wCur ? 'bg-btc-press' : ''"><b :class="row.wCur ? 'text-btc-hi' : 'text-ink'" x-text="row.w"></b><span class="text-[11px] text-ink-3" x-text="row.wt"></span></span>
                                 <span class="flex min-w-0 items-baseline gap-2 rounded-sm px-2 py-1" :class="row.bCur ? 'bg-btc-press' : ''"><b :class="row.bCur ? 'text-btc-hi' : 'text-ink'" x-text="row.b"></b><span class="text-[11px] text-ink-3" x-text="row.bt"></span></span>
@@ -225,23 +224,17 @@
                 </div>
             </section>
 
-            {{-- Chat (NIP-17, P5d): a panel in this column from lg, the bottom sheet below; spectators only get its note --}}
-            @include('pages.games.partials.chat', ['chat' => $this->chatConfig(), 'panelClass' => $color ? 'lg:h-[400px]' : ''])
+            {{-- Spectators only get the chat's note, under the moves --}}
+            @unless ($color)
+                @include('pages.games.partials.chat', ['chat' => $this->chatConfig(), 'panelClass' => 'lg:order-5 lg:shrink-0'])
+            @endunless
 
-            @if ($color)
-                {{-- Draw and resign (not drawn in the design; needed to end a daily game other than on the board) --}}
-                <div class="mx-4 grid grid-cols-2 gap-2 lg:mx-0 lg:flex lg:justify-end">
-                    <x-button variant="quiet" icon="draw" x-on:click="call('offerDraw')" x-bind:disabled="state.drawOffer === color" class="disabled:opacity-50">
-                        <span x-text="state.drawOffer === color ? t.drawOffered : t.offerDraw"></span>
-                    </x-button>
-                    {{-- Second click against misclicks (ChessOverlays "Confirm resignation") --}}
-                    <button type="button" x-data="{ sure: false }" x-on:click="sure ? call('resign') : (sure = true)" x-on:click.outside="sure = false" data-test="daily-resign"
-                            class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] whitespace-nowrap text-loss">
-                        <x-icon name="flag" :size="16" /><span x-text="sure ? @js(__('Click again to resign')) : @js(__('Resign'))"></span>
-                    </button>
-                </div>
-            @endif
         </div>
+
+        {{-- Chat (NIP-17, P5d): the third column from 87.5rem, as tall as the board; under both columns below that; the bottom sheet below lg --}}
+        @if ($color)
+            @include('pages.games.partials.chat', ['chat' => $this->chatConfig(), 'panelClass' => 'lg:col-span-2 lg:h-[400px] min-[87.5rem]:col-span-1 min-[87.5rem]:col-start-3 min-[87.5rem]:row-start-1 min-[87.5rem]:h-0 min-[87.5rem]:min-h-full'])
+        @endif
     </div>
 
     {{-- Notifications for this game (desktop) --}}
@@ -262,6 +255,33 @@
             </label>
         </section>
     @endif
+
+    {{-- Details (desktop), collapsed under the board --}}
+    <details class="group hidden rounded-lg bg-card lg:block" data-test="daily-details">
+        <summary class="flex min-h-11 cursor-pointer items-center gap-2.5 px-6 text-[13px] text-ink-2">
+            <x-icon name="clock" :size="16" /><b class="text-ink">{{ __('Game details') }}</b><span class="truncate">{{ __('Daily chess (1 move/day), max 24 h') }}</span><span class="grow"></span>
+            <span class="text-xs text-btc group-open:hidden">{{ __('show') }}</span><span class="hidden text-xs text-btc group-open:inline">{{ __('hide') }}</span>
+        </summary>
+        <div class="grid grid-cols-2 gap-x-10 px-6 pb-2">
+            <div>
+                @foreach ([
+                    [__('Opponent'), $opponentName.($opponentUser?->clanMember?->clan ? ' · '.$opponentUser->clanMember->clan->name : '').($myColorName ? ' · '.__('you play :color', ['color' => $myColorName]) : '')],
+                    [__('Time control'), __('Daily chess (1 move/day), max 24 h')],
+                    [__('Started'), ($started?->isoFormat('ddd YYYY-MM-DD') ?? '').' · '],
+                ] as $i => [$key, $value])
+                    <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0">
+                        <span class="text-ink-2">{{ $key }}</span>
+                        <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>@if ($i === 0 && $color && isset($opponent['npub']))<x-copy-npub :npub="$opponent['npub']" :name="$opponentName" />@endif</span>
+                    </div>
+                @endforeach
+            </div>
+            <div>
+                @foreach ([[__('Daily Elo'), __('casual, no Elo before Block 0'), 'text-ink'], [__('At stake'), __('nothing: a casual game counts for no rating'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
+                    <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span class="{{ $tone }} truncate">{{ $value }}</span></div>
+                @endforeach
+            </div>
+        </div>
+    </details>
 
     {{-- Proof --}}
     <div class="mx-4 lg:mx-0">

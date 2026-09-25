@@ -150,6 +150,7 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
         TestSigner::forBrowser($anna);
         TestSigner::forBrowser($bert);
         $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
+        app(ChessGameService::class)->move($game, $anna, 'e2e4');
 
         $pageA = playerPage($anna, route('games.show', $game, false));
         $pageB = playerPage($bert, route('games.show', $game, false));
@@ -157,6 +158,20 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
         foreach ([$pageA, $pageB] as $page) {
             BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chat]")).status === "live"', 10_000);
         }
+
+        // Desktop (1440x900): the last move and the chat input are on screen without scrolling.
+        BrowserWait::until($pageA, '() => document.querySelectorAll("[data-test=daily-moves] li").length > 0', 5_000);
+        $desktop = $pageA->evaluate('() => {
+            const inside = (el, box) => { const b = el.getBoundingClientRect(); return b.height > 0 && b.top >= box.top && b.bottom <= box.bottom; };
+            const rows = document.querySelectorAll("[data-test=daily-moves] li");
+            const last = rows[rows.length - 1];
+            const screen = { top: 0, bottom: innerHeight };
+            return {
+                scrollY: scrollY,
+                lastMove: inside(last, screen) && inside(last, last.closest("[tabindex]").getBoundingClientRect()),
+                chatInput: inside(document.querySelector("#chatin"), screen),
+            };
+        }');
 
         sendChat($pageA, 'your move tomorrow?');
         BrowserWait::until($pageB, chatSees($pageB, 'them', 'your move tomorrow?'), 10_000);
@@ -178,7 +193,8 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
         $pageA->locator('[data-test=chat-sheet-toggle]')->click();
         BrowserWait::until($pageA, '() => [...document.querySelectorAll("#sheet-body [data-test=chat-messages] li[data-from=them]")].some((li) => li.offsetParent !== null && li.innerText.includes("after work"))', 5_000);
 
-        expect($phone)->toBe(['sheetTop' => 740, 'sheetBottom' => 812, 'barBottom' => 740, 'overflow' => 0])
+        expect($desktop)->toBe(['scrollY' => 0, 'lastMove' => true, 'chatInput' => true])
+            ->and($phone)->toBe(['sheetTop' => 740, 'sheetBottom' => 812, 'barBottom' => 740, 'overflow' => 0])
             ->and(ChatMute::query()->where('user_id', $bert->id)->pluck('muted_pubkey')->all())->toBe([$anna->pubkey])
             ->and(NostrEvent::query()->count())->toBe(0)
             ->and($pageA->evaluate('() => window.__errors'))->toBe([])
