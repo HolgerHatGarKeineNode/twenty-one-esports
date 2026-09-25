@@ -603,7 +603,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     </button>
                 </div>
             @endforeach
-            <p class="m-0 pt-1 text-xs leading-normal text-ink-2">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}: {{ implode(', ', array_map(fn ($r) => $r['seat']->user->displayName(), array_filter($rosters[SeriesMatch::otherSide($mine)], fn ($r) => $r['on']))) }}</p>
+            <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs leading-normal text-ink-2" data-test="opponent-roster">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}:
+                @foreach (array_filter($rosters[SeriesMatch::otherSide($mine)], fn ($r) => $r['on']) as ['seat' => $seat])
+                    <span class="inline-flex items-center gap-1">{{ $seat->user->displayName() }}<x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
+                @endforeach
+            </p>
             <p class="m-0 text-xs text-ink-3">{{ __('their captain sets this') }}</p>
             <p class="m-0 text-xs leading-normal text-ink-2">{{ __('This list goes out with your result.') }}</p>
         </section>

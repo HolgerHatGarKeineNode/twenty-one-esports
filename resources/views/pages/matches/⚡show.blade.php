@@ -47,7 +47,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
      * Who played, per side: the latest report's roster, or the lineups'
      * current regulars while nothing is reported.
      *
-     * @return list<array{name: string, role: string, side: string}>
+     * @return list<array{name: string, role: string, side: string, npub: string}>
      */
     #[Computed]
     public function roster(): array
@@ -56,7 +56,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
         $report = $match->latestReport;
 
         if ($report !== null) {
-            return array_map(fn (array $entry) => ['name' => $entry['name'], 'role' => $entry['role'], 'side' => $entry['side']], $report->roster);
+            return array_map(fn (array $entry) => ['name' => $entry['name'], 'role' => $entry['role'], 'side' => $entry['side'], 'npub' => \App\Support\Nostr\NostrKeys::hexToNpub($entry['pubkey'])], $report->roster);
         }
 
         $series = app(SeriesService::class);
@@ -64,7 +64,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
 
         foreach (SeriesMatch::SIDES as $side) {
             foreach ($series->rosterSeats($match, $side) as $seat) {
-                $roster[] = ['name' => $seat->user->displayName(), 'role' => $seat->role->value, 'side' => $side];
+                $roster[] = ['name' => $seat->user->displayName(), 'role' => $seat->role->value, 'side' => $side, 'npub' => $seat->user->npub];
             }
         }
 
@@ -172,7 +172,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
                     @foreach ($this->roster as $entry)
                         <li class="grid min-h-10 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-3 text-[13px]">
                             <span class="size-5 rounded-full" style="background: {{ $colors[$entry['side']] }}"></span>
-                            <span class="flex min-w-0 flex-col"><span class="truncate"><b>{{ $entry['name'] }}</b> <span class="text-ink-3">· {{ \App\Enums\LineupRole::tryFrom($entry['role'])?->label() }}</span></span><span class="text-[11px] text-ink-3">{{ $match->sideName($entry['side']) }}</span></span>
+                            <span class="flex min-w-0 flex-col"><span class="flex min-w-0 items-center gap-1.5"><span class="truncate"><b>{{ $entry['name'] }}</b> <span class="text-ink-3">· {{ \App\Enums\LineupRole::tryFrom($entry['role'])?->label() }}</span></span>@if ($entry['npub'] !== auth()->user()?->npub)<x-copy-npub :npub="$entry['npub']" :name="$entry['name']" />@endif</span><span class="text-[11px] text-ink-3">{{ $match->sideName($entry['side']) }}</span></span>
                             <span class="inline-flex items-center gap-1 text-win">@if ($report)<x-icon name="check" :size="14" />{{ __('played') }}@else<span class="text-ink-3">{{ __('regular') }}</span>@endif</span>
                         </li>
                     @endforeach

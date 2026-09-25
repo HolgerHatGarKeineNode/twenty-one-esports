@@ -93,3 +93,16 @@ test('an outsider is sent from the room to the public match page, an unknown num
     $this->actingAs(User::factory()->create())->get(route('matches.room', $match))->assertRedirect(route('matches.show', $match));
     $this->get('/matches/999999')->assertNotFound()->assertSee('Match #999999 not found');
 });
+
+test('a captain can copy the opposing players\' npubs in the room and on the match page', function (string $state) {
+    $match = seriesIn($state);
+    $captain = seriesCaptain($match);
+    $opponent = seriesCaptain($match, 'challenged');
+
+    $this->actingAs($captain)->get(route('matches.room', $match))->assertOk()
+        ->assertSee('data-npub="'.$opponent->npub.'"', false);
+
+    $this->actingAs($captain)->get(route('matches.show', $match))->assertOk()
+        ->assertSee('data-npub="'.$opponent->npub.'"', false)
+        ->assertDontSee('data-npub="'.$captain->npub.'"', false);
+})->with(['accepted', 'confirmed']);
