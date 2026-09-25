@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Models\User;
 use Illuminate\Broadcasting\Broadcasters\PusherBroadcaster;
 use Illuminate\Broadcasting\BroadcastManager;
+use Pusher\ApiErrorException;
 use Throwable;
 
 /**
@@ -53,6 +54,15 @@ class PresenceLookup
             }
 
             $answer = $broadcaster->getPusher()->get('/channels/'.$channel.'/users', [], true);
+        } catch (ApiErrorException $exception) {
+            // Reverb answers 404 for a presence channel nobody is on right now:
+            // an ordinary state, not an error worth a log line. Still "cannot
+            // tell" (null), so a claim-win stays refused.
+            if ($exception->getCode() !== 404) {
+                report($exception);
+            }
+
+            return null;
         } catch (Throwable $exception) {
             report($exception);
 
