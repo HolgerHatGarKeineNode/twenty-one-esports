@@ -38,16 +38,18 @@ Route::livewire('clans', 'pages::clans.index')->name('clans.index');
 Route::livewire('clans/{clan}', 'pages::clans.show')->name('clans.show');
 Route::livewire('games/rocket-league', 'pages::games.rocket-league')->name('games.rocket-league');
 
+// Live chess (P5a): the blitz lobby and one game, live or finished.
+Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');
+Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
+
 /*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
  * shell with a "Coming soon" empty state until its phase builds the real page.
  * `page` is a translation key, `section` marks the active main-navigation item.
  */
 $placeholders = [
-    ['chess', 'chess.lobby', 'Chess', 'chess'],
     ['chess/challenge', 'chess.challenge', 'Challenge a friend', 'chess'],
     ['games', 'games.index', 'Live games', 'chess'],
-    ['games/{game}', 'games.show', 'Game', 'chess'],
     ['matches', 'matches.index', 'Matches', 'matches'],
     ['matches/{match}', 'matches.show', 'Match', 'matches'],
     ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],

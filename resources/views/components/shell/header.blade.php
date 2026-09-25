@@ -29,7 +29,7 @@
             </span>
         </a>
 
-        <span class="hidden h-7 shrink-0 items-center whitespace-nowrap rounded-md bg-btc-chip px-2.5 text-xs text-btc-hi xl:flex">{{ __('All games') }} ▾</span>
+        <span class="hidden h-7 shrink-0 items-center whitespace-nowrap rounded-md bg-btc-chip px-2.5 text-xs text-btc-hi xl:flex">{{ $section === 'chess' ? __('Chess') : __('All games') }} ▾</span>
 
         <nav class="flex gap-1" aria-label="{{ __('Main navigation') }}">
             @foreach ($items as [$key, $label, $href])
