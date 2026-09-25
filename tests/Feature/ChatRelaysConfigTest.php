@@ -47,7 +47,8 @@ function esportsConfigUnder(array $env): array
     }
 }
 
-const PUBLIC_CHAT_RELAYS = ['wss://nos.lol', 'wss://relay.damus.io', 'wss://relay.primal.net'];
+// relay.damus.io is left out on purpose: it takes gift wraps but serves them to no one (P5d relay smoke).
+const PUBLIC_CHAT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net'];
 const NDAK_TEST_BED = ['ws://127.0.0.1:7777', 'ws://127.0.0.1:7780', 'ws://127.0.0.1:7782'];
 
 test('without ESPORTS_CHAT_RELAYS the chat relays depend on the environment, and league publishing never falls back to them', function (string $environment, array $chat, array $league) {
