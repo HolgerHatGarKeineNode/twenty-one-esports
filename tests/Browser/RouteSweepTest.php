@@ -349,8 +349,8 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1440 => 16];
  */
 const SWEEP_FLUSH_PATHS = ['/'];
 
-/** @var list<string> */
-const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05'];
+/** @var list<string> Routes that answer without the app shell (JSON, images). */
+const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {
