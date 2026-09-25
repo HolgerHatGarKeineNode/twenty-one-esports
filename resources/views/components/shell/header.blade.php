@@ -54,6 +54,8 @@
                class="h-10 w-[420px] min-w-40 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
 
         @if ($user)
+            <livewire:notification-bell variant="desktop" />
+
             <flux:dropdown position="bottom" align="end">
                 <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well pr-3 pl-2 text-[13px] text-ink" data-test="account-chip">
                     <x-avatar :name="$user->displayName()" :src="$user->avatarUrl()" :size="26" />
@@ -100,6 +102,10 @@
         </a>
 
         <span class="grow"></span>
+
+        @if ($user)
+            <livewire:notification-bell variant="mobile" />
+        @endif
 
         <button type="button" class="flex size-11 items-center justify-center rounded-lg text-ink-2 hover:text-ink"
                 aria-controls="mobile-search" x-bind:aria-expanded="search.toString()"

@@ -2,6 +2,8 @@
 
 namespace App\Support\Chess;
 
+use App\Enums\NotificationKind;
+
 /**
  * A player's chess and notification preferences (ChessSettings.dc.html),
  * stored as JSON on the user. Unknown or malformed values fall back to the
@@ -11,6 +13,13 @@ namespace App\Support\Chess;
  * DM from the league's notification key); `triggers` switches each event on
  * or off; `remindHours` is how long before a daily-move deadline the reminder
  * goes out.
+ *
+ * Triggers (P5c): one switch per NotificationKind. Off means nothing at all
+ * for that event: no bell entry, no toast, no push, no DM. A kind added
+ * later is on until the player turns it off.
+ *
+ * Sounds (P5c): `sound` on or off and `volume` in percent, played by the
+ * page (resources/js/sounds.js); on at a moderate volume by default.
  */
 final readonly class ChessSettings
 {
@@ -18,10 +27,10 @@ final readonly class ChessSettings
 
     public const REMIND_HOURS = [2, 6, 12];
 
-    public const TRIGGERS = ['your_move', 'reminder', 'challenge', 'game_over'];
+    public const DEFAULT_VOLUME = 60;
 
     /**
-     * @param  array<string, bool>  $triggers
+     * @param  array<string, bool>  $triggers  missing kinds count as on
      */
     public function __construct(
         public string $board = 'house',
@@ -31,8 +40,18 @@ final readonly class ChessSettings
         public bool $push = true,
         public bool $dm = false,
         public int $remindHours = 6,
-        public array $triggers = ['your_move' => true, 'reminder' => true, 'challenge' => true, 'game_over' => true],
+        public array $triggers = [],
+        public bool $sound = true,
+        public int $volume = self::DEFAULT_VOLUME,
     ) {}
+
+    /**
+     * @return list<string>
+     */
+    public static function triggers(): array
+    {
+        return NotificationKind::values();
+    }
 
     /**
      * @param  array<string, mixed>  $values
@@ -42,14 +61,14 @@ final readonly class ChessSettings
         $defaults = new self;
         $bool = fn (string $key, bool $default): bool => is_bool($values[$key] ?? null) ? $values[$key] : $default;
 
-        $triggers = $defaults->triggers;
+        $triggers = [];
         $stored = is_array($values['triggers'] ?? null) ? $values['triggers'] : [];
 
-        foreach (self::TRIGGERS as $trigger) {
-            if (is_bool($stored[$trigger] ?? null)) {
-                $triggers[$trigger] = $stored[$trigger];
-            }
+        foreach (self::triggers() as $trigger) {
+            $triggers[$trigger] = is_bool($stored[$trigger] ?? null) ? $stored[$trigger] : true;
         }
+
+        $volume = $values['volume'] ?? null;
 
         return new self(
             board: in_array($values['board'] ?? null, self::BOARDS, true) ? $values['board'] : $defaults->board,
@@ -60,11 +79,13 @@ final readonly class ChessSettings
             dm: $bool('dm', $defaults->dm),
             remindHours: in_array($values['remindHours'] ?? null, self::REMIND_HOURS, true) ? $values['remindHours'] : $defaults->remindHours,
             triggers: $triggers,
+            sound: $bool('sound', $defaults->sound),
+            volume: is_int($volume) && $volume >= 0 && $volume <= 100 ? $volume : $defaults->volume,
         );
     }
 
     /**
-     * @return array{board: string, coordinates: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool, remindHours: int, triggers: array<string, bool>}
+     * @return array{board: string, coordinates: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
      */
     public function toArray(): array
     {
@@ -77,11 +98,14 @@ final readonly class ChessSettings
             'dm' => $this->dm,
             'remindHours' => $this->remindHours,
             'triggers' => $this->triggers,
+            'sound' => $this->sound,
+            'volume' => $this->volume,
         ];
     }
 
     public function wants(string $trigger): bool
     {
-        return $this->triggers[$trigger] ?? false;
+        // Unknown to the stored row (a kind added later): on, like the default.
+        return $this->triggers[$trigger] ?? in_array($trigger, self::triggers(), true);
     }
 }

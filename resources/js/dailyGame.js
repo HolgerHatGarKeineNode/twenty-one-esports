@@ -11,6 +11,7 @@
 import { Chess } from 'chess.js';
 import { ensureSigner } from './nostrSign.js';
 import { boardKey } from './hotkeys.js';
+import { moveSound, playSound } from './sounds.js';
 
 const PIECES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const DAY = 86_400_000;
@@ -39,6 +40,11 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
         init() {
             this.ticker = setInterval(() => (this.now = Date.now()), 20_000);
+
+            // Move sounds (P5c): the opponent's move arriving, and the player's own once played.
+            this.$watch('state.ply', (ply, before) => {
+                if (ply > before) playSound(moveSound(this.state.moves?.[this.state.moves.length - 1]?.san));
+            });
 
             if (window.Echo) {
                 const channel = this.color ? window.Echo.private('game.' + this.state.id) : window.Echo.channel('game.' + this.state.id + '.watch');

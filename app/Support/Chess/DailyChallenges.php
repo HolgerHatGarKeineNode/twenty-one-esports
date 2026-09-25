@@ -94,6 +94,7 @@ final class DailyChallenges
             $game = $this->games->start($white, $black, ChessGame::CORRESPONDENCE);
 
             $challenge->forceFill(['status' => ChessInviteStatus::Accepted, 'chess_game_id' => $game->id])->save();
+            $this->notifications->gameStarted($game, $challenge->challenger);
 
             return $game;
         });

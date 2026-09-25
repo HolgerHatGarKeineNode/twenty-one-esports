@@ -30,6 +30,10 @@ use Livewire\Component;
  * page is on `online`, so the list shows everyone online. Solo Elo, Clan
  * Hashrate and team matches belong to P7 and keep their places as "coming"
  * cards.
+ *
+ * P5c: joining the queue asks once whether to allow desktop notifications,
+ * and a pairing plays the match-found sound before the page moves to the
+ * board, so waiting in a background tab works.
  */
 new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
@@ -295,6 +299,14 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                         {{ trans_choice(':count player searching right now.|:count players searching right now.', $this->searching) }}
                         {{ __('Your range: ±:range around :rating, it opens by :step every :seconds s. As soon as someone fits, the game starts, no extra click.', ['range' => app(ChessQueue::class)->range($entry), 'rating' => $entry->rating, 'step' => $range['step'], 'seconds' => $range['every_seconds']]) }}
                     </span>
+                    {{-- P5c: asked once per browser, when the player joins the queue; the browser's own prompt only after "Allow". --}}
+                    <div x-show="askNotify" x-cloak class="flex flex-col gap-2.5 self-stretch rounded-md bg-toast-challenge p-3 text-left shadow-ring-btc" data-test="notify-prompt">
+                        <span class="flex items-start gap-2.5 text-[13px]"><x-icon name="bell" :size="16" class="mt-0.5 shrink-0 text-btc" /><span><b>{{ __('Hear about it in another tab?') }}</b> <span class="text-ink-2">{{ __('A desktop notification when an opponent is found, while this tab is in the background.') }}</span></span></span>
+                        <span class="grid grid-cols-2 gap-2">
+                            <x-button variant="quiet" x-on:click="answerNotify(false)" data-test="notify-prompt-no">{{ __('Not now') }}</x-button>
+                            <x-button icon="bell" x-on:click="answerNotify(true)" data-test="notify-prompt-allow">{{ __('Allow') }}</x-button>
+                        </span>
+                    </div>
                     <span class="flex flex-wrap items-center gap-3 self-stretch">
                         <x-button variant="quiet" wire:click="cancelSearch" class="grow" data-test="cancel-search">{{ __('Cancel') }}</x-button>
                         <a href="{{ route('chess.challenge') }}" class="text-[13px] text-ink">{{ __('Play daily chess instead') }}</a>
@@ -335,7 +347,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 </div>
 
                 @auth
-                    <button type="button" wire:click="findOpponent" data-test="find-opponent-button"
+                    <button type="button" x-on:click="joinQueue()" data-test="find-opponent-button"
                             class="btn-p flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-md bg-btc px-4 py-2 text-left text-on-btc lg:justify-center lg:gap-2">
                         <span class="flex flex-col gap-0.5">
                             <span class="flex items-center gap-2 font-display text-lg font-bold lg:font-mono lg:text-base"><x-icon name="pawn" :size="18" class="max-lg:hidden" />{{ __('Find opponent') }}<span class="max-lg:hidden">· {{ __('Blitz 5+3') }}</span></span>

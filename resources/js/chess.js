@@ -9,6 +9,7 @@ import { dailyGame } from './dailyGame.js';
 import { gameChat } from './gameChat.js';
 import { boardKey } from './hotkeys.js';
 import { ensureSigner } from './nostrSign.js';
+import { moveSound, playSound, sounds } from './sounds.js';
 
 const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const VS16 = '︎';
@@ -27,6 +28,23 @@ const BOARD_THEMES = {
 const themeMeta = document.querySelector('meta[name="board-theme"]');
 const defaultTheme = BOARD_THEMES[themeMeta?.content] ? themeMeta.content : 'house';
 const coordinatesOn = themeMeta?.dataset.coordinates !== '0';
+
+/** Low-time sound (P5c): once per game, when the player's own clock reaches this. */
+const LOW_TIME_MS = 10000;
+
+/**
+ * The end-of-game sound for this viewer: win, loss or draw; spectators hear
+ * the neutral one, an aborted game none.
+ */
+export function endSound(state, color) {
+    if (state.status !== 'finished') return null;
+    if (state.result === '1/2-1/2' || !color) return 'draw';
+
+    return (state.result === '1-0') === (color === 'w') ? 'win' : 'loss';
+}
+
+// Listen for the first gesture on board pages too (guests watching have no alerts module).
+sounds();
 
 /**
  * The 64 squares for the board markup, straight from the kit's chessBoard().
@@ -213,9 +231,15 @@ document.addEventListener('alpine:init', () => {
         disconnectDismissed: false,
         opponentGoneNoticed: false,
         recording: false,
+        lowTimePlayed: false,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
+
+            // Move sounds (P5c): one per new ply, own moves included (shown at once in send()).
+            this.$watch('state.ply', (ply, before) => {
+                if (ply > before) playSound(moveSound(this.state.moves[this.state.moves.length - 1]?.san));
+            });
 
             watchConnection((current) => {
                 const before = this.connection;
@@ -311,6 +335,10 @@ document.addEventListener('alpine:init', () => {
             this.now = performance.now();
             if (this.state.status !== 'active') return;
             const running = this.state.clock.running;
+            if (!this.lowTimePlayed && this.color && running === this.color && this.remaining(this.color) <= LOW_TIME_MS) {
+                this.lowTimePlayed = true;
+                playSound('lowTime');
+            }
             const due = running ? this.remaining(running) <= 0 : this.state.firstMoveDeadline && this.serverNow() >= this.state.firstMoveDeadline;
             // The display reached zero: ask the server, which alone decides.
             if (due && this.now - this.clockCheckSent > 2000) {
@@ -339,6 +367,11 @@ document.addEventListener('alpine:init', () => {
             const moves = state.moves ?? this.state.moves;
             const ended = this.state.status === 'active' && state.status === 'finished';
             this.state = { ...state, moves };
+            if (ended) {
+                const sound = endSound(state, this.color);
+                // After the last move's click, not on top of it.
+                if (sound) setTimeout(() => playSound(sound), 250);
+            }
             if (ended && this.color && !state.recorded && !this.recording) {
                 this.recording = true;
                 publishRecord(this.$wire, this.t.pubkey).finally(() => (this.recording = false));
@@ -735,8 +768,31 @@ document.addEventListener('alpine:init', () => {
             this.unsubscribe = window.esportsPresence?.subscribe((members) => (this.online = members));
 
             window.Echo.private('App.Models.User.' + config.userId)
-                .listen('.chess.game-started', ({ url }) => window.location.assign(url))
+                .listen('.chess.game-started', ({ url }) => this.gameStarted(url))
                 .listen('.chess.invite', () => this.$wire.$refresh());
+        },
+
+        /**
+         * A game was made for this player (P5c): the lobby plays the sound and
+         * moves to the board, also with the tab in the background.
+         */
+        gameStarted(url) {
+            window.esportsAlerts?.leavingTo(url);
+            playSound('matchFound');
+            setTimeout(() => window.location.assign(url), 700);
+        },
+
+        /* The one-time question about desktop notifications, asked when the player joins the queue. */
+        askNotify: false,
+
+        joinQueue() {
+            this.askNotify = window.esportsAlerts?.shouldAsk() ?? false;
+            this.$wire.findOpponent();
+        },
+
+        async answerNotify(allow) {
+            this.askNotify = false;
+            await window.esportsAlerts?.answer(allow);
         },
 
         destroy() {

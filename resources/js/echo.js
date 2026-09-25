@@ -1,5 +1,7 @@
 import Echo from 'laravel-echo';
 
+import { startAlerts } from './alerts.js';
+
 import Pusher from 'pusher-js';
 window.Pusher = Pusher;
 
@@ -66,3 +68,6 @@ if (window.Echo && presenceUser) {
         .leaving((member) => presence.set(presence.members.filter((m) => m.id !== member.id)))
         .listen('.presence.looking', ({ id, looking }) => presence.set(presence.members.map((m) => (m.id === id ? { ...m, looking } : m))));
 }
+
+// Notifications on every logged-in page (P5c): toast, sound, tab title, desktop notification.
+startAlerts();

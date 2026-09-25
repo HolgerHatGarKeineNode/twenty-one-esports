@@ -30,6 +30,15 @@
         <meta name="presence-user" content="{{ auth()->id() }}">
         <meta name="board-theme" content="{{ auth()->user()->chessSettings()->board }}" data-coordinates="{{ auth()->user()->chessSettings()->coordinates ? '1' : '0' }}">
     @endauth
+    {{-- Notifications and sounds (P5c, resources/js/alerts.js and sounds.js). --}}
+    @php($chess = auth()->user()?->chessSettings() ?? new App\Support\Chess\ChessSettings)
+    <meta name="alert-settings" content="{{ json_encode([
+        'userId' => auth()->id(),
+        'sound' => $chess->sound,
+        'volume' => $chess->volume,
+        'countdown' => (int) config('esports.notifications.countdown_seconds'),
+        'labels' => ['justNow' => __('just now'), 'opening' => __('Opening the game in :s s'), 'stay' => __('Stay here')],
+    ]) }}">
     @if (filled($reverb['key'] ?? null))
         <meta name="reverb" content="{{ json_encode(['key' => $reverb['key'], 'host' => $reverb['options']['host'] ?? request()->getHost(), 'port' => (int) ($reverb['options']['port'] ?? 443), 'scheme' => $reverb['options']['scheme'] ?? 'https']) }}">
     @endif

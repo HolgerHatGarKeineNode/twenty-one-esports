@@ -426,7 +426,7 @@ final class ChessGameService
 
         if ($ended !== null) {
             $this->announce($ended);
-            $this->notifyDaily($ended, ended: true);
+            $this->notifyPlayers($ended, ended: true);
 
             return $ended;
         }
@@ -624,7 +624,7 @@ final class ChessGameService
 
         if ($changed) {
             $this->announce($game);
-            $this->notifyDaily($game, ended: $wasActive && ! $game->isActive(), moved: $game->ply > $plyBefore);
+            $this->notifyPlayers($game, ended: $wasActive && ! $game->isActive(), moved: $game->ply > $plyBefore);
         }
 
         if ($over) {
@@ -727,11 +727,12 @@ final class ChessGameService
 
     /**
      * Daily games notify (P5b): the player to move after a move, both players
-     * when the game ends. Live games do not: both players are at the board.
+     * when the game ends. Live games only when they end (P5c, in the app): a
+     * player whose tab is in the background still hears that it is over.
      */
-    private function notifyDaily(ChessGame $game, bool $ended = false, bool $moved = false): void
+    private function notifyPlayers(ChessGame $game, bool $ended = false, bool $moved = false): void
     {
-        if (! $game->isCorrespondence() || (! $ended && ! $moved)) {
+        if (! $ended && (! $moved || ! $game->isCorrespondence())) {
             return;
         }
 

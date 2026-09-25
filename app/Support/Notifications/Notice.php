@@ -6,6 +6,9 @@ namespace App\Support\Notifications;
  * The content of one notification: a short title, one sentence, the link
  * into the app, and the match (game) number it is about. Never lobby data
  * (NIP "Notifications": "never lobby data").
+ *
+ * In the app (P5c) it also carries the toast's action label ("Play now") and
+ * the sound to play; both default from the NotificationKind.
  */
 final readonly class Notice
 {
@@ -14,6 +17,8 @@ final readonly class Notice
         public string $body,
         public string $url,
         public ?int $match = null,
+        public ?string $action = null,
+        public ?string $sound = null,
     ) {}
 
     /**

@@ -245,6 +245,8 @@ return [
     'notifications' => [
         'nsec' => env('ESPORTS_NOTIFICATION_NSEC'),
         'name' => 'TWENTY ONE esports notifications',
+        // P5c: seconds an "Opponent found" toast counts down before it opens the game.
+        'countdown_seconds' => 5,
     ],
 
     'webpush' => [

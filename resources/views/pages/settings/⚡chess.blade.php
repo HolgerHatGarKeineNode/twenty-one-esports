@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\NotificationKind;
 use App\Models\PushSubscription;
 use App\Models\User;
 use App\Support\Chess\ChessSettings;
@@ -15,26 +16,37 @@ use Livewire\Component;
  * chess, and which notifications go out on which channel. Every change is
  * saved at once ("Saved, applies from your next move").
  *
- * Left out on purpose: "Sounds" (plan: no sounds at all). Premoves and "Elo
- * during the game" are shown switched off until premoves and Elo exist.
- * "Notify me about" is not in the design; the four notification triggers
- * of P5b need a switch each.
+ * Premoves and "Elo during the game" are shown switched off until premoves
+ * and Elo exist. "Notify me about" is not in the design; every
+ * NotificationKind gets a switch there, and off means nothing at all for that
+ * event (no bell entry, no toast, no push, no DM).
+ *
+ * Sounds (P5c, the design's "Sounds" row in "During the game"): on/off and a
+ * volume, with a button to hear the set. The page's sound player takes the
+ * new values at once (`sound-settings` browser event).
  */
 new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resources/js/chess.js', 'resources/js/push.js']])] class extends Component {
     public bool $saved = false;
 
     public function toggle(string $key): void
     {
-        abort_unless(in_array($key, ['coordinates', 'alwaysQueen', 'doubleCheck', 'dm'], true), 422);
+        abort_unless(in_array($key, ['coordinates', 'alwaysQueen', 'doubleCheck', 'dm', 'sound'], true), 422);
 
         $settings = $this->settings()->toArray();
         $settings[$key] = ! $settings[$key];
         $this->store($settings);
     }
 
+    public function setVolume(int $volume): void
+    {
+        abort_unless($volume >= 0 && $volume <= 100, 422);
+
+        $this->store([...$this->settings()->toArray(), 'volume' => $volume]);
+    }
+
     public function toggleTrigger(string $trigger): void
     {
-        abort_unless(in_array($trigger, ChessSettings::TRIGGERS, true), 422);
+        abort_unless(in_array($trigger, ChessSettings::triggers(), true), 422);
 
         $settings = $this->settings()->toArray();
         $settings['triggers'][$trigger] = ! $settings['triggers'][$trigger];
@@ -102,8 +114,10 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
      */
     private function store(array $settings): void
     {
-        $this->user()->forceFill(['chess_settings' => ChessSettings::fromArray($settings)->toArray()])->save();
+        $stored = ChessSettings::fromArray($settings);
+        $this->user()->forceFill(['chess_settings' => $stored->toArray()])->save();
         $this->saved = true;
+        $this->dispatch('sound-settings', enabled: $stored->sound, volume: $stored->volume);
     }
 
     private function user(): User
@@ -203,6 +217,18 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                 @include('pages.settings.partials.switch', ['label' => __('Premoves'), 'hint' => __('queue a move while your opponent thinks · coming later'), 'on' => false, 'action' => null, 'test' => 'premoves'])
                 @include('pages.settings.partials.switch', ['label' => __('Always queen'), 'hint' => __('promote without asking'), 'on' => $settings->alwaysQueen, 'action' => "toggle('alwaysQueen')", 'test' => 'always-queen'])
                 @include('pages.settings.partials.switch', ['label' => __('Elo during the game'), 'hint' => __('no Elo before Block 0: every game is casual'), 'on' => false, 'action' => null, 'test' => 'elo'])
+                @include('pages.settings.partials.switch', ['label' => __('Sounds'), 'hint' => __('moves, check, 10 s left, game end, notifications'), 'on' => $settings->sound, 'action' => "toggle('sound')", 'test' => 'sound'])
+
+                {{-- Volume, with a button to hear the set (resources/js/sounds.js). --}}
+                <div class="flex min-h-[61px] flex-wrap items-center gap-x-4 gap-y-2 py-2" x-data="{ volume: @js($settings->volume) }"
+                     x-on:sound-settings.window="window.esportsSounds?.configure($event.detail)" data-test="sound-volume">
+                    <span class="flex min-w-0 grow flex-col gap-0.5"><label for="sound-volume" class="text-sm">{{ __('Volume') }}</label><span class="text-xs text-ink-2" x-text="volume + ' %'">{{ $settings->volume }} %</span></span>
+                    <input id="sound-volume" type="range" min="0" max="100" step="5" x-model.number="volume" @disabled(! $settings->sound)
+                           x-on:input="window.esportsSounds?.configure({ volume })" x-on:change="$wire.setVolume(volume)"
+                           class="h-11 w-36 cursor-pointer accent-btc disabled:cursor-not-allowed disabled:opacity-50" data-test="volume-input">
+                    <button type="button" @disabled(! $settings->sound) data-test="sound-test" x-on:click="window.esportsSounds?.sample()"
+                            class="btn-w inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink disabled:cursor-not-allowed disabled:opacity-50">{{ __('Play a sound') }}</button>
+                </div>
             </section>
 
             <section aria-labelledby="dc-h" class="flex flex-col rounded-lg bg-card px-6 py-5">
@@ -237,15 +263,11 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
 
             <section aria-labelledby="nf-h" class="flex flex-col rounded-lg bg-card px-6 py-5" data-test="notify-about">
                 <h2 id="nf-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Notify me about') }}</h2>
-                @foreach ([
-                    'your_move' => [__('Your move'), __('your opponent made their daily move')],
-                    'reminder' => [__('Deadline reminder'), __(':hours h before your daily move is due', ['hours' => $settings->remindHours])],
-                    'challenge' => [__('Challenge received'), __('someone challenged you to daily chess')],
-                    'game_over' => [__('Game over'), __('a daily game ended')],
-                ] as $trigger => [$label, $hint])
-                    @include('pages.settings.partials.switch', ['label' => $label, 'hint' => $hint, 'on' => $settings->wants($trigger), 'action' => "toggleTrigger('{$trigger}')", 'test' => 'trigger-'.$trigger])
+                @foreach (NotificationKind::cases() as $kind)
+                    @php([$label, $hint] = $kind->setting())
+                    @include('pages.settings.partials.switch', ['label' => __($label), 'hint' => __($hint, ['hours' => $settings->remindHours]), 'on' => $settings->wants($kind->value), 'action' => "toggleTrigger('{$kind->value}')", 'test' => 'trigger-'.$kind->value])
                 @endforeach
-                <span class="pt-3 text-xs leading-normal text-ink-3">{{ __('Each goes out by browser push and Nostr DM, as switched on above.') }}</span>
+                <span class="pt-3 text-xs leading-normal text-ink-3">{{ __('Each shows in the bell and on the page you are on. Daily-chess and clan notifications also go out by browser push and Nostr DM, as switched on above.') }}</span>
             </section>
         </div>
     </div>

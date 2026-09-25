@@ -5,6 +5,7 @@ namespace App\Support\Chess;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\User;
+use App\Support\Notifications\ChessNotifications;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessQueue
 {
-    public function __construct(private ChessGameService $games) {}
+    public function __construct(private ChessGameService $games, private ChessNotifications $notifications) {}
 
     /**
      * Join (or stay in) the queue and try to pair at once.
@@ -107,7 +108,12 @@ final class ChessQueue
 
                 [$white, $black] = random_int(0, 1) === 0 ? [$user, $candidate->user] : [$candidate->user, $user];
 
-                return $this->games->start($white, $black, $entry->mode);
+                $game = $this->games->start($white, $black, $entry->mode);
+
+                // The waiting player may be on another page, or in another tab.
+                $this->notifications->matchFound($game);
+
+                return $game;
             }
 
             return null;

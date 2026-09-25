@@ -7,6 +7,7 @@ use App\Events\ChessInviteChanged;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\User;
+use App\Support\Notifications\ChessNotifications;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessInvites
 {
-    public function __construct(private ChessGameService $games) {}
+    public function __construct(private ChessGameService $games, private ChessNotifications $notifications) {}
 
     /**
      * @throws ChessRuleViolation
@@ -54,6 +55,7 @@ final class ChessInvites
         }
 
         $this->announce($invite);
+        $this->notifications->inviteReceived($invite);
 
         return $invite;
     }
@@ -75,6 +77,7 @@ final class ChessInvites
 
             $invite->forceFill(['status' => ChessInviteStatus::Accepted, 'chess_game_id' => $game->id])->save();
             $this->announce($invite);
+            $this->notifications->inviteAccepted($invite, $game);
 
             return $game;
         });
