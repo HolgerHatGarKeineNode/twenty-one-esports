@@ -36,6 +36,9 @@ class AppServiceProvider extends ServiceProvider
         // `composer dev` also runs the scheduler: the chess flag sweep
         // (routes/console.php) is part of how a clock runs out.
         DevCommands::artisan('schedule:work', 'schedule');
+
+        // Live chess moves, clocks and presence need the websocket server.
+        DevCommands::artisan('reverb:start', 'reverb');
     }
 
     /**
