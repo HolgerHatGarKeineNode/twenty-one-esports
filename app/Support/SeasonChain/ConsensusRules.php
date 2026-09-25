@@ -149,10 +149,10 @@ final class ConsensusRules
 
     /**
      * 7. Not the same anchor subtree. Compared are the two gatekeepers (the
-     * players of a solo game or board, the gatekeepers of a series), as the
-     * sample ledger does; NIP rev. 5 words the rule for every winning and
-     * losing player, which is stricter for a series (see the P7a report). A
-     * player without an anchor share has no subtree.
+     * players of a solo game or board, the gatekeepers of a series), as in
+     * rule 1 and the sample ledger; NIP rev. 6 words the rule the same way
+     * (rev. 5 said every winning and losing player). A player without an
+     * anchor share has no subtree.
      *
      * @return array{0: string, 1: ?string}|null
      */

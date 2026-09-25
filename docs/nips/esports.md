@@ -14,11 +14,13 @@ league-wide seasons, a global score; round 4, **revision 4**: the league match n
 pairings, mix-team sides, tournaments as NIP-52 calendar events with a solo-pool draw, the inputs for
 clan hashrate, a public anchor list, league discovery, the league relay policy, NIP-17 chat and
 notifications, prize-pool zaps; round 5, **revision 5**: the season chain, pots and zap targets,
-clan ownership, 21 rank tiers, rank badges, bounties). Not submitted to `nostr-protocol/nips`. Kind
+clan ownership, 21 rank tiers, rank badges, bounties; round 6, **revision 6** (2026-09-25): clan
+invitations into the roster only, the membership as consent to lineups, the wording of consensus
+rule 7). Not submitted to `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
-(`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 5).
+(`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -27,7 +29,27 @@ the round-4 examples open season 4 and are revision 4 throughout. A league adopt
 new season, because `hashrate` is a frozen season parameter. A revision-4 ladder that also names a
 Season Genesis (`2156`) by `e` is a **revision-5 ladder**, and its season is a chain season (the rules
 marked "rev. 5"). Rules marked "rev. 5" that do not depend on a ladder (clan ownership, lineup
-signer, rank tiers, badges, bounties, pots) apply from the day a league adopts revision 5.
+signer, rank tiers, badges, bounties, pots) apply from the day a league adopts revision 5. The rules
+marked "rev. 6" (clans and lineups only; no ladder depends on them) apply from the day a league adopts
+revision 6.
+
+### Changelog of revision 6 (2026-09-25)
+
+- **Invitations are into the clan only** ([Clan](#clan-32150)): listing a pubkey in `32150` invites it
+  into the clan's roster, never into a lineup, a mode or a role.
+- **The membership is the consent to lineups** ([Lineup](#lineup-32151),
+  [Clan Membership](#clan-membership-12150)): an active clan member is an active lineup player of every
+  lineup of the clan that lists them, without naming the lineup anywhere. A `12150` carries the clan
+  `a` only; lineup `a` tags of earlier revisions are still valid (rule 9) and are ignored. Leaving the
+  clan leaves every lineup at once, so a lineup can fall below its size without a new `32151`.
+- **Lineups list active members only** (validation rule 8): the owner places members; nobody else
+  signs anything for a lineup.
+- **Consensus rule 7 compares the two gatekeepers** ([Consensus rules](#consensus-rules-season-chain-v1)),
+  as rule 1 does, not every winning and losing player of a series. This corrects the wording of
+  revision 5: the revision-5 examples, the sample ledger and the reference engine were computed this
+  way, so no revision-5 block changes.
+- Round-6 examples ([Revision 6](#revision-6-a-roster-invitation-and-a-lineup-from-members)) and relay
+  proof (R6).
 
 ### Changelog of revision 5 (2026-09-25)
 
@@ -379,7 +401,9 @@ and all other members are listed as `p` with role `captain` or `member`.
 
 A pubkey is an **active clan member** when the clan lists it (or it is the owner) **and** that
 pubkey's own Clan Membership (`12150`) points at the clan. Listing alone is an invitation; the
-membership event is the acceptance.
+membership event is the acceptance. Rev. 6: the invitation is into the clan's roster only; it names no
+lineup, mode or role. Only the listed player can accept it, since only their key signs their
+membership.
 
 The clan tag is a display label, not an identifier: the `d` value identifies a clan. The league
 keeps clan tags unique within the league and refuses a clan event whose `clantag` another clan
@@ -427,17 +451,26 @@ signer, each clan has exactly one lineup address per game and mode, and it stays
 clan's whole life. Captains who want a change ask the owner in the app; while the clan is frozen
 (see [Ownership](#ownership-rev-5)), lineups cannot change.
 
-A player is an **active lineup player** when the lineup lists them, they are an active clan member,
-**and** their Clan Membership lists this lineup's address. A player the lineup lists who has not
-accepted is invited but cannot play. Substitutes are active lineup players like the others; the
-role only says who is expected to play by default.
+A player is an **active lineup player** when the lineup lists them and they are an active clan member
+(rev. 6). **Membership is consent:** by joining the clan a player agrees to be placed in any of its
+lineups, so the owner builds lineups from the active members and no player signs anything for it; a
+player who does not want to play leaves the clan. Revisions 4 and 5 also required the player's Clan
+Membership to list the lineup's address, and a listed player who had not done that was only invited.
+Substitutes are active lineup players like the others; the role only says who is expected to play by
+default.
+
+The owner lists only active members (rule 8). A member who leaves the clan stops being an active
+player of all its lineups at once, without a new lineup version; a lineup whose active captains and
+players fall below the mode's team size cannot challenge or be challenged until the owner fills it
+again.
 
 ### Clan Membership (`12150`)
 
-Signed by the player. `content` is empty. Tags: at most one `a` pointing at a Clan (`32150`), any
-number of `a` pointing at Lineups (`32151`) of that clan, and `alt`. An event with no clan `a`
-means "no clan". Leaving a lineup, leaving a clan and switching clans are all done by publishing a
-new version of this event.
+Signed by the player. `content` is empty. Tags: at most one `a` pointing at a Clan (`32150`), and
+`alt`. An event with no clan `a` means "no clan". Leaving a clan and switching clans are done by
+publishing a new version of this event; being a member is the consent to be placed in the clan's
+lineups (rev. 6). Revisions 4 and 5 also listed each accepted lineup with an `a` to it; such tags stay
+valid if they point at lineups of the named clan, and are ignored.
 
 ### Ladder (`32152`)
 
@@ -1331,9 +1364,12 @@ the first rule it fails, in this order.
 5. **Block weight limit.** No winning player has `daily` blocks of this game on that UTC day already.
 6. **Team wins.** A series or board is one block; each winning roster player earns the reward per
    winning player, so the block pays that reward times the winners.
-7. **Not the same anchor subtree.** No winning and losing player whose pinned assertions (`30382`,
-   referenced by their `gate` rows) name the same `anchor`, both with a share of at least `subtree`
-   percent (default 51; `101` switches the rule off).
+7. **Not the same anchor subtree.** The two players (a solo game; the two players of a board) or the
+   two gatekeepers (a series), as in rule 1, do not both have pinned assertions (`30382`, referenced by
+   their `gate` rows) that name the same `anchor` with a share of at least `subtree` percent (default
+   51; `101` switches the rule off). The other roster players of a series are not compared. Revision 5
+   worded this rule for every winning and losing player; revision 6 corrects the wording to what the
+   revision-5 examples and the sample ledger compute.
 8. **Blocks per pairing and season.** Fewer earlier blocks of the same pairing in the season than the
    second value of `pairlimit` (default 3).
 9. **Share cap per game and era.** The rewards of the game's blocks in this era, this one included,
@@ -1608,10 +1644,11 @@ Per kind:
    tags; the author is the owner of that clan and an active member of it (revision 4: the owner or a
    captain); the clan has not ended; `game` and `mode` exist in the league's
    game registry; the number of `player` and `captain` entries is at least the mode's team size;
-   every listed player is listed in the clan. The league treats at most one lineup per
-   (clan, game, mode) as active: the newest valid one.
-9. **12150**: at most one clan reference; every lineup reference belongs to that clan; a newer
-   version is only accepted if its `created_at` is greater than the stored one. Rev. 5: the clan it
+   every listed player is listed in the clan (rev. 6: is an active member of the clan when the lineup is
+   signed). The league treats at most one lineup per (clan, game, mode) as active: the newest valid one.
+9. **12150**: at most one clan reference; every lineup reference belongs to that clan (rev. 6: lineup
+   references are not needed and do not count); a newer version is only accepted if its `created_at`
+   is greater than the stored one. Rev. 5: the clan it
    names has not ended; a version by a clan owner that leaves the clan (no clan, or another clan) is
    accepted only if another active member of the clan is listed as `captain` or no other active
    member remains ([Ownership](#ownership-rev-5)).
@@ -2329,8 +2366,9 @@ carol, dave, erin; round 3 adds trust, frank, sybil1-3; round 4 adds grace, heid
 single-purpose keys; round 5 adds a second admin, the badge key and a wallet node) and published to
 rnostr, strfry and khatru (relay proof, rounds 2 to 5; round 4 also to the league relay). All times are 2026-09-25, UTC. The examples of rounds 1 to 3 are revision 3,
 those of [round 4](#revision-4-season-4-a-queue-game-a-tournament-with-a-mix-team-chat-and-the-prize-pool)
-revision 4, those of [round 5](#revision-5-the-pre-season-the-season-chain-rank-badges-and-a-bounty) revision 5 (see
-the status note at the top).
+revision 4, those of [round 5](#revision-5-the-pre-season-the-season-chain-rank-badges-and-a-bounty) revision 5, those of
+[round 6](#revision-6-a-roster-invitation-and-a-lineup-from-members) revision 6 (see the status note at the
+top).
 
 **Rank tiers re-signed in round 5.** The five ladders of seasons 1 to 3 printed below were signed
 again with the 21 [rank tiers](#rank-tiers-rev-5) instead of five, with `created_at` one second later
@@ -2751,6 +2789,9 @@ Game `chess`, ladders `chess/blitz/season-1` (`300+3`) and `chess/correspondence
   dave, and bob confirms. Attestation on the correspondence ladder: dave 1020, bob 980.
 
 #### Clan Membership (`12150`), erin's current version: clan, Rocket League lineup, chess lineup
+
+A revision-4 membership: from revision 6 on, the two lineup references are ignored and a new version
+carries the clan `a` only (see [Revision 6](#revision-6-a-roster-invitation-and-a-lineup-from-members)).
 
 ```json
 {
@@ -4517,6 +4558,79 @@ provisional again, and the definition keeps Gold I, naming season 5.
 ```
 
 
+### Revision 6: a roster invitation and a lineup from members
+
+Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
+
+- 21:10 heidi founds **Block Builders** [BLD] with her own membership.
+- 21:11 heidi lists grace and ivan in the clan: two invitations into the roster, without lineup, mode or
+  role.
+- 21:12 grace and 21:13 ivan accept, each with a membership that names the clan and nothing else.
+- 21:14 heidi signs the 2v2 lineup from the three active members: heidi captain, grace player, ivan
+  substitute. Neither grace nor ivan signs anything for it.
+
+#### Clan (`32150`), the roster with two invitations
+
+```json
+{
+  "kind": 32150,
+  "id": "ff0ad357996553cfffbc2ac82ffd6a7aa5114fca05d4b8ef245f8894825d3678",
+  "pubkey": "e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1",
+  "created_at": 1790370660,
+  "tags": [
+    ["d", "block-builders"],
+    ["name", "Block Builders"],
+    ["clantag", "BLD"],
+    ["p", "e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1", "", "captain"],
+    ["p", "5ccb330beff1652ff8b69f9478e9c97468c0a194e3bb3efd8f7d97cb1c139a6b", "", "member"],
+    ["p", "9f90338586f9de60a4fa24756c840a02d8cfb7748f02ad32cc80fac75a09fa6e", "", "member"],
+    ["alt", "Esports clan: Block Builders [BLD]"]
+  ],
+  "content": "Rocket League clan of three solo-pool players.",
+  "sig": "bc522f74ee7ec1d15da358ef44118bf1a005d1cc06060bb78ed24f2bd3c299d824f24b42b849ff069fd085e50b79cb9a51210cea608e00072670f1e8b330dc13"
+}
+```
+
+#### Clan Membership (`12150`), grace accepts: the clan only
+
+```json
+{
+  "kind": 12150,
+  "id": "0127f1391cf5473e6431a7415d2f151ee70483668244ddd86ba06506bb20075a",
+  "pubkey": "5ccb330beff1652ff8b69f9478e9c97468c0a194e3bb3efd8f7d97cb1c139a6b",
+  "created_at": 1790370720,
+  "tags": [
+    ["a", "32150:e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1:block-builders", ""],
+    ["alt", "Esports clan membership"]
+  ],
+  "content": "",
+  "sig": "fd955ca5850061dc4f514ba91bdfbdce367b1d3f817a1ff6103d30c77b91932f787228b8ac7711693d1da6495c8d4d39a92e93b064ce559786fd6346276f69fd"
+}
+```
+
+#### Lineup (`32151`) from active members
+
+```json
+{
+  "kind": 32151,
+  "id": "2172b5c618fcf2d5ce4ceb1f5ac7cabea90e3ced91cc1afd0f8adc4dbedefe8f",
+  "pubkey": "e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1",
+  "created_at": 1790370840,
+  "tags": [
+    ["d", "block-builders/rocket-league/2v2"],
+    ["a", "32150:e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1:block-builders", ""],
+    ["game", "rocket-league"],
+    ["mode", "2v2"],
+    ["p", "e0102842c1cffa01a03dba34c07fe88a0907bdb3fc867106629ab8299243d0c1", "", "captain"],
+    ["p", "5ccb330beff1652ff8b69f9478e9c97468c0a194e3bb3efd8f7d97cb1c139a6b", "", "player"],
+    ["p", "9f90338586f9de60a4fa24756c840a02d8cfb7748f02ad32cc80fac75a09fa6e", "", "substitute"],
+    ["alt", "Esports lineup: Block Builders, rocket-league 2v2"]
+  ],
+  "content": "",
+  "sig": "002dd7e8b69b6725efc4e35695958c01bf9a32a5aed16128572c00f6726565f646c15ee54ce4a476c9a84cb0ffdd59c8a2ecfa8dd32c1786a2a68113bbcbfb62"
+}
+```
+
 ## Open points
 
 - **Pomegranate is a custodian of use.** A Google login's key is FROST-sharded 3-of-4 across
@@ -4576,6 +4690,11 @@ provisional again, and the definition keeps Gold I, naming season 5.
   the test bed 6 of 15 pairs at a threshold of 51, two of them not clan mates. The threshold is a
   parameter (`subtree`) and can change during a season; its value should be measured on the real
   anchor list before Block 0 of the Pre-Season.
+- **Join requests by clan link** (rev. 6, planned). A player may ask to join through a clan's link, and a
+  captain confirms. Only the owner signs `32150`, so a captain's confirmation cannot be the listing
+  itself: either the owner's key lists the player later, or the league lets a captain's confirmation
+  stand for it, which needs a rule of its own. A membership (`12150`) signed as the request would leave
+  the player's current clan at once, so the request stays league data until the listing exists.
 - **Admin list history.** Relays keep only the newest admin list; a genesis or a change that names an
   older version needs the league's archive to be checked once the board has changed.
 
