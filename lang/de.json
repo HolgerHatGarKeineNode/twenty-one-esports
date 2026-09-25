@@ -650,5 +650,8 @@
     "win": "Sieg",
     "loss": "Niederlage",
     "pending": "offen",
-    "no Elo": "keine Elo"
+    "no Elo": "keine Elo",
+    "show": "anzeigen",
+    "hide": "ausblenden",
+    "Each player confirmed joining this clan from their own account.": "Jeder Spieler hat den Beitritt mit dem eigenen Konto bestätigt."
 }

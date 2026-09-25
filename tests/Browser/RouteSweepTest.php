@@ -1,7 +1,13 @@
 <?php
 
+use App\Enums\InviteStatus;
+use App\Enums\LineupRole;
 use App\Models\Admin;
+use App\Models\Clan;
+use App\Models\ClanInvite;
+use App\Models\Lineup;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
@@ -44,9 +50,10 @@ beforeEach(function () {
 const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/'];
 
 /**
+ * @param  array<string, string>  $bound  route key per bound parameter, from sweepFixtures()
  * @return list<array{name: string, url: string}>
  */
-function sweepRoutes(): array
+function sweepRoutes(array $bound = []): array
 {
     return collect(Route::getRoutes())
         ->reject(fn (RoutingRoute $route) => $route->isFallback)
@@ -63,24 +70,77 @@ function sweepRoutes(): array
         })
         ->map(fn (RoutingRoute $route) => [
             'name' => $route->getName() ?? $route->uri(),
-            'url' => fillRouteParameters($route),
+            'url' => fillRouteParameters($route, $bound),
         ])
         ->unique('url')
         ->values()
         ->all();
 }
 
+/*
+|--------------------------------------------------------------------------
+| Fixtures for route-model-bound parameters
+|--------------------------------------------------------------------------
+|
+| A bound parameter (`clans/{clan}`) 404s on a made-up value, so each one
+| gets a real row, built for the swept user. Register a new bound parameter
+| here: parameter name => closure(?User $user, array $made): Model. `$user`
+| is the logged-in user of the sweep (null for the guest sweep), `$made` the
+| models of the entries above it, so later fixtures can hang off earlier
+| ones. The URL gets the model's route key (slug, ulid, ...). An unbound
+| parameter keeps the plain `sweep-fixture` value.
+|
+*/
+
 /**
- * Every route left after the exclusions above is a `Route::view()`, a plain
- * redirect, or a full-page Livewire component — none of them read their own
- * URL parameters (P4-P9 have not built the pages that would). So any value
- * is enough, as long as it also satisfies the one `->whereIn()` constraint
- * that exists (`locale`).
+ * @return array<string, Closure(?User, array<string, Model>): Model>
  */
-function fillRouteParameters(RoutingRoute $route): string
+function sweepFixtures(): array
+{
+    return [
+        // Owned by the swept user, so the member sweep can open the captain-only manage page.
+        'clan' => fn (?User $user, array $made): Model => Clan::factory()->create($user === null ? [] : ['owner_id' => $user->id]),
+
+        // An open invite into that clan's 3v3 lineup; the clan owner may view it.
+        'invite' => fn (?User $user, array $made): Model => ClanInvite::query()->create([
+            'clan_id' => $made['clan']->getKey(),
+            'lineup_id' => Lineup::query()->create(['clan_id' => $made['clan']->getKey(), 'game' => 'rocket-league', 'mode' => '3v3'])->id,
+            'inviter_id' => $made['clan']->getAttribute('owner_id'),
+            'invitee_id' => User::factory()->create()->id,
+            'role' => LineupRole::Substitute,
+            'status' => InviteStatus::Pending,
+        ]),
+    ];
+}
+
+/**
+ * Build every registered fixture and return its route key per parameter name.
+ *
+ * @return array<string, string>
+ */
+function buildSweepFixtures(?User $user): array
+{
+    $made = [];
+
+    foreach (sweepFixtures() as $name => $build) {
+        $made[$name] = $build($user, $made);
+    }
+
+    return array_map(fn (Model $model): string => (string) $model->getRouteKey(), $made);
+}
+
+/**
+ * Bound parameters take their fixture's route key; `locale` must satisfy its
+ * `->whereIn()` constraint; every other parameter belongs to a route that
+ * does not read it (placeholders, redirects), so any value is enough.
+ *
+ * @param  array<string, string>  $bound
+ */
+function fillRouteParameters(RoutingRoute $route, array $bound = []): string
 {
     $values = [
         'locale' => config('app.supported_locales')[0] ?? 'en',
+        ...$bound,
     ];
 
     $uri = $route->uri();
@@ -216,14 +276,16 @@ function recordOverflowViolation(array $data, string $label, array &$violations)
 */
 
 test('every route renders without console errors, page errors, bad responses or overflow', function (bool $authenticated) {
-    $routes = sweepRoutes();
-    expect($routes)->not->toBeEmpty();
+    $user = null;
 
     if ($authenticated) {
         $user = User::factory()->create();
         Admin::query()->create(['pubkey' => $user->pubkey]);
         test()->actingAs($user);
     }
+
+    $routes = sweepRoutes(buildSweepFixtures($user));
+    expect($routes)->not->toBeEmpty();
 
     $page = freshSweepPage('/');
     $page->setViewportSize(375, 800);

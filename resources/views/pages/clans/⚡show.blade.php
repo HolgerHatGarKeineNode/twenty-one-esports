@@ -330,5 +330,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         @endif
     </section>
 
-    <x-proof :rows="$this->proof" class="rounded-lg !bg-proof-fill !shadow-[inset_0_0_0_1px_#3B2F5C]" />
+    <x-proof :rows="$this->proof" toggle="show" class="rounded-lg !bg-proof-fill px-1.5 !shadow-[inset_0_0_0_1px_#3B2F5C]">
+        {{ __('Each player confirmed joining this clan from their own account.') }} <a href="{{ route('protocol') }}">{{ __('Open protocol') }}</a>
+    </x-proof>
 </div>
