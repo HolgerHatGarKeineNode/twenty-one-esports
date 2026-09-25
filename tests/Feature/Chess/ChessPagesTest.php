@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\DailyChallenges;
+use Illuminate\Support\Facades\Vite;
 use Livewire\Livewire;
 
 test('every chess page survives a Livewire roundtrip', function (string $page, bool $guest, Closure $params) {
@@ -36,6 +37,9 @@ test('every chess page survives a Livewire roundtrip', function (string $page, b
 ]);
 
 test('every logged-in page is on the online presence channel, guests get no websocket there', function () {
+    // Assert against built assets even while `composer dev` leaves public/hot behind.
+    Vite::useHotFile(storage_path('framework/testing-no-hot'));
+
     $user = User::factory()->create();
 
     $this->actingAs($user)->get(route('clans.index'))->assertOk()
