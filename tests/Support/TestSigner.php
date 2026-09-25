@@ -51,7 +51,10 @@ final class TestSigner
                     .then((r) => { if (!r.ok) throw new Error('stub signer ' + r.status); return r.json(); });
                 window.nostr = {
                     getPublicKey: async () => '__PUBKEY__',
-                    signEvent: (draft) => post('/__test/nostr/__USER__/sign', draft),
+                    // Real NIP-07 extensions (nos2x, Alby) hand the draft to their
+                    // content script via postMessage, i.e. a structured clone: a
+                    // reactive Alpine proxy throws DataCloneError there. Do the same.
+                    signEvent: async (draft) => post('/__test/nostr/__USER__/sign', structuredClone(draft)),
                     nip44: {
                         encrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'encrypt', pubkey, text }).then((r) => r.result),
                         decrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'decrypt', pubkey, text }).then((r) => r.result),

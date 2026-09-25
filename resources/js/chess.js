@@ -168,7 +168,8 @@ async function signQuietly(template, pubkey) {
         const event = JSON.parse(JSON.stringify(await window.nostr.signEvent({
             kind: template.kind,
             created_at: Math.max(template.created_at, Math.floor(Date.now() / 1000)),
-            tags: template.tags,
+            // Plain copy: extensions structured-clone the draft, a proxy throws.
+            tags: JSON.parse(JSON.stringify(template.tags)),
             content: template.content,
         })));
 

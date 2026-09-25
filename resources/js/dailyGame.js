@@ -268,7 +268,10 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
                     return;
                 }
-                const template = this.pending.template;
+                // Plain data, not Alpine's reactive proxy: NIP-07 extensions
+                // (nos2x, Alby) structured-clone the draft via postMessage, and a
+                // proxy throws DataCloneError there.
+                const template = JSON.parse(JSON.stringify(this.pending.template));
                 let event;
                 try {
                     event = JSON.parse(JSON.stringify(await window.nostr.signEvent({
