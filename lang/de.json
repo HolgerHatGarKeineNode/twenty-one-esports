@@ -1027,6 +1027,8 @@
     "That did not work. Please try again.": "Das hat nicht geklappt. Bitte versuch es erneut.",
     "That did not work. The board shows the server's state.": "Das hat nicht geklappt. Das Brett zeigt den Stand des Servers.",
     "That invite is no longer open.": "Diese Einladung ist nicht mehr offen.",
+    "That player is already in another live game, so the invite is closed.": "Diese Person spielt schon eine andere Live-Partie, deshalb ist die Einladung geschlossen.",
+    "You are in a live game. One live game at a time: finish it, then accept the invite.": "Du spielst gerade eine Live-Partie. Es geht immer nur eine: Beende sie, dann nimm die Einladung an.",
     "That move is not legal here.": "Dieser Zug ist hier nicht erlaubt.",
     "The blitz ladder opens at Block 0. Until then games are casual.": "Die Blitz-Ladder öffnet mit Block 0. Bis dahin sind Partien casual.",
     "the blitz queue paired you, the game starts": "die Blitz-Warteschlange hat dich gepaart, die Partie beginnt",

@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\DB;
  * the server does not ask Reverb who is online, so an invite to someone who
  * just left simply expires unanswered (esports.chess.invite_seconds).
  *
- * One open invite per inviter: a new one withdraws the previous.
+ * One open invite per inviter: a new one withdraws the previous. A live
+ * game that starts for a player withdraws all their open invites, sent and
+ * received (ChessGameService::start).
  */
 final class ChessInvites
 {
@@ -61,26 +63,56 @@ final class ChessInvites
     }
 
     /**
+     * One live game at a time (P5d): accepting is refused while either side
+     * plays a live game. An inviter who is playing cannot start this game any
+     * more, so the invite is withdrawn (`opponent_playing`); an invitee who is
+     * playing keeps it and may accept once the game is over, while it is
+     * still open (`accept_while_playing`).
+     *
      * @throws ChessRuleViolation
      */
     public function accept(ChessInvite $invite, User $invitee): ChessGame
     {
-        return DB::transaction(function () use ($invite, $invitee): ChessGame {
+        $refused = null;
+
+        $game = DB::transaction(function () use ($invite, $invitee, &$refused): ?ChessGame {
             $invite = ChessInvite::query()->lockForUpdate()->findOrFail($invite->id);
 
             if ($invite->invitee_id !== $invitee->id || ! $invite->isOpen()) {
                 throw new ChessRuleViolation('invite_closed');
             }
 
+            $live = $invite->mode !== ChessGame::CORRESPONDENCE;
+
+            if ($live && $this->games->activeGameOf($invite->inviter) !== null) {
+                $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
+                $this->announce($invite);
+                $refused = 'opponent_playing';
+
+                return null;
+            }
+
+            if ($live && $this->games->activeGameOf($invitee) !== null) {
+                $refused = 'accept_while_playing';
+
+                return null;
+            }
+
+            // Accepted before the game starts, so the start's withdrawal of
+            // both players' open invites leaves this one alone.
+            $invite->forceFill(['status' => ChessInviteStatus::Accepted])->save();
+
             [$white, $black] = random_int(0, 1) === 0 ? [$invite->inviter, $invitee] : [$invitee, $invite->inviter];
             $game = $this->games->start($white, $black, $invite->mode);
 
-            $invite->forceFill(['status' => ChessInviteStatus::Accepted, 'chess_game_id' => $game->id])->save();
+            $invite->forceFill(['chess_game_id' => $game->id])->save();
             $this->announce($invite);
             $this->notifications->inviteAccepted($invite, $game);
 
             return $game;
         });
+
+        return $game ?? throw new ChessRuleViolation((string) $refused);
     }
 
     /**

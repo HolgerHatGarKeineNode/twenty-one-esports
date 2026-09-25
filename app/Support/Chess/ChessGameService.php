@@ -4,11 +4,14 @@ namespace App\Support\Chess;
 
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\ChessInviteStatus;
 use App\Events\ChessGameStarted;
 use App\Events\ChessGameUpdated;
+use App\Events\ChessInviteChanged;
 use App\Games\GameRegistry;
 use App\Jobs\CheckChessClock;
 use App\Models\ChessGame;
+use App\Models\ChessInvite;
 use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
 use App\Models\User;
@@ -86,8 +89,25 @@ final class ChessGameService
                 return $game;
             }
 
-            // A player who starts a game (invite, rematch) stops searching.
+            // One live game at a time (P5d): a player who starts one (queue,
+            // invite, rematch) stops searching, and their other open invites,
+            // sent and received, are withdrawn. The other side's lobby hears it.
             ChessQueueEntry::query()->whereIn('user_id', [$white->id, $black->id])->delete();
+
+            $open = ChessInvite::query()
+                ->where('status', ChessInviteStatus::Pending)
+                ->where('mode', '!=', ChessGame::CORRESPONDENCE)
+                ->where('expires_at', '>', now())
+                ->where(fn ($query) => $query
+                    ->whereIn('inviter_id', [$white->id, $black->id])
+                    ->orWhereIn('invitee_id', [$white->id, $black->id]))
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($open as $invite) {
+                $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
+                Broadcasts::send(new ChessInviteChanged($invite->id, $invite->status->value, $invite->inviter_id, $invite->invitee_id));
+            }
 
             if ($rematchOf !== null) {
                 $rematchOf->forceFill(['rematch_id' => $game->id, 'rematch_offer' => null, 'version' => $rematchOf->version + 1])->save();

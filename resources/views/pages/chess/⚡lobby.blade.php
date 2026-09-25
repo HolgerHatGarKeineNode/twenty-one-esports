@@ -215,6 +215,8 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
             $this->error = match ($violation->reason) {
                 'invite_closed' => __('That invite is no longer open.'),
+                'opponent_playing' => __('That player is already in another live game, so the invite is closed.'),
+                'accept_while_playing' => __('You are in a live game. One live game at a time: finish it, then accept the invite.'),
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
                 'rated_not_open' => __('Rated games start at Block 0.'),

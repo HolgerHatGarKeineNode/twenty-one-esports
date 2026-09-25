@@ -8,6 +8,7 @@ use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
@@ -158,6 +159,23 @@ test('daily games never block live play', function () {
 
     expect($blitz->mode)->toBe('blitz')
         ->and(app(ChessGameService::class)->activeGameOf($bert)?->id)->toBe($blitz->id);
+});
+
+test('daily games are exempt from one live game at a time: several at once, beside a live game, and no invite or queue entry is touched', function () {
+    [$anna, , $bert] = dailyPlayers();
+    $carl = User::factory()->create();
+    $live = ChessGame::factory()->create(['white_id' => $anna->id]);
+    $invite = app(ChessInvites::class)->invite($carl, $anna);
+    app(ChessQueue::class)->join($carl);
+    $games = app(ChessGameService::class);
+
+    $one = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    $two = $games->start($carl, $anna, ChessGame::CORRESPONDENCE);
+
+    expect(ChessGame::query()->daily()->playedBy($anna)->where('status', ChessGameStatus::Active)->pluck('id')->all())->toEqualCanonicalizing([$one->id, $two->id])
+        ->and($games->activeGameOf($anna)?->id)->toBe($live->id)
+        ->and($invite->refresh()->status)->toBe(ChessInviteStatus::Pending)
+        ->and(app(ChessQueue::class)->entryOf($carl))->not->toBeNull();
 });
 
 test('the list of daily games names each game\'s latest move', function () {
