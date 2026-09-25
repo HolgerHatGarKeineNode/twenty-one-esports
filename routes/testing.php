@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\TestSigner;
 
@@ -27,6 +29,18 @@ Route::prefix('__test')->name('testing.')->group(function () {
 
         throw new RuntimeException('Positive control: injected 500.');
     })->name('server-error');
+
+    // Logs this browser context in as the given user, then goes to `to`. Two
+    // contexts, two users: actingAs() would make every request the same user
+    // (tests/Browser/BlitzGameTest.php). The real login flow has its own test.
+    Route::get('login/{user}', function (Request $request, User $user) {
+        abort_unless(app()->environment('testing'), 404);
+
+        Auth::login($user);
+        $request->session()->regenerate();
+
+        return redirect((string) $request->query('to', '/'));
+    })->name('login');
 
     // Signs whatever event draft the browser's stubbed window.nostr posts,
     // using the same signer tests/Feature/Auth/NostrLoginTest.php trusts

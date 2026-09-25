@@ -3,6 +3,7 @@
 use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
 use App\Models\Admin;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\Lineup;
@@ -110,6 +111,9 @@ function sweepFixtures(): array
             'role' => LineupRole::Substitute,
             'status' => InviteStatus::Pending,
         ]),
+
+        // A live blitz game; the member sweep plays White in it, so the board is playable.
+        'game' => fn (?User $user, array $made): Model => ChessGame::factory()->create($user === null ? [] : ['white_id' => $user->id]),
     ];
 }
 
