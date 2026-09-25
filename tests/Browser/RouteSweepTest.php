@@ -9,6 +9,7 @@ use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\DisputeEvidence;
 use App\Models\Lineup;
+use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
@@ -186,6 +187,35 @@ function sweepExtraPages(?User $user): array
     return [
         ['name' => 'games.show (daily)', 'url' => route('games.show', $daily, false)],
         ['name' => 'games.show (daily, lost on time)', 'url' => route('games.show', $lost, false)],
+        ...sweepLadderPages($user),
+    ];
+}
+
+/**
+ * The ladder with rows (P7b): casual ratings for chess blitz (players) and
+ * Rocket League 3v3 (lineups), the swept user among them. The bare route
+ * shows the rated Pre-Season state.
+ *
+ * @return list<array{name: string, url: string}>
+ */
+function sweepLadderPages(?User $user): array
+{
+    $players = [...User::factory()->count(4)->create()->all(), ...($user === null ? [] : [$user])];
+
+    foreach ($players as $index => $player) {
+        Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id,
+            'user_id' => $player->id, 'rating' => 960 + 45 * $index, 'results' => 2 + $index, 'wins' => 1 + $index, 'draws' => 1]);
+    }
+
+    foreach (range(1, 3) as $index) {
+        $lineup = Lineup::factory()->ready()->create();
+        Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'rocket-league', 'mode' => '3v3', 'subject' => 'lineup:'.$lineup->id,
+            'lineup_id' => $lineup->id, 'rating' => 1040 - 20 * $index, 'results' => 3 * $index, 'wins' => 2 * $index, 'losses' => $index]);
+    }
+
+    return [
+        ['name' => 'ladder.show (chess casual)', 'url' => route('ladder.show', ['chess', 'blitz'], false).'?pool=casual'],
+        ['name' => 'ladder.show (rocket league casual)', 'url' => route('ladder.show', ['rocket-league', '3v3'], false).'?pool=casual'],
     ];
 }
 
@@ -216,6 +246,15 @@ function buildSweepFixtures(?User $user): array
 }
 
 /**
+ * Parameters that are neither a model nor free text: the ladder's game and
+ * mode must name a registered mode (its `game` is a slug, not the chess game
+ * fixture that shares the parameter name).
+ *
+ * @var array<string, array<string, string>>
+ */
+const SWEEP_ROUTE_PARAMETERS = ['ladder.show' => ['game' => 'chess', 'mode' => 'blitz']];
+
+/**
  * Bound parameters take their fixture's route key; `locale` and the invite
  * card's `format` must satisfy their constraints; every other parameter belongs to a route that
  * does not read it (placeholders, redirects), so any value is enough.
@@ -228,6 +267,7 @@ function fillRouteParameters(RoutingRoute $route, array $bound = []): string
         'locale' => config('app.supported_locales')[0] ?? 'en',
         'format' => 'wide',
         ...$bound,
+        ...(SWEEP_ROUTE_PARAMETERS[$route->getName()] ?? []),
     ];
 
     $uri = $route->uri();

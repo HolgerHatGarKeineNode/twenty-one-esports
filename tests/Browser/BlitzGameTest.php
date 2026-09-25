@@ -212,6 +212,17 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and($game->result)->toBe('0-1')
         ->and($white->evaluate('() => window.__errors'))->toBe([])
         ->and($black->evaluate('() => window.__errors'))->toBe([]);
+
+    // Casual Elo (P7b): both players open the finished game and each page shows
+    // the loser (White) at 980, −20 and the winner (Black) at 1020, +20.
+    $ratingText = '() => ["w", "b"].map((c) => document.querySelector(`[data-test=done-rating-${c}]`)?.innerText.replace(/\s+/g, " ").trim())';
+    foreach ([$white, $black] as $page) {
+        $page->reload();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=done-rating-b]") !== null', 10_000);
+
+        expect($page->evaluate($ratingText))->toBe(['White · Casual 980 −20 · provisional', 'Black · Casual 1020 +20 · provisional'])
+            ->and($page->evaluate('() => window.__errors'))->toBe([]);
+    }
 });
 
 /**
