@@ -26,15 +26,15 @@ return [
     |--------------------------------------------------------------------------
     |
     | Published as the content of the kind-0 event. Empty values are left out
-    | of the JSON. The texts are placeholders until the final copy lands.
+    | of the JSON.
     |
     */
 
     'profile' => [
-        'name' => 'TWENTY ONE Esports',
+        'name' => 'twentyonesports',
         'display_name' => 'TWENTY ONE Esports',
-        'about' => 'Esports by the EINUNDZWANZIG community.',
-        'picture' => 'https://esports.einundzwanzig.space/images/twentyone/avatar.png',
+        'about' => "The esports arm of the German-speaking Bitcoin community EINUNDZWANZIG. A 1v1/2v2 ladder platform for Bitcoiners is in development at esports.einundzwanzig.space. This channel streams 24/7. Login via Nostr.\n\nDer Esports-Zweig der deutschsprachigen Bitcoin-Community EINUNDZWANZIG.",
+        'picture' => 'https://esports.einundzwanzig.space/images/twentyone/avatar-1024.png',
         'banner' => 'https://esports.einundzwanzig.space/images/twentyone/banner.png',
         'website' => 'https://esports.einundzwanzig.space',
         'nip05' => 'esports@esports.einundzwanzig.space',
