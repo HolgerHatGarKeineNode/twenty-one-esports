@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\TwentyOne\PublishResult;
 use App\Support\TwentyOne\RelayPublisher;
 
 /**
@@ -49,4 +50,50 @@ test('a publish in flight stops as soon as it is aborted', function () {
 
     expect(microtime(true) - $startedAt)->toBeLessThan(1.0)
         ->and(collect($results)->pluck('message')->unique()->all())->toBe(['aborted']);
+});
+
+/**
+ * Publish once against tests/Support/fake-relay.php running the scenario.
+ */
+function publishToFakeRelay(string $scenario): PublishResult
+{
+    $process = proc_open([PHP_BINARY, __DIR__.'/../Support/fake-relay.php', $scenario], [1 => ['pipe', 'w']], $pipes);
+    $port = (int) fgets($pipes[1]);
+    $relay = 'ws://127.0.0.1:'.$port;
+
+    try {
+        return (new RelayPublisher)->publish(signedTestEvent(), [$relay], 5.0)[$relay];
+    } finally {
+        proc_terminate($process);
+        proc_close($process);
+    }
+}
+
+test('relay frames with 16-bit and 64-bit lengths arrive intact', function (string $scenario, int $length) {
+    $result = publishToFakeRelay($scenario);
+
+    expect($result->accepted)->toBeFalse()
+        ->and(strlen($result->message))->toBe($length)
+        ->and($result->message)->toStartWith("reason:{$length}:");
+})->with([
+    '16-bit length' => ['ok16', 300],
+    '64-bit length' => ['ok64', 70000],
+]);
+
+test('a relay answer split across many reads and frames is reassembled', function (string $scenario, int $length) {
+    expect(publishToFakeRelay($scenario)->message)->toBe(str_pad("reason:{$length}:", $length, 'x'));
+})->with([
+    'dribbled in 7-byte writes, after a long NOTICE' => ['split', 400],
+    'one message in three continuation frames' => ['continuation', 500],
+]);
+
+test('a relay ping is answered with a pong carrying the same payload', function () {
+    expect(publishToFakeRelay('ping')->message)->toBe('pong received');
+});
+
+test('a relay close frame fails the publish with its reason', function () {
+    $result = publishToFakeRelay('close');
+
+    expect($result->accepted)->toBeFalse()
+        ->and($result->message)->toBe('relay closed the connection: policy: '.str_pad('reason:100:', 100, 'x'));
 });
