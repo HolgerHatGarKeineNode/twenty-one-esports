@@ -14,7 +14,7 @@ use Tests\TestCase;
 |
 */
 
-pest()->tia()->defaultBranch('main');
+pest()->tia()->defaultBranch('master');
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
