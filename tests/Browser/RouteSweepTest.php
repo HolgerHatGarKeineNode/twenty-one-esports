@@ -48,11 +48,12 @@ beforeEach(function () {
  * config-driven, hence the "starts with" check, not an exact route name),
  * the storage disk, the broadcasting auth endpoint (JSON, not a page), and
  * this app's own testing-only fixtures below (the positive-control tests
- * visit those directly; sweeping them would always fail on purpose).
+ * visit those directly; sweeping them would always fail on purpose). Horizon
+ * is a vendor dashboard; its admin gate is covered in tests/Feature/AdminTest.
  *
  * @var list<string>
  */
-const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/'];
+const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon'];
 
 /**
  * @param  array<string, string>  $bound  route key per bound parameter, from sweepFixtures()

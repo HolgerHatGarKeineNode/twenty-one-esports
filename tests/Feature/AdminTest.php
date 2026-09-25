@@ -63,3 +63,12 @@ test('the admin page refuses a key that is not a public key', function () {
 
     expect(Admin::query()->count())->toBe(1);
 });
+
+test('the Horizon dashboard is for league admins only', function () {
+    $this->get('/horizon')->assertForbidden();
+    $this->actingAs(User::factory()->create())->get('/horizon')->assertForbidden();
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $this->actingAs($admin)->get('/horizon')->assertOk();
+});

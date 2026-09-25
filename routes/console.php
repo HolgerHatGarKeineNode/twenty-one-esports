@@ -185,3 +185,8 @@ Artisan::command('series:expire-challenges', function (SeriesService $series) {
 })->purpose('Expire series challenges nobody answered in time');
 
 Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping();
+
+/*
+ * Horizon's metrics dashboard stays empty without regular snapshots.
+ */
+Schedule::command('horizon:snapshot')->everyFiveMinutes();
