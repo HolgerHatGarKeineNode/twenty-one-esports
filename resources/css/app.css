@@ -1,0 +1,818 @@
+@import 'tailwindcss';
+@import '../../vendor/livewire/flux/dist/flux.css';
+
+@source '../views';
+@source '../../app/Support';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
+@source '../../vendor/livewire/flux/stubs/**/*.blade.php';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * TWENTY ONE design tokens, taken 1:1 from the "B2 Mempool" screens
+ * (Main.dc.html is the style source of truth, BRIEF.md the token list).
+ * Dark is the only designed mode, so these values are the defaults.
+ */
+@theme {
+    /* Type: Unbounded for display and numbers-as-display, JetBrains Mono for everything else. */
+    --font-display: var(--font-face-display, 'Unbounded'), sans-serif;
+    --font-mono: var(--font-face-mono, 'JetBrains Mono'), ui-monospace, monospace;
+    --font-sans: var(--font-face-mono, 'JetBrains Mono'), ui-monospace, monospace;
+
+    /* Surfaces */
+    --color-ground: #0A0A0B;
+    --color-bar: #111114;
+    --color-card: #121215;
+    --color-row-hover: #17171B;
+    --color-raised: #1E1E24;
+    --color-well: #1A1A1E;
+
+    /* Lines */
+    --color-hairline: #1E1E22;
+    --color-line: #2A2A30;
+    --color-dash: #3A3A42;
+    --color-edge: #63636A;
+    --color-divider: #6B6B70;
+
+    /* Text */
+    --color-ink: #FFFFFF;
+    --color-ink-2: #ADADB0;
+    --color-ink-3: #8B8B90;
+
+    /* Brand orange; text and icons ON orange are always on-btc */
+    --color-btc: #F7931A;
+    --color-btc-hi: #F9B25F;
+    --color-btc-deep: #B9640A;
+    --color-on-btc: #17120A;
+    --color-btc-tint: #2A2016;
+    --color-btc-chip: #1E1A12;
+    --color-btc-ring: #3A2A12;
+    --color-btc-press: #2A1F0E;
+
+    /* Proof (violet stays inside Proof blocks only) */
+    --color-proof: #A78BFA;
+    --color-proof-fill: #15131D;
+    --color-proof-ring: #3B2F5C;
+
+    /* Signals: never colour alone, always with text or icon */
+    --color-bolt: #FACC15;
+    --color-win: #4ADE80;
+    --color-win-tint: #111A14;
+    --color-win-ring: #1F5A34;
+    --color-loss: #F87171;
+    --color-loss-tint: #221213;
+    --color-toast-challenge: #17140F;
+    --color-toast-neutral: #14131A;
+
+    /* Games: colour nuance plus logo, never colour alone */
+    --color-chess: #22D3EE;
+    --color-chess-2: #0D9488;
+    --color-chess-deep: #0E7490;
+    --color-chess-deep-2: #134E4A;
+    --color-rl: #F97316;
+    --color-rl-2: #EC4899;
+    --color-rl-deep: #C2410C;
+    --color-rl-deep-2: #9D174D;
+
+    /* Flux accent mapped onto the brand orange */
+    --color-accent: #F7931A;
+    --color-accent-content: #F7931A;
+    --color-accent-foreground: #17120A;
+
+    /* Flux draws its dark surfaces from zinc: map zinc onto the TWENTY ONE ramp */
+    --color-zinc-50: #FAFAFA;
+    --color-zinc-100: #F5F5F5;
+    --color-zinc-200: #E5E5E5;
+    --color-zinc-300: #ADADB0;
+    --color-zinc-400: #8B8B90;
+    --color-zinc-500: #6B6B70;
+    --color-zinc-600: #3A3A42;
+    --color-zinc-700: #2A2A30;
+    --color-zinc-800: #17171B;
+    --color-zinc-900: #121215;
+    --color-zinc-950: #0A0A0B;
+
+    /* Radii: 8 card, 6 control, 4 tag, 2 chip */
+    --radius-card: 8px;
+    --radius-control: 6px;
+    --radius-tag: 4px;
+
+    /* Depth: rings instead of drop shadows, one glow for "yours" and "up next" */
+    --shadow-ring: inset 0 0 0 1px #2A2A30;
+    --shadow-ring-hairline: inset 0 0 0 1px #1E1E22;
+    --shadow-ring-btc: inset 0 0 0 1px #3A2A12;
+    --shadow-ring-win: inset 0 0 0 1px #1F5A34;
+    --shadow-glow-btc: 0 0 0 8px rgba(247, 147, 26, 0.14);
+    --shadow-glow-win: 0 0 48px rgba(74, 222, 128, 0.12);
+
+    /* Motion */
+    --ease-snap: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --ease-pop: cubic-bezier(0.2, 0.9, 0.3, 1.1);
+    --animate-live: live 1.4s ease-in-out infinite;
+    --animate-spin-slow: spin 1s linear infinite;
+    --animate-drop-in: drop-in 0.25s ease-out both;
+    --animate-fill: fill 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    --animate-breathe: breathe 2.6s ease-in-out infinite;
+
+    @keyframes live {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+    }
+
+    @keyframes drop-in {
+        from { transform: translateY(-14px); opacity: 0; }
+        to { transform: none; opacity: 1; }
+    }
+
+    @keyframes fill {
+        from { width: 0; }
+    }
+
+    @keyframes breathe {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(247, 147, 26, 0); }
+        50% { box-shadow: 0 0 0 8px rgba(247, 147, 26, 0.14); }
+    }
+}
+
+/*
+ * Rank tokens are read through var() in Blade style attributes, where Tailwind
+ * does not see them, so they are emitted unconditionally (`static`).
+ */
+@theme static {
+    /*
+     * Ranks: 7 tiers x 3 levels, palette binding per FIXPASS.md section 5
+     * (CEO, 2026-09-25). Champion is fuchsia because violet stays with Proof;
+     * Grand Champion sits close to loss red, so a rank never appears without its name.
+     */
+    --color-rank-bronze: #E5A06B;
+    --color-rank-silver: #ADADB0;
+    --color-rank-gold: #FACC15;
+    --color-rank-platinum: #5EEAD4;
+    --color-rank-diamond: #60A5FA;
+    --color-rank-champion: #E879F9;
+    --color-rank-grand-champion: #F43F5E;
+    --color-rank-provisional: #ADADB0;
+}
+
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-line, currentColor);
+    }
+
+    html {
+        color-scheme: dark;
+        background: var(--color-ground);
+    }
+
+    body {
+        background: var(--color-ground);
+        color: var(--color-ink);
+        font-family: var(--font-mono);
+    }
+
+    /* Same specificity as Preflight's `a { color: inherit }`, declared later, so it wins; utilities still override. */
+    a {
+        color: var(--color-btc);
+        text-decoration: none;
+    }
+
+    a:hover {
+        color: var(--color-btc-hi);
+    }
+
+    :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+        outline: 2px solid var(--color-btc-hi);
+        outline-offset: 2px;
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+
+    summary {
+        list-style: none;
+    }
+
+    summary::-webkit-details-marker {
+        display: none;
+    }
+}
+
+[data-flux-field]:not(ui-radio, ui-checkbox) {
+    @apply grid gap-2;
+}
+
+[data-flux-label] {
+    @apply !mb-0 !leading-tight;
+}
+
+input:focus[data-flux-control],
+textarea:focus[data-flux-control],
+select:focus[data-flux-control] {
+    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+}
+
+/*
+ * Design vocabulary that utilities cannot express: 3D cubes, the block strip,
+ * skeleton shimmer, the loading cubes and the nonce roller.
+ */
+@layer components {
+    .cube {
+        position: relative;
+    }
+
+    .cube::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: -16px;
+        width: 100%;
+        height: 16px;
+        background: inherit;
+        filter: brightness(1.3);
+        transform: skewX(-45deg);
+        transform-origin: bottom left;
+    }
+
+    .cube::after {
+        content: "";
+        position: absolute;
+        left: 100%;
+        top: 0;
+        width: 16px;
+        height: 100%;
+        background: inherit;
+        filter: brightness(0.62);
+        transform: skewY(-45deg);
+        transform-origin: top left;
+    }
+
+    .cube-sm::before {
+        top: -12px;
+        height: 12px;
+    }
+
+    .cube-sm::after {
+        width: 12px;
+    }
+
+    .tr:hover {
+        background: var(--color-row-hover);
+    }
+
+    .btn-p:hover {
+        background: var(--color-btc-hi);
+        color: var(--color-on-btc);
+    }
+
+    .btn-s:hover {
+        background: var(--color-raised);
+        color: var(--color-ink);
+    }
+
+    .btn-w:hover {
+        background: #222228;
+        color: var(--color-ink);
+    }
+
+    /* Skeleton shimmer (States.dc.html, "Table loading") */
+    .sk {
+        border-radius: 4px;
+        background: linear-gradient(90deg, #17171B 0, #26262C 120px, #17171B 240px);
+        background-size: 480px 100%;
+        animation: sk-shimmer 1.4s linear infinite;
+    }
+
+    /* Loading screen (States.dc.html, "Loading") */
+    .mine {
+        animation: mine-drop 3.2s var(--ease-pop) infinite both;
+    }
+
+    .roll {
+        display: block;
+        animation: nonce-roll 1.6s steps(10) infinite;
+    }
+
+    /* Block strip (BlockStrip.dc.html, approved 2026-09-25), kept verbatim */
+    .bs {
+        --b: 120px;
+        --t: 24px;
+        --s: 20px;
+        --gap: 20px;
+        --div: 48px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        font-family: var(--font-mono);
+    }
+
+    .bs {
+        padding-top: 32px;
+    }
+
+    .bs-pad,
+    .bs-legend-wrap {
+        padding-inline: 48px;
+    }
+
+    .bs--sm {
+        --b: 100px;
+        --t: 20px;
+        --s: 16px;
+        --gap: 16px;
+        --div: 32px;
+    }
+
+    .bs-scroll {
+        position: relative;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+    }
+
+    .bs-row {
+        display: flex;
+        align-items: flex-start;
+        width: max-content;
+    }
+
+    .bs-grp {
+        display: flex;
+        gap: var(--gap);
+    }
+
+    .bs-col {
+        flex-shrink: 0;
+        width: calc(var(--s) + var(--b));
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+    }
+
+    .bs-h {
+        box-sizing: border-box;
+        width: var(--b);
+        height: 24px;
+        margin-bottom: calc(var(--t) + 8px);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 14px;
+        line-height: 24px;
+        color: var(--color-btc);
+    }
+
+    .bs-h--next {
+        color: var(--color-ink-2);
+    }
+
+    .bs-h > .bs-num {
+        grid-column: 2;
+    }
+
+    .bs-h > .bs-tag {
+        grid-column: 3;
+        justify-self: start;
+        margin-left: 8px;
+    }
+
+    .bs-tag {
+        box-sizing: border-box;
+        white-space: nowrap;
+        height: 20px;
+        padding: 0 6px;
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--color-edge);
+        border-radius: 4px;
+        font-family: var(--font-mono);
+        font-weight: 500;
+        font-size: 11px;
+        color: var(--color-ink-2);
+    }
+
+    a.bs-cube {
+        position: relative;
+        box-sizing: border-box;
+        width: var(--b);
+        height: var(--b);
+        padding: 12px;
+        display: grid;
+        grid-template-rows: 16px minmax(0, 1fr) 16px 16px;
+        row-gap: 4px;
+        font-size: 11px;
+        line-height: 16px;
+        text-align: left;
+        text-decoration: none;
+        --top: #1E1E24;
+        --side: #16161A;
+    }
+
+    .bs--sm a.bs-cube {
+        padding: 8px 6px;
+        row-gap: 2px;
+    }
+
+    .bs-cube::before {
+        content: "";
+        position: absolute;
+        left: calc(var(--s) * -1);
+        top: calc(var(--t) * -1);
+        width: var(--b);
+        height: var(--t);
+        background: var(--top);
+        transform: skewX(40deg);
+        transform-origin: top;
+        pointer-events: none;
+    }
+
+    .bs-cube::after {
+        content: "";
+        position: absolute;
+        left: calc(var(--s) * -1);
+        top: calc(var(--t) * -0.5);
+        width: var(--s);
+        height: var(--b);
+        background: var(--side);
+        transform: skewY(50deg);
+        transform-origin: top;
+        pointer-events: none;
+    }
+
+    .bs-cube > span {
+        position: relative;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .bs-r1 {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 700;
+    }
+
+    .bs-logo {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+        display: block;
+    }
+
+    .bs-slot {
+        box-sizing: border-box;
+        border: 1px dashed currentColor;
+        border-radius: 2px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 7px;
+        line-height: 1;
+        font-weight: 700;
+        letter-spacing: 0;
+    }
+
+    .bs-score {
+        align-self: center;
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 22px;
+        line-height: 28px;
+    }
+
+    .bs-score--word {
+        font-size: 16px;
+    }
+
+    .bs--sm .bs-score {
+        font-size: 18px;
+        line-height: 24px;
+    }
+
+    .bs--sm .bs-score--word {
+        font-size: 14px;
+    }
+
+    .bs-who {
+        font-weight: 700;
+    }
+
+    .bs-when {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .bs-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--color-win);
+        flex-shrink: 0;
+    }
+
+    .bs-cap {
+        position: relative;
+        box-sizing: border-box;
+        width: var(--b);
+        height: 44px;
+        padding-top: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--color-ink-2);
+    }
+
+    .bs-cap > span {
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .bs-div {
+        flex-shrink: 0;
+        width: 2px;
+        margin: 0 var(--div);
+        height: calc(24px + 8px + var(--t) + var(--b));
+        background-image: repeating-linear-gradient(180deg, var(--color-divider) 0 6px, transparent 6px 12px);
+    }
+
+    /* finished: full gradient, dark text (>= 4.5:1 at both ends) */
+    a.bs-cube.is-fin {
+        color: var(--color-on-btc);
+    }
+
+    a.bs-cube.is-fin.g-chess {
+        background: linear-gradient(180deg, var(--color-chess), var(--color-chess-2));
+        --top: #67E8F9;
+        --side: linear-gradient(180deg, #0E7490, #115E59);
+    }
+
+    a.bs-cube.is-fin.g-rl {
+        background: linear-gradient(180deg, var(--color-rl), var(--color-rl-2));
+        --top: #FDBA74;
+        --side: linear-gradient(180deg, #C2410C, #9D174D);
+    }
+
+    /* live: dark block, deep game gradient rises from the bottom to --lvl, white text */
+    a.bs-cube.is-live {
+        background: var(--color-card);
+        color: var(--color-ink);
+        animation: bs-rise 1.2s var(--ease-snap) both;
+    }
+
+    .bs-cube > .bs-fill {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: var(--lvl);
+        animation: bs-surf 2s ease-in-out infinite;
+    }
+
+    a.bs-cube.is-live.g-chess .bs-fill {
+        background: linear-gradient(180deg, var(--color-chess-deep), var(--color-chess-deep-2));
+    }
+
+    a.bs-cube.is-live.g-chess {
+        --side: linear-gradient(0deg, #0B4A57 var(--lvl), #16161A var(--lvl));
+    }
+
+    a.bs-cube.is-live.g-rl .bs-fill {
+        background: linear-gradient(180deg, var(--color-rl-deep), var(--color-rl-deep-2));
+    }
+
+    a.bs-cube.is-live.g-rl {
+        --side: linear-gradient(0deg, #6B1035 var(--lvl), #16161A var(--lvl));
+    }
+
+    /* scheduled: hollow block, game-coloured edge that breathes */
+    a.bs-cube.is-next {
+        background: var(--color-ground);
+        color: var(--color-ink);
+        box-shadow: inset 0 0 0 2px var(--edge);
+        animation: bs-glow 2.4s ease-in-out infinite;
+    }
+
+    .bs-cube.is-next::before,
+    .bs-cube.is-next::after {
+        box-shadow: inset 0 0 0 2px var(--edge);
+    }
+
+    a.bs-cube.is-next.g-chess {
+        --edge: #22D3EE;
+        --glow: rgba(34, 211, 238, 0.45);
+        --top: rgba(34, 211, 238, 0.16);
+        --side: rgba(13, 148, 136, 0.22);
+    }
+
+    a.bs-cube.is-next.g-rl {
+        --edge: #F97316;
+        --glow: rgba(249, 115, 22, 0.5);
+        --top: rgba(249, 115, 22, 0.16);
+        --side: rgba(236, 72, 153, 0.22);
+    }
+
+    /* casual: same family, desaturated; the label row carries the word */
+    a.bs-cube.is-casual {
+        filter: saturate(0.3);
+    }
+
+    a.bs-cube:hover {
+        filter: brightness(1.1);
+    }
+
+    a.bs-cube.is-casual:hover {
+        filter: saturate(0.3) brightness(1.1);
+    }
+
+    /* game pages: the page's game gets a bar under its blocks, nothing is hidden */
+    .bs--focus-chess .bs-cube.g-chess + .bs-cap::before,
+    .bs--focus-rl .bs-cube.g-rl + .bs-cap::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 4px;
+        height: 3px;
+        border-radius: 2px;
+    }
+
+    .bs--focus-chess .bs-cube.g-chess + .bs-cap::before {
+        background: var(--color-chess);
+    }
+
+    .bs--focus-rl .bs-cube.g-rl + .bs-cap::before {
+        background: var(--color-rl);
+    }
+
+    /* one orchestrated moment: the finished row slides left one slot, the newest block arrives from the divider */
+    .bs-grp--fin > .bs-col {
+        animation: bs-shift 0.7s var(--ease-snap) both;
+    }
+
+    .bs-grp--fin > .bs-col.is-newest {
+        animation-name: bs-in;
+    }
+
+    .bs-legend {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 8px 24px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--color-ink-2);
+    }
+
+    .bs-legend--start {
+        justify-content: flex-start;
+    }
+
+    .bs--sm .bs-sep {
+        display: none;
+    }
+
+    .bs-key {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .bs-sep {
+        width: 1px;
+        height: 16px;
+        background: var(--color-line);
+    }
+
+    .bs-chip {
+        box-sizing: border-box;
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+}
+
+/* Mobile strip (MobileHome.dc.html): 100 px cubes, 16 px apart, scrolls sideways. */
+.bs--sm {
+    gap: 16px;
+    padding-block: 16px;
+}
+
+.bs--sm .bs-pad,
+.bs--sm .bs-legend-wrap {
+    padding-inline: 16px;
+}
+
+.bs--sm .bs-legend {
+    justify-content: flex-start;
+}
+
+@media (max-width: 1023.98px) {
+    .bs--auto {
+        --b: 100px;
+        --t: 20px;
+        --s: 16px;
+        --gap: 16px;
+        --div: 32px;
+        gap: 16px;
+        padding-block: 16px;
+    }
+
+    .bs--auto .bs-pad,
+    .bs--auto .bs-legend-wrap {
+        padding-inline: 16px;
+    }
+
+    .bs--auto a.bs-cube {
+        padding: 8px 6px;
+        row-gap: 2px;
+    }
+
+    .bs--auto .bs-score {
+        font-size: 18px;
+        line-height: 24px;
+    }
+
+    .bs--auto .bs-score--word {
+        font-size: 14px;
+    }
+
+    .bs--auto .bs-sep {
+        display: none;
+    }
+
+    .bs--auto .bs-legend {
+        justify-content: flex-start;
+    }
+}
+
+@property --lvl {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 0%;
+}
+
+@keyframes bs-shift {
+    from { transform: translateX(calc(var(--s) + var(--b) + var(--gap))); }
+}
+
+@keyframes bs-in {
+    from { transform: translateX(calc(var(--s) + var(--b) + var(--gap))); opacity: 0; }
+}
+
+@keyframes bs-rise {
+    from { --lvl: 0%; }
+}
+
+@keyframes bs-surf {
+    0%, 100% { opacity: 0.75; }
+    50% { opacity: 1; }
+}
+
+@keyframes bs-glow {
+    0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 10px var(--glow)); }
+}
+
+@keyframes sk-shimmer {
+    from { background-position: -480px 0; }
+    to { background-position: 480px 0; }
+}
+
+@keyframes mine-drop {
+    0% { transform: translateY(-56px); opacity: 0; }
+    14% { transform: none; opacity: 1; }
+    86% { transform: none; opacity: 1; }
+    100% { transform: none; opacity: 0; }
+}
+
+@keyframes nonce-roll {
+    to { transform: translateY(-100%); }
+}
+
+/* Motion is decoration here, never information: switch it all off on request. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

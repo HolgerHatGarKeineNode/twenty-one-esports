@@ -1,0 +1,36 @@
+@props(['name', 'size' => 20])
+
+{{-- Stroke icons used across the TWENTY ONE screens, paths copied from the designs. --}}
+@php
+    $paths = match ($name) {
+        'home' => '<rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect>',
+        'chess' => '<path d="M7 21h10M8 17h8l-1-5 2-2-3-5-4-1-3 3 2 2-2 2z"></path><circle cx="11" cy="7" r="0.6"></circle>',
+        'pawn' => '<path d="M7 21h10M8 17h8l-1-5 2-2-3-5-4-1-3 3 2 2-2 2z"></path>',
+        'matches' => '<path d="M12 2 21 7v10l-9 5-9-5V7z"></path><path d="M12 12 21 7M12 12v10M12 12 3 7"></path>',
+        'tournaments' => '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"></path><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"></path>',
+        'ladder' => '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path>',
+        'clans' => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>',
+        'admin' => '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle>',
+        'search' => '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
+        'menu' => '<path d="M4 7h16M4 12h16M4 17h16"></path>',
+        'close' => '<path d="M18 6 6 18M6 6l12 12"></path>',
+        'google' => '<path d="M21 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.1a4.4 4.4 0 0 1-1.9 2.9v2.4h3.1c1.8-1.7 2.7-4.1 2.7-7.2z"></path><path d="M12 21.5c2.6 0 4.7-.9 6.3-2.3l-3.1-2.4c-.9.6-2 .9-3.2.9-2.5 0-4.6-1.7-5.3-3.9H3.5v2.5A9.5 9.5 0 0 0 12 21.5z"></path><path d="M6.7 13.8a5.7 5.7 0 0 1 0-3.6V7.7H3.5a9.5 9.5 0 0 0 0 8.6z"></path><path d="M12 6.3c1.4 0 2.6.5 3.6 1.4l2.7-2.7A9.5 9.5 0 0 0 3.5 7.7l3.2 2.5C7.4 8 9.5 6.3 12 6.3z"></path>',
+        'bolt' => '<path d="M13 2 4 14h7l-1 8 9-12h-7z"></path>',
+        'bolt-toast' => '<path d="M14.5 3 5 13.5h6.5L9.5 21 19 10.5h-6.5z"></path>',
+        'lock' => '<rect x="3" y="11" width="18" height="10" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+        'key' => '<circle cx="8" cy="15" r="4"></circle><path d="m10.8 12.2 8.2-8.2M17 6l2 2M15 8l2 2"></path>',
+        'shield-check' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path>',
+        'check' => '<path d="M5 12.5 10 17 19 7"></path>',
+        'chevron-down' => '<path d="m6 9 6 6 6-6"></path>',
+        'rocket-league' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 3v4l-3.5 2.5M12 7l3.5 2.5M8.5 9.5 7 14l5 3 5-3-1.5-4.5M3.5 10.5 7 14M20.5 10.5 17 14M12 17v4"></path>',
+        'award' => '<circle cx="12" cy="9" r="6"></circle><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"></path>',
+        'brush' => '<path d="M3 21c3 0 6-1 6-4a3 3 0 0 0-3-3c-2 0-3 2-3 7z"></path><path d="M20.5 3.5 10 14l-1-1L19.5 2.5z"></path>',
+        'vote' => '<path d="m9 12 2 2 4-4"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect>',
+        'logout' => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',
+        'user' => '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>',
+        'alert' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path>',
+        default => throw new InvalidArgumentException("Unknown icon [{$name}]."),
+    };
+@endphp
+
+<svg {{ $attributes->merge(['width' => $size, 'height' => $size, 'class' => 'shrink-0']) }} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{!! $paths !!}</svg>
