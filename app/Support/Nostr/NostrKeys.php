@@ -62,4 +62,26 @@ final class NostrKeys
 
         return encode('npub', convertBits($bytes, count($bytes), 8, 5, true));
     }
+
+    /**
+     * NIP-19 `naddr` of an addressable event: TLV 0 = d (UTF-8), 2 = author
+     * (32 bytes), 3 = kind (4 bytes, big-endian). No relay hints.
+     */
+    public static function naddr(int $kind, string $pubkey, string $d): string
+    {
+        $length = strlen($d);
+
+        // One length byte per TLV entry: a longer `d` cannot be encoded.
+        if ($length > 255) {
+            throw new \InvalidArgumentException('A d tag longer than 255 bytes has no naddr.');
+        }
+
+        $tlv = chr(0).chr($length).$d
+            .chr(2).chr(32).hex2bin($pubkey)
+            .chr(3).chr(4).pack('N', $kind);
+
+        $bytes = array_values(unpack('C*', $tlv) ?: []);
+
+        return encode('naddr', convertBits($bytes, count($bytes), 8, 5, true));
+    }
 }

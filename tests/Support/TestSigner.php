@@ -41,6 +41,22 @@ final class TestSigner
     }
 
     /**
+     * Sign server-prepared templates the way the browser module does.
+     *
+     * @param  list<array<string, mixed>>  $templates
+     * @return list<array<string, mixed>>
+     */
+    public function signTemplates(array $templates): array
+    {
+        return array_map(fn (array $template): array => $this->sign(
+            $template['kind'],
+            $template['tags'],
+            $template['content'],
+            max($template['created_at'], now()->getTimestamp()),
+        ), $templates);
+    }
+
+    /**
      * A NIP-98-style login event over the given challenge.
      *
      * @return array<string, mixed>

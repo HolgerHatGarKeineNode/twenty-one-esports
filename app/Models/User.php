@@ -7,6 +7,7 @@ use App\Support\Board;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -32,6 +33,7 @@ use Illuminate\Support\Str;
  * @property string|null $timezone
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read ClanMember|null $clanMember
  */
 #[Fillable(['pubkey', 'npub', 'locale', 'avatar_path', 'platform', 'gamer_tags', 'timezone'])]
 class User extends Authenticatable
@@ -60,6 +62,16 @@ class User extends Authenticatable
             'platform' => Platform::class,
             'gamer_tags' => 'array',
         ];
+    }
+
+    /**
+     * The player's clan membership; one player, one clan (unique user_id).
+     *
+     * @return HasOne<ClanMember, $this>
+     */
+    public function clanMember(): HasOne
+    {
+        return $this->hasOne(ClanMember::class);
     }
 
     /**
