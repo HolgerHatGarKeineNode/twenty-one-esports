@@ -17,11 +17,13 @@ use Illuminate\Support\Carbon;
  * @property string $san e.g. `Nf3`, `Qh8#`
  * @property string $fen position after the move
  * @property int $spent_ms thinking time of this move
- * @property int $clock_ms mover's time left after the move, increment included
+ * @property int $clock_ms mover's time left after the move, increment included (daily: time that was left of the move's 24 h)
+ * @property int|null $nostr_event_id the player's signed kind-64 note of a daily move
  * @property Carbon|null $created_at
  * @property-read ChessGame $game
+ * @property-read NostrEvent|null $nostrEvent
  */
-#[Fillable(['chess_game_id', 'ply', 'uci', 'san', 'fen', 'spent_ms', 'clock_ms'])]
+#[Fillable(['chess_game_id', 'ply', 'uci', 'san', 'fen', 'spent_ms', 'clock_ms', 'nostr_event_id'])]
 class ChessMove extends Model
 {
     public const UPDATED_AT = null;
@@ -41,5 +43,13 @@ class ChessMove extends Model
     public function game(): BelongsTo
     {
         return $this->belongsTo(ChessGame::class, 'chess_game_id');
+    }
+
+    /**
+     * @return BelongsTo<NostrEvent, $this>
+     */
+    public function nostrEvent(): BelongsTo
+    {
+        return $this->belongsTo(NostrEvent::class);
     }
 }

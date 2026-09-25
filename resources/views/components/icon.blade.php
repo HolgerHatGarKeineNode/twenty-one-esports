@@ -49,6 +49,9 @@
         'next' => '<path d="m9 6 6 6-6 6"></path>',
         'last' => '<path d="M18 5v14M6 6l7 6-7 6"></path>',
         'chat' => '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path>',
+        'chat-sheet' => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+        'bell' => '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path>',
+        'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),
     };
 @endphp

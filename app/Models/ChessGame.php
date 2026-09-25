@@ -6,6 +6,8 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use Database\Factories\ChessGameFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -44,6 +46,15 @@ use Illuminate\Support\Carbon;
  * @property int|null $rematch_of_id
  * @property int|null $rematch_id
  * @property int $version
+ * @property array<string, string>|null $pgn_headers
+ * @property int|null $record_event_id
+ * @property int|null $reminded_ply
+ * @property int|null $white_gone_ms
+ * @property int|null $black_gone_ms
+ * @property 'dm'|'push'|'here'|null $white_notify
+ * @property 'dm'|'push'|'here'|null $black_notify
+ * @property bool $white_remind
+ * @property bool $black_remind
  * @property Carbon|null $ended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -51,15 +62,20 @@ use Illuminate\Support\Carbon;
  * @property-read User $black
  * @property-read Collection<int, ChessMove> $moves
  * @property-read ChessGame|null $rematch
+ * @property-read NostrEvent|null $recordEvent
  */
 #[Fillable(['mode', 'rated', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
-    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at'])]
+    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
+    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */
     use HasFactory;
 
     public const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+    /** The daily mode: one move per day, a deadline per move, no running clock. */
+    public const CORRESPONDENCE = 'correspondence';
 
     protected function casts(): array
     {
@@ -76,6 +92,12 @@ class ChessGame extends Model
             'deadline_ms' => 'integer',
             'version' => 'integer',
             'ended_at' => 'datetime',
+            'pgn_headers' => 'array',
+            'reminded_ply' => 'integer',
+            'white_gone_ms' => 'integer',
+            'black_gone_ms' => 'integer',
+            'white_remind' => 'boolean',
+            'black_remind' => 'boolean',
         ];
     }
 
@@ -109,6 +131,68 @@ class ChessGame extends Model
     public function rematch(): BelongsTo
     {
         return $this->belongsTo(ChessGame::class, 'rematch_id');
+    }
+
+    /**
+     * @return BelongsTo<NostrEvent, $this>
+     */
+    public function recordEvent(): BelongsTo
+    {
+        return $this->belongsTo(NostrEvent::class, 'record_event_id');
+    }
+
+    /**
+     * Games played live on the board (blitz): a player is in at most one.
+     * Daily games run for weeks next to them.
+     *
+     * @param  Builder<ChessGame>  $query
+     */
+    #[Scope]
+    protected function live(Builder $query): void
+    {
+        $query->where('mode', '!=', self::CORRESPONDENCE);
+    }
+
+    /**
+     * @param  Builder<ChessGame>  $query
+     */
+    #[Scope]
+    protected function daily(Builder $query): void
+    {
+        $query->where('mode', self::CORRESPONDENCE);
+    }
+
+    /**
+     * Games this user plays, either colour.
+     *
+     * @param  Builder<ChessGame>  $query
+     */
+    #[Scope]
+    protected function playedBy(Builder $query, User $user): void
+    {
+        $query->where(fn (Builder $query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id));
+    }
+
+    public function isCorrespondence(): bool
+    {
+        return $this->mode === self::CORRESPONDENCE;
+    }
+
+    /**
+     * @param  'w'|'b'  $color
+     */
+    public function player(string $color): User
+    {
+        return $color === 'w' ? $this->white : $this->black;
+    }
+
+    public function opponentOf(?User $user): ?User
+    {
+        return match ($this->colorOf($user)) {
+            'w' => $this->black,
+            'b' => $this->white,
+            default => null,
+        };
     }
 
     public function startFen(): string

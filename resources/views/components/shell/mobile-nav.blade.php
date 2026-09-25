@@ -43,6 +43,10 @@
                     <span class="grow"></span>
                     <span class="text-xs text-ink-2">{{ __('Your page') }}</span>
                 </a>
+                <a href="{{ route('me.correspondence') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
+                    <x-icon name="clock" :size="18" class="text-ink-2" />
+                    {{ __('Daily chess') }}
+                </a>
                 <a href="{{ route('gaming.edit') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                     <x-icon name="user" :size="18" class="text-ink-2" />
                     {{ __('Settings') }}

@@ -111,6 +111,11 @@ new #[Title('Gaming profile')] class extends Component {
 }; ?>
 
 <section class="w-full max-w-lg space-y-10">
+    <nav aria-label="{{ __('Settings sections') }}" class="flex border-b border-hairline">
+        <a href="{{ route('gaming.edit') }}" aria-current="page" class="flex h-11 items-center px-4 text-[13px] font-bold text-ink shadow-[inset_0_-2px_0_#F7931A] hover:text-ink">{{ __('General') }}</a>
+        <a href="{{ route('settings.chess') }}" class="flex h-11 items-center px-4 text-[13px] text-ink-2 hover:text-ink" data-test="settings-chess-tab">{{ __('Chess') }}</a>
+    </nav>
+
     <flux:heading size="xl" level="1">{{ __('Gaming profile') }}</flux:heading>
 
     <flux:text>

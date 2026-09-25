@@ -1,10 +1,14 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
+use swentel\nostr\Encryption\Nip44;
 use Tests\Support\TestSigner;
 
 /*
@@ -12,6 +16,12 @@ use Tests\Support\TestSigner;
 | (double-gated: the environment check below, and the "__test/" prefix is
 | excluded from the route sweep in tests/Browser/RouteSweepTest.php).
 */
+
+// A signer receives the draft untouched: TrimStrings (global middleware, so
+// withoutMiddleware() cannot reach it) cut the PGN's trailing newline, and the
+// league rightly refused the note as not the prepared one.
+TrimStrings::skipWhen(fn (Request $request): bool => $request->is('__test/nostr/*'));
+ConvertEmptyStringsToNull::skipWhen(fn (Request $request): bool => $request->is('__test/nostr/*'));
 
 Route::prefix('__test')->name('testing.')->group(function () {
     // Positive control: proves the sweep's error collector actually catches a
@@ -66,4 +76,27 @@ Route::prefix('__test')->name('testing.')->group(function () {
             isset($draft['created_at']) ? (int) $draft['created_at'] : null,
         ));
     })->name('nostr-sign')->withoutMiddleware(ValidateCsrfToken::class);
+
+    // A stubbed window.nostr per browser context (TestSigner::browserStub):
+    // signs and does NIP-44 with the key TestSigner::forBrowser() gave this
+    // user, so a test can sign daily moves and chat as two different players.
+    Route::post('nostr/{user}/sign', function (Request $request, User $user) {
+        abort_unless(app()->environment('testing'), 404);
+        $secret = Cache::get('test-nostr-secret:'.$user->id) ?? abort(404);
+        $draft = $request->json()->all();
+
+        /** @var list<list<string>> $tags */
+        $tags = array_map(fn (mixed $tag): array => array_map(strval(...), (array) $tag), is_array($draft['tags'] ?? null) ? array_values($draft['tags']) : []);
+
+        return response()->json((new TestSigner($secret))->sign((int) ($draft['kind'] ?? 1), $tags, (string) ($draft['content'] ?? ''), isset($draft['created_at']) ? (int) $draft['created_at'] : null));
+    })->name('nostr-sign-as')->withoutMiddleware(ValidateCsrfToken::class);
+
+    Route::post('nostr/{user}/nip44', function (Request $request, User $user) {
+        abort_unless(app()->environment('testing'), 404);
+        $secret = Cache::get('test-nostr-secret:'.$user->id) ?? abort(404);
+        $key = Nip44::getConversationKey($secret, (string) $request->json('pubkey'));
+        $text = (string) $request->json('text');
+
+        return response()->json(['result' => $request->json('op') === 'encrypt' ? Nip44::encrypt($text, $key) : Nip44::decrypt($text, $key)]);
+    })->name('nostr-nip44')->withoutMiddleware(ValidateCsrfToken::class);
 });

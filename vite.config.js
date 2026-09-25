@@ -11,6 +11,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/js/echo.js',
                 'resources/js/chess.js',
+                'resources/js/push.js',
             ],
             refresh: true,
             fonts: [

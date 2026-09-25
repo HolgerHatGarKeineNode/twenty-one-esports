@@ -65,6 +65,7 @@
 
                 <flux:menu>
                     <flux:menu.item :href="route('dashboard')" icon="user">{{ __('Your page') }}</flux:menu.item>
+                    <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Daily chess') }}</flux:menu.item>
                     <flux:menu.item :href="route('gaming.edit')" icon="cog-6-tooth">{{ __('Settings') }}</flux:menu.item>
                     @can('admin')
                         <flux:menu.item :href="route('admin.admins')" icon="shield-check">{{ __('Admin') }}</flux:menu.item>

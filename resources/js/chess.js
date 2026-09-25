@@ -5,9 +5,28 @@
  * shows what the server sends back.
  */
 import { Chess } from 'chess.js';
+import { dailyGame } from './dailyGame.js';
+import { gameChat } from './gameChat.js';
+import { boardKey } from './hotkeys.js';
+import { ensureSigner } from './nostrSign.js';
 
 const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const VS16 = '︎';
+
+/*
+ * Board colours of ChessSettings ("Colors"): light and dark squares and the
+ * coordinate ink on each. The player's choice arrives as <meta name="board-theme">
+ * (partials/head.blade.php); the last move stays orange on every board.
+ */
+const BOARD_THEMES = {
+    house: { l: '#CFCFD4', d: '#62626C', cl: '#3A3A42', cd: '#E4E4E8' },
+    wood: { l: '#E4CCA2', d: '#8E5F3B', cl: '#3A3A42', cd: '#FFFFFF' },
+    slate: { l: '#DCE3EA', d: '#5E7891', cl: '#3A3A42', cd: '#FFFFFF' },
+    orange: { l: '#F4D9B0', d: '#B9640A', cl: '#3A3A42', cd: '#FFFFFF' },
+};
+const themeMeta = document.querySelector('meta[name="board-theme"]');
+const defaultTheme = BOARD_THEMES[themeMeta?.content] ? themeMeta.content : 'house';
+const coordinatesOn = themeMeta?.dataset.coordinates !== '0';
 
 /**
  * The 64 squares for the board markup, straight from the kit's chessBoard().
@@ -15,6 +34,7 @@ const VS16 = '︎';
  */
 export function boardCells(fen, o = {}) {
     const cells = [];
+    const theme = BOARD_THEMES[o.theme] ?? BOARD_THEMES[defaultTheme];
     const square = (r, f, ch) => {
         const name = 'abcdefgh'[f] + (8 - r);
         const light = (r + f) % 2 === 0;
@@ -27,7 +47,7 @@ export function boardCells(fen, o = {}) {
 
         return {
             name,
-            bg: isLast ? (light ? '#F4C47F' : '#B8741F') : light ? '#CFCFD4' : '#62626C',
+            bg: isLast ? (light ? '#F4C47F' : '#B8741F') : light ? theme.l : theme.d,
             ring,
             piece: !!ch,
             color: ch ? (white ? 'w' : 'b') : null,
@@ -35,7 +55,7 @@ export function boardCells(fen, o = {}) {
             outline: white ? String.fromCodePoint(0x2654 + idx) + VS16 : '',
             fill: white ? '#FFFFFF' : '#0A0A0B',
             label: name + (ch ? ': ' + (white ? 'white' : 'black') + ' ' + PIECE_NAMES[ch.toLowerCase()] : ''),
-            coordC: light ? '#3A3A42' : '#E4E4E8',
+            coordC: light ? theme.cl : theme.cd,
             dot: (o.dots || []).includes(name),
             rank: '',
             file: '',
@@ -56,7 +76,7 @@ export function boardCells(fen, o = {}) {
         });
 
     const out = o.flip ? cells.reverse() : cells;
-    if (!o.noCoords) {
+    if (!o.noCoords && (coordinatesOn || o.coords)) {
         out.forEach((c, i) => {
             if (i % 8 === 0) c.rank = c.name[1];
             if (i >= 56) c.file = c.name[0];
@@ -117,9 +137,55 @@ function watchConnection(onChange) {
 // Static boards (lobby thumbnails) build their cells inline.
 window.chessBoardCells = boardCells;
 
+/**
+ * Sign a server-prepared template with the player's signer, if one is
+ * there without asking to connect (extension, or a remote signer already
+ * connected on this page). Returns the signed event, or null.
+ */
+async function signQuietly(template, pubkey) {
+    if (typeof window.nostr?.signEvent !== 'function' || !template) return null;
+    try {
+        const event = JSON.parse(JSON.stringify(await window.nostr.signEvent({
+            kind: template.kind,
+            created_at: Math.max(template.created_at, Math.floor(Date.now() / 1000)),
+            tags: template.tags,
+            content: template.content,
+        })));
+
+        return pubkey && event.pubkey !== pubkey ? null : event;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * NIP-64 final record (NIP "Game Record"): when a game ends, the players'
+ * app signs the finished PGN and the first valid one counts. Nothing to click
+ * (ChessGame: "Nothing to click afterwards"); without a signer at hand the
+ * finished game's page offers it instead.
+ */
+async function publishRecord(wire, pubkey, { connect = false } = {}) {
+    // $wire resolves its component lazily; do it now, before any await (see dailyGame.js commit()).
+    void wire.$id;
+    // Only an explicit click may open the signer connect dialog.
+    if (connect && !(await ensureSigner())) return;
+    const template = await wire.recordTemplate();
+    const event = await signQuietly(template, pubkey);
+    if (event) await wire.submitRecord(JSON.stringify(event));
+}
+
+window.chessPublishRecord = publishRecord;
+
+function chatNotice(text) {
+    window.dispatchEvent(new CustomEvent('chess-chat-notice', { detail: { at: Date.now(), text } }));
+}
+
 /* ---------- Game page ---------------------------------------------------------------------------------------- */
 
 document.addEventListener('alpine:init', () => {
+    window.Alpine.data('gameChat', gameChat);
+    window.Alpine.data('dailyGame', (config) => dailyGame(config, boardCells, kingInCheck));
+
     window.Alpine.data('chessGame', (config) => ({
         state: config.state,
         color: config.color,
@@ -141,6 +207,10 @@ document.addEventListener('alpine:init', () => {
         clockCheckSent: 0,
         ticker: null,
         poller: null,
+        opponentGoneAt: null,
+        disconnectDismissed: false,
+        opponentGoneNoticed: false,
+        recording: false,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
@@ -166,6 +236,57 @@ document.addEventListener('alpine:init', () => {
                 // Anything that happened between rendering the page and subscribing.
                 channel.subscribed?.(() => this.resync());
             }
+
+            // The two players' presence: "opponent disconnected" and claim-win (ChessOverlays).
+            if (window.Echo && this.color) {
+                window.Echo.join('game.' + this.state.id + '.players')
+                    .here((members) => {
+                        // Not there when this page joined: gone, but no "disconnected" line for it.
+                        if (!members.some((m) => m.color !== this.color)) this.opponentLeft(false);
+                    })
+                    .joining((member) => member.color !== this.color && this.opponentReturned())
+                    .leaving((member) => member.color !== this.color && this.opponentLeft());
+            }
+        },
+
+        opponentLeft(notice = true) {
+            if (this.opponentGoneAt !== null || this.state.status !== 'active') return;
+            this.opponentGoneAt = performance.now();
+            this.opponentGoneNoticed = notice;
+            this.disconnectDismissed = false;
+            if (notice) chatNotice(this.t.disconnected.gone);
+            // The server checks with Reverb itself and starts its own timer.
+            this.$wire.reportGone();
+        },
+
+        opponentReturned() {
+            if (this.opponentGoneAt === null) return;
+            const seconds = Math.round((performance.now() - this.opponentGoneAt) / 1000);
+            this.opponentGoneAt = null;
+            // Only a real disconnect gets its "back" line: an opponent who opens the
+            // game after this page did never left.
+            if (this.opponentGoneNoticed && this.state.status === 'active') chatNotice(this.t.disconnected.back.replace(':s', seconds));
+        },
+
+        get disconnect() {
+            if (this.opponentGoneAt === null || this.state.status !== 'active' || this.state.ply < 2 || this.reconnecting || !this.color) return null;
+            const elapsed = Math.max(0, (this.now - this.opponentGoneAt) / 1000);
+            const left = Math.max(0, Math.ceil(this.t.claimSeconds - elapsed));
+            if (this.disconnectDismissed && left > 0) return null;
+            const opponent = this.color === 'w' ? 'b' : 'w';
+            const running = this.state.clock.running === opponent;
+
+            return {
+                left,
+                clock: formatClock(left * 1000),
+                text: (running ? this.t.disconnected.ago : this.t.disconnected.agoIdle)
+                    .replace(':s', Math.floor(elapsed))
+                    .replace(':clock', formatClock(this.remaining(opponent))),
+            };
+        },
+
+        dismissDisconnect() {
+            this.disconnectDismissed = true;
         },
 
         destroy() {
@@ -214,7 +335,12 @@ document.addEventListener('alpine:init', () => {
         apply(state) {
             if (!state || (state.version < this.state.version && state.id === this.state.id)) return;
             const moves = state.moves ?? this.state.moves;
+            const ended = this.state.status === 'active' && state.status === 'finished';
             this.state = { ...state, moves };
+            if (ended && this.color && !state.recorded && !this.recording) {
+                this.recording = true;
+                publishRecord(this.$wire, this.t.pubkey).finally(() => (this.recording = false));
+            }
             this.receivedAt = performance.now();
             this.now = this.receivedAt;
             this.selected = '';
@@ -324,6 +450,22 @@ document.addEventListener('alpine:init', () => {
             const { from, to } = this.promotion;
             this.promotion = null;
             this.send(from + to + piece);
+        },
+
+        hotkey(event) {
+            const key = boardKey(event);
+            if (!key) return;
+            if (this.promotion) {
+                if (key === 'Escape') this.promotion = null;
+                else if (['q', 'r', 'b', 'n'].includes(key)) this.pickPromotion(key);
+
+                return;
+            }
+            if (key === 'f') this.flipped = !this.flipped;
+            else if (key === 'Escape') {
+                this.selected = '';
+                this.dots = [];
+            }
         },
 
         get promotionPieces() {
@@ -539,6 +681,13 @@ document.addEventListener('alpine:init', () => {
             this.index = Math.max(0, Math.min(this.fens.length - 1, index));
         },
 
+        hotkey(event) {
+            const key = boardKey(event);
+            if (key === 'ArrowLeft') this.go(this.index - 1);
+            else if (key === 'ArrowRight') this.go(this.index + 1);
+            else if (key === 'f') this.flipped = !this.flipped;
+        },
+
         copyMoves() {
             navigator.clipboard?.writeText(config.pgn);
         },
@@ -557,6 +706,7 @@ document.addEventListener('alpine:init', () => {
 
     window.Alpine.data('chessLobby', (config) => ({
         online: [],
+        unsubscribe: null,
         connection: 'connecting',
         now: Date.now(),
         ticker: null,
@@ -578,13 +728,8 @@ document.addEventListener('alpine:init', () => {
 
             if (!window.Echo || !config.userId) return;
 
-            window.Echo.join('online')
-                .here((members) => (this.online = members))
-                .joining((member) => (this.online = [...this.online.filter((m) => m.id !== member.id), member]))
-                .leaving((member) => (this.online = this.online.filter((m) => m.id !== member.id)))
-                .listen('.presence.looking', ({ id, looking }) => {
-                    this.online = this.online.map((m) => (m.id === id ? { ...m, looking } : m));
-                });
+            // The page-wide `online` membership (resources/js/echo.js), joined on every logged-in page.
+            this.unsubscribe = window.esportsPresence?.subscribe((members) => (this.online = members));
 
             window.Echo.private('App.Models.User.' + config.userId)
                 .listen('.chess.game-started', ({ url }) => window.location.assign(url))
@@ -594,6 +739,7 @@ document.addEventListener('alpine:init', () => {
         destroy() {
             clearInterval(this.ticker);
             clearInterval(this.poller);
+            this.unsubscribe?.();
         },
 
         get others() {

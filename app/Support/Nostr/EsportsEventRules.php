@@ -14,6 +14,11 @@ use App\Models\Lineup;
  *  7. 32150 Clan         8. 32151 Lineup (structure; clan membership of the
  *                           listed players is checked by the caller's template)
  *  9. 12150 Clan Membership (at most one clan, lineups of that clan)
+ * 15. 64 Game Record, the structure of a casual game note: one `p` White and
+ *     one `p` Black, the author is one of them, `e` references are event
+ *     ids, the content is PGN. Legality, headers and the move chain are the
+ *     league's own record (App\Support\Chess\GameRecords builds the
+ *     template from the server-checked game, and the signed note must equal it).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -21,6 +26,8 @@ use App\Models\Lineup;
 final class EsportsEventRules
 {
     public const MEMBERSHIP_KIND = 12150;
+
+    public const GAME_RECORD_KIND = 64;
 
     public function __construct(private GameRegistry $games) {}
 
@@ -38,8 +45,38 @@ final class EsportsEventRules
             Clan::KIND => $this->clan($event),
             Lineup::KIND => $this->lineup($event),
             self::MEMBERSHIP_KIND => $this->membership($event),
+            self::GAME_RECORD_KIND => $this->gameRecord($event),
             default => 'kind_not_allowed',
         };
+    }
+
+    private function gameRecord(SignedEvent $event): ?string
+    {
+        $colors = [];
+
+        foreach ($event->tagsNamed('p') as $p) {
+            if (! NostrKeys::isHexPubkey($p[0] ?? null) || ! in_array($p[2] ?? null, ['white', 'black'], true) || isset($colors[$p[2]])) {
+                return 'record_p';
+            }
+
+            $colors[$p[2]] = $p[0];
+        }
+
+        if (count($colors) !== 2 || ! in_array($event->pubkey, $colors, true)) {
+            return 'record_players';
+        }
+
+        foreach ($event->tagsNamed('e') as $e) {
+            if (preg_match('/^[0-9a-f]{64}$/', $e[0] ?? '') !== 1) {
+                return 'record_e';
+            }
+        }
+
+        if (! str_starts_with(ltrim($event->content), '[')) {
+            return 'record_pgn';
+        }
+
+        return null;
     }
 
     private function clan(SignedEvent $event): ?string

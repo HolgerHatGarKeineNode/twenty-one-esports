@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ChessEndReason;
 use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
 use App\Models\Admin;
@@ -8,6 +9,7 @@ use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\Lineup;
 use App\Models\User;
+use App\Support\Chess\DailyChallenges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
@@ -114,6 +116,28 @@ function sweepFixtures(): array
 
         // A live blitz game; the member sweep plays White in it, so the board is playable.
         'game' => fn (?User $user, array $made): Model => ChessGame::factory()->create($user === null ? [] : ['white_id' => $user->id]),
+    ];
+}
+
+/**
+ * Pages one route renders in more than one way: `games/{game}` is a live
+ * blitz board with the `game` fixture above, and a daily game (P5b) or a
+ * daily game lost on time with these. Each is swept like a route.
+ *
+ * @return list<array{name: string, url: string}>
+ */
+function sweepExtraPages(?User $user): array
+{
+    $daily = ChessGame::factory()->daily()->create($user === null ? [] : ['black_id' => $user->id]);
+    $lost = ChessGame::factory()->daily()->finished('1-0', ChessEndReason::Timeout)->create($user === null ? [] : ['black_id' => $user->id]);
+
+    if ($user !== null) {
+        app(DailyChallenges::class)->challenge(User::factory()->create(), $user, 'white', 'gl hf');
+    }
+
+    return [
+        ['name' => 'games.show (daily)', 'url' => route('games.show', $daily, false)],
+        ['name' => 'games.show (daily, lost on time)', 'url' => route('games.show', $lost, false)],
     ];
 }
 
@@ -288,7 +312,7 @@ test('every route renders without console errors, page errors, bad responses or 
         test()->actingAs($user);
     }
 
-    $routes = sweepRoutes(buildSweepFixtures($user));
+    $routes = [...sweepRoutes(buildSweepFixtures($user)), ...sweepExtraPages($user)];
     expect($routes)->not->toBeEmpty();
 
     $page = freshSweepPage('/');

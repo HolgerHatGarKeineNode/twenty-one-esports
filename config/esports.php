@@ -121,10 +121,20 @@ return [
     |
     | invite_seconds: how long a blitz invite to a friend stays open.
     |
+    | disconnect_claim_seconds: how long a live opponent must be gone from the
+    | game before the other player may claim the win (ChessOverlays "Opponent
+    | disconnected: claim the win after 60 s").
+    |
+    | challenge_hours: how long a daily chess challenge stays open (ChessChallenge
+    | "has 48 h to accept"). The time per daily move comes from the mode's PGN
+    | TimeControl (`1/86400`, App\Games\Chess).
+    |
     */
 
     'chess' => [
         'first_move_seconds' => 30,
+        'disconnect_claim_seconds' => (int) env('ESPORTS_DISCONNECT_CLAIM_SECONDS', 60),
+        'challenge_hours' => 48,
         'queue' => [
             'start_rating' => 1000,
             'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],
@@ -152,6 +162,56 @@ return [
     ))))),
 
     'relay_timeout_seconds' => 5,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Game chat (NIP-17)
+    |--------------------------------------------------------------------------
+    |
+    | Relays the browser publishes gift wraps (kind 1059) to and reads them
+    | from. The league relay is the players' DM inbox (NIP "Chat"); locally the
+    | ndak test bed, empty in testing. Defaults to the publishing relays.
+    |
+    */
+
+    'chat' => [
+        'relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'ESPORTS_CHAT_RELAYS',
+            env('ESPORTS_RELAYS', env('APP_ENV') === 'local' ? 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782' : ''),
+        ))))),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Notifications
+    |--------------------------------------------------------------------------
+    |
+    | Two channels, each switched per player in the chess settings:
+    |
+    | - Nostr DM (NIP-17) from the league's own notification key, never the
+    |   league key (NIP "Notifications"). Its secret lives only in `.env`
+    |   (hex or nsec); without it no DM is sent. Its kind 0 says `bot: true`
+    |   and that it reads no replies (`php artisan esports:notification-profile`).
+    |   Sent to the chat relays above.
+    |
+    | - Browser push (Web Push, RFC 8030) with VAPID keys (RFC 8292) from
+    |   `.env`; generate a pair with `php artisan esports:vapid-keys`. Without
+    |   keys the settings page offers no push. Keys are never committed.
+    |
+    */
+
+    'notifications' => [
+        'nsec' => env('ESPORTS_NOTIFICATION_NSEC'),
+        'name' => 'TWENTY ONE esports notifications',
+    ],
+
+    'webpush' => [
+        'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
+        'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),
+        'subject' => env('WEBPUSH_VAPID_SUBJECT', env('APP_URL')),
+        'ttl_seconds' => 86400,
+        'timeout_seconds' => 5,
+    ],
 
     /*
     |--------------------------------------------------------------------------

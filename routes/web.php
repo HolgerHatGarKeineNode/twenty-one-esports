@@ -44,13 +44,18 @@ Route::livewire('games/rocket-league', 'pages::games.rocket-league')->name('game
 Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');
 Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
 
+// Daily chess (P5b): challenge a player, your daily games.
+Route::middleware('auth')->group(function () {
+    Route::livewire('chess/challenge', 'pages::chess.challenge')->name('chess.challenge');
+    Route::livewire('me/correspondence', 'pages::me.correspondence')->name('me.correspondence');
+});
+
 /*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
  * shell with a "Coming soon" empty state until its phase builds the real page.
  * `page` is a translation key, `section` marks the active main-navigation item.
  */
 $placeholders = [
-    ['chess/challenge', 'chess.challenge', 'Challenge a friend', 'chess'],
     ['games', 'games.index', 'Live games', 'chess'],
     ['matches', 'matches.index', 'Matches', 'matches'],
     ['matches/{match}', 'matches.show', 'Match', 'matches'],

@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Log;
  *
  * NIP rules applied here: 1 (id, sig), 4 (clock window at submission),
  * 5 (id not seen before), 9 and "Replay protection" (a replaceable or
- * addressable version must be newer than the stored one); 2, 3, 7-9 via
+ * addressable version must be newer than the stored one; regular events such
+ * as game notes have no "version"); 2, 3, 7-9 and 15 via
  * {@see EsportsEventRules}.
  */
 final class SignedEventGate
@@ -69,14 +70,16 @@ final class SignedEventGate
             $this->reject('already_seen', $event);
         }
 
-        $stored = NostrEvent::query()
-            ->where('kind', $event->kind)
-            ->where('pubkey', $event->pubkey)
-            ->where('d', $event->tag('d'))
-            ->max('signed_at');
+        if (self::isReplaceable($event->kind)) {
+            $stored = NostrEvent::query()
+                ->where('kind', $event->kind)
+                ->where('pubkey', $event->pubkey)
+                ->where('d', $event->tag('d'))
+                ->max('signed_at');
 
-        if ($stored !== null && $event->createdAt <= (int) $stored) {
-            $this->reject('not_newer_than_stored', $event);
+            if ($stored !== null && $event->createdAt <= (int) $stored) {
+                $this->reject('not_newer_than_stored', $event);
+            }
         }
 
         $violation = $this->rules->check($event);
@@ -90,6 +93,14 @@ final class SignedEventGate
         }
 
         return $event;
+    }
+
+    /**
+     * NIP-01: 0, 3 and 10000-19999 are replaceable, 30000-39999 addressable.
+     */
+    public static function isReplaceable(int $kind): bool
+    {
+        return $kind === 0 || $kind === 3 || ($kind >= 10000 && $kind < 20000) || ($kind >= 30000 && $kind < 40000);
     }
 
     private function reject(string $reason, ?SignedEvent $event = null): never

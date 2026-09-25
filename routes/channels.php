@@ -17,8 +17,21 @@ Broadcast::channel('game.{game}', function (User $user, ChessGame $game) {
 });
 
 /*
- * Global presence: who is online on the chess pages, and who is looking to
- * play. What a member shares here is shown to every other logged-in player.
+ * The two players of a live game, present while their game page is open.
+ * The other player's page shows "opponent disconnected" when one leaves,
+ * and the server asks Reverb for this channel's members before it grants a
+ * claim-win (App\Support\Chess\PresenceLookup).
+ */
+Broadcast::channel('game.{game}.players', function (User $user, ChessGame $game) {
+    $color = $game->colorOf($user);
+
+    return $color === null ? false : ['id' => $user->id, 'color' => $color];
+});
+
+/*
+ * Global presence: every logged-in page joins it (resources/js/echo.js), so
+ * the lobby shows everyone online, and who is looking to play. What a member
+ * shares here is shown to every other logged-in player.
  */
 Broadcast::channel('online', function (User $user) {
     return [

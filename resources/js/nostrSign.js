@@ -20,7 +20,7 @@ const DEFAULT_MESSAGES = {
     failed: 'That did not work. Please try again.',
 };
 
-async function ensureSigner() {
+export async function ensureSigner() {
     if (hasNostrExtension() || typeof window.nostr?.signEvent === 'function') {
         return true;
     }

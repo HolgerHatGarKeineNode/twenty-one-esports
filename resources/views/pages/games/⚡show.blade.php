@@ -1,11 +1,16 @@
 <?php
 
 use App\Enums\ChessGameStatus;
+use App\Models\ChatMute;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessPgn;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Chess\GameRecords;
+use App\Support\Chess\PresenceLookup;
+use App\Support\Nostr\NostrKeys;
+use App\Support\Nostr\RejectedEvent;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -22,8 +27,14 @@ use Livewire\Component;
  * (private `game.{id}`) and spectators (public `game.{id}.watch`) over Reverb;
  * without a websocket the page polls fetchState().
  *
- * P5a scope: casual blitz only, so every Elo, Hashrate and team-match figure
- * of the designs is replaced by "casual" wording. Chat is a P5b seam.
+ * Casual only (no Elo before P7), so every Elo, Hashrate and team-match
+ * figure of the designs is replaced by "casual" wording.
+ *
+ * P5b: a daily game (mode `correspondence`) shows ChessCorrespondence /
+ * MobileChessCorrespondence (partials/daily); each daily move is signed by
+ * the mover as a NIP-64 note (GameRecords). A live game has the NIP-17 chat
+ * (partials/chat) and the "opponent disconnected" overlay with claim-win.
+ * At the end of any game the players' app signs the NIP-64 record.
  */
 new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     #[Locked]
@@ -33,6 +44,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
     {
         // A flag that fell while nobody was looking is settled before the clock is shown.
         $this->game = $game->isActive() ? app(ChessGameService::class)->checkClock($game) : $game;
+        $this->markPresent();
     }
 
     /**
@@ -43,6 +55,8 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
     #[Json]
     public function fetchState(): array
     {
+        $this->markPresent();
+
         return app(ChessGameService::class)->snapshot($this->game->refresh());
     }
 
@@ -103,6 +117,156 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
         return $this->act(fn (ChessGameService $games, User $user) => $games->declineRematch($this->game, $user));
     }
 
+    /* ---------- Opponent disconnected (live) --------------------------------------------------------------- */
+
+    /**
+     * The page saw the opponent leave the game's presence channel.
+     *
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     */
+    #[Json]
+    public function reportGone(): array
+    {
+        return $this->act(fn (ChessGameService $games, User $user) => $games->reportGone($this->game, $user, app(PresenceLookup::class)));
+    }
+
+    /**
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     */
+    #[Json]
+    public function claimWin(): array
+    {
+        return $this->act(fn (ChessGameService $games, User $user) => $games->claimWin($this->game, $user, app(PresenceLookup::class)));
+    }
+
+    /* ---------- NIP-64 records ------------------------------------------------------------------------------ */
+
+    /**
+     * The final record to sign, or null (game runs, aborted, already recorded, spectator).
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Json]
+    public function recordTemplate(): ?array
+    {
+        $this->game->refresh();
+
+        return $this->game->colorOf(auth()->user()) === null ? null : app(GameRecords::class)->finalTemplate($this->game);
+    }
+
+    /**
+     * @param  string  $signed  the signed event as JSON (never trimmed: TrimStrings skips nothing inside it)
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     */
+    #[Json]
+    public function submitRecord(string $signed): array
+    {
+        return $this->act(fn (ChessGameService $games, User $user) => app(GameRecords::class)->submitFinal($this->game, $user, $signed));
+    }
+
+    /* ---------- Daily moves --------------------------------------------------------------------------------- */
+
+    /**
+     * Check a daily move and return the note to sign for it.
+     *
+     * @return array{ok: bool, error: string|null, move: array<string, mixed>|null}
+     */
+    #[Json]
+    public function prepareMove(string $uci, int $ply): array
+    {
+        $user = auth()->user();
+
+        try {
+            if (! $user instanceof User) {
+                throw new ChessRuleViolation('not_a_player');
+            }
+
+            return ['ok' => true, 'error' => null, 'move' => app(GameRecords::class)->prepareMove($this->game, $user, $uci, $ply)];
+        } catch (ChessRuleViolation $violation) {
+            return ['ok' => false, 'error' => $violation->reason, 'move' => null];
+        }
+    }
+
+    /**
+     * @param  string  $signed  the player's signed note of this move, as JSON
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     */
+    #[Json]
+    public function playMove(string $uci, int $ply, string $signed): array
+    {
+        return $this->act(fn (ChessGameService $games, User $user) => app(GameRecords::class)->playSigned($this->game, $user, $uci, $ply, $signed));
+    }
+
+    /**
+     * "Tell me when … moves": dm, push, or here (only on this page).
+     */
+    #[Json]
+    public function setNotify(string $choice): bool
+    {
+        return $this->setPreference('notify', in_array($choice, ['dm', 'push', 'here'], true) ? $choice : null);
+    }
+
+    #[Json]
+    public function setRemind(bool $remind): bool
+    {
+        return $this->setPreference('remind', $remind);
+    }
+
+    /* ---------- Chat -------------------------------------------------------------------------------------- */
+
+    /**
+     * Mute or unmute a pubkey for this player (the browser keeps its own copy).
+     */
+    #[Json]
+    public function setMuted(string $pubkey, bool $muted): bool
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || ! NostrKeys::isHexPubkey($pubkey) || $pubkey === $user->pubkey) {
+            return false;
+        }
+
+        if ($muted) {
+            ChatMute::query()->firstOrCreate(['user_id' => $user->id, 'muted_pubkey' => $pubkey]);
+        } else {
+            ChatMute::query()->where('user_id', $user->id)->where('muted_pubkey', $pubkey)->delete();
+        }
+
+        return true;
+    }
+
+    /**
+     * Config for the chat panel (resources/js/gameChat.js).
+     *
+     * @return array<string, mixed>
+     */
+    public function chatConfig(): array
+    {
+        $viewer = auth()->user();
+        $opponent = $viewer instanceof User ? $this->game->opponentOf($viewer) : null;
+
+        return [
+            'me' => $opponent !== null ? $viewer?->pubkey : null,
+            'meName' => $viewer?->displayName(),
+            'opponent' => $opponent === null ? null : ['pubkey' => $opponent->pubkey, 'name' => $opponent->displayName()],
+            'match' => $this->game->id,
+            'relays' => array_values(config('esports.chat.relays', [])),
+            'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
+            'labels' => [
+                'mute' => __('Mute :name', ['name' => $opponent?->displayName() ?? '']),
+                'muted' => __(':name muted', ['name' => $opponent?->displayName() ?? '']),
+                'mutedPeek' => __(':name is muted', ['name' => $opponent?->displayName() ?? '']),
+                'server' => __('Server'),
+                'unread' => __(':count new'),
+                'open' => __('open'),
+                'close' => __('close'),
+                'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
+                'notSent' => __('The message did not reach any relay. Please try again.'),
+                'failed' => __('That did not work. Please try again.'),
+            ],
+        ];
+    }
+
     /**
      * A client whose clock shows zero asks; the server's clock decides.
      *
@@ -134,9 +298,37 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             $action($games, $user);
         } catch (ChessRuleViolation $violation) {
             $error = $violation->reason;
+        } catch (RejectedEvent $rejected) {
+            report($rejected);
+            $error = 'signature_rejected';
         }
 
         return ['ok' => $error === null, 'error' => $error, 'state' => $games->snapshot($this->game->refresh())];
+    }
+
+    private function markPresent(): void
+    {
+        $user = auth()->user();
+
+        if ($user instanceof User && $this->game->isActive()) {
+            app(ChessGameService::class)->markPresent($this->game, $user);
+        }
+    }
+
+    /**
+     * @param  'notify'|'remind'  $key
+     */
+    private function setPreference(string $key, string|bool|null $value): bool
+    {
+        $color = $this->game->colorOf(auth()->user());
+
+        if ($color === null) {
+            return false;
+        }
+
+        $this->game->forceFill([($color === 'w' ? 'white_' : 'black_').$key => $value])->save();
+
+        return true;
     }
 
     /**
@@ -185,7 +377,61 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             'errors' => ['illegal_move' => __('That move is not legal here.'), 'not_your_turn' => __('It is not your turn.'),
                 'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                 'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
-                'already_playing' => __('One of you is already in another live game.'), 'default' => __('That did not work. The board shows the server\'s state.')],
+                'already_playing' => __('One of you is already in another live game.'), 'no_claim' => __('The win cannot be claimed: your opponent is back or not gone long enough.'),
+                'signature_rejected' => __('Your confirmation did not match this move. Nothing was played.'), 'already_recorded' => __('The game record is already published.'),
+                'default' => __('That did not work. The board shows the server\'s state.')],
+            'disconnected' => [
+                'title' => __(':name disconnected', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
+                'ago' => __(':s s ago. Their clock is at :clock and running.'),
+                'agoIdle' => __(':s s ago. Their clock is at :clock.'),
+                'claimIn' => __('Claim win in :time'),
+                'claim' => __('Claim win'),
+                'gone' => __(':name was disconnected. Their clock keeps running.', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
+                'back' => __(':name is back after :s s.', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
+            ],
+            'claimSeconds' => (int) config('esports.chess.disconnect_claim_seconds'),
+            'signer' => [
+                'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
+                'rejected' => __('The confirmation was not given. Please try again.'),
+                'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
+            ],
+            'pubkey' => auth()->user()?->pubkey,
+        ];
+    }
+
+    /**
+     * Config for the daily game (resources/js/dailyGame.js).
+     *
+     * @return array<string, mixed>
+     */
+    public function dailyConfig(): array
+    {
+        $viewer = auth()->user();
+        $color = $this->game->colorOf($viewer);
+        $settings = $viewer instanceof User ? $viewer->chessSettings() : null;
+        $opponent = $this->game->opponentOf($viewer);
+
+        return [
+            'state' => app(ChessGameService::class)->snapshot($this->game),
+            'color' => $color,
+            'startedAt' => $this->game->created_at?->getTimestampMs() ?? 0,
+            'doubleCheck' => $settings->doubleCheck ?? true,
+            'alwaysQueen' => $settings->alwaysQueen ?? false,
+            'coordinates' => $settings->coordinates ?? true,
+            'remindHours' => $settings->remindHours ?? 6,
+            'notify' => $color === null ? null : ($color === 'w' ? $this->game->white_notify : $this->game->black_notify),
+            'remind' => $color === null ? false : ($color === 'w' ? $this->game->white_remind : $this->game->black_remind),
+            'labels' => [
+                ...$this->labels(),
+                'left' => __(':h h :m min'),
+                'yourMoveLeft' => __('Your move · :left left'),
+                'theirMove' => __('Their move'),
+                'day' => __('day :n'),
+                'agoMinutes' => __(':m min ago'),
+                'agoHours' => __(':h h :m min ago'),
+                'describe' => ['move' => __(':piece :from to :to'), 'takes' => __('takes the :piece'), 'check' => __('check'), 'mate' => __('checkmate')],
+                'opponentName' => $opponent?->displayName() ?? '',
+            ],
         ];
     }
 
@@ -215,10 +461,13 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
 @endphp
 
 <div class="flex grow flex-col">
-    @if ($live)
+    @if ($live && $game->isCorrespondence())
+        @include('pages.games.partials.daily', ['game' => $game, 'players' => $players, 'color' => $color, 'opponent' => $opponent])
+    @elseif ($live)
         <div wire:ignore
              x-data="chessGame(@js(['state' => app(ChessGameService::class)->snapshot($game), 'color' => $color, 'labels' => $this->labels()]))"
-             class="flex flex-col gap-4 px-4 pt-5 pb-8 lg:gap-5 lg:px-12 lg:pt-7 lg:pb-10"
+             x-on:keydown.window="hotkey($event)"
+             @class(['flex flex-col gap-4 px-4 pt-5 pb-8 lg:gap-5 lg:px-12 lg:pt-7 lg:pb-10', 'max-lg:pb-28' => $color !== null])
              data-test="chess-game">
 
             {{-- Title row --}}
@@ -280,8 +529,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                     <x-chess.board playable class="lg:max-w-[576px]">
                         {{-- Promotion picker, on the target file (ChessOverlays 2) --}}
                         <template x-if="promotion">
-                            <div class="absolute inset-0" x-on:keydown.escape.window="promotion = null"
-                                 x-on:keydown.window="['q','r','b','n'].includes($event.key.toLowerCase()) && pickPromotion($event.key.toLowerCase())">
+                            <div class="absolute inset-0">
                                 <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.6)]" x-on:click="promotion = null"></div>
                                 <div role="dialog" aria-label="{{ __('Promote to') }}" class="absolute top-0 flex w-[12.5%] flex-col overflow-hidden rounded-b-md bg-card shadow-[0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]" :style="`left: ${promotionLeft}`">
                                     <template x-for="p in promotionPieces" :key="p.key">
@@ -304,6 +552,31 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                     <x-button variant="quiet" icon="retry" class="self-start" x-on:click="reconnectNow()">{{ __('Reconnect now') }}</x-button>
                                 </div>
                                 <span class="absolute bottom-4 left-4 flex h-[34px] items-center gap-2 rounded-md bg-[#241D10] px-3 text-[13px] text-btc-hi"><span class="size-2 animate-live rounded-full bg-btc-hi"></span><span x-text="connectionLabel"></span></span>
+                            </div>
+                        </template>
+
+                        {{-- Opponent disconnected (ChessOverlays): claim the win after the timeout --}}
+                        <template x-if="disconnect">
+                            <div class="absolute inset-0 flex items-center justify-center p-3" data-test="opponent-disconnected">
+                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                <div role="alertdialog" aria-labelledby="dc-h" aria-describedby="dc-d" class="relative flex w-full max-w-[368px] flex-col gap-4 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                    <div class="flex items-center gap-4">
+                                        <span class="relative flex size-[62px] shrink-0 items-center justify-center" aria-hidden="true">
+                                            <svg viewBox="0 0 62 62" class="absolute inset-0 size-full -rotate-90"><circle cx="31" cy="31" r="28" fill="none" stroke="#2A2A30" stroke-width="4"></circle><circle cx="31" cy="31" r="28" fill="none" stroke="#F7931A" stroke-width="4" stroke-linecap="round" :stroke-dasharray="175.9" :stroke-dashoffset="175.9 * (1 - disconnect.left / t.claimSeconds)"></circle></svg>
+                                            <b class="font-display text-lg" x-text="disconnect.left"></b>
+                                        </span>
+                                        <span class="flex min-w-0 flex-col gap-1">
+                                            <h2 id="dc-h" class="m-0 text-base font-bold" x-text="t.disconnected.title"></h2>
+                                            <span id="dc-d" class="text-xs leading-normal text-ink-2" x-text="disconnect.text"></span>
+                                        </span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <x-button variant="quiet" x-on:click="dismissDisconnect()">{{ __('Keep waiting') }}</x-button>
+                                        <button type="button" x-on:click="call('claimWin')" :disabled="disconnect.left > 0" data-test="claim-win"
+                                                class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent px-3 text-[13px] whitespace-nowrap text-ink disabled:cursor-not-allowed disabled:text-ink-3"
+                                                x-text="disconnect.left > 0 ? t.disconnected.claimIn.replace(':time', disconnect.clock) : t.disconnected.claim"></button>
+                                    </div>
+                                </div>
                             </div>
                         </template>
 
@@ -471,16 +744,8 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                     <button type="button" aria-label="{{ __('Flip board') }}" :aria-pressed="flipped ? 'true' : 'false'" x-on:click="flipped = !flipped" class="btn-w flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink"><x-icon name="flip" :size="18" /></button>
                 </div>
 
-                {{-- Chat: P5b (NIP-17). The seam shows where it goes. --}}
-                <section aria-labelledby="chat-h" class="order-7 flex flex-col rounded-lg bg-card lg:order-none lg:col-span-2 min-[87.5rem]:col-span-1 min-[87.5rem]:col-start-3 min-[87.5rem]:row-span-4 min-[87.5rem]:row-start-1 min-[87.5rem]:mt-4" data-test="chat-soon">
-                    <div class="flex items-center justify-between gap-2 px-4 py-3 lg:border-b lg:border-hairline">
-                        <span id="chat-h" class="flex items-center gap-2 text-[15px] font-bold"><x-icon name="chat" :size="16" class="text-ink-2" />{{ __('Chat') }}</span>
-                        <span class="rounded-sm bg-btc-tint px-2 py-0.5 text-[11px] font-bold text-btc">{{ __('coming soon') }}</span>
-                    </div>
-                    <div class="flex grow flex-col justify-end gap-2 px-4 py-4 text-[13px] leading-normal text-ink-2 max-lg:hidden">
-                        <span>{{ __('A private chat between the two players comes next, over Nostr direct messages. It will not be part of the game record.') }}</span>
-                    </div>
-                </section>
+                {{-- Chat (NIP-17): desktop panel in this grid, bottom sheet on mobile --}}
+                @include('pages.games.partials.chat', ['chat' => $this->chatConfig()])
             </div>
 
             {{-- Details (desktop) --}}
@@ -506,7 +771,11 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                         <span class="hidden text-ink-2 lg:block">{{ __('The server checks every move and runs both clocks. Casual games count for no rating.') }}</span>
                     </span>
                 </div>
-                <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[[__('Moves'), __('league server only, not published one by one')], [__('Record'), __('PGN of the game, published on Nostr (NIP-64) from the next release')]]" />
+                <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
+                    [__('Record'), __('PGN of this game, published after the last move (NIP-64, kind 64)')],
+                    [__('Confirmation'), __(':white or :black, signed automatically by the app (kind 64)', ['white' => $players['w']['name'], 'black' => $players['b']['name']])],
+                    [__('Moves'), __('league server only, not published one by one')],
+                ]" />
             </div>
         </div>
     @else

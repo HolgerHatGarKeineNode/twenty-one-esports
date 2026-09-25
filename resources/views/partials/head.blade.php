@@ -13,7 +13,12 @@
 @fonts
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
-@if ($realtime ?? false)
+{{--
+    Realtime: pages that listen to broadcasts, and every page of a logged-in
+    player, who is on the global `online` presence channel wherever they are
+    (P5b). Guests get no websocket except on the pages they can watch.
+--}}
+@if (($realtime ?? false) || auth()->check())
     {{--
         Reverb client settings are read at runtime, not baked into the build, so
         one build serves every environment. Without an app key there is no
@@ -21,6 +26,10 @@
     --}}
     @php($reverb = config('broadcasting.connections.reverb'))
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    @auth
+        <meta name="presence-user" content="{{ auth()->id() }}">
+        <meta name="board-theme" content="{{ auth()->user()->chessSettings()->board }}" data-coordinates="{{ auth()->user()->chessSettings()->coordinates ? '1' : '0' }}">
+    @endauth
     @if (filled($reverb['key'] ?? null))
         <meta name="reverb" content="{{ json_encode(['key' => $reverb['key'], 'host' => $reverb['options']['host'] ?? request()->getHost(), 'port' => (int) ($reverb['options']['port'] ?? 443), 'scheme' => $reverb['options']['scheme'] ?? 'https']) }}">
     @endif

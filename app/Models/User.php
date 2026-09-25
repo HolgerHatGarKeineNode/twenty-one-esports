@@ -4,9 +4,12 @@ namespace App\Models;
 
 use App\Enums\Platform;
 use App\Support\Board;
+use App\Support\Chess\ChessSettings;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -33,11 +36,13 @@ use Illuminate\Support\Str;
  * @property string|null $timezone
  * @property string|null $looking_to_play `<game>/<mode>` the player is up for, null = not looking
  * @property Carbon|null $notify_block0_at when the player asked to be told about Block 0, null = not asked
+ * @property array<string, mixed>|null $chess_settings see {@see ChessSettings}; null = all defaults
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
+ * @property-read Collection<int, PushSubscription> $pushSubscriptions
  */
-#[Fillable(['pubkey', 'npub', 'locale', 'avatar_path', 'platform', 'gamer_tags', 'timezone', 'looking_to_play'])]
+#[Fillable(['pubkey', 'npub', 'locale', 'avatar_path', 'platform', 'gamer_tags', 'timezone', 'looking_to_play', 'chess_settings'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -64,6 +69,7 @@ class User extends Authenticatable
             'platform' => Platform::class,
             'gamer_tags' => 'array',
             'notify_block0_at' => 'datetime',
+            'chess_settings' => 'array',
         ];
     }
 
@@ -75,6 +81,48 @@ class User extends Authenticatable
     public function clanMember(): HasOne
     {
         return $this->hasOne(ClanMember::class);
+    }
+
+    /**
+     * @return HasMany<ChessGame, $this>
+     */
+    public function whiteGames(): HasMany
+    {
+        return $this->hasMany(ChessGame::class, 'white_id');
+    }
+
+    /**
+     * @return HasMany<ChessGame, $this>
+     */
+    public function blackGames(): HasMany
+    {
+        return $this->hasMany(ChessGame::class, 'black_id');
+    }
+
+    /**
+     * @return HasMany<PushSubscription, $this>
+     */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
+    /**
+     * Chess and notification preferences (ChessSettings), defaults filled in.
+     */
+    public function chessSettings(): ChessSettings
+    {
+        return ChessSettings::fromArray($this->chess_settings ?? []);
+    }
+
+    /**
+     * Pubkeys this player muted in game chats.
+     *
+     * @return list<string>
+     */
+    public function mutedPubkeys(): array
+    {
+        return array_values(ChatMute::query()->where('user_id', $this->id)->orderBy('id')->pluck('muted_pubkey')->all());
     }
 
     /**

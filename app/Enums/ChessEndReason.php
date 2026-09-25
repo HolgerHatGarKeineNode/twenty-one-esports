@@ -5,7 +5,8 @@ namespace App\Enums;
 /**
  * Why a chess game ended. Every reason except `Aborted` comes with a PGN
  * result; the draws by rule end the game on their own (the server does not
- * wait for a claim).
+ * wait for a claim). `Abandoned`: the other player claimed the win after the
+ * opponent stayed disconnected past the claim timeout (ChessOverlays).
  */
 enum ChessEndReason: string
 {
@@ -18,6 +19,7 @@ enum ChessEndReason: string
     case FiftyMoveRule = 'fifty_move_rule';
     case InsufficientMaterial = 'insufficient_material';
     case Aborted = 'aborted';
+    case Abandoned = 'abandoned';
 
     /**
      * English label; views translate it.
@@ -34,6 +36,7 @@ enum ChessEndReason: string
             self::FiftyMoveRule => '50-move rule',
             self::InsufficientMaterial => 'Insufficient material',
             self::Aborted => 'Aborted',
+            self::Abandoned => 'Opponent left',
         };
     }
 }

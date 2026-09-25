@@ -42,6 +42,22 @@ class ChessGameFactory extends Factory
     }
 
     /**
+     * A daily game (one move per day) in its start position: White has a day
+     * for the first move. Real daily games start through App\Support\Chess\DailyChallenges.
+     */
+    public function daily(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'mode' => ChessGame::CORRESPONDENCE,
+            'initial_ms' => 86_400_000,
+            'increment_ms' => 0,
+            'white_ms' => 86_400_000,
+            'black_ms' => 86_400_000,
+            'deadline_ms' => (int) now()->getTimestampMs() + 86_400_000,
+        ]);
+    }
+
+    /**
      * Over with no moves played (e.g. a resignation), for pages that only need a finished game.
      */
     public function finished(string $result = '1-0', ChessEndReason $reason = ChessEndReason::Resignation): static

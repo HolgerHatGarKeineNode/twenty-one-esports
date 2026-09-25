@@ -2,6 +2,9 @@
 
 namespace Tests\Support;
 
+use App\Models\User;
+use App\Support\Nostr\NostrKeys;
+use Illuminate\Support\Facades\Cache;
 use swentel\nostr\Event\Event;
 use swentel\nostr\Key\Key;
 use swentel\nostr\Sign\Sign;
@@ -16,10 +19,46 @@ final class TestSigner
 
     public readonly string $pubkey;
 
-    public function __construct()
+    public function __construct(?string $secret = null)
     {
-        $this->secret = bin2hex(random_bytes(32));
+        $this->secret = $secret ?? bin2hex(random_bytes(32));
         $this->pubkey = (new Key)->getPublicKey($this->secret);
+    }
+
+    /**
+     * Give this user a fresh key and remember it for the browser test's
+     * stubbed window.nostr (routes/testing.php, `__test/nostr/{user}/…`), in
+     * the cache the in-process test server shares with the test.
+     */
+    public static function forBrowser(User $user): self
+    {
+        $signer = new self;
+        Cache::forever('test-nostr-secret:'.$user->id, $signer->secret);
+        $user->forceFill(['pubkey' => $signer->pubkey, 'npub' => NostrKeys::hexToNpub($signer->pubkey)])->save();
+
+        return $signer;
+    }
+
+    /**
+     * window.nostr for a browser context, backed by forBrowser()'s key on the
+     * test server: signEvent and NIP-44 go through routes/testing.php.
+     */
+    public static function browserStub(User $user): string
+    {
+        return str_replace(['__PUBKEY__', '__USER__'], [$user->pubkey, (string) $user->id], <<<'JS'
+            (() => {
+                const post = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) })
+                    .then((r) => { if (!r.ok) throw new Error('stub signer ' + r.status); return r.json(); });
+                window.nostr = {
+                    getPublicKey: async () => '__PUBKEY__',
+                    signEvent: (draft) => post('/__test/nostr/__USER__/sign', draft),
+                    nip44: {
+                        encrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'encrypt', pubkey, text }).then((r) => r.result),
+                        decrypt: (pubkey, text) => post('/__test/nostr/__USER__/nip44', { op: 'decrypt', pubkey, text }).then((r) => r.result),
+                    },
+                };
+            })();
+            JS);
     }
 
     /**
