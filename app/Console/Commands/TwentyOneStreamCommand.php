@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
+use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 use App\Support\TwentyOne\TwentyOneSigner;
+use Closure;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessSignaledException;
+use Symfony\Component\Process\ExecutableFinder;
 
 /**
  * Foreground supervisor for the 24/7 HLS loop, meant to run as a daemon.
@@ -49,6 +52,8 @@ class TwentyOneStreamCommand extends Command
 
     private ?int $startedAt = null;
 
+    private int $lastCreatedAt = 0;
+
     /** @var list<string> */
     private array $stderr = [];
 
@@ -60,30 +65,15 @@ class TwentyOneStreamCommand extends Command
         $prepared = (string) config('twentyone.stream.prepared');
         $hlsDir = rtrim((string) config('twentyone.stream.hls_dir'), '/');
         $publicUrl = (string) config('twentyone.stream.public_url');
-        $playlist = $hlsDir.'/'.basename((string) parse_url($publicUrl, PHP_URL_PATH));
+        $playlistName = basename((string) parse_url($publicUrl, PHP_URL_PATH));
+        $playlist = $hlsDir.'/'.$playlistName;
 
-        if (! is_file($prepared)) {
-            $this->error('Prepared stream file not found: '.$prepared.'. Run `php artisan twentyone:stream:prepare` first.');
+        $problem = $this->startupProblem($prepared, $publicUrl);
+
+        if ($problem !== null) {
+            $this->error($problem);
 
             return self::FAILURE;
-        }
-
-        if (! $this->option('no-publish')) {
-            try {
-                $this->signer = TwentyOneSigner::fromConfig();
-            } catch (RuntimeException $e) {
-                $this->error($e->getMessage());
-
-                return self::FAILURE;
-            }
-
-            $this->relays = RelayPublisher::relayUrls($this->option('relays') ?? config('twentyone.relays.public'));
-
-            if ($this->relays === []) {
-                $this->error('No relays to publish to.');
-
-                return self::FAILURE;
-            }
         }
 
         $this->trap([SIGTERM, SIGINT], function (int $signal): void {
@@ -92,7 +82,7 @@ class TwentyOneStreamCommand extends Command
         });
 
         File::ensureDirectoryExists($hlsDir);
-        $arguments = (new FfmpegCommands((string) config('twentyone.stream.ffmpeg')))->hls($prepared, $hlsDir, basename($playlist));
+        $arguments = (new FfmpegCommands((string) config('twentyone.stream.ffmpeg')))->hls($prepared, $hlsDir, $playlistName);
         $backoff = new Backoff(
             (int) config('twentyone.stream.backoff.initial_seconds', 5),
             (int) config('twentyone.stream.backoff.max_seconds', 300),
@@ -113,8 +103,8 @@ class TwentyOneStreamCommand extends Command
             }
 
             if ($process === null && microtime(true) >= $nextStartAt) {
-                $this->clearHlsDir($hlsDir, basename($playlist));
-                $process = Process::forever()->start($arguments);
+                $this->clearHlsDir($hlsDir, $playlistName);
+                $process = Process::forever()->env(ChildEnvironment::withoutSecrets())->start($arguments);
                 $runStartedAt = microtime(true);
                 $this->stderr = [];
                 $this->log('ffmpeg started pid='.$process->id());
@@ -146,46 +136,112 @@ class TwentyOneStreamCommand extends Command
             if ($this->signer !== null && $this->isFresh($playlist)
                 && ($lastPublishedAt === null || time() - $lastPublishedAt >= $republishSeconds)) {
                 $this->startedAt ??= time();
-                $this->publish($builder, $publisher, 'live');
+                // A SIGTERM during this publish aborts it; `ended` follows below.
+                $this->publish($builder, $publisher, 'live', $this->publishTimeout(), fn (): bool => $this->stopping);
                 $lastPublishedAt = time();
             }
 
             usleep(500_000);
         }
 
+        // `ended` first: a supervisor that kills us after its grace period
+        // must not find it still unsent behind a slow ffmpeg shutdown.
+        if ($this->signer !== null && $this->startedAt !== null) {
+            $this->publish($builder, $publisher, 'ended', (float) config('twentyone.stream.shutdown_publish_seconds', 8));
+        }
+
         if ($process !== null) {
             $this->stopProcess($process);
         }
 
-        if ($this->signer !== null && $this->startedAt !== null) {
-            $this->publish($builder, $publisher, 'ended', time());
-        }
+        // Nothing is looping any more: do not let the web server keep serving
+        // a playlist that looks live.
+        $this->clearHlsDir($hlsDir, $playlistName);
+        $this->log('stopped');
 
         return self::SUCCESS;
     }
 
-    private function publish(EventBuilder $builder, RelayPublisher $publisher, string $status, ?int $ends = null): void
+    /**
+     * Everything that would otherwise fail only after ffmpeg is running
+     * (and then again after every restart), checked before anything starts.
+     */
+    private function startupProblem(string $prepared, string $publicUrl): ?string
+    {
+        if (! EventBuilder::isStreamingUrl($publicUrl)) {
+            return 'TWENTYONE_STREAM_URL must be an http(s) URL ending in .m3u8 with nothing after it: '.$publicUrl;
+        }
+
+        if (! is_file($prepared)) {
+            return 'Prepared stream file not found: '.$prepared.'. Run `php artisan twentyone:stream:prepare` first.';
+        }
+
+        $ffmpeg = (string) config('twentyone.stream.ffmpeg');
+        $resolvable = str_contains($ffmpeg, '/') ? is_file($ffmpeg) && is_executable($ffmpeg) : (new ExecutableFinder)->find($ffmpeg) !== null;
+
+        if (! $resolvable) {
+            return 'ffmpeg not found or not executable: '.$ffmpeg.' (TWENTYONE_STREAM_FFMPEG)';
+        }
+
+        if ($this->option('no-publish')) {
+            return null;
+        }
+
+        try {
+            $this->signer = TwentyOneSigner::fromConfig();
+        } catch (RuntimeException $e) {
+            return $e->getMessage();
+        }
+
+        $this->relays = RelayPublisher::relayUrls($this->option('relays') ?? config('twentyone.relays.public'));
+        $invalid = array_filter($this->relays, fn (string $relay): bool => ! EventBuilder::isRelayUrl($relay));
+
+        if ($this->relays === []) {
+            return 'No relays to publish to.';
+        }
+
+        if ($invalid !== []) {
+            return 'Not a ws:// or wss:// relay URL: '.implode(', ', $invalid);
+        }
+
+        return null;
+    }
+
+    private function publishTimeout(): float
+    {
+        return (float) config('twentyone.nostr.publish_timeout_seconds', 5);
+    }
+
+    /**
+     * @param  (Closure(): bool)|null  $abort
+     */
+    private function publish(EventBuilder $builder, RelayPublisher $publisher, string $status, float $timeoutSeconds, ?Closure $abort = null): void
     {
         assert($this->signer !== null && $this->startedAt !== null);
 
         /** @var array{d: string, title: string, summary: string, image: string, t?: list<string>} $stream */
         $stream = config('twentyone.stream.event');
-        $event = $this->signer->sign($builder->liveActivity(
+        // A replaceable event only replaces an older one: never the same second.
+        $createdAt = max(time(), $this->lastCreatedAt + 1);
+        $unsigned = $builder->liveActivity(
             $stream,
             (string) config('twentyone.stream.public_url'),
             $this->signer->pubkey,
             $status,
             $this->startedAt,
-            $ends,
-        ));
+            $status === 'ended' ? $createdAt : null,
+        )->setCreatedAt($createdAt);
+        $event = $this->signer->sign($unsigned);
+        $this->lastCreatedAt = $createdAt;
 
-        $results = $publisher->publish($event, $this->relays, (float) config('twentyone.nostr.publish_timeout_seconds', 5));
+        $results = $publisher->publish($event, $this->relays, $timeoutSeconds, $abort);
         $summary = collect($results)->map(fn ($result): string => $result->relay.' '.($result->accepted ? 'ok' : 'failed: '.$result->message));
 
         $this->log(sprintf(
-            'published kind 30311 status=%s id=%s to %d/%d relays (%s)',
+            'published kind 30311 status=%s id=%s created_at=%d to %d/%d relays (%s)',
             $status,
             $event['id'],
+            $event['created_at'],
             collect($results)->where('accepted', true)->count(),
             count($results),
             $summary->implode('; '),
@@ -193,18 +249,19 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * SIGTERM, and SIGKILL if ffmpeg is still there after 10 s.
+     * SIGTERM, and SIGKILL if ffmpeg is still there after 2 s (it normally
+     * exits at once; the whole shutdown has to fit a ~10 s grace period).
      */
     private function stopProcess(InvokedProcess $process): void
     {
-        $deadline = microtime(true) + 10;
+        $deadline = microtime(true) + 2;
 
         if ($process->running()) {
             $process->signal(SIGTERM);
         }
 
         while ($process->running() && microtime(true) < $deadline) {
-            usleep(100_000);
+            usleep(50_000);
         }
 
         if ($process->running()) {

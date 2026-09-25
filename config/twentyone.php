@@ -93,6 +93,10 @@ return [
         // NIP-53 lets clients treat a `live` event without update for 1 h as ended.
         'republish_minutes' => 20,
 
+        // Total budget for the `ended` publish on SIGTERM, all relays in
+        // parallel. Supervisors kill after ~10 s (supervisord stopwaitsecs).
+        'shutdown_publish_seconds' => 8,
+
         'backoff' => [
             'initial_seconds' => 5,
             'max_seconds' => 300,

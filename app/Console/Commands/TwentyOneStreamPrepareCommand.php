@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -44,7 +45,7 @@ class TwentyOneStreamPrepareCommand extends Command
 
         File::ensureDirectoryExists(dirname($prepared));
         $partial = $prepared.'.part';
-        $encode = Process::forever()->run(
+        $encode = Process::forever()->env(ChildEnvironment::withoutSecrets())->run(
             (new FfmpegCommands((string) config('twentyone.stream.ffmpeg')))->prepare($source, $partial, $duration),
         );
 
@@ -143,6 +144,6 @@ class TwentyOneStreamPrepareCommand extends Command
      */
     private function ffprobe(array $arguments): string
     {
-        return Process::run([(string) config('twentyone.stream.ffprobe'), '-v', 'error', ...$arguments])->output();
+        return Process::env(ChildEnvironment::withoutSecrets())->run([(string) config('twentyone.stream.ffprobe'), '-v', 'error', ...$arguments])->output();
     }
 }

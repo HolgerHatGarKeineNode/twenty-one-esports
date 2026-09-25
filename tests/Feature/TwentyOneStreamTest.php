@@ -23,12 +23,28 @@ beforeEach(function () {
         'twentyone.nostr.npub' => NostrKeys::hexToNpub($this->key->pubkey),
         'twentyone.stream.prepared' => $this->dir.'/promo-stream.mp4',
         'twentyone.stream.hls_dir' => $this->dir.'/hls',
+        // Any executable passes the start-up check; the tests fake or replace it.
+        'twentyone.stream.ffmpeg' => PHP_BINARY,
     ]);
 });
 
 afterEach(function () {
     File::deleteDirectory($this->dir);
+    putenv('TWENTYONE_NOSTR_NSEC');
+    putenv('TWENTYONE_TEST_API_TOKEN');
 });
+
+/**
+ * An ffmpeg stand-in: a shell script with the given body.
+ */
+function fakeFfmpeg(string $dir, string $body): string
+{
+    File::put($dir.'/ffmpeg', "#!/bin/sh\n".$body."\n");
+    chmod($dir.'/ffmpeg', 0755);
+    config(['twentyone.stream.ffmpeg' => $dir.'/ffmpeg']);
+
+    return $dir.'/ffmpeg';
+}
 
 test('the live event puts one m3u8 streaming tag and a four-element host p tag in order', function () {
     $stream = config('twentyone.stream.event');
@@ -43,7 +59,7 @@ test('the live event puts one m3u8 streaming tag and a four-element host p tag i
             ['d', 'twentyone-247'],
             ['title', $stream['title']],
             ['summary', $stream['summary']],
-            ['image', 'https://esports.einundzwanzig.space/images/twentyone/banner.png'],
+            ['image', $stream['image']],
             ['status', 'ended'],
             ['starts', '1790000000'],
             ['ends', '1790003600'],
@@ -66,12 +82,23 @@ test('the stream refuses to start without the prepared file', function () {
     Process::assertNothingRan();
 });
 
+test('the stream refuses an unplayable streaming URL before anything starts', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    config(['twentyone.stream.public_url' => 'https://esports.einundzwanzig.space/live/stream.m3u8?v=2']);
+    Process::fake();
+
+    $startedAt = microtime(true);
+    $this->artisan('twentyone:stream', ['--relays' => 'ws://127.0.0.1:1', '--stop-after' => 2])
+        ->expectsOutputToContain('TWENTYONE_STREAM_URL must be an http(s) URL ending in .m3u8')
+        ->assertExitCode(1);
+
+    expect(microtime(true) - $startedAt)->toBeLessThan(1.0);
+    Process::assertNothingRan();
+});
+
 test('the supervisor survives an ffmpeg killed from outside and schedules a restart', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
-    $ffmpeg = $this->dir.'/ffmpeg';
-    File::put($ffmpeg, "#!/bin/sh\nkill -KILL \$\$\n");
-    chmod($ffmpeg, 0755);
-    config(['twentyone.stream.ffmpeg' => $ffmpeg]);
+    fakeFfmpeg($this->dir, 'kill -KILL $$');
 
     $exitCode = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1]);
 
@@ -79,21 +106,49 @@ test('the supervisor survives an ffmpeg killed from outside and schedules a rest
         ->and(Artisan::output())->toContain('ffmpeg exited by signal 9', 'restarting ffmpeg in 5 s');
 });
 
-test('the stream announces live, then ended, and never prints the secret key', function () {
+test('ffmpeg does not inherit the nsec or other secrets from the environment', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
-    // The fake ffmpeg "writes" a fresh playlist when it starts.
-    Process::fake(function () {
-        File::put(config('twentyone.stream.hls_dir').'/stream.m3u8', "#EXTM3U\n");
+    putenv('TWENTYONE_NOSTR_NSEC='.$this->nsec);
+    putenv('TWENTYONE_TEST_API_TOKEN=not-for-children');
+    fakeFfmpeg($this->dir, 'env > "$(dirname "$0")/child-env.txt"; exec sleep 5');
 
-        return Process::describe()->runsFor(iterations: 20);
-    });
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1]);
+    $environment = (string) file_get_contents($this->dir.'/child-env.txt');
 
-    $exitCode = Artisan::call('twentyone:stream', ['--relays' => 'ws://127.0.0.1:1', '--stop-after' => 1]);
+    // Booleans only: a failure message must not print the environment.
+    expect(str_contains($environment, 'PATH='))->toBeTrue()
+        ->and(str_contains($environment, $this->nsec))->toBeFalse()
+        ->and(preg_match('/^(TWENTYONE_NOSTR_NSEC|TWENTYONE_TEST_API_TOKEN|APP_KEY)=/m', $environment))->toBe(0);
+});
+
+test('on stop the stream publishes ended first, in parallel, then stops ffmpeg and removes the playlist', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    $hlsDir = config('twentyone.stream.hls_dir');
+    // Three relays that accept the connection and never answer.
+    $silent = array_map(fn () => stream_socket_server('tcp://127.0.0.1:0'), range(1, 3));
+    $relays = implode(',', array_map(fn ($server): string => 'ws://'.stream_socket_get_name($server, false), $silent));
+    config(['twentyone.nostr.publish_timeout_seconds' => 1, 'twentyone.stream.shutdown_publish_seconds' => 1]);
+    // The stand-in writes a fresh playlist and a segment, then runs until SIGTERM.
+    File::ensureDirectoryExists($hlsDir);
+    fakeFfmpeg($this->dir, "echo '#EXTM3U' > '{$hlsDir}/stream.m3u8'; echo x > '{$hlsDir}/seg-000000000.m4s'; exec sleep 30");
+
+    $startedAt = microtime(true);
+    $exitCode = Artisan::call('twentyone:stream', ['--relays' => $relays, '--stop-after' => 1]);
+    $elapsed = microtime(true) - $startedAt;
     $output = Artisan::output();
 
+    preg_match('/status=live id=\w+ created_at=(\d+)/', $output, $live);
+    preg_match('/status=ended id=\w+ created_at=(\d+) to 0\/3 relays/', $output, $ended);
+
     expect($exitCode)->toBe(0)
-        ->and($output)->toContain('ffmpeg started', 'published kind 30311 status=live', 'published kind 30311 status=ended')
+        // live (1 s budget) + stop-after + ended (1 s budget), not 3 × per relay.
+        ->and($elapsed)->toBeLessThan(3.5)
+        ->and($live)->not->toBe([])
+        ->and($ended)->not->toBe([])
+        ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
+        ->and(strpos($output, 'status=ended'))->toBeLessThan(strpos($output, 'ffmpeg stopped'))
+        ->and(File::glob($hlsDir.'/*'))->toBe([])
         ->and($output)->not->toContain($this->nsec)
-        ->and($output)->not->toContain($this->key->secret);
-    Process::assertRanTimes(fn ($process) => in_array('-stream_loop', $process->command, true), 1);
+        ->and($output)->not->toContain($this->key->secret)
+        ->and(substr_count($output, 'ffmpeg started'))->toBe(1);
 });

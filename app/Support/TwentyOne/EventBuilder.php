@@ -65,7 +65,7 @@ final class EventBuilder
      */
     public function liveActivity(array $stream, string $streamingUrl, string $hostPubkey, string $status, int $starts, ?int $ends = null): Event
     {
-        if (! str_ends_with((string) parse_url($streamingUrl, PHP_URL_PATH), '.m3u8') || str_contains($streamingUrl, '?') || str_contains($streamingUrl, '#')) {
+        if (! self::isStreamingUrl($streamingUrl)) {
             throw new InvalidArgumentException('The streaming URL must end in .m3u8: '.$streamingUrl);
         }
 
@@ -95,6 +95,15 @@ final class EventBuilder
         $tags[] = ['p', $hostPubkey, '', 'host'];
 
         return $this->event(self::KIND_LIVE_ACTIVITY)->setTags($tags);
+    }
+
+    /**
+     * An http(s) URL whose path ends in `.m3u8` with nothing after it: the
+     * zap.stream player only uses hls.js for `endsWith(".m3u8")`.
+     */
+    public static function isStreamingUrl(string $url): bool
+    {
+        return preg_match('#^https?://[^\s/?\#]+/[^\s?\#]*\.m3u8$#', $url) === 1;
     }
 
     public static function isRelayUrl(mixed $url): bool
