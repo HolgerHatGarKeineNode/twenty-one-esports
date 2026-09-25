@@ -31,11 +31,12 @@ use Illuminate\Support\Str;
  * @property Platform|null $platform
  * @property array<string, string>|null $gamer_tags
  * @property string|null $timezone
+ * @property string|null $looking_to_play `<game>/<mode>` the player is up for, null = not looking
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
  */
-#[Fillable(['pubkey', 'npub', 'locale', 'avatar_path', 'platform', 'gamer_tags', 'timezone'])]
+#[Fillable(['pubkey', 'npub', 'locale', 'avatar_path', 'platform', 'gamer_tags', 'timezone', 'looking_to_play'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */

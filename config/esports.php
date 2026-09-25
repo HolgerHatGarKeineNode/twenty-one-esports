@@ -102,6 +102,39 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Live chess (P5)
+    |--------------------------------------------------------------------------
+    |
+    | first_move_seconds: before both sides made their first move no clock
+    | runs; whoever is to move has this long, then the server aborts the game
+    | (ChessOverlays "Abort before the first move", ChessStates "Game aborted").
+    |
+    | queue.range: the blitz queue pairs two players when their ratings are
+    | within both players' current range. The range starts at `initial` and
+    | grows by `step` every `every_seconds` of waiting, up to `max`
+    | (ChessStates: "after 30 s the range opens to ±300"). Everyone is rated
+    | `start_rating` until Elo exists (P7).
+    |
+    | pairing_limit_per_day: most games the same two players may get per UTC
+    | day (plan, open question 4: 3 for rated games); null = no limit. Casual
+    | games have none.
+    |
+    | invite_seconds: how long a blitz invite to a friend stays open.
+    |
+    */
+
+    'chess' => [
+        'first_move_seconds' => 30,
+        'queue' => [
+            'start_rating' => 1000,
+            'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],
+        ],
+        'pairing_limit_per_day' => ['rated' => 3, 'casual' => null],
+        'invite_seconds' => 120,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Relays the league publishes to
     |--------------------------------------------------------------------------
     |

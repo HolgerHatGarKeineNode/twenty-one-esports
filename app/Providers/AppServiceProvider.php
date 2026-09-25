@@ -6,6 +6,7 @@ use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -31,6 +32,10 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
+
+        // `composer dev` also runs the scheduler: the chess flag sweep
+        // (routes/console.php) is part of how a clock runs out.
+        DevCommands::artisan('schedule:work', 'schedule');
     }
 
     /**
