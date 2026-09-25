@@ -366,6 +366,221 @@ select:focus[data-flux-control] {
         animation: sk-shimmer 1.4s linear infinite;
     }
 
+    /*
+     * Match dock (MatchDock.dc.html, MobileMatchDock.dc.html): tabs with an
+     * edge that says whose turn it is, the fuse, panels and list rows. The
+     * ring and the live dot run three times and stop; the global
+     * reduced-motion rule at the end of this file switches them off.
+     */
+    .dk-tab {
+        position: relative;
+        height: 48px;
+        padding: 0 10px 0 13px;
+        border-radius: 6px;
+        background: var(--color-row-hover);
+        color: var(--color-ink);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-align: left;
+        cursor: pointer;
+        transition: background-color 0.15s ease-out;
+    }
+
+    .dk-tab:hover {
+        background: var(--color-raised);
+    }
+
+    .dk-you {
+        box-shadow: inset 3px 0 0 var(--color-btc);
+    }
+
+    .dk-wait {
+        box-shadow: inset 3px 0 0 var(--color-line);
+    }
+
+    .dk-tab.dk-open,
+    .dk-tab.dk-open:hover {
+        background: var(--color-btc-chip);
+        box-shadow: inset 3px 0 0 var(--color-btc), inset 0 0 0 1px var(--color-btc);
+    }
+
+    .dk-btn {
+        height: 48px;
+        border-radius: 6px;
+        color: var(--color-ink);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: background-color 0.15s ease-out;
+    }
+
+    .dk-btn:hover {
+        background: var(--color-raised);
+    }
+
+    .dk-name {
+        font-size: 13px;
+        line-height: 16px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .dk-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        line-height: 16px;
+        white-space: nowrap;
+    }
+
+    .dk-fuse {
+        position: absolute;
+        left: 3px;
+        bottom: 0;
+        height: 2px;
+        border-radius: 0 1px 1px 0;
+    }
+
+    .dk-panel {
+        width: 360px;
+        border-radius: 8px;
+        background: var(--color-card);
+        box-shadow: 0 0 0 1px var(--color-line), 0 16px 32px rgba(10, 10, 11, 0.8);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dk-cta,
+    .dk-sec {
+        height: 44px;
+        padding: 0 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .dk-cta {
+        background: var(--color-btc);
+        color: var(--color-on-btc);
+        font-weight: 700;
+    }
+
+    .dk-cta:hover {
+        background: var(--color-btc-hi);
+        color: var(--color-on-btc);
+    }
+
+    .dk-sec {
+        background: var(--color-well);
+        border: 1px solid var(--color-line);
+        color: var(--color-ink);
+    }
+
+    .dk-sec:hover {
+        background: var(--color-raised);
+        color: var(--color-ink);
+    }
+
+    .dk-x {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+        border-radius: 6px;
+        color: var(--color-ink-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .dk-x:hover {
+        background: var(--color-raised);
+        color: var(--color-ink);
+    }
+
+    .dk-kv {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 12px;
+        line-height: 16px;
+    }
+
+    .dk-row {
+        width: 100%;
+        min-height: 56px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-align: left;
+    }
+
+    .dk-row:hover {
+        background: var(--color-row-hover);
+    }
+
+    .dk-slot {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        border: 1px dashed currentColor;
+        border-radius: 2px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 7px;
+        line-height: 1;
+        font-weight: 700;
+    }
+
+    .dk-ping {
+        animation: dk-ping 0.8s ease-out 3;
+    }
+
+    @keyframes dk-ping {
+        0% { box-shadow: inset 3px 0 0 var(--color-btc), 0 0 0 0 rgba(247, 147, 26, 0.55); }
+        100% { box-shadow: inset 3px 0 0 var(--color-btc), 0 0 0 10px rgba(247, 147, 26, 0); }
+    }
+
+    .dk-live {
+        animation: dk-dot 1.4s ease-in-out 3;
+    }
+
+    @keyframes dk-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+    }
+
+    .dk-rise {
+        animation: dk-rise 0.2s ease-out both;
+    }
+
+    @keyframes dk-rise {
+        from { transform: translateY(8px); opacity: 0; }
+        to { transform: none; opacity: 1; }
+    }
+
+    .dk-sheet {
+        animation: dk-sheet 0.25s ease-out both;
+    }
+
+    @keyframes dk-sheet {
+        from { transform: translateY(24px); opacity: 0; }
+        to { transform: none; opacity: 1; }
+    }
+
     /* Loading screen (States.dc.html, "Loading") */
     .mine {
         animation: mine-drop 3.2s var(--ease-pop) infinite both;

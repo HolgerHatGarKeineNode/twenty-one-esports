@@ -24,6 +24,7 @@
         'bell' => '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path>',
         'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"></path>',
+        'chevron-up' => '<path d="m18 15-6-6-6 6"></path>',
         'rocket-league' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 3v4l-3.5 2.5M12 7l3.5 2.5M8.5 9.5 7 14l5 3 5-3-1.5-4.5M3.5 10.5 7 14M20.5 10.5 17 14M12 17v4"></path>',
         'award' => '<circle cx="12" cy="9" r="6"></circle><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"></path>',
         'brush' => '<path d="M3 21c3 0 6-1 6-4a3 3 0 0 0-3-3c-2 0-3 2-3 7z"></path><path d="M20.5 3.5 10 14l-1-1L19.5 2.5z"></path>',

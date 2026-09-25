@@ -161,6 +161,8 @@ export function handleAlert(alert) {
 
     if (!onItsGame && !alreadyGoing) playSound(alert.sound);
     if (here || alreadyGoing) return;
+    // A game that already has a tab on the match dock turns there instead (P5f, MatchDock.dc.html "Toasts").
+    if (alert.match && !alert.redirect && document.querySelector(`[data-dock-game="${alert.match}"]`)) return;
 
     window.dispatchEvent(new CustomEvent('toast', {
         detail: {

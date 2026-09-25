@@ -37,9 +37,11 @@
 
     {{-- Mobile sheet --}}
     @if ($chat['opponent'])
-        <div class="lg:hidden" x-data="{ open: false, seen: 0 }" x-effect="open && (seen = messages.length)">
+        {{-- The chat sheet and the match dock's sheet close each other (P5f). --}}
+        <div class="lg:hidden" x-data="{ open: false, seen: 0 }" x-effect="open && (seen = messages.length)"
+             x-init="$watch('open', (value) => window.dispatchEvent(new CustomEvent('chat-sheet-toggle', { detail: value })))" x-on:dock-toggle.window="$event.detail && (open = false)">
             <div x-show="open" x-cloak aria-hidden="true" class="fixed inset-0 z-30 bg-[rgba(10,10,11,.6)]" x-on:click="open = false"></div>
-            <section role="dialog" :aria-modal="open ? 'true' : 'false'" aria-labelledby="sheet-h"
+            <section role="dialog" :aria-modal="open ? 'true' : 'false'" aria-labelledby="sheet-h" data-page-bar
                      class="fixed inset-x-0 bottom-0 z-40 flex flex-col rounded-t-2xl bg-bar shadow-[0_-1px_0_#2A2A30,0_-16px_32px_rgba(10,10,11,.8)]"
                      :class="open ? 'h-[min(520px,80svh)] animate-drop-in' : 'h-[72px]'">
                 <button type="button" x-on:click="open = ! open" :aria-expanded="open ? 'true' : 'false'" aria-controls="sheet-body" data-test="chat-sheet-toggle"

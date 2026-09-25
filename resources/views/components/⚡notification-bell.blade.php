@@ -82,7 +82,7 @@ new class extends Component {
     $mobile = $variant === 'mobile';
 @endphp
 
-<div class="relative" x-data="{ open: false }" x-init="$watch('open', (value) => $dispatch('bell-toggle', value))" x-on:esports-notification.window="$wire.$refresh()"
+<div class="relative" x-data="{ open: false }" x-init="$watch('open', (value) => $dispatch('bell-toggle', value))" x-on:esports-notification.window="$wire.$refresh()" x-on:dock-toggle.window="$event.detail && (open = false)"
      x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell-{{ $variant }}">
     <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel-{{ $variant }}"
             @class(['relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:text-ink', 'text-ink-2' => $mobile, 'border border-line bg-well text-ink-2' => ! $mobile])

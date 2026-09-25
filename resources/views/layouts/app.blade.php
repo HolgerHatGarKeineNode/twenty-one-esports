@@ -24,6 +24,11 @@
 
         <x-shell.footer />
 
+        {{-- The match dock (P5f): open matches at the bottom of every page of a logged-in player. --}}
+        @auth
+            <livewire:match-dock />
+        @endauth
+
         <x-toast-stack />
 
         <x-profile-card-host />

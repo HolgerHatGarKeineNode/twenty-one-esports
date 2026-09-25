@@ -284,6 +284,17 @@ return [
         'countdown_seconds' => 5,
     ],
 
+    /*
+    | The match dock (P5f) refreshes on the player's websocket events. Without
+    | a websocket it polls every `poll_seconds`; with one it still polls every
+    | `poll_seconds_with_socket`, because Rocket League series changes are not
+    | broadcast yet. Only while the tab is visible.
+    */
+    'dock' => [
+        'poll_seconds' => 20,
+        'poll_seconds_with_socket' => 120,
+    ],
+
     'webpush' => [
         'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
         'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),

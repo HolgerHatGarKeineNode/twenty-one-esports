@@ -40,6 +40,8 @@
             <span class="text-[13px] text-btc lg:text-sm">{{ $game->number() }}</span>
             <button type="button" aria-label="{{ __('Copy game link') }}" x-on:click="navigator.clipboard?.writeText(window.location.href)"
                     class="hidden size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2 lg:flex"><x-icon name="copy" :size="14" /></button>
+            {{-- The match dock's button from lg (P5f): the chat owns the bottom right here. --}}
+            <div data-dock-slot class="max-lg:hidden"></div>
             <span class="grow"></span>
             <span role="status" data-test="daily-status"
                   class="flex h-7 items-center gap-2 rounded-md px-2.5 text-xs font-bold lg:h-[34px] lg:px-3.5 lg:text-[13px]"
@@ -291,7 +293,7 @@
 
     {{-- Bottom bar (mobile) --}}
     {{-- Above the chat sheet for players (partials/chat: 72px closed, over this bar when open) --}}
-    <div @class(['fixed inset-x-0 z-20 flex flex-col gap-2 border-t border-line bg-bar px-4 pt-3 pb-4 shadow-[0_-16px_32px_rgba(10,10,11,.8)] lg:hidden', $color ? 'bottom-[72px]' : 'bottom-0']) data-test="daily-bottom-bar">
+    <div @class(['fixed inset-x-0 z-20 flex flex-col gap-2 border-t border-line bg-bar px-4 pt-3 pb-4 shadow-[0_-16px_32px_rgba(10,10,11,.8)] lg:hidden', $color ? 'bottom-[72px]' : 'bottom-0']) data-test="daily-bottom-bar" data-page-bar>
         <span class="flex justify-between gap-2 text-xs">
             <b x-text="myTurn ? t.yourMoveLeft.replace(':left', hoursMinutes(leftMs)) : @js(__(':name to move', ['name' => $color ? $opponentName : ''])).trim()"></b>
             <span class="text-right text-ink-3">{{ $channelSummary }}</span>

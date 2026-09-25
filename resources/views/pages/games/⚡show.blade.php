@@ -478,6 +478,8 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                 <span class="text-sm text-btc">{{ $game->number() }}</span>
                 <button type="button" aria-label="{{ __('Copy game link') }}" x-on:click="navigator.clipboard?.writeText(window.location.href)"
                         class="hidden size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2 lg:flex"><x-icon name="copy" :size="14" /></button>
+                {{-- The match dock's button from lg (P5f): the chat composer owns the bottom right here. --}}
+                <div data-dock-slot class="max-lg:hidden"></div>
                 <span class="grow"></span>
                 <span role="status" class="hidden h-[34px] items-center gap-2 rounded-md px-3 text-[13px] lg:flex"
                       :class="connection === 'connected' ? 'bg-[#122016] text-win' : 'bg-[#241D10] text-btc-hi'">

@@ -742,7 +742,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     {{-- Sticky score bar (MobileMatchRoom) --}}
     @if ($editable)
-        <div class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden">
+        <div class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar>
             <span class="flex flex-col"><b class="font-display text-[22px]">{{ $wins['challenger'] }}:{{ $wins['challenged'] }}</b><span class="text-[11px] text-ink-2">{{ $wins['challenger'] === $wins['challenged'] ? __('level') : __(':clan lead the series', ['clan' => $m->sideName($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged')]) }}</span></span>
             <span class="grow"></span>
             <button type="button" x-on:click="submit = true" class="btn-p inline-flex h-[52px] cursor-pointer items-center gap-2 rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc"><x-icon name="shield-check" :size="18" />{{ __('Submit final score') }}</button>

@@ -10,6 +10,7 @@ import nostrLogin from './nostrLogin.js';
 import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker } from './millAuth.js';
+import matchDock from './matchDock.js';
 import './nostrSign.js';
 import './captured.js';
 
@@ -20,6 +21,8 @@ document.addEventListener('alpine:init', () => {
     // Nostr profiles of the players on a page, and the player card (P10a).
     window.Alpine.store('profiles', profileStore());
     window.Alpine.data('profileCardHost', profileCardHost);
+    // The match dock of a logged-in player (P5f).
+    window.Alpine.data('matchDock', matchDock);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.
