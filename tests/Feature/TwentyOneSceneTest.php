@@ -41,3 +41,12 @@ test('after the game the scene shows the result, and it is gone after the hyster
     expect($source->endedGame(60))->toBeNull()
         ->and($game->id)->toBeInt();
 });
+
+test('the scene shows a name with line breaks and bidi controls as plain text', function () {
+    $game = ChessGame::factory()->create(['white_id' => User::factory()->create(['name' => "Mallory\u{202E}gnp\nline two"])]);
+    $source = app(SceneSource::class);
+
+    $svg = SceneRenderer::fromConfig()->svg($source->scene($game, (int) now()->getTimestampMs()));
+
+    expect($svg)->toContain('>Mallory gnp line two<');
+});

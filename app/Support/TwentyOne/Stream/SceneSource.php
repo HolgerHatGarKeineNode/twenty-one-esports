@@ -19,7 +19,7 @@ use App\Support\Chess\ChessGameService;
  * Names are the public profile names the lobby shows (User::displayName()).
  * Stats are real counts only; nothing here is a placeholder or a rating.
  */
-final class SceneSource
+class SceneSource
 {
     public function __construct(
         private ChessGameService $chess,

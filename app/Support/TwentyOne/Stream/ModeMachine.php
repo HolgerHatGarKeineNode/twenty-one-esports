@@ -20,6 +20,9 @@ final class ModeMachine
 
     private ?int $lastLiveAt = null;
 
+    /** Until then no scene, whatever the database says (a scene that failed). */
+    private int $sceneBlockedUntil = 0;
+
     public function __construct(private int $hysteresisSeconds = 60) {}
 
     /**
@@ -27,7 +30,9 @@ final class ModeMachine
      */
     public function tick(bool $gameLive, int $now): string
     {
-        if ($gameLive) {
+        if ($now < $this->sceneBlockedUntil) {
+            $this->mode = self::LOOP;
+        } elseif ($gameLive) {
             $this->lastLiveAt = $now;
             $this->mode = self::SCENE;
         } elseif ($this->mode === self::SCENE && $now - (int) $this->lastLiveAt >= $this->hysteresisSeconds) {
@@ -35,6 +40,16 @@ final class ModeMachine
         }
 
         return $this->mode;
+    }
+
+    /**
+     * Back to the loop now, and no scene before `$until` (unix seconds):
+     * for a scene that cannot be rendered or encoded.
+     */
+    public function forceLoop(int $until): void
+    {
+        $this->mode = self::LOOP;
+        $this->sceneBlockedUntil = $until;
     }
 
     /**

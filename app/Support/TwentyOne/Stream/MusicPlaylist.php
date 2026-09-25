@@ -103,6 +103,15 @@ final class MusicPlaylist
     }
 
     /**
+     * No control characters: a newline would end the ffconcat `file` line
+     * and start a directive of its own.
+     */
+    public static function isSafePath(string $file): bool
+    {
+        return preg_match('/\p{C}/u', $file) === 0;
+    }
+
+    /**
      * An ffconcat file for `-f concat -safe 0` with absolute paths.
      *
      * @param  list<string>  $files
@@ -112,6 +121,10 @@ final class MusicPlaylist
         $lines = ['ffconcat version 1.0'];
 
         foreach ($files as $file) {
+            if (! self::isSafePath($file)) {
+                throw new InvalidArgumentException('A music path with a control character cannot go into an ffconcat list.');
+            }
+
             $lines[] = "file '".str_replace("'", "'\\''", $file)."'";
         }
 

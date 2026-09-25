@@ -37,6 +37,32 @@ final readonly class PlaylistState
     }
 
     /**
+     * The persisted state, or, when the file is missing or unreadable, a
+     * fresh one whose sequence numbers start at a clock floor: the number of
+     * 6 s segment slots since 1970. Normal operation publishes about one
+     * segment per slot, so a later loss of the state file still continues
+     * above what players saw before instead of falling back to 0.
+     *
+     * @return array{0: self, 1: 'missing'|'unreadable'|null}
+     */
+    public static function recover(?string $json, int $now): array
+    {
+        $floor = intdiv($now, PlaylistWriter::TARGET_DURATION);
+
+        if ($json === null) {
+            return [new self($floor, $floor), 'missing'];
+        }
+
+        $data = json_decode($json, true);
+
+        if (! is_array($data) || ! is_int($data['mediaSequence'] ?? null) || ! is_int($data['discontinuitySequence'] ?? null)) {
+            return [new self($floor, $floor), 'unreadable'];
+        }
+
+        return [self::fromJson($json), null];
+    }
+
+    /**
      * The persisted state, or a fresh one when there is none. A damaged file
      * must not reset the sequence numbers silently to 0 while an old window
      * is still cached by players, so it keeps the counters it can read and

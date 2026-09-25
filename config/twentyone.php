@@ -93,6 +93,15 @@ return [
         // NIP-53 lets clients treat a `live` event without update for 1 h as ended.
         'republish_minutes' => 20,
 
+        // A changed title/summary (a new game) is republished at most this often.
+        'text_change_seconds' => 60,
+
+        // Longest wait of the once-a-second database poll (lock or lost server).
+        'poll_timeout_ms' => 2000,
+
+        // An encoder that wrote no segment for this long (3 x 6 s) is restarted.
+        'watchdog_seconds' => 18,
+
         // Total budget for the `ended` publish on SIGTERM, all relays in
         // parallel. Supervisors kill after ~10 s (supervisord stopwaitsecs).
         'shutdown_publish_seconds' => 8,
@@ -125,6 +134,8 @@ return [
             'url' => 'esports.einundzwanzig.space',
             'crf' => 35,
             'hysteresis_seconds' => 60,
+            // Renders failing this many seconds in a row send the stream back to the loop.
+            'render_failures_for_loop' => 10,
         ],
     ],
 

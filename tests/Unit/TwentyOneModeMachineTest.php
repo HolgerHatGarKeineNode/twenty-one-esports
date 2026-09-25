@@ -24,3 +24,11 @@ test('a rematch within 60 s keeps the scene', function () {
 
     expect($modes)->toBe(['scene', 'scene', 'scene', 'scene', 'scene', 'loop']);
 });
+
+test('a failed scene is kept off for a while even with a live game', function () {
+    $machine = new ModeMachine(60);
+    $machine->tick(true, 0);
+    $machine->forceLoop(30);
+
+    expect([$machine->mode(), $machine->tick(true, 29), $machine->tick(true, 30)])->toBe(['loop', 'loop', 'scene']);
+});

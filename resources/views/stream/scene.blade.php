@@ -31,8 +31,10 @@
     // Code points the two JetBrains Mono files cover (latin + latin-ext subsets, the same two the site ships).
     // Anything else (emoji, Cyrillic, CJK, control characters) would render as a missing-glyph box, so it is dropped.
     $covered = '/[^\x{0020}-\x{007E}\x{00A0}-\x{0131}\x{0134}-\x{017F}\x{018F}\x{0192}\x{01A0}-\x{01A1}\x{01AF}-\x{01B0}\x{01CD}-\x{01CE}\x{01E6}-\x{01E7}\x{01EA}-\x{01EB}\x{01F4}-\x{01F5}\x{01FC}-\x{01FF}\x{0218}-\x{021B}\x{0232}-\x{0233}\x{0237}\x{0259}\x{02B9}-\x{02BA}\x{02BC}\x{02C6}-\x{02C7}\x{02C9}\x{02DA}\x{02DC}-\x{02DD}\x{02F3}\x{02F7}\x{0300}-\x{0301}\x{0303}-\x{0304}\x{0308}-\x{0309}\x{0323}\x{1E80}-\x{1E85}\x{1E9E}\x{1EF2}-\x{1EF9}\x{2013}-\x{2014}\x{2018}-\x{201A}\x{201C}-\x{201E}\x{2020}\x{2022}\x{2026}\x{2032}-\x{2033}\x{2039}-\x{203A}\x{2044}\x{20AB}-\x{20AC}\x{20AE}\x{20BD}\x{20BF}\x{2113}\x{2122}\x{2191}\x{2193}\x{2212}\x{2215}]+/u';
+    // Shared with the 30311 texts: control, bidi and zero-width characters out,
+    // whitespace (newlines included) collapsed; then what the fonts cannot show.
     $clean = static function (string $s) use ($covered): string {
-        $s = preg_replace($covered, '', $s) ?? '';
+        $s = preg_replace($covered, '', \App\Support\TwentyOne\Stream\PublicName::clean($s)) ?? '';
 
         return trim(preg_replace('/\s+/u', ' ', $s) ?? '');
     };

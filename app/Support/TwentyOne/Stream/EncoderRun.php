@@ -36,6 +36,19 @@ final class EncoderRun
     }
 
     /**
+     * When this run last wrote its own playlist (ffmpeg rewrites it with
+     * every segment), or its start when it has not written one yet.
+     */
+    public function lastOutputAt(string $hlsDir): float
+    {
+        $playlist = rtrim($hlsDir, '/').'/'.$this->mode.'/'.FfmpegCommands::ENCODER_PLAYLIST;
+        clearstatcache(true, $playlist);
+        $modified = $this->hasSegment($hlsDir) ? @filemtime($playlist) : false;
+
+        return $modified === false ? $this->startedAt : max($this->startedAt, (float) $modified);
+    }
+
+    /**
      * Queue one PNG frame for ffmpeg's stdin. Symfony writes it out whenever
      * the process is polled (running(), output reads), without blocking.
      */

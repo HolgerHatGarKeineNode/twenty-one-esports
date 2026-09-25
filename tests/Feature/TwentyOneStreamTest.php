@@ -1,8 +1,14 @@
 <?php
 
+use App\Games\GameRegistry;
+use App\Models\ChessGame;
+use App\Models\User;
+use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
+use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -40,7 +46,7 @@ beforeEach(function () {
 afterEach(function () {
     File::deleteDirectory($this->dir);
 
-    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE'] as $name) {
+    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
         putenv($name);
         unset($_SERVER[$name]);
     }
@@ -208,9 +214,151 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
     expect($first[1])->toHaveCount(3)
         ->and($second[1])->toHaveCount(3)
         ->and(array_intersect($first[1], $second[1]))->toBe([])
-        // Run 2 starts after the 3 segments of run 1: 0 → 3.
-        ->and((int) $firstSequence[1])->toBe(0)
-        ->and((int) $secondSequence[1])->toBe(3)
+        // Run 1 starts at the clock floor (no state yet); run 2 right after its 3 segments.
+        ->and((int) $firstSequence[1])->toBeGreaterThanOrEqual(intdiv(time() - 10, 6))
+        ->and((int) $secondSequence[1])->toBe((int) $firstSequence[1] + 3)
         ->and($published[2])->toMatch('/^#EXT-X-MAP:URI="loop\/\w+-init\.mp4"$/m')
         ->and($published[2])->not->toContain(explode('-', basename($first[1][0]))[0]);
+});
+
+/**
+ * A SceneSource whose liveGame() answers from a script: a ChessGame, null,
+ * or a Throwable to throw, one entry per poll (the last one repeats).
+ *
+ * @param  list<ChessGame|Throwable|null>  $answers
+ */
+function scriptedSource(array $answers): void
+{
+    $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class)])->makePartial();
+    $source->shouldReceive('liveGame')->andReturnUsing(function () use (&$answers) {
+        $answer = count($answers) > 1 ? array_shift($answers) : $answers[0];
+
+        if ($answer instanceof Throwable) {
+            throw $answer;
+        }
+
+        return $answer;
+    });
+    app()->instance(SceneSource::class, $source);
+}
+
+/**
+ * A render "binary" that always fails.
+ */
+function failingRenderer(string $dir): void
+{
+    File::put($dir.'/rsvg-convert', "#!/bin/sh\necho broken >&2\nexit 1\n");
+    chmod($dir.'/rsvg-convert', 0755);
+    config(['twentyone.stream.scene.rsvg_convert' => $dir.'/rsvg-convert']);
+}
+
+test('a failing database poll counts as no live game instead of stopping the stream', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    scriptedSource([new PDOException('SQLSTATE[HY000]: General error: 5 database is locked')]);
+
+    $exitCode = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 3]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and(substr_count($output, 'database poll failed, treating as no live game: PDOException'))->toBe(1)
+        ->and($output)->toContain('ffmpeg started mode=loop', 'stopped');
+});
+
+test('an exception in the supervisor still removes the public playlist', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    File::ensureDirectoryExists(config('twentyone.stream.hls_dir'));
+    // A playlist a crashed run left behind, still looking live.
+    File::put(config('twentyone.stream.hls_dir').'/stream.m3u8', "#EXTM3U\n");
+    Process::fake(fn () => throw new RuntimeException('cannot start ffmpeg'));
+
+    expect(fn () => Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]))->toThrow(RuntimeException::class, 'cannot start ffmpeg')
+        ->and(File::exists(config('twentyone.stream.hls_dir').'/stream.m3u8'))->toBeFalse();
+});
+
+test('a scene that cannot be rendered gives way to the loop', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    failingRenderer($this->dir);
+    config(['twentyone.stream.scene.render_failures_for_loop' => 2]);
+    ChessGame::factory()->create();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5]);
+    $output = Artisan::output();
+
+    expect($output)->toContain('ffmpeg started mode=scene', 'scene render failed 2 times in a row, back to the loop', 'ffmpeg started mode=loop');
+});
+
+test('an encoder that stops writing segments is restarted by the watchdog', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    setChildEnv('FAKE_ENCODER_SEGMENTS', '0');
+    config(['twentyone.stream.watchdog_seconds' => 2]);
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 4]);
+
+    expect(Artisan::output())->toMatch('/ffmpeg mode=loop wrote no segment for \d+ s, restarting it/');
+});
+
+test('a new encoder takes over even when the old one died during the switch', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    // Loop dies after 1.5 s; the scene needs 2.5 s for its first segment.
+    setChildEnv('FAKE_ENCODER_LOOP_EXIT_AFTER', '1.5');
+    setChildEnv('FAKE_ENCODER_SCENE_DELAY', '2.5');
+    failingRenderer($this->dir);
+    $game = ChessGame::factory()->create();
+    scriptedSource([null, $game]);
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5]);
+    $output = Artisan::output();
+
+    expect($output)->toContain('ffmpeg exited', 'switched to scene');
+});
+
+test('player names reach the 30311 without control or bidi characters', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    failingRenderer($this->dir);
+    config(['twentyone.stream.shutdown_publish_seconds' => 1]);
+    ChessGame::factory()->create([
+        'white_id' => User::factory()->create(['name' => "Mallory\u{202E}gnp.exe\nline two\u{200B}"]),
+    ]);
+    $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $this->dir.'/event.json'], [1 => ['pipe', 'w']], $pipes);
+    $port = (int) fgets($pipes[1]);
+
+    Artisan::call('twentyone:stream', ['--relays' => 'ws://127.0.0.1:'.$port, '--stop-after' => 3]);
+    proc_terminate($relay);
+    proc_close($relay);
+    $event = json_decode((string) file_get_contents($this->dir.'/event.json'), true)[1];
+    $title = collect($event['tags'])->firstWhere(0, 'title')[1];
+
+    expect($title)->toStartWith('Live now: Mallory gnp.exe line two vs ')
+        ->and(preg_match('/\p{C}/u', $title.collect($event['tags'])->firstWhere(0, 'summary')[1]))->toBe(0);
+});
+
+test('the work dir may not lie inside the served HLS directory', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    config(['twentyone.stream.scene.work_dir' => config('twentyone.stream.hls_dir').'/work']);
+    Process::fake();
+
+    $this->artisan('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1])
+        ->expectsOutputToContain('must not contain each other')
+        ->assertExitCode(1);
+    Process::assertNothingRan();
+});
+
+test('the 30311 names the game the scene shows, and the loop texts otherwise', function () {
+    $game = ChessGame::factory()->create([
+        'white_id' => User::factory()->create(['name' => 'Alice']),
+        'black_id' => User::factory()->create(['name' => str_repeat('B', 50)]),
+    ]);
+
+    expect(StreamTexts::for($game))->toBe([
+        'title' => 'Live now: Alice vs '.str_repeat('B', 39).'… · Chess Blitz',
+        'summary' => 'Alice vs '.str_repeat('B', 39).'…: live blitz chess on TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Play the next game at esports.einundzwanzig.space. Login via Nostr.',
+    ])->and(StreamTexts::for(null))->toBe([
+        'title' => config('twentyone.stream.event.title'),
+        'summary' => config('twentyone.stream.event.summary'),
+    ]);
 });

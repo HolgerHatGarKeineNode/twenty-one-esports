@@ -17,6 +17,9 @@ final class PublicPlaylist
 {
     private PlaylistState $state;
 
+    /** Why the state was rebuilt on start ('missing' or 'unreadable'), null when it was read. */
+    public readonly ?string $recoveredFrom;
+
     public function __construct(
         private string $hlsDir,
         private string $playlistName = 'stream.m3u8',
@@ -24,7 +27,7 @@ final class PublicPlaylist
     ) {
         $this->hlsDir = rtrim($hlsDir, '/');
         $statePath = $this->statePath();
-        $this->state = PlaylistState::fromJson(is_file($statePath) ? (string) file_get_contents($statePath) : null);
+        [$this->state, $this->recoveredFrom] = PlaylistState::recover(is_file($statePath) ? (string) file_get_contents($statePath) : null, time());
     }
 
     public function path(): string

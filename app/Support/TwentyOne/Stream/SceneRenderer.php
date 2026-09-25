@@ -28,6 +28,14 @@ final class SceneRenderer
         private string $workDir,
     ) {}
 
+    /**
+     * The last PNG that rendered, to keep the picture when a render fails.
+     */
+    public function lastPng(): ?string
+    {
+        return $this->lastPng;
+    }
+
     public static function fromConfig(): self
     {
         return new self(

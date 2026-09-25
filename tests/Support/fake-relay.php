@@ -69,6 +69,12 @@ switch ($scenario) {
         fwrite($client, frame(0x1, $ok($answer)));
         break;
 
+    case 'record':
+        // Keep the event for the test (argv[2]) and accept it.
+        file_put_contents($argv[2], $payload);
+        fwrite($client, frame(0x1, json_encode(['OK', $eventId, true, ''])));
+        break;
+
     case 'close':
         fwrite($client, frame(0x8, pack('n', 1008).'policy: '.$reason(100)));
         break;

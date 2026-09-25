@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\ChessGame;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
@@ -13,13 +12,17 @@ use App\Support\TwentyOne\Stream\ModeMachine;
 use App\Support\TwentyOne\Stream\MusicPlaylist;
 use App\Support\TwentyOne\Stream\PlaylistWriter;
 use App\Support\TwentyOne\Stream\PublicPlaylist;
+use App\Support\TwentyOne\Stream\PublishSchedule;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -28,6 +31,7 @@ use RuntimeException;
 use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\ExecutableFinder;
 use Symfony\Component\Process\InputStream;
+use Throwable;
 
 /**
  * Foreground supervisor for the 24/7 stream, meant to run as a daemon.
@@ -64,6 +68,12 @@ class TwentyOneStreamCommand extends Command
     /** A new encoder that has no segment after this long is given up (make before break). */
     private const SWITCH_TIMEOUT_SECONDS = 30;
 
+    /** Failed database polls in a row after which a scene gives way to the loop at once. */
+    private const POLL_FAILURES_FOR_LOOP = 5;
+
+    /** How long a scene that failed (render, encoder, database) stays off. */
+    private const SCENE_BLOCK_SECONDS = 60;
+
     /** For sizing the music list only: the 32 tracks average ~181 s (96.5 min). */
     private const ASSUMED_TRACK_SECONDS = 180;
 
@@ -77,6 +87,10 @@ class TwentyOneStreamCommand extends Command
     private ?int $startedAt = null;
 
     private int $lastCreatedAt = 0;
+
+    private ?EncoderRun $active = null;
+
+    private ?EncoderRun $pending = null;
 
     /**
      * Execute the console command.
@@ -104,8 +118,27 @@ class TwentyOneStreamCommand extends Command
         File::ensureDirectoryExists($hlsDir.'/'.ModeMachine::LOOP);
         File::ensureDirectoryExists($hlsDir.'/'.ModeMachine::SCENE);
         $this->removeLegacyLayout($hlsDir);
+        $this->limitPollWaits();
         $public = new PublicPlaylist($hlsDir, $playlistName);
-        $playlist = $public->path();
+
+        if ($public->recoveredFrom === 'unreadable') {
+            $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
+        } elseif ($public->recoveredFrom === 'missing') {
+            $this->log('no playlist state yet; MEDIA-SEQUENCE starts at the clock floor '.$public->state()->mediaSequence);
+        }
+
+        try {
+            $this->supervise($builder, $publisher, $source, $public, $hlsDir, $prepared);
+        } finally {
+            // Also after an exception: nothing may keep looking live.
+            $this->shutdown($builder, $publisher, $public);
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, PublicPlaylist $public, string $hlsDir, string $prepared): void
+    {
         $renderer = SceneRenderer::fromConfig();
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
         $modes = new ModeMachine($hysteresis);
@@ -113,16 +146,21 @@ class TwentyOneStreamCommand extends Command
             (int) config('twentyone.stream.backoff.initial_seconds', 5),
             (int) config('twentyone.stream.backoff.max_seconds', 300),
         );
-        $republishSeconds = 60 * (int) config('twentyone.stream.republish_minutes', 20);
+        $schedule = new PublishSchedule(
+            60 * (int) config('twentyone.stream.republish_minutes', 20),
+            (int) config('twentyone.stream.text_change_seconds', 60),
+        );
 
-        $active = null;
-        $pending = null;
+        // An encoder that wrote no segment for three segment lengths is restarted;
+        // a scene that failed to render this many seconds in a row gives way to the loop.
+        $watchdogSeconds = (float) config('twentyone.stream.watchdog_seconds', 18);
+        $renderFailuresForLoop = (int) config('twentyone.stream.scene.render_failures_for_loop', 10);
         $nextStartAt = 0.0;
         $nextPollAt = 0.0;
+        $pollFailures = 0;
+        $renderFailures = 0;
         $sceneGame = null;
         $scene = null;
-        $lastPublishedAt = null;
-        $publishedTexts = null;
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
 
         while (! $this->stopping) {
@@ -135,112 +173,204 @@ class TwentyOneStreamCommand extends Command
             }
 
             // Once a second: is a live game running, and what does the scene show?
+            // A database that fails or hangs counts as "no live game": the
+            // stream falls back to the loop instead of dying (FD1).
             if ($now >= $nextPollAt) {
                 $nextPollAt = $now + 1;
-                $live = $source->liveGame();
                 $before = $modes->mode();
-                $mode = $modes->tick($live !== null, (int) $now);
 
-                if ($mode !== $before) {
-                    $this->log('mode '.$before.' -> '.$mode.($live !== null ? ' (game '.$live->number().')' : ''));
+                try {
+                    $live = $source->liveGame();
+                    $mode = $modes->tick($live !== null, (int) $now);
+
+                    if ($mode === ModeMachine::SCENE) {
+                        $sceneGame = $live ?? $source->endedGame($hysteresis) ?? $sceneGame?->fresh(['white', 'black']);
+                        $scene = $sceneGame === null ? $scene : $source->scene($sceneGame, (int) ($now * 1000));
+                    }
+
+                    if ($pollFailures > 0) {
+                        $this->log('database poll recovered after '.$pollFailures.' failed polls');
+                        $pollFailures = 0;
+                    }
+                } catch (Throwable $e) {
+                    if ($pollFailures === 0) {
+                        $this->log('database poll failed, treating as no live game: '.$this->describe($e));
+                    }
+
+                    $live = null;
+                    $pollFailures++;
+                    $modes->tick(false, (int) $now);
+
+                    if ($pollFailures >= self::POLL_FAILURES_FOR_LOOP && $modes->mode() === ModeMachine::SCENE) {
+                        $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
+                    }
                 }
 
-                if ($mode === ModeMachine::SCENE) {
-                    $sceneGame = $live ?? $source->endedGame($hysteresis) ?? $sceneGame?->fresh(['white', 'black']);
-                    $scene = $sceneGame === null ? $scene : $source->scene($sceneGame, (int) ($now * 1000));
+                if ($modes->mode() !== $before) {
+                    $this->log('mode '.$before.' -> '.$modes->mode().($live !== null ? ' (game '.$live->number().')' : ''));
                 }
             }
 
             $mode = $modes->mode();
 
-            if ($active === null && $pending === null && $now >= $nextStartAt) {
-                $active = $this->startEncoder($mode, $public, $hlsDir, $prepared);
-            } elseif ($active !== null && $active->mode !== $mode && $pending === null && $now >= $nextStartAt) {
+            if ($this->active === null && $this->pending === null && $now >= $nextStartAt) {
+                $this->active = $this->startEncoder($mode, $public, $hlsDir, $prepared);
+            } elseif ($this->active !== null && $this->active->mode !== $mode && $this->pending === null && $now >= $nextStartAt) {
                 // Make before break: the new encoder runs next to the old one
                 // until it has written its first segment.
-                $pending = $this->startEncoder($mode, $public, $hlsDir, $prepared);
+                $this->pending = $this->startEncoder($mode, $public, $hlsDir, $prepared);
             }
 
-            foreach ([$active, $pending] as $run) {
+            foreach ([$this->active, $this->pending] as $run) {
                 if ($run !== null && $run->mode === ModeMachine::SCENE && $scene !== null && $now - $run->lastFrameAt >= 1) {
-                    $this->sendSceneFrame($run, $renderer, $scene, $now);
+                    $renderFailures = $this->sendSceneFrame($run, $renderer, $scene, $now, $renderFailures === 0) ? 0 : $renderFailures + 1;
                 }
             }
 
-            if ($pending !== null) {
-                $pending->collectStderr(self::STDERR_LINES);
+            // FD2: a scene that cannot be rendered for a while goes back to the loop.
+            if ($renderFailures >= $renderFailuresForLoop && $modes->mode() === ModeMachine::SCENE) {
+                $this->log('scene render failed '.$renderFailures.' times in a row, back to the loop for '.self::SCENE_BLOCK_SECONDS.' s');
+                $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
+                $renderFailures = 0;
+            }
 
-                if (! $pending->process->running() || $now - $pending->startedAt > self::SWITCH_TIMEOUT_SECONDS) {
-                    $this->log('switch to '.$pending->mode.' failed, '.($pending->process->running() ? 'no segment after '.self::SWITCH_TIMEOUT_SECONDS.' s' : 'ffmpeg exited'));
-                    $this->stopEncoder($pending);
-                    $pending = null;
+            if ($this->pending !== null) {
+                $this->pending->collectStderr(self::STDERR_LINES);
+
+                if (! $this->pending->process->running() || $now - $this->pending->startedAt > self::SWITCH_TIMEOUT_SECONDS) {
+                    $this->log('switch to '.$this->pending->mode.' failed, '.($this->pending->process->running() ? 'no segment after '.self::SWITCH_TIMEOUT_SECONDS.' s' : 'ffmpeg exited'));
+                    $this->stopEncoder($this->pending);
+                    $this->pending = null;
                     $nextStartAt = $now + $backoff->next();
-                } elseif ($active !== null && $pending->hasSegment($hlsDir)) {
-                    $public->update($active->mode);
-                    $this->stopEncoder($active);
-                    $active = $pending;
-                    $pending = null;
-                    $this->log('switched to '.$active->mode.' run='.$active->runId);
-                }
-            }
-
-            if ($active !== null) {
-                $active->collectStderr(self::STDERR_LINES);
-
-                if (! $active->process->running()) {
-                    $ranSeconds = $now - $active->startedAt;
-                    $this->log(sprintf('ffmpeg exited %s after %.0f s', $this->exitStatus($active), $ranSeconds));
-
-                    foreach ($active->stderr as $line) {
-                        $this->log('ffmpeg: '.$line);
+                } elseif ($this->pending->hasSegment($hlsDir)) {
+                    // FD3: promoted also when the old encoder died meanwhile.
+                    if ($this->active !== null) {
+                        $public->update($this->active->mode);
+                        $this->stopEncoder($this->active);
                     }
 
-                    if ($ranSeconds > self::HEALTHY_RUN_SECONDS) {
+                    $this->active = $this->pending;
+                    $this->pending = null;
+                    $this->log('switched to '.$this->active->mode.' run='.$this->active->runId);
+                }
+            }
+
+            if ($this->active !== null) {
+                $this->active->collectStderr(self::STDERR_LINES);
+                $silentFor = $now - $this->active->lastOutputAt($hlsDir);
+
+                if (! $this->active->process->running() || $silentFor > $watchdogSeconds) {
+                    $ranSeconds = $now - $this->active->startedAt;
+
+                    if ($this->active->process->running()) {
+                        // FD2 watchdog: running, but no segment for three segment lengths.
+                        $this->log(sprintf('ffmpeg mode=%s wrote no segment for %.0f s, restarting it', $this->active->mode, $silentFor));
+                        $this->stopEncoder($this->active);
+
+                        if ($this->active->mode === ModeMachine::SCENE) {
+                            $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
+                        }
+                    } else {
+                        $this->log(sprintf('ffmpeg exited %s after %.0f s', $this->exitStatus($this->active), $ranSeconds));
+
+                        foreach ($this->active->stderr as $line) {
+                            $this->log('ffmpeg: '.$line);
+                        }
+                    }
+
+                    if ($ranSeconds > self::HEALTHY_RUN_SECONDS && $silentFor <= $watchdogSeconds) {
                         $backoff->reset();
                     }
 
                     $delay = $backoff->next();
                     $nextStartAt = $now + $delay;
-                    $public->update($active->mode);
-                    $active = null;
+                    $public->update($this->active->mode);
+                    $this->active = null;
                     $this->log('restarting ffmpeg in '.$delay.' s');
                 } else {
-                    $public->update($active->mode);
+                    $public->update($this->active->mode);
                 }
             }
 
-            $texts = $this->texts($active?->mode === ModeMachine::SCENE ? $sceneGame : null);
+            $texts = StreamTexts::for($this->active?->mode === ModeMachine::SCENE ? $sceneGame : null);
 
-            if ($this->signer !== null && $this->isFresh($playlist)
-                && ($lastPublishedAt === null || time() - $lastPublishedAt >= $republishSeconds || $texts !== $publishedTexts)) {
+            if ($this->signer !== null && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
                 $this->startedAt ??= time();
                 // A SIGTERM during this publish aborts it; `ended` follows below.
                 $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping);
-                $lastPublishedAt = time();
-                $publishedTexts = $texts;
+                $schedule->published($texts, time());
             }
 
             usleep(250_000);
         }
+    }
 
-        // `ended` first: a supervisor that kills us after its grace period
-        // must not find it still unsent behind a slow ffmpeg shutdown.
-        if ($this->signer !== null && $this->startedAt !== null) {
-            $this->publish($builder, $publisher, 'ended', $this->texts(null), (float) config('twentyone.stream.shutdown_publish_seconds', 8));
+    /**
+     * `ended` first (a supervisor that kills us after its grace period must
+     * not find it unsent behind a slow ffmpeg stop), then the encoders, then
+     * the public files. Best effort: runs on every exit, exceptions included.
+     */
+    private function shutdown(EventBuilder $builder, RelayPublisher $publisher, PublicPlaylist $public): void
+    {
+        try {
+            if ($this->signer !== null && $this->startedAt !== null) {
+                $this->publish($builder, $publisher, 'ended', StreamTexts::for(null), (float) config('twentyone.stream.shutdown_publish_seconds', 8));
+            }
+        } catch (Throwable $e) {
+            $this->log('ended not published: '.$this->describe($e));
         }
 
-        foreach ([$pending, $active] as $run) {
+        foreach ([$this->pending, $this->active] as $run) {
             if ($run !== null) {
-                $this->stopEncoder($run);
+                try {
+                    $this->stopEncoder($run);
+                } catch (Throwable $e) {
+                    $this->log('stopping ffmpeg failed: '.$this->describe($e));
+                }
             }
         }
 
+        $this->pending = $this->active = null;
         // Nothing is running any more: do not let the web server keep serving
         // a playlist that looks live. The sequence state stays.
         $public->remove(ModeMachine::LOOP, ModeMachine::SCENE);
         $this->log('stopped');
+    }
 
-        return self::SUCCESS;
+    /**
+     * The poll must not block the loop for long: SQLite waits for a lock
+     * 60 s by default (PDO), a lost MySQL/PostgreSQL server as long as the
+     * network lets it. Set short limits on the connection the poll uses.
+     */
+    private function limitPollWaits(): void
+    {
+        try {
+            $connection = DB::connection();
+            $milliseconds = (int) config('twentyone.stream.poll_timeout_ms', 2000);
+
+            match ($connection->getDriverName()) {
+                'sqlite' => $connection->statement('PRAGMA busy_timeout = '.$milliseconds),
+                'mysql' => $connection->statement('SET SESSION max_execution_time = '.$milliseconds),
+                'mariadb' => $connection->statement('SET SESSION max_statement_time = '.($milliseconds / 1000)),
+                'pgsql' => $connection->statement('SET statement_timeout = '.$milliseconds),
+                default => null,
+            };
+        } catch (Throwable $e) {
+            $this->log('database poll limits not set: '.$this->describe($e));
+        }
+    }
+
+    /**
+     * An exception for the log: class and the first line of the message,
+     * shortened (no bindings or stack, which could carry more than needed).
+     */
+    private function describe(Throwable $e): string
+    {
+        // A QueryException's message carries the SQL with its bindings; the
+        // driver's own message says what went wrong without them.
+        $message = $e instanceof QueryException && $e->getPrevious() !== null ? $e->getPrevious()->getMessage() : $e->getMessage();
+
+        return $e::class.': '.Str::limit(strtok($message, "\n") ?: '', 200);
     }
 
     /**
@@ -257,7 +387,7 @@ class TwentyOneStreamCommand extends Command
 
         if ($mode === ModeMachine::SCENE) {
             $frames = new InputStream;
-            $process = $pending->input($frames)->start($ffmpeg->scene($hlsDir.'/'.$mode, $runId, $music, (int) config('twentyone.stream.scene.crf', 32)));
+            $process = $pending->input($frames)->start($ffmpeg->scene($hlsDir.'/'.$mode, $runId, $music, (int) config('twentyone.stream.scene.crf', 35)));
         } else {
             $frames = null;
             $process = $pending->start($ffmpeg->hls($prepared, $hlsDir.'/'.$mode, $runId, $music));
@@ -269,16 +399,33 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
+     * Render and send one frame. When the render fails the last good frame
+     * is sent again, so the picture holds instead of the encoder starving;
+     * only the first failure of a series is logged.
+     *
      * @param  array<string, mixed>  $scene
+     * @return bool whether this frame rendered
      */
-    private function sendSceneFrame(EncoderRun $run, SceneRenderer $renderer, array $scene, float $now): void
+    private function sendSceneFrame(EncoderRun $run, SceneRenderer $renderer, array $scene, float $now, bool $logFailure): bool
     {
         try {
             $run->sendFrame($renderer->png($scene), $now);
-        } catch (RuntimeException $e) {
-            // Keep the stream going with the previous frame; say why once a second at most.
+
+            return true;
+        } catch (Throwable $e) {
             $run->lastFrameAt = $now;
-            $this->log('scene render failed: '.$e->getMessage());
+
+            if ($logFailure) {
+                $this->log('scene render failed, sending the last frame again: '.$this->describe($e));
+            }
+
+            $last = $renderer->lastPng();
+
+            if ($last !== null) {
+                $run->sendFrame($last, $now);
+            }
+
+            return false;
         }
     }
 
@@ -299,34 +446,16 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
+     * The music files, without names that carry control characters (they
+     * could not be written into the ffconcat list safely).
+     *
      * @return list<string>
      */
     private function musicFiles(): array
     {
-        return array_values(File::glob(rtrim((string) config('twentyone.stream.music.dir'), '/').'/*__v*.m4a'));
-    }
+        $files = File::glob(rtrim((string) config('twentyone.stream.music.dir'), '/').'/*__v*.m4a');
 
-    /**
-     * Title and summary of the 30311: the configured loop texts, or the game
-     * the scene shows.
-     *
-     * @return array{title: string, summary: string}
-     */
-    private function texts(?ChessGame $game): array
-    {
-        /** @var array{title: string, summary: string} $event */
-        $event = config('twentyone.stream.event');
-
-        if ($game === null) {
-            return ['title' => $event['title'], 'summary' => $event['summary']];
-        }
-
-        $players = Str::limit($game->white->displayName(), 40, '…').' vs '.Str::limit($game->black->displayName(), 40, '…');
-
-        return [
-            'title' => 'Live now: '.$players.' · Chess Blitz',
-            'summary' => $players.': live blitz chess on TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Play the next game at '.config('twentyone.stream.scene.url').'. Login via Nostr.',
-        ];
+        return array_values(array_filter($files, fn (string $file): bool => MusicPlaylist::isSafePath($file)));
     }
 
     /**
@@ -337,6 +466,10 @@ class TwentyOneStreamCommand extends Command
     {
         if (! EventBuilder::isStreamingUrl($publicUrl)) {
             return 'TWENTYONE_STREAM_URL must be an http(s) URL ending in .m3u8 with nothing after it: '.$publicUrl;
+        }
+
+        if ($this->overlaps((string) config('twentyone.stream.hls_dir'), (string) config('twentyone.stream.scene.work_dir'))) {
+            return 'TWENTYONE_STREAM_HLS_DIR and the scene work dir must not contain each other (the web server serves hls_dir).';
         }
 
         if (! is_file($prepared)) {
@@ -393,6 +526,18 @@ class TwentyOneStreamCommand extends Command
         }
 
         return null;
+    }
+
+    /**
+     * Whether one directory is the other or lies inside it (paths compared
+     * resolved where they exist, textually otherwise).
+     */
+    private function overlaps(string $first, string $second): bool
+    {
+        $normalize = fn (string $path): string => rtrim(realpath($path) ?: $path, '/').'/';
+        [$first, $second] = [$normalize($first), $normalize($second)];
+
+        return str_starts_with($first, $second) || str_starts_with($second, $first);
     }
 
     private function publishTimeout(): float

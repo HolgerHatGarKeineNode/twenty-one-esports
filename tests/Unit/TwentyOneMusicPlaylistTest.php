@@ -76,3 +76,7 @@ test('the ffconcat list quotes every path for the concat demuxer', function () {
         ->toBe("ffconcat version 1.0\nfile '/music/a__v1.m4a'\nfile '/music/it'\\''s__v1.m4a'\n")
         ->and(MusicPlaylist::title('/music/not-your-keys-not-your-coins-dnb-remix__v2.m4a'))->toBe('not-your-keys-not-your-coins-dnb-remix');
 });
+
+test('a music path with a control character never reaches the ffconcat list', function () {
+    MusicPlaylist::ffconcat(["/music/a__v1.m4a\nfile '/etc/passwd'"]);
+})->throws(InvalidArgumentException::class);
