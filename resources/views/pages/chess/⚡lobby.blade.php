@@ -315,7 +315,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         @foreach ($this->incoming as $invite)
             <div wire:key="invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-ring lg:col-span-3 lg:flex-row lg:items-center lg:px-6" data-test="incoming-invite">
                 <span class="flex min-w-0 grow items-center gap-3">
-                    <x-avatar :name="$invite->inviter->displayName()" :src="$invite->inviter->avatarUrl()" :size="40" class="rounded-md" />
+                    <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <b class="text-base">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
                         <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
@@ -427,11 +427,11 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
                         @foreach ($this->liveGames as $live)
                             <div wire:key="live-{{ $live->id }}" class="flex flex-col gap-2.5 border-b border-hairline pb-3 lg:border-0 lg:pb-0">
-                                <span class="flex items-center gap-2 text-[13px]"><x-avatar :name="$live->black->displayName()" :src="$live->black->avatarUrl()" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->black->displayName() }}</b><span class="text-ink-2">{{ $rating }}</span></span>
+                                <span class="flex items-center gap-2 text-[13px]"><x-player-link :user="$live->black" class="flex min-w-0 items-center gap-2"><x-avatar :user="$live->black" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->black->displayName() }}</b></x-player-link><span class="text-ink-2">{{ $rating }}</span></span>
                                 <div class="hidden justify-center py-2 lg:flex" x-data="{ cells: window.chessBoardCells(@js($live->fen), { noCoords: true }), boardLabel: @js(__('Live board of :number', ['number' => $live->number()])) }">
                                     <x-chess.board class="mt-4 mr-4 max-w-40" />
                                 </div>
-                                <span class="flex items-center gap-2 text-[13px]"><x-avatar :name="$live->white->displayName()" :src="$live->white->avatarUrl()" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->white->displayName() }}</b><span class="text-ink-2">{{ $rating }}</span></span>
+                                <span class="flex items-center gap-2 text-[13px]"><x-player-link :user="$live->white" class="flex min-w-0 items-center gap-2"><x-avatar :user="$live->white" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->white->displayName() }}</b></x-player-link><span class="text-ink-2">{{ $rating }}</span></span>
                                 <span class="text-xs text-ink-2">{{ __('move :n', ['n' => intdiv($live->ply, 2) + 1]) }} · {{ $live->number() }}</span>
                                 <x-button variant="quiet" icon="eye" :href="route('games.show', $live)">{{ __('Watch') }}</x-button>
                             </div>
@@ -465,11 +465,14 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     <ul class="m-0 flex list-none flex-col p-0" x-show="others.length > 0">
                         <template x-for="m in others" :key="m.id">
                             <li class="flex min-h-12 items-center gap-3 border-b border-hairline text-[13px] last:border-0" data-test="online-player">
-                                <span class="relative flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-[linear-gradient(135deg,#F9B25F,#B9640A)] font-display text-[10px] font-extrabold text-on-btc" aria-hidden="true">
-                                    <span x-text="m.name.slice(0, 1).toUpperCase()"></span>
-                                    <template x-if="m.avatar"><img :src="m.avatar" alt="" class="absolute inset-0 size-full object-cover" referrerpolicy="no-referrer" onerror="this.remove()"></template>
-                                </span>
-                                <b class="min-w-0 grow truncate" x-text="m.name"></b>
+                                {{-- Picture or Blockpile (P10a); the name opens the player card (resources/js/profiles.js). --}}
+                                <a :href="@js(url('players')) + '/' + m.npub" :data-player-card="m.npub" :data-pubkey="m.pubkey" :data-player-name="m.name" aria-haspopup="dialog"
+                                   class="flex min-h-11 min-w-0 grow items-center gap-3 text-ink hover:text-ink" data-test="online-player-link">
+                                    <img :src="m.avatar || m.generated" :data-fallback="m.generated" width="24" height="24" loading="lazy" referrerpolicy="no-referrer"
+                                         :alt="(m.avatar ? @js(__(':name avatar')) : @js(__(':name avatar, generated'))).replace(':name', m.name)"
+                                         x-on:error.once="$el.src = m.generated; $el.alt = @js(__(':name avatar, generated')).replace(':name', m.name)" class="block size-6 shrink-0 rounded-sm bg-raised object-cover">
+                                    <b class="min-w-0 truncate" x-text="m.name"></b>
+                                </a>
                                 <span x-show="m.looking" class="rounded-sm bg-[#122016] px-2 py-0.5 text-[11px] font-bold text-win">{{ __('looking: Blitz 5+3') }}</span>
                                 @if (! $active)
                                     <template x-if="invited(m)">

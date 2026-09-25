@@ -2,6 +2,7 @@
 
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Nostr\PlayerProfile;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
@@ -38,6 +39,10 @@ Broadcast::channel('online', function (User $user) {
         'id' => $user->id,
         'name' => $user->displayName(),
         'avatar' => $user->avatarUrl(),
+        // P10a: the Blockpile when there is no picture, and the key for the player card.
+        'generated' => PlayerProfile::generatedAvatarUrl($user->pubkey),
+        'npub' => $user->npub,
+        'pubkey' => $user->pubkey,
         'looking' => $user->looking_to_play,
     ];
 });
