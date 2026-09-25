@@ -94,7 +94,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
                 return boardCells(this.pending.fen, { flip: this.flipped, last: [this.pending.uci.slice(0, 2), this.pending.uci.slice(2, 4)], check: kingInCheck(this.pending.fen), noCoords: !config.coordinates });
             }
 
-            return boardCells(this.state.fen, { flip: this.flipped, last: this.lastSquares, check: kingInCheck(this.state.fen), select: this.selected, dots: this.dots, noCoords: !config.coordinates });
+            return boardCells(this.state.fen, { flip: this.flipped, last: this.lastSquares, check: kingInCheck(this.state.fen), select: this.selected, dots: this.dots, mover: this.myTurn && !this.busy ? this.color : null, noCoords: !config.coordinates });
         },
 
         get boardLabel() {

@@ -57,6 +57,8 @@ export function boardCells(fen, o = {}) {
             label: name + (ch ? ': ' + (white ? 'white' : 'black') + ' ' + PIECE_NAMES[ch.toLowerCase()] : ''),
             coordC: light ? theme.cl : theme.cd,
             dot: (o.dots || []).includes(name),
+            // Clickable: a piece of the side that may move now, or a legal target.
+            hot: (!!ch && (white ? 'w' : 'b') === o.mover) || (o.dots || []).includes(name),
             rank: '',
             file: '',
         };
@@ -408,6 +410,7 @@ document.addEventListener('alpine:init', () => {
                 check: kingInCheck(this.state.fen),
                 select: this.selected,
                 dots: this.dots,
+                mover: this.canMove ? this.color : null,
             });
         },
 

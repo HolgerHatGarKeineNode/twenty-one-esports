@@ -11,11 +11,11 @@
     edge without the cube faces (MobileChessGame), from lg on it is the cube.
     frame: #3A2C14 live/waiting, #F7931A finished (kit section 1).
 --}}
-<div role="img" data-bleed x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg') }} style="background: {{ $frame }}">
+<div role="img" data-bleed x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg cursor-default select-none') }} style="background: {{ $frame }}">
     <div class="grid size-full grid-cols-8 grid-rows-8">
         <template x-for="c in cells" :key="c.name">
             <div aria-hidden="true" class="relative" :style="`background: ${c.bg}; box-shadow: ${c.ring}`"
-                 @if ($playable) x-on:click="clickSquare(c.name)" :data-square="c.name" @endif>
+                 @if ($playable) x-on:click="clickSquare(c.name)" :data-square="c.name" :class="c.hot && 'cursor-pointer'" @endif>
                 <span class="absolute top-0.5 left-1 text-[11px] font-bold" :style="`color: ${c.coordC}`" x-text="c.rank"></span>
                 <span class="absolute right-1 bottom-px text-[11px] font-bold" :style="`color: ${c.coordC}`" x-text="c.file"></span>
                 <svg x-show="c.piece" viewBox="0 0 45 45" width="100%" height="100%" class="absolute top-0 left-0 block" aria-hidden="true"><g text-anchor="middle" style="font-family: 'DejaVu Sans', 'Noto Sans Symbols 2', 'Segoe UI Symbol', 'Apple Symbols', sans-serif; font-variant-emoji: text; font-size: 40px"><text x="22.5" y="38" :fill="c.fill" x-text="c.solid"></text><text x="22.5" y="38" fill="#0A0A0B" x-text="c.outline"></text></g></svg>

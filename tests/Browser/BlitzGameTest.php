@@ -128,6 +128,13 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and(board($black, 'g.poller'))->toBeNull()
         ->and(board($black, 'g.state.moves.map((m) => m.san)'))->toBe(['e4', 'e5', 'Nf3']);
 
+    // Cursor: never the text I-beam over a glyph piece; a hand only where a
+    // click does something (own piece on your turn, a legal target square).
+    $cursor = fn ($page, string $square) => $page->evaluate('() => getComputedStyle(document.querySelector("[data-square='.$square.'] text")).cursor');
+    expect($cursor($black, 'e5'))->toBe('pointer')
+        ->and($cursor($black, 'e4'))->toBe('default')
+        ->and($cursor($white, 'f3'))->toBe('default');
+
     // Clocks: Black's runs on both boards, and both show the same time.
     $game->refresh();
     $clockWhite = board($white, '[g.state.clock.running, Math.round(g.remaining("b"))]');
