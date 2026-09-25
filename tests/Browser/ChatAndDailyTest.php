@@ -328,6 +328,37 @@ test('a daily move signed by one player is there for the other after a reload', 
         ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
 });
 
+test('a daily game at 1440x900 keeps at least eight moves in view, on your move and on theirs', function () {
+    [$anna, $bert] = User::factory()->member()->count(2)->create();
+    TestSigner::forBrowser($anna);
+    TestSigner::forBrowser($bert);
+    // A full Nostr profile, the tallest opponent strip.
+    $bert->forceFill(['about' => 'Correspondence since 1998, blitz after work. Plays the Najdorf, never resigns early.', 'nip05' => 'bert@einundzwanzig.space', 'nip05_checked_at' => now(), 'nip05_verified_at' => now(), 'profile_event_at' => now()])->save();
+    $games = app(ChessGameService::class);
+    $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    // 30 plies of a Closed Ruy Lopez: White (Anna) to move.
+    foreach (explode(' ', 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1 f8e7 f1e1 b7b5 a4b3 d7d6 c2c3 e8g8 h2h3 c6b8 d2d4 b8d7 b1d2 c8b7 b3c2 f8e8 d2f1 e7f8 f1g3 g7g6 a2a4 c7c5') as $i => $uci) {
+        $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+    }
+
+    $inView = '() => {
+        const port = document.querySelector("[data-test=daily-moves]").closest("[tabindex]").getBoundingClientRect();
+        return [...document.querySelectorAll("[data-test=daily-moves] li")].filter((li) => {
+            const b = li.getBoundingClientRect();
+            return b.height > 0 && b.top >= port.top && b.bottom <= port.bottom && b.bottom <= innerHeight;
+        }).length;
+    }';
+    $counts = [];
+    foreach (['yours' => $anna, 'theirs' => $bert] as $turn => $user) {
+        $page = playerPage($user, route('games.show', $game, false));
+        BrowserWait::until($page, '() => window.Alpine && document.querySelectorAll("[data-test=daily-moves] li").length === 15 && Alpine.$data(document.querySelector("[data-test=daily-game]")).myTurn === '.json_encode($turn === 'yours'), 10_000);
+        $counts[$turn] = $page->evaluate($inView);
+        expect($page->evaluate('() => window.__errors'))->toBe([]);
+    }
+
+    expect(min($counts))->toBeGreaterThanOrEqual(8, 'rows in view: '.json_encode($counts));
+});
+
 test('a daily move the signer refuses says why, logs the signer\'s error, and goes through once signed', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
     TestSigner::forBrowser($anna);
