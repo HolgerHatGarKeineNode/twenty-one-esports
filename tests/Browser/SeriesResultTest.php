@@ -2,6 +2,7 @@
 
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\User;
@@ -22,6 +23,11 @@ pest()->group('browser');
 | result and accepts it; both end on the win moment. A casual series, so
 | nothing is signed and no event is stored. Same two-context session setup
 | as tests/Browser/ChatAndDailyTest.php.
+|
+| The full-flow test below drives the two earlier steps, Challenge and
+| Accept, through the same two UIs first (reviewer blocker: those two steps
+| were only ever reached by factory state, never by a captain clicking
+| through challenges/create and the match room's "Accept challenge").
 |
 */
 
@@ -68,14 +74,47 @@ function enterGoals(Page $page, int $game, int $challenger, int $challenged): vo
     $page->locator("[data-test=goals-{$game}-d]")->press('Tab');
 }
 
-test('one captain submits the final score, the other accepts it, both see the result', function () {
-    $match = SeriesMatch::factory()->accepted()->create();
-    $a = $match->challengerLineup->clan->owner;
-    $b = $match->challengedLineup->clan->owner;
-    $room = route('matches.room', $match, false);
+test('one captain challenges, the other accepts, then submits and accepts the final score', function () {
+    $challenger = Lineup::factory()->ready()->create();
+    $challenged = Lineup::factory()->ready()->create();
+    $a = $challenger->clan->owner;
+    $b = $challenged->clan->owner;
 
-    $pageA = captainPage($a, $room, 1440);
-    BrowserWait::until($pageA, '() => !! document.querySelector("[data-test=goals-0-c]")', 10_000);
+    $pageA = captainPage($a, route('challenges.create', [], false), 1440);
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=pick-opponent]") !== null', 10_000);
+    $pageA->locator('[data-test=pick-opponent]')->click();
+    // "Challenge now" (start in esports.series.now_minutes) keeps the reply
+    // deadline a few minutes out instead of tomorrow: enough real time for
+    // the round trip below, short enough to travel() past below.
+    $pageA->locator('[data-test=challenge-now]')->click();
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=send-challenge]") && ! document.querySelector("[data-test=send-challenge]").disabled', 5_000);
+    $pageA->locator('[data-test=send-challenge]')->click();
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=withdraw-challenge]") !== null', 10_000);
+
+    $match = SeriesMatch::query()->sole();
+    expect($match->status)->toBe(SeriesStatus::Open)
+        ->and($match->challenger_lineup_id)->toBe($challenger->id)
+        ->and($match->challenged_lineup_id)->toBe($challenged->id);
+
+    $room = route('matches.room', $match, false);
+    $pageB = captainPage($b, $room, 375);
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=accept-challenge]") !== null', 10_000);
+    $pageB->locator('[data-test=accept-challenge]')->click();
+    // The "Open" answer card, accept-challenge included, only renders while
+    // the match is still open: its removal is the real signal the accept
+    // round trip landed, unlike the goals inputs below (those render at
+    // every status, only their "disabled" flips).
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=accept-challenge]") === null', 10_000);
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Accepted);
+
+    // The match cannot be scored before its picked start passes: travel just
+    // beyond it (LaravelHttpServer runs in-process, so Carbon::setTestNow()
+    // reaches every request Playwright makes from here on).
+    $this->travel((int) config('esports.series.now_minutes', 10) + 1)->minutes();
+
+    $pageA->reload();
+    BrowserWait::until($pageA, '() => !! document.querySelector("[data-test=open-submit]")', 10_000);
 
     enterGoals($pageA, 0, 3, 1);
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=series-score]")?.innerText.trim() === "1 : 0"', 10_000);
@@ -89,7 +128,7 @@ test('one captain submits the final score, the other accepts it, both see the re
 
     expect($match->refresh()->status)->toBe(SeriesStatus::Reported);
 
-    $pageB = captainPage($b, $room, 375);
+    $pageB->reload();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=reported-score]")?.innerText.includes("3 : 1, 2 : 0")', 10_000);
     $pageB->locator('[data-test=accept-result]')->click();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=win-moment]") !== null', 10_000);
