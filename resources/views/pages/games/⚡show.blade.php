@@ -335,7 +335,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
      * Name card data for one side (kit section 6). Everyone is at the start
      * rating and provisional until Elo exists (P7).
      *
-     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, elo: int}
+     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, npub: string, elo: int}
      */
     public function player(User $user): array
     {
@@ -345,6 +345,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             'tag' => $user->clanMember?->clan?->clantag,
             'member' => $user->is_member,
             'url' => route('players.show', $user->npub),
+            'npub' => $user->npub,
             'elo' => (int) config('esports.chess.queue.start_rating'),
         ];
     }
@@ -507,7 +508,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                         <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
                                         @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
                                         @if ($p['member'])<x-member-badge />@endif
-                                        @if ($pc === $color)<span class="text-[11px] font-normal text-ink-3">{{ __('you') }}</span>@endif
+                                        @if ($pc === $color)<span class="text-[11px] font-normal text-ink-3">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
                                     </span>
                                     <span class="flex items-center gap-1 text-xs text-ink-2"><span class="max-lg:hidden">{{ __('Solo') }}</span> {{ $p['elo'] }} · <x-rank-badge tier="provisional" size="sm" /></span>
                                 </span>

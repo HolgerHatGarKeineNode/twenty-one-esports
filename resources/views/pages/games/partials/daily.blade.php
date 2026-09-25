@@ -54,7 +54,7 @@
             ] as $i => [$key, $value])
                 <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm">
                     <span class="text-ink-2">{{ $key }}</span>
-                    <span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>
+                    <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>@if ($i === 0 && $color && isset($opponent['npub']))<x-copy-npub :npub="$opponent['npub']" :name="$opponentName" />@endif</span>
                 </div>
             @endforeach
         </div>
@@ -79,7 +79,7 @@
                             <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
                             @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
                             @if ($p['member'])<x-member-badge />@endif
-                            @if ($sideColor === $color)<span class="text-[11px] font-normal text-ink-2">{{ __('you') }}</span>@endif
+                            @if ($sideColor === $color)<span class="text-[11px] font-normal text-ink-2">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
                         </span>
                         <span class="flex items-center gap-1 text-[11px] text-ink-2">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></span>
                     </span>

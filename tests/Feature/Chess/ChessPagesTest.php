@@ -100,3 +100,22 @@ test('the game page refuses a move from someone who does not play', function () 
         ->call('move', 'e2e4', 1)
         ->assertReturned(fn (array $response) => $response['ok'] === false && $response['error'] === 'not_a_player' && $response['state']['ply'] === 0);
 });
+
+test('a player can copy the opponent\'s npub on every game view, never their own', function (string $state) {
+    $game = match ($state) {
+        'live' => ChessGame::factory()->create(),
+        'daily' => ChessGame::factory()->daily()->create(),
+        'finished' => ChessGame::factory()->finished()->create(),
+    };
+
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertSee('data-npub="'.$game->black->npub.'"', false)
+        ->assertDontSee('data-npub="'.$game->white->npub.'"', false);
+})->with(['live', 'daily', 'finished']);
+
+test('the daily games list lets you copy each opponent\'s npub', function () {
+    $game = ChessGame::factory()->daily()->create();
+
+    $this->actingAs($game->white)->get(route('me.correspondence'))->assertOk()
+        ->assertSee('data-npub="'.$game->black->npub.'"', false);
+});

@@ -135,6 +135,24 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and($cursor($black, 'e4'))->toBe('default')
         ->and($cursor($white, 'f3'))->toBe('default');
 
+    // Copy the opponent's npub: a 44 px hit area inside the viewport, and a
+    // click puts exactly that npub on the clipboard.
+    $copy = $black->evaluate('async () => {
+        const button = [...document.querySelectorAll("[data-test=copy-npub]")].find((b) => b.checkVisibility());
+        const hit = getComputedStyle(button, "::after");
+        const r = button.getBoundingClientRect();
+        let copied = null;
+        navigator.clipboard.writeText = async (text) => { copied = text; };
+        button.click();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { npub: button.dataset.npub, copied, hit: r.width - 2 * parseFloat(hit.left), left: r.left, right: r.right, vw: document.documentElement.clientWidth };
+    }');
+    expect($copy['copied'])->toBe($copy['npub'])
+        ->and($copy['npub'])->toBe($game->white->npub)
+        ->and($copy['hit'])->toBeGreaterThanOrEqual(44.0)
+        ->and($copy['left'])->toBeGreaterThanOrEqual(0.0)
+        ->and($copy['right'])->toBeLessThanOrEqual((float) $copy['vw']);
+
     // Clocks: Black's runs on both boards, and both show the same time.
     $game->refresh();
     $clockWhite = board($white, '[g.state.clock.running, Math.round(g.remaining("b"))]');

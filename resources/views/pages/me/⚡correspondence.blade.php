@@ -267,6 +267,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                                 <a href="{{ $opp ? route('players.show', $opp->npub) : '#' }}" class="flex min-w-0 items-center gap-2 text-[15px] font-bold text-ink hover:text-ink"><x-avatar :name="$opp?->displayName() ?? ''" :src="$opp?->avatarUrl()" :size="20" class="rounded-sm" /><span class="truncate">{{ $opp?->displayName() }}</span></a>
                                 @if ($opp?->clanMember?->clan?->clantag)<x-clan-tag :tag="$opp->clanMember->clan->clantag" size="sm" />@endif
                                 @if ($opp?->is_member)<x-member-badge />@endif
+                                @if ($opp)<x-copy-npub :npub="$opp->npub" :name="$opp->displayName()" />@endif
                             </span>
                             <span class="flex items-center gap-1 text-xs text-ink-2">{{ __(':elo daily Elo,', ['elo' => $rating]) }} <x-rank-badge tier="provisional" size="sm" /></span>
                             <span class="text-xs text-ink-2">{{ $card['colorText'] }}</span>

@@ -70,7 +70,7 @@
         </span>
         <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5 text-[13px]">
             @foreach (['w', 'b'] as $pc)
-                <span class="flex min-w-0 items-center gap-2"><x-avatar :name="$players[$pc]['name']" :src="$players[$pc]['avatar']" :size="20" class="rounded-sm" /><a href="{{ $players[$pc]['url'] }}" class="truncate text-ink hover:text-ink">{{ $players[$pc]['name'] }}</a>@if ($players[$pc]['member'])<x-member-badge />@endif</span>
+                <span class="flex min-w-0 items-center gap-2"><x-avatar :name="$players[$pc]['name']" :src="$players[$pc]['avatar']" :size="20" class="rounded-sm" /><a href="{{ $players[$pc]['url'] }}" class="truncate text-ink hover:text-ink">{{ $players[$pc]['name'] }}</a>@if ($players[$pc]['member'])<x-member-badge />@endif @if ($pc !== ($color ?? null))<x-copy-npub :npub="$players[$pc]['npub']" :name="$players[$pc]['name']" />@endif</span>
                 <span class="text-ink-2">{{ $pc === 'w' ? __('White') : __('Black') }} · {{ __('casual') }}</span>
             @endforeach
         </div>
