@@ -3,7 +3,6 @@
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Support\Clans\ClanStatsPreview;
-use App\Support\SampleData;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -68,7 +67,6 @@ new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])
 @endphp
 
 <div class="flex grow flex-col">
-    <x-block-strip :finished="SampleData::finishedBlocks()" :running="SampleData::runningBlocks()" focus="rl" />
 
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-2 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Clan Hashrate, last 7 days (P7) --}}

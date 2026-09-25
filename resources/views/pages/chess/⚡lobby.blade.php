@@ -11,7 +11,6 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
-use App\Support\SampleData;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -200,7 +199,6 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 @endphp
 
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id]))">
-    <x-block-strip :finished="SampleData::finishedBlocks()" :running="SampleData::runningBlocks()" focus="chess" class="max-lg:hidden" />
 
     <div class="grid grid-cols-1 gap-4 px-4 pt-5 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pt-0 lg:pb-10">
         {{-- Mobile title (MobileChessLobby) --}}
