@@ -36,5 +36,5 @@ test('the chat module wraps, unwraps, checks the sender, hides muted senders, an
         ->run(['node', '--test', 'tests/js/nip17.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 7')->toContain('ℹ skipped 0');
 });

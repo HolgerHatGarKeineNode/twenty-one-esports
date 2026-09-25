@@ -2,15 +2,17 @@
     Game chat (ChessGame.dc.html "Chat", MobileChessGame.dc.html bottom sheet):
     NIP-17 between the two players, over the chat relays, straight from the
     browser (resources/js/gameChat.js). One Alpine instance drives both the
-    desktop panel (lg and up, a cell of the game grid) and the mobile sheet.
+    desktop panel (lg and up) and the mobile sheet.
 
-    $chat: config for gameChat() (me, opponent, relays, muted, match, labels)
+    $chat: config for gameChat() (me, opponent, relays, muted, match, since, labels)
+    $panelClass: placement of the desktop panel; by default a cell of the
+    live game grid (P5d: the daily game puts it in its right column)
 --}}
 <div class="contents" x-data="gameChat(@js($chat))" data-test="chat">
     @php($opponentName = $chat['opponent']['name'] ?? '')
 
     {{-- Desktop panel --}}
-    <section aria-labelledby="chat-h" class="hidden min-h-[420px] flex-col rounded-lg bg-card lg:order-none lg:col-span-2 lg:flex min-[87.5rem]:col-span-1 min-[87.5rem]:col-start-3 min-[87.5rem]:row-span-4 min-[87.5rem]:row-start-1 min-[87.5rem]:mt-4 min-[87.5rem]:h-[640px]">
+    <section aria-labelledby="chat-h" class="hidden flex-col rounded-lg bg-card lg:flex {{ $panelClass ?? 'min-h-[420px] lg:order-none lg:col-span-2 min-[87.5rem]:col-span-1 min-[87.5rem]:col-start-3 min-[87.5rem]:row-span-4 min-[87.5rem]:row-start-1 min-[87.5rem]:mt-4 min-[87.5rem]:h-[640px]' }}" data-test="chat-panel">
         <div class="flex flex-col gap-1 border-b border-hairline px-4 py-2.5">
             <span class="flex items-center justify-between gap-2">
                 <span id="chat-h" class="text-[15px] font-bold">{{ __('Chat') }}</span>

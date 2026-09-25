@@ -127,6 +127,58 @@ test('two players chat over NIP-17 through a relay, and a muted sender disappear
     }
 });
 
+test('two players chat in a daily game through a relay, and on a phone the chat sheet sits under the move bar', function () {
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
+
+    try {
+        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
+            usleep(100_000);
+        }
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
+
+        [$anna, $bert] = User::factory()->count(2)->create();
+        TestSigner::forBrowser($anna);
+        TestSigner::forBrowser($bert);
+        $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
+
+        $pageA = playerPage($anna, route('games.show', $game, false));
+        $pageB = playerPage($bert, route('games.show', $game, false));
+
+        foreach ([$pageA, $pageB] as $page) {
+            BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chat]")).status === "live"', 10_000);
+        }
+
+        sendChat($pageA, 'your move tomorrow?');
+        BrowserWait::until($pageB, chatSees($pageB, 'them', 'your move tomorrow?'), 10_000);
+        sendChat($pageB, 'after work');
+        BrowserWait::until($pageA, chatSees($pageA, 'them', 'after work'), 10_000);
+
+        // Mute is the same as in a live game: kept on the account.
+        $pageB->locator('section[aria-labelledby=chat-h] [data-test=mute]')->click();
+        BrowserWait::until($pageB, '() => Alpine.$data(document.querySelector("[data-test=chat]")).opponentMuted === true', 5_000);
+
+        // Phone: the closed sheet (72px) at the bottom edge, the move bar right above it, no overlap.
+        $pageA->setViewportSize(375, 812);
+        BrowserWait::until($pageA, '() => document.querySelector("[data-test=chat-sheet-toggle]")?.getBoundingClientRect().height > 0', 5_000);
+        $phone = $pageA->evaluate('() => {
+            const sheet = document.querySelector("[data-test=chat-sheet-toggle]").closest("section").getBoundingClientRect();
+            const bar = document.querySelector("[data-test=daily-bottom-bar]").getBoundingClientRect();
+            return { sheetTop: sheet.top, sheetBottom: sheet.bottom, barBottom: bar.bottom, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+        }');
+        $pageA->locator('[data-test=chat-sheet-toggle]')->click();
+        BrowserWait::until($pageA, '() => [...document.querySelectorAll("#sheet-body [data-test=chat-messages] li[data-from=them]")].some((li) => li.offsetParent !== null && li.innerText.includes("after work"))', 5_000);
+
+        expect($phone)->toBe(['sheetTop' => 740, 'sheetBottom' => 812, 'barBottom' => 740, 'overflow' => 0])
+            ->and(ChatMute::query()->where('user_id', $bert->id)->pluck('muted_pubkey')->all())->toBe([$anna->pubkey])
+            ->and(NostrEvent::query()->count())->toBe(0)
+            ->and($pageA->evaluate('() => window.__errors'))->toBe([])
+            ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
+    } finally {
+        $relay->stop(1);
+    }
+});
+
 test('a daily move signed by one player is there for the other after a reload', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
     TestSigner::forBrowser($anna);

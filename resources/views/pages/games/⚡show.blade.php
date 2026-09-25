@@ -32,8 +32,9 @@ use Livewire\Component;
  *
  * P5b: a daily game (mode `correspondence`) shows ChessCorrespondence /
  * MobileChessCorrespondence (partials/daily); each daily move is signed by
- * the mover as a NIP-64 note (GameRecords). A live game has the NIP-17 chat
- * (partials/chat) and the "opponent disconnected" overlay with claim-win.
+ * the mover as a NIP-64 note (GameRecords). Both have the NIP-17 chat
+ * (partials/chat, in daily games since P5d); a live game also has the
+ * "opponent disconnected" overlay with claim-win.
  * At the end of any game the players' app signs the NIP-64 record.
  */
 new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
@@ -250,6 +251,8 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             'meName' => $viewer?->displayName(),
             'opponent' => $opponent === null ? null : ['pubkey' => $opponent->pubkey, 'name' => $opponent->displayName()],
             'match' => $this->game->id,
+            // Gift wraps are backdated up to two days (NIP-59); gameChat.js reads that far before this.
+            'since' => $this->game->created_at?->getTimestamp(),
             'relays' => array_values(config('esports.chat.relays', [])),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
             'labels' => [

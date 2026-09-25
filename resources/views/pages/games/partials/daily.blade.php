@@ -17,13 +17,15 @@
     $moves = $game->moves()->with('nostrEvent')->get();
     $firstNote = $moves->first()?->nostrEvent;
     $lastNote = $moves->last()?->nostrEvent;
-    $relay = config('esports.chat.relays')[0] ?? (config('esports.relays')[0] ?? __('none configured'));
+    // The moves' notes go to the league relays; the chat relays carry only gift wraps (P5d: public in production).
+    $relay = config('esports.relays')[0] ?? __('none configured');
     $started = $game->created_at?->timezone($viewer->timezone ?? config('app.timezone'));
     $myColorName = $color === 'w' ? __('White') : ($color === 'b' ? __('Black') : null);
     $cards = ['w' => $players['w'], 'b' => $players['b']];
 @endphp
 
-<div wire:ignore x-data="dailyGame(@js($config))" x-on:keydown.window="hotkey($event)" class="flex flex-col gap-3 pb-[140px] lg:gap-5 lg:px-12 lg:pb-10" data-test="daily-game">
+{{-- Players get the chat sheet (72px) under the bottom bar on phones, hence the taller bottom padding. --}}
+<div wire:ignore x-data="dailyGame(@js($config))" x-on:keydown.window="hotkey($event)" @class(['flex flex-col gap-3 lg:gap-5 lg:px-12 lg:pb-10', $color ? 'pb-[212px]' : 'pb-[140px]']) data-test="daily-game">
 
     {{-- Title --}}
     <div class="flex flex-col gap-1.5 px-4 lg:px-0">
@@ -223,6 +225,9 @@
                 </div>
             </section>
 
+            {{-- Chat (NIP-17, P5d): a panel in this column from lg, the bottom sheet below; spectators only get its note --}}
+            @include('pages.games.partials.chat', ['chat' => $this->chatConfig(), 'panelClass' => $color ? 'lg:h-[400px]' : ''])
+
             @if ($color)
                 {{-- Draw and resign (not drawn in the design; needed to end a daily game other than on the board) --}}
                 <div class="mx-4 grid grid-cols-2 gap-2 lg:mx-0 lg:flex lg:justify-end">
@@ -269,7 +274,8 @@
     </div>
 
     {{-- Bottom bar (mobile) --}}
-    <div class="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t border-line bg-bar px-4 pt-3 pb-4 shadow-[0_-16px_32px_rgba(10,10,11,.8)] lg:hidden" data-test="daily-bottom-bar">
+    {{-- Above the chat sheet for players (partials/chat: 72px closed, over this bar when open) --}}
+    <div @class(['fixed inset-x-0 z-20 flex flex-col gap-2 border-t border-line bg-bar px-4 pt-3 pb-4 shadow-[0_-16px_32px_rgba(10,10,11,.8)] lg:hidden', $color ? 'bottom-[72px]' : 'bottom-0']) data-test="daily-bottom-bar">
         <span class="flex justify-between gap-2 text-xs">
             <b x-text="myTurn ? t.yourMoveLeft.replace(':left', hoursMinutes(leftMs)) : @js(__(':name to move', ['name' => $color ? $opponentName : ''])).trim()"></b>
             <span class="text-right text-ink-3">{{ $channelSummary }}</span>

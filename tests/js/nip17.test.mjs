@@ -10,7 +10,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure
 import * as nip19 from 'nostr-tools/nip19';
 import * as nip44 from 'nostr-tools/nip44';
 import { hexToBytes } from '@noble/hashes/utils.js';
-import { TWO_DAYS, gameMessages, makeGroupRumor, makeRumor, roomMessages, unwrapMessage, wrapGroupMessage, wrapMessage } from '../../resources/js/nostrChat.js';
+import { SINCE_MARGIN, TWO_DAYS, chatSince, gameMessages, makeGroupRumor, makeRumor, roomMessages, unwrapMessage, wrapGroupMessage, wrapMessage } from '../../resources/js/nostrChat.js';
 
 /** A NIP-07-shaped signer over a secret key, like a browser extension. */
 function keySigner(secret) {
@@ -77,6 +77,18 @@ test('the sender check catches a seal that claims another author', async () => {
     const wrap2 = finalizeEvent({ kind: 1059, created_at: now, tags: [['p', E]], content: nip44.encrypt(JSON.stringify(seal2), nip44.getConversationKey(wrapKey, E)) }, wrapKey);
 
     assert.equal(await codeOf(unwrapMessage(keySigner(erin), wrap2, E)), 'rumor');
+});
+
+test('a chat reads back to its game\'s start, never less than the gift-wrap backdating', () => {
+    const nineDaysAgo = now - 9 * 24 * 60 * 60;
+
+    // A daily game's message from day one, its wrap backdated the full two days, is still read.
+    assert.ok(chatSince(nineDaysAgo, now) <= nineDaysAgo - TWO_DAYS);
+    assert.equal(chatSince(nineDaysAgo, now), nineDaysAgo - SINCE_MARGIN);
+    // A live game that just began, a game of unknown start, and a start ahead of this clock: from now.
+    assert.equal(chatSince(now - 30, now), now - 30 - SINCE_MARGIN);
+    assert.equal(chatSince(undefined, now), now - SINCE_MARGIN);
+    assert.equal(chatSince(now + 600, now), now - SINCE_MARGIN);
 });
 
 test('a game chat shows its own two players only, once each, and hides muted senders', () => {

@@ -20,6 +20,15 @@ export const TWO_DAYS = 2 * 24 * 60 * 60;
 /** NIP "Relay behaviour": a live gift-wrap subscription needs `since` at least two days back. */
 export const SINCE_MARGIN = TWO_DAYS + 60 * 60;
 
+/**
+ * `since` of a chat subscription: the game's start (unix seconds; now if
+ * unknown or ahead of this clock) minus SINCE_MARGIN, so every message of a
+ * daily game that runs for weeks is read back, backdated wraps included.
+ */
+export function chatSince(gameStart, now = Math.floor(Date.now() / 1000)) {
+    return Math.min(now, gameStart ?? now) - SINCE_MARGIN;
+}
+
 export function canEncrypt(signer) {
     return typeof signer?.signEvent === 'function' && typeof signer?.nip44?.encrypt === 'function' && typeof signer?.nip44?.decrypt === 'function';
 }

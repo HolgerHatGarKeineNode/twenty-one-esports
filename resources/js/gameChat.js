@@ -1,5 +1,5 @@
 /**
- * The chat panel of a live game (ChessGame.dc.html, "Chat"): NIP-17 messages
+ * The chat panel of a game, live or daily (ChessGame.dc.html, "Chat"): NIP-17 messages
  * between the two players over the configured relays, never through the
  * league server, which cannot read them and stores none (NIP "Chat").
  *
@@ -11,9 +11,12 @@
  *   does not ask the signer to decrypt everything again (NIP-17 allows it).
  * - Mute is for oneself: kept in localStorage and on the account
  *   (Livewire `setMuted`), and muted messages are simply not shown.
+ * - Reads back to the game's start (`config.since`, unix seconds), not just
+ *   the last two days: a daily game runs for weeks, and a player who comes
+ *   back after three days still gets the messages from day one (P5d).
  */
 import { SimplePool } from 'nostr-tools/pool';
-import { canEncrypt, gameMessages, SINCE_MARGIN, unwrapMessage, wrapMessage } from './nostrChat.js';
+import { canEncrypt, chatSince, gameMessages, unwrapMessage, wrapMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
@@ -107,7 +110,7 @@ export function gameChat(config) {
             this.pool = new SimplePool();
             this.sub = this.pool.subscribe(
                 config.relays,
-                { kinds: [1059], '#p': [config.me], since: Math.floor(Date.now() / 1000) - SINCE_MARGIN },
+                { kinds: [1059], '#p': [config.me], since: chatSince(config.since) },
                 {
                     onevent: (wrap) => this.receive(wrap),
                     // NIP-42: the league relay serves a gift wrap only to its authenticated recipient.

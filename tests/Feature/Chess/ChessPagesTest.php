@@ -68,6 +68,33 @@ test('muting is kept on the account and handed to the chat, for other pubkeys on
     expect(ChatMute::query()->count())->toBe(0);
 });
 
+test('a daily game has the players\' chat from the game\'s start, spectators get no chat of their own', function () {
+    config(['esports.chat.relays' => ['wss://chat.example'], 'esports.relays' => ['wss://league.example']]);
+    $game = ChessGame::factory()->daily()->create(['created_at' => now()->subDays(9)]);
+
+    $player = Livewire::actingAs($game->white)->test('pages::games.show', ['game' => $game])
+        ->assertSeeHtml('data-test="chat-panel"')
+        ->assertSeeHtml('data-test="chat-sheet-toggle"')
+        ->assertSeeHtml('data-test="mute"')
+        // The moves' notes go to the league relay, never to a chat relay.
+        ->assertSeeInOrder([__('Relay'), 'wss://league.example']);
+
+    // chatConfig() reads the logged-in viewer, so each is read before the next login.
+    expect($player->instance()->chatConfig())->toMatchArray([
+        'me' => $game->white->pubkey,
+        'opponent' => ['pubkey' => $game->black->pubkey, 'name' => $game->black->displayName()],
+        'since' => $game->created_at->getTimestamp(),
+        'relays' => ['wss://chat.example'],
+    ]);
+
+    $spectator = Livewire::actingAs(User::factory()->create())->test('pages::games.show', ['game' => $game])
+        ->assertSeeHtml('data-test="chat-panel"')
+        ->assertDontSeeHtml('data-test="chat-sheet-toggle"')
+        ->assertSee(__('The two players chat privately. Spectators do not see it.'));
+
+    expect($spectator->instance()->chatConfig())->toMatchArray(['me' => null, 'opponent' => null]);
+});
+
 test('a reconnecting client gets back the exact position and both clocks', function () {
     $this->freezeTime();
     $game = ChessGame::factory()->create();
