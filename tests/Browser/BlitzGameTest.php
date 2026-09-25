@@ -175,6 +175,14 @@ test('two players find each other, play over Reverb, survive a reload and end by
     playSan($black, 'Nc6');
     BrowserWait::until($white, '() => Alpine.$data(document.querySelector("[data-test=chess-game]")).state.ply === 4', 5_000);
 
+    // A push that never arrives (server could not reach Reverb, socket dead
+    // while still "connected"): Black stops hearing game events, White moves,
+    // and Black's board still catches up from the server within seconds.
+    $black->evaluate('() => window.Echo.private("game.'.$game->id.'").stopListening(".game.updated")');
+    expect(board($black, 'g.connection'))->toBe('connected');
+    playSan($white, 'Bb5');
+    BrowserWait::until($black, '() => Alpine.$data(document.querySelector("[data-test=chess-game]")).state.ply === 5', 7_000);
+
     $white->locator('[data-test=resign]')->click();
     $white->locator('[data-test=confirm-resign]')->click();
 
@@ -184,7 +192,7 @@ test('two players find each other, play over Reverb, survive a reload and end by
     // Sounds (P5c): every move asked for its click, and each side its own end sound.
     BrowserWait::until($black, '() => window.esportsSounds.calls.includes("win")', 2_000);
     BrowserWait::until($white, '() => window.esportsSounds.calls.includes("loss")', 2_000);
-    expect($white->evaluate('() => window.esportsSounds.calls.filter((s) => s === "move").length'))->toBe(4);
+    expect($white->evaluate('() => window.esportsSounds.calls.filter((s) => s === "move").length'))->toBe(5);
 
     $game->refresh();
     expect($game->status)->toBe(ChessGameStatus::Finished)

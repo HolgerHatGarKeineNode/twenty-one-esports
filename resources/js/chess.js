@@ -143,6 +143,9 @@ function kingInCheck(fen) {
  * Watches the websocket (if there is one) and reports state changes, so a
  * page can show "Connected" / "Reconnecting" and resync after a gap.
  */
+/** How long a live game page trusts the websocket alone before it asks the server. */
+const HEARTBEAT_MS = 4000;
+
 function watchConnection(onChange) {
     const pusher = window.Echo?.connector?.pusher;
     if (!pusher) {
@@ -228,9 +231,18 @@ document.addEventListener('alpine:init', () => {
         recording: false,
         lowTimePlayed: false,
         soundedPly: 0,
+        lastSyncAt: 0,
+        syncing: false,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
+            this.lastSyncAt = performance.now();
+
+            // Back in the tab (or window): the push may have been missed meanwhile.
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') this.resync();
+            });
+            window.addEventListener('focus', () => this.resync());
 
             // Move sounds (P5c): once per ply, own moves included (shown at once in send()).
             // A ply shown, taken back and confirmed again is not heard twice.
@@ -334,6 +346,12 @@ document.addEventListener('alpine:init', () => {
         tick() {
             this.now = performance.now();
             if (this.state.status !== 'active') return;
+            // Heartbeat even while "connected": a push that never arrives (the
+            // server could not reach Reverb, the socket died silently) must not
+            // leave a player on an old position. fetchState renders no HTML.
+            if (this.connection === 'connected' && this.now - this.lastSyncAt > HEARTBEAT_MS) {
+                this.resync();
+            }
             const running = this.state.clock.running;
             if (!this.lowTimePlayed && this.color && running === this.color && this.remaining(this.color) <= LOW_TIME_MS) {
                 this.lowTimePlayed = true;
@@ -365,6 +383,8 @@ document.addEventListener('alpine:init', () => {
         apply(state) {
             if (!state || (state.version < this.state.version && state.id === this.state.id)) return;
             const moves = state.moves ?? this.state.moves;
+            // A heartbeat that brings nothing new keeps a half-made move (selected piece).
+            const changed = state.version !== this.state.version || state.id !== this.state.id;
             const ended = this.state.status === 'active' && state.status === 'finished';
             this.state = { ...state, moves };
             if (ended) {
@@ -377,9 +397,12 @@ document.addEventListener('alpine:init', () => {
                 publishRecord(this.$wire, this.t.pubkey).finally(() => (this.recording = false));
             }
             this.receivedAt = performance.now();
+            this.lastSyncAt = this.receivedAt;
             this.now = this.receivedAt;
-            this.selected = '';
-            this.dots = [];
+            if (changed) {
+                this.selected = '';
+                this.dots = [];
+            }
             this.syncPolling();
             if (this.state.status !== 'active') this.confirm = null;
             if (state.rematchUrl && this.color) window.location.assign(state.rematchUrl);
@@ -397,8 +420,15 @@ document.addEventListener('alpine:init', () => {
         },
 
         async resync() {
-            const state = await this.$wire.fetchState();
-            if (state) this.apply(state);
+            if (this.syncing) return;
+            this.syncing = true;
+            this.lastSyncAt = performance.now();
+            try {
+                const state = await this.$wire.fetchState();
+                if (state) this.apply(state);
+            } finally {
+                this.syncing = false;
+            }
         },
 
         async call(method, ...args) {
