@@ -28,7 +28,7 @@
                 {{ __('Continue with Google') }}
             </button>
 
-            <button type="button" class="btn-w flex h-12 w-full cursor-pointer items-center gap-3 rounded-lg border border-line bg-well px-4 text-left text-[13px] text-ink disabled:cursor-wait"
+            <button type="button" class="btn-w flex min-h-12 w-full py-2 cursor-pointer items-center gap-3 rounded-lg border border-line bg-well px-4 text-left text-[13px] text-ink disabled:cursor-wait"
                     x-on:click="loginWithNostr()" x-bind:disabled="busy" data-test="login-nostr">
                 <x-icon name="key" :size="18" />
                 <span class="flex flex-col items-start gap-0.5">
