@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Route;
@@ -60,6 +61,11 @@ $placeholders = [
 foreach ($placeholders as [$uri, $name, $page, $section]) {
     Route::view($uri, 'pages.coming-soon', ['page' => $page, 'section' => $section])->name($name);
 }
+
+// NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.
+Route::get('.well-known/nostr.json', NostrJsonController::class)
+    ->withoutMiddleware('web')
+    ->name('nostr.nip05');
 
 Route::get('styleguide', function () {
     abort_unless(app()->environment(['local', 'testing']), 404);
