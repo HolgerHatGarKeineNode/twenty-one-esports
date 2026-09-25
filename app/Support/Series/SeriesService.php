@@ -22,6 +22,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use App\Support\Rating\RatingService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -56,6 +57,7 @@ final class SeriesService
         private SignedEventGate $gate,
         private GameRegistry $games,
         private Notifier $notifier,
+        private RatingService $ratings,
     ) {}
 
     /* ---------- Challenge (2150) ------------------------------------------------------------------------------ */
@@ -679,6 +681,10 @@ final class SeriesService
                 'resolution' => SeriesResolution::Confirmed,
                 'finished_at' => now(),
             ] : ['status' => SeriesStatus::Disputed]);
+
+            if ($status === 'confirmed') {
+                $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
+            }
         });
 
         $match->refresh();
@@ -773,19 +779,24 @@ final class SeriesService
             'void' => [SeriesResolution::Void, 'none', $match->latestReport?->games],
         };
 
-        $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $match->status)->update([
-            'status' => SeriesStatus::Resolved,
-            'resolution' => $resolution,
-            'winner' => $winner,
-            'result_games' => $games === null ? null : json_encode($games),
-            'resolution_reason' => $reason,
-            'resolved_by_id' => $admin->id,
-            'finished_at' => now(),
-        ]);
+        // The decision and its rating change commit together.
+        DB::transaction(function () use ($match, $admin, $resolution, $winner, $games, $reason): void {
+            $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $match->status)->update([
+                'status' => SeriesStatus::Resolved,
+                'resolution' => $resolution,
+                'winner' => $winner,
+                'result_games' => $games === null ? null : json_encode($games),
+                'resolution_reason' => $reason,
+                'resolved_by_id' => $admin->id,
+                'finished_at' => now(),
+            ]);
 
-        if ($updated !== 1) {
-            throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
-        }
+            if ($updated !== 1) {
+                throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
+            }
+
+            $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
+        });
     }
 
     public function requestNewReport(SeriesMatch $match, User $admin): void

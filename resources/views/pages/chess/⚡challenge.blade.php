@@ -157,7 +157,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
 @php
     $me = auth()->user();
     $opponent = $this->opponent;
-    $rating = (int) config('esports.chess.queue.start_rating');
+    $ratings = \App\Support\Rating\Ratings::forUsers([...$this->players->pluck('id')->all(), $opponent?->id], 'chess', 'correspondence', \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool']);
     $hours = (int) config('esports.chess.challenge_hours');
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
 @endphp
@@ -190,8 +190,9 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                                 @if ($player->clanMember?->clan?->clantag)<x-clan-tag :tag="$player->clanMember->clan->clantag" size="sm" />@endif
                                 @if ($player->is_member)<x-member-badge />@endif
                             </span>
-                            <span class="max-md:hidden">{{ $rating }}</span>
-                            <span class="max-md:hidden"><x-rank-badge tier="provisional" size="sm" /></span>
+                            @php($daily = $ratings[$player->id])
+                            <span class="max-md:hidden" data-test="pick-rating">{{ $daily['rating'] }}</span>
+                            <span class="max-md:hidden">@if ($daily['tier'])<x-rank-badge :tier="\App\Support\Rating\Ratings::badge($daily['tier'])['tier']" :level="\App\Support\Rating\Ratings::badge($daily['tier'])['level']" size="sm" />@else<span class="text-xs text-ink-3">{{ $daily['provisional'] ? __('casual, provisional') : __('casual') }}</span>@endif</span>
                             <span class="max-md:hidden tabular-nums">{{ $player->white_games_count + $player->black_games_count }}</span>
                             <span class="text-xs" :class="online.includes({{ $player->id }}) ? 'text-win' : 'text-ink-3'" x-text="online.includes({{ $player->id }}) ? @js(__('online')) : @js(__('offline'))"></span>
                         </button>
@@ -303,7 +304,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <x-avatar :user="$opponent" :size="40" class="rounded-md" />
                     <span class="flex min-w-0 flex-col gap-1">
                         <span class="flex flex-wrap items-center gap-2"><b class="truncate text-[15px]">{{ $opponent->displayName() }}</b>@if ($opponent->is_member)<x-member-badge />@endif</span>
-                        <span class="text-xs text-btc-hi">{{ __('daily Elo :elo, provisional', ['elo' => $rating]) }}@if ($opponent->clanMember?->clan) · {{ $opponent->clanMember->clan->name }}@endif</span>
+                        <span class="flex flex-wrap items-center gap-x-1 text-xs text-btc-hi"><x-rating :rating="$ratings[$opponent->id]" :label="__('Daily')" />@if ($opponent->clanMember?->clan) · {{ $opponent->clanMember->clan->name }}@endif</span>
                     </span>
                 </span>
             @else

@@ -9,6 +9,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
+use App\Support\Rating\Ratings;
 use Carbon\CarbonInterface;
 
 /**
@@ -28,6 +29,45 @@ final class SeriesPresenter
         'disputed' => ['#2A1214', '#F87171', 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'],
         'closed' => ['#1A1A1E', '#8B8B90', 'M6 6l12 12M18 6 6 18'],
     ];
+
+    /**
+     * The Elo lines of a series (P7b): both lineups' ratings before, what the
+     * challenger's lineup wins or loses while the series is open, the change
+     * once it is decided, and each side's line for the flow card. Casual
+     * series show the casual Elo, which never has a tier.
+     *
+     * @return array{casual: bool, before: string, stake: string, expected: string, sides: array{challenger: string, challenged: string}}
+     */
+    public static function ratingFacts(SeriesMatch $match): array
+    {
+        $ratings = Ratings::forSeries($match);
+        $casual = $ratings['pool'] === 'casual';
+        $signed = fn (int $delta): string => $delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0');
+        $before = fn (string $side): int => $ratings[$side]['before'] ?? $ratings[$side]['rating'];
+        $line = function (string $side) use ($ratings, $casual): string {
+            $rating = $ratings[$side];
+
+            if ($rating['delta'] === null) {
+                return $casual ? __('casual Elo :elo', ['elo' => $rating['rating']]) : __('Elo :elo', ['elo' => $rating['rating']]);
+            }
+
+            $values = ['before' => $rating['before'], 'after' => $rating['rating']];
+
+            return $casual ? __('casual Elo :before → :after', $values) : __('Elo :before → :after', $values);
+        };
+
+        return [
+            'casual' => $casual,
+            'before' => $match->challenger_tag.' '.$before('challenger').' · '.$match->challenged_tag.' '.$before('challenged'),
+            'stake' => match (true) {
+                $ratings['challenger']['delta'] !== null => $match->challenger_tag.' '.$signed($ratings['challenger']['delta']).' · '.$match->challenged_tag.' '.$signed($ratings['challenged']['delta']),
+                $ratings['win'] !== null => __(':tag :win if it wins, :loss if it loses', ['tag' => $match->challenger_tag, 'win' => $signed($ratings['win']), 'loss' => $signed($ratings['loss'])]),
+                default => __('no change'),
+            },
+            'expected' => __(':tag wins :pct %', ['tag' => $match->challenger_tag, 'pct' => (int) round($ratings['expected'] * 100)]),
+            'sides' => ['challenger' => $line('challenger'), 'challenged' => $line('challenged')],
+        ];
+    }
 
     /**
      * @return array<string, string> list status key => label

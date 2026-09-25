@@ -286,6 +286,8 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
     $user = auth()->user();
     $range = config('esports.chess.queue.range');
     $rating = (int) config('esports.chess.queue.start_rating');
+    $ownBlitz = \App\Support\Rating\Ratings::headline($user?->id, 'chess', 'blitz');
+    $dailyPool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
     $entry = $this->entry;
     $outgoing = $this->outgoing;
     $active = $this->activeGame;
@@ -297,7 +299,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         {{-- Mobile title (MobileChessLobby) --}}
         <div class="flex flex-col gap-1 lg:hidden">
             <h1 class="m-0 font-display text-[28px] font-bold">{{ __('Chess') }}</h1>
-            <span class="flex items-center gap-1.5 text-[13px] text-ink-2">{{ __('Blitz') }} <b class="text-ink">{{ $rating }}</b> <x-rank-badge tier="provisional" size="sm" /></span>
+            @auth<x-rating :rating="$ownBlitz" :label="__('Blitz')" class="text-[13px] text-ink-2" />@endauth
         </div>
         <h1 class="sr-only max-lg:hidden">{{ __('Chess') }}</h1>
 
@@ -388,7 +390,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('no rating') }}</span></span>
                     <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
                 </div>
-                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Block 0 every game is casual: no rating, and you play anyone who is online.') }}</p>
+                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Block 0 every game is casual: casual Elo only, and you play anyone who is online.') }}</p>
 
                 <div class="flex flex-col gap-2 max-lg:hidden">
                     <span class="text-[13px] text-ink-2">{{ __('Opponent strength') }}</span>
@@ -473,6 +475,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                                          x-on:error.once="$el.src = m.generated; $el.alt = @js(__(':name avatar, generated')).replace(':name', m.name)" class="block size-6 shrink-0 rounded-sm bg-raised object-cover">
                                     <b class="min-w-0 truncate" x-text="m.name"></b>
                                 </a>
+                                <span class="shrink-0 text-xs text-ink-2" x-show="m.elo" data-test="online-elo"><span x-text="m.elo"></span><span class="text-ink-3" x-show="m.provisional"> · {{ __('provisional') }}</span></span>
                                 <span x-show="m.looking" class="rounded-sm bg-[#122016] px-2 py-0.5 text-[11px] font-bold text-win">{{ __('looking: Blitz 5+3') }}</span>
                                 @if (! $active)
                                     <template x-if="invited(m)">
@@ -513,7 +516,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     @php($mine = $daily->turn() === $daily->colorOf($user))
                     @php($left = intdiv(max(0, (int) $daily->deadline_ms - (int) now()->getTimestampMs()), 60_000))
                     <a wire:key="dg-{{ $daily->id }}" href="{{ route('games.show', $daily) }}" class="flex flex-col gap-1 border-b border-hairline pb-2.5 text-ink last:border-0 hover:text-ink">
-                        <span class="flex items-center justify-between gap-2 text-[13px]"><span class="truncate">{{ $opp?->displayName() }} <span class="text-ink-2">{{ $rating }}</span></span>@if ($mine)<span class="rounded-sm bg-btc px-1.5 py-0.5 text-[11px] font-bold text-on-btc">{{ __('Your move') }}</span>@else<span class="text-[11px] text-ink-3">{{ __('Their move') }}</span>@endif</span>
+                        <span class="flex items-center justify-between gap-2 text-[13px]"><span class="truncate">{{ $opp?->displayName() }} <span class="text-ink-2" data-test="daily-opponent-elo">{{ \App\Support\Rating\Ratings::forUser($opp?->id, 'chess', 'correspondence', $dailyPool)['rating'] }}</span></span>@if ($mine)<span class="rounded-sm bg-btc px-1.5 py-0.5 text-[11px] font-bold text-on-btc">{{ __('Your move') }}</span>@else<span class="text-[11px] text-ink-3">{{ __('Their move') }}</span>@endif</span>
                         <span class="flex justify-between gap-2 text-xs text-ink-2"><span>{{ __('You play :color', ['color' => $daily->colorOf($user) === 'w' ? __('White') : __('Black')]) }}</span><span>{{ $mine ? __(':h h :m min left', ['h' => intdiv($left, 60), 'm' => str_pad((string) ($left % 60), 2, '0', STR_PAD_LEFT)]) : __('move :n', ['n' => intdiv($daily->ply, 2) + 1]) }}</span></span>
                     </a>
                 @empty

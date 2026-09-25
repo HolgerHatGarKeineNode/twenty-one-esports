@@ -160,7 +160,10 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     $settings = $user->chessSettings();
     $channels = array_filter([$settings->dm ? __('Nostr DM') : null, $settings->push ? __('browser push') : null]);
     $notificationsOn = $channels !== [] && ($settings->wants('your_move') || $settings->wants('reminder'));
-    $rating = (int) config('esports.chess.queue.start_rating');
+    $pool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
+    $opponentRatings = \App\Support\Rating\Ratings::forUsers($cards->map(fn ($card) => $card['opponent']?->id)->all(), 'chess', 'correspondence', $pool);
+    $myDeltas = \App\Models\RatingChange::query()->where('source', \App\Models\RatingChange::CHESS)->whereIn('source_id', $finished->pluck('id'))
+        ->whereHas('rating', fn ($query) => $query->where('subject', 'user:'.$user->id))->pluck('delta', 'source_id');
 @endphp
 
 <div class="flex grow flex-col gap-4 px-4 pb-8 lg:px-12 lg:pb-6" data-test="correspondence-list">
@@ -269,7 +272,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                                 @if ($opp?->is_member)<x-member-badge />@endif
                                 @if ($opp)<x-copy-npub :npub="$opp->npub" :name="$opp->displayName()" />@endif
                             </span>
-                            <span class="flex items-center gap-1 text-xs text-ink-2">{{ __(':elo daily Elo,', ['elo' => $rating]) }} <x-rank-badge tier="provisional" size="sm" /></span>
+                            @if ($opp)<x-rating :rating="$opponentRatings[$opp->id]" :label="__('Daily')" class="text-xs text-ink-2" />@endif
                             <span class="text-xs text-ink-2">{{ $card['colorText'] }}</span>
                             <span class="text-[13px]">@if ($card['last']){{ __('Last move') }} <b>{{ $card['last'] }}</b>@else{{ __('No move yet') }}@endif</span>
                             <span class="flex flex-col gap-1 pt-1">
@@ -317,7 +320,8 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                                 <td @class(['px-2', 'text-win' => $outcome === 'win', 'text-loss' => $outcome === 'loss', 'text-ink-2' => $outcome === 'aborted'])>{{ ['win' => __('Win'), 'loss' => __('Loss'), 'draw' => __('Draw'), 'aborted' => __('Aborted')][$outcome] }}</td>
                                 <td class="px-2">{{ $game->end_reason === ChessEndReason::Timeout ? __('Time, deadline missed') : __($game->end_reason?->label() ?? '') }}</td>
                                 <td class="px-2 text-right tabular-nums">{{ intdiv($game->ply + 1, 2) }}</td>
-                                <td class="px-2 text-ink-3">{{ __('casual') }}</td>
+                                @php($delta = $myDeltas[$game->id] ?? null)
+                                <td @class(['px-2 tabular-nums', 'text-win' => $delta > 0, 'text-loss' => $delta < 0, 'text-ink-3' => ! $delta])>{{ $delta === null ? '–' : ($delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0')) }}</td>
                                 <td class="px-2 text-ink-2">{{ $game->ended_at?->diffForHumans() }}</td>
                                 <td @class(['px-2', 'text-win' => $game->record_event_id, 'text-ink-3' => ! $game->record_event_id])>{{ $game->record_event_id ? __('verified') : ($game->result ? __('not signed yet') : '–') }}</td>
                             </tr>

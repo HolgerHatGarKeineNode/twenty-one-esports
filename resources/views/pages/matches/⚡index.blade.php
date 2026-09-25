@@ -21,7 +21,7 @@ use Livewire\WithPagination;
  * filters (game, clan, status) and the table. Rocket League series and chess
  * games (blitz and daily) share the table; the Game filter narrows it. Chess
  * games only know "live" and "done" (a chess game starts when it is created);
- * they keep their own number until P7 gives every game a league match number.
+ * every row carries its league match number, one sequence for both (P7b).
  */
 new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     use WithPagination;

@@ -12,6 +12,7 @@ use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
+use App\Support\Rating\Ratings;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -336,10 +337,11 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
     }
 
     /**
-     * Name card data for one side (kit section 6). Everyone is at the start
-     * rating and provisional until Elo exists (P7).
+     * Name card data for one side (kit section 6), with the player's rating
+     * in this game's ladder (casual before Block 0) and this game's change
+     * once it is over (P7b).
      *
-     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, npub: string, user: User, elo: int}
+     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, npub: string, user: User, rating: array<string, mixed>}
      */
     public function player(User $user): array
     {
@@ -351,7 +353,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             'url' => route('players.show', $user->npub),
             'npub' => $user->npub,
             'user' => $user,
-            'elo' => (int) config('esports.chess.queue.start_rating'),
+            'rating' => Ratings::forChessGame($this->game)[$this->game->colorOf($user) ?? 'w'],
         ];
     }
 
@@ -506,7 +508,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                         <div @class(['relative flex min-h-14 min-w-0 items-center gap-3 lg:items-start lg:overflow-hidden lg:rounded-lg lg:bg-card lg:p-3', 'lg:order-2' => $side === 'bottom'])>
                             @foreach ($players as $pc => $p)
                                 <span x-show="{{ $sideColor }} === '{{ $pc }}'" class="contents" data-test="player-card-{{ $pc }}">
-                                    <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color"><span class="max-lg:hidden">{{ __('Solo') }}</span> {{ $p['elo'] }} · <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
+                                    <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color"><x-rating :rating="$p['rating']" :label="__('Solo')" /></x-chess.player-card>
                                 </span>
                             @endforeach
                         </div>
@@ -648,7 +650,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                                 <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
                                             </div>
                                             <div class="flex flex-col border-t border-hairline">
-                                                <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Rating') }}</span><span>{{ __('casual, no Elo change') }}</span></div>
+                                                <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
                                                 <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span>{{ __('casual games do not count') }}</span></div>
                                             </div>
                                             <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
@@ -755,12 +757,12 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             {{-- Details (desktop) --}}
             <div class="hidden grid-cols-2 gap-5 lg:grid">
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Time control'), __('Blitz 5+3 · 5 min, +3 s per move')], [__('Started'), $game->created_at?->timezone(config('app.timezone'))->isoFormat('ddd YYYY-MM-DD · HH:mm')], [__('Kind'), __('Casual · no rating')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
+                    @foreach ([[__('Time control'), __('Blitz 5+3 · 5 min, +3 s per move')], [__('Started'), $game->created_at?->timezone(config('app.timezone'))->isoFormat('ddd YYYY-MM-DD · HH:mm')], [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')], [__('Moves'), __('checked by the server, one by one')]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>
                 <div class="rounded-lg bg-card px-6 py-2">
-                    @foreach ([[__('Rating'), __('casual, no Elo before Block 0')], [__('Hashrate'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
+                    @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), __('casual games do not count')], [__('Spectators'), __('anyone with the link, live')], [__('Game number'), $game->number()]] as [$key, $value])
                         <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
                     @endforeach
                 </div>

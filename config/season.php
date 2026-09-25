@@ -23,6 +23,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Casual rating (user decision 2026-09-26)
+    |--------------------------------------------------------------------------
+    |
+    | A second Elo per game and mode for casual play, the same arithmetic as
+    | `rating` with its own values. Permanent (no season, no reset), shown as
+    | provisional below `provisional` games, never a tier, never counted for
+    | badges, the season chain, rewards or the league attestation. It runs
+    | before Block 0 too.
+    |
+    | daily_pair_limit: at most this many casual results per pairing (the same
+    | two players or lineups) and UTC day move the casual rating; later games
+    | that day are played but leave it where it is. null = no limit.
+    |
+    */
+
+    'casual' => [
+        'start' => 1000,
+        'k' => 32,
+        'provisional_k' => 40,
+        'provisional' => 5,
+        'scale' => 400,
+        'daily_pair_limit' => 3,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Rank tiers, Pre-Season thresholds
     |--------------------------------------------------------------------------
     |

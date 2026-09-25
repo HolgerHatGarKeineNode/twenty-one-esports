@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * value is exact. Before both first moves no clock runs.
  *
  * @property int $id
+ * @property int|null $number league match number, shared with series (MatchNumber)
  * @property string $mode
  * @property bool $rated
  * @property int $white_id
@@ -64,7 +65,7 @@ use Illuminate\Support\Carbon;
  * @property-read ChessGame|null $rematch
  * @property-read NostrEvent|null $recordEvent
  */
-#[Fillable(['mode', 'rated', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
+#[Fillable(['number', 'mode', 'rated', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
     'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind'])]
 class ChessGame extends Model
@@ -77,9 +78,22 @@ class ChessGame extends Model
     /** The daily mode: one move per day, a deadline per move, no running clock. */
     public const CORRESPONDENCE = 'correspondence';
 
+    /**
+     * Every game takes the next league match number when it is created, from
+     * the same sequence as Rocket League series (NIP "Terminology": casual
+     * games take numbers too), recorded as used by White.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (ChessGame $game): void {
+            $game->number ??= MatchNumber::query()->create(['user_id' => $game->white_id, 'used_at' => now()])->id;
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'number' => 'integer',
             'rated' => 'boolean',
             'status' => ChessGameStatus::class,
             'end_reason' => ChessEndReason::class,
@@ -238,6 +252,6 @@ class ChessGame extends Model
 
     public function number(): string
     {
-        return '#'.$this->id;
+        return '#'.$this->number;
     }
 }

@@ -1,8 +1,9 @@
 {{--
     A finished or aborted game (ChessGameDone.dc.html): result, facts, replay
     with the move list as buttons, the game file (PGN) to copy or download,
-    and the Proof with the players' NIP-64 record. Casual until P7: the Elo
-    and Hashrate columns of the design say so.
+    and the Proof with the players' NIP-64 record. Each player's rating shows
+    with this game's change (casual Elo before Block 0, P7b); Hashrate stays
+    "does not count" for casual games.
 
     Daily games add ChessStates "Deadline missed" when time ran out; a record
     that is not signed or not on a relay yet shows ChessStates "Public record
@@ -71,7 +72,7 @@
         <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1.5 text-[13px]">
             @foreach (['w', 'b'] as $pc)
                 <span class="flex min-w-0 items-center gap-2"><x-player-link :user="$players[$pc]['user']" class="flex min-h-6 min-w-0 items-center gap-2"><x-avatar :user="$players[$pc]['user']" :size="20" class="rounded-sm" /><span class="truncate">{{ $players[$pc]['name'] }}</span></x-player-link>@if ($players[$pc]['member'])<x-member-badge />@endif @if ($pc !== ($color ?? null))<x-copy-npub :npub="$players[$pc]['npub']" :name="$players[$pc]['name']" />@endif</span>
-                <span class="text-ink-2">{{ $pc === 'w' ? __('White') : __('Black') }} · {{ __('casual') }}</span>
+                <span class="flex items-center gap-1 text-ink-2" data-test="done-rating-{{ $pc }}">{{ $pc === 'w' ? __('White') : __('Black') }} · <x-rating :rating="$players[$pc]['rating']" :label="__('Elo')" :delta="$players[$pc]['rating']['delta']" compact /></span>
             @endforeach
         </div>
     </section>
@@ -89,7 +90,7 @@
                 {{ $lost ? __('Your time for move :n ran out :at.', ['n' => $moveCount + ($game->ply % 2 === 0 ? 1 : 0), 'at' => $game->ended_at?->timezone($viewerZone)->isoFormat('ddd YYYY-MM-DD HH:mm')]) : __('Their time ran out :at.', ['at' => $game->ended_at?->timezone($viewerZone)->isoFormat('ddd YYYY-MM-DD HH:mm')]) }}
             </span>
             <div class="flex flex-col">
-                <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Daily Elo') }}</span><span>{{ __('casual, no Elo change') }}</span></div>
+                <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Daily Elo') }}</span><x-rating :rating="$players[$color]['rating']" :delta="$players[$color]['rating']['delta']" /></div>
                 <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span>{{ __('casual games do not count') }}</span></div>
             </div>
             @if ($lost)
@@ -104,14 +105,14 @@
             @foreach ([
                 [__('Played'), ($game->created_at?->isoFormat('ddd YYYY-MM-DD · HH:mm') ?? '').($game->ended_at ? ' '.__('to').' '.($daily ? $game->ended_at->isoFormat('ddd YYYY-MM-DD · HH:mm') : $game->ended_at->isoFormat('HH:mm')) : '')],
                 [__('Time control'), $timeControl],
-                [__('Kind'), __('Casual · no rating')],
+                [__('Kind'), $game->rated ? __('Rated') : __('Casual · casual Elo only')],
                 [__('Ending'), $aborted ? __('Aborted before both first moves') : __(':reason, decided by the server', ['reason' => $reason])],
             ] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Rating'), __('casual, no Elo before Block 0')], [__('Hashrate'), __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
+            @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>

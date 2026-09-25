@@ -3,6 +3,7 @@
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Nostr\PlayerProfile;
+use App\Support\Rating\Ratings;
 use Illuminate\Support\Facades\Broadcast;
 
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
@@ -35,6 +36,8 @@ Broadcast::channel('game.{game}.players', function (User $user, ChessGame $game)
  * shares here is shown to every other logged-in player.
  */
 Broadcast::channel('online', function (User $user) {
+    $blitz = Ratings::headline($user->id, 'chess', 'blitz');
+
     return [
         'id' => $user->id,
         'name' => $user->displayName(),
@@ -44,5 +47,8 @@ Broadcast::channel('online', function (User $user) {
         'npub' => $user->npub,
         'pubkey' => $user->pubkey,
         'looking' => $user->looking_to_play,
+        // Blitz Elo as of joining: casual before Block 0, rated after (P7b).
+        'elo' => $blitz['rating'],
+        'provisional' => $blitz['provisional'],
     ];
 });

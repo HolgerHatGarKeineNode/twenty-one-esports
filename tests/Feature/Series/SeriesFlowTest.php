@@ -9,10 +9,13 @@ use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\MatchNumber;
 use App\Models\NostrEvent;
+use App\Models\Rating;
+use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Rating\RatingService;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
@@ -266,4 +269,67 @@ test('the lobby reaches the two lineups and no one else, in no response', functi
     }
 
     expect(json_encode($match->refresh()->toArray()))->not->toContain('hunter2-secret');
+});
+
+/**
+ * @return array<string, int> lineup subject => rating, in the given pool
+ */
+function lineupRatings(SeriesMatch $match, string $pool): array
+{
+    return Rating::query()->where('pool', $pool)->where('game', 'rocket-league')->where('mode', $match->mode)
+        ->whereIn('subject', ['lineup:'.$match->challenger_lineup_id, 'lineup:'.$match->challenged_lineup_id])
+        ->orderBy('subject')->pluck('rating', 'subject')->all();
+}
+
+test('a confirmed casual series moves both lineups\' casual Elo once, and a second confirmation or a retry changes nothing', function () {
+    [$match, [, $captainA], [, $captainB]] = acceptedSeries();
+    enterGames($match, $captainA, [[3, 1], [2, 1]]);
+    $this->series->report($match, $captainA, []);
+    $this->series->respond($match, $captainB, 'confirmed', '', []);
+
+    $after = lineupRatings($match, Rating::CASUAL);
+
+    expect($after)->toBe(['lineup:'.$match->challenger_lineup_id => 1020, 'lineup:'.$match->challenged_lineup_id => 980])
+        ->and(RatingChange::query()->where('source', RatingChange::SERIES)->where('source_id', $match->id)->orderBy('id')->pluck('delta')->all())->toBe([20, -20])
+        ->and(Rating::query()->where('pool', Rating::RATED)->count())->toBe(0);
+
+    expect(fn () => $this->series->respond($match->refresh(), $captainB, 'confirmed', '', []))->toThrow(SeriesRuleViolation::class)
+        ->and(app(RatingService::class)->applySeries($match->refresh()))->toBeFalse()
+        ->and(lineupRatings($match, Rating::CASUAL))->toBe($after)
+        ->and(RatingChange::query()->count())->toBe(2);
+
+    $this->get(route('matches.show', $match->number))->assertOk()->assertSee('casual Elo 1000 → 1020');
+});
+
+test('an admin decision rates the series inside the decision; a void rates nothing', function () {
+    [$match, [, $captainA], [, $captainB]] = acceptedSeries();
+    enterGames($match, $captainA, [[3, 1], [2, 1]]);
+    $this->series->report($match, $captainA, []);
+    $this->series->respond($match, $captainB, 'disputed', 'Game 2 was ours.', []);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    $this->series->decide($match, $admin, ['type' => 'forfeit', 'winner' => 'challenged'], 'No-show in game 3.');
+    expect(lineupRatings($match, Rating::CASUAL))->toBe(['lineup:'.$match->challenger_lineup_id => 980, 'lineup:'.$match->challenged_lineup_id => 1020]);
+
+    [$void, [, $voidA], [, $voidB]] = acceptedSeries();
+    enterGames($void, $voidA, [[3, 1], [2, 1]]);
+    $this->series->report($void, $voidA, []);
+    $this->series->respond($void, $voidB, 'disputed', 'Server crash.', []);
+    $this->series->decide($void, $admin, ['type' => 'void'], 'Server crash, replay.');
+
+    expect(lineupRatings($void, Rating::CASUAL))->toBe([]);
+});
+
+test('a confirmed rated series on an open ladder moves the rated Elo, never the casual one', function () {
+    config(['esports.ladder' => ['league_pubkey' => (new TestSigner)->pubkey, 'season' => 'season-1']]);
+
+    [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true);
+    enterGames($match, $captainA, [[1, 3], [0, 2]]);
+    $this->series->report($match, $captainA, seriesSigned($signerA, $this->series->prepareReport($match, $captainA)));
+    $this->series->respond($match, $captainB, 'confirmed', '', seriesSigned($signerB, $this->series->prepareResponse($match, $captainB, 'confirmed')));
+
+    expect(lineupRatings($match, Rating::RATED))->toBe(['lineup:'.$match->challenger_lineup_id => 980, 'lineup:'.$match->challenged_lineup_id => 1020])
+        ->and(Rating::query()->where('pool', Rating::RATED)->value('season'))->toBe('season-1')
+        ->and(lineupRatings($match, Rating::CASUAL))->toBe([]);
 });

@@ -81,6 +81,9 @@ Route::middleware('auth')->group(function () {
     Route::livewire('matches/{match}/room', 'pages::matches.room')->name('matches.room');
 });
 
+// Ladders (P7b): the rated season ladder and the casual ladder of a game and mode.
+Route::livewire('ladder/{game}/{mode}', 'pages::ladder.show')->name('ladder.show');
+
 Route::livewire('matches', 'pages::matches.index')->name('matches.index');
 Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')->name('matches.show');
 
@@ -92,7 +95,6 @@ Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')-
 $placeholders = [
     ['games', 'games.index', 'Live games', 'chess'],
     ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],
-    ['ladder/{game}/{mode}', 'ladder.show', 'Ladder', 'ladder'],
     ['rules', 'rules', 'Rules', null],
     ['protocol', 'protocol', 'Open protocol', null],
 ];

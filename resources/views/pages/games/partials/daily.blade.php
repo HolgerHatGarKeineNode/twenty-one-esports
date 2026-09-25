@@ -161,7 +161,7 @@
                 <div @class(['flex items-center gap-2.5 px-4 lg:shrink-0 lg:px-0 lg:[&_[data-test=player-about]]:hidden', 'order-1' => $side === 'top', 'order-3 lg:order-7 lg:mt-auto' => $side === 'bottom']) data-test="daily-player-{{ $side }}">
                     <span class="relative flex min-w-0 grow flex-col items-stretch gap-1">
                         <span class="relative flex min-w-0 items-center gap-2.5">
-                            <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
+                            <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color"><x-rating :rating="$p['rating']" :label="__('Daily')" /></x-chess.player-card>
                         </span>
                         <x-chess.captured fen="(pending?.fen ?? state.fen)" color="'{{ $sideColor }}'" data-test="captured-{{ $side }}" />
                     </span>
@@ -322,7 +322,7 @@
                 @endforeach
             </div>
             <div>
-                @foreach ([[__('Daily Elo'), __('casual, no Elo before Block 0'), 'text-ink'], [__('At stake'), __('nothing: a casual game counts for no rating'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
+                @foreach ([[__('Daily Elo'), ($game->rated ? '' : __('Casual').' ').$players['w']['rating']['rating'].' · '.$players['b']['rating']['rating'], 'text-ink'], [__('At stake'), $game->rated ? __('rated Elo with rank') : __('casual Elo only, no rank'), 'text-ink'], [__('Record'), __('every move saved and verified'), 'text-win']] as [$key, $value, $tone])
                     <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0"><span class="text-ink-2">{{ $key }}</span><span class="{{ $tone }} truncate">{{ $value }}</span></div>
                 @endforeach
             </div>

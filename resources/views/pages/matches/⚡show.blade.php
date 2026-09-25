@@ -2,9 +2,11 @@
 
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
+use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesService;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -15,8 +17,8 @@ use Livewire\Component;
  * of the games, who played, and the Proof. Public fields only: the lobby
  * never renders here, not even for the two lineups (they have the room).
  *
- * Casual (before Block 0): no Elo, no league record; the right card says so
- * instead of showing stakes. An unknown number shows the "Match not found"
+ * Casual (before Block 0): casual Elo only (P7b), no league record; the
+ * right card shows the casual stakes. An unknown number shows the "Match not found"
  * state of States.dc.html with a 404.
  */
 new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
@@ -25,6 +27,13 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
     public function mount(string $match): void
     {
         $this->number = (int) $match;
+
+        // Chess games share the league match numbers (P7b): their number opens the game.
+        $chessGame = ChessGame::query()->where('number', $this->number)->value('id');
+
+        if ($chessGame !== null) {
+            throw new HttpResponseException(redirect()->route('games.show', $chessGame));
+        }
 
         if (! SeriesMatch::query()->where('number', $this->number)->exists()) {
             $latest = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->max('number');
@@ -84,6 +93,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
     $mySide = $match->captainSideOf($viewer);
     $toAnswer = $match->status === SeriesStatus::Reported && $report !== null && $report->status === ReportStatus::Open && $mySide !== null && $mySide !== $report->side;
     $colors = ['challenger' => '#F7931A', 'challenged' => '#A78BFA'];
+    $elo = SeriesPresenter::ratingFacts($match);
     $banner = match (true) {
         $toAnswer => [__(':clan reported · your confirmation needed', ['clan' => $match->sideName($report->side)]), 'bg-btc-chip text-btc-hi'],
         $match->status === SeriesStatus::Reported && $report !== null => [__(':clan reported · waiting for :other', ['clan' => $match->sideName($report->side), 'other' => $match->sideName(SeriesMatch::otherSide($report->side))]), 'bg-btc-chip text-btc-hi'],
@@ -120,8 +130,8 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
             @foreach ([
                 [__('Match kind'), $match->rated ? __('Rated') : __('Casual'), ''],
-                [__('Elo before'), $match->rated ? __('with the league record') : __('no rating, casual'), 'text-ink-2'],
-                [__('At stake'), $match->rated ? __('with the league record') : __('nothing, casual until Block 0'), 'text-ink-2'],
+                [__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual Elo') : ''), 'text-ink-2'],
+                [__('At stake'), $elo['stake'].($elo['casual'] ? ' · '.__('casual Elo only, no rank') : ''), 'text-ink-2'],
                 [__('League record'), $match->rated ? __('after both captains confirm') : __('none for casual matches'), 'text-btc-hi'],
             ] as [$key, $value, $class])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-4 border-b border-hairline py-2 text-[13px] last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="{{ $class }}">{{ $value }}</span></div>
@@ -183,7 +193,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
                 <ul class="m-0 flex list-none flex-col gap-2 p-0">
                     @foreach (SeriesMatch::SIDES as $side)
                         <li class="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-[13px]">
-                            <span class="flex flex-col"><span style="color: {{ $colors[$side] }}">{{ $match->sideName($side) }}</span><span class="text-[11px] text-ink-3">{{ $match->rated ? __('Elo with the league record') : __('casual, no Elo') }}</span></span>
+                            <span class="flex flex-col"><span style="color: {{ $colors[$side] }}">{{ $match->sideName($side) }}</span><span class="text-[11px] text-ink-3" data-test="side-elo-{{ $side }}">{{ $elo['sides'][$side] }}</span></span>
                             <b @class(['text-win' => $match->winner === $side, 'text-ink-2' => $match->winner !== $side])>{{ $wins[$side] }}</b>
                         </li>
                     @endforeach

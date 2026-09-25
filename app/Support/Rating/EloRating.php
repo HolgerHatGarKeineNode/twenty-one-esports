@@ -20,14 +20,17 @@ final class EloRating
         public readonly int $scale = 400,
     ) {}
 
-    public static function fromConfig(): self
+    /**
+     * @param  'rating'|'casual'  $key  `season.rating` (the rated ladders) or `season.casual`
+     */
+    public static function fromConfig(string $key = 'rating'): self
     {
         return new self(
-            (int) config('season.rating.start'),
-            (int) config('season.rating.k'),
-            (int) config('season.rating.provisional_k'),
-            (int) config('season.rating.provisional'),
-            (int) config('season.rating.scale'),
+            (int) config("season.{$key}.start"),
+            (int) config("season.{$key}.k"),
+            (int) config("season.{$key}.provisional_k"),
+            (int) config("season.{$key}.provisional"),
+            (int) config("season.{$key}.scale"),
         );
     }
 

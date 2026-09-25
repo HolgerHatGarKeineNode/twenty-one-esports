@@ -16,6 +16,7 @@ use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\Rating\RatingService;
 use Closure;
 use Illuminate\Support\Facades\DB;
 
@@ -44,7 +45,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessGameService
 {
-    public function __construct(private GameRegistry $games) {}
+    public function __construct(private GameRegistry $games, private RatingService $ratings) {}
 
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
@@ -719,6 +720,9 @@ final class ChessGameService
     private function finish(ChessGame $game, string $result, ChessEndReason $reason, int $at): void
     {
         $this->end($game, ChessGameStatus::Finished, $result, $reason, $at);
+
+        // Same transaction as the result: the game and its rating change commit together.
+        $this->ratings->applyChessGame($game);
     }
 
     /**

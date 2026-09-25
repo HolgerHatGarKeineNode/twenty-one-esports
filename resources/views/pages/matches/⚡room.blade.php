@@ -361,6 +361,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $games = $m->currentGames();
     $wins = SeriesMatch::seriesScore($games);
     $chip = SeriesPresenter::chip($m);
+    $elo = SeriesPresenter::ratingFacts($m);
     $editable = $captainSide !== null && in_array($m->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true) && ! $m->start_at?->isFuture();
     $toAnswer = $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
     $playing = count(array_filter($this->sheet, fn ($g) => $g['winner'] !== null));
@@ -519,7 +520,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endforeach
         </div>
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Elo before'), __('–, casual')], [__('Expected'), '–'], [__('At stake'), __('nothing, casual')]] as [$key, $value])
+            @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
             @endforeach
             <div class="flex min-h-14 flex-wrap items-center gap-3 py-2 text-sm">
@@ -765,7 +766,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                             [__('Match kind'), ($m->rated ? __('Rated') : __('Casual')).', Rocket League '.$m->mode],
                             [__('Games'), implode(', ', array_map(fn ($g) => $g['challenger'] !== null ? $g['challenger'].' : '.$g['challenged'] : __(':tag win', ['tag' => $m->sideTag($g['winner'])]), $draft['games']))],
                             [__('Played'), implode(', ', array_column(array_filter($draft['roster'], fn ($r) => $r['side'] === ($captainSide ?? 'challenger')), 'name'))],
-                            [__('Rating'), $m->rated ? __('with the league record') : __('none, casual')],
+                            [__('Rating'), $m->rated ? __('with the league record') : __('casual Elo only, no rank')],
                             [__('Result'), __('Series :a : :b for :clan', ['a' => max($draftWins), 'b' => min($draftWins), 'clan' => $m->sideName($leader)])],
                         ] as [$key, $value])
                             <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-[13px] last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
