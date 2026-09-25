@@ -62,6 +62,12 @@ require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
 
+// Fixtures for tests/Browser only; never registered outside the testing
+// environment (each route in routes/testing.php checks it again).
+if (app()->environment('testing')) {
+    require __DIR__.'/testing.php';
+}
+
 /*
  * Unknown URLs still pass the web middleware (session, locale), so the 404 page
  * speaks the visitor's language and knows who is logged in.
