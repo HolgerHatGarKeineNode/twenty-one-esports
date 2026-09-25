@@ -23,6 +23,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read User $inviter
  * @property-read User $invitee
+ * @property-read ChessGame|null $game
  */
 #[Fillable(['inviter_id', 'invitee_id', 'mode', 'status', 'chess_game_id', 'expires_at'])]
 class ChessInvite extends Model
@@ -49,6 +50,16 @@ class ChessInvite extends Model
     public function invitee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'invitee_id');
+    }
+
+    /**
+     * The game the accepted invite started.
+     *
+     * @return BelongsTo<ChessGame, $this>
+     */
+    public function game(): BelongsTo
+    {
+        return $this->belongsTo(ChessGame::class, 'chess_game_id');
     }
 
     public function isOpen(): bool

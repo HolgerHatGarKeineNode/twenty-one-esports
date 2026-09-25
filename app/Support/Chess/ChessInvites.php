@@ -6,6 +6,7 @@ use App\Enums\ChessInviteStatus;
 use App\Events\ChessInviteChanged;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
+use App\Models\ChessQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use Illuminate\Support\Collection;
@@ -14,18 +15,28 @@ use Illuminate\Support\Facades\DB;
 /**
  * "Invite a friend who is online" (plan: one of the two blitz exceptions to
  * the queue). The lobby only offers players it sees on the presence channel;
- * the server does not ask Reverb who is online, so an invite to someone who
- * just left simply expires unanswered (esports.chess.invite_seconds).
+ * sending an invite does not ask Reverb who is online, so an invite to
+ * someone who just left simply expires unanswered
+ * (esports.chess.invite_seconds).
  *
  * One open invite per inviter: a new one withdraws the previous. A live
  * game that starts for a player withdraws all their open invites, sent and
  * received (ChessGameService::start).
+ *
+ * One intent at a time (P5e): a player who invites leaves the queue. An
+ * invite to a player who is searching in the same mode starts the game at
+ * once (they asked for any opponent, the inviter chose them), and a player
+ * who searches while holding an open invite is paired with its inviter
+ * (ChessQueue::join). Both are announced as a found match.
  */
 final class ChessInvites
 {
     public function __construct(private ChessGameService $games, private ChessNotifications $notifications) {}
 
     /**
+     * Returns the invite; its `chess_game_id` is set when the invitee was
+     * searching and the game has already started.
+     *
      * @throws ChessRuleViolation
      */
     public function invite(User $inviter, User $invitee, string $mode = 'blitz'): ChessInvite
@@ -42,6 +53,7 @@ final class ChessInvites
 
         $invite = DB::transaction(function () use ($inviter, $invitee, $mode, $previous): ChessInvite {
             $previous?->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
+            ChessQueueEntry::query()->where('user_id', $inviter->id)->delete();
 
             return ChessInvite::query()->create([
                 'inviter_id' => $inviter->id,
@@ -57,6 +69,15 @@ final class ChessInvites
         }
 
         $this->announce($invite);
+
+        try {
+            $this->answer($invite, $invitee, asMatch: true, searchingOnly: true);
+
+            return $invite->refresh();
+        } catch (ChessRuleViolation) {
+            // Not searching (the usual case), or the pairing lost a race: an ordinary open invite.
+        }
+
         $this->notifications->inviteReceived($invite);
 
         return $invite;
@@ -73,13 +94,39 @@ final class ChessInvites
      */
     public function accept(ChessInvite $invite, User $invitee): ChessGame
     {
-        $refused = null;
+        return $this->answer($invite, $invitee, asMatch: false, searchingOnly: false);
+    }
 
-        $game = DB::transaction(function () use ($invite, $invitee, &$refused): ?ChessGame {
+    /**
+     * The invitee pressed "Find opponent" while holding this invite
+     * (ChessQueue::join): accepted as above, announced as a found match.
+     *
+     * @throws ChessRuleViolation
+     */
+    public function acceptAsMatch(ChessInvite $invite, User $invitee): ChessGame
+    {
+        return $this->answer($invite, $invitee, asMatch: true, searchingOnly: false);
+    }
+
+    /**
+     * Starts the invite's game. `searchingOnly`: only if the invitee is in
+     * the queue for the invite's mode, casual (`not_searching` otherwise).
+     * A refusal is returned from the transaction rather than thrown, so a
+     * withdrawal made on the way still commits.
+     *
+     * @throws ChessRuleViolation
+     */
+    private function answer(ChessInvite $invite, User $invitee, bool $asMatch, bool $searchingOnly): ChessGame
+    {
+        $result = ChessTransaction::run(function () use ($invite, $invitee, $asMatch, $searchingOnly): ChessGame|string {
             $invite = ChessInvite::query()->lockForUpdate()->findOrFail($invite->id);
 
             if ($invite->invitee_id !== $invitee->id || ! $invite->isOpen()) {
-                throw new ChessRuleViolation('invite_closed');
+                return 'invite_closed';
+            }
+
+            if ($searchingOnly && ! $this->searchesFor($invitee, $invite)) {
+                return 'not_searching';
             }
 
             $live = $invite->mode !== ChessGame::CORRESPONDENCE;
@@ -87,15 +134,12 @@ final class ChessInvites
             if ($live && $this->games->activeGameOf($invite->inviter) !== null) {
                 $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
                 $this->announce($invite);
-                $refused = 'opponent_playing';
 
-                return null;
+                return 'opponent_playing';
             }
 
             if ($live && $this->games->activeGameOf($invitee) !== null) {
-                $refused = 'accept_while_playing';
-
-                return null;
+                return 'accept_while_playing';
             }
 
             // Accepted before the game starts, so the start's withdrawal of
@@ -107,12 +151,27 @@ final class ChessInvites
 
             $invite->forceFill(['chess_game_id' => $game->id])->save();
             $this->announce($invite);
-            $this->notifications->inviteAccepted($invite, $game);
+
+            if ($asMatch) {
+                $this->notifications->matchFound($game);
+            } else {
+                $this->notifications->inviteAccepted($invite, $game);
+            }
 
             return $game;
         });
 
-        return $game ?? throw new ChessRuleViolation((string) $refused);
+        return $result instanceof ChessGame ? $result : throw new ChessRuleViolation($result);
+    }
+
+    private function searchesFor(User $invitee, ChessInvite $invite): bool
+    {
+        return ChessQueueEntry::query()
+            ->where('user_id', $invitee->id)
+            ->where('mode', $invite->mode)
+            ->where('rated', false)
+            ->lockForUpdate()
+            ->exists();
     }
 
     /**

@@ -201,3 +201,118 @@ test('two players find each other, play over Reverb, survive a reload and end by
         ->and($white->evaluate('() => window.__errors'))->toBe([])
         ->and($black->evaluate('() => window.__errors'))->toBe([]);
 });
+
+/**
+ * Whether the page's "Online now" list shows this player.
+ */
+function listsPlayer(User $user): string
+{
+    return '() => [...document.querySelectorAll("[data-test=online-player]")].some((li) => li.textContent.includes('.json_encode($user->displayName()).'))';
+}
+
+/**
+ * The online-list row of this player, as a CSS-free handle for evaluate().
+ */
+function rowOf(User $user): string
+{
+    return '[...document.querySelectorAll("[data-test=online-player]")].find((li) => li.textContent.includes('.json_encode($user->displayName()).'))';
+}
+
+test('a player who searches and is invited lands in the inviter\'s game at once', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+
+    $pageA = blitzPage($anna, '/chess');
+    $pageB = blitzPage($bert, '/chess');
+    BrowserWait::until($pageA, listsPlayer($bert), 10_000);
+
+    $pageB->locator('[data-test=find-opponent-button]')->click();
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
+
+    $pageA->evaluate('() => '.rowOf($bert).'.querySelector("[data-test=invite]").click()');
+
+    BrowserWait::until($pageA, '() => location.pathname.startsWith("/games/")', 10_000);
+    BrowserWait::until($pageB, '() => location.pathname.startsWith("/games/")', 10_000);
+    $game = ChessGame::query()->sole();
+
+    expect($pageA->url())->toEndWith('/games/'.$game->id)
+        ->and($pageB->url())->toEndWith('/games/'.$game->id)
+        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $bert->id])
+        ->and($pageA->evaluate('() => window.__errors'))->toBe([])
+        ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
+});
+
+test('the lobby switch answers every click, the online list holds still, and an invite shows on its row', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+
+    $pageA = blitzPage($anna, '/chess');
+    $pageB = blitzPage($bert, '/chess');
+    BrowserWait::until($pageA, listsPlayer($bert), 10_000);
+    BrowserWait::until($pageB, listsPlayer($anna), 10_000);
+
+    // A's list records every moment Bert is missing from it, from now on.
+    $watchBert = '() => { window.__drops = 0; let seen = true; const has = '.listsPlayer($bert).';
+        new MutationObserver(() => { const now = has(); if (seen && !now) window.__drops++; seen = now; })
+            .observe(document.querySelector("[data-test=online-now]"), { subtree: true, childList: true, characterData: true, attributes: true }); }';
+    $pageA->evaluate($watchBert);
+
+    // The switch flips on the click itself (Alpine's next tick), while the save is still under way.
+    $switch = 'document.querySelector("[data-test=looking-toggle]")';
+    expect($pageA->evaluate('async () => { '.$switch.'.click(); await Alpine.nextTick(); return ['.$switch.'.getAttribute("aria-checked"), document.querySelector("[data-test=looking-state]").textContent, Alpine.$data('.$switch.').savingLooking]; }'))->toBe(['true', 'On', true]);
+    $settled = '() => { const d = Alpine.$data('.$switch.'); return !d.savingLooking && d.looking === d.savedLooking; }';
+    BrowserWait::until($pageA, $settled, 5_000);
+    expect($anna->refresh()->looking_to_play)->toBe('chess/blitz');
+
+    // Four quick clicks (on -> off -> on -> off -> on) end on "on". Livewire merges
+    // identical calls queued behind a running request, which lost clicks before P5e.
+    $pageA->evaluate('() => new Promise((resolve) => { const b = '.$switch.'; [0, 60, 120, 180].forEach((ms) => setTimeout(() => b.click(), ms)); setTimeout(resolve, 200); })');
+    BrowserWait::until($pageA, $settled, 5_000);
+    expect($pageA->evaluate('() => '.$switch.'.getAttribute("aria-checked")'))->toBe('true')
+        ->and($anna->refresh()->looking_to_play)->toBe('chess/blitz');
+    BrowserWait::until($pageB, '() => '.rowOf($anna).'?.textContent.includes("looking: Blitz 5+3")', 5_000);
+
+    // Bert moves around the site (full page loads): Anna's list never drops him.
+    foreach (['/clans', '/chess', '/clans', '/chess'] as $to) {
+        $pageB->goto(ComputeUrl::from($to));
+    }
+    BrowserWait::until($pageB, listsPlayer($anna), 10_000);
+    $pageA->evaluate('() => new Promise((resolve) => setTimeout(resolve, 1000))');
+    expect($pageA->evaluate('() => window.__drops'))->toBe(0);
+
+    // The switch survives a reload.
+    $pageA->reload();
+    BrowserWait::until($pageA, '() => window.Alpine && '.$switch.' !== null && Alpine.$data('.$switch.').looking === true', 10_000);
+    expect($pageA->evaluate('() => '.$switch.'.getAttribute("aria-checked")'))->toBe('true');
+
+    // A failed save puts the switch back and says so.
+    $pageA->evaluate('() => { const original = window.fetch; window.fetch = (...args) => { window.fetch = original; return Promise.reject(new TypeError("offline")); }; '.$switch.'.click(); }');
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=looking-failed]").checkVisibility()', 5_000);
+    expect($pageA->evaluate('() => ['.$switch.'.getAttribute("aria-checked"), document.querySelector("[data-test=looking-failed]").checkVisibility()]'))->toBe(['true', true])
+        ->and($anna->refresh()->looking_to_play)->toBe('chess/blitz');
+
+    // Invite: Anna's row for Bert turns into "Invited · Withdraw", on both ends live.
+    BrowserWait::until($pageA, listsPlayer($bert), 10_000);
+    $pageA->evaluate($watchBert);
+    $pageA->evaluate('() => '.rowOf($bert).'.querySelector("[data-test=invite]").click()');
+    BrowserWait::until($pageA, '() => '.rowOf($bert).'?.querySelector("[data-test=invited]") != null && '.rowOf($bert).'.querySelector("[data-test=invite]") == null', 5_000);
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=incoming-invite]") !== null', 5_000);
+
+    // Bert declines: Anna's row is back to "Invite".
+    $pageB->locator('[data-test=decline-invite]')->click();
+    BrowserWait::until($pageA, '() => '.rowOf($bert).'?.querySelector("[data-test=invite]") != null', 5_000);
+
+    // Invited again, then withdrawn from the row: Bert's invite card goes away.
+    $pageA->evaluate('() => '.rowOf($bert).'.querySelector("[data-test=invite]").click()');
+    BrowserWait::until($pageA, '() => '.rowOf($bert).'?.querySelector("[data-test=withdraw-invite]") != null', 5_000);
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=incoming-invite]") !== null', 5_000);
+    $pageA->evaluate('() => '.rowOf($bert).'.querySelector("[data-test=withdraw-invite]").click()');
+    BrowserWait::until($pageA, '() => '.rowOf($bert).'?.querySelector("[data-test=invite]") != null', 5_000);
+    BrowserWait::until($pageB, '() => document.querySelector("[data-test=incoming-invite]") === null', 5_000);
+
+    expect($pageA->evaluate('() => window.__drops'))->toBe(0)
+        ->and($pageA->evaluate('() => window.__errors'))->toBe([])
+        ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
+
+    // Control: a player who really leaves is dropped, after the grace period.
+    $pageB->close();
+    BrowserWait::until($pageA, '() => !('.listsPlayer($bert).')()', 10_000);
+});

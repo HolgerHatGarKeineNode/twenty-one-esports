@@ -9,21 +9,41 @@ use Illuminate\Broadcasting\BroadcastManager;
 use Throwable;
 
 /**
- * Who is on a live game's presence channel `game.{id}.players`, asked of the
- * websocket server itself (Reverb speaks the Pusher HTTP API:
- * `GET /apps/{app}/channels/{channel}/users`). The browser's "opponent left"
- * is only a hint; a claim-win rests on this answer.
+ * Who is on a presence channel, asked of the websocket server itself
+ * (Reverb speaks the Pusher HTTP API: `GET /apps/{app}/channels/{channel}/users`).
  *
- * `absent()` answers true, false, or null when it cannot tell (no websocket
- * server configured, not reachable, unexpected answer). Callers treat null
- * as "no claim": a server that cannot see its websocket must not hand out
+ * `absent()`: a live game's channel `game.{id}.players`. The browser's
+ * "opponent left" is only a hint; a claim-win rests on this answer. It
+ * answers true, false, or null when it cannot tell (no websocket server
+ * configured, not reachable, unexpected answer). Callers treat null as
+ * "no claim": a server that cannot see its websocket must not hand out
  * wins (fail closed).
+ *
+ * `online()`: the global channel `online` every logged-in page joins. Same
+ * three answers; what null means is the caller's decision.
  */
 class PresenceLookup
 {
     public function __construct(private BroadcastManager $broadcast) {}
 
     public function absent(ChessGame $game, User $user): ?bool
+    {
+        $members = $this->members('presence-game.'.$game->id.'.players');
+
+        return $members === null ? null : ! in_array((string) $user->id, $members, true);
+    }
+
+    public function online(User $user): ?bool
+    {
+        $members = $this->members('presence-online');
+
+        return $members === null ? null : in_array((string) $user->id, $members, true);
+    }
+
+    /**
+     * @return list<string>|null member ids, null when the websocket server cannot tell
+     */
+    private function members(string $channel): ?array
     {
         try {
             $broadcaster = $this->broadcast->connection();
@@ -32,7 +52,7 @@ class PresenceLookup
                 return null;
             }
 
-            $answer = $broadcaster->getPusher()->get('/channels/presence-game.'.$game->id.'.players/users', [], true);
+            $answer = $broadcaster->getPusher()->get('/channels/'.$channel.'/users', [], true);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -43,12 +63,6 @@ class PresenceLookup
             return null;
         }
 
-        foreach ($answer['users'] as $member) {
-            if ((string) ($member['id'] ?? '') === (string) $user->id) {
-                return false;
-            }
-        }
-
-        return true;
+        return array_values(array_map(fn ($member): string => (string) (is_array($member) ? ($member['id'] ?? '') : ''), $answer['users']));
     }
 }

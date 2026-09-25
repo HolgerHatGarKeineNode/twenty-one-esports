@@ -16,6 +16,8 @@ use App\Support\Chess\DailyChallenges;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -34,9 +36,25 @@ use Livewire\Component;
  * P5c: joining the queue asks once whether to allow desktop notifications,
  * and a pairing plays the match-found sound before the page moves to the
  * board, so waiting in a background tab works.
+ *
+ * P5e: inviting a player who searches starts the game at once, and "Find
+ * opponent" with an open invite pairs with its inviter (ChessInvites). The
+ * "Looking to play" switch is Alpine's: it flips on the click and saves the
+ * wanted state (setLookingToPlay), because a flip action lost clicks (see
+ * there). The online list marks the player this one has invited.
  */
 new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
+
+    /**
+     * Whom this player's open invite goes to, and until when (ms): the online
+     * list shows "Invited · Withdraw" on that row. Set on every render.
+     */
+    #[Locked]
+    public ?int $invitedUserId = null;
+
+    #[Locked]
+    public int $invitedUntilMs = 0;
 
     /**
      * "Find next opponent" / "Search again" land here with `?search=1`.
@@ -72,7 +90,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
     public function invite(int $userId): void
     {
-        $this->attempt(fn (User $user) => app(ChessInvites::class)->invite($user, User::query()->findOrFail($userId)));
+        $this->attempt(fn (User $user) => $this->goTo(app(ChessInvites::class)->invite($user, User::query()->findOrFail($userId))->game));
     }
 
     public function withdrawInvite(): void
@@ -96,12 +114,40 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         $this->attempt(fn (User $user) => app(ChessInvites::class)->close(ChessInvite::query()->findOrFail($inviteId), $user));
     }
 
-    public function toggleLookingToPlay(): void
+    /**
+     * Stores the state the switch shows and answers with the stored state.
+     * The page sends the wanted state, never "flip": Livewire squashes
+     * identical calls queued behind a running request into one, so a flip
+     * action lost every other quick click and the switch ended on the wrong
+     * side (reproduced in tests/Browser/BlitzGameTest.php). No render: the
+     * switch is the page's, and nothing else here depends on it.
+     */
+    #[Renderless]
+    public function setLookingToPlay(bool $looking): bool
     {
-        $this->attempt(function (User $user): void {
-            $user->forceFill(['looking_to_play' => $user->looking_to_play === null ? 'chess/blitz' : null])->save();
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            $this->redirectRoute('login');
+
+            return false;
+        }
+
+        $wanted = $looking ? 'chess/blitz' : null;
+
+        if ($user->looking_to_play !== $wanted) {
+            $user->forceFill(['looking_to_play' => $wanted])->save();
             Broadcasts::send(new LookingToPlayChanged($user->id, $user->looking_to_play));
-        });
+        }
+
+        return $user->looking_to_play !== null;
+    }
+
+    public function rendering(): void
+    {
+        $outgoing = $this->outgoing;
+        $this->invitedUserId = $outgoing?->invitee_id;
+        $this->invitedUntilMs = $outgoing?->expires_at->getTimestampMs() ?? 0;
     }
 
     #[Computed]
@@ -220,6 +266,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
                 'rated_not_open' => __('Rated games start at Block 0.'),
+                'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };
         }
@@ -244,7 +291,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id]))">
+<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'looking' => $user?->looking_to_play !== null]))">
 
     <div class="grid grid-cols-1 gap-4 px-4 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Mobile title (MobileChessLobby) --}}
@@ -275,7 +322,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     </span>
                 </span>
                 <span class="grid grid-cols-2 gap-2 lg:flex">
-                    <x-button variant="quiet" wire:click="declineInvite({{ $invite->id }})">{{ __('Decline') }}</x-button>
+                    <x-button variant="quiet" wire:click="declineInvite({{ $invite->id }})" data-test="decline-invite">{{ __('Decline') }}</x-button>
                     <x-button icon="shield-check" wire:click="acceptInvite({{ $invite->id }})" data-test="accept-invite">{{ __('Accept') }}</x-button>
                 </span>
             </div>
@@ -398,13 +445,18 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 <span class="flex flex-wrap items-center justify-between gap-3">
                     <h2 id="online-h" class="m-0 flex items-center gap-2 text-[15px] font-bold"><span class="size-2 rounded-full bg-win"></span>{{ __('Online now') }} <span class="font-normal text-ink-2" x-show="connection === 'connected'" x-text="others.length"></span></h2>
                     @auth
-                        <button type="button" wire:click="toggleLookingToPlay" role="switch" aria-checked="{{ $user->looking_to_play ? 'true' : 'false' }}" data-test="looking-toggle"
+                        {{-- The page's own state (chessLobby.looking): a Livewire render never touches it. --}}
+                        <button type="button" wire:ignore x-on:click="toggleLooking()" role="switch" aria-checked="{{ $user->looking_to_play ? 'true' : 'false' }}" x-bind:aria-checked="looking ? 'true' : 'false'" data-test="looking-toggle"
                                 class="flex h-11 cursor-pointer items-center gap-2.5 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
-                            <span @class(['relative h-5 w-9 rounded-full transition-colors', 'bg-btc' => $user->looking_to_play, 'bg-raised shadow-ring' => ! $user->looking_to_play])><span @class(['absolute top-0.5 size-4 rounded-full bg-ink transition-all', 'left-[18px]' => $user->looking_to_play, 'left-0.5' => ! $user->looking_to_play])></span></span>
+                            <span class="relative h-5 w-9 shrink-0 rounded-full transition-colors" x-bind:class="looking ? 'bg-btc' : 'bg-raised shadow-ring'"><span class="absolute top-0.5 size-4 rounded-full bg-ink transition-all" x-bind:class="looking ? 'left-[18px]' : 'left-0.5'"></span></span>
                             {{ __('Looking to play') }}
+                            <b class="min-w-7 text-left" x-bind:class="looking ? 'text-win' : 'text-ink-2'" x-text="looking ? @js(__('On')) : @js(__('Off'))" data-test="looking-state">{{ $user->looking_to_play ? __('On') : __('Off') }}</b>
                         </button>
                     @endauth
                 </span>
+                @auth
+                    <p x-show="lookingFailed" x-cloak role="alert" class="m-0 text-[13px] text-loss" data-test="looking-failed">{{ __('That did not save. The switch is back where it was, please try again.') }}</p>
+                @endauth
                 @guest
                     <p class="m-0 text-[13px] text-ink-2">{{ __('Log in to see who is online and to invite a friend.') }}</p>
                 @else
@@ -420,7 +472,15 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                                 <b class="min-w-0 grow truncate" x-text="m.name"></b>
                                 <span x-show="m.looking" class="rounded-sm bg-[#122016] px-2 py-0.5 text-[11px] font-bold text-win">{{ __('looking: Blitz 5+3') }}</span>
                                 @if (! $active)
-                                    <button type="button" x-on:click="$wire.invite(m.id)" class="btn-w inline-flex h-9 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
+                                    <template x-if="invited(m)">
+                                        <span class="flex shrink-0 items-center gap-1 text-[13px]" data-test="invited">
+                                            <span class="text-ink-2">{{ __('Invited') }} ·</span>
+                                            <button type="button" x-on:click="$wire.withdrawInvite()" class="inline-flex h-11 cursor-pointer items-center rounded-md px-2 text-[13px] text-loss" data-test="withdraw-invite">{{ __('Withdraw') }}</button>
+                                        </span>
+                                    </template>
+                                    <template x-if="! invited(m)">
+                                        <button type="button" x-on:click="$wire.invite(m.id)" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
+                                    </template>
                                 @endif
                             </li>
                         </template>

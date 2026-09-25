@@ -7,7 +7,6 @@ use App\Models\ChessQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\DB;
 
 /**
  * The blitz queue: players who are online and searching right now
@@ -18,10 +17,19 @@ use Illuminate\Support\Facades\DB;
  * Pairing is attempted when a player joins and whenever a waiting player's
  * page asks again (the searching state polls), so a widening range pairs
  * without anyone new joining.
+ *
+ * An open invite comes first (P5e): a player who searches while holding
+ * one is paired with its inviter at once, if the inviter is free and still
+ * online (ChessInvites).
  */
 final class ChessQueue
 {
-    public function __construct(private ChessGameService $games, private ChessNotifications $notifications) {}
+    public function __construct(
+        private ChessGameService $games,
+        private ChessNotifications $notifications,
+        private ChessInvites $invites,
+        private PresenceLookup $presence,
+    ) {}
 
     /**
      * Join (or stay in) the queue and try to pair at once.
@@ -39,6 +47,12 @@ final class ChessQueue
             throw new ChessRuleViolation('rated_not_open');
         }
 
+        $invited = $this->fromOpenInvite($user, $mode);
+
+        if ($invited !== null) {
+            return $invited;
+        }
+
         ChessQueueEntry::query()->firstOrCreate(['user_id' => $user->id], [
             'mode' => $mode,
             'rated' => $rated,
@@ -47,6 +61,31 @@ final class ChessQueue
         ]);
 
         return $this->pair($user);
+    }
+
+    /**
+     * The newest open invite in this mode whose inviter is still online,
+     * accepted as a found match. Online is asked of the websocket server;
+     * when it cannot tell (null), the invite counts: it is at most
+     * invite_seconds old, and the Accept button would start the same game
+     * without asking. An inviter who plays by now withdraws the invite
+     * (ChessInvites::accept), and the next one is tried.
+     */
+    private function fromOpenInvite(User $user, string $mode): ?ChessGame
+    {
+        foreach ($this->invites->incoming($user)->where('mode', $mode) as $invite) {
+            if ($this->presence->online($invite->inviter) === false) {
+                continue;
+            }
+
+            try {
+                return $this->invites->acceptAsMatch($invite, $user);
+            } catch (ChessRuleViolation) {
+                continue;
+            }
+        }
+
+        return null;
     }
 
     public function leave(User $user): void
@@ -78,7 +117,7 @@ final class ChessQueue
      */
     public function pair(User $user): ?ChessGame
     {
-        return DB::transaction(function () use ($user): ?ChessGame {
+        return ChessTransaction::run(function () use ($user): ?ChessGame {
             $entry = ChessQueueEntry::query()->where('user_id', $user->id)->lockForUpdate()->first();
 
             if ($entry === null) {

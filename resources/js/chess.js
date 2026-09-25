@@ -831,6 +831,45 @@ document.addEventListener('alpine:init', () => {
             this.unsubscribe?.();
         },
 
+        /* "Looking to play" (P5e): the switch shows the wanted state at once and the server catches up. */
+        looking: Boolean(config.looking),
+        savedLooking: Boolean(config.looking),
+        savingLooking: false,
+        lookingFailed: false,
+
+        toggleLooking() {
+            this.looking = !this.looking;
+            this.lookingFailed = false;
+            this.saveLooking();
+        },
+
+        /*
+         * One request at a time, always with the state the switch shows now;
+         * a click during a request is sent when it returns. A failed save
+         * puts the switch back to the last stored state and says so.
+         */
+        async saveLooking() {
+            if (this.savingLooking || this.looking === this.savedLooking) return;
+
+            this.savingLooking = true;
+            try {
+                this.savedLooking = Boolean(await this.$wire.setLookingToPlay(this.looking));
+            } catch {
+                this.looking = this.savedLooking;
+                this.lookingFailed = true;
+                return;
+            } finally {
+                this.savingLooking = false;
+            }
+
+            this.saveLooking();
+        },
+
+        /* The row of the player this one's open invite goes to, until it expires. */
+        invited(member) {
+            return member.id === this.$wire.invitedUserId && this.now < this.$wire.invitedUntilMs;
+        },
+
         get others() {
             return this.online
                 .filter((m) => m.id !== config.userId)
