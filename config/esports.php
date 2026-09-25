@@ -211,15 +211,25 @@ return [
     |--------------------------------------------------------------------------
     |
     | Relays the browser publishes gift wraps (kind 1059) to and reads them
-    | from. The league relay is the players' DM inbox (NIP "Chat"); locally the
-    | ndak test bed, empty in testing. Defaults to the publishing relays.
+    | from, for the game chat and the match room chat; the notification DMs
+    | go out to them too. Comma-separated `ESPORTS_CHAT_RELAYS`; without it:
+    | the ndak test bed locally, nothing in testing, and everywhere else the
+    | three public relays the user approved for the chat on 2026-09-25 (P5d).
+    | An empty `ESPORTS_CHAT_RELAYS=` switches the chat off.
+    |
+    | Deliberately independent of `relays` above: approving public relays for
+    | encrypted chat does not approve publishing league events there.
     |
     */
 
     'chat' => [
         'relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
             'ESPORTS_CHAT_RELAYS',
-            env('ESPORTS_RELAYS', env('APP_ENV') === 'local' ? 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782' : ''),
+            match (env('APP_ENV')) {
+                'local' => 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782',
+                'testing' => '',
+                default => 'wss://nos.lol,wss://relay.damus.io,wss://relay.primal.net',
+            },
         ))))),
     ],
 
