@@ -37,8 +37,9 @@ beforeEach(function () {
 });
 
 /**
- * The error collector of BlitzGameTest, plus three spies: every sound asked
- * of the audio module (window.esportsSounds.play), every tab title, and a
+ * The error collector of BlitzGameTest, plus four spies: every sound asked
+ * of the audio module (window.esportsSounds.play), every tab title, every
+ * desktop notification (window.Notification, still shown for real), and a
  * switch that makes the page believe its tab is hidden.
  */
 const NOTIFY_SPIES = <<<'JS'
@@ -68,6 +69,18 @@ const NOTIFY_SPIES = <<<'JS'
         },
     });
 
+    window.__notifications = [];
+    const RealNotification = window.Notification;
+    if (RealNotification) {
+        const SpyNotification = function (title, options) {
+            window.__notifications.push({ title, body: options?.body ?? '' });
+            return new RealNotification(title, options);
+        };
+        Object.defineProperty(SpyNotification, 'permission', { get: () => RealNotification.permission });
+        SpyNotification.requestPermission = (...args) => RealNotification.requestPermission(...args);
+        window.Notification = SpyNotification;
+    }
+
     window.__hidden = false;
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
     Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (window.__hidden ? 'hidden' : 'visible') });
@@ -78,13 +91,44 @@ const NOTIFY_SPIES = <<<'JS'
     });
     JS;
 
-function notifyPage(User $user, string $to): Page
+function notifyPage(User $user, string $to, bool $notificationsAllowed = false): Page
 {
     $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
     $page->context()->addInitScript(NOTIFY_SPIES);
+
+    if ($notificationsAllowed) {
+        // The plugin has no public call for it; Playwright's BrowserContext.grantPermissions does it.
+        $context = $page->context();
+        (fn () => $this->processVoidResponse($this->sendMessage('grantPermissions', ['permissions' => ['notifications']])))->call($context);
+    }
+
     $page->goto(ComputeUrl::from($to));
 
     return $page;
+}
+
+/**
+ * Anna searches, moves to /clans with the tab in the background, Bert joins:
+ * returns Anna's page once her toast is up, and Bert's.
+ *
+ * @return array{0: Page, 1: Page, 2: ChessGame}
+ */
+function pairedWhileAway(User $anna, User $bert, bool $notificationsAllowed): array
+{
+    $pageA = notifyPage($anna, '/chess', $notificationsAllowed);
+    $pageA->locator('[data-test=find-opponent-button]')->click();
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
+
+    $pageA->goto(ComputeUrl::from('/clans'));
+    BrowserWait::until($pageA, '() => window.Echo?.connector?.pusher?.connection?.state === "connected" && window.esportsAlerts !== undefined', 10_000);
+    $pageA->evaluate('() => { window.__hidden = true; }');
+
+    $pageB = notifyPage($bert, '/chess');
+    $pageB->locator('[data-test=find-opponent-button]')->click();
+    BrowserWait::until($pageB, '() => location.pathname.startsWith("/games/")', 10_000);
+    BrowserWait::until($pageA, '() => document.querySelector("[data-test=toast-countdown]") !== null', 5_000);
+
+    return [$pageA, $pageB, ChessGame::query()->sole()];
 }
 
 test('a player waiting on another page hears, sees and is taken to the game the queue found', function () {
@@ -123,6 +167,8 @@ test('a player waiting on another page hears, sees and is taken to the game the 
         ->toContain('Opening the game in')
         ->and($played)->toContain('matchFound')
         ->and($titles)->toContain('● Opponent found: '.$bert->displayName().' — TWENTY ONE')
+        // "Not now" left the permission at "default": no desktop notification.
+        ->and($pageA->evaluate('() => window.__notifications'))->toBe([])
         ->and($pageA->url())->toEndWith('/clans')
         ->and($pageA->evaluate('() => window.__errors'))->toBe([]);
 
@@ -131,6 +177,37 @@ test('a player waiting on another page hears, sees and is taken to the game the 
 
     expect($anna->notifications()->sole()->data['kind'])->toBe('match_found')
         ->and($titleBefore)->not->toStartWith('●')
+        ->and($pageA->evaluate('() => window.__errors'))->toBe([])
+        ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
+});
+
+test('with notifications allowed a hidden tab gets the desktop notification, and "Stay here" keeps the player where they are', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+
+    [$pageA, $pageB] = pairedWhileAway($anna, $bert, notificationsAllowed: true);
+    $stored = $anna->notifications()->sole()->data;
+
+    expect($pageA->evaluate('() => Notification.permission'))->toBe('granted')
+        ->and($pageA->evaluate('() => window.__notifications'))->toBe([['title' => $stored['title'], 'body' => $stored['body']]])
+        ->and($stored['title'])->toBe('Opponent found: '.$bert->displayName());
+
+    // Cancel the jump, then watch past the whole countdown. Polled, not slept: the
+    // in-process app only answers a navigation while the test talks to the browser.
+    $pageA->locator('[data-test=toast-stay]')->click();
+    $paths = [];
+    $until = microtime(true) + (int) config('esports.notifications.countdown_seconds') + 2;
+    while (microtime(true) < $until) {
+        try {
+            $paths[] = $pageA->evaluate('() => location.pathname');
+        } catch (Throwable) {
+            $paths[] = 'navigating';
+        }
+        usleep(100_000);
+    }
+
+    expect(array_unique($paths))->toBe(['/clans'])
+        ->and($pageA->evaluate('() => location.pathname'))->toBe('/clans')
+        ->and($pageA->evaluate('() => document.querySelector("[data-test=toast-countdown]")'))->toBeNull()
         ->and($pageA->evaluate('() => window.__errors'))->toBe([])
         ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
 });
