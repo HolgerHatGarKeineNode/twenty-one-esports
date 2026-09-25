@@ -18,6 +18,27 @@ use WebSocket\Message\Text;
 final class RelayPublisher
 {
     /**
+     * A relay list from config or a `--relays=a,b` option: trimmed, without
+     * blanks and duplicates. URLs are checked later, per relay, by publish().
+     *
+     * @return list<string>
+     */
+    public static function relayUrls(mixed $relays): array
+    {
+        if (is_string($relays)) {
+            $relays = explode(',', $relays);
+        }
+
+        if (! is_array($relays)) {
+            return [];
+        }
+
+        $relays = array_map(fn (mixed $relay): string => is_string($relay) ? trim($relay) : '', $relays);
+
+        return array_values(array_unique(array_filter($relays, fn (string $relay): bool => $relay !== '')));
+    }
+
+    /**
      * @param  array{id: string, pubkey: string, created_at: int, kind: int, tags: list<list<string>>, content: string, sig: string}  $event
      * @param  list<string>  $relays
      * @return array<string, PublishResult> keyed by relay URL

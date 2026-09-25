@@ -9,6 +9,7 @@ use App\Support\TwentyOne\TwentyOneSigner;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use RuntimeException;
 
 #[Signature('twentyone:profile
     {--relays= : Comma-separated relay URLs to publish to, instead of twentyone.relays.public}
@@ -21,9 +22,11 @@ class TwentyOneProfileCommand extends Command
      */
     public function handle(EventBuilder $builder, RelayPublisher $publisher): int
     {
-        $signer = $this->signer();
+        try {
+            $signer = TwentyOneSigner::fromConfig();
+        } catch (RuntimeException $e) {
+            $this->error($e->getMessage());
 
-        if ($signer === null) {
             return self::FAILURE;
         }
 
@@ -31,7 +34,7 @@ class TwentyOneProfileCommand extends Command
 
         /** @var array<string, mixed> $profile */
         $profile = (array) config('twentyone.profile');
-        $publicRelays = $this->relayList(config('twentyone.relays.public'));
+        $publicRelays = RelayPublisher::relayUrls(config('twentyone.relays.public'));
 
         $events = [
             $signer->sign($builder->profile($profile)),
@@ -49,7 +52,7 @@ class TwentyOneProfileCommand extends Command
         }
 
         $relays = $this->option('relays') !== null
-            ? $this->relayList(explode(',', (string) $this->option('relays')))
+            ? RelayPublisher::relayUrls($this->option('relays'))
             : $publicRelays;
 
         if ($relays === []) {
@@ -75,52 +78,5 @@ class TwentyOneProfileCommand extends Command
         }
 
         return $allAccepted ? self::SUCCESS : self::FAILURE;
-    }
-
-    /**
-     * The configured signer, or null after printing why there is none. The
-     * messages name the variable, never its value.
-     */
-    private function signer(): ?TwentyOneSigner
-    {
-        $nsec = config('twentyone.nostr.nsec');
-
-        if (! is_string($nsec) || trim($nsec) === '') {
-            $this->error('TWENTYONE_NOSTR_NSEC is not set.');
-
-            return null;
-        }
-
-        $signer = TwentyOneSigner::fromNsec($nsec);
-
-        if ($signer === null) {
-            $this->error('TWENTYONE_NOSTR_NSEC is not a valid nsec.');
-
-            return null;
-        }
-
-        $npub = config('twentyone.nostr.npub');
-
-        if (is_string($npub) && trim($npub) !== '' && NostrKeys::npubToHex($npub) !== $signer->pubkey) {
-            $this->error('TWENTYONE_NOSTR_NSEC does not belong to TWENTYONE_NOSTR_NPUB.');
-
-            return null;
-        }
-
-        return $signer;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function relayList(mixed $relays): array
-    {
-        if (! is_array($relays)) {
-            return [];
-        }
-
-        $relays = array_map(fn (mixed $relay): string => is_string($relay) ? trim($relay) : '', $relays);
-
-        return array_values(array_unique(array_filter($relays, fn (string $relay): bool => $relay !== '')));
     }
 }

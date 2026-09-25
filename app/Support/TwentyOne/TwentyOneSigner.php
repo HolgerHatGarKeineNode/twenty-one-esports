@@ -2,6 +2,8 @@
 
 namespace App\Support\TwentyOne;
 
+use App\Support\Nostr\NostrKeys;
+use RuntimeException;
 use swentel\nostr\Event\Event;
 use swentel\nostr\Key\Key;
 use swentel\nostr\Sign\Sign;
@@ -57,6 +59,31 @@ final class TwentyOneSigner
         }
 
         return new self($secret);
+    }
+
+    /**
+     * The signer for `twentyone.nostr.nsec`, checked against
+     * `twentyone.nostr.npub` when that is set. The exception message names
+     * the variable, never its value, so it is safe to print.
+     *
+     * @throws RuntimeException
+     */
+    public static function fromConfig(): self
+    {
+        $nsec = config('twentyone.nostr.nsec');
+
+        if (! is_string($nsec) || trim($nsec) === '') {
+            throw new RuntimeException('TWENTYONE_NOSTR_NSEC is not set.');
+        }
+
+        $signer = self::fromNsec($nsec) ?? throw new RuntimeException('TWENTYONE_NOSTR_NSEC is not a valid nsec.');
+        $npub = config('twentyone.nostr.npub');
+
+        if (is_string($npub) && trim($npub) !== '' && NostrKeys::npubToHex($npub) !== $signer->pubkey) {
+            throw new RuntimeException('TWENTYONE_NOSTR_NSEC does not belong to TWENTYONE_NOSTR_NPUB.');
+        }
+
+        return $signer;
     }
 
     /**

@@ -59,4 +59,43 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | 24/7 stream (self-hosted HLS + NIP-53 kind 30311)
+    |--------------------------------------------------------------------------
+    |
+    | `twentyone:stream:prepare` encodes `source` once into `prepared` (a loop
+    | whose length is a multiple of the 6 s segment); `twentyone:stream` loops
+    | it with `-c copy` into `hls_dir`, which the web server exposes as
+    | `public_url`. The playlist file name is the last path segment of
+    | `public_url`, so both always agree. `?:` keeps the default when a
+    | variable is present but empty, as in .env.example.
+    |
+    */
+
+    'stream' => [
+        'source' => env('TWENTYONE_STREAM_SOURCE'),
+        'prepared' => env('TWENTYONE_STREAM_PREPARED') ?: storage_path('app/stream/promo-stream.mp4'),
+        'hls_dir' => env('TWENTYONE_STREAM_HLS_DIR') ?: storage_path('app/stream/hls'),
+        'public_url' => env('TWENTYONE_STREAM_URL') ?: 'https://esports.einundzwanzig.space/live/stream.m3u8',
+        'ffmpeg' => env('TWENTYONE_STREAM_FFMPEG') ?: 'ffmpeg',
+        'ffprobe' => env('TWENTYONE_STREAM_FFPROBE') ?: 'ffprobe',
+
+        'event' => [
+            'd' => 'twentyone-247',
+            'title' => 'TWENTY ONE Esports — 24/7 Stream',
+            'summary' => '24/7 stream from TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Currently looping our promo video while our Bitcoiner ladder platform is in development. Login via Nostr.',
+            'image' => 'https://esports.einundzwanzig.space/images/twentyone/banner.png',
+            't' => ['bitcoin', 'esports', 'nostr', 'einundzwanzig', 'gaming'],
+        ],
+
+        // NIP-53 lets clients treat a `live` event without update for 1 h as ended.
+        'republish_minutes' => 20,
+
+        'backoff' => [
+            'initial_seconds' => 5,
+            'max_seconds' => 300,
+        ],
+    ],
+
 ];

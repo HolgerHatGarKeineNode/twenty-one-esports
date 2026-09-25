@@ -18,6 +18,8 @@ final class EventBuilder
 
     public const KIND_RELAY_LIST = 10002;
 
+    public const KIND_LIVE_ACTIVITY = 30311;
+
     /**
      * Kind 0: the profile as JSON content. Empty or non-string values are
      * left out, so an unset lud16 does not appear as `"lud16":null`.
@@ -50,6 +52,49 @@ final class EventBuilder
         }
 
         return $this->event(self::KIND_RELAY_LIST)->setTags($tags);
+    }
+
+    /**
+     * Kind 30311 (NIP-53 live activity) for our own self-hosted stream.
+     *
+     * Client rules this enforces (zapstream.md A.1-A.7): exactly one
+     * `streaming` tag, its URL ending in `.m3u8` with nothing after it, and
+     * the `p` tag with all four elements (Primal reads `t[3]` of every `p`).
+     *
+     * @param  array{d: string, title: string, summary: string, image: string, t?: list<string>}  $stream
+     */
+    public function liveActivity(array $stream, string $streamingUrl, string $hostPubkey, string $status, int $starts, ?int $ends = null): Event
+    {
+        if (! str_ends_with((string) parse_url($streamingUrl, PHP_URL_PATH), '.m3u8') || str_contains($streamingUrl, '?') || str_contains($streamingUrl, '#')) {
+            throw new InvalidArgumentException('The streaming URL must end in .m3u8: '.$streamingUrl);
+        }
+
+        if (! in_array($status, ['planned', 'live', 'ended'], true)) {
+            throw new InvalidArgumentException('Unknown NIP-53 status: '.$status);
+        }
+
+        $tags = [
+            ['d', $stream['d']],
+            ['title', $stream['title']],
+            ['summary', $stream['summary']],
+            ['image', $stream['image']],
+            ['status', $status],
+            ['starts', (string) $starts],
+        ];
+
+        if ($ends !== null) {
+            $tags[] = ['ends', (string) $ends];
+        }
+
+        $tags[] = ['streaming', $streamingUrl];
+
+        foreach ($stream['t'] ?? [] as $topic) {
+            $tags[] = ['t', $topic];
+        }
+
+        $tags[] = ['p', $hostPubkey, '', 'host'];
+
+        return $this->event(self::KIND_LIVE_ACTIVITY)->setTags($tags);
     }
 
     public static function isRelayUrl(mixed $url): bool
