@@ -144,6 +144,9 @@ export function roomChat(config) {
             const content = this.input.trim();
             if (!content || this.sending || this.status !== 'live') return;
 
+            // Clear at once; the text comes back if sending fails. Sent means
+            // one relay took a copy, instead of waiting for every relay.
+            this.input = '';
             this.sending = true;
             this.error = '';
 
@@ -155,18 +158,21 @@ export function roomChat(config) {
                     match: config.match,
                 });
                 const onauth = (template) => window.nostr.signEvent(template);
-                const results = await Promise.allSettled(wraps.flatMap((wrap) => this.pool.publish(config.relays, wrap, { onauth })));
 
-                if (!results.some((r) => r.status === 'fulfilled')) {
+                try {
+                    await Promise.any(wraps.flatMap((wrap) => this.pool.publish(config.relays, wrap, { onauth })));
+                } catch {
                     this.error = this.t.notSent;
+                    this.input ||= content;
 
                     return;
                 }
 
                 this.add(rumor);
-                this.input = '';
-            } catch {
+            } catch (error) {
+                console.warn('[chat] sending failed', error);
                 this.error = this.t.failed;
+                this.input ||= content;
             } finally {
                 this.sending = false;
             }

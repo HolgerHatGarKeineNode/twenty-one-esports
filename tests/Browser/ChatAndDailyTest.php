@@ -79,6 +79,8 @@ function sendChat(Page $page, string $text): void
 {
     $page->locator('#chatin')->fill($text);
     $page->locator('section[aria-labelledby=chat-h] [data-test=chat-send]')->click();
+    // The field empties at once, not after every relay has answered.
+    BrowserWait::until($page, '() => document.querySelector("#chatin").value === ""', 1_500);
 }
 
 test('two players chat over NIP-17 through a relay, and a muted sender disappears for the one who muted', function () {
@@ -89,7 +91,8 @@ test('two players chat over NIP-17 through a relay, and a muted sender disappear
         for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
             usleep(100_000);
         }
-        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
+        // The second relay never answers (unroutable): sending must not wait for it.
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port, 'ws://10.255.255.1:7777']]);
 
         [$anna, $bert] = User::factory()->count(2)->create();
         TestSigner::forBrowser($anna);

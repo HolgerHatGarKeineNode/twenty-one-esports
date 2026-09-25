@@ -163,6 +163,10 @@ export function gameChat(config) {
             const content = this.input.trim();
             if (!content || this.sending || this.status !== 'live') return;
 
+            // Clear at once; the text comes back if sending fails. Sent means
+            // one relay took the opponent's copy: waiting for every relay
+            // (a slow or dead one times out) left the text in the field.
+            this.input = '';
             this.sending = true;
             this.error = '';
 
@@ -174,21 +178,23 @@ export function gameChat(config) {
                     match: config.match,
                 });
                 const onauth = (template) => window.nostr.signEvent(template);
-                const results = await Promise.allSettled([
-                    ...this.pool.publish(config.relays, toRecipient, { onauth }),
-                    ...this.pool.publish(config.relays, toSelf, { onauth }),
-                ]);
+                const delivered = this.pool.publish(config.relays, toRecipient, { onauth });
+                Promise.allSettled(this.pool.publish(config.relays, toSelf, { onauth }));
 
-                if (!results.some((r) => r.status === 'fulfilled')) {
+                try {
+                    await Promise.any(delivered);
+                } catch {
                     this.error = this.t.notSent;
+                    this.input ||= content;
 
                     return;
                 }
 
                 this.add(rumor);
-                this.input = '';
-            } catch {
+            } catch (error) {
+                console.warn('[chat] sending failed', error);
                 this.error = this.t.failed;
+                this.input ||= content;
             } finally {
                 this.sending = false;
             }
