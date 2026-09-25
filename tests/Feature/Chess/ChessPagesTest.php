@@ -146,3 +146,20 @@ test('the daily games list lets you copy each opponent\'s npub', function () {
     $this->actingAs($game->white)->get(route('me.correspondence'))->assertOk()
         ->assertSee('data-npub="'.$game->black->npub.'"', false);
 });
+
+test('a finished game keeps the players\' chat open, spectators get none', function (bool $daily) {
+    config(['esports.chat.relays' => ['wss://chat.example']]);
+    $factory = ChessGame::factory();
+    $game = ($daily ? $factory->daily() : $factory)->finished()->create();
+
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertSee('data-test="chess-game-done"', false)
+        ->assertSee('data-test="chat"', false)
+        ->assertSee('data-test="chat-input"', false);
+
+    auth()->logout();
+
+    $this->get(route('games.show', $game))->assertOk()
+        ->assertSee('data-test="chess-game-done"', false)
+        ->assertDontSee('data-test="chat"', false);
+})->with(['live' => [false], 'daily' => [true]]);

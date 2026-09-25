@@ -40,7 +40,7 @@
     $publicState = $record === null ? 'unsigned' : ($configured === 0 ? 'no-relay' : ($accepted > 0 ? 'published' : 'retrying'));
 @endphp
 
-<div class="flex flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="chess-game-done">
+<div @class(['flex flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10', 'max-lg:pb-24' => $chat ?? null]) data-test="chess-game-done">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ $daily ? __('Daily chess') : __('Game') }}</h1>
         <span class="text-sm text-btc">{{ $game->number() }}</span>
@@ -221,6 +221,10 @@
                     <pre tabindex="0" aria-label="{{ __('PGN of the game') }}" class="mt-2 mb-0 h-[196px] overflow-auto rounded-md bg-ground px-3.5 py-3 font-mono text-xs leading-[1.6] whitespace-pre-wrap text-ink-2 shadow-[inset_0_0_0_1px_#2A2440]">{{ $pgn }}</pre>
                 </div>
             </details>
+            {{-- The players' chat stays open after the game: talk it over. --}}
+            @if ($chat ?? null)
+                @include('pages.games.partials.chat', ['chat' => $chat, 'panelClass' => 'min-h-[360px] lg:max-h-[520px]'])
+            @endif
         </div>
     </div>
 </div>

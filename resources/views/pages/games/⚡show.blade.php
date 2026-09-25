@@ -780,6 +780,6 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             </div>
         </div>
     @else
-        @include('pages.games.partials.done', ['game' => $game, 'players' => $players, 'color' => $color])
+        @include('pages.games.partials.done', ['game' => $game, 'players' => $players, 'color' => $color, 'chat' => $color ? $this->chatConfig() : null])
     @endif
 </div>
