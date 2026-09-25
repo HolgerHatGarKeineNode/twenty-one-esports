@@ -9,7 +9,7 @@ dataset('shell pages', [
     'login' => ['/login'],
     'styleguide' => ['/styleguide'],
     'chess placeholder' => ['/chess'],
-    'match placeholder' => ['/matches/102'],
+    'match list' => ['/matches'],
     'ladder placeholder' => ['/ladder/chess/blitz'],
     'rules placeholder' => ['/rules'],
 ]);

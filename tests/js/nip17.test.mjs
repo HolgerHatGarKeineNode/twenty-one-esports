@@ -10,7 +10,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure
 import * as nip19 from 'nostr-tools/nip19';
 import * as nip44 from 'nostr-tools/nip44';
 import { hexToBytes } from '@noble/hashes/utils.js';
-import { TWO_DAYS, gameMessages, makeRumor, unwrapMessage, wrapMessage } from '../../resources/js/nostrChat.js';
+import { TWO_DAYS, gameMessages, makeGroupRumor, makeRumor, roomMessages, unwrapMessage, wrapGroupMessage, wrapMessage } from '../../resources/js/nostrChat.js';
 
 /** A NIP-07-shaped signer over a secret key, like a browser extension. */
 function keySigner(secret) {
@@ -89,6 +89,31 @@ test('a game chat shows its own two players only, once each, and hides muted sen
 
     assert.deepEqual(shown([]), ['hello', 'hi']);
     assert.deepEqual(shown([A]), ['hi'], 'muting alice hides her messages, not mine');
+});
+
+test('a match room message reaches every member once, and the room shows members only, for its match', async () => {
+    const carol = generateSecretKey();
+    const C = getPublicKey(carol);
+    const members = [A, E, C];
+    const { rumor, wraps } = await wrapGroupMessage(keySigner(alice), { sender: A, recipients: members, content: 'lobby is up', match: 402, now });
+
+    assert.deepEqual(rumor.tags, [['p', E], ['p', C], ['match', '402']], 'p for every other member, never the sender');
+    assert.equal(wraps.length, 3, 'one wrap per member plus the own copy');
+    assert.deepEqual(wraps.map((w) => w.tags[0][1]).sort(), [...members].sort());
+
+    for (const [key, pub] of [[erin, E], [carol, C], [alice, A]]) {
+        const wrap = wraps.find((w) => w.tags[0][1] === pub);
+        assert.deepEqual(await unwrapMessage(keySigner(key), wrap, pub), rumor);
+    }
+
+    const intruder = makeGroupRumor({ sender: B, recipients: [E, C], content: 'join my lobby', match: 402, now });
+    const pulledIn = makeGroupRumor({ sender: A, recipients: [E, B], content: 'wrong room', match: 402, now });
+    const otherMatch = makeGroupRumor({ sender: C, recipients: [A, E], content: 'gg', match: 403, now });
+    const reply = makeGroupRumor({ sender: C, recipients: [A, E], content: 'joining', match: 402, now: now + 1 });
+    const shown = (muted) => roomMessages([reply, rumor, rumor, intruder, pulledIn, otherMatch], { me: E, members, match: 402, muted }).map((r) => r.content);
+
+    assert.deepEqual(shown([]), ['lobby is up', 'joining']);
+    assert.deepEqual(shown([C]), ['lobby is up'], 'muting carol hides her messages only');
 });
 
 const php = process.env.NIP17_PHP ? JSON.parse(process.env.NIP17_PHP) : null;

@@ -7,13 +7,16 @@ use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\DisputeEvidence;
 use App\Models\Lineup;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use PHPUnit\Framework\ExpectationFailedException;
@@ -116,6 +119,25 @@ function sweepFixtures(): array
 
         // A live blitz game; the member sweep plays White in it, so the board is playable.
         'game' => fn (?User $user, array $made): Model => ChessGame::factory()->create($user === null ? [] : ['white_id' => $user->id]),
+
+        // A running Rocket League series (P6a). The swept member captains the
+        // challenger lineup (a 2v2 of the `clan` fixture), so the match room
+        // opens with the lobby, the score sheet and the chat; the guest gets
+        // the public page and the login redirect.
+        'match' => fn (?User $user, array $made): Model => SeriesMatch::factory()->accepted()->create($user === null ? [] : [
+            'challenger_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create(['clan_id' => $made['clan']->getKey()])->id,
+            'challenged_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create()->id,
+            'lobby_name' => 'sweep-lobby',
+            // One game entered, so the match page draws its flow and the room its score.
+            'live_games' => [['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger']],
+        ]),
+
+        // A dispute screenshot of that series, served to admins only.
+        'evidence' => function (?User $user, array $made): Model {
+            Storage::disk('local')->put('dispute-evidence/sweep.png', (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+
+            return DisputeEvidence::query()->create(['series_match_id' => $made['match']->getKey(), 'path' => 'dispute-evidence/sweep.png', 'name' => 'sweep.png']);
+        },
     ];
 }
 
