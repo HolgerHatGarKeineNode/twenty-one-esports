@@ -84,7 +84,7 @@
 
             <flux:dropdown position="bottom" align="end">
                 <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well pr-3 pl-2 text-[13px] text-ink" data-test="account-chip">
-                    <x-avatar :name="$user->displayName()" :src="$user->avatarUrl()" :size="26" />
+                    <x-avatar :user="$user" :size="26" />
                     <span class="flex min-w-0 flex-col items-start leading-tight">
                         <span class="max-w-40 truncate">{{ $user->displayName() }}</span>
                         <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>

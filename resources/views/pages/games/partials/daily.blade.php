@@ -120,15 +120,8 @@
                 @php($sideColor = $side === 'top' ? ($color === 'b' ? 'w' : 'b') : ($color === 'b' ? 'b' : 'w'))
                 @php($p = $cards[$sideColor])
                 <div @class(['flex items-center gap-2.5 px-4 lg:shrink-0 lg:px-0', 'order-1' => $side === 'top', 'order-3 lg:order-7 lg:mt-auto' => $side === 'bottom']) data-test="daily-player-{{ $side }}">
-                    <span aria-hidden="true" class="size-4 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_#63636A]" style="background: {{ $sideColor === 'w' ? '#FFFFFF' : '#0A0A0B' }}"></span>
-                    <span class="flex min-w-0 grow flex-col gap-0.5">
-                        <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-sm font-bold">
-                            <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
-                            @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
-                            @if ($p['member'])<x-member-badge />@endif
-                            @if ($sideColor === $color)<span class="text-[11px] font-normal text-ink-2">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
-                        </span>
-                        <span class="flex items-center gap-1 text-[11px] text-ink-2">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></span>
+                    <span class="relative flex min-w-0 grow items-center gap-2.5">
+                        <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color">{{ __('Daily :elo ·', ['elo' => $p['elo']]) }} <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
                     </span>
                     <div role="timer" class="flex h-12 shrink-0 items-center gap-2 rounded-lg px-3"
                          :class="state.turn === '{{ $sideColor }}' ? (low ? 'bg-loss text-on-btc' : 'bg-btc text-on-btc') : 'bg-card text-ink-2 shadow-ring'">
@@ -265,13 +258,13 @@
         <div class="grid grid-cols-2 gap-x-10 px-6 pb-2">
             <div>
                 @foreach ([
-                    [__('Opponent'), $opponentName.($opponentUser?->clanMember?->clan ? ' · '.$opponentUser->clanMember->clan->name : '').($myColorName ? ' · '.__('you play :color', ['color' => $myColorName]) : '')],
+                    [__('Opponent'), ($opponentUser ? '' : $opponentName).($opponentUser?->clanMember?->clan ? ' · '.$opponentUser->clanMember->clan->name : '').($myColorName ? ' · '.__('you play :color', ['color' => $myColorName]) : '')],
                     [__('Time control'), __('Daily chess (1 move/day), max 24 h')],
                     [__('Started'), ($started?->isoFormat('ddd YYYY-MM-DD') ?? '').' · '],
                 ] as $i => [$key, $value])
                     <div class="grid h-11 grid-cols-[180px_minmax(0,1fr)] items-center border-b border-hairline text-sm last:border-0">
                         <span class="text-ink-2">{{ $key }}</span>
-                        <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>@if ($i === 0 && $color && isset($opponent['npub']))<x-copy-npub :npub="$opponent['npub']" :name="$opponentName" />@endif</span>
+                        <span class="flex min-w-0 items-center gap-2">@if ($i === 0 && $opponentUser)<x-player-link :user="$opponentUser" class="flex min-w-0 shrink items-center gap-2" data-test="daily-opponent"><x-avatar :user="$opponentUser" :size="20" class="rounded-sm" /><span class="truncate">{{ $opponentName }}</span></x-player-link>@endif<span class="truncate">{{ $value }}@if ($i === 2)<span x-text="@js(__('today is day :n')).replace(':n', today)"></span>@endif</span>@if ($i === 0 && $color && isset($opponent['npub']))<x-copy-npub :npub="$opponent['npub']" :name="$opponentName" />@endif</span>
                     </div>
                 @endforeach
             </div>

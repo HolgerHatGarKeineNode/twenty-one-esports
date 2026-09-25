@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Platform;
 use App\Support\Board;
 use App\Support\Chess\ChessSettings;
+use App\Support\Nostr\PlayerProfile;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -26,7 +27,15 @@ use Illuminate\Support\Str;
  * @property string $npub
  * @property string|null $name
  * @property string|null $picture
+ * @property string|null $about
+ * @property string|null $banner https only
+ * @property string|null $website https only
+ * @property string|null $lud16 Lightning address, shown, never paid
+ * @property string|null $nip05 as the profile names it, lowercased
+ * @property Carbon|null $nip05_verified_at set when the domain's nostr.json named this key
+ * @property Carbon|null $nip05_checked_at last NIP-05 check, successful or not
  * @property Carbon|null $profile_event_at
+ * @property Carbon|null $profile_checked_at last time a browser handed in this profile, new or unchanged
  * @property string|null $locale
  * @property bool $is_member
  * @property Carbon|null $member_checked_at
@@ -64,6 +73,9 @@ class User extends Authenticatable
     {
         return [
             'profile_event_at' => 'datetime',
+            'profile_checked_at' => 'datetime',
+            'nip05_verified_at' => 'datetime',
+            'nip05_checked_at' => 'datetime',
             'is_member' => 'boolean',
             'member_checked_at' => 'datetime',
             'platform' => Platform::class,
@@ -151,7 +163,8 @@ class User extends Authenticatable
     }
 
     /**
-     * Our own uploaded avatar wins over the kind-0 picture.
+     * Our own uploaded avatar wins over the kind-0 picture, which is only
+     * ever loaded over https. Null: draw the Blockpile ({@see PlayerProfile}).
      */
     public function avatarUrl(): ?string
     {
@@ -159,7 +172,7 @@ class User extends Authenticatable
             return Storage::disk('public')->url($this->avatar_path);
         }
 
-        return $this->picture;
+        return is_string($this->picture) && str_starts_with($this->picture, 'https://') ? $this->picture : null;
     }
 
     /**

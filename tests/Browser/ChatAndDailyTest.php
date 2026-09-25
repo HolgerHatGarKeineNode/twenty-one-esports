@@ -340,3 +340,81 @@ test('a daily move the signer refuses says why, logs the signer\'s error, and go
         ->and($warnings[3])->toContain('(failed)')->toContain('no private key found')
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Nostr profiles of other players (P10a)
+|--------------------------------------------------------------------------
+|
+| Bert's kind 0 lives only on the (in-memory) profile relay. Anna's browser
+| reads it, hands the signed event to the league, and her board and the
+| player card show it. Bert's picture points at a closed port: the avatar
+| must fall back to his generated Blockpile.
+|
+*/
+
+test('an opponent profile read from the relay shows on the board and in the player card', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    TestSigner::forBrowser($anna);
+    $bertKey = TestSigner::forBrowser($bert);
+    $bert->forceFill(['name' => null, 'picture' => null, 'profile_event_at' => null, 'profile_checked_at' => null])->save();
+
+    $seed = tempnam(sys_get_temp_dir(), 'relay-seed');
+    file_put_contents($seed, json_encode([$bertKey->sign(0, content: json_encode([
+        'display_name' => 'Bert Blocks',
+        'about' => 'Blitz after work, stack sats.',
+        'picture' => 'https://127.0.0.1:9/bert.png',
+        'lud16' => 'bert@getalby.com',
+    ]), createdAt: now()->subDay()->getTimestamp())]));
+
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
+
+    try {
+        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
+            usleep(100_000);
+        }
+        $game = ChessGame::factory()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
+        app(ChessGameService::class)->move($game, $anna, 'e2e4');
+        app(ChessGameService::class)->move($game->refresh(), $bert, 'e7e5');
+
+        // The relay is switched on only now: the login redirect and the first load
+        // must not fetch the profile before the error collector is in place.
+        $page = playerPage($anna, route('games.show', $game, false));
+        config(['esports.profile_relays' => ['ws://127.0.0.1:'.$port]]);
+        $page->reload();
+        $generated = route('avatars.generated', ['pubkey' => $bert->pubkey, 'v' => 1], false);
+
+        // The profile went browser -> league, and the picture that cannot load gave way to the pile.
+        BrowserWait::until($page, '() => window.Alpine && Alpine.store("profiles").statusOf('.json_encode($bert->pubkey).') === "done"', 10_000);
+        expect($bert->refresh())->name->toBe('Bert Blocks')->about->toBe('Blitz after work, stack sats.')->lud16->toBe('bert@getalby.com');
+
+        $card = '[data-test=player-top] [data-test=player-card-b]';
+        BrowserWait::until($page, '() => { const img = document.querySelector('.json_encode($card.' img[data-avatar]').'); return img.complete && new URL(img.src).pathname + new URL(img.src).search === '.json_encode($generated).' && img.alt.endsWith(", generated"); }', 10_000);
+
+        // Hover the name: the player card opens with the fresh profile.
+        $page->locator($card.' [data-test=player-name]')->hover();
+        BrowserWait::until($page, '() => { const pop = document.querySelector("[data-test=profile-popover]"); return pop.checkVisibility() && pop.innerText.includes("Blitz after work, stack sats.") && pop.innerText.includes("bert@getalby.com"); }', 5_000);
+        expect($page->evaluate('() => document.querySelector("[data-test=profile-popover] [data-test=card-name]").innerText'))->toBe('Bert Blocks')
+            ->and($page->evaluate('() => document.querySelector("[data-test=profile-popover]").getAttribute("aria-label")'))->toBe('Bert Blocks profile');
+
+        // Esc closes it.
+        $page->locator($card.' [data-test=player-name]')->press('Escape');
+        BrowserWait::until($page, '() => ! document.querySelector("[data-test=profile-popover]").checkVisibility()', 2_000);
+
+        // On a touch screen a tap opens the same card as a bottom sheet and does not leave the game.
+        $phone = visit(route('testing.login', ['user' => $anna, 'to' => route('games.show', $game, false)]))->on()->mobile()->page();
+        $phone->context()->addInitScript(P5B_COLLECTOR);
+        $phone->goto(ComputeUrl::from(route('games.show', $game, false)));
+        BrowserWait::until($phone, '() => window.Alpine && document.querySelector("[data-test=profile-sheet]") !== null', 5_000);
+        $phone->locator($card.' [data-test=player-name]')->tap();
+        BrowserWait::until($phone, '() => document.querySelector("[data-test=profile-sheet] [role=dialog]")?.checkVisibility() && document.querySelector("[data-test=profile-sheet]").innerText.includes("Blitz after work, stack sats.")', 5_000);
+
+        expect($phone->evaluate('() => location.pathname'))->toBe(route('games.show', $game, false))
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($phone->evaluate('() => window.__errors'))->toBe([]);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+});

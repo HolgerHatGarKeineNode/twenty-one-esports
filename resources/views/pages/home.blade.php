@@ -259,10 +259,10 @@
                                 <li class="border-t border-hairline">
                                     <a href="{{ route('games.show', $game) }}" class="flex min-h-12 flex-col justify-center gap-0.5 py-1 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                                         <span class="flex min-w-0 items-center gap-1.5">
-                                            <x-avatar :name="$game->white->displayName()" :src="$game->white->avatarUrl()" :size="18" class="rounded-sm" />
+                                            <x-avatar :user="$game->white" :size="18" class="rounded-sm" />
                                             <span class="truncate">{{ $game->white->displayName() }}</span>
                                             <span class="shrink-0 text-ink-3">{{ __('vs') }}</span>
-                                            <x-avatar :name="$game->black->displayName()" :src="$game->black->avatarUrl()" :size="18" class="rounded-sm" />
+                                            <x-avatar :user="$game->black" :size="18" class="rounded-sm" />
                                             <span class="truncate">{{ $game->black->displayName() }}</span>
                                         </span>
                                         <span class="flex items-center gap-1.5 text-[11px] text-ink-3">

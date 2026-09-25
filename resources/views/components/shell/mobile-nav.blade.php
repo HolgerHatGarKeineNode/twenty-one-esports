@@ -35,7 +35,7 @@
         <div class="mt-2 flex flex-col gap-2 border-t border-hairline px-1 pt-3">
             @if ($user)
                 <a href="{{ route('dashboard') }}" class="flex min-h-11 items-center gap-2 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
-                    <x-avatar :name="$user->displayName()" :src="$user->avatarUrl()" :size="26" />
+                    <x-avatar :user="$user" :size="26" />
                     <span class="flex min-w-0 flex-col leading-tight">
                         <span class="truncate">{{ $user->displayName() }}</span>
                         <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>

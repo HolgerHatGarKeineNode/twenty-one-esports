@@ -13,6 +13,13 @@
 @fonts
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])
+{{-- Profiles of the players on the page and the player card (P10a, resources/js/profiles.js). --}}
+<meta name="profile-loader" content="{{ json_encode([
+    'relays' => array_values(config('esports.profile_relays', [])),
+    'url' => route('profiles.store', absolute: false),
+    'waitMs' => (int) config('esports.profiles.wait_ms'),
+    'labels' => ['profile' => __(':name profile')],
+]) }}">
 {{--
     Realtime: pages that listen to broadcasts, and every page of a logged-in
     player, who is on the global `online` presence channel wherever they are

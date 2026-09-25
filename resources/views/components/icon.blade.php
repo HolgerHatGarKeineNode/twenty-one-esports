@@ -29,6 +29,7 @@
         'brush' => '<path d="M3 21c3 0 6-1 6-4a3 3 0 0 0-3-3c-2 0-3 2-3 7z"></path><path d="M20.5 3.5 10 14l-1-1L19.5 2.5z"></path>',
         'vote' => '<path d="m9 12 2 2 4-4"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect>',
         'logout' => '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"></path>',
+        'link' => '<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"></path><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"></path>',
         'user' => '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>',
         'alert' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path>',
         // Chess screens (ChessGame, ChessOverlays, ChessStates, ChessGameDone)

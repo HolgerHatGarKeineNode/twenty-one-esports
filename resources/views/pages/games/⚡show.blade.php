@@ -339,7 +339,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
      * Name card data for one side (kit section 6). Everyone is at the start
      * rating and provisional until Elo exists (P7).
      *
-     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, npub: string, elo: int}
+     * @return array{name: string, avatar: string|null, tag: string|null, member: bool, url: string, npub: string, user: User, elo: int}
      */
     public function player(User $user): array
     {
@@ -350,6 +350,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
             'member' => $user->is_member,
             'url' => route('players.show', $user->npub),
             'npub' => $user->npub,
+            'user' => $user,
             'elo' => (int) config('esports.chess.queue.start_rating'),
         ];
     }
@@ -499,21 +500,14 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                         'lg:row-start-1' => $side === 'top',
                         'order-3 lg:order-none lg:row-start-3' => $side === 'bottom',
                     ]) data-test="player-{{ $side }}">
-                        {{-- Name card (kit section 6) --}}
-                        <div @class(['flex min-h-14 min-w-0 items-center gap-3', 'lg:order-2' => $side === 'bottom'])>
-                            <span aria-hidden="true" class="size-5 shrink-0 rounded-sm shadow-[inset_0_0_0_1px_#63636A]" :style="`background: ${ {{ $sideColor }} === 'w' ? '#FFFFFF' : '#0A0A0B' }`"></span>
+                        {{-- Name card (kit section 6), with the opponent's Nostr profile (P10a) --}}
+                        <div @class(['relative flex min-h-14 min-w-0 items-center gap-3 lg:items-start lg:overflow-hidden lg:rounded-lg lg:bg-card lg:p-3', 'lg:order-2' => $side === 'bottom'])>
                             @foreach ($players as $pc => $p)
-                                <span x-show="{{ $sideColor }} === '{{ $pc }}'" class="flex min-w-0 grow flex-col gap-0.5">
-                                    <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-bold">
-                                        <a href="{{ $p['url'] }}" class="flex min-w-0 items-center gap-2 text-ink hover:text-ink"><x-avatar :name="$p['name']" :src="$p['avatar']" :size="20" class="rounded-sm" /><span class="truncate">{{ $p['name'] }}</span></a>
-                                        @if ($p['tag'])<x-clan-tag :tag="$p['tag']" size="sm" />@endif
-                                        @if ($p['member'])<x-member-badge />@endif
-                                        @if ($pc === $color)<span class="text-[11px] font-normal text-ink-3">{{ __('you') }}</span>@else<x-copy-npub :npub="$p['npub']" :name="$p['name']" />@endif
-                                    </span>
-                                    <span class="flex items-center gap-1 text-xs text-ink-2"><span class="max-lg:hidden">{{ __('Solo') }}</span> {{ $p['elo'] }} · <x-rank-badge tier="provisional" size="sm" /></span>
+                                <span x-show="{{ $sideColor }} === '{{ $pc }}'" class="contents" data-test="player-card-{{ $pc }}">
+                                    <x-chess.player-card :player="$p" :color="$pc" :you="$pc === $color"><span class="max-lg:hidden">{{ __('Solo') }}</span> {{ $p['elo'] }} · <x-rank-badge tier="provisional" size="sm" /></x-chess.player-card>
                                 </span>
                             @endforeach
-                            <span class="hidden text-xs text-ink-2 lg:inline" x-text="materialFor({{ $sideColor }})"></span>
+                            <span class="relative hidden shrink-0 text-xs text-ink-2 lg:inline" x-text="materialFor({{ $sideColor }})"></span>
                         </div>
                         {{-- Clock (kit section 5) --}}
                         <div role="timer" aria-live="off" :aria-label="clock({{ $sideColor }}).aria" data-test="clock-{{ $side }}"
@@ -522,6 +516,12 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                             <span class="flex items-center gap-1.5 text-[11px] font-bold lg:text-xs"><x-icon name="warn" :size="14" x-show="clock({{ $sideColor }}).low" /><span x-text="clock({{ $sideColor }}).label"></span></span>
                             <span class="min-w-[72px] text-right font-display text-[26px] font-bold tabular-nums lg:min-w-32 lg:text-4xl" x-text="clock({{ $sideColor }}).t"></span>
                         </div>
+                        {{-- Bio on phones, one line under the strip (MobileChessGame) --}}
+                        @foreach ($players as $pc => $p)
+                            @if ($p['user']->profile_event_at !== null && filled($p['user']->about))
+                                <p x-show="{{ $sideColor }} === '{{ $pc }}'" class="col-span-2 m-0 -mt-1 line-clamp-1 text-xs leading-normal text-ink-3 lg:hidden">{{ $p['user']->about }}</p>
+                            @endif
+                        @endforeach
                     </div>
                 @endforeach
 

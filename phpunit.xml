@@ -46,6 +46,7 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="ESPORTS_RELAYS" value="" force="true"/>
         <env name="ESPORTS_CHAT_RELAYS" value="" force="true"/>
+        <env name="ESPORTS_PROFILE_RELAYS" value="" force="true"/>
         <env name="ESPORTS_NOTIFICATION_NSEC" value="" force="true"/>
         <env name="WEBPUSH_VAPID_PUBLIC_KEY" value="" force="true"/>
         <env name="WEBPUSH_VAPID_PRIVATE_KEY" value="" force="true"/>

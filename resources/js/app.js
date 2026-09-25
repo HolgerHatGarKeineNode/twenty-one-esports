@@ -8,6 +8,7 @@ import './toasts';
 
 import nostrLogin from './nostrLogin.js';
 import blockZeroCountdown from './blockZeroCountdown.js';
+import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker } from './millAuth.js';
 import './nostrSign.js';
 
@@ -15,6 +16,9 @@ import './nostrSign.js';
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nostrLogin', nostrLogin);
     window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
+    // Nostr profiles of the players on a page, and the player card (P10a).
+    window.Alpine.store('profiles', profileStore());
+    window.Alpine.data('profileCardHost', profileCardHost);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.

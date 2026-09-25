@@ -215,7 +215,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     @foreach ($this->incoming as $challenge)
         <section wire:key="in-{{ $challenge->id }}" aria-labelledby="ch-{{ $challenge->id }}" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:flex-row lg:items-center lg:gap-6 lg:px-6" data-test="challenge-received">
             <span class="flex min-w-0 grow items-start gap-3">
-                <x-avatar :name="$challenge->challenger->displayName()" :src="$challenge->challenger->avatarUrl()" :size="40" class="rounded-md" />
+                <x-player-link :user="$challenge->challenger" class="shrink-0"><x-avatar :user="$challenge->challenger" :size="40" class="rounded-md" /></x-player-link>
                 <span class="flex min-w-0 flex-col gap-1">
                     <b id="ch-{{ $challenge->id }}" class="text-base">{{ __(':name challenges you', ['name' => $challenge->challenger->displayName()]) }}</b>
                     <span class="text-xs text-ink-2">{{ __('Daily chess · Casual · you play :color', ['color' => match ($challenge->color) { 'white' => __('Black'), 'black' => __('White'), default => __('a random colour') }]) }}</span>
@@ -264,7 +264,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                         <div class="flex min-w-0 grow flex-col gap-2">
                             <span class="flex items-center gap-2 text-xs text-ink-3"><a href="{{ route('games.show', $game) }}">{{ $game->number() }}</a>{{ __('Daily chess') }}</span>
                             <span class="flex min-w-0 flex-wrap items-center gap-2">
-                                <a href="{{ $opp ? route('players.show', $opp->npub) : '#' }}" class="flex min-w-0 items-center gap-2 text-[15px] font-bold text-ink hover:text-ink"><x-avatar :name="$opp?->displayName() ?? ''" :src="$opp?->avatarUrl()" :size="20" class="rounded-sm" /><span class="truncate">{{ $opp?->displayName() }}</span></a>
+                                @if ($opp)<x-player-link :user="$opp" class="flex min-h-6 min-w-0 items-center gap-2 text-[15px] font-bold" data-test="correspondence-opponent"><x-avatar :user="$opp" :size="20" class="rounded-sm" /><span class="truncate">{{ $opp->displayName() }}</span></x-player-link>@endif
                                 @if ($opp?->clanMember?->clan?->clantag)<x-clan-tag :tag="$opp->clanMember->clan->clantag" size="sm" />@endif
                                 @if ($opp?->is_member)<x-member-badge />@endif
                                 @if ($opp)<x-copy-npub :npub="$opp->npub" :name="$opp->displayName()" />@endif

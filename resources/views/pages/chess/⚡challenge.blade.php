@@ -144,7 +144,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                                 @class(['grid min-h-12 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border bg-transparent px-3 py-1.5 text-left text-[13px] text-ink md:grid-cols-[minmax(0,1fr)_70px_120px_60px_90px]',
                                     'border-btc bg-btc-press' => $opponent?->is($player), 'border-transparent hover:bg-row-hover' => ! $opponent?->is($player)])>
                             <span class="flex min-w-0 items-center gap-2">
-                                <x-avatar :name="$player->displayName()" :src="$player->avatarUrl()" :size="20" class="rounded-sm" />
+                                <x-avatar :user="$player" :size="20" class="rounded-sm" />
                                 <span class="truncate">{{ $player->displayName() }}</span>
                                 @if ($player->clanMember?->clan?->clantag)<x-clan-tag :tag="$player->clanMember->clan->clantag" size="sm" />@endif
                                 @if ($player->is_member)<x-member-badge />@endif
@@ -214,7 +214,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
         <aside class="flex flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:sticky lg:top-6 lg:px-6" data-test="challenge-summary">
             @if ($opponent)
                 <span class="flex items-start gap-3">
-                    <x-avatar :name="$opponent->displayName()" :src="$opponent->avatarUrl()" :size="40" class="rounded-md" />
+                    <x-avatar :user="$opponent" :size="40" class="rounded-md" />
                     <span class="flex min-w-0 flex-col gap-1">
                         <span class="flex flex-wrap items-center gap-2"><b class="truncate text-[15px]">{{ $opponent->displayName() }}</b>@if ($opponent->is_member)<x-member-badge />@endif</span>
                         <span class="text-xs text-btc-hi">{{ __('daily Elo :elo, provisional', ['elo' => $rating]) }}@if ($opponent->clanMember?->clan) · {{ $opponent->clanMember->clan->name }}@endif</span>

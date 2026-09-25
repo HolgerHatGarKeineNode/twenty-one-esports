@@ -26,6 +26,8 @@
 
         <x-toast-stack />
 
+        <x-profile-card-host />
+
         @livewireScripts
         @fluxScripts
     </body>

@@ -426,6 +426,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endif
         @endforeach
         <span class="col-span-3 text-center text-xs text-ink-2 lg:hidden">{{ $seriesMeta }}</span>
+        {{-- Both lineups, each name opens the player card (MatchRoom, P10a) --}}
+        <span class="col-span-3 mt-2 grid grid-cols-2 gap-3 border-t border-white/6 pt-3 lg:mt-4 lg:flex lg:justify-between lg:gap-6" data-test="series-players">
+            @foreach (['challenger', 'challenged'] as $cell)
+                <span role="group" aria-label="{{ __(':name players', ['name' => $m->sideName($cell)]) }}" @class(['flex min-w-0 flex-col gap-1.5 lg:flex-row lg:flex-wrap', 'items-end lg:justify-end' => $cell === 'challenged'])>
+                    @foreach ($rosters[$cell] as ['seat' => $seat])
+                        <x-player-link :user="$seat->user" class="relative inline-flex h-11 max-w-full min-w-0 items-center gap-1.5 rounded-md bg-[rgba(10,10,11,.45)] pr-2 pl-1 text-xs whitespace-nowrap lg:h-8 lg:after:absolute lg:after:inset-x-0 lg:after:-inset-y-1.5">
+                            <x-avatar :user="$seat->user" :size="24" class="rounded-sm" /><span class="truncate">{{ $seat->user->displayName() }}</span>
+                        </x-player-link>
+                    @endforeach
+                </span>
+            @endforeach
+        </span>
     </section>
 
     {{-- Casual until Block 0 (the design's "can mine" line, States.dc.html "Locked until Block 0") --}}
@@ -607,7 +619,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endforeach
             <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs leading-normal text-ink-2" data-test="opponent-roster">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}:
                 @foreach (array_filter($rosters[SeriesMatch::otherSide($mine)], fn ($r) => $r['on']) as ['seat' => $seat])
-                    <span class="inline-flex items-center gap-1">{{ $seat->user->displayName() }}<x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
+                    <span class="inline-flex items-center gap-1"><x-player-link :user="$seat->user" class="inline-flex min-h-6 items-center" /><x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
                 @endforeach
             </p>
             <p class="m-0 text-xs text-ink-3">{{ __('their captain sets this') }}</p>

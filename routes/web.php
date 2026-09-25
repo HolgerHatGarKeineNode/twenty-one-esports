@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
+use App\Http\Controllers\PlayerController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Route;
@@ -73,7 +76,6 @@ $placeholders = [
     ['games', 'games.index', 'Live games', 'chess'],
     ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],
     ['ladder/{game}/{mode}', 'ladder.show', 'Ladder', 'ladder'],
-    ['players/{npub}', 'players.show', 'Player', null],
     ['rules', 'rules', 'Rules', null],
     ['protocol', 'protocol', 'Open protocol', null],
 ];
@@ -81,6 +83,20 @@ $placeholders = [
 foreach ($placeholders as [$uri, $name, $page, $section]) {
     Route::view($uri, 'pages.coming-soon', ['page' => $page, 'section' => $section])->name($name);
 }
+
+/*
+ * Nostr profiles of other players (P10a). The browser reads kind 0 from the
+ * profile relays and hands the signed events in (resources/js/profiles.js);
+ * the player card is fetched when a name is hovered or tapped. The generated
+ * avatar is a pure function of the key: no session, cached for a year.
+ */
+Route::post('profiles', [ProfileController::class, 'store'])->middleware('throttle:profiles')->name('profiles.store');
+Route::get('players/{npub}', [PlayerController::class, 'show'])->name('players.show');
+Route::get('players/{npub}/card', [PlayerController::class, 'card'])->name('players.card');
+Route::get('avatars/{pubkey}.svg', GeneratedAvatarController::class)
+    ->where('pubkey', '[0-9a-f]{64}')
+    ->withoutMiddleware('web')
+    ->name('avatars.generated');
 
 // NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.
 Route::get('.well-known/nostr.json', NostrJsonController::class)

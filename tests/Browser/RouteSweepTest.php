@@ -130,6 +130,26 @@ function sweepFixtures(): array
             'live_games' => [['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger']],
         ]),
 
+        // A player with a full Nostr profile (P10a): the player page header with
+        // every row, and the player card fragment. Pictures point at a closed
+        // port, so the sweep also runs the broken-image fallback.
+        'npub' => fn (?User $user, array $made): Model => User::factory()->member()->create([
+            'name' => 'Mempool Max, captain of the longest clan name in the league',
+            'about' => str_repeat('Reads fee charts for fun. ', 12),
+            'picture' => 'https://127.0.0.1:9/max.png',
+            'banner' => 'https://127.0.0.1:9/max-banner.png',
+            'website' => 'https://www.example.com/a/rather/long/path/to/a/personal/page',
+            'lud16' => 'mempoolmax-with-a-long-name@walletofsatoshi.com',
+            'nip05' => 'mempoolmax-with-a-long-name@mempool.example',
+            'nip05_verified_at' => now(),
+            'nip05_checked_at' => now(),
+            'profile_event_at' => now(),
+            'profile_checked_at' => now(),
+        ]),
+
+        // The generated avatar of that player's key.
+        'pubkey' => fn (?User $user, array $made): Model => $made['npub'],
+
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {
             Storage::disk('local')->put('dispute-evidence/sweep.png', (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
@@ -174,7 +194,17 @@ function buildSweepFixtures(?User $user): array
         $made[$name] = $build($user, $made);
     }
 
-    return array_map(fn (Model $model): string => (string) $model->getRouteKey(), $made);
+    $keys = [];
+
+    foreach ($made as $name => $model) {
+        $keys[$name] = match ($name) {
+            'npub' => (string) $model->getAttribute('npub'),
+            'pubkey' => (string) $model->getAttribute('pubkey'),
+            default => (string) $model->getRouteKey(),
+        };
+    }
+
+    return $keys;
 }
 
 /**
@@ -347,8 +377,8 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1440 => 16];
  */
 const SWEEP_FLUSH_PATHS = ['/'];
 
-/** @var list<string> Routes that answer without the app shell (JSON, images). */
-const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence'];
+/** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment). */
+const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {

@@ -171,10 +171,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @foreach ($this->members as $member)
                 @php($stats = ClanStatsPreview::player((string) $member->user->name))
                 <div wire:key="m-{{ $member->id }}" class="row grid h-14 grid-cols-[32px_minmax(0,1fr)_76px] items-center gap-3 border-b border-hairline px-2 text-[13px] sm:grid-cols-[32px_minmax(0,1fr)_132px_110px]">
-                    {{-- Avatar slot: the Nostr picture goes here in the imagery pass. --}}
-                    <span class="flex size-8 items-center justify-center rounded-full bg-raised font-bold text-ink-2">{{ $member->user->initials() }}</span>
+                    {{-- The Nostr picture, or the generated Blockpile (P10a). --}}
+                    <x-avatar :user="$member->user" :size="32" />
                     <span class="flex min-w-0 flex-col gap-0.5">
-                        <span class="flex min-w-0 items-center gap-2"><a href="{{ route('players.show', $member->user->npub) }}" class="inline-flex min-h-6 items-center truncate font-bold">{{ $member->user->displayName() }}</a>@if ($member->user->is_member)<x-member-badge />@endif</span>
+                        <span class="flex min-w-0 items-center gap-2"><x-player-link :user="$member->user" class="relative inline-flex min-h-6 min-w-0 items-center font-bold after:absolute after:inset-x-0 after:-inset-y-2.5" data-test="roster-name"><span class="truncate">{{ $member->user->displayName() }}</span></x-player-link>@if ($member->user->is_member)<x-member-badge />@endif</span>
                         <span class="text-[11px] text-ink-3">{{ $member->role === ClanRole::Captain ? __('captain') : __('player') }}</span>
                     </span>
                     <span class="hidden gap-1 sm:flex">
@@ -188,7 +188,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 </div>
             @endforeach
             <div class="grid h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-sm lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Captain') }}</span>
-                @if ($owner)<a href="{{ route('players.show', $owner->npub) }}" class="truncate">{{ $owner->displayName() }}</a>@else<span class="text-ink-3">–</span>@endif
+                @if ($owner)<x-player-link :user="$owner" class="relative inline-flex min-w-0 after:absolute after:inset-x-0 after:-inset-y-3"><span class="truncate">{{ $owner->displayName() }}</span></x-player-link>@else<span class="text-ink-3">–</span>@endif
             </div>
             <div class="grid h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-sm lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Members') }}</span><span class="truncate">{{ __(':paid of :total are EINUNDZWANZIG members', ['paid' => $paid, 'total' => $membersCount]) }}</span></div>
         </div>
@@ -231,7 +231,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @forelse ($top as $index => $row)
                     <div class="grid h-11 grid-cols-[20px_minmax(0,1fr)_auto_48px] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[20px_minmax(0,1fr)_124px_48px]">
                         <span class="text-ink-3">{{ $index + 1 }}</span>
-                        <a href="{{ route('players.show', $row['user']->npub) }}" class="inline-flex min-h-6 items-center truncate font-bold">{{ $row['user']->displayName() }}</a>
+                        <x-player-link :user="$row['user']" class="relative inline-flex min-h-6 min-w-0 items-center font-bold after:absolute after:inset-x-0 after:-inset-y-2.5"><span class="truncate">{{ $row['user']->displayName() }}</span></x-player-link>
                         <x-rank-badge :tier="$row['stats']['tier']" :level="$row['stats']['level']" class="font-normal" />
                         <b class="text-right">{{ $row['stats']['blitz'] }}</b>
                     </div>

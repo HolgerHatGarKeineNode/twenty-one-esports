@@ -55,17 +55,40 @@ return [
     | Profile relays
     |--------------------------------------------------------------------------
     |
-    | Read-only relays the login module asks for the user's kind-0 profile.
-    | The signed profile is sent along with the login and verified here; the
-    | server itself never connects to a relay for this.
+    | Read-only relays the browser asks for kind-0 profiles: the user's own at
+    | login, and on every page those of the players shown there (P10a,
+    | resources/js/profiles.js). The signed profiles are handed to the server
+    | and verified there (App\Support\Nostr\ProfileCache); the server itself
+    | never connects to a relay for this.
+    |
+    | Tests point this at their own relay, so it can be set per environment.
     |
     */
 
-    'profile_relays' => [
-        'wss://purplepag.es',
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://relay.primal.net',
+    'profile_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+        'ESPORTS_PROFILE_RELAYS',
+        'wss://purplepag.es,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net',
+    ))))),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Profiles of other players (P10a)
+    |--------------------------------------------------------------------------
+    |
+    | ttl_minutes: a profile a browser confirmed or updated within this time
+    | is not asked from relays again by any page.
+    | nip05_recheck_hours: how long a NIP-05 check stands before a newer
+    | profile triggers the next one.
+    | throttle_per_minute: profile hand-ins per minute and client (IP).
+    | wait_ms: how long a page waits for relays before it gives up.
+    |
+    */
+
+    'profiles' => [
+        'ttl_minutes' => 360,
+        'nip05_recheck_hours' => 24,
+        'throttle_per_minute' => 20,
+        'wait_ms' => 2500,
     ],
 
     /*
