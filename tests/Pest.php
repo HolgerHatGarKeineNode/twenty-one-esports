@@ -25,7 +25,10 @@ pest()->group('unit')->in('Unit');
 
 pest()->extend(TestCase::class)->group('nostr')->in('Nostr');
 
-pest()->group('relay')->in('Relay');
+pest()->extend(TestCase::class)
+    ->use(RefreshDatabase::class)
+    ->group('relay')
+    ->in('Relay');
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)

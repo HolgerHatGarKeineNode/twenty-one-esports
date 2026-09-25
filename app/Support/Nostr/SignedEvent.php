@@ -85,6 +85,45 @@ final readonly class SignedEvent
     }
 
     /**
+     * All tags with this name, each without the name.
+     *
+     * @return list<list<string>>
+     */
+    public function tagsNamed(string $name): array
+    {
+        $found = [];
+
+        foreach ($this->tags as $tag) {
+            if (($tag[0] ?? null) === $name) {
+                $found[] = array_slice($tag, 1);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @return array{id: string, pubkey: string, created_at: int, kind: int, tags: list<list<string>>, content: string, sig: string}
+     */
+    public function toArray(): array
+    {
+        return [
+            'id' => $this->id,
+            'pubkey' => $this->pubkey,
+            'created_at' => $this->createdAt,
+            'kind' => $this->kind,
+            'tags' => $this->tags,
+            'content' => $this->content,
+            'sig' => $this->sig,
+        ];
+    }
+
+    public function toJson(): string
+    {
+        return json_encode($this->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
      * Recompute the id and verify the Schnorr signature (NIP-01).
      */
     public function hasValidSignature(): bool
