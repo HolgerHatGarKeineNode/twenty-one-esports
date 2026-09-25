@@ -283,6 +283,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             'me' => $this->user()->pubkey,
             'members' => array_values($members),
             'match' => $match->number,
+            // A series runs for days: the chat reads back to the challenge (gameChat.js does the same per game).
+            'since' => $match->created_at?->getTimestamp(),
             'relays' => array_values(config('esports.chat.relays', [])),
             'muted' => $this->user()->mutedPubkeys(),
             'labels' => [

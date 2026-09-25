@@ -2,9 +2,14 @@
 
 use App\Models\ChatMute;
 use App\Models\ChessGame;
+use App\Models\Lineup;
 use App\Models\NostrEvent;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Nostr\RelayPublisher;
+use App\Support\Nostr\SignedEvent;
+use App\Support\Notifications\NotificationDm;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Pest\Browser\Playwright\Page;
@@ -174,6 +179,42 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
             ->and(NostrEvent::query()->count())->toBe(0)
             ->and($pageA->evaluate('() => window.__errors'))->toBe([])
             ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
+    } finally {
+        $relay->stop(1);
+    }
+});
+
+test('a series room chat reads back to the challenge, not just the last two days', function () {
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
+
+    try {
+        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
+            usleep(100_000);
+        }
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
+
+        $match = SeriesMatch::factory()->accepted()->create([
+            'challenger_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create()->id,
+            'challenged_lineup_id' => Lineup::factory()->mode('2v2')->ready()->create()->id,
+            'created_at' => now()->subDays(5),
+        ]);
+        $anna = $match->challengerLineup->clan->owner;
+        $bert = $match->challengedLineup->clan->owner;
+        $annaKey = TestSigner::forBrowser($anna);
+        TestSigner::forBrowser($bert);
+
+        // Anna wrote four days ago (a wrap is backdated up to two more days, NIP-59):
+        // outside a "last 49 hours" window, inside "since the challenge".
+        $wrap = (new NotificationDm($annaKey->secret))->build($bert->pubkey, 'lobby name is on the sheet', $match->number, now()->subDays(4)->getTimestamp())['wrap'];
+        $sent = app(RelayPublisher::class)->publish(NostrEvent::fromSigned(SignedEvent::fromInput($wrap)), ['ws://127.0.0.1:'.$port]);
+        expect(array_column($sent, 'accepted'))->toBe([true]);
+
+        $page = playerPage($bert, route('matches.room', $match, false));
+        BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=room-chat]")).status === "live"', 10_000);
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=room-chat] [data-test=chat-messages] li[data-from=them]")].some((li) => li.innerText.includes("lobby name is on the sheet"))', 10_000);
+
+        expect($page->evaluate('() => window.__errors'))->toBe([]);
     } finally {
         $relay->stop(1);
     }

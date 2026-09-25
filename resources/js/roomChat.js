@@ -7,7 +7,7 @@
  * extension, otherwise on "Open chat". Mute is per sender, for oneself.
  */
 import { SimplePool } from 'nostr-tools/pool';
-import { canEncrypt, roomMessages, SINCE_MARGIN, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
+import { canEncrypt, chatSince, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
@@ -93,7 +93,8 @@ export function roomChat(config) {
             this.pool = new SimplePool();
             this.sub = this.pool.subscribe(
                 config.relays,
-                { kinds: [1059], '#p': [config.me], since: Math.floor(Date.now() / 1000) - SINCE_MARGIN },
+                // Back to the series' challenge (`config.since`), not just two days: a series runs for days.
+                { kinds: [1059], '#p': [config.me], since: chatSince(config.since) },
                 {
                     onevent: (wrap) => this.receive(wrap),
                     onauth: (template) => window.nostr.signEvent(template),
