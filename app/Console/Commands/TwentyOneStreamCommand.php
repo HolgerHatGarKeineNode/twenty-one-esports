@@ -7,6 +7,7 @@ use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
 use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
+use App\Support\TwentyOne\Stream\PublicPlaylist;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
 use Illuminate\Console\Attributes\Description;
@@ -34,6 +35,9 @@ use Symfony\Component\Process\ExecutableFinder;
 #[Description('Run the TWENTY ONE 24/7 HLS loop and announce it as a NIP-53 live event')]
 class TwentyOneStreamCommand extends Command
 {
+    /** Directory of the loop encoder, relative to hls_dir (and to /live/). */
+    private const LOOP_DIR = 'loop';
+
     /** A playlist younger than this counts as a running stream. */
     private const FRESH_SECONDS = 20;
 
@@ -66,7 +70,6 @@ class TwentyOneStreamCommand extends Command
         $hlsDir = rtrim((string) config('twentyone.stream.hls_dir'), '/');
         $publicUrl = (string) config('twentyone.stream.public_url');
         $playlistName = basename((string) parse_url($publicUrl, PHP_URL_PATH));
-        $playlist = $hlsDir.'/'.$playlistName;
 
         $problem = $this->startupProblem($prepared, $publicUrl);
 
@@ -81,8 +84,11 @@ class TwentyOneStreamCommand extends Command
             $this->stopping = true;
         });
 
-        File::ensureDirectoryExists($hlsDir);
-        $arguments = (new FfmpegCommands((string) config('twentyone.stream.ffmpeg')))->hls($prepared, $hlsDir, $playlistName);
+        File::ensureDirectoryExists($hlsDir.'/'.self::LOOP_DIR);
+        $this->removeLegacyLayout($hlsDir);
+        $public = new PublicPlaylist($hlsDir, $playlistName);
+        $playlist = $public->path();
+        $ffmpeg = new FfmpegCommands((string) config('twentyone.stream.ffmpeg'));
         $backoff = new Backoff(
             (int) config('twentyone.stream.backoff.initial_seconds', 5),
             (int) config('twentyone.stream.backoff.max_seconds', 300),
@@ -103,12 +109,17 @@ class TwentyOneStreamCommand extends Command
             }
 
             if ($process === null && microtime(true) >= $nextStartAt) {
-                $this->clearHlsDir($hlsDir, $playlistName);
-                $process = Process::forever()->env(ChildEnvironment::withoutSecrets())->start($arguments);
+                // New names for every run: segments and init are never reused.
+                $runId = FfmpegCommands::newRunId();
+                $public->prune(self::LOOP_DIR);
+                $process = Process::forever()->env(ChildEnvironment::withoutSecrets())
+                    ->start($ffmpeg->hls($prepared, $hlsDir.'/'.self::LOOP_DIR, $runId));
                 $runStartedAt = microtime(true);
                 $this->stderr = [];
-                $this->log('ffmpeg started pid='.$process->id());
+                $this->log('ffmpeg started pid='.$process->id().' run='.$runId);
             }
+
+            $public->update(self::LOOP_DIR);
 
             if ($process !== null) {
                 $this->collectStderr($process);
@@ -155,8 +166,8 @@ class TwentyOneStreamCommand extends Command
         }
 
         // Nothing is looping any more: do not let the web server keep serving
-        // a playlist that looks live.
-        $this->clearHlsDir($hlsDir, $playlistName);
+        // a playlist that looks live. The sequence state stays.
+        $public->remove(self::LOOP_DIR);
         $this->log('stopped');
 
         return self::SUCCESS;
@@ -298,17 +309,12 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * Remove what a previous ffmpeg run left behind: its numbering restarts,
-     * so old segments would otherwise never be deleted. Only our own file
-     * names are touched.
+     * Before the per-encoder directories, ffmpeg wrote `seg-*.m4s` and
+     * `init.mp4` straight into hls_dir. Nothing references them any more.
      */
-    private function clearHlsDir(string $hlsDir, string $playlistName): void
+    private function removeLegacyLayout(string $hlsDir): void
     {
-        File::delete([
-            ...File::glob($hlsDir.'/seg-*.m4s'),
-            ...File::glob($hlsDir.'/'.$playlistName.'*'),
-            $hlsDir.'/init.mp4',
-        ]);
+        File::delete([...File::glob($hlsDir.'/seg-*.m4s'), $hlsDir.'/init.mp4']);
     }
 
     /**

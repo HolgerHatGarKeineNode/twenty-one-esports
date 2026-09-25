@@ -58,26 +58,83 @@ final class FfmpegCommands
         ];
     }
 
+    /** File name of each encoder's own (internal) playlist in its directory. */
+    public const ENCODER_PLAYLIST = 'index.m3u8';
+
+    /**
+     * Segments each encoder keeps listed: the public window plus a margin,
+     * so a segment the public playlist still references is never deleted
+     * (ffmpeg deletes only after it left this list plus the delete threshold).
+     */
+    public const ENCODER_LIST_SIZE = PlaylistWriter::WINDOW + 3;
+
+    /**
+     * A new, unique prefix for one ffmpeg run: unix time plus randomness, so
+     * a restart within the same second still gets new segment and init
+     * names (players and CDNs may cache both as immutable).
+     */
+    public static function newRunId(): string
+    {
+        return time().bin2hex(random_bytes(3));
+    }
+
     /**
      * The endless loop (zapstream.md (2)): real-time, no re-encoding, fMP4
-     * HLS with a 6-segment window. Only warnings reach stderr, so a process
-     * that runs for weeks does not pile up progress output.
+     * HLS into the loop encoder's own directory. Only warnings reach stderr,
+     * so a process that runs for weeks does not pile up progress output.
      *
      * @return list<string>
      */
-    public function hls(string $input, string $hlsDir, string $playlistName = 'stream.m3u8'): array
+    public function hls(string $input, string $encoderDir, string $runId): array
     {
-        $hlsDir = rtrim($hlsDir, '/');
-
         return [
             $this->ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
             '-re', '-stream_loop', '-1', '-i', $input,
             '-map', '0', '-c', 'copy',
-            '-f', 'hls', '-hls_time', (string) self::SEGMENT_SECONDS, '-hls_list_size', '6', '-hls_delete_threshold', '2',
-            '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4',
+            ...$this->hlsOutput($encoderDir, $runId),
+        ];
+    }
+
+    /**
+     * The still-image scene: one PNG re-read every second (1 fps), x264
+     * ultrafast/stillimage single-threaded with one IDR per 6 s segment, and a pre-encoded
+     * AAC track copied as is, so the track layout matches the loop.
+     *
+     * @return list<string>
+     */
+    public function scene(string $image, string $audio, string $encoderDir, string $runId): array
+    {
+        return [
+            $this->ffmpeg, '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
+            // No -re on the image: with ffmpeg 9.0.2, `-re -f image2 -loop 1
+            // -framerate 1` wrote no segment for 14 s and more (measured, P1).
+            // The -re audio paces the output through the muxer instead.
+            '-f', 'image2', '-loop', '1', '-framerate', '1', '-i', $image,
+            '-re', '-stream_loop', '-1', '-i', $audio,
+            '-map', '0:v', '-map', '1:a',
+            // One encoder thread is enough for one frame per second, and x264
+            // frame threading holds back up to one frame per thread (seconds at 1 fps).
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-threads', '1', '-pix_fmt', 'yuv420p',
+            '-g', (string) self::SEGMENT_SECONDS, '-keyint_min', (string) self::SEGMENT_SECONDS, '-sc_threshold', '0',
+            '-c:a', 'copy',
+            ...$this->hlsOutput($encoderDir, $runId),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function hlsOutput(string $encoderDir, string $runId): array
+    {
+        $encoderDir = rtrim($encoderDir, '/');
+
+        return [
+            '-f', 'hls', '-hls_time', (string) self::SEGMENT_SECONDS,
+            '-hls_list_size', (string) self::ENCODER_LIST_SIZE, '-hls_delete_threshold', '2',
+            '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', $runId.'-init.mp4',
             '-hls_flags', 'delete_segments+omit_endlist+temp_file+independent_segments',
-            '-hls_segment_filename', $hlsDir.'/seg-%09d.m4s',
-            $hlsDir.'/'.$playlistName,
+            '-hls_segment_filename', $encoderDir.'/'.$runId.'-seg-%09d.m4s',
+            $encoderDir.'/'.self::ENCODER_PLAYLIST,
         ];
     }
 }

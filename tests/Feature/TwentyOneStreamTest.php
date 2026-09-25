@@ -30,9 +30,23 @@ beforeEach(function () {
 
 afterEach(function () {
     File::deleteDirectory($this->dir);
-    putenv('TWENTYONE_NOSTR_NSEC');
-    putenv('TWENTYONE_TEST_API_TOKEN');
+
+    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE'] as $name) {
+        putenv($name);
+        unset($_SERVER[$name]);
+    }
 });
+
+/**
+ * Put a variable into the environment children inherit. Symfony Process
+ * passes on only names that are also in $_SERVER, so putenv() alone is not
+ * enough.
+ */
+function setChildEnv(string $name, string $value): void
+{
+    putenv($name.'='.$value);
+    $_SERVER[$name] = $value;
+}
 
 /**
  * An ffmpeg stand-in: a shell script with the given body.
@@ -44,6 +58,15 @@ function fakeFfmpeg(string $dir, string $body): string
     config(['twentyone.stream.ffmpeg' => $dir.'/ffmpeg']);
 
     return $dir.'/ffmpeg';
+}
+
+/**
+ * An ffmpeg stand-in that writes run-prefixed segments like the HLS muxer
+ * (tests/Support/fake-encoder.php).
+ */
+function fakeEncoder(string $dir): string
+{
+    return fakeFfmpeg($dir, 'exec '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('tests/Support/fake-encoder.php')).' "$@"');
 }
 
 test('the live event puts one m3u8 streaming tag and a four-element host p tag in order', function () {
@@ -108,8 +131,8 @@ test('the supervisor survives an ffmpeg killed from outside and schedules a rest
 
 test('ffmpeg does not inherit the nsec or other secrets from the environment', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
-    putenv('TWENTYONE_NOSTR_NSEC='.$this->nsec);
-    putenv('TWENTYONE_TEST_API_TOKEN=not-for-children');
+    setChildEnv('TWENTYONE_NOSTR_NSEC', $this->nsec);
+    setChildEnv('TWENTYONE_TEST_API_TOKEN', 'not-for-children');
     fakeFfmpeg($this->dir, 'env > "$(dirname "$0")/child-env.txt"; exec sleep 5');
 
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1]);
@@ -129,8 +152,7 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
     $relays = implode(',', array_map(fn ($server): string => 'ws://'.stream_socket_get_name($server, false), $silent));
     config(['twentyone.nostr.publish_timeout_seconds' => 0.3, 'twentyone.stream.shutdown_publish_seconds' => 0.3]);
     // The stand-in writes a fresh playlist and a segment, then runs until SIGTERM.
-    File::ensureDirectoryExists($hlsDir);
-    fakeFfmpeg($this->dir, "echo '#EXTM3U' > '{$hlsDir}/stream.m3u8'; echo x > '{$hlsDir}/seg-000000000.m4s'; exec sleep 30");
+    fakeEncoder($this->dir);
 
     $startedAt = microtime(true);
     $exitCode = Artisan::call('twentyone:stream', ['--relays' => $relays, '--stop-after' => 1]);
@@ -152,8 +174,34 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
         ->and($ended)->not->toBe([])
         ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
         ->and(strpos($output, 'status=ended'))->toBeLessThan(strpos($output, 'ffmpeg stopped'))
-        ->and(File::glob($hlsDir.'/*'))->toBe([])
+        ->and(File::glob($hlsDir.'/{*,loop/*}', GLOB_BRACE))->toBe([$hlsDir.'/loop', $hlsDir.'/stream.m3u8.state.json'])
         ->and($output)->not->toContain($this->nsec)
         ->and($output)->not->toContain($this->key->secret)
         ->and(substr_count($output, 'ffmpeg started'))->toBe(1);
+});
+
+test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    $published = [];
+
+    foreach ([1, 2] as $run) {
+        setChildEnv('FAKE_ENCODER_CAPTURE', $this->dir."/published-{$run}.m3u8");
+        Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+        $published[$run] = (string) file_get_contents($this->dir."/published-{$run}.m3u8");
+    }
+
+    preg_match_all('/^(\S+-seg-\d+\.m4s)$/m', $published[1], $first);
+    preg_match_all('/^(\S+-seg-\d+\.m4s)$/m', $published[2], $second);
+    preg_match('/MEDIA-SEQUENCE:(\d+)/', $published[1], $firstSequence);
+    preg_match('/MEDIA-SEQUENCE:(\d+)/', $published[2], $secondSequence);
+
+    expect($first[1])->toHaveCount(3)
+        ->and($second[1])->toHaveCount(3)
+        ->and(array_intersect($first[1], $second[1]))->toBe([])
+        // Run 2 starts after the 3 segments of run 1: 0 → 3.
+        ->and((int) $firstSequence[1])->toBe(0)
+        ->and((int) $secondSequence[1])->toBe(3)
+        ->and($published[2])->toMatch('/^#EXT-X-MAP:URI="loop\/\w+-init\.mp4"$/m')
+        ->and($published[2])->not->toContain(explode('-', basename($first[1][0]))[0]);
 });

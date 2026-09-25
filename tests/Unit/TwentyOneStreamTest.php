@@ -3,17 +3,36 @@
 use App\Support\TwentyOne\Stream\Backoff;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 
-test('the loop runs the prepared file into a 6-second fMP4 HLS window without re-encoding', function () {
-    expect((new FfmpegCommands('/usr/bin/ffmpeg'))->hls('/srv/promo.mp4', '/srv/hls/'))->toBe([
+test('the loop runs the prepared file into its own run-prefixed fMP4 HLS directory without re-encoding', function () {
+    expect((new FfmpegCommands('/usr/bin/ffmpeg'))->hls('/srv/promo.mp4', '/srv/hls/loop/', '1790000000abcdef'))->toBe([
         '/usr/bin/ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'warning', '-nostats',
         '-re', '-stream_loop', '-1', '-i', '/srv/promo.mp4',
         '-map', '0', '-c', 'copy',
-        '-f', 'hls', '-hls_time', '6', '-hls_list_size', '6', '-hls_delete_threshold', '2',
-        '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4',
+        '-f', 'hls', '-hls_time', '6', '-hls_list_size', '9', '-hls_delete_threshold', '2',
+        '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', '1790000000abcdef-init.mp4',
         '-hls_flags', 'delete_segments+omit_endlist+temp_file+independent_segments',
-        '-hls_segment_filename', '/srv/hls/seg-%09d.m4s',
-        '/srv/hls/stream.m3u8',
+        '-hls_segment_filename', '/srv/hls/loop/1790000000abcdef-seg-%09d.m4s',
+        '/srv/hls/loop/index.m3u8',
     ]);
+});
+
+test('the scene encodes one still per second, paced by the copied audio, into its own run-prefixed directory', function () {
+    $arguments = (new FfmpegCommands('ffmpeg'))->scene('/srv/scene.png', '/srv/silence.m4a', '/srv/hls/scene', '1790000000abcdef');
+    $imageInput = array_search('/srv/scene.png', $arguments);
+    $audioInput = array_search('/srv/silence.m4a', $arguments);
+
+    expect(array_slice($arguments, $imageInput - 7, 8))->toBe(['-f', 'image2', '-loop', '1', '-framerate', '1', '-i', '/srv/scene.png'])
+        ->and(array_slice($arguments, $audioInput - 4, 5))->toBe(['-re', '-stream_loop', '-1', '-i', '/srv/silence.m4a'])
+        ->and(array_slice($arguments, $imageInput - 8, 1))->not->toBe(['-re'])
+        ->and($arguments)->toContain('-c:a', 'copy', '-threads', '1', '/srv/hls/scene/1790000000abcdef-seg-%09d.m4s', '1790000000abcdef-init.mp4')
+        ->and($arguments[array_search('-g', $arguments) + 1])->toBe('6');
+});
+
+test('every encoder run gets a new id', function () {
+    $ids = array_map(fn () => FfmpegCommands::newRunId(), range(1, 50));
+
+    expect(array_unique($ids))->toHaveCount(50)
+        ->and($ids[0])->toMatch('/^\d{10}[0-9a-f]{6}$/');
 });
 
 test('the prepare encode pads the loop to the next multiple of 6 seconds', function (float $duration, int $target, string $pad) {
