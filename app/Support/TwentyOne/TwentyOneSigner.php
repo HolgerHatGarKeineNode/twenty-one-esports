@@ -17,8 +17,10 @@ use function BitWasp\Bech32\decode;
  *
  * The secret is decoded strictly (human-readable part `nsec`, exactly 32
  * bytes, inside the secp256k1 range) and answered with null otherwise, so a
- * caller cannot sign with a half-parsed key. It is never exposed: there is no
- * getter, and debug output ({@see __debugInfo()}) only shows the pubkey.
+ * caller cannot sign with a half-parsed key. It is kept wrapped in a
+ * {@see \SensitiveParameterValue} and only unwrapped inside sign(): var_dump,
+ * var_export, (array) casts and Symfony's dump()/dd() see no value, and
+ * serialize() throws. There is no getter.
  */
 final class TwentyOneSigner
 {
@@ -27,9 +29,12 @@ final class TwentyOneSigner
 
     public readonly string $pubkey;
 
-    private function __construct(#[\SensitiveParameter] private readonly string $secret)
+    private readonly \SensitiveParameterValue $secret;
+
+    private function __construct(#[\SensitiveParameter] string $secret)
     {
         $this->pubkey = (new Key)->getPublicKey($secret);
+        $this->secret = new \SensitiveParameterValue($secret);
     }
 
     /**
@@ -93,7 +98,7 @@ final class TwentyOneSigner
      */
     public function sign(Event $event): array
     {
-        (new Sign)->signEvent($event, $this->secret);
+        (new Sign)->signEvent($event, $this->secret->getValue());
 
         /** @var array{id: string, pubkey: string, created_at: int, kind: int, tags: list<list<string>>, content: string, sig: string} */
         return $event->toArray();
