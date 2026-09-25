@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Support\Series\SeriesPresenter;
@@ -16,12 +18,16 @@ use Livewire\WithPagination;
 
 /*
  * Matches, 1:1 from Matches.dc.html: the block strip over the latest series,
- * filters (game, clan, status) and the table. Real series only; chess games
- * have no league match number yet (P7 gives every game one), so the Chess
- * filter points at the chess pages instead of listing games here.
+ * filters (game, clan, status) and the table. Rocket League series and chess
+ * games (blitz and daily) share the table; the Game filter narrows it. Chess
+ * games only know "live" and "done" (a chess game starts when it is created);
+ * they keep their own number until P7 gives every game a league match number.
  */
 new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     use WithPagination;
+
+    #[Url(except: 'all')]
+    public string $game = 'all';
 
     #[Url(except: '')]
     public string $clan = '';
@@ -31,6 +37,12 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
 
     public function updatedClan(): void
     {
+        $this->resetPage();
+    }
+
+    public function pickGame(string $game): void
+    {
+        $this->game = in_array($game, ['all', 'chess', 'rocket-league'], true) ? $game : 'all';
         $this->resetPage();
     }
 
@@ -75,14 +87,51 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
     }
 
     /**
-     * @return LengthAwarePaginator<int, SeriesMatch>
+     * @param  Builder<ChessGame>  $query
+     * @return Builder<ChessGame>
+     */
+    private function filteredChess(Builder $query, string $status): Builder
+    {
+        $clan = Clan::query()->where('slug', $this->clan)->first();
+        $statuses = match ($status) {
+            'all' => null,
+            'live' => [ChessGameStatus::Active],
+            'done' => [ChessGameStatus::Finished, ChessGameStatus::Aborted],
+            default => [],
+        };
+
+        return $query
+            ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
+                ->whereHas('white.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))
+                ->orWhereHas('black.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))))
+            ->when($statuses !== null, fn (Builder $query) => $statuses === [] ? $query->whereRaw('1 = 0') : $query->whereIn('status', $statuses));
+    }
+
+    /**
+     * Rows of the table, newest first: `series` rows carry a SeriesMatch,
+     * `chess` rows a ChessGame.
+     *
+     * @return LengthAwarePaginator<int, array{type: 'series'|'chess', model: SeriesMatch|ChessGame}>
      */
     #[Computed]
     public function matches(): LengthAwarePaginator
     {
-        return $this->filtered(SeriesMatch::query()->with('latestReport'), $this->status)
-            ->orderByDesc('number')
-            ->paginate(20);
+        $perPage = 20;
+        $page = $this->getPage();
+        $take = $page * $perPage;
+        $series = $this->game === 'chess' ? collect() : $this->filtered(SeriesMatch::query()->with('latestReport'), $this->status)->latest()->limit($take)->get();
+        $chess = $this->game === 'rocket-league' ? collect() : $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get();
+        $total = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
+            + ($this->game === 'rocket-league' ? 0 : $this->filteredChess(ChessGame::query(), $this->status)->count());
+
+        $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
+            ->concat($chess->map(fn (ChessGame $game) => ['type' => 'chess', 'model' => $game]))
+            ->sortByDesc(fn (array $row) => $row['model']->created_at)
+            ->values()
+            ->slice(($page - 1) * $perPage, $perPage)
+            ->values();
+
+        return new LengthAwarePaginator($rows, $total, $perPage, $page);
     }
 
     /**
@@ -95,7 +144,8 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
 
         foreach (array_keys($this->statusFilters()) as $status) {
             if ($status !== 'all') {
-                $counts[$status] = $this->filtered(SeriesMatch::query(), $status)->count();
+                $counts[$status] = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
+                    + ($this->game === 'rocket-league' ? 0 : $this->filteredChess(ChessGame::query(), $status)->count());
             }
         }
 
@@ -151,9 +201,10 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
                 <div class="flex items-center gap-2">
                     <span id="f-game" class="text-xs text-ink-3">{{ __('Game') }}</span>
                     <div role="group" aria-labelledby="f-game" class="flex overflow-hidden rounded-md border border-line">
-                        <span aria-current="true" class="{{ $filterBtn }} inline-flex items-center bg-btc font-bold text-on-btc">{{ __('All') }}</span>
-                        <a href="{{ route('chess.lobby') }}" class="{{ $filterBtn }} inline-flex items-center border-l border-line bg-ground text-ink-2 hover:text-ink">{{ __('Chess') }}</a>
-                        <span class="{{ $filterBtn }} inline-flex items-center border-l border-line bg-ground text-ink-2">Rocket League</span>
+                        @foreach (['all' => __('All'), 'chess' => __('Chess'), 'rocket-league' => 'Rocket League'] as $key => $label)
+                            <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}"
+                                    @class([$filterBtn, 'border-l border-line' => ! $loop->first, 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])>{{ $label }}</button>
+                        @endforeach
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -185,7 +236,12 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
             <div class="hidden h-11 grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_200px_120px] items-center gap-4 border-b border-hairline px-2 text-[13px] font-bold text-ink-2 lg:grid">
                 <span>{{ __('Match') }}</span><span>{{ __('Sides') }}</span><span>{{ __('Score') }}</span><span>{{ __('Format') }}</span><span>{{ __('Status') }}</span><span>{{ __('Result') }}</span><span class="text-right">{{ __('When') }}</span>
             </div>
-            @forelse ($this->matches as $match)
+            @forelse ($this->matches as $row)
+                @if ($row['type'] === 'chess')
+                    @include('pages.matches.partials.chess-row', ['chessGame' => $row['model'], 'viewer' => $viewer])
+                    @continue
+                @endif
+                @php($match = $row['model'])
                 @php($chip = SeriesPresenter::chip($match))
                 @php($result = SeriesPresenter::result($match, $viewer))
                 @php($score = SeriesPresenter::score($match))
@@ -214,9 +270,15 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
                 </a>
             @empty
                 <div class="px-2 py-6">
-                    <x-empty-state :heading="__('No matches yet')" :text="__('The first challenge opens the list.')">
-                        @auth<x-button :href="route('challenges.create')">{{ __('Challenge a clan') }}</x-button>@endauth
-                    </x-empty-state>
+                    @if ($game === 'chess')
+                        <x-empty-state :heading="__('No games yet')" :text="__('The first chess game opens the list.')">
+                            <x-button :href="route('chess.lobby')">{{ __('Play chess') }}</x-button>
+                        </x-empty-state>
+                    @else
+                        <x-empty-state :heading="__('No matches yet')" :text="__('The first challenge opens the list.')">
+                            @auth<x-button :href="route('challenges.create')">{{ __('Challenge a clan') }}</x-button>@endauth
+                        </x-empty-state>
+                    @endif
                 </div>
             @endforelse
         </div>

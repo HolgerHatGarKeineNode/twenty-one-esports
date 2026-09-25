@@ -48,6 +48,21 @@ final class SeriesPresenter
     /**
      * @return array{key: string, label: string, bg: string, color: string, icon: string}
      */
+    /**
+     * A chip for a list status key with its own label (chess rows on /matches).
+     *
+     * @return array{key: string, label: string, bg: string, color: string, icon: string}
+     */
+    public static function chipFor(string $key, string $label): array
+    {
+        [$bg, $color, $icon] = self::CHIPS[$key];
+
+        return ['key' => $key, 'label' => $label, 'bg' => $bg, 'color' => $color, 'icon' => $icon];
+    }
+
+    /**
+     * @return array{key: string, label: string, bg: string, color: string, icon: string}
+     */
     public static function chip(SeriesMatch $match): array
     {
         $key = $match->listStatus();

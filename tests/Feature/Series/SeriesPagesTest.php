@@ -2,6 +2,7 @@
 
 use App\Enums\SeriesStatus;
 use App\Models\Admin;
+use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
@@ -106,3 +107,24 @@ test('a captain can copy the opposing players\' npubs in the room and on the mat
         ->assertSee('data-npub="'.$opponent->npub.'"', false)
         ->assertDontSee('data-npub="'.$captain->npub.'"', false);
 })->with(['accepted', 'confirmed']);
+
+test('the game filter on /matches narrows the table to chess or Rocket League, with chess games listed', function () {
+    $series = SeriesMatch::factory()->accepted()->create();
+    $live = ChessGame::factory()->create();
+    $daily = ChessGame::factory()->daily()->finished()->create();
+    $row = fn (string $key) => 'wire:key="'.$key.'"';
+
+    $page = Livewire::test('pages::matches.index')
+        ->assertSeeHtml($row('m-'.$series->id))->assertSeeHtml($row('c-'.$live->id))->assertSeeHtml($row('c-'.$daily->id));
+
+    $page->call('pickGame', 'chess')->assertSet('game', 'chess')
+        ->assertDontSeeHtml($row('m-'.$series->id))->assertSeeHtml($row('c-'.$live->id))->assertSeeHtml($row('c-'.$daily->id));
+
+    $page->call('pickStatus', 'live')
+        ->assertSeeHtml($row('c-'.$live->id))->assertDontSeeHtml($row('c-'.$daily->id));
+
+    $page->call('pickStatus', 'all')->call('pickGame', 'rocket-league')
+        ->assertSeeHtml($row('m-'.$series->id))->assertDontSeeHtml('data-test="chess-row"');
+
+    $page->call('pickGame', 'nonsense')->assertSet('game', 'all');
+});
