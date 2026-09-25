@@ -59,13 +59,43 @@ window.esportsPresence = {
     },
 };
 
+/*
+ * A player's page load closes their websocket, so Reverb sends `leaving` and,
+ * a moment later, `joining` for someone who never went anywhere: the lobby's
+ * online list dropped them on every link they clicked (measured, P5e). A
+ * leave therefore takes effect only after LEAVE_GRACE_MS without a rejoin.
+ */
+const LEAVE_GRACE_MS = 5000;
+
 if (window.Echo && presenceUser) {
     const presence = window.esportsPresence;
+    const leaving = new Map();
+
+    const cancelLeave = (id) => {
+        clearTimeout(leaving.get(id));
+        leaving.delete(id);
+    };
 
     window.Echo.join('online')
-        .here((members) => presence.set(members))
-        .joining((member) => presence.set([...presence.members.filter((m) => m.id !== member.id), member]))
-        .leaving((member) => presence.set(presence.members.filter((m) => m.id !== member.id)))
+        .here((members) => {
+            leaving.forEach((timer) => clearTimeout(timer));
+            leaving.clear();
+            presence.set(members);
+        })
+        .joining((member) => {
+            cancelLeave(member.id);
+            presence.set([...presence.members.filter((m) => m.id !== member.id), member]);
+        })
+        .leaving((member) => {
+            cancelLeave(member.id);
+            leaving.set(
+                member.id,
+                setTimeout(() => {
+                    leaving.delete(member.id);
+                    presence.set(presence.members.filter((m) => m.id !== member.id));
+                }, LEAVE_GRACE_MS),
+            );
+        })
         .listen('.presence.looking', ({ id, looking }) => presence.set(presence.members.map((m) => (m.id === id ? { ...m, looking } : m))));
 }
 
