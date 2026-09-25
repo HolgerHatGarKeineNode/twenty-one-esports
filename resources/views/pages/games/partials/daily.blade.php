@@ -114,7 +114,7 @@
                 <template x-if="state.drawOffer && state.drawOffer !== color">
                     <div class="order-7 mx-4 flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:hidden" data-test="daily-draw-offer">
                         <b class="text-[15px]">{{ __(':name offers a draw', ['name' => $opponentName]) }}</b>
-                        <span class="text-[13px] text-ink-2">{{ __('A casual game: a draw changes no rating. Moving counts as declining.') }}</span>
+                        <span class="text-[13px] text-ink-2">{{ __('A casual game: a draw moves only the casual Elo. Moving counts as declining.') }}</span>
                         <span class="grid grid-cols-2 gap-2">
                             <x-button variant="quiet" x-on:click="call('declineDraw')">{{ __('Decline') }}</x-button>
                             <x-button icon="shield-check" x-on:click="call('acceptDraw')">{{ __('Accept draw') }}</x-button>

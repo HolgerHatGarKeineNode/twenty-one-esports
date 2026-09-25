@@ -3,9 +3,11 @@
 namespace App\Support\Rating;
 
 use App\Models\ChessGame;
+use App\Models\LineupSeat;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
+use App\Models\User;
 use App\Support\Series\Ladders;
 
 /**
@@ -110,6 +112,30 @@ final class Ratings
     public static function headline(?int $userId, string $game, string $mode): array
     {
         return self::forUser($userId, $game, $mode, self::pool(Ladders::isOpen($game, $mode)));
+    }
+
+    /**
+     * The rating chips of a player (PlayerHeader.dc.html, the player card):
+     * chess blitz always, plus each Rocket League lineup the player has a
+     * seat in, every one from its headline ladder (casual before Block 0).
+     *
+     * @return list<array{label: string, rating: array<string, mixed>}>
+     */
+    public static function chipsFor(User $user): array
+    {
+        $chips = [['label' => __('Chess blitz'), 'rating' => self::headline($user->id, 'chess', 'blitz')]];
+
+        $seats = LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')
+            ->whereHas('lineup', fn ($query) => $query->where('game', 'rocket-league'))
+            ->with('lineup')->get()->sortBy(fn (LineupSeat $seat) => $seat->lineup->mode);
+
+        foreach ($seats as $seat) {
+            $mode = $seat->lineup->mode;
+            $pool = self::pool(Ladders::isOpen('rocket-league', $mode));
+            $chips[] = ['label' => 'RL '.$mode, 'rating' => self::forLineups([$seat->lineup_id], 'rocket-league', $mode, $pool)[$seat->lineup_id]];
+        }
+
+        return $chips;
     }
 
     /**

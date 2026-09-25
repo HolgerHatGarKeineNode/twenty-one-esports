@@ -592,7 +592,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                 <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
                                 <div role="dialog" aria-labelledby="dr-h" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
                                     <span class="flex items-center gap-2.5"><x-icon name="draw" :size="16" class="text-ink-2" /><h2 id="dr-h" class="m-0 text-base font-bold">{{ __(':name offers a draw', ['name' => $opponent['name'] ?? '']) }}</h2></span>
-                                    <span class="text-[13px] leading-normal text-ink-2">{{ __('A casual game: a draw changes no rating.') }}</span>
+                                    <span class="text-[13px] leading-normal text-ink-2">{{ __('A casual game: a draw moves only the casual Elo.') }}</span>
                                     <div class="grid grid-cols-2 gap-2">
                                         <x-button variant="quiet" x-on:click="call('declineDraw')">{{ __('Decline') }}</x-button>
                                         <x-button icon="shield-check" x-on:click="call('acceptDraw')" data-test="accept-draw">{{ __('Accept draw') }}</x-button>
@@ -608,7 +608,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                 <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
                                 <div role="alertdialog" aria-modal="true" aria-labelledby="rs-h" aria-describedby="rs-d" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
                                     <span class="flex items-center gap-2.5"><x-icon name="flag" :size="16" class="text-loss" /><h2 id="rs-h" class="m-0 text-base font-bold">{{ __('Resign this game?') }}</h2></span>
-                                    <span id="rs-d" class="text-[13px] leading-normal text-ink-2">{{ __(':name wins. A casual game: no rating changes.', ['name' => $opponent['name'] ?? '']) }}</span>
+                                    <span id="rs-d" class="text-[13px] leading-normal text-ink-2">{{ __(':name wins. A casual game: only the casual Elo changes.', ['name' => $opponent['name'] ?? '']) }}</span>
                                     <div class="grid grid-cols-2 gap-2">
                                         <x-button variant="quiet" x-init="$el.focus()" x-on:click="confirm = null">{{ __('Keep playing') }}</x-button>
                                         <button type="button" x-on:click="confirmResign()" data-test="confirm-resign" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss"><x-icon name="flag" :size="16" />{{ __('Resign') }}</button>
@@ -774,7 +774,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                     <span class="flex size-6 shrink-0 items-center justify-center text-win lg:size-10 lg:rounded-lg lg:bg-well"><x-icon name="shield-check" :size="18" /></span>
                     <span class="flex flex-col gap-1 text-[13px] leading-normal">
                         <span class="lg:font-bold">{{ __('When the game ends, the result is saved on the server for both of you.') }}</span>
-                        <span class="hidden text-ink-2 lg:block">{{ __('The server checks every move and runs both clocks. Casual games count for no rating.') }}</span>
+                        <span class="hidden text-ink-2 lg:block">{{ __('The server checks every move and runs both clocks. Casual games move only the casual Elo.') }}</span>
                     </span>
                 </div>
                 <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[

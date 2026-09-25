@@ -14,6 +14,7 @@
     $user = $profile->user;
     $name = $profile->name;
     $pubkey = $user->pubkey;
+    $chips = \App\Support\Rating\Ratings::chipsFor($user);
 @endphp
 <div data-test="profile-card" data-pubkey="{{ $pubkey }}" data-name="{{ $name }}" class="flex flex-col"
      x-data="{ get status() { return this.$store.profiles?.statusOf(@js($pubkey)) ?? 'idle' } }">
@@ -88,27 +89,33 @@
         </div>
     @endif
 
-    {{-- League facts --}}
-    @if ($profile->chessGames > 0 || $profile->clan)
-        <div class="flex flex-col border-t border-hairline px-4 py-2 text-xs">
-            @if ($profile->chessGames > 0)
-                <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-plays">
-                    <span class="text-ink-3">{{ __('Plays') }}</span>
-                    <span>{{ trans_choice('casual chess, :count game so far|casual chess, :count games so far', $profile->chessGames, ['count' => $profile->chessGames]) }}</span>
-                </div>
-            @endif
-            @if ($profile->clan)
-                <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-clan">
-                    <span class="text-ink-3">{{ __('Clan') }}</span>
-                    <span class="flex min-w-0 items-center gap-2">
-                        <x-clan-tag :tag="$profile->clan->clantag" size="sm" />
-                        <span class="truncate">{{ $profile->clan->name }}</span>
-                        <span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
-                    </span>
-                </div>
-            @endif
+    {{-- League facts; the rating line is always there (P7b) --}}
+    <div class="flex flex-col border-t border-hairline px-4 py-2 text-xs">
+        <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-ratings">
+            <span class="text-ink-3">{{ __('Rating') }}</span>
+            <span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                @foreach ($chips as $chip)
+                    <span class="inline-flex items-center gap-1 whitespace-nowrap"><span class="text-ink-3">{{ $chip['label'] }}</span><x-rating :rating="$chip['rating']" class="text-ink-2" /></span>
+                @endforeach
+            </span>
         </div>
-    @endif
+        @if ($profile->chessGames > 0)
+            <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-plays">
+                <span class="text-ink-3">{{ __('Plays') }}</span>
+                <span>{{ trans_choice('casual chess, :count game so far|casual chess, :count games so far', $profile->chessGames, ['count' => $profile->chessGames]) }}</span>
+            </div>
+        @endif
+        @if ($profile->clan)
+            <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-clan">
+                <span class="text-ink-3">{{ __('Clan') }}</span>
+                <span class="flex min-w-0 items-center gap-2">
+                    <x-clan-tag :tag="$profile->clan->clantag" size="sm" />
+                    <span class="truncate">{{ $profile->clan->name }}</span>
+                    <span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
+                </span>
+            </div>
+        @endif
+    </div>
 
     @if ($profile->hasProfile && $profile->lud16)
         <div class="relative flex min-w-0 items-center gap-2 border-t border-hairline px-4 py-2.5 text-xs" data-test="card-lud16">

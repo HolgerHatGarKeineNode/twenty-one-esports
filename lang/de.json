@@ -2033,6 +2033,15 @@
     "No casual results yet": "Noch keine Casual-Ergebnisse",
     "The first finished game opens the table. Every new entry starts at :elo Elo.": "Die erste beendete Partie eröffnet die Tabelle. Jeder neue Eintrag startet mit :elo Elo.",
     "Casual Elo is just for fun: it never counts for ranks, badges, Block Height, mining or rewards. At most :n games of the same pairing per day move it.": "Casual-Elo ist nur zum Spaß: Sie zählt nie für Ränge, Abzeichen, Block Height, Mining oder Belohnungen. Pro Tag bewegen höchstens :n Partien derselben Paarung sie.",
-    "Casual until Block 0 · casual Elo only, no reward": "Casual bis Block 0 · nur Casual-Elo, keine Belohnung",
-    "Casual: casual Elo only, no Hashrate, no block. Rated series start at Block 0.": "Casual: nur Casual-Elo, keine Hashrate, kein Block. Gewertete Serien starten mit Block 0."
+    "casual Elo only": "nur Casual-Elo",
+    "A casual game moves only the casual Elo: no rank, Block Height or Clan Hashrate.": "Eine Casual-Partie bewegt nur die Casual-Elo: kein Rang, keine Block Height, keine Clan-Hashrate.",
+    "A casual game: a draw moves only the casual Elo. Moving counts as declining.": "Eine Casual-Partie: Ein Remis bewegt nur die Casual-Elo. Ein Zug gilt als Ablehnung.",
+    "A casual game: a draw moves only the casual Elo.": "Eine Casual-Partie: Ein Remis bewegt nur die Casual-Elo.",
+    ":name wins. A casual game: only the casual Elo changes.": ":name gewinnt. Eine Casual-Partie: Nur die Casual-Elo ändert sich.",
+    "The server checks every move and runs both clocks. Casual games move only the casual Elo.": "Der Server prüft jeden Zug und führt beide Uhren. Casual-Partien bewegen nur die Casual-Elo.",
+    "Casual games run before and after Block 0: casual Elo only, no rank, no reward.": "Casual-Partien laufen vor und nach Block 0: nur Casual-Elo, kein Rang, keine Belohnung.",
+    "Rated play and mining start at Block 0. Until then every series is casual: it moves only the casual Elo, never a rank, Block Height or Clan Hashrate, and it stays casual even if it ends later.": "Gewertetes Spiel und Mining starten mit Block 0. Bis dahin ist jede Serie casual: Sie bewegt nur die Casual-Elo, nie einen Rang, die Block Height oder die Clan-Hashrate, und sie bleibt casual, auch wenn sie später endet.",
+    "casual Elo only before Block 0: every game is casual": "vor Block 0 nur Casual-Elo: Jede Partie ist casual",
+    "Casual, only casual Elo at stake": "Casual, nur Casual-Elo im Spiel",
+    "Chess blitz": "Schach Blitz"
 }

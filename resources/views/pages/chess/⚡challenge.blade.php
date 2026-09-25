@@ -236,10 +236,10 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 <div class="flex flex-col gap-3">
                     <h2 id="gt-h" class="m-0 text-[15px] font-bold">{{ __('Game type') }}</h2>
                     <div role="radiogroup" aria-labelledby="gt-h" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
-                        <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('no rating') }}</span></span>
+                        <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span></span>
                         <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
                     </div>
-                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('A casual game counts for no rating, Block Height or Clan Hashrate.') }}</p>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('A casual game moves only the casual Elo: no rank, Block Height or Clan Hashrate.') }}</p>
                 </div>
             </section>
 

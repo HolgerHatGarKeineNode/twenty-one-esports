@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ChessGame;
+use App\Models\Lineup;
 use App\Models\MatchNumber;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -243,4 +244,23 @@ test('the ladder lists players by rating with their tier, and shows the Pre-Seas
 
     $this->get('/ladder/chess/bullet')->assertNotFound();
     $this->get(route('ladder.show', ['rocket-league', '3v3']))->assertOk();
+});
+
+test('the player page and the player card show the casual blitz Elo and the lineup Elo before Block 0, the tier after', function () {
+    $lineup = Lineup::factory()->mode('2v2')->ready()->create();
+    $player = $lineup->clan->owner;
+    seedRating($player, Rating::CASUAL, 1020, 7);
+    Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'rocket-league', 'mode' => '2v2', 'subject' => 'lineup:'.$lineup->id,
+        'lineup_id' => $lineup->id, 'rating' => 987, 'results' => 3]);
+
+    foreach ([route('players.show', $player->npub), route('players.card', $player->npub)] as $url) {
+        $this->get($url)->assertOk()
+            ->assertSeeInOrder(['Chess blitz', 'Casual', '1020', 'RL 2v2', 'Casual', '987', 'provisional'])
+            ->assertDontSee('Silver III');
+    }
+
+    openLadders();
+    seedRating($player, Rating::RATED, 1060, 6);
+
+    $this->get(route('players.show', $player->npub))->assertOk()->assertSeeInOrder(['Chess blitz', '1060', 'Gold II']);
 });

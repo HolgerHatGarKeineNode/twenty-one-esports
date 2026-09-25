@@ -191,7 +191,7 @@
                         <x-icon name="pawn" :size="18" />{{ __('Play a casual game now') }}
                     </a>
                 </div>
-                <p class="pl-note lg:text-center">{{ __('Casual games run before and after Block 0: no rating, no reward.') }}</p>
+                <p class="pl-note lg:text-center">{{ __('Casual games run before and after Block 0: casual Elo only, no rank, no reward.') }}</p>
             </div>
         </section>
     </div>

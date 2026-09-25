@@ -138,7 +138,7 @@ final class SeriesPresenter
                 : ($match->start_at?->isFuture() ? $bar(__('not played yet'), 0) : $bar(__('playing'), 1)),
             SeriesStatus::Reported => $bar(__('1 of 2 captains'), 1),
             SeriesStatus::Disputed => $bar(__('admin reviewing'), 1),
-            SeriesStatus::Confirmed => $bar($match->rated ? __('both captains') : __('casual, not rated'), 2),
+            SeriesStatus::Confirmed => $bar($match->rated ? __('both captains') : __('casual Elo only'), 2),
             SeriesStatus::Resolved => $bar($match->resolution?->label() ?? __('decided by admin'), 2),
             default => $bar(self::chip($match)['label'], 0),
         };

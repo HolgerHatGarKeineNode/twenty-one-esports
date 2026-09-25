@@ -387,7 +387,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
                 {{-- Casual / Rated: rated opens at Block 0 (P7) --}}
                 <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
-                    <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('no rating') }}</span></span>
+                    <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span></span>
                     <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
                 </div>
                 <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Block 0 every game is casual: casual Elo only, and you play anyone who is online.') }}</p>

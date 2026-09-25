@@ -1,14 +1,16 @@
 {{--
     Player page. The header follows PlayerHeader.dc.html (1440) and
     MobilePlayerHeader.dc.html (390): banner, picture, name, NIP-05, bio,
-    clan, website, Lightning address, npub. Ratings, trust and the stats
-    below the header come with their phases; until then the rest of the page
-    is the "coming soon" state.
+    clan, website, Lightning address, npub, and the rating chips (P7b: chess
+    blitz and each Rocket League lineup, casual before Block 0). Trust and the
+    stats below the header come with their phases; until then the rest of the
+    page is the "coming soon" state.
 --}}
 @php
     $user = $profile->user;
     $name = $profile->name;
     $isMe = auth()->id() === $user->id;
+    $chips = \App\Support\Rating\Ratings::chipsFor($user);
 @endphp
 <x-layouts::app :title="$name">
     <div class="flex flex-col gap-6 pb-6 lg:px-12 lg:pb-8">
@@ -62,14 +64,19 @@
                     @elseif (! $profile->hasProfile)
                         <p class="m-0 max-w-[64ch] text-sm leading-relaxed text-ink-2">{{ __('A picture, banner and bio appear here once :name has a Nostr profile. Until then the avatar is drawn from the player key, so it stays the same everywhere.', ['name' => $name]) }}</p>
                     @endif
-                    @if ($profile->clan)
-                        <div class="flex flex-wrap gap-2">
+                    <div class="flex flex-wrap gap-2">
+                        @foreach ($chips as $chip)
+                            <span class="inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md bg-card px-3 text-xs whitespace-nowrap shadow-ring" data-test="header-rating">
+                                <span class="text-ink-3">{{ $chip['label'] }}</span><x-rating :rating="$chip['rating']" class="text-ink-2" />
+                            </span>
+                        @endforeach
+                        @if ($profile->clan)
                             <a href="{{ route('clans.show', $profile->clan) }}" data-test="header-clan"
                                class="relative inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md bg-card px-3 text-xs whitespace-nowrap text-ink shadow-ring after:absolute after:inset-x-0 after:-inset-y-1.5 hover:text-ink">
                                 <x-clan-tag :tag="$profile->clan->clantag" size="sm" /><span class="truncate">{{ $profile->clan->name }}</span><span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
                             </a>
-                        </div>
-                    @endif
+                        @endif
+                    </div>
                 </div>
                 <div class="flex flex-col border-t border-hairline lg:border-t-0 lg:border-l lg:pl-6">
                     @if ($profile->hasProfile && $profile->website)

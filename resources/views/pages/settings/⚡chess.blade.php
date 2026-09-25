@@ -217,7 +217,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                 <h2 id="dg-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('During the game') }}</h2>
                 @include('pages.settings.partials.switch', ['label' => __('Premoves'), 'hint' => __('queue a move while your opponent thinks · coming later'), 'on' => false, 'action' => null, 'test' => 'premoves'])
                 @include('pages.settings.partials.switch', ['label' => __('Always queen'), 'hint' => __('promote without asking'), 'on' => $settings->alwaysQueen, 'action' => "toggle('alwaysQueen')", 'test' => 'always-queen'])
-                @include('pages.settings.partials.switch', ['label' => __('Elo during the game'), 'hint' => __('no Elo before Block 0: every game is casual'), 'on' => false, 'action' => null, 'test' => 'elo'])
+                @include('pages.settings.partials.switch', ['label' => __('Elo during the game'), 'hint' => __('casual Elo only before Block 0: every game is casual'), 'on' => false, 'action' => null, 'test' => 'elo'])
                 @include('pages.settings.partials.switch', ['label' => __('Sounds'), 'hint' => __('moves, check, 10 s left, game end, notifications'), 'on' => $settings->sound, 'action' => "toggle('sound')", 'test' => 'sound'])
 
                 {{-- Volume, with a button to hear the set (resources/js/sounds.js). --}}
