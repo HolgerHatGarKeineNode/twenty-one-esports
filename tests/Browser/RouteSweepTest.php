@@ -312,6 +312,9 @@ function recordOverflowViolation(array $data, string $label, array &$violations)
 
 const SWEEP_PAGE_TOP = [375 => 20, 1440 => 32];
 
+/** Minimum distance of any non-full-bleed element from the viewport edges (px-4 on phones). */
+const SWEEP_PAGE_SIDE = [375 => 16, 1440 => 16];
+
 /**
  * Pages whose design starts flush under the header on purpose, by the path
  * the browser lands on (a redirect such as locale/{locale} is judged by its
@@ -348,8 +351,11 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
         };
 
         const headerBottom = header.getBoundingClientRect().bottom;
+        const viewport = document.documentElement.clientWidth;
         let top = Infinity;
         let first = null;
+        let side = Infinity;
+        let sideFirst = null;
 
         for (const el of main.querySelectorAll('*')) {
             if (el.closest('svg') && el.tagName !== 'svg') continue;
@@ -363,6 +369,27 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
                 top = rect.top;
                 first = el;
             }
+            // Full-bleed bands (a tab bar's hairline, a hero, a phone chess
+            // board marked data-bleed) may touch the edges; anything narrower
+            // than the viewport needs a gutter. Measure what is actually
+            // visible: clip against every clipping ancestor (sr-only, scrollers,
+            // tickers), so hidden or scrolled-away parts don't count.
+            if (rect.width >= viewport - 1 || el.parentElement.closest('[data-bleed]')) continue;
+            let left = rect.left;
+            let right = rect.right;
+            for (let a = el.parentElement; a && a !== main; a = a.parentElement) {
+                const as = getComputedStyle(a);
+                if (as.overflowX === 'visible' && as.clip === 'auto' && as.clipPath === 'none') continue;
+                const ar = a.getBoundingClientRect();
+                left = Math.max(left, ar.left);
+                right = Math.min(right, ar.right);
+            }
+            if (right - left <= 1) continue;
+            const edge = Math.min(left, viewport - right);
+            if (edge < side) {
+                side = edge;
+                sideFirst = el;
+            }
         }
 
         if (first === null) {
@@ -372,7 +399,16 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
         const name = first.tagName.toLowerCase() + (first.dataset.test ? `[data-test=${first.dataset.test}]` : '')
             + ' "' + (first.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) + '"';
 
-        return { gap: Math.round((top - headerBottom) * 100) / 100, path: location.pathname, first: name };
+        const describe = (el) => el === null ? 'nothing' : el.tagName.toLowerCase() + (el.dataset.test ? `[data-test=${el.dataset.test}]` : '')
+            + ' "' + (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40) + '"';
+
+        return {
+            gap: Math.round((top - headerBottom) * 100) / 100,
+            side: sideFirst === null ? null : Math.round(side * 100) / 100,
+            path: location.pathname,
+            first: name,
+            sideFirst: describe(sideFirst),
+        };
     }
     JS;
 
@@ -414,6 +450,10 @@ function recordGapViolation(Page $page, string $routeName, string $label, int $w
 
     if ($data['gap'] < SWEEP_PAGE_TOP[$width]) {
         $violations[] = "{$label} at {$width}px: content starts {$data['gap']}px under the header, needs >= ".SWEEP_PAGE_TOP[$width]."px (first: {$data['first']})";
+    }
+
+    if ($data['side'] !== null && $data['side'] < SWEEP_PAGE_SIDE[$width]) {
+        $violations[] = "{$label} at {$width}px: content sits {$data['side']}px from the viewport edge, needs >= ".SWEEP_PAGE_SIDE[$width]."px (element: {$data['sideFirst']})";
     }
 }
 

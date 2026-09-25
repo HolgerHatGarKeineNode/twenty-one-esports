@@ -11,7 +11,7 @@
     edge without the cube faces (MobileChessGame), from lg on it is the cube.
     frame: #3A2C14 live/waiting, #F7931A finished (kit section 1).
 --}}
-<div role="img" x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg') }} style="background: {{ $frame }}">
+<div role="img" data-bleed x-bind:aria-label="{{ $label }}" {{ $attributes->class('relative aspect-square w-full cube-lg') }} style="background: {{ $frame }}">
     <div class="grid size-full grid-cols-8 grid-rows-8">
         <template x-for="c in cells" :key="c.name">
             <div aria-hidden="true" class="relative" :style="`background: ${c.bg}; box-shadow: ${c.ring}`"

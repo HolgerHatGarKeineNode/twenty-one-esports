@@ -76,7 +76,7 @@ new #[Title('Admins')] class extends Component {
     }
 }; ?>
 
-<section class="w-full max-w-2xl space-y-8">
+<section class="w-full max-w-2xl space-y-8 px-4 pb-8 lg:max-w-[calc(42rem+6rem)] lg:px-12 lg:pb-10">
     <flux:heading size="xl" level="1">{{ __('Admins') }}</flux:heading>
 
     <div class="space-y-2">
