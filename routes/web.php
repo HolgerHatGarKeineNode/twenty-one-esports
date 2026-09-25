@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\NostrJsonController;
+use App\Http\Controllers\NotifyAtBlockZeroController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Route;
@@ -18,6 +19,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::view('me', 'pages.coming-soon', ['page' => 'Your page', 'section' => null])->name('dashboard');
     Route::post('logout', Logout::class)->name('logout');
+    Route::post('notify/block0', NotifyAtBlockZeroController::class)->name('notify.block0');
 });
 
 Route::middleware(['auth', 'admin'])->group(function () {

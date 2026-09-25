@@ -21,6 +21,8 @@
         'key' => '<circle cx="8" cy="15" r="4"></circle><path d="m10.8 12.2 8.2-8.2M17 6l2 2M15 8l2 2"></path>',
         'shield-check' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path>',
         'check' => '<path d="M5 12.5 10 17 19 7"></path>',
+        'bell' => '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path>',
+        'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"></path>',
         'rocket-league' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 3v4l-3.5 2.5M12 7l3.5 2.5M8.5 9.5 7 14l5 3 5-3-1.5-4.5M3.5 10.5 7 14M20.5 10.5 17 14M12 17v4"></path>',
         'award' => '<circle cx="12" cy="9" r="6"></circle><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"></path>',

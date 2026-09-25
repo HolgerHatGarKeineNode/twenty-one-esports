@@ -32,6 +32,7 @@ use Illuminate\Support\Str;
  * @property array<string, string>|null $gamer_tags
  * @property string|null $timezone
  * @property string|null $looking_to_play `<game>/<mode>` the player is up for, null = not looking
+ * @property Carbon|null $notify_block0_at when the player asked to be told about Block 0, null = not asked
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
@@ -62,6 +63,7 @@ class User extends Authenticatable
             'member_checked_at' => 'datetime',
             'platform' => Platform::class,
             'gamer_tags' => 'array',
+            'notify_block0_at' => 'datetime',
         ];
     }
 

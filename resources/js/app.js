@@ -7,12 +7,14 @@
 import './toasts';
 
 import nostrLogin from './nostrLogin.js';
+import blockZeroCountdown from './blockZeroCountdown.js';
 import { dropFailedBunker } from './millAuth.js';
 import './nostrSign.js';
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nostrLogin', nostrLogin);
+    window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.

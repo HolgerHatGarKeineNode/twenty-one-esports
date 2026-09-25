@@ -1,5 +1,9 @@
 @php
-    $stats = \App\Support\SampleData::footerStats();
+    $stats = [
+        'players' => \App\Models\User::query()->count(),
+        'clans' => \App\Models\Clan::query()->count(),
+        'games' => \App\Models\ChessGame::query()->where('status', \App\Enums\ChessGameStatus::Finished)->count(),
+    ];
     $locales = ['en' => 'English', 'de' => 'Deutsch'];
     $current = app()->getLocale();
 @endphp

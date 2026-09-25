@@ -169,4 +169,32 @@ return [
         'timeout_seconds' => 4,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Pre-Season (before Block 0)
+    |--------------------------------------------------------------------------
+    |
+    | Until a season is released the home page shows the pre-launch state
+    | (SEASON-CHAIN.md, decisions 5, 8 and 13).
+    |
+    | block0_at: planned Block 0 as an ISO 8601 datetime with offset, e.g.
+    | 2026-10-02T19:00:00+02:00. null = "date coming soon", no countdown.
+    | The board still releases Block 0 by hand; this is only the plan.
+    |
+    | pot_sats: the Pre-Season supply in sats; null = the pot card is hidden.
+    |
+    | genesis_message: the text written into Block 0; null = no teaser.
+    |
+    | display_timezone: zone for dates shown to guests and to players without
+    | a timezone of their own.
+    |
+    */
+
+    'preseason' => [
+        'block0_at' => env('ESPORTS_BLOCK0_AT'),
+        'pot_sats' => env('ESPORTS_PRESEASON_POT_SATS'),
+        'genesis_message' => env('ESPORTS_GENESIS_MESSAGE'),
+        'display_timezone' => 'Europe/Berlin',
+    ],
+
 ];
