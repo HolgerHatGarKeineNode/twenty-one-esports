@@ -232,13 +232,18 @@ document.addEventListener('alpine:init', () => {
         opponentGoneNoticed: false,
         recording: false,
         lowTimePlayed: false,
+        soundedPly: 0,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
 
-            // Move sounds (P5c): one per new ply, own moves included (shown at once in send()).
-            this.$watch('state.ply', (ply, before) => {
-                if (ply > before) playSound(moveSound(this.state.moves[this.state.moves.length - 1]?.san));
+            // Move sounds (P5c): once per ply, own moves included (shown at once in send()).
+            // A ply shown, taken back and confirmed again is not heard twice.
+            this.soundedPly = this.state.ply;
+            this.$watch('state.ply', (ply) => {
+                if (ply <= this.soundedPly) return;
+                this.soundedPly = ply;
+                playSound(moveSound(this.state.moves[this.state.moves.length - 1]?.san));
             });
 
             watchConnection((current) => {

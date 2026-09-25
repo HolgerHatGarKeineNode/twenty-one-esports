@@ -42,8 +42,11 @@ export function dailyGame(config, boardCells, kingInCheck) {
             this.ticker = setInterval(() => (this.now = Date.now()), 20_000);
 
             // Move sounds (P5c): the opponent's move arriving, and the player's own once played.
-            this.$watch('state.ply', (ply, before) => {
-                if (ply > before) playSound(moveSound(this.state.moves?.[this.state.moves.length - 1]?.san));
+            let soundedPly = this.state.ply;
+            this.$watch('state.ply', (ply) => {
+                if (ply <= soundedPly) return;
+                soundedPly = ply;
+                playSound(moveSound(this.state.moves?.[this.state.moves.length - 1]?.san));
             });
 
             if (window.Echo) {

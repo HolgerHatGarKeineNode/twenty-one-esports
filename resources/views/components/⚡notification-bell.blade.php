@@ -82,7 +82,7 @@ new class extends Component {
     $mobile = $variant === 'mobile';
 @endphp
 
-<div class="relative" x-data="{ open: false }" x-on:esports-notification.window="$wire.$refresh()"
+<div class="relative" x-data="{ open: false }" x-init="$watch('open', (value) => $dispatch('bell-toggle', value))" x-on:esports-notification.window="$wire.$refresh()"
      x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell-{{ $variant }}">
     <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel-{{ $variant }}"
             @class(['relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:text-ink', 'text-ink-2' => $mobile, 'border border-line bg-well text-ink-2' => ! $mobile])
@@ -130,7 +130,7 @@ new class extends Component {
                         <button type="button" wire:click="open('{{ $notification->id }}')" class="flex min-w-0 cursor-pointer flex-col gap-0.5 py-3 text-left text-[13px] text-ink" data-test="bell-open">
                             <b @class(['break-words', 'text-ink-2' => ! $isUnread])>{{ $data['title'] ?? '' }}</b>
                             <span class="break-words text-ink-2">{{ $data['body'] ?? '' }}</span>
-                            <span class="text-xs text-ink-3">{{ $notification->created_at?->locale(app()->getLocale())->diffForHumans() }}</span>
+                            <span class="text-xs text-ink-3">{{ $notification->created_at?->locale(app()->getLocale())->diffForHumans(['options' => Carbon\CarbonInterface::JUST_NOW]) }}</span>
                         </button>
                         @if ($isUnread)
                             <button type="button" wire:click="markRead('{{ $notification->id }}')" class="mt-1 flex size-11 cursor-pointer items-center justify-center rounded-md text-ink-2 hover:text-ink" aria-label="{{ __('Mark as read') }}" data-test="bell-mark-read">

@@ -18,7 +18,8 @@
     $onLogin = request()->routeIs('login');
 @endphp
 
-<header class="relative z-30 shrink-0 border-b border-hairline bg-bar" x-data="{ menu: false, search: false }" x-on:keydown.escape.window="menu = false; search = false">
+{{-- An open notification panel lifts the header above the toast stack (z-50), so a toast never covers the list. --}}
+<header class="relative z-30 shrink-0 border-b border-hairline bg-bar" x-data="{ menu: false, search: false, bell: false }" x-bind:style="bell ? 'z-index: 55' : ''" x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="menu = false; search = false">
     {{-- Desktop bar (Main.dc.html header, 64 px) --}}
     <div class="hidden h-16 items-center gap-7 px-8 lg:flex">
         <a href="{{ route('home') }}" class="flex min-h-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">

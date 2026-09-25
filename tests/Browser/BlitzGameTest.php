@@ -181,6 +181,11 @@ test('two players find each other, play over Reverb, survive a reload and end by
     BrowserWait::until($white, '() => document.querySelector("[data-test=outcome]")?.innerText === "Loss"', 5_000);
     BrowserWait::until($black, '() => document.querySelector("[data-test=outcome]")?.innerText === "Win"', 5_000);
 
+    // Sounds (P5c): every move asked for its click, and each side its own end sound.
+    BrowserWait::until($black, '() => window.esportsSounds.calls.includes("win")', 2_000);
+    BrowserWait::until($white, '() => window.esportsSounds.calls.includes("loss")', 2_000);
+    expect($white->evaluate('() => window.esportsSounds.calls.filter((s) => s === "move").length'))->toBe(4);
+
     $game->refresh();
     expect($game->status)->toBe(ChessGameStatus::Finished)
         ->and($game->end_reason)->toBe(ChessEndReason::Resignation)
