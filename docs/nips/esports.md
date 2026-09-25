@@ -32,20 +32,30 @@ signer, rank tiers, badges, bounties, pots) apply from the day a league adopts r
 ### Changelog of revision 5 (2026-09-25)
 
 - **Season chain** ([Season chain](#season-chain-rev-5)): new regular kind `2156` **Season Genesis**
-  (Block 0) with the frozen chain parameters `supply`, `subsidy`, `weight` (per winning player),
-  `share`, `daily`, `halving` (eras by date), `ends` (fixed season end), `claim` and `consensus`
-  `season-chain-v1`; released by two admins with NIP-32 labels (`1985`, `release-block-0`) that carry
-  the parameter digest (`x`); announced as a NIP-52 `31923` with `d` = `season/<season>`.
+  (Block 0) with the chain parameters `supply`, `subsidy`, `weight` (per winning player),
+  `share`, `daily`, `pairlimit`, `subtree`, `moves`, `halving` (eras by date), `ends` (fixed season
+  end), `claim` and `consensus` `season-chain-v1`; released by **one** admin of the league's **admin
+  list** (the board, a NIP-51 `30000` signed by the league key) with a NIP-32 label (`1985`,
+  `release-block-0`) that carries the parameter digest (`x`); announced as a NIP-52 `31923` with `d` =
+  `season/<season>`. The first chain season is the **Pre-Season** (`pre-season`); later seasons are
+  never announced before admins schedule them. Supply, subsidy, eras, end and claim window are fixed
+  for the season; the consensus parameters can change (`2158`).
 - **Blocks**: every rated result with a winner in a chain season carries `block` in its attestation:
   height and link to the previous block, or an empty height and the tip it was checked against.
-  Consensus rules 0 to 9, including same anchor subtree (7), three blocks per pairing and season (8)
-  and a share cap per game and era (9). Rewards, eras and reasons are derived, never signed.
+  Consensus rules 0 to 9, including same anchor subtree (7, threshold `subtree`), blocks per pairing
+  and day and per season (4 and 8, `pairlimit`) and a share cap per game and era (9). Rewards, eras and
+  reasons are derived, never signed.
+- **Parameter changes during a season**: new regular kind `2158` **Parameter Change** (weights, share
+  caps, daily caps, pairing limits, rule-7 threshold, minimum moves) with `effective` and the chain
+  `tip`, signed by the league key for a listed admin; never retroactive.
 - **Fees** on a live match target its challenge; the app adds the league's `zap` tag to every
   challenge of a chain season. Fees go to the winners of the match's valid blocks, otherwise to the
   reserve.
 - **Review and payout**: corrections at season end as league-signed NIP-32 labels (`void-block`)
   before settlement; new regular kind `2157` **Payout**, one per player and season, with `bolt11` and
-  `preimage` and `e`/`a` references to what it pays. No payouts during a season.
+  `preimage` and `e`/`a` references to what it pays. No season payouts during a season; **tournament
+  prizes** are settled at the tournament's end after an admin's check, one `2157` per player and
+  tournament.
 - **Rest before Block 0 and between seasons**: only rated play and mining rest; how clients and
   relays see it ([Rest](#rest-before-block-0-and-between-seasons)).
 - **Pots and zap targets** ([Pots and zap targets](#pots-and-zap-targets-rev-5)): one zap target per
@@ -68,9 +78,9 @@ signer, rank tiers, badges, bounties, pots) apply from the day a league adopts r
   in `10008`; one image URL per tier; a new single-purpose **badge key**.
 - **Bounties** ([Bounties](#bounties-rev-5)): NIP-52 `31923` with `d` = `bounty/<slug>` and a `target`;
   claim rule `bounty-v1`; no new kind.
-- Validation rules 24 to 31 and amendments to 10, 11 and the `gate` rows; tag table, kinds tables,
+- Validation rules 24 to 33 and amendments to 10, 11 and the `gate` rows; tag table, kinds tables,
   identifiers, queries, keys, relay policy, reused NIPs, what is not on Nostr, collision check
-  (`2156`, `2157` free), open points; round-5 examples and relay proof.
+  (`2156`, `2157`, `2158` free), open points; round-5 examples (the Pre-Season) and relay proof.
 
 ## Abstract
 
@@ -163,7 +173,7 @@ by this NIP.
 - **Block Height, Global Rating**: a player's global score across games, derived from public events;
   see [Global score](#global-score).
 - **Season chain, Block 0, block, block reward** (rev. 5): a season's reward chain; its first event, the
-  Season Genesis signed after two admins released it; an attestation of a win that passes the
+  Season Genesis signed after an admin released it; an attestation of a win that passes the
   consensus rules; the sats such a win earns, paid at season end. See [Season chain](#season-chain-rev-5).
 - **League reserve, pot** (rev. 5): the sats that fund seasons, and each separately counted balance
   (reserve, season supply, tournament pool, bounty, match fees); see
@@ -188,6 +198,7 @@ by this NIP.
 | `32152` | addressable | Ladder | league key |
 | `2156` | regular | Season Genesis, Block 0 (rev. 5) | league key |
 | `2157` | regular | Payout (rev. 5) | league key |
+| `2158` | regular | Parameter Change (rev. 5) | league key |
 
 The numbers form one family: `2150+n` for the regular match flow and the season chain, `12150` for the one-per-player
 membership, `32150+n` for the addressable definitions. Classes follow NIP-01 (`1000 <= n < 10000`
@@ -206,7 +217,7 @@ Why these classes:
 A league that does not publish draws implements every other kind and never emits `2155`.
 
 Kinds of other NIPs that the league reads or writes with a meaning defined here (rounds 3 and 4 add
-no kind of their own; round 5 adds `2156` and `2157`):
+no kind of their own; round 5 adds `2156` to `2158`):
 
 | kind | NIP | used as | signed by |
 |---|---|---|---|
@@ -219,7 +230,8 @@ no kind of their own; round 5 adds `2156` and `2157`):
 | `10050` | 17 | a player's DM relays | the player |
 | `9734`, `9735` | 57 | zaps to a pot: tournament, bounty, match fees, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)) | the zapper; the league's LNURL server key |
 | `9041` | 75 | rev. 5: the league reserve as a zap goal | league key |
-| `1985` | 32 | rev. 5: release confirmation of Block 0 (`release-block-0`); correction of the season review (`void-block`) | an admin; the league key |
+| `30000` | 51 | rev. 5: the admin list, `d` = `esports/<league key>/admins` | league key |
+| `1985` | 32 | rev. 5: release of Block 0 (`release-block-0`); correction of the season review (`void-block`) | a listed admin; the league key |
 | `30382` | 85 | trust rank of a player; rev. 5 also the anchor subtree (`anchor`) | trust key |
 | `0` | 01, 85 | description of the trust algorithm | trust key |
 | `1984` | 56, 32 | report with the league's label namespace | any player |
@@ -240,6 +252,7 @@ no kind of their own; round 5 adds `2156` and `2157`):
 | tournament (`31923`) | tournament slug, same pattern as a clan slug | `rl-2v2-cup-1` |
 | tournament calendar (`31924`) | `tournaments` | |
 | anchor list (`30000`, trust key) | `esports/<league key>/anchors` | |
+| admin list (`30000`, league key, rev. 5) | `esports/<league key>/admins` | |
 | season announcement (`31923`, rev. 5) | `season/<season>` | `season/season-5` |
 | bounty (`31923`, rev. 5) | `bounty/<slug>` | `bounty/alice-blitz-s5` |
 | rank badge definition (`30009`, rev. 5) | `rank/<game>/<mode>/<player pubkey>` | `rank/chess/blitz/e221ff8c…413e` (full hex key) |
@@ -248,7 +261,9 @@ The separator inside a `d` value is `/`, not `:`. An `a` value is `<kind>:<pubke
 client libraries split it on every `:`; a `d` value containing `:` then loses its tail.
 
 `game` and `mode` are lower-case slugs from the league's game registry. `season` is a slug of the
-same pattern as a clan slug; this league numbers its seasons `season-1`, `season-2`, and so on.
+same pattern as a clan slug; this league numbers its seasons `season-1`, `season-2`, and so on. From
+revision 5 on, the first chain season is the **Pre-Season** (`pre-season`), with looser defaults to
+build a base of players and clans; later seasons are `season-1`, `season-2`, ... if and when they come.
 A tournament slug (the `d` of its `31923`; in revision 3 the value of the tag `tournament`) uses the
 same pattern and is unique within the league.
 
@@ -267,8 +282,8 @@ it and returns non-matching events; see the relay proof).
 |---|---|---|---|
 | `d` | `<identifier>` | 32150, 32151, 32152 | see [Identifiers](#identifiers) |
 | `a` | `<kind>:<pubkey>:<d>`, `<relay>`, `[role]` | all except 32150 | reference to clan, lineup, ladder or tournament. In 2150 and 2154 the two lineup references carry the role `challenger` / `challenged` in position 3; the tournament `31923` (rev. 4, 2150-2155 of a tournament) and the ladder carry no role; in a revision-3 2155 each entrant lineup carries `entrant`; in a ladder that continues a previous season, see `reset` |
-| `e` | `<id>`, `<relay>`, `<author pubkey>` | 2150 (optional), 2151-2157, 64, 32152 | reference to the event this one answers (NIP-01 form, no NIP-10 markers). Which reference is which follows from the referenced event's kind. In 2150 an `e` can only point at a draw (2155); in a correspondence move (64) the second `e` points at the previous move; in a revision-5 ladder one `e` names the genesis (2156, frozen); in 2156 and 2157 see [Season chain](#season-chain-rev-5) |
-| `p` | `<pubkey>`, `<relay>`, `[role]`, `[lineup role]` | 32150, 32151, 32152, 2150-2157, 64 | in 32150 role `captain` or `member`; in 32151 role `captain`, `player` or `substitute`; in a solo 2150 the two players with side `challenger` / `challenged`; in a 2150 with a **roster side** (rev. 4, a mix team) one `p` per team member with that side; in 2152 and 2154 a **roster entry** has the side `challenger` or `challenged` in position 3 and the player's lineup role (`captain`, `player`, `substitute`; `player` on a roster side) in position 4; in 2155 role `entrant` (solo entrant); in 64 role `white` or `black`; in a player ladder (32152) one plain `p` per ranked player; rev. 5: in 2156 the two admins with role `release` or `confirm`, in 2157 the paid player. A `p` without position 3 only notifies (e.g. the other captain) |
+| `e` | `<id>`, `<relay>`, `<author pubkey>` | 2150 (optional), 2151-2158, 64, 32152 | reference to the event this one answers (NIP-01 form, no NIP-10 markers). Which reference is which follows from the referenced event's kind. In 2150 an `e` can only point at a draw (2155); in a correspondence move (64) the second `e` points at the previous move; in a revision-5 ladder one `e` names the genesis (2156, frozen); in 2156, 2157 and 2158 see [Season chain](#season-chain-rev-5) |
+| `p` | `<pubkey>`, `<relay>`, `[role]`, `[lineup role]` | 32150, 32151, 32152, 2150-2158, 64 | in 32150 role `captain` or `member`; in 32151 role `captain`, `player` or `substitute`; in a solo 2150 the two players with side `challenger` / `challenged`; in a 2150 with a **roster side** (rev. 4, a mix team) one `p` per team member with that side; in 2152 and 2154 a **roster entry** has the side `challenger` or `challenged` in position 3 and the player's lineup role (`captain`, `player`, `substitute`; `player` on a roster side) in position 4; in 2155 role `entrant` (solo entrant); in 64 role `white` or `black`; in a player ladder (32152) one plain `p` per ranked player; rev. 5: in 2156 the admin with role `release`, in 2158 the admin with role `change`, in 2157 the paid player. A `p` without position 3 only notifies (e.g. the other captain) |
 | `name` | `<text>` | 32150, 2155 | display name of the clan or tournament, at most 64 characters |
 | `clantag` | `<text>` | 32150 (optional) | short clan tag shown next to names, `^[A-Z0-9]{2,4}$` |
 | `picture` | `<url>` | 32150 | logo |
@@ -306,7 +321,12 @@ it and returns non-matching events; see the relay proof).
 | `consensus` | `season-chain-v1` | 2156 (rev. 5) | the rule set of [Consensus rules](#consensus-rules-season-chain-v1) |
 | `block` | `<height>` or empty, `<previous block id or tip id>` | 2154 (rev. 5) | the block this attestation mines, and the block before it; an empty height: the win does not mine, and the id is the tip it was checked against |
 | `anchor` | `<anchor pubkey>`, `<percent>` | 30382 (rev. 5) | the anchor with the largest share in the player's trust, and that share |
-| `x` | `<sha256 hex>` | 1985 (rev. 5) | the parameter digest a release confirmation confirms |
+| `x` | `<sha256 hex>` | 1985 (rev. 5) | the parameter digest a release label releases |
+| `pairlimit` | `<per UTC day>`, `<per season>` | 2156, 2158 (rev. 5) | blocks per pairing (rules 4 and 8) |
+| `subtree` | `<percent>` | 2156, 2158 (rev. 5) | threshold of rule 7 |
+| `moves` | `<full moves>` | 2156, 2158 (rev. 5) | minimum length of a chess game that mines (rule 2) |
+| `effective` | `<unix seconds>` | 2158 (rev. 5) | from when a parameter change is in force |
+| `tip` | `<block id>` | 2158 (rev. 5) | the newest block when the change was signed |
 | `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5), 31923, 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
 | `bolt11`, `preimage` | `<invoice>`; `<hex>` | 2157 (rev. 5) | the paid invoice and its preimage |
 | `rates` | `lineup` \| `player` | 32152 | what the ladder rates; absent means `lineup` |
@@ -1181,15 +1201,23 @@ the proof of work. A win that passes the [consensus rules](#consensus-rules-seas
 and each attestation names the block before it, as in Bitcoin. Rewards stay pending during the season
 and are paid once, at season end, after a public review. The league signs the order and its
 decisions; every number that follows from them is derived and never signed (the principle of
-[Global score](#global-score) and [Clan hashrate](#clan-hashrate)).
+[Global score](#global-score) and [Clan hashrate](#clan-hashrate)). An admin can adjust the consensus
+parameters during a season; a change applies only to blocks attested after it.
+
+The first chain season is the **Pre-Season** (`pre-season`): looser defaults (for example a higher
+pairing limit and a relaxed rule 7) to build a base of players and clans, still adjustable. Later
+seasons are `season-1`, `season-2`, ... if and when admins schedule them; no event and no text of the
+league announces a season before that.
 
 | event | kind | signed by | role |
 |---|---|---|---|
 | league reserve | `9041` (NIP-75 zap goal) | league key | zap target of the reserve, which funds the seasons (see [Pots and zap targets](#pots-and-zap-targets-rev-5)) |
 | season announcement | `31923` (NIP-52), `d` = `season/<season>` | league key | planned Block 0 and planned end: the countdown |
-| release confirmation | `1985` (NIP-32), `l` = `release-block-0` | an admin, twice | the four-eyes release, bound to the parameters |
+| admin list | `30000` (NIP-51), `d` = `esports/<league key>/admins` | league key | the board: who may release Block 0 and change parameters |
+| release | `1985` (NIP-32), `l` = `release-block-0` | one listed admin | the release, bound to the parameters by their digest |
 | **Season Genesis**, Block 0 | **`2156`** | league key | the chain parameters of the season, frozen |
 | block | `2154` with `block` | league key | the attestation of a winning result is the block |
+| **Parameter change** | **`2158`** | league key, for a listed admin | a change of consensus parameters during the season, in force from its `effective` time |
 | correction | `1985`, `l` = `void-block` | league key | result of the season-end review |
 | **Payout** | **`2157`** | league key | one settlement per player and season, with the Lightning proof |
 
@@ -1198,7 +1226,7 @@ ladder is a revision-4 ladder (it carries `hashrate`) that also carries an `e` t
 
 ### Season Genesis (`2156`)
 
-Signed by the league key when two admins have released Block 0. `content` is the **genesis message**.
+Signed by the league key when an admin has released Block 0. `content` is the **genesis message**.
 Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that block 1 points at.
 
 | tag | format | meaning |
@@ -1214,8 +1242,11 @@ Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that bloc
 | `claim` | `<seconds>` | claim window for players who cannot be paid at settlement |
 | `consensus` | `season-chain-v1` | the rule set of this NIP by which blocks are valid |
 | `a` | the season's announcement `31923` | |
-| `e` | the reserve (`9041`); the two release confirmations (`1985`) | which reference is which follows from the kind |
-| `p` | `<admin>`, `<relay>`, `release` \| `confirm` | the admin who released Block 0, and the admin who confirmed it |
+| `pairlimit` | `<per UTC day>`, `<per season>` | blocks per pairing (rules 4 and 8); absent means `1`, `3` |
+| `subtree` | `<percent>` | rule 7: two players are in the same anchor subtree if both shares of the same anchor are at least this; absent means `51`; `101` switches rule 7 off |
+| `moves` | `<full moves>` | rule 2: the minimum length of a chess game; absent means `20` |
+| `e` | the reserve (`9041`); the release label (`1985`); the admin list version (`30000`) | which reference is which follows from the kind |
+| `p` | `<admin>`, `<relay>`, `release` | the admin who released Block 0 |
 | `alt` | NIP-31 text | |
 
 **Why a regular event, and why a kind of its own.** Revision 3 rejected a season event because a
@@ -1226,18 +1257,26 @@ in the ladders, where they were; the genesis holds only what spans all games: on
 reward schedule, one set of caps.
 
 **Parameter digest.** `P` is the list of the genesis tags whose name is one of `season`, `supply`,
-`subsidy`, `weight`, `share`, `daily`, `halving`, `ends`, `claim`, `consensus`, in event order. The
+`subsidy`, `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves`, `halving`, `ends`, `claim`,
+`consensus`, in event order. The
 digest is `SHA-256` of the UTF-8 JSON serialization of `[<content>, P]`, without whitespace and with
 the escaping rules of NIP-01's event serialization.
 
-**Release (four eyes).** The league's app keeps a season as a draft until an admin schedules it; then
-the league publishes the announcement (`31923`, `start` = planned Block 0, `end` = planned end). An
-admin presses "Release Block 0" and signs a NIP-32 label (`1985`): `L` = `space.einundzwanzig.esports`,
-`l` = `release-block-0`, `a` = the announcement, `x` = the parameter digest. A second admin reviews
-the same parameters and signs the same label. Only then does the league sign the genesis, with both
-labels as `e` and both admins as `p`. A genesis is valid only with two such labels by two distinct
-keys, equal to its two `p`, each with its `x` equal to the genesis' digest and a `created_at` not
-later than the genesis. Which keys are admins is the league's statement in those `p` tags.
+**Admins.** The admins are the association's board. The league key publishes them as a NIP-51
+follow set (`30000`, `d` = `esports/<league key>/admins`, `title`, one `p` per board npub, `alt`) and
+publishes a new version when the board changes. Relays keep only the newest version; the league
+archives the older ones, as it does for gate evidence.
+
+**Release.** The league's app keeps a season as a draft until an admin schedules it; then the league
+publishes the announcement (`31923`, `start` = planned Block 0, `end` = planned end). **One** admin
+releases Block 0: the release screen shows the estimator's summary and asks the admin to retype the
+supply, then the admin signs a NIP-32 label (`1985`): `L` = `space.einundzwanzig.esports`, `l` =
+`release-block-0`, `a` = the announcement, `x` = the parameter digest. The league then signs the
+genesis with that label and the version of the admin list as `e`, and the admin as `p` with role
+`release`. A genesis is valid only with exactly one such label, signed by the `p` with role `release`,
+who is listed in the referenced admin list, with its `x` equal to the genesis' digest and a
+`created_at` not later than the genesis. (A first draft of revision 5 required two labels by two
+admins; the test bed's season 5 was released that way.)
 
 ### Eras and rewards
 
@@ -1270,8 +1309,10 @@ block visible, as `prev` does within a ladder.
 
 ### Consensus rules (`season-chain-v1`)
 
-A candidate mines if, checked against the blocks up to the id in its `block` tag, it passes all of
-the following; the **reason** a win does not mine is the first rule it fails, in this order.
+A candidate mines if, checked against the blocks up to the id in its `block` tag and with the
+parameters in force at its `created_at` (the genesis, changed by every [parameter change](#parameter-changes-2158)
+whose `effective` is not later), it passes all of the following; the **reason** a win does not mine is
+the first rule it fails, in this order.
 
 0. **Season.** Its ladder names the genesis, its `created_at` lies between `T0` and `ends`, the
    ladder's game and mode have a `weight`, and the block reward (reward per winning player times the
@@ -1282,23 +1323,55 @@ the following; the **reason** a win does not mine is the first rule it fails, in
    well: revision-5 `gate` rows name a player's opponent list whenever it lists the direct opponent,
    also where the trust gate does not need it.
 2. **A real game.** `resolution` `confirmed` or `admin`; a forfeit never mines. Chess: the counted
-   game record has at least 20 moves (the last move number is 20 or more), which also excludes a
-   resignation before move 10. Rocket League: a complete series, which the report rules guarantee.
+   game record has at least `moves` full moves (default 20: the last move number is 20 or more), which
+   also excludes a resignation before move 10. Rocket League: a complete series, which the report rules guarantee.
 3. **Not the same clan**: no winning and losing player share a `clan` row value.
-4. **One block per pairing and day.** No earlier block of the same pairing on the same UTC day of
-   `created_at`. The pairing is the two rated entities: two players, or two lineups in a series.
+4. **Blocks per pairing and day.** Fewer earlier blocks of the same pairing on the same UTC day of
+   `created_at` than the first value of `pairlimit` (default 1). The pairing is the two rated entities: two players, or two lineups in a series.
 5. **Block weight limit.** No winning player has `daily` blocks of this game on that UTC day already.
 6. **Team wins.** A series or board is one block; each winning roster player earns the reward per
    winning player, so the block pays that reward times the winners.
 7. **Not the same anchor subtree.** No winning and losing player whose pinned assertions (`30382`,
-   referenced by their `gate` rows) name the same `anchor`, both with a share above 50.
-8. **Three per pairing and season.** Fewer than 3 earlier blocks of the same pairing in the season.
+   referenced by their `gate` rows) name the same `anchor`, both with a share of at least `subtree`
+   percent (default 51; `101` switches the rule off).
+8. **Blocks per pairing and season.** Fewer earlier blocks of the same pairing in the season than the
+   second value of `pairlimit` (default 3).
 9. **Share cap per game and era.** The rewards of the game's blocks in this era, this one included,
    stay within `floor(B_n * share / 100)`.
 
 Rules 4, 5, 8, 9 and the supply part of 0 depend on earlier blocks; that is why the tip is pinned.
 Blocks that the review voids later keep their place for all counters: a correction never changes a
 later block or its reward.
+
+### Parameter changes (`2158`)
+
+An admin can change the consensus parameters during a season in the admin view; the estimator
+re-forecasts from the live data. Every change is a regular event signed by the league key:
+
+| tag | meaning |
+|---|---|
+| `e` | the genesis of the season; the version of the admin list |
+| `effective` | `<unix seconds>`: the change is in force for every attestation with a `created_at` from here on; not earlier than the change's own `created_at` |
+| `tip` | the newest block of the chain when the change was signed |
+| `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves` | the changed parameters, in the formats of the genesis. A `weight`, `share` or `daily` row replaces the row for its game (and mode); weight `0` stops a game from mining |
+| `p` | `<admin>`, `<relay>`, `change`: who made the change, a key of the admin list |
+| `alt` | NIP-31 text |
+
+`content` states why. Supply, subsidy, eras, `ends`, `claim` and the rule set cannot change during a
+season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
+a parameter wins.
+
+**Never retroactive.** A change applies only to attestations signed at or after `effective`, and the
+league signs no attestation at or after `effective` whose `block` tag names a block before `tip`.
+Blocks attested before are evaluated, and paid, with the parameters that were in force for them.
+Within an era every valid win of a game pays the same **between two changes**; the app says "about"
+before a game for this reason too.
+
+**What a reader can check.** The parameters for every candidate follow from the genesis and the
+changes on the relays (`{"kinds":[2158],"authors":["<league>"],"#e":["<genesis id>"]}`). A change
+backdated behind a block contradicts that block's `block` tag, because the block would then be judged
+by the new parameters; the relay proof shows it (round 5, R5.13). A backdated change that would not
+have altered any outcome cannot be told from an honest one, and changes nothing.
 
 **Anchor subtree (`anchor` in `30382`).** The trust key adds one output to `anchored-trust-v1`: the
 **anchor share** of each player. An anchor has share 1 of itself. Every voucher passes its trust on as
@@ -1340,13 +1413,19 @@ Ratings do not change.
 
 ### Payout (`2157`)
 
-Signed by the league key after the review: **one payout per player and season**, paid through the
-league's NWC connection to the player's Lightning address.
+Signed by the league key after the payment, through the league's paying NWC connection to the
+player's Lightning address. Two occasions:
+
+- **Season settlement:** after the season's review, **one payout per player and season**, for their
+  blocks, fees and bounties. There are no payouts during a season.
+- **Tournament settlement:** after a tournament's `end` and an admin's check of that tournament, **one
+  payout per player and tournament** for the prize: `a` = the tournament, no genesis. Tournament
+  prizes do not wait for the season end.
 
 | tag | meaning |
 |---|---|
-| `e` | the genesis (the season's supply); one `e` per block paid; one `e` per challenge whose fees it pays; for a bounty, the claiming attestation if it is not one of the blocks |
-| `a` | each bounty (`31923`) or tournament whose prize it pays |
+| `e` | season settlement: the genesis (the season's supply); one `e` per block paid; one `e` per challenge whose fees it pays; for a bounty, the claiming attestation if it is not one of the blocks |
+| `a` | season settlement: each bounty (`31923`) whose prize it pays; tournament settlement: the tournament |
 | `p` | the player |
 | `bolt11` | the invoice the player's Lightning address issued |
 | `preimage` | its preimage |
@@ -1375,7 +1454,8 @@ At `ends` the ladders close and mining is over (it may have stopped earlier, whe
 Then the review, the corrections and the payouts. The unmined supply, voided rewards, fees without a
 block, the remainders of divisions and unclaimed payouts go back to the **league reserve**. Nothing
 rolls into a named next season: whether and when another season starts is open, and a new genesis
-draws its supply from the reserve.
+draws its supply from the reserve. Tournament prizes are not part of this: they are settled when their
+tournament ends.
 
 ### Rest: before Block 0 and between seasons
 
@@ -1400,7 +1480,7 @@ memberships, opponent lists, tournament sign-ups and zaps to the reserve go on. 
 
 | signed by the league | derived by everyone |
 |---|---|
-| the parameters (genesis), released by two admin labels | eras, rewards, the era budgets |
+| the parameters (genesis), released by a listed admin's label; their changes (`2158`) | eras, rewards, the era budgets; the parameters in force for each block |
 | the order of blocks (`block`: height and link, or the tip) | whether a win mines, and why not |
 | the corrections of the review (`void-block` labels) | mined, remaining and voided supply; share per game |
 | the payouts (`2157`) with invoice and preimage | the amount each player is owed; fee shares; the reserve balance |
@@ -1649,8 +1729,9 @@ Per kind:
     `halving`, `ends`, `claim`, `consensus` `season-chain-v1` present; integers positive, weights
     positive decimals with at most three decimal places, `share` between 1 and 100, `ends` later than
     `created_at`; one `a` to the season's `31923` announcement; one `e` to the league's reserve goal
-    (`9041`); two `e` to release confirmations and two `p` with roles `release` and `confirm` as in
-    [Release](#season-genesis-2156); at most one genesis per season; the previous chain season has
+    (`9041`); one `e` to the release label, one `e` to a version of the admin list and one `p` with
+    role `release` as in [Release](#season-genesis-2156); `pairlimit` two positive integers, `subtree`
+    51 to 101, `moves` a positive integer; at most one genesis per season; the previous chain season has
     ended (its `ends` is not later than this `created_at`); `supply` does not exceed the reserve
     balance at `created_at` ([Pots and zap targets](#pots-and-zap-targets-rev-5)).
 27. **2154** (rev. 5, on a ladder that names a genesis): exactly one `block` tag on every rated result
@@ -1659,16 +1740,25 @@ Per kind:
     block at signing; a block passes, and a non-mining candidate fails, the
     [consensus rules](#consensus-rules-season-chain-v1) checked against the blocks up to the named id.
     The `gate` rows follow the revision-5 rule for opponent-list ids.
-28. **2157** (rev. 5): signed by the league key; one `e` to a genesis whose season has ended; one `p`;
+28. **2157** (rev. 5): signed by the league key; either one `e` to a genesis whose season has ended
+    (season settlement: blocks, fees, bounties), or no genesis and one `a` to a tournament whose `end`
+    has passed (tournament settlement); one `p`;
     `bolt11` and `preimage` present, and `SHA-256(preimage)` is the invoice's payment hash; every
     referenced block names that player as a winner and is not voided by a counted `void-block` label;
     every referenced challenge had fees for such a block; every `a` is a bounty or tournament the
-    player won; the invoice amount equals the derived sum; at most one payout per player and season;
-    no referenced item is paid twice.
-29. **1985** (rev. 5): with `l` `release-block-0`, signed by an admin, `a` a season announcement of the
-    league, `x` a 64-character hex digest; with `l` `void-block`, signed by the league key, every `e`
+    player won; the invoice amount equals the derived sum; at most one payout per player and season,
+    and per player and tournament; no referenced item is paid twice.
+29. **1985** (rev. 5): with `l` `release-block-0`, signed by a key of the league's admin list, `a` a
+    season announcement of the league, `x` a 64-character hex digest; with `l` `void-block`, signed by the league key, every `e`
     a block of a chain season, `content` the reason, and `created_at` before the season's first payout.
 30. **9041** (rev. 5): signed by the league key; NIP-75 `amount` and `relays`; `zap` names the pool key.
+32. **2158** (rev. 5): signed by the league key; one `e` to a genesis whose season has not ended; one
+    `e` to a version of the admin list and one `p` with role `change` listed in it; `effective` not
+    earlier than `created_at` and not later than the genesis' `ends`; `tip` is the newest block of the
+    chain at `created_at`, and no attestation with a `created_at` at or after `effective` names an
+    earlier block in its `block` tag; only `weight`, `share`, `daily`, `pairlimit`, `subtree` and
+    `moves` rows, with the formats of the genesis; `content` the reason.
+33. **30000** (admin list, rev. 5): signed by the league key; `d` = `esports/<league key>/admins`.
 31. **30382** (rev. 5): the `anchor` row names an anchor of the anchor list the assertion references,
     with an integer share from 0 to 100, as computed in [Anchor subtree](#consensus-rules-season-chain-v1).
 
@@ -1761,7 +1851,7 @@ The league runs one relay. It is the source of truth for clients, and the player
   1. any event on a connection **authenticated (NIP-42) as the league publisher**, whoever signed it.
      The league's server publishes every player event it accepted (`2150`-`2153`, `64`, `12150`,
      `30000`, `1984`, and `10050` and `10008` written through the app) and its own events (`2154`,
-     `2155`, `32152`, `31923`, `31924`, `0`, `10002`, rev. 5 `2156`, `2157`, `9041` and `1985`, the
+     `2155`, `32152`, `31923`, `31924`, `0`, `10002`, rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` and the admin list, the
      admins' `1985` release confirmations, the trust key's `30382` and anchor list, the badge key's
      `30009` and `8`) over this connection;
   2. a gift wrap (`1059`) on any authenticated connection whose single `p` is a registered player
@@ -1790,8 +1880,8 @@ may publish any kind. A zooid tenant as the league relay needs changes upstream.
 
 | key | signs | where it lives |
 |---|---|---|
-| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 5 `2156`, `2157`, `9041`, `1985` (`void-block`) | remote signer (NIP-46) with exactly this allowlist |
-| admin keys (rev. 5) | `1985` `release-block-0` | each admin's own signer; the admins are league policy |
+| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` (`void-block`), `30000` (admin list) | remote signer (NIP-46) with exactly this allowlist |
+| admin keys (rev. 5) | `1985` `release-block-0` | each admin's own signer; the board npubs, published in the league's admin list |
 | trust key | `0`, `30382`, `30000` (anchor list) | trust service |
 | league publisher | nothing stored; only NIP-42 `22242` | league server |
 | notification key | `0`; seals (`13`) of notifications | league server |
@@ -1948,7 +2038,7 @@ request.
 |---|---|---|---|---|---|
 | **league reserve** | the league's zap goal (`9041`, NIP-75) | `e` = the goal, `k` = `9041` | `{"kinds":[9735],"#e":["<goal id>"]}` | a season's supply: the genesis names the goal by `e` and draws `supply` | stays |
 | **season supply** | none; funded from the reserve at Block 0 | | | block rewards: `2157` with `e` genesis and `e` blocks | reserve, at settlement |
-| **tournament pool** | the tournament's `31923` | `a` = the tournament, `k` = `31923` | `#a` = the tournament, until `end` | prizes: `2157` with `a` the tournament | reserve |
+| **tournament pool** | the tournament's `31923` | `a` = the tournament, `k` = `31923` | `#a` = the tournament, until `end` | prizes at the tournament's end, after an admin's check: `2157` with `a` the tournament | reserve |
 | **bounty** | the bounty's `31923` | `a` = the bounty, `k` = `31923` | `#a` = the bounty, until `end` | the claimer: `2157` with `a` the bounty | reserve |
 | **match fees** | the challenge (`2150`, with the league's `zap` tag) | `e` = the challenge, `k` = `2150` | `#e` = the challenge, from the accept to the last attestation | the winners of the match's blocks: `2157` with `e` the challenge | reserve |
 
@@ -2068,6 +2158,8 @@ Query: `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}` returns the 
 | the payouts of a season, or mine | `{"kinds":[2157],"authors":["<league>"],"#e":["<genesis id>"]}`, plus `"#p":["<me>"]` |
 | the fees of a match | `{"kinds":[9735],"#e":["<challenge id>"]}` |
 | the league reserve | `{"kinds":[9041],"authors":["<league>"]}`; its zaps `{"kinds":[9735],"#e":["<goal id>"]}` |
+| the admins | `{"kinds":[30000],"authors":["<league>"],"#d":["esports/<league>/admins"]}` |
+| the parameter changes of a season | `{"kinds":[2158],"authors":["<league>"],"#e":["<genesis id>"]}` |
 | a player's rank badges (rev. 5) | `{"kinds":[30009],"authors":["<badge key>"],"#p":["<player>"]}`; the awards: `{"kinds":[8],"authors":["<badge key>"],"#p":["<player>"]}` |
 | the bounties on a player (rev. 5) | `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}`; the funding of one: `{"kinds":[9735],"#a":["31923:<league>:bounty/<slug>"]}` |
 
@@ -2140,8 +2232,8 @@ wanted protected player events would have to accept them from their authenticate
 
 ## Kind numbers and collision check
 
-Checked on 2026-09-25, `2155` again in round 2 the same day, `2156` and `2157` in round 5. None of
-`2150`-`2157`, `12150`, `32150`-`32152` is taken in any of the sources below.
+Checked on 2026-09-25, `2155` again in round 2 the same day, `2156` to `2158` in round 5. None of
+`2150`-`2158`, `12150`, `32150`-`32152` is taken in any of the sources below.
 
 | source | what was checked | result |
 |---|---|---|
@@ -2152,6 +2244,13 @@ Checked on 2026-09-25, `2155` again in round 2 the same day, `2156` and `2157` i
 | GitHub code search, round 2 | `2155`: `"kind: 2155"`, `"kinds: [2155"`, `"kind === 2155"`, `"kind == 2155"`, `"kind\":2155"` | 0 hits each; controls `"kind: 30023"` 934, `"kind === 30023"` 351 |
 | EINUNDZWANZIG repositories (`einundzwanzig-verein`, `-portal`, `-group`, `-autobot`) | kind constants | free; round 2: no file contains `2155` as a number, control `32121` finds 3 files in `einundzwanzig-verein` |
 | nostrhub.io custom NIPs (kind `30817` events) | | **unconfirmed**: the site renders client-side and returned only its header over HTTP; public relays were not reachable over WebSocket from the sandbox this was written in |
+
+**Round 5, second pass** adds `2158` (Parameter Change), checked the same way on 2026-09-25: free in
+the README kind table at `b82211e` (still the head); GitHub code search `"kind: 2158"`, `"kinds: [2158"`,
+`"kind === 2158"`, `"kind == 2158"`, `"kind\":2158"` 0 hits each (control `"kind: 30023"` 988); the four
+EINUNDZWANZIG repositories 0 files. The new tags `pairlimit`, `subtree`, `moves`, `effective` and `tip`
+appear in none of the NIP files nor in the README's tag table. (`pairing` was avoided: it is already a
+tag of `2150` in this NIP.)
 
 **Round 5** adds `2156` (Season Genesis) and `2157` (Payout), checked on 2026-09-25: free in the kind
 table of the `nostr-protocol/nips` README at `b82211e` (head, 2026-09-25 13:51 UTC; it added `10040`,
@@ -2230,7 +2329,7 @@ carol, dave, erin; round 3 adds trust, frank, sybil1-3; round 4 adds grace, heid
 single-purpose keys; round 5 adds a second admin, the badge key and a wallet node) and published to
 rnostr, strfry and khatru (relay proof, rounds 2 to 5; round 4 also to the league relay). All times are 2026-09-25, UTC. The examples of rounds 1 to 3 are revision 3,
 those of [round 4](#revision-4-season-4-a-queue-game-a-tournament-with-a-mix-team-chat-and-the-prize-pool)
-revision 4, those of [round 5](#revision-5-the-season-chain-rank-badges-and-a-bounty) revision 5 (see
+revision 4, those of [round 5](#revision-5-the-pre-season-the-season-chain-rank-badges-and-a-bounty) revision 5 (see
 the status note at the top).
 
 **Rank tiers re-signed in round 5.** The five ladders of seasons 1 to 3 printed below were signed
@@ -3781,51 +3880,55 @@ Signed by the league's LNURL server key. `description` is the sponsor desk's zap
 ```
 
 
-### Revision 5: the season chain, rank badges and a bounty
+### Revision 5: the Pre-Season, the season chain, rank badges and a bounty
 
-Season 5 of the test bed is the first chain season, **compressed for the examples**: eras of 30
-minutes and two hours in all (production: eras of weeks, a season of months). In production the first
-chain season is the league's `season-1`; the test bed's seasons 1 to 4 predate the chain. Supply
-2 100 000 sats, subsidy 2 100, weights per winning player chess blitz 1, correspondence 2, Rocket
-League 2v2 2.5, share cap 50 % per game and era, 5 blocks per player, game and day.
+The test bed's **Pre-Season** is its chain season under the final rules of revision 5, **compressed
+for the examples**: eras of 15 minutes and forty minutes in all (production: eras of weeks, a season of
+months). In production it is the league's first chain season. Supply 1 000 000 sats, subsidy 2 100,
+weights per winning player chess blitz 1, correspondence 2, Rocket League 2v2 2.5, share cap 50 % per
+game and era, 10 blocks per player, game and day, and the looser Pre-Season defaults `pairlimit` 3 per
+day and 5 per season, `subtree` 90.
 
-Round 5 keys: second admin `0ba8b0422694f439dab12f7ff561920f6c7b7b220657a2e32824f31c4b114b5f`, badge key `e643b4d007da1346d9601214b3e89ae88f2db80fc3fed8a617ca2ad6293ef120`, and a Lightning node that stands for the
-players' wallet provider, node id `028a94478f6c86781277c0fcb6da9a5786b8a8f2cc7bed026f6b16f2dd802ae43e` (it signs the payout invoices).
+It follows the test bed's **season 5** (13:15 to 15:15), which the first draft of revision 5 released
+with two admin labels and ran with the fixed rules 4, 7 and 8 of that draft; its events are on the
+relays and in the relay proof (round 5, R5.1 to R5.10) but no longer printed here, except for the rank
+badge, which comes from it. Season 5 returned 2 094 226 sats of its supply and 1 000 sats of fees to the
+reserve.
 
-- 13:03 the league opens its **reserve** (a NIP-75 zap goal); 13:05 all season-4 ladders close; 13:06
-  it announces season 5 (`31923`, Block 0 planned for 13:15); 13:07 the admin tops up the reserve with
-  2 100 000 sats. With the 10 000 sats that reached the tournament after its end (round 4), the reserve
-  holds 2 110 000 sats before Block 0.
-- 13:10 trust run 4 adds the anchor subtree to every assertion: alice, bob and frank are in alice's
-  subtree (100 %), carol and dave in carol's (100 %), erin in carol's with 57 % (alice 43 %).
-- 13:12 the admin releases Block 0, 13:14:30 the second admin confirms; both labels carry the parameter
-  digest `2228a8b26cf458e980a3b6c0b17cba6da583ffa2a2d84367be0b6e474b43d71c`. 13:15 the league signs the genesis: Block 0.
-- 13:15:30 the season-5 ladders open with `starts` = Block 0 and an `e` to the genesis; 13:15:40 a
-  bounty on alice, which fan funds with 21 000 sats.
+Round 5 keys: second admin `0ba8b0422694f439dab12f7ff561920f6c7b7b220657a2e32824f31c4b114b5f`, badge key `e643b4d007da1346d9601214b3e89ae88f2db80fc3fed8a617ca2ad6293ef120`, and a Lightning node that
+stands for the players' wallet provider, node id `028a94478f6c86781277c0fcb6da9a5786b8a8f2cc7bed026f6b16f2dd802ae43e` (it signs the payout invoices).
+
+- 13:03 the league opened its **reserve** (a NIP-75 zap goal); 13:07 the admin topped it up with
+  2 100 000 sats. 13:10 trust run 4 added the anchor subtree to every assertion: alice, bob and frank are
+  in alice's subtree (100 %), carol and dave in carol's (100 %), erin in carol's with 57 % (alice 43 %).
+- 15:35 the league publishes its **admin list** (the board: admin and admin2); 15:36 the Pre-Season
+  announcement (`31923`, Block 0 planned for 15:45).
+- 15:44 the admin retypes the supply and releases Block 0 with one label; the parameter digest is
+  `82f1fa0c62e7aa3efd843b7b5251a697a7d05abeb48a6b9460a80df9324d0ca1`. 15:45 the league signs the genesis. The reserve holds 2 110 226 sats at that
+  moment (the ledger over season 5 in the relay proof).
+- 15:45:30 the Pre-Season ladders open with `starts` = Block 0, carry-over factor 0.5 from season 5 and
+  an `e` to the genesis; 15:45:40 a bounty on alice, which fan funds with 21 000 sats.
+- 15:57 admin2 changes two parameters, **effective 15:58**: one block per pairing and day, three per
+  season (`pairlimit` 1 3), and rule 7 back to 51 %. The change names block 2 as the tip.
 
 | match | attested | game | result | chain |
 |---|---|---|---|---|
-| #423 | 13:24:40 | chess blitz | alice beats erin | block 1, era 1: 2 100 |
-| #424 | 13:33:40 | chess blitz | alice beats erin again | no block: rule 4, alice and erin already have block 1 today |
-| #425 | 13:42:40 | chess blitz | alice beats frank | no block: rule 7, both in alice's anchor subtree |
-| #426 | 13:51:40 | chess blitz | carol beats alice | block 2, era 2: 1 050 |
-| #427 | 14:00:40 | chess blitz | alice beats dave (queue) | no block: rule 1, a queue pairing of players who do not list each other |
-| #428 | 14:09:40 | chess blitz | bob beats dave | block 3, era 2: 1 050 (voided in the review) |
-| #429 | 14:26:30 | Rocket League 2v2 | Satoshi's Strikers beat Nakamoto Rockets 2-1 | block 4, era 3: 1 312 each for alice and bob |
-| #430 | 14:38:40 | chess blitz | erin beats alice | no block: rule 4, alice and erin already have block 1 today |
+| #431 | 15:50:30 | chess blitz | alice beats erin | block 1, era 1: 2 100 |
+| #432 | 15:55:30 | chess blitz | alice beats erin again | block 2, era 1: 2 100 (voided in the review) |
+| #433 | 16:02:30 | chess blitz | carol beats alice | block 3, era 2: 1 050 |
+| #434 | 16:07:30 | chess blitz | alice beats erin a third time | no block: rule 4, the change at 15:58 allows one block per pairing and day, and alice and erin have two |
+| #435 | 16:17:30 | Rocket League 2v2 | Satoshi's Strikers beat Nakamoto Rockets 2-1 | block 4, era 3: 1 312 each for alice and bob |
 
-- The fees: fan zaps 1 000 sats on match #424 (no block, so they go to the reserve) and 2 100 sats on
-  the series #429 (block 4: 1 050 each for alice and bob). 14:40 fan zaps 5 000 sats to the reserve.
-- alice's fifth rated blitz result (#427) reveals her rank: Gold II (1062). The badge key publishes the
-  definition and the award at 14:01, alice adds it to her profile at 14:02. After #430 she drops to
-  Gold I (1041), and at 14:39 the definition is replaced; award and profile entry stay.
-- The bounty goes to carol: #426 is the first result alice loses that meets `bounty-v1`.
-- 15:15 the season ends; 15:15:30 the ladders close. 15:20 the review voids block 3 (#428). 15:30 the
-  settlement: alice 4 462 sats (blocks 1 and 4: 2 100 + 1 312, fees 1 050), bob 2 362 (block 4:
-  1 312, fees 1 050), carol 22 050 (block 2: 1 050, bounty 21 000). Back to the reserve: the unmined
-  2 093 176, the voided 1 050 and the fees of #424.
+- Match #434 would have mined before the change (three blocks per pairing and day); it is attested
+  after 15:58 and judged by the new limit. Blocks 1 and 2 keep the parameters they were attested under.
+- Fees: fan zaps 2 100 sats on the series #435 (block 4: 1 050 each for alice and bob).
+- The bounty goes to carol: #433 is the first result alice loses that meets `bounty-v1`.
+- 16:25 the Pre-Season ends; 16:25:30 the ladders close. 16:28 the review voids block 2 (#432). 16:30 the
+  settlement: alice 4,462 sats (blocks 1 and 4: 2 100 + 1 312, fees 1 050), bob 2,362 (block
+  4: 1 312, fees 1 050), carol 22,050 (block 3: 1 050, bounty 21 000). Back to the reserve: the
+  unmined 992 126 and the voided 2 100.
 
-All of it recomputes from relay data alone, on each of the three relays (relay proof, round 5).
+All of it recomputes from relay data alone, on each of the three relays (relay proof, round 5, R5.12).
 
 #### League reserve: zap goal (`9041`)
 
@@ -3871,34 +3974,6 @@ All of it recomputes from relay data alone, on each of the three relays (relay p
 }
 ```
 
-#### Season announcement (`31923`)
-
-```json
-{
-  "kind": 31923,
-  "id": "2e3140eaac7b664b4c5c87cbe09d980ebfcef17683d68bd75c441ba227a0d0ce",
-  "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790341560,
-  "tags": [
-    ["d", "season/season-5"],
-    ["title", "TWENTY ONE Esports season 5: Block 0"],
-    ["summary", "Rated play and mining start at Block 0, as soon as two admins have released it."],
-    ["image", "https://example.org/seasons/season-5.png"],
-    ["start", "1790342100"],
-    ["end", "1790349300"],
-    ["D", "20721"],
-    ["start_tzid", "Europe/Berlin"],
-    ["location", "https://example.org/"],
-    ["r", "https://example.org/rules"],
-    ["t", "esports"],
-    ["t", "season"],
-    ["alt", "Calendar event: TWENTY ONE Esports season 5, Block 0 planned for 2026-09-25 13:15 UTC"]
-  ],
-  "content": "Season 5 starts at Block 0. Until then casual games only; rated play, ladders and mining rest.",
-  "sig": "98676c9855650145b601ab6f6b6e9d78a690bb87261303b80765211a4dd18a39de376dfc81adb03aa51373c4970256f81b18ebe9798c18798f6921456f974848"
-}
-```
-
 #### Trust assertion (`30382`), erin, trust run 4, with `anchor`
 
 ```json
@@ -3920,78 +3995,127 @@ All of it recomputes from relay data alone, on each of the three relays (relay p
 }
 ```
 
-#### Release confirmation (`1985`), first admin
+#### Admin list (`30000`, league key)
 
-The second admin's label is the same with its own key and `created_at` 13:14:30.
+```json
+{
+  "kind": 30000,
+  "id": "d957dc7bb9ff198912695ccc1cfd314e6d86fc20349189d25f3817b7b69b56e6",
+  "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
+  "created_at": 1790350500,
+  "tags": [
+    ["d", "esports/8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753/admins"],
+    ["title", "TWENTY ONE Esports: admins"],
+    ["description", "The board of the association. Each may release Block 0 and change season parameters."],
+    ["p", "2a0335d330a81f7c1d701d8c750593d03a0ab3d2c19bbcebd66faa21cb6c078c"],
+    ["p", "0ba8b0422694f439dab12f7ff561920f6c7b7b220657a2e32824f31c4b114b5f"],
+    ["alt", "Follow set: admins of TWENTY ONE Esports"]
+  ],
+  "content": "",
+  "sig": "5539e945646f80eb77f39f1096ad374b62ad6f289c097174dbe01e59cdd7fefd605bd4a80719ee506c9da19fb24c61c6fc00596b12b88d99eb9b8fe72b140d0f"
+}
+```
+
+#### Season announcement (`31923`), Pre-Season
+
+```json
+{
+  "kind": 31923,
+  "id": "2944549024be335e245c6df2ed37bb87a433f9f8f2ee9fd5cc502cb5a314f45c",
+  "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
+  "created_at": 1790350560,
+  "tags": [
+    ["d", "season/pre-season"],
+    ["title", "TWENTY ONE Esports Pre-Season: Block 0"],
+    ["summary", "Pre-Season starts at Block 0. Until then casual games only; rated play and mining rest."],
+    ["image", "https://example.org/seasons/pre-season.png"],
+    ["start", "1790351100"],
+    ["end", "1790353500"],
+    ["D", "20721"],
+    ["start_tzid", "Europe/Berlin"],
+    ["location", "https://example.org/"],
+    ["r", "https://example.org/rules"],
+    ["t", "esports"],
+    ["t", "season"],
+    ["alt", "Calendar event: TWENTY ONE Esports Pre-Season, Block 0 planned for 2026-09-25 15:45 UTC"]
+  ],
+  "content": "Pre-Season: build your clan, find opponents, mine the first blocks. Looser rules than later seasons.",
+  "sig": "07affb6fbe2f4314bef5e3ce80cf17c0945d1c47ec921d2e4411b1b587c8a4f6229bffaed82523fce2e907a5c234873ec270d30bcf2320eca3d26fb2c0515a0b"
+}
+```
+
+#### Release (`1985`) by one admin
 
 ```json
 {
   "kind": 1985,
-  "id": "6276f823ccc1d35c8c525d2648a2dd76240d03454b7b0d3e86995321c6476745",
+  "id": "beac64dcd199f9e9f7273887efdce948a6d3abfd2a91dbabb3cde9d76a29b129",
   "pubkey": "2a0335d330a81f7c1d701d8c750593d03a0ab3d2c19bbcebd66faa21cb6c078c",
-  "created_at": 1790341920,
+  "created_at": 1790351040,
   "tags": [
     ["L", "space.einundzwanzig.esports"],
     ["l", "release-block-0", "space.einundzwanzig.esports"],
-    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/season-5", "wss://relay.example.org"],
-    ["x", "2228a8b26cf458e980a3b6c0b17cba6da583ffa2a2d84367be0b6e474b43d71c"],
-    ["alt", "Label: release of Block 0 of TWENTY ONE Esports season-5 (first admin)"]
+    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/pre-season", "wss://relay.example.org"],
+    ["x", "82f1fa0c62e7aa3efd843b7b5251a697a7d05abeb48a6b9460a80df9324d0ca1"],
+    ["alt", "Label: release of Block 0 of the TWENTY ONE Esports Pre-Season"]
   ],
-  "content": "Release Block 0 of season-5 with these parameters.",
-  "sig": "e20724a18648ddc9ecc1721c456854661b88d605f7d157c9e30a274ca98d4489822cc2f3169b7f601210d007f31c4eab010825be741468581adb832be1bd3e11"
+  "content": "Release Block 0 of the Pre-Season. Supply retyped: 1000000.",
+  "sig": "cf537532276d0dd69a888b636607fe35f7b2ea8d275a0fca9e2f305d48626a890be09472018816c14b08985f70d672e4664046968b0c3c4d03ef84fac1124663"
 }
 ```
 
-#### Season Genesis (`2156`), Block 0
+#### Season Genesis (`2156`), Block 0 of the Pre-Season
 
 ```json
 {
   "kind": 2156,
-  "id": "d231fade2fa6b92677b6a1ef71e765e1e6e99683166699f95abeac2e755364d3",
+  "id": "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790342100,
+  "created_at": 1790351100,
   "tags": [
-    ["season", "season-5"],
-    ["supply", "2100000"],
+    ["season", "pre-season"],
+    ["supply", "1000000"],
     ["subsidy", "2100"],
     ["weight", "chess/blitz", "1"],
     ["weight", "chess/correspondence", "2"],
     ["weight", "rocket-league/2v2", "2.5"],
     ["share", "chess", "50"],
     ["share", "rocket-league", "50"],
-    ["daily", "chess", "5"],
-    ["daily", "rocket-league", "5"],
-    ["halving", "1800"],
-    ["ends", "1790349300"],
+    ["daily", "chess", "10"],
+    ["daily", "rocket-league", "10"],
+    ["pairlimit", "3", "5"],
+    ["subtree", "90"],
+    ["moves", "20"],
+    ["halving", "900"],
+    ["ends", "1790353500"],
     ["claim", "7776000"],
     ["consensus", "season-chain-v1"],
-    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/season-5", "wss://relay.example.org"],
+    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:season/pre-season", "wss://relay.example.org"],
     ["e", "760523a302a189819997f038aedf3eba738a36eff5486dda6427c98bb64f3564", "wss://relay.example.org"],
-    ["e", "6276f823ccc1d35c8c525d2648a2dd76240d03454b7b0d3e86995321c6476745", "wss://relay.example.org"],
-    ["e", "85769f52f6e3fc7d0671cc67866c027365997d5f11a175f0963c63b62f6ad5ba", "wss://relay.example.org"],
+    ["e", "beac64dcd199f9e9f7273887efdce948a6d3abfd2a91dbabb3cde9d76a29b129", "wss://relay.example.org"],
+    ["e", "d957dc7bb9ff198912695ccc1cfd314e6d86fc20349189d25f3817b7b69b56e6", "wss://relay.example.org"],
     ["p", "2a0335d330a81f7c1d701d8c750593d03a0ab3d2c19bbcebd66faa21cb6c078c", "", "release"],
-    ["p", "0ba8b0422694f439dab12f7ff561920f6c7b7b220657a2e32824f31c4b114b5f", "", "confirm"],
-    ["alt", "Season genesis: TWENTY ONE Esports season-5, Block 0"]
+    ["alt", "Season genesis: TWENTY ONE Esports Pre-Season, Block 0"]
   ],
-  "content": "25/Sep/2026 TWENTY ONE Esports: Chancellor on brink of second checkmate. Block 0 of season 5. Demo season of the protocol examples: eras of 30 minutes, two hours in total.",
-  "sig": "fca540ab9e24b997fb15d3a874cbe1a9419c609ee93a4eea1bbe704091a2832e104fcd4d5cb07323231b2c43e325ce06db1dc43ca0c86f4ba96d19a44e01f651"
+  "content": "25/Sep/2026 TWENTY ONE Esports: Chancellor on brink of second checkmate. Block 0 of the Pre-Season. Demo season of the protocol examples: eras of 15 minutes, forty minutes in total.",
+  "sig": "448a07b976872cb369101b7feb1418ee052904a6f1f90bb83bb42e95e56f70232b496f4e6cfb1fdaae88e465c3dea6cf8a07eeaefc1f9b4b7823ec2431ae7cbc"
 }
 ```
 
-#### Ladder (`32152`), chess blitz season 5, closed
+#### Ladder (`32152`), chess blitz Pre-Season, closed
 
 ```json
 {
   "kind": 32152,
-  "id": "54d011e577e8c8c2a25dc09bc20ead6ff4b235b4cf27997eae8e36cd85319788",
+  "id": "fcdad8b676ac874862206be296d6d5bb42750dd8f4c0796a8e7b85192a04544c",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790349330,
+  "created_at": 1790353530,
   "tags": [
-    ["d", "chess/blitz/season-5"],
+    ["d", "chess/blitz/pre-season"],
     ["game", "chess"],
     ["mode", "blitz"],
-    ["season", "season-5"],
-    ["starts", "1790342100"],
+    ["season", "pre-season"],
+    ["starts", "1790351100"],
     ["rates", "player"],
     ["time_control", "300+3"],
     ["variant", "standard"],
@@ -4020,165 +4144,190 @@ The second admin's label is the same with its own key and `created_at` 13:14:30.
     ["provisional", "5", "40"],
     ["trust", "21b9921fc310826ffbd9872995a4de1d9c5115042e99ede4e74786e39729ebd5", "50"],
     ["hashrate", "3", "2", "1", "5"],
-    ["reset", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/season-4", "35a4e64d31d72f88c9130974dc5556b6a31e0fae3f9712d62da1863e532fb905", "0.5"],
-    ["seed", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1017"],
+    ["reset", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/season-5", "9ebe444310505b73330e4f9a8913f6d5d2837b4f3659e0ddefe093f50d77d311", "0.5"],
+    ["seed", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1021"],
+    ["seed", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356", "1012"],
+    ["seed", "b92ec75c453613118d2ffa18c9bedacdf98bcff1ef40e53a2693533aebb9cef7", "1010"],
     ["seed", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "991"],
-    ["e", "d231fade2fa6b92677b6a1ef71e765e1e6e99683166699f95abeac2e755364d3", "wss://relay.example.org"],
-    ["e", "9ebe444310505b73330e4f9a8913f6d5d2837b4f3659e0ddefe093f50d77d311", "wss://relay.example.org"],
+    ["seed", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "991"],
+    ["seed", "fbda8bb20a5448716a32782dece9f8a624a6e3c846dd2a8bcd4e4bb45cd338ea", "982"],
+    ["e", "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25", "wss://relay.example.org"],
+    ["e", "453f2089fdf02dceac6111c25ed5ce5e98588571d9827a6d0a68b4f0ff2459c6", "wss://relay.example.org"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["p", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
     ["p", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
     ["p", "b92ec75c453613118d2ffa18c9bedacdf98bcff1ef40e53a2693533aebb9cef7"],
+    ["p", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
     ["p", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd"],
     ["p", "fbda8bb20a5448716a32782dece9f8a624a6e3c846dd2a8bcd4e4bb45cd338ea"],
-    ["standing", "1", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1041", "4", "2", "gold-1"],
-    ["standing", "2", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356", "1024", "1", "0", "provisional"],
-    ["standing", "3", "b92ec75c453613118d2ffa18c9bedacdf98bcff1ef40e53a2693533aebb9cef7", "1019", "1", "0", "provisional"],
-    ["standing", "4", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "983", "0", "1", "provisional"],
-    ["standing", "5", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "982", "1", "2", "provisional"],
-    ["standing", "6", "fbda8bb20a5448716a32782dece9f8a624a6e3c846dd2a8bcd4e4bb45cd338ea", "964", "0", "2", "provisional"],
-    ["ends", "1790349300"],
-    ["alt", "Esports ladder: chess blitz, season-5, closed"]
+    ["standing", "1", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1049", "3", "1", "provisional"],
+    ["standing", "2", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356", "1034", "1", "0", "provisional"],
+    ["standing", "3", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "941", "0", "3", "provisional"],
+    ["ends", "1790353500"],
+    ["alt", "Esports ladder: chess blitz, pre-season, closed"]
   ],
   "content": "",
-  "sig": "0dca206dccba9baa0547335d7edcb6c3649a0760e7fc48ccd351899d735d00f60b989f9da93d84f62d9475c70e3b0f20f7297556706b873d815a533eee1b96b6"
+  "sig": "133add6a2aee122a61466179d586ee289ee03813d1d38b7d778c699843f7bfed414f62f848f6ead86441fc00779832cfc4b295cdfc6440f5359f2131b4dfb891"
 }
 ```
 
-#### League Attestation (`2154`), match #423: block 1
+#### League Attestation (`2154`), match #431: block 1
 
 ```json
 {
   "kind": 2154,
-  "id": "461f68e764dbf2f172a9cc4c82e57566b7c308418cb0c32ae28978a714ea3ede",
+  "id": "9e2a58715080116baac79e81f21c6768ed111be41887291e14c6994d88760b39",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790342680,
+  "created_at": 1790351430,
   "tags": [
-    ["e", "e454cceb1de9cc9e7b072a907b9be2d9627e418e88a4fd85fae8f5412796d1c6", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "b11062f57b63f842998cb36f35eaad0552d126e7c57f1278ae184ec3bcd657ba", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
-    ["e", "78772048ca21f01bcc91084462f1a61767bfae660a31eac390466fca509fa6cc", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "496a1c1316556d33bba48e2721aef5c5deb4daeabf06153e0f581d0789e58eaf", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
-    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/season-5", "wss://relay.example.org"],
+    ["e", "95ed14da12975fe67d97e02b7c12fb29afed21b7be1efa2ed1cd7cfc3e63a74f", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "98dcd3f46da354a8e2fcd363246ae40ee3c0332e2ab1aeb246901661e9a40484", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
+    ["e", "40b754ce423bd631c3e817bb11cb13e3517cd3ebcafd5ddbf418f807676c3598", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "e4765b8e21a6a7b07605b2eadcbbc982fab3a1b358d1502dbbc5ea3171f4f9a5", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
+    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/pre-season", "wss://relay.example.org"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "", "challenger"],
     ["p", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "", "challenged"],
     ["board", "1", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "1-0"],
     ["resolution", "confirmed"],
     ["winner", "challenger"],
-    ["elo", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1017", "1036"],
-    ["elo", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "991", "972"],
-    ["match", "423"],
+    ["elo", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1021", "1039"],
+    ["elo", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "991", "973"],
+    ["match", "431"],
     ["clan", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "32150:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers"],
     ["clan", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "32150:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets"],
     ["trust", "21b9921fc310826ffbd9872995a4de1d9c5115042e99ede4e74786e39729ebd5", "50"],
     ["gate", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "100", "b6acf48740c2f675234b3450816662085b543206b45d1fbc7f5c2f8718de371e", "2cd4a88dc0fa77aee4f2c6a5a38ace044672a3777b3700682112a14cb20da65f"],
     ["gate", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "100", "92547c7cf81b18d73454dd89431119c7d47b99a13db6735ffaec2cc3eaeb4d74", "0ea4c0711e09a7d9ef8857e1910079760cb423890ef594c918f2b720cce20134"],
-    ["block", "1", "d231fade2fa6b92677b6a1ef71e765e1e6e99683166699f95abeac2e755364d3"],
-    ["alt", "Esports league attestation: match #423, alice beat erin, block 1"]
+    ["block", "1", "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25"],
+    ["alt", "Esports league attestation: match #431, alice beat erin, block 1"]
   ],
   "content": "",
-  "sig": "f21af5cc83128a4783b9e28009a2e9893786d6e62c1e35ff075d6b1b4050f47ae9678ffd4adb4fa7f89c2a2ca7ccedb5cff608d05c0c91ce3a4a76557a2262cd"
+  "sig": "c8327fed09ba225ca0b5f2d37370398105835e8798b69f70066a953732823c8eec1f09907927990e82e2fe0007863fcd3929991acef15fd3a576cce7445d02f8"
 }
 ```
 
-#### League Attestation (`2154`), match #425: a win that does not mine (rule 7)
+#### Parameter Change (`2158`)
 
-The `block` tag has no height and names the tip, block 1: the state against which the rules were
-checked. Both `gate` rows name the players' opponent lists, and their assertions name alice as anchor.
+```json
+{
+  "kind": 2158,
+  "id": "a8f00fdc7c9ff251728451fc3c1d821b64667ca280b78ee97e1f00e2e014b32f",
+  "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
+  "created_at": 1790351820,
+  "tags": [
+    ["e", "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25", "wss://relay.example.org"],
+    ["e", "d957dc7bb9ff198912695ccc1cfd314e6d86fc20349189d25f3817b7b69b56e6", "wss://relay.example.org"],
+    ["effective", "1790351880"],
+    ["tip", "48a5c5adf596a5d03a037d9d2a99128ddbfb478fc10f406dbfed3382c8a5895d"],
+    ["pairlimit", "1", "3"],
+    ["subtree", "51"],
+    ["p", "0ba8b0422694f439dab12f7ff561920f6c7b7b220657a2e32824f31c4b114b5f", "", "change"],
+    ["alt", "Season parameter change: TWENTY ONE Esports Pre-Season, effective 2026-09-25 15:58 UTC"]
+  ],
+  "content": "Week-1 review of the Pre-Season: too many repeat pairings. One block per pairing and day, three per season; rule 7 back to a share of 51 %. Applies to blocks attested from 15:58 on.",
+  "sig": "d427d514eb5bef1ce13f0bf63823cab259b4710ae8aef75bcf5f4de8de1168e5bae04672b5dfccf275e1c5e210a37e200c59c6ea6236b0c522e854b7f77c9751"
+}
+```
+
+#### League Attestation (`2154`), match #434: no block under the changed limit
+
+The `block` tag names block 3, the tip at 16:07:30; the change's `tip` (block 2) lies before it, as
+required for an attestation after `effective`.
 
 ```json
 {
   "kind": 2154,
-  "id": "03fa9cbefd2cae3f0959d81980a2488107dafdf896ff7cb10043cc283fda67df",
+  "id": "453f2089fdf02dceac6111c25ed5ce5e98588571d9827a6d0a68b4f0ff2459c6",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790343760,
+  "created_at": 1790352450,
   "tags": [
-    ["e", "ae1aa1f86061d4fad82aab26e0f22992a075ee31499bc1f05da4619ac165b9c9", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "153b42fed5a5a78c07e0f265d95cb467027432019c9be13e10be9e165be846e8", "wss://relay.example.org", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd"],
-    ["e", "c34e96a29b0cea3e805ed2cd86ee157e40c8054707c0db58f749f984f0d8a48e", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "0cb0767779c67f2effeac59707dd987341dd9b18949c155983a517dba3acd9e6", "wss://relay.example.org", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd"],
-    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/season-5", "wss://relay.example.org"],
+    ["e", "0eaed9aae646cbf1d7d13b85af6358889203da3b5a2a036ae46d08ec599cf454", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "c199f3bc06d328cdfd2eeddd5bca20bbb4db390fcd961d7bbdcd8b46feeb65ee", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
+    ["e", "5123cd8bbe2906251f9a7757f451eaba860284afc0abe36e6a6702e0ea29359c", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "ce792648b1b13cc06f972818f18e1feb025e4a45398e2ef2f0c9416d6c5984bd", "wss://relay.example.org", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f"],
+    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/pre-season", "wss://relay.example.org"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "", "challenger"],
-    ["p", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "", "challenged"],
-    ["board", "1", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "1-0"],
+    ["p", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "", "challenged"],
+    ["board", "1", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "1-0"],
     ["resolution", "confirmed"],
     ["winner", "challenger"],
-    ["elo", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1052", "1069"],
-    ["elo", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "1000", "983"],
-    ["prev", "63b04a7a1425d7a0f75586c4b2ed6bfec5ef411d147f029ba8c1f421565b29cc"],
-    ["match", "425"],
+    ["elo", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "1033", "1049"],
+    ["elo", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "957", "941"],
+    ["prev", "ffa767be87ef01596e501f423a521170976f9b8dee55b6be5e26fbcdf3bd42f7"],
+    ["match", "434"],
     ["clan", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "32150:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers"],
+    ["clan", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "32150:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets"],
     ["trust", "21b9921fc310826ffbd9872995a4de1d9c5115042e99ede4e74786e39729ebd5", "50"],
     ["gate", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "100", "b6acf48740c2f675234b3450816662085b543206b45d1fbc7f5c2f8718de371e", "2cd4a88dc0fa77aee4f2c6a5a38ace044672a3777b3700682112a14cb20da65f"],
-    ["gate", "ea65ddba42312e14cfaccb3c24c6637043001b2adc4a8246b01f6b8af52a65cd", "100", "91b9e369aff33c1b27d547d5b6f66a0532bf2e9230c2bb0bf33c7a088039acfc", "f2091b20237727fe918bd5824a2a59af62d6ae017e07645517d0d3b16e470584"],
-    ["block", "", "461f68e764dbf2f172a9cc4c82e57566b7c308418cb0c32ae28978a714ea3ede"],
-    ["alt", "Esports league attestation: match #425, alice beat frank, no block"]
+    ["gate", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "100", "92547c7cf81b18d73454dd89431119c7d47b99a13db6735ffaec2cc3eaeb4d74", "0ea4c0711e09a7d9ef8857e1910079760cb423890ef594c918f2b720cce20134"],
+    ["block", "", "ffa767be87ef01596e501f423a521170976f9b8dee55b6be5e26fbcdf3bd42f7"],
+    ["alt", "Esports league attestation: match #434, alice beat erin, no block"]
   ],
   "content": "",
-  "sig": "2d4149f2dc67c72939218cf1fefac96c7264e4f872c9f18834e08544b917f5efd01771740df1ff12cf63c7f49fa2befcd64b75e7db880ee68080b6083cb677de"
+  "sig": "190e00d8039a0a4bbd1955d901d9c7e1b0444a1ad83e00472952e42ac9246f9b7456b5d352e7ba2ec97e9136ee16aa9c7dc93ddb535b33f620b3a66cddebea58"
 }
 ```
 
-#### Challenge (`2150`), match #429, with the league's `zap` tag
+#### Challenge (`2150`), match #435, with the league's `zap` tag
 
 ```json
 {
   "kind": 2150,
-  "id": "740b30b3684c01561144f251e65046f28cb2e09750e2670b65a57b806070b135",
+  "id": "9c669f73d7aca95b525a115dcc0e2ee225f021ab253932ef186a267ff49b34cd",
   "pubkey": "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e",
-  "created_at": 1790345400,
+  "created_at": 1790352480,
   "tags": [
     ["a", "32151:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers/rocket-league/2v2", "wss://relay.example.org", "challenger"],
     ["a", "32151:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets/rocket-league/2v2", "wss://relay.example.org", "challenged"],
-    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:rocket-league/2v2/season-5", "wss://relay.example.org"],
+    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:rocket-league/2v2/pre-season", "wss://relay.example.org"],
     ["p", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
     ["bo", "3"],
-    ["start", "1790345460"],
-    ["respond_by", "1790345450"],
-    ["match", "429"],
+    ["start", "1790352540"],
+    ["respond_by", "1790352530"],
+    ["match", "435"],
     ["zap", "3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504", "wss://relay.example.org", "1"],
-    ["alt", "Esports challenge: best of 3, rocket-league 2v2, match #429"]
+    ["alt", "Esports challenge: best of 3, rocket-league 2v2, match #435"]
   ],
-  "content": "Season 5, first series?",
-  "sig": "ebc305f2ebbd0e2210810998e09e23c153803f28d659d140c96b6dd067884e46e667627a9e46d468e225ddf0eb9b65c5c21b8eccba8475e112145f78c9bad69a"
+  "content": "Pre-Season series?",
+  "sig": "151d9033cc60eed01f4170058f154511fa3d507c2743e67fbca3f8df7907e266bfad0ca6180fbdbf8ee76931f0d1b29cea13a7e206c30a08f84c789d23d1e461"
 }
 ```
 
-#### Zap receipt (`9735`), a fee on match #429
+#### Zap receipt (`9735`), a fee on match #435
 
 ```json
 {
   "kind": 9735,
-  "id": "63e1946586d30f3abfa6123d81161b09818ab4463fc58fb2d6cca805cb40e4fc",
+  "id": "6b498cc51c7243c9a16a577c23496d013b87d630fb5b505ab70a855a9848feba",
   "pubkey": "8f12a686b755d0ef25fc3113b1917b37831e5ec7557267ca16bddc8898594512",
-  "created_at": 1790346015,
+  "created_at": 1790352735,
   "tags": [
     ["p", "3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504"],
     ["P", "ce9ffe39455312a9231fe9474296eceeae7777de3e078b92e9ddd2b2816f1c57"],
-    ["e", "740b30b3684c01561144f251e65046f28cb2e09750e2670b65a57b806070b135", "wss://relay.example.org"],
+    ["e", "9c669f73d7aca95b525a115dcc0e2ee225f021ab253932ef186a267ff49b34cd", "wss://relay.example.org"],
     ["k", "2150"],
-    ["bolt11", "lnbcrt21000n1p4tdqcspp5fr8g9s8rsnyp9dp4zkwzjfg340kcc0gtgtvprf73efr208gat5lqsp525ccdazp4qlt0s6wern28jn7jq8rlgzasp222dld0m7j8yhrcfjqhp5qsel6mtvgd5cgdxt44g5g663v32rmps0f3nhvaat3uz37emqhjnqxqrrssfs053k8htp0cn48xer2zlxqt2fwfpy87katr0znuetj4khwm73aj427fv3cgwr0uws3jgs6su80tjdztudfjcw9kgag4649lyvq7ujcqw58aj5"],
-    ["description", "{\"kind\":9734,\"id\":\"32b6def7ec96e4a9ba5d66833b49de1148c299db39c469d047be915f15728eeb\",\"pubkey\":\"ce9ffe39455312a9231fe9474296eceeae7777de3e078b92e9ddd2b2816f1c57\",\"created_at\":1790346000,\"tags\":[[\"relays\",\"wss://relay.example.org\"],[\"amount\",\"2100000\"],[\"lnurl\",\"LNURL1DP68GURN8GHJ7ETCV9KHQMR99EHHYEE09EMK2MRV944KUMMHDCHKCMN4WFK8QTMSDAHKC8FH5GV\"],[\"p\",\"3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504\"],[\"e\",\"740b30b3684c01561144f251e65046f28cb2e09750e2670b65a57b806070b135\",\"wss://relay.example.org\"],[\"k\",\"2150\"]],\"content\":\"Go Strikers!\",\"sig\":\"8822ae16afe35d1562eb5686e29293f59671c8f0879ed4703252b2a45a97337a40ae2a1efaf7115c30052056f0f33c493b2957ab49674bbef8b3e5a2bd487941\"}"],
-    ["preimage", "dd2d556b68e16f081bde4250fdcdddf24b0e322ad43adcefab2a1a7cd5cc29cb"]
+    ["bolt11", "lnbcrt21000n1p4td82spp5wtgamx2y3h6suk4dr62jnc29kfetnw4qgy5jl0r32pdrl5zx9xhqsp57cjh997tddktfkvxxk7lhdqphd8z828xvkxnm7g32fgy2kwdf4nqhp59cakzjvdc7fynzgwfd9gmdr6e8syjku2008qv4rgv8envpsundvsxqrrsstjh6snd9ny8nacdk8rpefyzc7ptec0hytp3rfza6yhpqxlytl66ktwp30l9znrpv9029kraka5xmwa4an345fazazngfay63gkd9tsgqu54rxf"],
+    ["description", "{\"kind\":9734,\"id\":\"16e202fe5f6c3fe8516f847712f385607bb66b5b3b782e5c62b43204f2bb2f9a\",\"pubkey\":\"ce9ffe39455312a9231fe9474296eceeae7777de3e078b92e9ddd2b2816f1c57\",\"created_at\":1790352720,\"tags\":[[\"relays\",\"wss://relay.example.org\"],[\"amount\",\"2100000\"],[\"lnurl\",\"LNURL1DP68GURN8GHJ7ETCV9KHQMR99EHHYEE09EMK2MRV944KUMMHDCHKCMN4WFK8QTMSDAHKC8FH5GV\"],[\"p\",\"3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504\"],[\"e\",\"9c669f73d7aca95b525a115dcc0e2ee225f021ab253932ef186a267ff49b34cd\",\"wss://relay.example.org\"],[\"k\",\"2150\"]],\"content\":\"Go Strikers!\",\"sig\":\"422d56422211a4b4d2a8424be763c590d0a7b1e15fa10c7f56151cd142fb849c923d1f7864930ef63a930a2d0a715034266b373fd0a3d499f695d075e5604956\"}"],
+    ["preimage", "f94f3c4167543d70bb1ca1d570fc9e5553e2eb4e0359a211b86fbfdd2f7da9ec"]
   ],
   "content": "",
-  "sig": "1888dffd9c439ee748b9ecb05371ff9f051a5b3306680f6402194f7913750c3e237d5506f096a87611055a93b45c73c00b7d2344558500f8d63f028f0581b3a8"
+  "sig": "a5e4634b77db9295d80b75d6255f5a6ac81cf9e6e2b321de52d347229644b11f738f50889c2d10e22e464e5b36402b5c2a181411dfda42b19b0796c17dce342a"
 }
 ```
 
-#### League Attestation (`2154`), match #429: block 4, a team block
+#### League Attestation (`2154`), match #435: block 4, a team block
 
 ```json
 {
   "kind": 2154,
-  "id": "9b775f877ae51ffd3c32ca7958ce60517b1e227a5519d5bd75ce981c50dc8675",
+  "id": "089e24a4a97fdfd63279349db3061fe37f2f8293a5152bc8249b970c3f881f65",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790346390,
+  "created_at": 1790353050,
   "tags": [
-    ["e", "740b30b3684c01561144f251e65046f28cb2e09750e2670b65a57b806070b135", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "646bc3392aaf4362b88b46520351b04042a04d5619a73d3a2fb4230513bfa412", "wss://relay.example.org", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
-    ["e", "97cc3d055e9a94653f866b9f7481b8d840266918ddc39e39aa1af1a54c589380", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "5f44277c0a45966d86f5feebd04f15de840a4f31e83a214694fef27b1b91b6a8", "wss://relay.example.org", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
-    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:rocket-league/2v2/season-5", "wss://relay.example.org"],
+    ["e", "9c669f73d7aca95b525a115dcc0e2ee225f021ab253932ef186a267ff49b34cd", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "4db1e2cf400ec671375d054b69b1a363ebf42bf8f95e05933755b1fbb7e415f2", "wss://relay.example.org", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
+    ["e", "c79eba6e17cf48a9b42a63f7f452569f613ba975205d9d46f19186b87f6582bf", "wss://relay.example.org", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
+    ["e", "9a8fcadb05671f996d48ea91f4ea4adb7ac44a1f177082a9aa4fdee298456a82", "wss://relay.example.org", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
+    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:rocket-league/2v2/pre-season", "wss://relay.example.org"],
     ["a", "32151:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers/rocket-league/2v2", "wss://relay.example.org", "challenger"],
     ["a", "32151:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets/rocket-league/2v2", "wss://relay.example.org", "challenged"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "", "challenger", "captain"],
@@ -4190,9 +4339,9 @@ checked. Both `gate` rows name the players' opponent lists, and their assertions
     ["score", "1", "challenger", "2", "0"],
     ["score", "2", "challenged", "1", "3"],
     ["score", "3", "challenger", "4", "3", "ot"],
-    ["elo", "32151:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers/rocket-league/2v2", "1000", "1020"],
-    ["elo", "32151:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets/rocket-league/2v2", "1000", "980"],
-    ["match", "429"],
+    ["elo", "32151:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers/rocket-league/2v2", "1010", "1029"],
+    ["elo", "32151:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets/rocket-league/2v2", "990", "971"],
+    ["match", "435"],
     ["clan", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "32150:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers"],
     ["clan", "b92ec75c453613118d2ffa18c9bedacdf98bcff1ef40e53a2693533aebb9cef7", "32150:e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e:satoshis-strikers"],
     ["clan", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356", "32150:eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356:nakamoto-rockets"],
@@ -4202,11 +4351,11 @@ checked. Both `gate` rows name the players' opponent lists, and their assertions
     ["gate", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356", "100", "2ad85db4ff5612ef3b9cf6ea3c201e196a704342538048b1689e60b29c1594a7", "f165132bdca088790250a86806a4df61b7e16b3cc5049eb0315dc2043f4ef11e"],
     ["gate", "b92ec75c453613118d2ffa18c9bedacdf98bcff1ef40e53a2693533aebb9cef7", "100", "331aa07e66cbb19ebdd1200df687b6afcee70eda6194f2429212435c87d7b71d", ""],
     ["gate", "31209e670baeaca225089f2b1ad662d497f2da7e78b740bdc67218b00f1eaf0f", "100", "92547c7cf81b18d73454dd89431119c7d47b99a13db6735ffaec2cc3eaeb4d74", ""],
-    ["block", "4", "6b857926386d386aff49a1efb2073e11e48c8ea0b9c963c62f25f6250aa9d393"],
-    ["alt", "Esports league attestation: match #429, Satoshi's Strikers beat Nakamoto Rockets 2-1, block 4"]
+    ["block", "4", "ffa767be87ef01596e501f423a521170976f9b8dee55b6be5e26fbcdf3bd42f7"],
+    ["alt", "Esports league attestation: match #435, Satoshi's Strikers beat Nakamoto Rockets 2-1, block 4"]
   ],
   "content": "",
-  "sig": "c4b293fdcbe5305b48cd4bf2c69ea4eea9744a966ce2d79c4038aca379e91119719b5091debf89b85d8517c562305fe4f4820d8263d0e93a8a1eff3ae3dc8166"
+  "sig": "9c6d6799f3c1d07ba849e0e8c3e3c06c22c975a24e48685d2157fd9b74f949fcc1889e1fa4388d8645974c204b61edbb1a090aeef9d3d06549c997774a7f6720"
 }
 ```
 
@@ -4215,34 +4364,36 @@ checked. Both `gate` rows name the players' opponent lists, and their assertions
 ```json
 {
   "kind": 31923,
-  "id": "243aa7078c8c99f800fed2851c32564b33877765ea9f4862e28cf37696989477",
+  "id": "ab44645fdfaaf4ed546d1ea0a8539dc1239d5bddb8ec7df6626a1c2e44716abb",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790342140,
+  "created_at": 1790351140,
   "tags": [
-    ["d", "bounty/alice-blitz-s5"],
+    ["d", "bounty/alice-blitz-pre"],
     ["title", "Bounty: beat alice in chess blitz"],
-    ["summary", "The first player who beats alice in a rated blitz game of season 5 takes the bounty."],
-    ["start", "1790342160"],
-    ["end", "1790349300"],
+    ["summary", "The first player who beats alice in a rated blitz game of the Pre-Season takes the bounty."],
+    ["start", "1790351160"],
+    ["end", "1790353500"],
     ["D", "20721"],
     ["start_tzid", "Europe/Berlin"],
-    ["location", "https://example.org/bounties/alice-blitz-s5"],
+    ["location", "https://example.org/bounties/alice-blitz-pre"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "wss://relay.example.org", "target"],
-    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/season-5", "wss://relay.example.org"],
+    ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/pre-season", "wss://relay.example.org"],
     ["zap", "3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504", "wss://relay.example.org", "1"],
     ["t", "esports"],
     ["t", "chess"],
     ["t", "bounty"],
-    ["alt", "Esports bounty: beat alice in a rated chess blitz game of season 5"]
+    ["alt", "Esports bounty: beat alice in a rated chess blitz game of the Pre-Season"]
   ],
-  "content": "Claim rule bounty-v1: the first rated result on chess/blitz/season-5 between start and end that alice loses, confirmed by both players or decided by an admin, between players who list each other, from different clans, with at least 20 moves. The bounty is every zap to this event until end; unclaimed, it goes to the league reserve. Paid with the season's settlement.",
-  "sig": "ccbfbb04ca7f7fbbb2c63801565830766d3de213df89556b97104c5a2def9e784bff84c276ff15e850399b9ddadbdddd1346df7910ba989c5b56e937c64ac0b7"
+  "content": "Claim rule bounty-v1 on chess/blitz/pre-season. Paid with the season's settlement; unclaimed, it goes to the league reserve.",
+  "sig": "c3c7bc9ccecf6cf4c63e9ad23027855870916a49d91b58e8cc9fb73c514ab3437a736173bf6ea37faf4c445024e93010e67e176436308bf4197ff6f8fdac6b3f"
 }
 ```
 
-#### Rank badge definition (`30009`), alice, chess blitz, after the rank change
+#### Rank badge definition (`30009`), alice, chess blitz
 
-The first version (Gold II, 14:01) was replaced by this one on every relay.
+From season 5: alice's rank was revealed as Gold II at 14:01 and fell to Gold I at 14:39, which
+replaced the first version on every relay. In the Pre-Season she has four rated blitz results, is
+provisional again, and the definition keeps Gold I, naming season 5.
 
 ```json
 {
@@ -4301,22 +4452,22 @@ The first version (Gold II, 14:01) was replaced by this one on every relay.
 }
 ```
 
-#### Correction (`1985`): the review voids block 3
+#### Correction (`1985`): the review voids block 2
 
 ```json
 {
   "kind": 1985,
-  "id": "b58b116f64deb503ec2b8ec7df4102be251966f7b67c8aad5a20678f92839d65",
+  "id": "0a6034d7e9d45e7dc0eaf76e6abe457c5886a5ee5f1b29a13be704b482546b81",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790349600,
+  "created_at": 1790353680,
   "tags": [
     ["L", "space.einundzwanzig.esports"],
     ["l", "void-block", "space.einundzwanzig.esports"],
-    ["e", "6b857926386d386aff49a1efb2073e11e48c8ea0b9c963c62f25f6250aa9d393", "wss://relay.example.org"],
-    ["alt", "Label: season-5 review voids block 3"]
+    ["e", "48a5c5adf596a5d03a037d9d2a99128ddbfb478fc10f406dbfed3382c8a5895d", "wss://relay.example.org"],
+    ["alt", "Label: Pre-Season review voids block 2"]
   ],
-  "content": "Season-5 review: block 3 (match #428) is void. Both accounts played this game from the same device and network within one session; the rating result stays, the reward returns to the league reserve.",
-  "sig": "6fc6a98ffa693fd73536fc9e1cde065895d96c764c830ede2fcb32cacb1b3ebd9d1d9ba19d5a32c3709d09439292ec720d4355058df1324aa54181f2c2d5714b"
+  "content": "Pre-Season review: block 2 (match #432) is void. Second win of the same pairing within five minutes, with move times that match an engine on both sides; the rating result stays, the reward returns to the league reserve.",
+  "sig": "767aee52546765f12e5c6deb288a5612d7e76589f6af00e0b7441f7d9cc5703eea6ce8727aa57c337e9cb14c086b711adb2e7f0b5382f40e6db36fe5b41fcb82"
 }
 ```
 
@@ -4325,21 +4476,21 @@ The first version (Gold II, 14:01) was replaced by this one on every relay.
 ```json
 {
   "kind": 2157,
-  "id": "bd01e25e75558a52de4fac03fb8fadea9311b8d3e177a0150bfdc1d1c1bb1a88",
+  "id": "306ea322f8cb6ca1f9332f437ff0a781106002af7f69c870610b23d48dff4d9e",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790350200,
+  "created_at": 1790353800,
   "tags": [
-    ["e", "d231fade2fa6b92677b6a1ef71e765e1e6e99683166699f95abeac2e755364d3", "wss://relay.example.org"],
+    ["e", "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25", "wss://relay.example.org"],
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e"],
-    ["e", "461f68e764dbf2f172a9cc4c82e57566b7c308418cb0c32ae28978a714ea3ede", "wss://relay.example.org"],
-    ["e", "9b775f877ae51ffd3c32ca7958ce60517b1e227a5519d5bd75ce981c50dc8675", "wss://relay.example.org"],
-    ["e", "740b30b3684c01561144f251e65046f28cb2e09750e2670b65a57b806070b135", "wss://relay.example.org"],
-    ["bolt11", "lnbcrt44620n1p4tdyeupp59uz6xu208dm5yuy85aflxj07kezjy6eqar4k92h5l250rcdxun3ssp5lg3uftr8dauh64wlr9r5qr36k0yqvmq5u6tad0a0hv0ufar9z65shp5yduvssu90760zy7rrjmg04umrdvsufng3plxclhvp7l7kctyjxnqxqrrsspjp2s729p9qzsqwll5lru63wawxywl989plnczyepqr5u6xzplepyvsnezzdzvn7zfafvknrjn0kgs2g37jhnk5qy6cws4grcluvpqspue9hmm"],
-    ["preimage", "3f305b7f66f8ac3ba08ae11c47d879a77b4418c6edc4d5202e31b2f3e322a440"],
-    ["alt", "Esports payout: season-5 settlement for alice"]
+    ["e", "9e2a58715080116baac79e81f21c6768ed111be41887291e14c6994d88760b39", "wss://relay.example.org"],
+    ["e", "089e24a4a97fdfd63279349db3061fe37f2f8293a5152bc8249b970c3f881f65", "wss://relay.example.org"],
+    ["e", "9c669f73d7aca95b525a115dcc0e2ee225f021ab253932ef186a267ff49b34cd", "wss://relay.example.org"],
+    ["bolt11", "lnbcrt44620n1p4tdg2vpp5j3mndza3v4azctn584jthyrqkmw3w97axgj2hg5h5xustlesrnvqsp56rh22zz5lx3rndcxskjsrtmtrnwzyc7l6fd3ag9qu3zg4wa75gcqhp5yduvssu90760zy7rrjmg04umrdvsufng3plxclhvp7l7kctyjxnqxqrrssdt8p5xnmru8p3q2we627uru3rnxj5s05glm9fjad9hft2ugwapvnfgyeck769c43szttacmppdtp7pdf6e33w6709ky2ntw0y4sw4mcqnqz737"],
+    ["preimage", "3cc7b36de6f0027783f7d589179b7ded2513ac96b3dfb144d88ad13f8c4a2248"],
+    ["alt", "Esports payout: Pre-Season settlement for alice"]
   ],
   "content": "",
-  "sig": "4b7a11aade424fb97fd0a714c3e0705c03326cb2dbce329cf2a81259767fe5d90ced8c3ed67d5f3aa9ddcd9c686bcb3d6035f3a8dc93551714cbf32c880868b6"
+  "sig": "f492f1f6f3e35df92b48e3f546a87cdc9e39c2d545dc5104cac2b0e58c36bf0291a85477a4bdadab0ba9cea9e7172303a2da640ad7395b2a5711987e41f22ac6"
 }
 ```
 
@@ -4348,20 +4499,20 @@ The first version (Gold II, 14:01) was replaced by this one on every relay.
 ```json
 {
   "kind": 2157,
-  "id": "b8474c9daf9653c9936108586c9f94bc44db6799119a63a1dd2dfbe5a8ca2a02",
+  "id": "c4ae9d225840c7d73bf74e01068e7f3eb8b1736c6e15ac6a80015bdb395d3a1b",
   "pubkey": "8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753",
-  "created_at": 1790350220,
+  "created_at": 1790353820,
   "tags": [
-    ["e", "d231fade2fa6b92677b6a1ef71e765e1e6e99683166699f95abeac2e755364d3", "wss://relay.example.org"],
+    ["e", "d805ee9f8c91193a344f1c4869d8728f16cf95eae9b9be65c070276886dd7d25", "wss://relay.example.org"],
     ["p", "eaf06c97871749252d375400b00cc5901e8a205ec4aebc5ae9168b0b66471356"],
-    ["e", "dcf19417d2e22a73e18170d830a447357087ec2b9a84b154e56d90156e02d71f", "wss://relay.example.org"],
-    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:bounty/alice-blitz-s5", "wss://relay.example.org"],
-    ["bolt11", "lnbcrt220500n1p4tdy6spp5ytx5tgvcx6l8vwmcwpemf9743eqvn8lz3v5jx46q0smx0f6dnufqsp5v7fcrds5fw4eg8pmegnwnvuaquuwr0yfl0day5q9dkfm78fuxahshp5686dvquqgj87n9mhe0tt8zjewes3r04d20tk77ts9h82qqkxjwqsxqrrssjwhl649gs266jhtzq6e8zhc35env43v9w0frr5au0xzd7kgpxge3epeyew585wm6f3yplnaf5k7a92zeztr4kf6xa7plva88mu0fp2sp4swrry"],
-    ["preimage", "2f5156ec41a2b28917d9c46c766a5ccfac20987d1e6ebaf6b8d5dd6edcfc9403"],
-    ["alt", "Esports payout: season-5 settlement for carol"]
+    ["e", "ffa767be87ef01596e501f423a521170976f9b8dee55b6be5e26fbcdf3bd42f7", "wss://relay.example.org"],
+    ["a", "31923:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:bounty/alice-blitz-pre", "wss://relay.example.org"],
+    ["bolt11", "lnbcrt220500n1p4tdgtqpp5vflvw9qat8qx2x8cc6hec3wl4wdle8nxlamaypaqe75q896h59fssp589l2hv2fetrul2rcz99nmsj7u99emrvgssd22qc98xf70sjcsckqhp5686dvquqgj87n9mhe0tt8zjewes3r04d20tk77ts9h82qqkxjwqsxqrrssr5z6l7l2xk8cmhsxqnghxtum3pa8u738z4ad2aqk86t332clenqjta8c7c7t66xanv53es7phhsudruz3crgza9nda9gcqq8ynrlqxgp2anua8"],
+    ["preimage", "9aa5a5a4eea63e9fc79bca83a0123ba23861f1832d112b8cf06fedc19bb08b2f"],
+    ["alt", "Esports payout: Pre-Season settlement for carol"]
   ],
   "content": "",
-  "sig": "75d1baecc05536ad3a72b26580797bbb816b8df071fbc5f834c6b73fc05beb60ba1f540f4f06a1e4603fc40d64009b837717f6df0315ec66795cea8720711c0e"
+  "sig": "afa9897036a541b07ac0029587ac2854cde8f8e14ad27f9c92dc0dad5dd5992069b064a0b1d0bd426ac7a76a393b2fa9f3e0fde0c50ec8851194c8b4099e6a42"
 }
 ```
 
@@ -4422,17 +4573,12 @@ The first version (Gold II, 14:01) was replaced by this one on every relay.
   rewards (a `void-block` label); a later version may add a `correction` resolution that references the
   corrected attestation.
 - **Rule 7 in a small league** (rev. 5). With few anchors most pairs fall into one anchor subtree: in
-  the test bed 6 of 15 pairs, two of them not clan mates. A league with two or three active anchors
-  would mine little outside clan-versus-clan games. The threshold (share above 50) and the definition
-  should be measured on the real anchor list before Block 0.
-- **Rule 2 wording.** "At least 20 moves" already excludes "a resignation before move 10". If 20 half
-  moves (move 10) were meant, the rule reads differently; this NIP counts full moves.
-- **Who is an admin** is the league's statement in the genesis' `p` tags. A public admin list (for
-  example a NIP-51 set of the league key) would make the four-eyes release checkable without trusting
-  that statement.
-- **Tournament prizes and the season.** Revision 5 pays season rewards and bounties at settlement.
-  Whether tournament prizes also wait for the season end, or are paid when the tournament ends, is not
-  decided; `2157` covers both.
+  the test bed 6 of 15 pairs at a threshold of 51, two of them not clan mates. The threshold is a
+  parameter (`subtree`) and can change during a season; its value should be measured on the real
+  anchor list before Block 0 of the Pre-Season.
+- **Admin list history.** Relays keep only the newest admin list; a genesis or a change that names an
+  older version needs the league's archive to be checked once the board has changed.
+
 - **Legal and tax questions** of paying sats from a donated pot for won games are not checked.
 - **The reserve's goal amount.** NIP-75 requires one; the examples use 21 000 000 sats as a number that
   promises nothing. Whether clients show that as a target is a design question.
