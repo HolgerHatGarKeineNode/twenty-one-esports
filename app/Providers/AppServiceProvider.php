@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Games\Contracts\Game;
+use App\Games\GameRegistry;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
@@ -16,7 +18,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry(
+            array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
+        ));
     }
 
     /**

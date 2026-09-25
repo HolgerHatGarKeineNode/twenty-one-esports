@@ -1,5 +1,8 @@
 <?php
 
+use App\Games\Chess;
+use App\Games\RocketLeague;
+
 return [
 
     /*
@@ -80,6 +83,57 @@ return [
         'psn' => 'PlayStation Network',
         'xbox' => 'Xbox',
         'nintendo' => 'Nintendo',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Game registry
+    |--------------------------------------------------------------------------
+    |
+    | Games are code (App\Games\Contracts\Game). A new game is a new class
+    | plus one line here; order is display order.
+    |
+    */
+
+    'games' => [
+        Chess::class,
+        RocketLeague::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Relays the league publishes to
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated websocket URLs. Locally the ndak test bed (rnostr 7777,
+    | strfry 7780, khatru 7782); empty in testing (phpunit.xml) and empty by
+    | default everywhere else. Never list a public relay here before the user
+    | has approved publishing (plan: "publishing to public relays: never" in V1
+    | development).
+    |
+    */
+
+    'relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+        'ESPORTS_RELAYS',
+        env('APP_ENV') === 'local' ? 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782' : '',
+    ))))),
+
+    'relay_timeout_seconds' => 5,
+
+    /*
+    |--------------------------------------------------------------------------
+    | EINUNDZWANZIG portal (meetup import for clans)
+    |--------------------------------------------------------------------------
+    |
+    | Public `GET /api/meetups` (the portal's map list) with intro and logo.
+    | A clan can always be created without it.
+    |
+    */
+
+    'portal' => [
+        'meetups_url' => env('ESPORTS_PORTAL_MEETUPS_URL', 'https://portal.einundzwanzig.space/api/meetups'),
+        'cache_minutes' => 60,
+        'timeout_seconds' => 4,
     ],
 
 ];
