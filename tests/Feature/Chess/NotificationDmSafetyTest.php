@@ -4,20 +4,24 @@ use App\Enums\ClanRole;
 use App\Enums\JoinRequestStatus;
 use App\Jobs\PublishNostrEvent;
 use App\Jobs\SendNostrDm;
+use App\Jobs\SendWebPush;
 use App\Models\ChatMute;
 use App\Models\ChessChallenge;
 use App\Models\Clan;
 use App\Models\ClanJoinRequest;
 use App\Models\ClanMember;
 use App\Models\Lineup;
+use App\Models\PushSubscription;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Notifications\ClanNotifications;
 use App\Support\Notifications\PlainText;
+use App\Support\Notifications\WebPush;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesService;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 
@@ -158,6 +162,35 @@ test('links in a DM point at app.url, even when the request came in on a foreign
     // The opt-out link in it still works.
     preg_match('~Turn off these DMs: (\S+)$~', $text, $match);
     $this->get($match[1])->assertOk();
+});
+
+test('a push link points at app.url, even when the request came in on a foreign host', function () {
+    Bus::fake([SendWebPush::class]);
+    [$public, $private] = WebPush::generateKeyPair();
+    config([
+        'esports.webpush.public_key' => WebPush::base64UrlEncode($public),
+        'esports.webpush.private_key' => WebPush::base64UrlEncode($private),
+        'esports.webpush.subject' => 'https://esports.test',
+    ]);
+    [$browserKey] = WebPush::generateKeyPair();
+    $bert = User::factory()->create(['chess_settings' => ['push' => true]]);
+    PushSubscription::query()->create([
+        'user_id' => $bert->id,
+        'endpoint' => 'https://push.example.test/'.$bert->id,
+        'public_key' => WebPush::base64UrlEncode($browserKey),
+        'auth_token' => WebPush::base64UrlEncode(random_bytes(16)),
+    ]);
+
+    URL::forceRootUrl('https://evil.example');
+
+    try {
+        app(DailyChallenges::class)->challenge(User::factory()->create(), $bert);
+    } finally {
+        URL::forceRootUrl(null);
+    }
+
+    expect(Bus::dispatched(SendWebPush::class)->sole()->payload['url'])
+        ->toBe(rtrim((string) config('app.url'), '/').'/me/correspondence');
 });
 
 test('a recipient gets at most so many challenge DMs a day from all challengers together', function () {

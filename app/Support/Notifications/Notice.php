@@ -22,6 +22,9 @@ final readonly class Notice
     ) {}
 
     /**
+     * The link points at config('app.url'), like the DM's (onApp), whatever
+     * host the triggering request used.
+     *
      * @return array{title: string, body: string, url: string, tag: string|null}
      */
     public function toPushPayload(): array
@@ -29,7 +32,7 @@ final readonly class Notice
         return [
             'title' => $this->title,
             'body' => $this->body,
-            'url' => $this->url,
+            'url' => self::onApp($this->url),
             'tag' => $this->match !== null ? 'game-'.$this->match : null,
         ];
     }
