@@ -14,6 +14,12 @@ use App\Enums\NotificationKind;
  * or off; `remindHours` is how long before a daily-move deadline the reminder
  * goes out.
  *
+ * `dm` has three states: true (every notification that goes out remotely is
+ * also a DM), false (none is), and null for a player who never chose. Null
+ * sends a DM only for the kinds an offline player has to act on
+ * (NotificationKind::dmByDefault()), so a challenged player who never opened
+ * this page still hears about it. A stored false is never overridden.
+ *
  * Triggers (P5c): one switch per NotificationKind. Off means nothing at all
  * for that event: no bell entry, no toast, no push, no DM. A kind added
  * later is on until the player turns it off.
@@ -39,7 +45,7 @@ final readonly class ChessSettings
         public bool $alwaysQueen = false,
         public bool $doubleCheck = true,
         public bool $push = true,
-        public bool $dm = false,
+        public ?bool $dm = null,
         public int $remindHours = 6,
         public array $triggers = [],
         public bool $sound = true,
@@ -78,7 +84,7 @@ final readonly class ChessSettings
             alwaysQueen: $bool('alwaysQueen', $defaults->alwaysQueen),
             doubleCheck: $bool('doubleCheck', $defaults->doubleCheck),
             push: $bool('push', $defaults->push),
-            dm: $bool('dm', $defaults->dm),
+            dm: is_bool($values['dm'] ?? null) ? $values['dm'] : null,
             remindHours: in_array($values['remindHours'] ?? null, self::REMIND_HOURS, true) ? $values['remindHours'] : $defaults->remindHours,
             triggers: $triggers,
             sound: $bool('sound', $defaults->sound),
@@ -87,7 +93,7 @@ final readonly class ChessSettings
     }
 
     /**
-     * @return array{board: string, coordinates: bool, pieceNames: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
+     * @return array{board: string, coordinates: bool, pieceNames: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool|null, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
      */
     public function toArray(): array
     {
@@ -104,6 +110,23 @@ final readonly class ChessSettings
             'sound' => $this->sound,
             'volume' => $this->volume,
         ];
+    }
+
+    /**
+     * Whether this trigger goes out by Nostr DM: the player's choice, or the
+     * kind's default when they never made one.
+     */
+    public function dmFor(string $trigger): bool
+    {
+        return $this->dm ?? (NotificationKind::tryFrom($trigger)?->dmByDefault() ?? false);
+    }
+
+    /**
+     * The DM switch as the settings page shows it: on unless switched off.
+     */
+    public function dmOn(): bool
+    {
+        return $this->dm ?? true;
     }
 
     public function wants(string $trigger): bool

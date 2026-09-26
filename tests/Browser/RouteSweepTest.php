@@ -21,6 +21,7 @@ use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Pest\Browser\Execution;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -93,7 +94,10 @@ function sweepRoutes(array $bound = []): array
         })
         ->map(fn (RoutingRoute $route) => [
             'name' => $route->getName() ?? $route->uri(),
-            'url' => fillRouteParameters($route, $bound),
+            // A signed page (the DM opt-out) answers 403 without its signature.
+            'url' => in_array('signed:relative', $route->gatherMiddleware(), true)
+                ? URL::signedRoute((string) $route->getName(), array_intersect_key($bound, array_flip($route->parameterNames())), absolute: false)
+                : fillRouteParameters($route, $bound),
         ])
         ->unique('url')
         ->values()
@@ -177,6 +181,9 @@ function sweepFixtures(): array
         // Created by the member, who directs it: its director desk (P8b) is theirs to open.
         'tournament' => fn (?User $user, array $made): Model => Tournament::factory()->rocketLeague(TournamentFormat::DoubleElimination)->signup()
             ->create($user === null ? [] : ['created_by_id' => $user->id]),
+
+        // The swept user's own DM opt-out page (signed, no login needed).
+        'user' => fn (?User $user, array $made): Model => $user ?? User::factory()->create(),
 
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {

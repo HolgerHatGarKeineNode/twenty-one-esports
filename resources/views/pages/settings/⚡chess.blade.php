@@ -24,6 +24,10 @@ use Livewire\Component;
  * Sounds (P5c, the design's "Sounds" row in "During the game"): on/off and a
  * volume, with a button to hear the set. The page's sound player takes the
  * new values at once (`sound-settings` browser event).
+ *
+ * Nostr DM (ChessSettings::dmFor): shown on unless switched off. A player who
+ * never touched it gets DMs only for what needs them (NotificationKind::
+ * dmByDefault()); switched on here, every notification that leaves the page.
  */
 new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resources/js/chess.js', 'resources/js/push.js']])] class extends Component {
     public bool $saved = false;
@@ -32,8 +36,10 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
     {
         abort_unless(in_array($key, ['coordinates', 'pieceNames', 'alwaysQueen', 'doubleCheck', 'dm', 'sound'], true), 422);
 
-        $settings = $this->settings()->toArray();
-        $settings[$key] = ! $settings[$key];
+        $current = $this->settings();
+        $settings = $current->toArray();
+        // `dm` unset means on (by default for some kinds): the first tap turns it off.
+        $settings[$key] = $key === 'dm' ? ! $current->dmOn() : ! $settings[$key];
         $this->store($settings);
     }
 
@@ -233,7 +239,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                 </div>
             </section>
 
-            <section aria-labelledby="dc-h" class="flex flex-col rounded-lg bg-card px-6 py-5">
+            <section id="notifications" aria-labelledby="dc-h" class="flex scroll-mt-20 flex-col rounded-lg bg-card px-6 py-5">
                 <h2 id="dc-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Daily chess') }}</h2>
                 @include('pages.settings.partials.switch', ['label' => __('Double-check daily moves'), 'hint' => __('one extra tap before a move is final'), 'on' => $settings->doubleCheck, 'action' => "toggle('doubleCheck')", 'test' => 'double-check'])
 
@@ -250,7 +256,13 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                     </button>
                 </div>
 
-                @include('pages.settings.partials.switch', ['label' => __('Reminders by Nostr DM'), 'hint' => $dmReady ? __('to your Nostr inbox, for Nostr logins') : __('to your Nostr inbox · not set up on this server yet'), 'on' => $settings->dm, 'action' => "toggle('dm')", 'test' => 'dm'])
+                @php($dmHint = match (true) {
+                    ! $dmReady => __('to your Nostr inbox · not set up on this server yet'),
+                    $settings->dm === null => __('on by default for what needs you: challenges, invites, your move, reminders, clan join requests, found opponents'),
+                    $settings->dm => __('every notification below that leaves this page'),
+                    default => __('off · the league sends you no DM'),
+                })
+                @include('pages.settings.partials.switch', ['label' => __('Notifications by Nostr DM'), 'hint' => $dmHint, 'on' => $settings->dmOn(), 'action' => "toggle('dm')", 'test' => 'dm'])
 
                 <div class="flex min-h-[61px] items-center gap-4 py-2">
                     <span class="flex min-w-0 grow flex-col gap-0.5"><label for="remind-hours" class="text-sm">{{ __('Remind me when') }}</label><span class="text-xs text-ink-2">{{ __('are left before your move is due') }}</span></span>
@@ -269,7 +281,8 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                     @php([$label, $hint] = $kind->setting())
                     @include('pages.settings.partials.switch', ['label' => __($label), 'hint' => __($hint, ['hours' => $settings->remindHours]), 'on' => $settings->wants($kind->value), 'action' => "toggleTrigger('{$kind->value}')", 'test' => 'trigger-'.$kind->value])
                 @endforeach
-                <span class="pt-3 text-xs leading-normal text-ink-3">{{ __('Each shows in the bell and on the page you are on. Daily-chess and clan notifications also go out by browser push and Nostr DM, as switched on above.') }}</span>
+                <span class="pt-3 text-xs leading-normal text-ink-3">{{ __('Each shows in the bell and on the page you are on. Challenges, invites, daily-chess and clan notifications also go out by browser push and Nostr DM, as switched on above.') }}</span>
+                <span class="pt-2 text-xs leading-normal text-ink-3" data-test="dm-explained">{{ __('Nostr DMs come from the league\'s own notification key, never from another player. They are on by default for what needs you while you are away. Turn them off with the switch above, or with the link at the end of every DM, no login needed.') }}</span>
             </section>
         </div>
     </div>

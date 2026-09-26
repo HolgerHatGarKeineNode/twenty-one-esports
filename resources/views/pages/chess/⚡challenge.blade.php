@@ -8,6 +8,7 @@ use App\Support\Chess\DailyChallenges;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -72,6 +73,9 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
             $this->error = match ($violation->reason) {
                 'challenge_self' => __('You cannot challenge yourself.'),
                 'challenge_open' => __('There is already an open challenge between the two of you.'),
+                'challenge_limit' => __('You sent as many challenges as a day allows. Try again in :time.', [
+                    'time' => now()->addSeconds(DailyChallenges::availableIn($this->user(), $opponent))->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE),
+                ]),
                 default => __('That did not work, please try again.'),
             };
 

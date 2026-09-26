@@ -35,10 +35,11 @@ final readonly class Notice
     }
 
     /**
-     * NIP "Notifications": plain text with a link into the app.
+     * NIP "Notifications": plain text with a link into the app, and the
+     * opt-out line last when there is one.
      */
-    public function toDmText(): string
+    public function toDmText(?string $optOut = null): string
     {
-        return $this->title."\n".$this->body."\n".$this->url;
+        return $this->title."\n".$this->body."\n".$this->url.($optOut === null ? '' : "\n\n".$optOut);
     }
 }

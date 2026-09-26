@@ -158,6 +158,12 @@ return [
     | "has 48 h to accept"). The time per daily move comes from the mode's PGN
     | TimeControl (`1/86400`, App\Games\Chess).
     |
+    | challenges_per_day / challenges_per_recipient_per_day: how many daily
+    | challenges one player may send in 24 hours, in total and to the same
+    | player. A challenge is a DM to someone who may never have logged in
+    | (App\Support\Chess\DailyChallenges), so the limits keep one account
+    | from filling inboxes; same pattern as `opponents` below.
+    |
     | rated_queue: whether rated blitz is offered (P7d, App\Support\Chess\RatedChess).
     | Off until the lobby shows a Rated choice: while off, the rated queue
     | refuses and /mining and AdminSeason show chess rewards as not open,
@@ -182,6 +188,8 @@ return [
         'first_move_seconds' => 30,
         'disconnect_claim_seconds' => (int) env('ESPORTS_DISCONNECT_CLAIM_SECONDS', 60),
         'challenge_hours' => 48,
+        'challenges_per_day' => (int) env('ESPORTS_CHALLENGES_PER_DAY', 20),
+        'challenges_per_recipient_per_day' => (int) env('ESPORTS_CHALLENGES_PER_RECIPIENT_PER_DAY', 3),
         'queue' => [
             'start_rating' => 1000,
             'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],

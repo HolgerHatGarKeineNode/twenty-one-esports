@@ -158,7 +158,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     });
     $next = $mine->first();
     $settings = $user->chessSettings();
-    $channels = array_filter([$settings->dm ? __('Nostr DM') : null, $settings->push ? __('browser push') : null]);
+    $channels = array_filter([$settings->dmFor('your_move') ? __('Nostr DM') : null, $settings->push ? __('browser push') : null]);
     $notificationsOn = $channels !== [] && ($settings->wants('your_move') || $settings->wants('reminder'));
     $pool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
     $opponentRatings = \App\Support\Rating\Ratings::forUsers($cards->map(fn ($card) => $card['opponent']?->id)->all(), 'chess', 'correspondence', $pool);
@@ -210,7 +210,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                     <span class="text-xs leading-normal text-ink-2">{{ __('You only see new moves here. Turn on a reminder so no deadline slips by.') }}</span>
                 @endif
             </span>
-            <x-button variant="quiet" :href="route('settings.chess')">{{ __('Change') }}</x-button>
+            <x-button variant="quiet" :href="route('settings.chess').'#notifications'" data-test="correspondence-notifications-change">{{ __('Change') }}</x-button>
         </span>
     </section>
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
 use App\Http\Controllers\NostrJsonController;
+use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\ProfileController;
@@ -58,6 +59,16 @@ Route::get('i/{code}/card-{format}.png', InviteCardController::class)
     ->withoutMiddleware('web')
     ->middleware('throttle:invites')
     ->name('invites.card');
+
+/*
+ * "Turn off these DMs" (the last line of every notification DM): signed,
+ * no login, since the recipient may never have logged in. The link opens
+ * the page; only its POST turns anything off (a link preview must not).
+ */
+Route::middleware('signed:relative')->group(function () {
+    Route::get('notifications/dm/{user}', [NotificationDmOptOutController::class, 'show'])->whereNumber('user')->name('notifications.dm-off');
+    Route::post('notifications/dm/{user}', [NotificationDmOptOutController::class, 'store'])->whereNumber('user')->name('notifications.dm-off.store');
+});
 
 Route::livewire('clans', 'pages::clans.index')->name('clans.index');
 Route::livewire('clans/{clan}', 'pages::clans.show')->name('clans.show');

@@ -6,6 +6,7 @@ use App\Enums\NotificationKind;
 use App\Events\UserNotified;
 use App\Jobs\SendNostrDm;
 use App\Jobs\SendWebPush;
+use App\Models\ChatMute;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Notifications\LeagueNotification;
@@ -27,16 +28,23 @@ use Throwable;
  * In the app (P5c): every notification the player has switched on is also
  * stored for the bell and pushed to their open pages (UserNotified), once the
  * surrounding transaction commits. `remote: false` keeps an event in the app
- * only: live events (opponent found, blitz invite) mean nothing an hour later
- * in an inbox. Storing and pushing fail open: a broken notification never
+ * only: live events of players at the board (invite accepted, a blitz game
+ * over) mean nothing an hour later in an inbox. Opponent found and blitz
+ * invite do go out: they reach a player who is away. Storing and pushing fail open: a broken notification never
  * undoes the game that caused it.
+ *
+ * Nostr DM (ChessSettings::dmFor): on by default for the kinds an offline
+ * player has to act on. Every DM ends with a signed one-click opt-out link
+ * (NotificationDmOptOut), because the recipient may never have logged in.
+ * Never a DM: "your move" outside a daily game (a live game's players are at
+ * the board), and anything from a sender the recipient muted (ChatMute).
  */
 final class Notifier
 {
     /**
      * @return list<'push'|'dm'> the remote channels it went out on
      */
-    public function send(User $user, NotificationKind $kind, Notice $notice, ?ChessGame $game = null, bool $remote = true): array
+    public function send(User $user, NotificationKind $kind, Notice $notice, ?ChessGame $game = null, bool $remote = true, ?User $sender = null): array
     {
         $settings = $user->chessSettings();
         $trigger = $kind->value;
@@ -56,7 +64,7 @@ final class Notifier
             return [];
         }
 
-        $channels = array_values(array_filter([$settings->push ? 'push' : null, $settings->dm ? 'dm' : null]));
+        $channels = array_values(array_filter([$settings->push ? 'push' : null, $settings->dmFor($trigger) ? 'dm' : null]));
 
         if ($game !== null && ($color = $game->colorOf($user)) !== null) {
             $choice = $color === 'w' ? $game->white_notify : $game->black_notify;
@@ -70,6 +78,15 @@ final class Notifier
             }
         }
 
+        // Fail closed: "your move" is a DM only in a daily game, whatever was chosen.
+        if ($kind === NotificationKind::YourMove && ($game === null || ! $game->isCorrespondence())) {
+            $channels = array_values(array_diff($channels, ['dm']));
+        }
+
+        if ($sender !== null && ChatMute::query()->where('user_id', $user->id)->where('muted_pubkey', $sender->pubkey)->exists()) {
+            $channels = array_values(array_diff($channels, ['dm']));
+        }
+
         $sent = [];
 
         if (in_array('push', $channels, true) && WebPush::fromConfig()->isConfigured()) {
@@ -80,7 +97,7 @@ final class Notifier
         }
 
         if (in_array('dm', $channels, true) && NotificationDm::fromConfig()->isConfigured()) {
-            SendNostrDm::dispatch($user, $notice->toDmText(), $notice->match);
+            SendNostrDm::dispatch($user, $notice->toDmText(NotificationDmOptOut::line($user)), $notice->match);
             $sent['dm'] = 'dm';
         }
 

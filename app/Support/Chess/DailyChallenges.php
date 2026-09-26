@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Daily chess challenges (ChessChallenge, ChessOverlays "Daily challenge
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\DB;
  * it is open. Accepting starts a daily game with the chosen colours.
  *
  * Casual until Elo exists (P7): league data only, no 2150/2151 on Nostr.
+ *
+ * A challenge reaches the challenged player's Nostr inbox by default, so a
+ * player may send only so many per day, in total and to the same player
+ * (esports.chess.challenges_per_day, challenges_per_recipient_per_day).
  */
 final class DailyChallenges
 {
@@ -57,6 +62,12 @@ final class DailyChallenges
             throw new ChessRuleViolation('challenge_open');
         }
 
+        foreach (self::limits($challenger, $challenged) as [$key, $max]) {
+            if (RateLimiter::tooManyAttempts($key, $max)) {
+                throw new ChessRuleViolation('challenge_limit', 'available in '.RateLimiter::availableIn($key).' s');
+            }
+        }
+
         $challenge = ChessChallenge::query()->create([
             'challenger_id' => $challenger->id,
             'challenged_id' => $challenged->id,
@@ -67,9 +78,37 @@ final class DailyChallenges
             'expires_at' => now()->addHours((int) config('esports.chess.challenge_hours')),
         ]);
 
+        foreach (self::limits($challenger, $challenged) as [$key]) {
+            RateLimiter::hit($key, 86_400);
+        }
+
         $this->notifications->challengeReceived($challenge);
 
         return $challenge;
+    }
+
+    /**
+     * Seconds until the challenger may send again, 0 when they may.
+     */
+    public static function availableIn(User $challenger, User $challenged): int
+    {
+        $waits = array_map(fn (array $limit): int => RateLimiter::tooManyAttempts($limit[0], $limit[1]) ? RateLimiter::availableIn($limit[0]) : 0, self::limits($challenger, $challenged));
+
+        return max(0, ...$waits);
+    }
+
+    /**
+     * Rate limiter key and maximum per 24 hours: all challenges of the
+     * challenger, and those to this one player.
+     *
+     * @return list<array{0: string, 1: int}>
+     */
+    private static function limits(User $challenger, User $challenged): array
+    {
+        return [
+            ['daily-challenges-day:'.$challenger->id, max(1, (int) config('esports.chess.challenges_per_day'))],
+            ['daily-challenges-pair:'.$challenger->id.':'.$challenged->id, max(1, (int) config('esports.chess.challenges_per_recipient_per_day'))],
+        ];
     }
 
     /**

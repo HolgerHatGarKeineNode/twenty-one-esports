@@ -36,6 +36,17 @@ enum NotificationKind: string
     }
 
     /**
+     * Goes out by Nostr DM for a player who never chose the DM channel
+     * (ChessSettings::$dm null): the events an offline player has to act
+     * on. A player who switched DMs on gets every kind that goes out
+     * remotely, one who switched them off gets none.
+     */
+    public function dmByDefault(): bool
+    {
+        return in_array($this, [self::MatchFound, self::Invite, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest], true);
+    }
+
+    /**
      * Toast tone (toast-stack): `challenge` asks for action, `success` is good
      * news, `confirmed` is information.
      */

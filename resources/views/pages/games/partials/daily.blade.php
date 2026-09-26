@@ -24,7 +24,7 @@
     $settings = $viewer?->chessSettings();
     $opponentName = $opponent['name'] ?? '';
     $opponentUser = $game->opponentOf($viewer);
-    $channels = array_filter([$settings?->dm ? __('Nostr DM') : null, $settings?->push ? __('browser push') : null]);
+    $channels = array_filter([$settings?->dmFor('your_move') ? __('Nostr DM') : null, $settings?->push ? __('browser push') : null]);
     $channelSummary = $channels === [] ? __('Notifications are off') : __(':channels on', ['channels' => implode(' '.__('and').' ', $channels)]);
     $moves = $game->moves()->with('nostrEvent')->get();
     $firstNote = $moves->first()?->nostrEvent;
