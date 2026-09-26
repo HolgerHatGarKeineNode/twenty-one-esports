@@ -1,12 +1,14 @@
 <?php
 
 use App\Models\NostrEvent;
+use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\SeasonChain\Seasons;
 use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustJob;
@@ -52,6 +54,28 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
     public function dismissals(): array
     {
         return TrustReportDismissal::query()->whereIn('event_id', $this->reports->pluck('event_id'))->get()->keyBy('event_id')->all();
+    }
+
+    /**
+     * The reports that count now (round 4): counted in the live season, not
+     * dismissed, and their author not excluded, as of the last trust run.
+     *
+     * @return array<string, true> event id => true
+     */
+    #[Computed]
+    public function counting(): array
+    {
+        $season = Seasons::live();
+
+        if ($season === null) {
+            return [];
+        }
+
+        $excluded = TrustExclusion::query()->pluck('pubkey')->all();
+
+        return array_fill_keys(TrustCountedReport::query()->where('season_id', $season->id)
+            ->whereIn('event_id', $this->reports->pluck('event_id'))->whereNotIn('author', $excluded)
+            ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))->pluck('event_id')->all(), true);
     }
 
     /**
@@ -163,7 +187,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
         }
 
         $this->reset($resetKey ? ['reason', 'key'] : ['reason']);
-        unset($this->dismissals, $this->exclusions, $this->decisions, $this->names);
+        unset($this->dismissals, $this->counting, $this->exclusions, $this->decisions, $this->names);
     }
 }; ?>
 
@@ -179,7 +203,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
 
     <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12">
         <span class="flex flex-wrap items-baseline gap-4"><h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Trust') }}</h1><span class="text-[13px] text-ink-2">{{ __('Reports and exclusions of the trust job') }}</span></span>
-        <p class="m-0 max-w-[70ch] text-[13px] leading-normal text-ink-2">{{ __('A report counts if its author had rank 50 or more in the last run, and at most :count reports of one author count per season. Dismiss a report and it stops counting; exclude a key and it gets rank 0 and vouches for nobody. The next trust run applies your decision.', ['count' => (int) config('esports.trust.reports_per_author')]) }}</p>
+        <p class="m-0 max-w-[70ch] text-[13px] leading-normal text-ink-2">{{ __('A report counts if its author had rank 50 or more in the last run, and at most :count reports of one author count per season. The reports seen first fill these places, and a report that counted keeps its place for the season. Dismiss a report and it stops counting; exclude a key and it gets rank 0 and vouches for nobody. The next trust run applies your decision.', ['count' => (int) config('esports.trust.reports_per_author')]) }}</p>
 
         <label class="flex max-w-xl flex-col gap-1 text-xs text-ink-2">{{ __('Reason for your decision (required, saved with it)') }}
             <input type="text" wire:model="reason" maxlength="280" class="{{ $input }}" data-test="trust-reason">
@@ -193,7 +217,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
                 @php($dismissal = $this->dismissals[$report->event_id] ?? null)
                 <div wire:key="r-{{ $report->event_id }}" class="grid grid-cols-1 gap-2 border-t border-hairline py-3 text-[13px] lg:grid-cols-[120px_minmax(0,1fr)_minmax(0,1fr)_220px] lg:items-center lg:gap-4" data-test="trust-report">
                     <span class="text-xs text-ink-2">{{ \Carbon\CarbonImmutable::createFromTimestamp($report->signed_at)->diffForHumans() }}</span>
-                    <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate">{{ $this->names[$report->pubkey] ?? '–' }} → {{ $target !== null ? ($this->names[$target] ?? '–') : '–' }}</b><span class="text-xs text-ink-2">{{ $this->label($report) }} · {{ __('reporter rank :rank', ['rank' => $this->ranks[$report->pubkey] ?? 0]) }}</span></span>
+                    <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate">{{ $this->names[$report->pubkey] ?? '–' }} → {{ $target !== null ? ($this->names[$target] ?? '–') : '–' }}</b><span class="text-xs text-ink-2">{{ $this->label($report) }} · {{ __('reporter rank :rank', ['rank' => $this->ranks[$report->pubkey] ?? 0]) }} · @if (isset($this->counting[$report->event_id]))<span class="text-win" data-test="trust-counts">{{ __('counts') }}</span>@else<span data-test="trust-not-counting">{{ __('does not count') }}</span>@endif</span></span>
                     <span class="min-w-0 text-xs break-words text-ink-2">{{ Str::limit((string) ($report->payload()['content'] ?? ''), 160) }}@if ($dismissal)<br><span class="text-btc-hi">{{ __('Dismissed: :reason', ['reason' => $dismissal->reason]) }}</span>@endif</span>
                     <span class="flex flex-wrap gap-2">
                         @if ($dismissal)

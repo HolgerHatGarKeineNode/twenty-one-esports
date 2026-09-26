@@ -12,6 +12,7 @@
 
 use App\Models\Admin;
 use App\Models\NostrEvent;
+use App\Models\TrustCountedReport;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
@@ -386,6 +387,106 @@ test('round 3, N1 residual: the accounts one anchor vouches for count at most re
     // Without the subtree cap all eight drop to 25; with it three reports count, each player stays at 50 or more.
     expect(TrustRank::query()->whereIn('pubkey', $socks)->min('rank'))->toBe(55)
         ->and($eligible)->toBe(8);
+});
+
+/**
+ * Round 4 test bed: alice vouches for $reporters (one subtree, rank 55 or
+ * more each: allowed to report), carol for eight players (rank 75 each).
+ *
+ * @param  list<string>  $reporters
+ * @return list<string> the players
+ */
+function reportSubtree(array $reporters, int $at): array
+{
+    $d = 'esports/'.LeagueKey::fromConfig()->pubkey();
+    $players = array_map(fn () => (new TestSigner)->pubkey, range(1, 8));
+
+    archivedEvent(pk('alice'), 30000, [['d', $d], ...array_map(fn (string $p) => ['p', $p], $reporters)], $at);
+    archivedEvent(pk('carol'), 30000, [['d', $d], ...array_map(fn (string $p) => ['p', $p], $players)], $at);
+    app(TrustJob::class)->run();
+
+    return $players;
+}
+
+function archivedReport(string $author, string $target, int $at): void
+{
+    archivedEvent($author, TrustJob::REPORT, [['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE]], $at);
+}
+
+test('regression (security re-check round 4): backdated reports from the same subtree cannot push out a report that already counts', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 3]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporters = array_map(fn () => (new TestSigner)->pubkey, range(1, 4));
+    $players = reportSubtree($reporters, $at);
+
+    archivedReport($reporters[0], $players[0], $at + 100);
+    app(TrustJob::class)->run();
+    expect(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(50);
+
+    // Three burners of the same subtree sign reports dated before the genuine one.
+    foreach ([1, 2, 3] as $i) {
+        archivedReport($reporters[$i], $players[$i], $at + 10);
+    }
+    app(TrustJob::class)->run();
+
+    // The genuine report keeps its slot; of the burners only the first two seen fit the cap of 3.
+    expect(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 4)))->toBe([50, 50, 50, 75])
+        ->and(TrustCountedReport::query()->count())->toBe(3);
+});
+
+test('round 4: a report that counted once stays counted for the season, even when an older report becomes eligible later', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $genuine = (new TestSigner)->pubkey;
+    $late = (new TestSigner)->pubkey;
+    $players = reportSubtree([$genuine], $at);
+
+    // $late reports first, while nobody vouches for it yet: it does not count.
+    archivedReport($late, $players[1], $at + 10);
+    archivedReport($genuine, $players[0], $at + 100);
+    app(TrustJob::class)->run();
+
+    // alice adds $late: it is ranked one run later, and its older report becomes eligible.
+    archivedEvent(pk('alice'), 30000, [['d', 'esports/'.LeagueKey::fromConfig()->pubkey()], ['p', $genuine], ['p', $late]], $at + 200);
+    app(TrustJob::class)->run();
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $late)->value('rank'))->toBeGreaterThanOrEqual(50)
+        ->and(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(50)
+        ->and(TrustRank::query()->where('pubkey', $players[1])->value('rank'))->toBe(75);
+});
+
+test('round 4: within one run the caps fill in the order the reports were first seen, not by their created_at', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporters = array_map(fn () => (new TestSigner)->pubkey, range(1, 2));
+    $players = reportSubtree($reporters, $at);
+
+    // Both arrive before the next run; the second claims to be older.
+    archivedReport($reporters[0], $players[0], $at + 100);
+    archivedReport($reporters[1], $players[1], $at + 10);
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(50)
+        ->and(TrustRank::query()->where('pubkey', $players[1])->value('rank'))->toBe(75);
+});
+
+test('round 4: a report against a key that was never ranked uses no budget', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    $reporters = array_map(fn () => (new TestSigner)->pubkey, range(1, 2));
+    $players = reportSubtree($reporters, $at);
+
+    archivedReport($reporters[1], (new TestSigner)->pubkey, $at + 10);
+    archivedReport($reporters[0], $players[0], $at + 100);
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[0])->value('rank'))->toBe(50)
+        ->and(TrustCountedReport::query()->count())->toBe(1);
 });
 
 /** A signed league report by a test-bed player against any pubkey. */

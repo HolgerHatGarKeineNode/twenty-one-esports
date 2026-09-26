@@ -4,6 +4,7 @@ namespace App\Support\SeasonChain;
 
 use App\Models\Admin;
 use App\Models\NostrEvent;
+use App\Models\TrustCountedReport;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
 use App\Models\TrustReportDismissal;
@@ -275,13 +276,17 @@ final class TrustJob
      *
      * Mass reports (N1): one author counts at most `reports_per_author`
      * reports per season (since Block 0 of the live season, else in the
-     * 365-day window), the earliest first, so a later burst can neither add
-     * targets nor displace the reports that counted already.
+     * 365-day window), and the reporters under one anchor (their `anchor` in
+     * the previous run) at most `reports_per_anchor` together (round 3), so
+     * the accounts one anchor vouches for cannot halve the players as a group.
      *
-     * Anchor subtrees (round 3, N1 residual): the reporters under one anchor
-     * (their `anchor` in the previous run) count at most `reports_per_anchor`
-     * reports together per season, so the accounts one anchor vouches for
-     * cannot halve the players as a group.
+     * Order and permanence (round 4): the caps fill in the order this server
+     * first saw the reports (archive row), never by the author-chosen
+     * `created_at`, and a report that counted once keeps its place for the
+     * season (trust_counted_reports), so neither backdated reports nor older
+     * ones that become eligible later can push it out. A dismissal or an
+     * exclusion of its author stops it counting, not its place. A report
+     * against a key that was never ranked (no assertion yet) takes no place.
      *
      * @param  array<string, int>  $previousRanks
      * @param  array<string, ?string>  $previousAnchors  pubkey => anchor with the largest share
@@ -291,20 +296,37 @@ final class TrustJob
     private function countedReports(array $previousRanks, array $previousAnchors, array $excluded): array
     {
         $since = now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp();
-        $seasonStart = Seasons::live()?->genesis_at->getTimestamp() ?? $since;
+        $season = Seasons::live();
+        $seasonStart = $season?->genesis_at->getTimestamp() ?? $since;
         $cap = max(0, (int) config('esports.trust.reports_per_author'));
         $anchorCap = max(0, (int) config('esports.trust.reports_per_anchor'));
-        $perAnchor = [];
         $dismissed = array_fill_keys(TrustReportDismissal::query()->pluck('event_id')->all(), true);
         $excluded = array_fill_keys($excluded, true);
         $targets = [];
+        $pairs = [];
+        $seen = [];
         $perAuthor = [];
+        $perAnchor = [];
+
+        $stored = $season === null ? [] : TrustCountedReport::query()->where('season_id', $season->id)->orderBy('id')->get();
+
+        foreach ($stored as $counted) {
+            $seen[$counted->event_id] = true;
+            $pairs[$counted->target][$counted->author] = true;
+            $perAuthor[$counted->author] = ($perAuthor[$counted->author] ?? 0) + 1;
+            $perAnchor[$counted->subtree] = ($perAnchor[$counted->subtree] ?? 0) + 1;
+
+            if (! isset($dismissed[$counted->event_id]) && ! isset($excluded[$counted->author])) {
+                $targets[$counted->target][$counted->author] = true;
+            }
+        }
 
         $reports = NostrEvent::query()->where('kind', self::REPORT)->where('signed_at', '>=', max($since, $seasonStart))
-            ->orderBy('signed_at')->orderBy('event_id')->cursor();
+            ->orderBy('id')->cursor();
 
         foreach ($reports as $report) {
-            if (($previousRanks[$report->pubkey] ?? 0) < self::REPORTER_MINIMUM || isset($excluded[$report->pubkey]) || isset($dismissed[$report->event_id])) {
+            if (isset($seen[$report->event_id]) || ($previousRanks[$report->pubkey] ?? 0) < self::REPORTER_MINIMUM
+                || isset($excluded[$report->pubkey]) || isset($dismissed[$report->event_id])) {
                 continue;
             }
 
@@ -312,7 +334,7 @@ final class TrustJob
             $target = $event?->tag('p');
 
             if ($event === null || ! self::isLeagueReport($event) || ! NostrKeys::isHexPubkey($target) || $target === $event->pubkey
-                || isset($targets[$target][$event->pubkey]) || ($perAuthor[$event->pubkey] ?? 0) >= $cap) {
+                || ! isset($previousRanks[$target]) || isset($pairs[$target][$event->pubkey]) || ($perAuthor[$event->pubkey] ?? 0) >= $cap) {
                 continue;
             }
 
@@ -322,9 +344,14 @@ final class TrustJob
                 continue;
             }
 
+            $pairs[$target][$event->pubkey] = true;
             $targets[$target][$event->pubkey] = true;
             $perAuthor[$event->pubkey] = ($perAuthor[$event->pubkey] ?? 0) + 1;
             $perAnchor[$subtree] = ($perAnchor[$subtree] ?? 0) + 1;
+
+            if ($season !== null) {
+                TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => $report->event_id, 'author' => $event->pubkey, 'target' => $target, 'subtree' => $subtree]);
+            }
         }
 
         return array_map(count(...), $targets);

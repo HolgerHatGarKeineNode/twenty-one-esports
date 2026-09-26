@@ -11,6 +11,7 @@ use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\NostrEvent;
+use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
 use App\Models\TrustReportDismissal;
@@ -123,6 +124,21 @@ test('round 3: excluding a key is for the board; dismissing a single report stay
     $trust->exclude($this->admin, $this->reporter->pubkey, 'Mass reporting.');
 
     expect(TrustExclusion::query()->count())->toBe(1);
+});
+
+test('round 4: the page shows which reports count now, and a dismissal takes the mark away', function () {
+    $season = openSeason();
+    $other = NostrEvent::fromSigned(SignedEvent::fromInput($this->reporter->sign(TrustJob::REPORT, [
+        ['p', User::factory()->create()->pubkey, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE],
+    ], 'Second report.', now()->getTimestamp())));
+    TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => $this->report->event_id, 'author' => $this->reporter->pubkey, 'target' => $this->target->pubkey, 'subtree' => $this->reporter->pubkey]);
+
+    Livewire::actingAs($this->admin)->test('pages::admin.trust')
+        ->assertSeeHtml('data-test="trust-counts"')
+        ->assertSeeInOrder(['does not count', 'Second report.', 'suspectus', 'counts', 'Two accounts, one person.'])
+        ->set('reason', 'Same household.')
+        ->call('dismiss', $this->report->event_id)
+        ->assertDontSeeHtml('data-test="trust-counts"');
 });
 
 test('round 4: rolling back the decision log refuses while it holds decisions, so a later refused rollback cannot have dropped it', function () {
