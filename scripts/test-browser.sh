@@ -28,9 +28,9 @@
 # starts, so two shards can never collide even if they start in the same
 # tick.
 #
-# Files are grouped by measured wall time (3-run average on this machine,
-# `--profile`-derived per-test durations, see docs/plans — RouteSweepTest
-# alone is heavier than any other file, so it gets its own shard):
+# Files are grouped by measured wall time (per-test durations captured with a
+# temporary beforeEach/afterEach timer on this machine — RouteSweepTest alone
+# is heavier than any other file, so it gets its own shard):
 #   1: RouteSweepTest                                (~29s)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest        (~26s)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest (~27s)
