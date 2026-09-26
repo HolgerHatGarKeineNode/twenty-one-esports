@@ -1,13 +1,19 @@
 <?php
 
+use App\Models\Admin;
+use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
+use App\Models\TrustExclusion;
+use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\Candidate;
 use App\Support\SeasonChain\Resolution;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\TrustJob;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
@@ -176,6 +182,38 @@ test('/mining and AdminSeason stay clean before Block 0, through the release, an
     expect($admin->evaluate('() => window.__errors'))->toBe([])
         ->and(chainProblems($admin, [route('mining'), route('admin.season')]))->toBe([])
         ->and(app(SeasonChains::class)->chain($season->refresh())->season->changes())->toHaveCount(1);
+});
+
+test('the admin trust page stays clean at 375 and 1440 px with reports, and a dismissal round-trips', function () {
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $reporter = new TestSigner;
+
+    // An unknown reporter (long npub) against a player with a long name, with a long reason.
+    $target = User::factory()->create(['name' => 'Mempool Max, captain of the longest clan name in the league']);
+    $report = NostrEvent::fromSigned(SignedEvent::fromInput($reporter->sign(TrustJob::REPORT, [
+        ['p', $target->pubkey, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'result-fixing', TrustJob::LABEL_NAMESPACE],
+    ], str_repeat('Three games in a row lost on move twelve. ', 8), now()->getTimestamp())));
+    TrustExclusion::query()->create(['pubkey' => (new TestSigner)->pubkey, 'excluded_by_id' => $admin->id, 'reason' => 'Sold the account.']);
+
+    $page = chainPage($admin, route('admin.trust'));
+
+    expect(chainProblems($page, [route('admin.trust')]))->toBe([]);
+
+    $page->setViewportSize(375, 800);
+    $page->goto(ComputeUrl::from(route('admin.trust')));
+    $row = $page->evaluate('() => { const r = document.querySelector("[data-test=trust-report]").getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.width)]; }');
+    fwrite(STDERR, "\n[admin-trust] 375px report row left/right/width: ".json_encode($row)."\n");
+
+    $page->locator('[data-test=trust-dismiss]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=trust-error]") !== null', 8_000);
+    $page->locator('[data-test=trust-reason]')->fill('Lost fair and square.');
+    $page->locator('[data-test=trust-dismiss]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=trust-report]")?.innerText.includes("Lost fair and square.")', 8_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($row[1])->toBeLessThanOrEqual(375)
+        ->and(TrustReportDismissal::query()->sole()->event_id)->toBe($report->event_id);
 });
 
 test('a series change reaches the other captain\'s match dock over Reverb, without a reload', function () {
