@@ -2,23 +2,24 @@
 
 namespace App\Support\SeasonChain;
 
-use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
-use App\Models\SeriesReport;
 use App\Models\User;
 
 /**
  * The trust gate of rated play (NIP "Trust gate"; plan: rated only for
- * Trusted players who list each other): every rated player at or above
- * `season.trust_minimum`, and the two gatekeepers (the captains) list each
- * other. Checked when a rated series is challenged, when it is accepted and
- * again at the result, so a trust rank that dropped in between moves no
- * rated Elo.
+ * Trusted players who list each other): every rated player and both
+ * gatekeepers at or above `season.trust_minimum`, and the two gatekeepers
+ * (the captains, or the two players of a chess game) list each other.
+ * Checked when a rated series is challenged and when it is accepted (a
+ * rated chess game: when the league pairs it); at the accept the facts are
+ * pinned ({@see GatePin}) and nothing after it re-checks them: "Nothing
+ * after the accept undoes the gate".
  *
- * Fail closed: without trust ranks (no trust job, {@see NoTrustFacts}) every
- * rated action is refused with `trust_not_computed`, a missing rank counts
- * as below the minimum, a missing connection as not connected.
+ * Fail closed: without trust ranks for the live season (no trust run,
+ * {@see NoTrustFacts}) every rated action is refused with
+ * `trust_not_computed`, a missing rank counts as below the minimum, a
+ * missing connection as not connected.
  */
 final class RatedTrustGate
 {
@@ -47,16 +48,19 @@ final class RatedTrustGate
             return self::NOT_COMPUTED;
         }
 
-        $facts = $this->facts->at($players, $gatekeepers);
-        $minimum = (int) config('season.trust_minimum');
+        return $this->pin($players, $gatekeepers)->refusal();
+    }
 
-        foreach ($players as $player) {
-            if (($facts['trust'][$player] ?? 0) < $minimum) {
-                return self::NOT_TRUSTED;
-            }
-        }
-
-        return $facts['connected'] ? null : self::NOT_CONNECTED;
+    /**
+     * The live facts for these players and gatekeepers, as they would be
+     * pinned now. Call {@see refusal()} (or check available()) first.
+     *
+     * @param  list<string>  $players
+     * @param  array{0: string, 1: string}  $gatekeepers
+     */
+    public function pin(array $players, array $gatekeepers): GatePin
+    {
+        return GatePin::fromFacts($players, $gatekeepers, $this->facts->at($players, $gatekeepers), (int) config('season.trust_minimum'));
     }
 
     /**
@@ -91,26 +95,17 @@ final class RatedTrustGate
         return $this->refusal(self::players($match->challengerLineup, $match->challengedLineup), [(string) $match->createdBy?->pubkey, $answering->pubkey]);
     }
 
-    /** At the result: the roster of the counted report, the author and the captain who accepted. */
-    public function forResult(SeriesMatch $match): ?string
+    /**
+     * The pin stored with the accept: the same players and gatekeepers as
+     * {@see forAccept()}, which has to have passed.
+     */
+    public function pinForAccept(SeriesMatch $match, User $answering): GatePin
     {
-        $report = $match->latestReport;
-        $players = $report instanceof SeriesReport ? array_map(fn (array $entry): string => $entry['pubkey'], $report->roster) : [];
+        $players = $match->challengerLineup === null || $match->challengedLineup === null
+            ? []
+            : self::players($match->challengerLineup, $match->challengedLineup);
 
-        if ($players === []) {
-            return self::NOT_TRUSTED;
-        }
-
-        return $this->refusal($players, [(string) $match->createdBy?->pubkey, (string) $match->answeredBy?->pubkey]);
-    }
-
-    /** A rated chess game: both players, who are also the gatekeepers. */
-    public function forChessGame(ChessGame $game): ?string
-    {
-        $white = $game->white->pubkey;
-        $black = $game->black->pubkey;
-
-        return $this->refusal([$white, $black], [$white, $black]);
+        return $this->pin($players, [(string) $match->createdBy?->pubkey, $answering->pubkey]);
     }
 
     /** The refusal in plain words. */

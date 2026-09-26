@@ -6,6 +6,7 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\SeasonChain\GatePin;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -55,6 +56,21 @@ class ChessGameFactory extends Factory
             'black_ms' => 86_400_000,
             'deadline_ms' => (int) now()->getTimestampMs() + 86_400_000,
         ]);
+    }
+
+    /**
+     * A rated game whose trust gate the league pinned at the pairing: both
+     * players at rank `$rank`, listing each other. Real rated games are
+     * paired and pinned by App\Support\Chess\ChessQueue.
+     */
+    public function rated(int $rank = 100): static
+    {
+        return $this->state(['rated' => true])->afterCreating(function (ChessGame $game) use ($rank): void {
+            $players = [$game->white->pubkey, $game->black->pubkey];
+            $facts = ['trust' => array_fill_keys($players, $rank), 'anchors' => [], 'connected' => true];
+
+            $game->forceFill(['gate_at_accept' => GatePin::fromFacts($players, [$players[0], $players[1]], $facts, (int) config('season.trust_minimum'))->toArray()])->save();
+        });
     }
 
     /**

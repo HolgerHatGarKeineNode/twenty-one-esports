@@ -1285,6 +1285,7 @@
     "Only a captain can set who played.": "Nur ein Captain kann festlegen, wer gespielt hat.",
     "Who played cannot be changed right now.": "Wer gespielt hat, kann gerade nicht geändert werden.",
     "Only active players of your lineup can be on the list.": "Nur aktive Spieler deines Lineups können auf der Liste stehen.",
+    "Only players who were in the lineup and Trusted when the match was accepted can play this rated match.": "Nur Spieler, die bei der Annahme im Lineup und Trusted waren, können diese gewertete Partie spielen.",
     "Only a captain can report a no-show.": "Nur ein Captain kann ein Nichterscheinen melden.",
     "A no-show can be reported :minutes minutes after the start.": "Ein Nichterscheinen kann :minutes Minuten nach dem Start gemeldet werden.",
     "Games are entered already, so this is not a no-show.": "Es sind schon Spiele eingetragen, also ist das kein Nichterscheinen.",

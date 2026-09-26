@@ -7,7 +7,8 @@ use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
-use App\Support\SeasonChain\RatedTrustGate;
+use App\Models\SeriesReport;
+use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
 
@@ -22,9 +23,12 @@ use Illuminate\Support\Facades\DB;
  *   and a series with a deleted lineup rate nothing.
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
- *   result moves nothing (fail closed). A rated series also has to pass the
- *   trust gate again at the result ({@see RatedTrustGate}); without trust
- *   ranks it moves nothing. A casual one goes to the permanent casual
+ *   result moves nothing (fail closed). A rated result reads only the trust
+ *   gate pinned at its accept ({@see GatePin}), never live trust facts: an
+ *   unfollow or a lower rank after the accept changes nothing (NIP "Nothing
+ *   after the accept undoes the gate"). Without a pin, or with a roster that
+ *   lists a player not eligible at the accept (condition 3), it moves
+ *   nothing. A casual one goes to the permanent casual
  *   ladder. Both are capped per pairing and UTC day
  *   (`season.rating.daily_pair_limit`, `season.casual.daily_pair_limit`).
  *   Casual never touches a rated row.
@@ -35,8 +39,6 @@ use Illuminate\Support\Facades\DB;
  */
 final class RatingService
 {
-    public function __construct(private RatedTrustGate $trustGate) {}
-
     /**
      * @return bool whether any rating moved
      */
@@ -53,7 +55,7 @@ final class RatingService
             return false;
         }
 
-        if ($game->rated && $this->trustGate->forChessGame($game) !== null) {
+        if ($game->rated && ! $this->pinAdmits(GatePin::fromArray($game->gate_at_accept), [$game->white->pubkey, $game->black->pubkey])) {
             return false;
         }
 
@@ -78,7 +80,7 @@ final class RatingService
             return false;
         }
 
-        if ($match->rated && $this->trustGate->forResult($match) !== null) {
+        if ($match->rated && ! $this->pinAdmits(GatePin::fromArray($match->gate_at_accept), $this->rosterOf($match))) {
             return false;
         }
 
@@ -88,6 +90,40 @@ final class RatingService
             ['subject' => 'lineup:'.$match->challenged_lineup_id, 'lineup_id' => $match->challenged_lineup_id],
             $match->winner === 'challenger' ? 1.0 : 0.0, RatingChange::SERIES, $match->id, $match->number,
         );
+    }
+
+    /**
+     * A rated result counts if the accept pinned its gate and every rated
+     * player was eligible then (NIP "Trust gate", condition 3).
+     *
+     * @param  list<string>  $players
+     */
+    private function pinAdmits(?GatePin $pin, array $players): bool
+    {
+        if ($pin === null) {
+            return false;
+        }
+
+        foreach ($players as $player) {
+            if (! $pin->isEligible($player)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The roster of the counted report; empty for a result without a report
+     * (a no-show forfeit), which the pin alone admits.
+     *
+     * @return list<string>
+     */
+    private function rosterOf(SeriesMatch $match): array
+    {
+        $report = $match->latestReport;
+
+        return $report instanceof SeriesReport ? array_map(fn (array $entry): string => $entry['pubkey'], $report->roster) : [];
     }
 
     /**

@@ -78,7 +78,7 @@ test('a rated game on an open ladder uses the rated k-factors and leaves the cas
     seedRating($established, Rating::RATED, 1000, 5);
     seedRating($established, Rating::CASUAL, 1234, 9);
 
-    $game = ChessGame::factory()->finished('1-0')->create(['rated' => true, 'white_id' => $established->id, 'black_id' => $newcomer->id]);
+    $game = ChessGame::factory()->rated()->finished('1-0')->create(['white_id' => $established->id, 'black_id' => $newcomer->id]);
 
     expect(app(RatingService::class)->applyChessGame($game))->toBeTrue()
         // Engine example: established k 32 gains 16, the provisional side (k 40) loses 20.
@@ -129,7 +129,7 @@ test('a rating is provisional below five results, then gets a tier on the rated 
     openLadders();
     config(['season.rating.daily_pair_limit' => null]);
     [$a, $b] = [User::factory()->create(), User::factory()->create()];
-    $rate = fn (bool $rated) => app(RatingService::class)->applyChessGame(ChessGame::factory()->finished('1/2-1/2')->create(['rated' => $rated, 'white_id' => $a->id, 'black_id' => $b->id]));
+    $rate = fn (bool $rated) => app(RatingService::class)->applyChessGame(ChessGame::factory()->when($rated, fn ($factory) => $factory->rated())->finished('1/2-1/2')->create(['white_id' => $a->id, 'black_id' => $b->id]));
     $summary = fn (string $pool) => Ratings::forUser($a->id, 'chess', 'blitz', $pool);
 
     foreach (range(1, 4) as $i) {
@@ -155,7 +155,7 @@ test('before Block 0 a rated game is refused: the queue locks it and a rated res
 
     expect(fn () => app(ChessQueue::class)->join($a, 'blitz', rated: true))->toThrow(ChessRuleViolation::class);
 
-    $game = ChessGame::factory()->finished('1-0')->create(['rated' => true, 'white_id' => $a->id, 'black_id' => $b->id]);
+    $game = ChessGame::factory()->rated()->finished('1-0')->create(['white_id' => $a->id, 'black_id' => $b->id]);
 
     expect(app(RatingService::class)->applyChessGame($game))->toBeFalse()
         ->and(Rating::query()->count())->toBe(0);

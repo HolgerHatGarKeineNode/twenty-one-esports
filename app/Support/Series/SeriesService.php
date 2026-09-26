@@ -25,6 +25,7 @@ use App\Support\Nostr\SignedEventGate;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
@@ -264,8 +265,9 @@ final class SeriesService
     public function answer(SeriesMatch $match, User $user, string $status, ?int $start, array $signed): void
     {
         $events = $this->verify($signed, $this->answerPlan($match, $user, $status, $start), $user);
+        $pin = $status === 'accepted' && $match->rated ? $this->pinGate($match, $user) : null;
 
-        $this->persist($events, function (array $stored) use ($match, $user, $status, $start): void {
+        $this->persist($events, function (array $stored) use ($match, $user, $status, $start, $pin): void {
             $updated = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Open)->update([
                 'status' => match ($status) {
                     'accepted' => SeriesStatus::Accepted,
@@ -276,6 +278,7 @@ final class SeriesService
                 'answered_at' => now(),
                 'start_at' => $status === 'accepted' ? now()->setTimestamp((int) $start) : null,
                 'clans_at_accept' => $status === 'accepted' ? json_encode($this->clansOf($this->fresh($match))) : null,
+                'gate_at_accept' => $pin === null ? null : json_encode($pin->toArray()),
                 'finished_at' => $status === 'accepted' ? null : now(),
                 'answer_event_id' => $stored[0]->id ?? null,
             ]);
@@ -287,6 +290,28 @@ final class SeriesService
 
         $match->refresh();
         $this->broadcastChange($match);
+    }
+
+    /**
+     * The trust gate pinned with a rated accept, checked once more on the
+     * values it pins, so the stored gate is the one that passed.
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function pinGate(SeriesMatch $match, User $user): GatePin
+    {
+        if (! $this->trustGate->isAvailable()) {
+            throw new SeriesRuleViolation(RatedTrustGate::NOT_COMPUTED, RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED));
+        }
+
+        $pin = $this->trustGate->pinForAccept($this->fresh($match), $user);
+        $refusal = $pin->refusal();
+
+        if ($refusal !== null) {
+            throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
+        }
+
+        return $pin;
     }
 
     /**
@@ -461,11 +486,18 @@ final class SeriesService
             throw new SeriesRuleViolation('sheet_closed', __('Who played cannot be changed right now.'));
         }
 
-        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $match->lineup($side)?->activeSeats() ?? []);
+        $seats = $match->lineup($side)?->activeSeats() ?? [];
+        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $seats);
         $ids = array_values(array_unique(array_map(intval(...), $userIds)));
 
         if (array_diff($ids, $allowed) !== []) {
             throw new SeriesRuleViolation('roster_foreign', __('Only active players of your lineup can be on the list.'));
+        }
+
+        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $this->eligibleSeats($match, $seats));
+
+        if (array_diff($ids, $allowed) !== []) {
+            throw new SeriesRuleViolation('roster_not_eligible', __('Only players who were in the lineup and Trusted when the match was accepted can play this rated match.'));
         }
 
         $rosters = $match->rosters ?? [];
@@ -476,18 +508,40 @@ final class SeriesService
 
     /**
      * Who played for a side: the captain's list, or the regulars (captain and
-     * player seats) until the captain changes it.
+     * player seats) until the captain changes it. In a rated match only
+     * players eligible at the accept ({@see eligibleSeats()}).
      *
      * @return list<LineupSeat>
      */
     public function rosterSeats(SeriesMatch $match, string $side): array
     {
-        $seats = $match->lineup($side)?->activeSeats() ?? [];
+        $seats = $this->eligibleSeats($match, $match->lineup($side)?->activeSeats() ?? []);
         $chosen = $match->rosters[$side] ?? null;
 
         return array_values(array_filter($seats, fn (LineupSeat $seat) => $chosen === null
             ? $seat->role !== LineupRole::Substitute
             : in_array($seat->user_id, $chosen, true)));
+    }
+
+    /**
+     * NIP "Trust gate", condition 3: a rated roster may list only players the
+     * accept pinned with a rank at or above the minimum, so a player seated
+     * after the accept (or below the minimum then) cannot play it. A rated
+     * match without a pin has no eligible player (fail closed). A casual
+     * match keeps every active seat.
+     *
+     * @param  list<LineupSeat>  $seats
+     * @return list<LineupSeat>
+     */
+    private function eligibleSeats(SeriesMatch $match, array $seats): array
+    {
+        if (! $match->rated) {
+            return $seats;
+        }
+
+        $pin = GatePin::fromArray($match->gate_at_accept);
+
+        return array_values(array_filter($seats, fn (LineupSeat $seat): bool => $pin?->isEligible($seat->user->pubkey) ?? false));
     }
 
     /**

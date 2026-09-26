@@ -3,7 +3,6 @@
 namespace App\Support\SeasonChain;
 
 use App\Enums\SeriesResolution;
-use App\Models\ClanMember;
 use App\Models\RatingChange;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -38,8 +37,6 @@ final class SeasonChains
     public const GENESIS = 2156;
 
     public const PARAMETER_CHANGE = 2158;
-
-    public function __construct(private TrustFacts $trust) {}
 
     /** The chain of a season, replayed from its stored attestations. */
     public function chain(Season $season): BlockChain
@@ -305,8 +302,11 @@ final class SeasonChains
         $roster = $this->roster($match);
         $winners = array_values(array_map(fn (array $entry): string => $entry['pubkey'], array_filter($roster, fn (array $entry): bool => $entry['side'] === $match->winner)));
         $losers = array_values(array_map(fn (array $entry): string => $entry['pubkey'], array_filter($roster, fn (array $entry): bool => $entry['side'] !== $match->winner)));
-        $gatekeepers = [(string) $match->createdBy?->pubkey, (string) $match->answeredBy?->pubkey];
-        $facts = $this->trust->at([...$winners, ...$losers], $gatekeepers);
+        // Rule 1 and 7 read the gate pinned at the accept, never live trust
+        // facts (NIP "Nothing after the accept undoes the gate"). Without a
+        // pin every player is unranked and nobody is connected: no block.
+        $pin = GatePin::fromArray($match->gate_at_accept);
+        $gatekeepers = $pin->gatekeepers ?? [(string) $match->createdBy?->pubkey, (string) $match->answeredBy?->pubkey];
 
         return new Candidate(
             $match->label(),
@@ -325,10 +325,10 @@ final class SeasonChains
             'lineup:'.($match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id),
             ['lineup:'.$match->challenger_lineup_id, 'lineup:'.$match->challenged_lineup_id],
             $gatekeepers,
-            $facts['connected'],
-            $facts['trust'],
-            $this->clans([...$winners, ...$losers], $match),
-            $facts['anchors'],
+            $pin->connected ?? false,
+            $pin?->ranks([...$winners, ...$losers]) ?? [],
+            $this->clans([...$winners, ...$losers], $match->clans_at_accept),
+            $pin?->anchors([...$winners, ...$losers]) ?? [],
         );
     }
 
@@ -345,48 +345,30 @@ final class SeasonChains
     }
 
     /**
-     * Each player's clan address at the accept (stored on the series then),
-     * null without a clan. A player the accept did not see (a series from
-     * before the column, a player seated later) falls back to the clan now.
+     * Each player's clan address at the accept (stored on the series or game
+     * then), null without a clan. A player the accept did not see has none:
+     * a rated roster only lists players of the accept (SeriesService), and
+     * the clan now is never read, so a clan change after the accept cannot
+     * move a result in or out of rule 3.
      *
      * @param  list<string>  $pubkeys
+     * @param  array<string, string>|null  $atAccept
      * @return array<string, ?string>
      */
-    private function clans(array $pubkeys, SeriesMatch $match): array
+    private function clans(array $pubkeys, ?array $atAccept): array
     {
-        $atAccept = $match->clans_at_accept ?? [];
         $clans = [];
 
         foreach ($pubkeys as $pubkey) {
             $clans[$pubkey] = $atAccept[$pubkey] ?? null;
         }
 
-        $missing = array_values(array_filter($pubkeys, fn (string $pubkey): bool => ! array_key_exists($pubkey, $atAccept)));
-
-        return array_replace($clans, $missing === [] ? [] : $this->currentClans($missing));
-    }
-
-    /**
-     * @param  list<string>  $pubkeys
-     * @return array<string, ?string>
-     */
-    private function currentClans(array $pubkeys): array
-    {
-        $members = ClanMember::query()->with(['clan', 'user'])
-            ->whereHas('user', fn ($query) => $query->whereIn('pubkey', $pubkeys))
-            ->get();
-        $clans = array_fill_keys($pubkeys, null);
-
-        foreach ($members as $member) {
-            $clans[$member->user->pubkey] = $member->clan->address();
-        }
-
         return $clans;
     }
 
     /**
-     * The `2154` of a series (NIP "League Attestation"), without `trust` and
-     * `gate`: the league has no trust job yet.
+     * The `2154` of a series (NIP "League Attestation"), with the `trust` tag
+     * and `gate` rows pinned at the accept.
      *
      * @param  list<string>|null  $block
      * @return list<list<string>>
@@ -450,7 +432,11 @@ final class SeasonChains
 
         $tags[] = ['match', (string) $match->number];
 
-        foreach ($this->clans(array_column($this->roster($match), 'pubkey'), $match) as $pubkey => $clan) {
+        foreach (GatePin::fromArray($match->gate_at_accept)?->tags(array_column($this->roster($match), 'pubkey')) ?? [] as $tag) {
+            $tags[] = $tag;
+        }
+
+        foreach ($this->clans(array_column($this->roster($match), 'pubkey'), $match->clans_at_accept) as $pubkey => $clan) {
             if ($clan !== null) {
                 $tags[] = ['clan', $pubkey, $clan];
             }

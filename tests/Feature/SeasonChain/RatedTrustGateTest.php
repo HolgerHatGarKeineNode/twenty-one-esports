@@ -4,18 +4,22 @@
  * Rated play is trust-gated (security gate P7c, F1; plan: "gewertet nur ab
  * Trusted", "Gewertete Partien nur bei gegenseitigem Folgen"; NIP "Trust
  * gate"): every player of both lineups Trusted and the two captains listing
- * each other, checked when a rated series is challenged, accepted, and again
- * at the result. A rated pairing moves the rated Elo at most
+ * each other, checked when a rated series is challenged and accepted, and
+ * pinned at the accept: nothing after it undoes the gate (NIP "Trust gate").
+ * A rated pairing moves the rated Elo at most
  * `season.rating.daily_pair_limit` times a UTC day. Each player's clan is
  * the one at the accept (rule 3 and the 2154 `clan` rows).
  */
 
+use App\Enums\ClanRole;
+use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\Lineup;
+use App\Models\LineupSeat;
 use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -160,15 +164,47 @@ test('accepting a rated challenge re-checks the trust gate', function () {
         ->and($match->refresh()->status)->toBe(SeriesStatus::Open);
 });
 
-test('a player whose trust dropped before the result moves no rated Elo', function () {
+test('regression (audit 2026-09-26): the losing captain who unfollows after the report vetoes neither his Elo loss nor the winner\'s block', function () {
+    // NIP "Trust gate": "Nothing after the accept undoes the gate: removing the opponent from the
+    // list or a lower rank after the accept leaves the match rated".
     [$a, $b] = [gateLineup(), gateLineup()];
     app()->instance(TrustFacts::class, gateFacts());
     $match = gateAccepted($a, $b);
 
-    gateFinish($match, $a, $b, fn () => app()->instance(TrustFacts::class, gateFacts(connected: false)));
+    gateFinish($match, $a, $b, fn () => app()->instance(TrustFacts::class, gateFacts(connected: false, untrusted: [$b[1]->pubkey])));
 
-    expect(Rating::query()->where('pool', Rating::RATED)->count())->toBe(0)
-        ->and(RatingChange::query()->count())->toBe(0);
+    $attestation = SeasonAttestation::query()->sole();
+
+    expect(RatingChange::query()->where('source', RatingChange::SERIES)->where('source_id', $match->id)->count())->toBe(2)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $b[0]->id)->value('rating'))->toBeLessThan(1000)
+        ->and($attestation->height)->toBe(1)
+        ->and($attestation->rule)->toBeNull()
+        // The 2154 states the gate of the accept: the loser still at rank 100.
+        ->and(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload()['tags'])->toContain(['gate', $b[1]->pubkey, '100', '', '']);
+});
+
+test('a player seated after the accept is refused on a rated roster and left off the report', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+
+    $late = User::factory()->create();
+    ClanMember::query()->create(['clan_id' => $a[0]->clan_id, 'user_id' => $late->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
+    LineupSeat::query()->create(['lineup_id' => $a[0]->id, 'user_id' => $late->id, 'role' => LineupRole::Player, 'accepted_at' => now()]);
+
+    $service = app(SeriesService::class);
+
+    expect(gateRefusal(fn () => $service->setRoster($match, $a[1], [$a[1]->id, $late->id])))->toBe('roster_not_eligible');
+
+    $match->update(['live_games' => [
+        ['challenger' => 3, 'challenged' => 1, 'winner' => 'challenger'],
+        ['challenger' => 2, 'challenged' => 0, 'winner' => 'challenger'],
+    ]]);
+
+    expect(array_column($service->draftReport($match->refresh()->load('challengerLineup.seats.user', 'challengedLineup.seats.user'))['roster'], 'pubkey'))
+        ->toContain($a[1]->pubkey)
+        ->not->toContain($late->pubkey);
 });
 
 test('a rated pairing moves the rated Elo at most daily_pair_limit times a UTC day', function () {
@@ -230,17 +266,23 @@ test('rule 3 and the 2154 clan rows use each player\'s clan at the accept', func
         ->and(SeasonAttestation::query()->sole()->candidate['clans'][$winner->pubkey])->toBe($acceptClan);
 });
 
-test('a rated chess result between players without trust ranks moves no rated Elo', function () {
+test('a rated chess result reads only the gate pinned at the pairing: none or below the minimum moves no rated Elo', function () {
     [$white, $black] = [User::factory()->create(), User::factory()->create()];
-    $game = ChessGame::factory()->finished('1-0')->create(['rated' => true, 'white_id' => $white->id, 'black_id' => $black->id]);
+    app()->instance(TrustFacts::class, gateFacts());
 
-    expect(app(RatingService::class)->applyChessGame($game))->toBeFalse()
+    // Live facts say Trusted, but nothing was pinned: fail closed.
+    $unpinned = ChessGame::factory()->finished('1-0')->create(['rated' => true, 'white_id' => $white->id, 'black_id' => $black->id]);
+    $belowMinimum = ChessGame::factory()->rated(rank: 49)->finished('1-0')->create(['white_id' => $white->id, 'black_id' => $black->id]);
+
+    expect(app(RatingService::class)->applyChessGame($unpinned))->toBeFalse()
+        ->and(app(RatingService::class)->applyChessGame($belowMinimum))->toBeFalse()
         ->and(Rating::query()->count())->toBe(0);
 
-    app()->instance(TrustFacts::class, gateFacts());
-    $trusted = ChessGame::factory()->finished('1-0')->create(['rated' => true, 'white_id' => $white->id, 'black_id' => $black->id]);
+    // Pinned Trusted, and the live facts dropped since: still rated.
+    app()->instance(TrustFacts::class, gateFacts(connected: false, untrusted: [$white->pubkey, $black->pubkey]));
+    $pinned = ChessGame::factory()->rated()->finished('1-0')->create(['white_id' => $white->id, 'black_id' => $black->id]);
 
-    expect(app(RatingService::class)->applyChessGame($trusted))->toBeTrue();
+    expect(app(RatingService::class)->applyChessGame($pinned))->toBeTrue();
 });
 
 test('after Block 0 the challenge page keeps rated locked until trust ranks exist, and says why', function () {

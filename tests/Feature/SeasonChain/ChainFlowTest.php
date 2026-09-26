@@ -19,7 +19,6 @@ use App\Support\Board;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\ConsensusRule;
-use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\TrustFacts;
@@ -134,10 +133,11 @@ test('an invalid win is attested with the rule that rejected it and names the ti
         ->and(attestationTags($third))->toContain(['prev', $rejected->event_id]);
 });
 
-test('a win whose players have no trust rank at the attestation fails closed at rule 1 and mines nothing', function () {
-    // Trusted through challenge and accept, then the ranks are gone (NoTrustFacts) at the result.
+test('a win without a gate pinned at the accept fails closed at rule 1 and mines nothing', function () {
+    // Trusted through challenge and accept, then the pinned gate is gone (a series accepted
+    // before the pin existed): rule 1 never falls back to live trust facts.
     app()->bind(TrustFacts::class, TrustedFacts::class);
-    chainSeries(chainLineup(), chainLineup(), fn () => app()->bind(TrustFacts::class, NoTrustFacts::class));
+    chainSeries(chainLineup(), chainLineup(), fn () => SeriesMatch::query()->update(['gate_at_accept' => null]));
 
     $attestation = SeasonAttestation::query()->sole();
 

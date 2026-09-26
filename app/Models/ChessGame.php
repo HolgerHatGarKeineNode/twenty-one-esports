@@ -28,6 +28,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $number league match number, shared with series (MatchNumber)
  * @property string $mode
  * @property bool $rated
+ * @property array<string, mixed>|null $gate_at_accept the trust gate pinned when the league paired a rated game (App\Support\SeasonChain\GatePin)
+ * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing of a rated game
  * @property int $white_id
  * @property int $black_id
  * @property ChessGameStatus $status
@@ -65,7 +67,7 @@ use Illuminate\Support\Carbon;
  * @property-read ChessGame|null $rematch
  * @property-read NostrEvent|null $recordEvent
  */
-#[Fillable(['number', 'mode', 'rated', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
+#[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
     'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind'])]
 class ChessGame extends Model
@@ -95,6 +97,8 @@ class ChessGame extends Model
         return [
             'number' => 'integer',
             'rated' => 'boolean',
+            'gate_at_accept' => 'array',
+            'clans_at_accept' => 'array',
             'status' => ChessGameStatus::class,
             'end_reason' => ChessEndReason::class,
             'ply' => 'integer',
