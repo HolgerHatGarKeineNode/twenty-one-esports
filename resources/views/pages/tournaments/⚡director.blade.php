@@ -116,7 +116,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             return;
         }
 
-        $this->tournament->directors()->syncWithoutDetaching([$user->id => ['added_by_id' => auth()->id()]]);
+        // Attach only a missing director: the recorded appointer of an existing one never changes
+        // (security re-check S2: the appointment chain decides who has an interest).
+        if (! $this->tournament->directors()->whereKey($user->id)->exists()) {
+            $this->tournament->directors()->attach($user->id, ['added_by_id' => auth()->id()]);
+        }
         $this->reset('directorKey');
     }
 

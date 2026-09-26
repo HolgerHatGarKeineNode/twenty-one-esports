@@ -1,10 +1,14 @@
 <?php
 
+use App\Enums\ClanRole;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
+use App\Models\Clan;
+use App\Models\ClanDeparture;
+use App\Models\ClanMember;
 use App\Models\NostrEvent;
 use App\Models\RatingChange;
 use App\Models\RelayDelivery;
@@ -24,6 +28,7 @@ use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -276,3 +281,52 @@ function calendared(Tournament $tournament): Tournament
 
     return $tournament->refresh();
 }
+
+test('a clanmate who left the clan after sign-up closed still has an interest, and so does the clan of a player who left it', function () {
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, clans: true);
+    $tournament->forceFill(['signup_closes_at' => now()->subHour()])->save();
+    $match = TournamentMatch::query()->where('status', 'ready')->with('slots.participant')->orderBy('id')->first();
+    $player = User::query()->findOrFail($match->slots[0]->participant->user_id);
+    $clan = Clan::query()->where('owner_id', $player->id)->sole();
+    $mate = User::factory()->create();
+    ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $mate->id, 'role' => ClanRole::Member, 'joined_at' => now()->subWeek()]);
+    $tournament->directors()->attach($mate->id);
+
+    // The director leaves (as the signed leave records it) and then enters his former clanmate's win.
+    ClanMember::query()->where('user_id', $mate->id)->delete();
+    ClanDeparture::query()->create(['clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name, 'user_id' => $mate->id, 'pubkey' => $mate->pubkey, 'reason' => 'left', 'left_at' => now()]);
+
+    expect(fn () => app(TournamentRunner::class)->enterResult($match, $mate, ['result' => '1-0']))->toThrow(TournamentRuleViolation::class, 'interest');
+
+    // The other way round: the player left, the director is still in that clan.
+    $other = TournamentMatch::query()->where('status', 'ready')->with('slots.participant')->orderByDesc('id')->first();
+    $leaver = User::query()->findOrFail($other->slots[1]->participant->user_id);
+    $leftClan = Clan::query()->where('owner_id', $leaver->id)->sole();
+    $stayer = User::factory()->create();
+    ClanMember::query()->create(['clan_id' => $leftClan->id, 'user_id' => $stayer->id, 'role' => ClanRole::Member, 'joined_at' => now()->subWeek()]);
+    ClanMember::query()->where('user_id', $leaver->id)->delete();
+    ClanDeparture::query()->create(['clan_id' => $leftClan->id, 'clan_address' => $leftClan->address(), 'clan_name' => $leftClan->name, 'user_id' => $leaver->id, 'pubkey' => $leaver->pubkey, 'reason' => 'left', 'left_at' => now()]);
+    $leftClan->forceFill(['owner_id' => $stayer->id])->save();
+    $tournament->directors()->attach($stayer->id);
+
+    expect(fn () => app(TournamentRunner::class)->enterResult($other, $stayer, ['result' => '0-1']))->toThrow(TournamentRuleViolation::class, 'interest');
+});
+
+test('re-adding a director never changes who appointed them', function () {
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4);
+    $match = TournamentMatch::query()->where('status', 'ready')->with('slots.participant')->orderBy('id')->first();
+    $organizer = User::query()->findOrFail($match->slots[0]->participant->user_id);
+    TournamentOrganizer::query()->create(['pubkey' => $organizer->pubkey]);
+    $tournament->forceFill(['created_by_id' => $organizer->id])->save();
+    $alt = User::factory()->create();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    Livewire::actingAs($organizer)->test('pages::tournaments.director', ['tournament' => $tournament->refresh()])
+        ->set('directorKey', $alt->npub)->call('addDirector')->assertHasNoErrors();
+    Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])
+        ->set('directorKey', $alt->npub)->call('addDirector')->assertHasNoErrors();
+
+    expect(DB::table('tournament_directors')->where('user_id', $alt->id)->value('added_by_id'))->toBe($organizer->id)
+        ->and(fn () => app(TournamentRunner::class)->enterResult($match, $alt, ['result' => '1-0']))->toThrow(TournamentRuleViolation::class, 'interest');
+});
