@@ -2,7 +2,8 @@
     A finished or aborted game (ChessGameDone.dc.html): result, facts, replay
     with the move list as buttons, the game file (PGN) to copy or download,
     and the Proof with the players' NIP-64 record. Each player's rating shows
-    with this game's change (casual Elo before Block 0, P7b); Hashrate stays
+    with this game's change (casual Elo before Block 0, P7b); Hashrate says
+    what a rated game mined (P7e, ChessGameService::mining()) and stays
     "does not count" for casual games.
 
     Daily games add ChessStates "Deadline missed" when time ran out; a record
@@ -13,10 +14,12 @@
 @php
     use App\Enums\ChessEndReason;
     use App\Enums\ChessGameStatus;
+    use App\Support\Chess\ChessGameService;
     use App\Support\Chess\ChessPgn;
     use App\Support\Nostr\NostrKeys;
 
     $aborted = $game->status === ChessGameStatus::Aborted;
+    $mining = app(ChessGameService::class)->mining($game);
     $daily = $game->isCorrespondence();
     $winner = match ($game->result) { '1-0' => 'w', '0-1' => 'b', default => null };
     $result = str_replace(['1/2', '-'], ['½', '–'], (string) $game->result);
@@ -91,7 +94,7 @@
             </span>
             <div class="flex flex-col">
                 <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Daily Elo') }}</span><x-rating :rating="$players[$color]['rating']" :delta="$players[$color]['rating']['delta']" /></div>
-                <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span>{{ __('casual games do not count') }}</span></div>
+                <div class="grid min-h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span @class(['text-win' => ($mining['status'] ?? null) === 'block'])>{{ $mining['text'] ?? __('casual games do not count') }}</span></div>
             </div>
             @if ($lost)
                 <a href="{{ route('settings.chess') }}" class="text-[13px] font-bold text-ink hover:text-btc-hi">{{ __('Turn on reminders before the deadline') }}</a>
@@ -112,7 +115,7 @@
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
+            @foreach ([[__('Rating'), $game->rated ? __('rated Elo with rank') : __('casual Elo, no rank')], [__('Hashrate'), $mining['text'] ?? __('casual games do not count')], [__('Moves'), trans_choice(':count half-move|:count half-moves', $game->ply)], [__('Game number'), $game->number()]] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
             @endforeach
         </div>

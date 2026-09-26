@@ -278,3 +278,39 @@ test('the end-of-game panel says what a rated game mined: a block, or no block w
     $live = ChessGame::factory()->rated()->create();
     $this->actingAs($live->white)->get(route('games.show', $live))->assertOk()->assertSee('data-test="game-over-mining"', false)->assertSee('state.mining ? state.mining.text', false);
 });
+
+test('P7e DoD gate: the finished game page, opened later, says what a rated game mined, not "casual games do not count"', function () {
+    app()->instance(TrustFacts::class, chessFacts());
+    $queue = app(ChessQueue::class);
+    $service = app(ChessGameService::class);
+
+    // Block 1: twenty moves, then a resignation.
+    [$a, $b] = [clanPlayer(), clanPlayer()];
+    $queue->join($a, 'blitz', rated: true);
+    $long = playTwentyMoves($queue->join($b, 'blitz', rated: true));
+    $service->resign($long->refresh(), $long->black);
+
+    expect(SeasonAttestation::query()->sole()->height)->toBe(1);
+    $this->actingAs($long->white)->get(route('games.show', $long))->assertOk()
+        ->assertSee('mined block 1,')
+        ->assertDontSee('casual games do not count');
+    $this->get(route('games.show', $long))->assertOk()->assertSee('mined block 1,')->assertDontSee('casual games do not count');
+
+    // No block: resigned after one move (rule 2).
+    [$c, $d] = [clanPlayer(), clanPlayer()];
+    $queue->join($c, 'blitz', rated: true);
+    $short = $queue->join($d, 'blitz', rated: true);
+    $service->move($short, $short->white, 'e2e4');
+    $service->resign($short->refresh(), $short->black);
+
+    $this->get(route('games.show', $short))->assertOk()
+        ->assertSee('no block: rule 2, too short to count as a real game')
+        ->assertDontSee('casual games do not count');
+
+    // Pending: rated and finished, not attested yet. A casual game keeps its line.
+    $this->get(route('games.show', ChessGame::factory()->rated()->finished()->create()))->assertOk()
+        ->assertSee('pending: the league attests the result')
+        ->assertDontSee('casual games do not count');
+    $this->get(route('games.show', ChessGame::factory()->finished()->create()))->assertOk()
+        ->assertSee('casual games do not count');
+});

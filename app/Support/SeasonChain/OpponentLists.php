@@ -89,12 +89,19 @@ final class OpponentLists
                 continue;
             }
 
-            $newest = $this->newest($event->pubkey);
+            // One short transaction per version: the newer-check, the archive row and its
+            // current row (track(), which locks that row) commit together (P7e DoD gate).
+            $stored += DB::transaction(function () use ($event): int {
+                $newest = $this->newest($event->pubkey);
 
-            if ($newest === null || $event->createdAt > $newest->signed_at) {
+                if ($newest !== null && $event->createdAt <= $newest->signed_at) {
+                    return 0;
+                }
+
                 NostrEvent::fromSigned($event);
-                $stored++;
-            }
+
+                return 1;
+            });
         }
 
         return $stored;

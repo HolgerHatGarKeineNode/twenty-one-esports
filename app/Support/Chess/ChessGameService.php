@@ -585,7 +585,7 @@ final class ChessGameService
             'rematchUrl' => $game->rematch_id !== null ? route('games.show', $game->rematch_id) : null,
             'lastMove' => $last === null ? null : $this->moveState($last),
             'rating' => $game->status === ChessGameStatus::Finished ? $this->ratingChanges($game) : null,
-            'mining' => $game->status === ChessGameStatus::Finished && $game->rated ? $this->mining($game) : null,
+            'mining' => $this->mining($game),
         ];
 
         if ($withMoves) {
@@ -612,14 +612,19 @@ final class ChessGameService
     }
 
     /**
-     * What a finished rated game mined, for the end-of-game panel (P7e): a
-     * block, no block with the first consensus rule it failed (a draw is no
-     * candidate), or pending while the league has not attested it.
+     * What a finished rated game mined, for the end-of-game panel and the
+     * finished game page (P7e): a block, no block with the first consensus
+     * rule it failed (a draw is no candidate), or pending while the league
+     * has not attested it. Null for a casual or unfinished game.
      *
-     * @return array{status: 'block'|'none'|'pending', text: string}
+     * @return array{status: 'block'|'none'|'pending', text: string}|null
      */
-    private function mining(ChessGame $game): array
+    public function mining(ChessGame $game): ?array
     {
+        if ($game->status !== ChessGameStatus::Finished || ! $game->rated) {
+            return null;
+        }
+
         $attestation = SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->where('source_id', $game->id)->latest('id')->first();
 
         return match (true) {
