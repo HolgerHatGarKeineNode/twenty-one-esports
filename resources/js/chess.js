@@ -862,9 +862,10 @@ document.addEventListener('alpine:init', () => {
         /* The one-time question about desktop notifications, asked when the player joins the queue. */
         askNotify: false,
 
-        joinQueue() {
+        // rated: the lobby's Casual/Rated choice (P7e); the server checks it again.
+        joinQueue(rated = false) {
             this.askNotify = window.esportsAlerts?.shouldAsk() ?? false;
-            this.$wire.findOpponent();
+            this.$wire.findOpponent(rated === true);
         },
 
         async answerNotify(allow) {

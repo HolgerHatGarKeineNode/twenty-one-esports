@@ -13,6 +13,10 @@ use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
+use App\Support\Chess\RatedChess;
+use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\Seasons;
+use App\Support\Series\Ladders;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -42,6 +46,12 @@ use Livewire\Component;
  * "Looking to play" switch is Alpine's: it flips on the click and saves the
  * wanted state (setLookingToPlay), because a flip action lost clicks (see
  * there). The online list marks the player this one has invited.
+ *
+ * P7e: the Casual/Rated choice. Rated is selectable only while rated chess
+ * is open for this player (RatedChess::refusal: season live, rated chess
+ * offered, trust ranks computed, a Trusted account) and they list each
+ * other with at least one player; otherwise the page says why. The choice
+ * is the page's (Alpine `rated`) and travels with "Find opponent".
  */
 new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
@@ -66,9 +76,51 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         }
     }
 
-    public function findOpponent(): void
+    public function findOpponent(bool $rated = false): void
     {
-        $this->attempt(fn (User $user) => $this->goTo(app(ChessQueue::class)->join($user)));
+        $this->attempt(function (User $user) use ($rated): void {
+            $refusal = $rated ? $this->ratedRefusal : null;
+
+            if ($refusal !== null) {
+                throw new ChessRuleViolation('rated_not_open', $refusal);
+            }
+
+            $this->goTo(app(ChessQueue::class)->join($user, 'blitz', rated: $rated));
+        });
+    }
+
+    /**
+     * Why this player cannot search a rated blitz game now, or null. The
+     * queue itself pairs two rated players only if they list each other, so
+     * a player who lists nobody back would wait forever: refused here.
+     */
+    #[Computed]
+    public function ratedRefusal(): ?string
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            return Ladders::isOpen('chess', 'blitz') ? __('Log in to play rated games.') : Seasons::restMessage();
+        }
+
+        $refusal = app(RatedChess::class)->refusal($user, 'blitz');
+
+        if ($refusal !== null) {
+            return $refusal;
+        }
+
+        return $this->mutualOpponents === 0
+            ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
+            : null;
+    }
+
+    /** How many players this one lists each other with (the rated queue pairs only those). */
+    #[Computed]
+    public function mutualOpponents(): int
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? count(app(Opponents::class)->mutual($user)) : 0;
     }
 
     public function cancelSearch(): void
@@ -353,7 +405,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         @endforeach
 
         {{-- Find opponent --}}
-        <section aria-labelledby="find-h" class="flex flex-col gap-4 lg:rounded-lg lg:bg-card lg:px-6 lg:py-5" data-test="find-opponent">
+        <section aria-labelledby="find-h" class="flex flex-col gap-4 lg:rounded-lg lg:bg-card lg:px-6 lg:py-5" data-test="find-opponent" x-data="{ rated: false }">
             <span class="flex items-baseline justify-between gap-3 max-lg:sr-only"><h2 id="find-h" class="m-0 text-[15px] font-bold">{{ __('Find opponent') }}</h2><span class="text-xs text-ink-2">{{ __('Blitz 5+3, live') }}</span></span>
 
             @if ($entry)
@@ -363,7 +415,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                         <span class="text-[13px] font-bold">~{{ $entry->rating }} Elo</span>
                         <span class="text-[11px] text-btc-hi">{{ $entry->rating - app(ChessQueue::class)->range($entry) }} – {{ $entry->rating + app(ChessQueue::class)->range($entry) }}</span>
                         <span class="text-base font-bold">5+3</span>
-                        <span class="text-[11px] text-ink-2">{{ __('Blitz · casual') }}</span>
+                        <span class="text-[11px] text-ink-2" data-test="searching-kind">{{ $entry->rated ? __('Blitz · rated') : __('Blitz · casual') }}</span>
                         <span class="text-[11px]" x-text="since({{ $entry->joined_at->getTimestampMs() }})"></span>
                     </div>
                     <span class="font-display text-lg font-bold">{{ __('Finding opponent … 5+3') }}</span>
@@ -407,12 +459,29 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                     <span class="flex flex-col items-end gap-1"><b class="font-display text-[28px] leading-none">{{ $this->searching }}</b><b class="text-[13px]">±{{ $range['initial'] }}</b></span>
                 </div>
 
-                {{-- Casual / Rated: rated opens at Block 0 (P7) --}}
-                <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring">
-                    <span role="radio" aria-checked="true" class="flex flex-col gap-0.5 rounded-md bg-raised px-3.5 py-2 shadow-[inset_0_-2px_0_#F7931A]"><b class="text-[13px] text-btc-hi">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span></span>
-                    <span role="radio" aria-checked="false" aria-disabled="true" class="flex flex-col gap-0.5 px-3.5 py-2 opacity-60"><b class="text-[13px]">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ __('from Block 0') }}</span></span>
+                {{-- Casual / Rated (P7e): Rated only while rated chess is open for this player; else the reason --}}
+                @php($ratedRefusal = $this->ratedRefusal)
+                <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring" data-test="game-kind" data-rated-open="{{ $ratedRefusal === null ? 'true' : 'false' }}">
+                    <button type="button" role="radio" aria-checked="true" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="rated = false" data-test="kind-casual"
+                            class="flex min-h-11 cursor-pointer flex-col items-start justify-center gap-0.5 rounded-md bg-raised px-3.5 py-2 text-left text-ink shadow-[inset_0_-2px_0_#F7931A]"
+                            x-bind:class="rated ? 'bg-transparent! shadow-none!' : ''">
+                        <b class="text-[13px] text-btc-hi" x-bind:class="rated ? 'text-ink!' : ''">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span>
+                    </button>
+                    <button type="button" role="radio" aria-checked="false" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="rated = true" data-test="kind-rated"
+                            @disabled($ratedRefusal !== null) aria-describedby="kind-why"
+                            class="flex min-h-11 cursor-pointer flex-col items-start justify-center gap-0.5 rounded-md px-3.5 py-2 text-left text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                            x-bind:class="rated ? 'bg-raised shadow-[inset_0_-2px_0_#F7931A]' : ''">
+                        <b class="text-[13px]" x-bind:class="rated ? 'text-btc-hi' : ''">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ $ratedRefusal === null ? __('counts for Elo') : (Ladders::isOpen('chess', 'blitz') ? __('not open for you yet') : __('from Block 0')) }}</span>
+                    </button>
                 </div>
-                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('Until Block 0 every game is casual: casual Elo only, and you play anyone who is online.') }}</p>
+                <p id="kind-why" class="m-0 text-[13px] leading-normal text-ink-2" data-test="kind-why">
+                    @if ($ratedRefusal !== null)
+                        {{ $ratedRefusal }}
+                    @else
+                        <span x-show="! rated">{{ __('Casual pairs you with anyone online and moves only your casual Elo.') }}</span>
+                        <span x-show="rated" x-cloak>{{ trans_choice('Rated pairs you only with a Trusted player you list each other with (you have :count).|Rated pairs you only with Trusted players you list each other with (you have :count).', $this->mutualOpponents) }}</span>
+                    @endif
+                </p>
 
                 <div class="flex flex-col gap-2 max-lg:hidden">
                     <span class="text-[13px] text-ink-2">{{ __('Opponent strength') }}</span>
@@ -420,7 +489,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 </div>
 
                 @auth
-                    <button type="button" x-on:click="joinQueue()" data-test="find-opponent-button"
+                    <button type="button" x-on:click="joinQueue(rated)" data-test="find-opponent-button"
                             class="btn-p flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-md bg-btc px-4 py-2 text-left text-on-btc lg:justify-center lg:gap-2">
                         <span class="flex flex-col gap-0.5">
                             <span class="flex items-center gap-2 font-display text-lg font-bold lg:font-mono lg:text-base"><x-icon name="pawn" :size="18" class="max-lg:hidden" />{{ __('Find opponent') }}<span class="max-lg:hidden">· {{ __('Blitz 5+3') }}</span></span>
