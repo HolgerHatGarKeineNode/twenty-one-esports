@@ -19,7 +19,9 @@ use Illuminate\Support\Facades\DB;
  * - A chess game rates its two players, White as the challenger (NIP
  *   "Rating": either colour may be the challenger, rounding is symmetric).
  * - A Rocket League series rates the two lineups, once per series; `void`
- *   and a series with a deleted lineup rate nothing.
+ *   and a series with a deleted lineup rate nothing. A tournament series
+ *   between two single players (RL 1v1 entries, P8b) rates the two players;
+ *   a mix team (a roster side of several players) is never rated.
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
  *   result moves nothing (fail closed). A rated result reads only the trust
@@ -80,11 +82,11 @@ final class RatingService
         $subjects = $match->rated ? $match->rated_subjects : null;
 
         if (! isset($subjects['challenger'], $subjects['challenged'])) {
-            if ($match->challenger_lineup_id === null || $match->challenged_lineup_id === null) {
+            $subjects = self::seriesSubjects($match);
+
+            if ($subjects === null) {
                 return false;
             }
-
-            $subjects = ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
         }
 
         if ($match->rated && ! $this->pinAdmits(GatePin::fromArray($match->gate_at_accept), $this->rosterOf($match))) {
@@ -93,10 +95,46 @@ final class RatingService
 
         return $this->apply(
             (bool) $match->rated, $match->game, $match->mode,
-            ['subject' => $subjects['challenger'], 'lineup_id' => $match->challenger_lineup_id],
-            ['subject' => $subjects['challenged'], 'lineup_id' => $match->challenged_lineup_id],
+            self::entity($subjects['challenger'], $match->challenger_lineup_id),
+            self::entity($subjects['challenged'], $match->challenged_lineup_id),
             $match->winner === 'challenger' ? 1.0 : 0.0, RatingChange::SERIES, $match->id, $match->number,
         );
+    }
+
+    /**
+     * The two rated entities of a casual series: its lineups, or its two
+     * single players (both sides a roster side of one player, in a mode of
+     * one player per side); null otherwise (a mix team, a deleted lineup).
+     *
+     * @return array{challenger: string, challenged: string}|null
+     */
+    public static function seriesSubjects(SeriesMatch $match): ?array
+    {
+        if ($match->challenger_lineup_id !== null && $match->challenged_lineup_id !== null) {
+            return ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
+        }
+
+        [$a, $b] = [$match->rosterSide('challenger'), $match->rosterSide('challenged')];
+
+        if (count($a) === 1 && count($b) === 1 && $match->challenger_lineup_id === null && $match->challenged_lineup_id === null && $match->gameMode()->teamSize === 1) {
+            return ['challenger' => 'user:'.$a[0], 'challenged' => 'user:'.$b[0]];
+        }
+
+        return null;
+    }
+
+    /**
+     * A rating entity: a player subject carries its user, a lineup subject
+     * the lineup as the series still has it (null once deleted: the pinned
+     * subject rates on, security gate F3).
+     *
+     * @return array{subject: string, user_id?: int, lineup_id?: int|null}
+     */
+    private static function entity(string $subject, ?int $lineupId): array
+    {
+        return str_starts_with($subject, 'user:')
+            ? ['subject' => $subject, 'user_id' => (int) substr($subject, 5)]
+            : ['subject' => $subject, 'lineup_id' => $lineupId];
     }
 
     /**
@@ -132,8 +170,8 @@ final class RatingService
     }
 
     /**
-     * @param  array{subject: string, user_id?: int, lineup_id?: int}  $challenger
-     * @param  array{subject: string, user_id?: int, lineup_id?: int}  $challenged
+     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $challenger
+     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $challenged
      */
     private function apply(bool $rated, string $game, string $mode, array $challenger, array $challenged, float $score, string $source, int $sourceId, ?int $number): bool
     {
@@ -178,7 +216,7 @@ final class RatingService
      * The id of the entity's rating row, created at the start rating if new.
      * insertOrIgnore keeps a concurrent create from aborting the transaction.
      *
-     * @param  array{subject: string, user_id?: int, lineup_id?: int}  $entity
+     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $entity
      */
     private function ensure(string $pool, string $season, string $game, string $mode, array $entity, int $start): int
     {

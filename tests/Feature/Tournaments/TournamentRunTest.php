@@ -9,11 +9,19 @@ use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
+use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\SeasonChain\TrustFacts;
+use App\Support\Series\Ladders;
+use App\Support\Series\SeriesService;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TrustedFacts;
 
@@ -103,3 +111,62 @@ test('a whole tournament runs from the first round to its winner', function (Tou
     'two stage, 4' => [TournamentFormat::TwoStage, 4, 7],
     'two stage, 8' => [TournamentFormat::TwoStage, 8, 15],
 ]);
+
+/** A running RL 1v1 final between two solo entries (no lineup). */
+function rocketLeagueDuel(TournamentResultsMode $mode): array
+{
+    $tournament = Tournament::factory()->create([
+        'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => 2,
+        'options' => FormatOptions::defaults(GameProfile::for('rocket-league', '1v1'))->toArray(),
+        'results_mode' => $mode, 'status' => TournamentStatus::Running, 'slug' => 'duel-'.fake()->unique()->numberBetween(1, 1_000_000),
+        'ladder_address' => Ladders::address('rocket-league', '1v1'),
+    ]);
+    $players = [User::factory()->create(), User::factory()->create()];
+
+    foreach ($players as $index => $player) {
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $player->displayName(), 'rating' => 1100 - $index, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ef', 32));
+    app(TournamentRunner::class)->sync($tournament);
+
+    return [$tournament->refresh(), SeriesMatch::query()->where('tournament_match_id', TournamentMatch::query()->where('tournament_id', $tournament->id)->value('id'))->sole()];
+}
+
+test('an RL 1v1 tournament series reported by its players moves the two players\' casual Elo', function () {
+    [$tournament, $series] = rocketLeagueDuel(TournamentResultsMode::Players);
+    $service = app(SeriesService::class);
+    [$a, $b] = [User::query()->find($series->rosterSide('challenger')[0]), User::query()->find($series->rosterSide('challenged')[0])];
+
+    foreach ([[3, 1], [2, 0], [4, 1]] as $index => [$x, $y]) {
+        $service->saveLiveGame($series, $a, $index, $x, $y, null);
+    }
+
+    $service->report($series, $a, []);
+    $service->respond($series, $b, 'confirmed', '', []);
+
+    expect($series->refresh()->rated)->toBeFalse()
+        ->and(Rating::query()->where('pool', Rating::CASUAL)->where('game', 'rocket-league')->pluck('subject')->sort()->values()->all())->toBe(collect(['user:'.$a->id, 'user:'.$b->id])->sort()->values()->all())
+        ->and(RatingChange::query()->count())->toBe(2)
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
+});
+
+test('an RL 1v1 director series on an open frozen ladder moves the players\' rated Elo and is attested by pubkey', function () {
+    openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    [$tournament, $series] = rocketLeagueDuel(TournamentResultsMode::Director);
+    $runner = app(TournamentRunner::class);
+    $runner->enterResult(TournamentMatch::query()->where('tournament_id', $tournament->id)->sole(), $tournament->creator, ['games' => [[3, 1], [2, 0], [4, 1]]]);
+    $runner->closeRound(TournamentRunner::currentRound($tournament), $tournament->creator);
+
+    $series->refresh();
+    [$a, $b] = [User::query()->find($series->rosterSide('challenger')[0]), User::query()->find($series->rosterSide('challenged')[0])];
+    $tags = NostrEvent::query()->findOrFail(SeasonAttestation::query()->where('source', 'series')->sole()->nostr_event_id)->payload()['tags'];
+
+    expect($series->rated)->toBeTrue()
+        ->and(RatingChange::query()->count())->toBe(2)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(collect($tags)->where(0, 'elo')->pluck(1)->sort()->values()->all())->toBe(collect([$a->pubkey, $b->pubkey])->sort()->values()->all())
+        ->and(collect($tags)->where(0, 'a')->filter(fn ($tag) => isset($tag[3]))->count())->toBe(0)
+        ->and(collect($tags)->filter(fn ($tag) => $tag[0] === 'p' && isset($tag[3]))->pluck(3)->values()->all())->toBe(['challenger', 'challenged']);
+});

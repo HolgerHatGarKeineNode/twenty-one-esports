@@ -106,7 +106,9 @@ test('a picked format, its options and the organizer\'s times are stored', funct
         ->set('players', '8')
         ->call('select', 'double-elimination')
         ->call('option', 'grandFinal', 'single')
+        // Bo7 is no series the game allows (P8b DoD gate): refused, the default stays.
         ->call('pickFinalBestOf', 7)
+        ->call('pickBestOf', 5)
         ->set('setup', '10')
         ->call('create')
         ->assertHasNoErrors();
@@ -115,7 +117,8 @@ test('a picked format, its options and the organizer\'s times are stored', funct
 
     expect($tournament->format)->toBe(TournamentFormat::DoubleElimination)
         ->and($tournament->formatOptions()->grandFinal)->toBe('single')
-        ->and($tournament->formatOptions()->finalBestOf)->toBe(7)
+        ->and($tournament->formatOptions()->finalBestOf)->toBe(5)
+        ->and($tournament->formatOptions()->bestOf)->toBe(5)
         ->and($tournament->times)->toBe(['setup' => 10])
         ->and($tournament->profile()->setup)->toBe(10.0);
 });

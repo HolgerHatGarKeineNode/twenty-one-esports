@@ -278,15 +278,6 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         $this->option('finalBestOf', $bestOf);
     }
 
-    /**
-     * Chess: one game, or two (one with each color) — the final plays the same.
-     */
-    public function pickGamesPerMatch(int $games): void
-    {
-        $this->options = FormatOptions::fromArray([...$this->options, 'bestOf' => $games, 'finalBestOf' => $games], $this->profile())->toArray();
-        $this->changed();
-    }
-
     public function updatedOptions(): void
     {
         $this->options = FormatOptions::fromArray($this->options, $this->profile())->toArray();

@@ -487,16 +487,8 @@
                             </span>
                             <span class="{{ $help }}">{{ __('The last match can be longer than the rest.') }}</span>
                         </div>
-                    @else
-                        <div class="{{ $optionRow }}">
-                            <span class="flex flex-col items-start gap-2">
-                                <span id="cb-l" class="text-[13px] font-bold">{{ __('Games per match') }}</span>
-                                <x-tournaments.segmented labelledby="cb-l" method="pickGamesPerMatch" :current="$options->bestOf" :grow="false"
-                                    :options="[[1, __('1 game')], [2, __('2 games')]]" />
-                            </span>
-                            <span class="{{ $help }}">{{ __('Two games means one with each color. Takes twice as long.') }}</span>
-                        </div>
                     @endif
+                    {{-- Chess plays one game per match: the 2-game match (one with each color) has no execution path yet (P8b DoD gate). --}}
                 </section>
 
                 {{-- The selected format, explained --}}

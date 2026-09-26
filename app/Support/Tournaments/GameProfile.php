@@ -41,11 +41,13 @@ final readonly class GameProfile
     public static function for(string $game, string $mode): self
     {
         return match ("{$game}/{$mode}") {
-            'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1, 2], false, 'game'),
-            'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1, 2], true, 'game'),
-            'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [1, 3, 5, 7], false, 'series'),
-            'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [1, 3, 5, 7], false, 'series'),
-            'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [1, 3, 5, 7], false, 'series'),
+            // Only what a tournament match can be played as (P8b DoD gate): one chess game per match
+            // (no 2-game match yet), and the series lengths the game registry allows (Bo3, Bo5).
+            'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game'),
+            'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
+            'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series'),
+            'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series'),
+            'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series'),
             default => throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
     }

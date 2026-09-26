@@ -585,8 +585,13 @@ final class SeasonChains
         }
 
         $tags[] = ['a', $ladder, ''];
-        $tags[] = ['a', $match->challenger_lineup_address, '', 'challenger'];
-        $tags[] = ['a', $match->challenged_lineup_address, '', 'challenged'];
+
+        // A roster side (a tournament's RL 1v1 player, P8b) has no lineup: its players are the `p` roster.
+        foreach (['challenger' => $match->challenger_lineup_address, 'challenged' => $match->challenged_lineup_address] as $side => $address) {
+            if ($address !== '') {
+                $tags[] = ['a', $address, '', $side];
+            }
+        }
 
         foreach ($this->roster($match) as $entry) {
             $tags[] = ['p', $entry['pubkey'], '', $entry['side'], $entry['role']];
@@ -607,7 +612,14 @@ final class SeasonChains
         $tags[] = ['winner', (string) $match->winner];
 
         $subjects = self::subjects($match);
-        $entities = [$subjects['challenger'] => $match->challenger_lineup_address, $subjects['challenged'] => $match->challenged_lineup_address];
+        $entities = [];
+
+        foreach (['challenger' => $match->challenger_lineup_address, 'challenged' => $match->challenged_lineup_address] as $side => $address) {
+            // A player subject (`user:<id>`) is named by its pubkey, as on a player ladder.
+            $entities[$subjects[$side]] = str_starts_with($subjects[$side], 'user:')
+                ? (string) User::query()->whereKey((int) substr($subjects[$side], 5))->value('pubkey')
+                : $address;
+        }
         $changes = RatingChange::query()->with('rating')->where('source', RatingChange::SERIES)->where('source_id', $match->id)->orderBy('id')->get();
 
         foreach ($changes as $change) {

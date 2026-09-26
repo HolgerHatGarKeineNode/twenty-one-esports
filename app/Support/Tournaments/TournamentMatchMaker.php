@@ -182,7 +182,11 @@ final class TournamentMatchMaker
         // The number is recorded for a player who still has an account (a mix team can lose some).
         $numberOwner = User::query()->whereIn('id', [...$a->memberIds(), ...$b->memberIds()])->orderBy('id')->value('id')
             ?? throw new TournamentRuleViolation('no_players', "Tournament match {$match->id} has no player with an account left.");
-        $pin = $tournament->isDirectorMode() ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : null;
+        // Rated only in director mode for now: a rated series reported by the players needs the
+        // captains' signed 2150/2151 in the room (P8c). RL 1v1 entries are rated as players.
+        $players = $this->singlePlayers($tournament, $a, $b, $lineups);
+        $pin = ! $tournament->isDirectorMode() ? null
+            : ($players === null ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : $this->playersPin($tournament, $players[0], $players[1]));
         $now = now();
 
         $sides = [];
@@ -213,9 +217,13 @@ final class TournamentMatchMaker
             'respond_by' => $now,
             'start_at' => $now,
             'answered_at' => $now,
-            'clans_at_accept' => $pin === null ? null : $this->clans($lineups[0], $lineups[1]),
+            'clans_at_accept' => $pin === null ? null : ($players === null ? $this->clans($lineups[0], $lineups[1]) : RatedChess::clans($players[0], $players[1])),
             'gate_at_accept' => $pin?->toArray(),
-            'rated_subjects' => $pin === null ? null : ['challenger' => 'lineup:'.$lineups[0]?->id, 'challenged' => 'lineup:'.$lineups[1]?->id],
+            'rated_subjects' => match (true) {
+                $pin === null => null,
+                $players !== null => ['challenger' => 'user:'.$players[0]->id, 'challenged' => 'user:'.$players[1]->id],
+                default => ['challenger' => 'lineup:'.$lineups[0]?->id, 'challenged' => 'lineup:'.$lineups[1]?->id],
+            },
             'tournament_match_id' => $match->id,
             'sides' => $sides === [] ? null : $sides,
         ]);
@@ -226,6 +234,39 @@ final class TournamentMatchMaker
      * both lineups, the clan owners at or above the minimum and enough
      * eligible players on each side. Null = casual.
      */
+    /**
+     * The two players of an RL 1v1 pairing of two solo entries (no lineup, one
+     * player each, not a mix team), or null.
+     *
+     * @param  array{0: Lineup|null, 1: Lineup|null}  $lineups
+     * @return array{0: User, 1: User}|null
+     */
+    private function singlePlayers(Tournament $tournament, TournamentParticipant $a, TournamentParticipant $b, array $lineups): ?array
+    {
+        if ($tournament->teamSize() !== 1 || $lineups[0] !== null || $lineups[1] !== null || $a->isMixTeam() || $b->isMixTeam()
+            || count($a->memberIds()) !== 1 || count($b->memberIds()) !== 1) {
+            return null;
+        }
+
+        $first = User::query()->find($a->memberIds()[0]);
+        $second = User::query()->find($b->memberIds()[0]);
+
+        return $first === null || $second === null ? null : [$first, $second];
+    }
+
+    /**
+     * The gate of a rated 1v1 series: like a rated chess game, both players
+     * at or above the minimum on the frozen ladder while it is open, each
+     * side pinned with its one eligible player. Null = casual.
+     */
+    private function playersPin(Tournament $tournament, User $a, User $b): ?GatePin
+    {
+        $pin = $this->chessPin($tournament, $a, $b);
+        $entry = fn (User $user): array => [['user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => $user->displayName(), 'role' => 'player']];
+
+        return $pin?->withSides(['challenger' => $entry($a), 'challenged' => $entry($b)]);
+    }
+
     private function seriesPin(Tournament $tournament, ?Lineup $a, ?Lineup $b): ?GatePin
     {
         if ($a === null || $b === null || $tournament->openLadder() === null || ! $this->gate->isAvailable()) {
