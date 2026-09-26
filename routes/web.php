@@ -6,9 +6,12 @@ use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RobotsController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
 use App\Models\InviteLink;
+use App\Support\Seo\Sitemap;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'pages.home')->name('home');
@@ -127,6 +130,19 @@ Route::get('avatars/{pubkey}.svg', GeneratedAvatarController::class)
 Route::get('.well-known/nostr.json', NostrJsonController::class)
     ->withoutMiddleware('web')
     ->name('nostr.nip05');
+
+// Search engines (P14): robots.txt and the sitemap; public, no session.
+Route::get('robots.txt', RobotsController::class)
+    ->withoutMiddleware('web')
+    ->name('robots');
+Route::get('sitemap.xml', [SitemapController::class, 'index'])
+    ->withoutMiddleware('web')
+    ->name('sitemap');
+Route::get('sitemaps/{section}-{file}.xml', [SitemapController::class, 'show'])
+    ->whereIn('section', Sitemap::SECTIONS)
+    ->where('file', '[1-9][0-9]{0,5}')
+    ->withoutMiddleware('web')
+    ->name('sitemap.section');
 
 Route::get('styleguide', function () {
     abort_unless(app()->environment(['local', 'testing']), 404);

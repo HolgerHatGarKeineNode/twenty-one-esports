@@ -63,6 +63,15 @@ beforeEach(function () {
 const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', '__test/', 'horizon'];
 
 /**
+ * Files for crawlers, not pages (P14): robots.txt and the sitemap XML, which
+ * a browser shows as raw text or an XML tree (wider than 375 px, no header).
+ * tests/Feature/Seo/SitemapTest checks their status and content.
+ *
+ * @var list<string>
+ */
+const SWEEP_CRAWLER_FILES = ['robots', 'sitemap', 'sitemap.section'];
+
+/**
  * @param  array<string, string>  $bound  route key per bound parameter, from sweepFixtures()
  * @return list<array{name: string, url: string}>
  */
@@ -72,6 +81,7 @@ function sweepRoutes(array $bound = []): array
         ->reject(fn (RoutingRoute $route) => $route->isFallback)
         ->filter(fn (RoutingRoute $route) => in_array('GET', $route->methods(), true))
         ->reject(fn (RoutingRoute $route) => $route->uri() === 'up')
+        ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_CRAWLER_FILES, true))
         ->reject(function (RoutingRoute $route) {
             foreach (SWEEP_VENDOR_PREFIXES as $prefix) {
                 if (str_starts_with($route->uri(), $prefix)) {
