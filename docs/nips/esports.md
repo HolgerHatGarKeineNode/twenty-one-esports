@@ -18,14 +18,16 @@ clan ownership, 21 rank tiers, rank badges, bounties; round 6, **revision 6** (2
 invitations into the roster only, the membership as consent to lineups, the wording of consensus
 rule 7; **revision 7** (2026-09-26): running tournaments, with the sign-up consent `22150`, director
 results, tournaments before Block 0, and no blocks from tournaments; **revision 7.1** (2026-09-26):
-director forfeits unrated, disinterested directors, Rocket League 1v1 as a player ladder). Not
+director forfeits unrated, disinterested directors, Rocket League 1v1 as a player ladder;
+**revision 8** (2026-09-26): rank badges from rated ladders only, the badge artwork URL, the profile
+badge list written by the app, share posts). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet (see [Open points](#open-points)).
+no example yet, and neither does revision 8 (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -40,7 +42,26 @@ revision 6. The rules marked "rev. 7" concern tournaments only; they apply to ev
 first `31923` version the league signs after it adopts revision 7. The rules marked "rev. 7.1" on
 director results apply with revision 7; the one on Rocket League 1v1 applies to every
 `rocket-league/1v1` ladder whose first version is signed after the league adopts revision 7.1,
-because `rates` is a frozen ladder parameter.
+because `rates` is a frozen ladder parameter. The rules marked "rev. 8" concern badges, the
+profile badge list and share posts; no ladder depends on them, and they apply from the day a league
+adopts revision 8.
+
+### Changelog of revision 8 (2026-09-26)
+
+- **Rank badges come from the rated ladder only** ([Rank badges](#rank-badges-rev-5)): the tier of a
+  badge is the entity's tier on the rated ladder of the live season; a casual rating has no tier and
+  never signs a badge. A version is signed only when tier or season change; a rating change inside
+  the same tier signs nothing. The `d` value stays `rank/<game>/<mode>/<player pubkey>` of revision 5
+  (the plan's earlier `rank/<game>-<mode>/…` is not used), and the signer stays the badge key.
+- **Exactly one award, stated as an invariant**: a league MUST NOT sign a second `8` with the same
+  `a` and `p`; a new badge key is a new definition address and gets one award of its own.
+- **Badge artwork URL**: `<site>/badges/rank/<game>/<tier>-v<artwork>.png` (`image`, 1024 × 1024) and
+  `…-v<artwork>-256.png` (`thumb`, 256 × 256), a function of game, tier and artwork version only.
+- **Profile badge list** ([Profile](#rank-badges-rev-5)): the app refuses to write a `10008` when it
+  reached no relay and knows no earlier list of the player; new validation rule 36.
+- **Share posts** (new section [Share posts (rev. 8)](#share-posts-rev-8)): a kind `1` note the player
+  signs, with a share card of the league (NIP-92 `imeta`); new validation rule 37. Rule 35 states the
+  badge rules above.
 
 ### Changelog of revision 7.1 (2026-09-26)
 
@@ -325,6 +346,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `3` | 02 | read only: opponent suggestions, mutual contacts | the player |
 | `30009`, `8` | 58 | rev. 5: rank badge definition per player, game and mode; its single award | badge key |
 | `10008` | 58, 51 | rev. 5: the player's profile badges, with the rank badges the player chose to show | the player |
+| `1` | 01, 92 | rev. 8: share post, a note with a share card of the league (rank up, block, tournament win, season) | the player |
 
 ## Identifiers
 
@@ -343,6 +365,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | season announcement (`31923`, rev. 5) | `season/<season>` | `season/season-5` |
 | bounty (`31923`, rev. 5) | `bounty/<slug>` | `bounty/alice-blitz-s5` |
 | rank badge definition (`30009`, rev. 5) | `rank/<game>/<mode>/<player pubkey>` | `rank/chess/blitz/e221ff8c…413e` (full hex key) |
+| quest badge definition (`30009`, rev. 5) | `quest/<slug>` | `quest/first-block` |
 
 The separator inside a `d` value is `/`, not `:`. An `a` value is `<kind>:<pubkey>:<d>`, and several
 client libraries split it on every `:`; a `d` value containing `:` then loses its tail.
@@ -1853,19 +1876,34 @@ lineup the player plays for in a lineup ladder. Anyone can compare the badge wit
 - **New season.** While the player is provisional in a new season, the definition keeps the last tier
   and its `description` names the season it is from. The first tier of the new season replaces it.
 - **Never re-awarded.** A second award for the same definition would add a second entry to clients that
-  list awards; a rank change is a new version of the definition, never a new award.
+  list awards; a rank change is a new version of the definition, never a new award. Rev. 8: a league
+  MUST NOT sign a second `8` with the same `a` and `p`. A new badge key makes a new definition
+  address (`30009:<new key>:<d>`), which gets one award of its own.
+- **Rated only** (rev. 8). The tier is read from the rated ladder of the live season. A casual rating
+  has no tier and never signs a badge; outside a live season nothing is signed. A new version is
+  signed only when the tier or the season changes; a rating change within a tier signs nothing. Its
+  `created_at` is later than the previous version's, also within the same second.
 
 **Image URL per rank.** The `image` and `thumb` URLs are a function of game, tier and artwork version
 only, for example `https://example.org/badges/rank/chess/gold-2-v1.png`. Clients cache images by URL;
 a URL per player whose picture changes with the rank would keep showing the old rank. All players of
-a tier share one URL, and new artwork gets a new version in the URL.
+a tier share one URL, and new artwork gets a new version in the URL. Rev. 8 fixes the form:
+`<site>/badges/rank/<game>/<tier>-v<artwork>.png` for `image` (1024 × 1024) and
+`<site>/badges/rank/<game>/<tier>-v<artwork>-256.png` for `thumb` (256 × 256).
 
 **Profile.** "Show on my Nostr profile" in the app adds the pair (`a` definition, `e` award) to the
 player's kind `10008` after a confirmation, once per definition. Like the opponent list, the app first
 reads the newest `10008` from the player's NIP-65 write relays and the league relay, appends at the
 end, and keeps every other entry and its order; it never writes from a stale copy. A deprecated
 `30008` with `d` = `profile_badges` (NIP-58: "Clients should treat these events as equivalent to kind
-`10008` and migrate") is merged into the new `10008`.
+`10008` and migrate") is merged into the new `10008`. Rev. 8: the new version keeps the newest
+list's tags in order and its `content` verbatim (it may hold private NIP-51 items), appends the
+pairs of the `30008` that the `10008` lacks and then the new pair, and adds an `alt` only if there is
+none. When the app reached no relay at all and knows no earlier list of the player, it MUST NOT
+write: a list written then could drop every badge the player has. The list is dated now, never
+ahead; if the newest list is from this second or later, the change waits. The league archives the
+signed list and sends it to its relays; the app sends it to the player's NIP-65 write relays, or to
+the relays it read from when the player has no relay list.
 
 **Why a badge key.** Every rank change of every player means a signature, automatically on the server.
 A leaked badge key can forge badges, which are cosmetic and checkable against the ladder; it cannot
@@ -1875,6 +1913,43 @@ forge a result or a rating. The league key stays in its remote signer with its s
 shows the old rank until it fetches again. The award says nothing about the rank, so it can never
 contradict the current one. Quest badges ("Mine your first block") are ordinary definitions with a `d`
 of their own (`quest/<slug>`) and one award per player; this NIP does not specify them further.
+
+## Share posts (rev. 8)
+
+A player shares a moment of the league as an ordinary note (kind `1`), signed by the player. The
+league draws a share card (a PNG on its own site, 1200 × 630 for link previews and 1080 × 1920 for
+stories) and prepares the note; the player signs it in the app.
+
+| moment | card URL (`<site>/cards/<locale>/…`) | drawn from |
+|---|---|---|
+| rank up | `rank-up/<version>-<format>.png` | one signed version of the player's rank badge definition that is the first tier or a higher tier than the version before |
+| block mined | `block/<attestation>/<npub>-<format>.png` | a `2154` whose `block` tag has a height and names the player among its winners |
+| tournament win | `tournament/<tournament>-<format>.png` | a finished tournament; its winner is read from the bracket |
+| season wrapped | `wrapped/<season>/<npub>-<format>.png` | the player's blocks, sats, rated wins, tournament wins and best tier of the season |
+
+`<format>` is `wide` or `story`. A card URL carries `?v=<fingerprint>`, a hash of everything the card
+shows: a new name or picture is a new URL, so clients that cache by URL show the new card. A card is
+drawn from one version or one attestation, so a posted card keeps showing what happened.
+
+```json
+{
+  "kind": 1,
+  "content": "Mined block 84 on the TWENTY ONE Esports season chain: +5 000 sats.\n\n<site>/cards/en/block/217/npub1…-wide.png?v=3f2a…\n<site>/players/npub1…",
+  "tags": [
+    ["imeta", "url <site>/cards/en/block/217/npub1…-wide.png?v=3f2a…", "m image/png", "dim 1200x630", "alt Mined block 84 …"],
+    ["r", "<site>/players/npub1…"],
+    ["alt", "Share post: block in TWENTY ONE Esports"]
+  ]
+}
+```
+
+- **No references.** A share post has no `e`, `p`, `q` or `a` tag: it is not a reply, mentions no one
+  and quotes nothing. What it claims can be checked on the card's page and against the league's own
+  events (the badge, the attestation, the tournament).
+- **Relays.** The app sends the note to the player's NIP-65 write relays (or the relays it read from
+  when the player has none); the league archives it and sends it to its relays. A league limits share
+  posts per player and hour.
+- **Not league state.** A share post changes nothing in the league: no rating, no block, no badge.
 
 ## State machine
 
@@ -2128,6 +2203,15 @@ Per kind:
     [Tournament Consent](#tournament-consent-22150) for the checks. A league relay refuses the kind like
     any event not from the league publisher. A reader that meets a `22150` anywhere gives it no meaning:
     registrations are not public data.
+35. **30009**, **8** (rank badges, rev. 8): signed by the league's badge key; a definition's `d` is
+    `rank/<game>/<mode>/<pubkey of its p>` and its `a` a ladder of that game and mode; its name names
+    the entity's tier in the `standing` of that ladder at `created_at` (never `provisional`); at most
+    one `8` per definition address and `p`, with `p` the definition's `p`.
+36. **10008** (profile badges written by the app, rev. 8): signed by the player; at least one `a`/`e`
+    pair; every `a` a `30009` address, every `e` an event id; every pair of the newest list the league
+    knew is kept, in order, and its `content` is unchanged.
+37. **1** (share post, rev. 8): signed by the player; exactly one `imeta` whose `url` is a share card on
+    the league's site (`<site>/cards/…`) and appears in `content`; no `e`, `p`, `q` or `a`.
 
 ## Replay protection
 
@@ -5006,6 +5090,12 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 ```
 
 ## Open points
+
+- **Revision 8 has no signed example yet.** The badge definitions, awards, profile lists and share
+  posts of revision 8 are tested against a local `nak serve` relay in the app's browser test, not yet
+  on the ndak test bed (rnostr, strfry, khatru) like the examples of rounds 1 to 6. Also open: Season
+  Wrapped as a series of four story cards (the app draws one), and a `30009` definition cached by a
+  client showing an old tier until it fetches again (NIP-58 has no cache invalidation).
 
 - **Pomegranate is a custodian of use.** A Google login's key is FROST-sharded 3-of-4 across
   independent operators, but the operators produce partial signatures and ECDH shares for whatever
