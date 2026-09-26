@@ -37,7 +37,7 @@ use Throwable;
  * Foreground supervisor for the 24/7 stream, meant to run as a daemon.
  *
  * Two pictures, one at a time (ModeMachine): the promo loop, or the live-game
- * scene while a live blitz game runs (a still per second, rendered here and
+ * scene while any chess game is active (a still per second, rendered here and
  * piped to ffmpeg). Music plays under both. Each ffmpeg run writes into its
  * mode's directory; the public playlist is written by PublicPlaylist, and a
  * mode switch is make-before-break (the new encoder runs until it has its

@@ -1,11 +1,11 @@
 @php
     /**
-     * Stream scene: ONE live blitz chess game as a 1280x720 still (SVG -> rsvg-convert -> PNG).
+     * Stream scene: ONE chess game (blitz or daily/correspondence) as a 1280x720 still (SVG -> rsvg-convert -> PNG).
      * No animation; the supervisor re-renders it once per second while a clock runs.
      *
      * Data contract (all keys required unless marked optional):
      *
-     * @var array{name: string, clockMs: int, toMove: bool} $white  public profile name, remaining ms (<= 0 renders 0:00)
+     * @var array{name: string, clockMs: int, toMove: bool} $white  public profile name, remaining ms (<= 0 renders 0:00, >= 1 h h:mm:ss)
      * @var array{name: string, clockMs: int, toMove: bool} $black
      * @var string $fen                                  any FEN; only the placement field is read
      * @var array{from: string, to: string}|null $lastMove  squares like "e2"/"e4"; null before the first move
@@ -89,16 +89,21 @@
         $active = (bool) $c['p']['toMove'];
         $low = $ms < 10000;
         $text = $clock($ms);
+        // m:ss fits at 80 px; h:mm:ss (a daily game's day per move) is scaled
+        // down to the 480 px between the card's inner edges (740..1220).
+        $widths = array_map(fn (string $ch): int => $ch === ':' ? 30 : 75, str_split($text));
+        $scale = min(1, 480 / array_sum($widths));
         $digits = [];
         $cx = 740;
-        foreach (str_split($text) as $ch) {
-            $w = $ch === ':' ? 30 : 75;
-            $digits[] = ['ch' => $ch, 'x' => $cx + $w / 2];
+        foreach (str_split($text) as $i => $ch) {
+            $w = $widths[$i] * $scale;
+            $digits[] = ['ch' => $ch, 'x' => round($cx + $w / 2, 1)];
             $cx += $w;
         }
         $cards[] = [
             'y' => $c['y'], 'king' => $c['king'], 'name' => $fit((string) $c['p']['name'], 25) ?: $c['fallback'],
             'digits' => $digits,
+            'clockSize' => round(80 * $scale, 1),
             'fill' => $active ? ($low ? '#F87171' : '#F7931A') : '#121215',
             'stroke' => $active ? 'none' : '#2A2A30',
             'ink' => $active ? '#17120A' : '#FFFFFF',
@@ -146,7 +151,7 @@
 <rect x="740" y="{{ $c['y'] + 18 }}" width="40" height="40" rx="4" fill="#CFCFD4"/>
 <use xlink:href="#p-{{ $c['king'] }}" href="#p-{{ $c['king'] }}" x="740" y="{{ $c['y'] + 18 }}" width="40" height="40"/>
 <text x="796" y="{{ $c['y'] + 48 }}" font-family="JetBrains Mono" font-weight="700" font-size="28" fill="{{ $c['ink'] }}">{{ $c['name'] }}</text>
-@foreach ($c['digits'] as $d)<text x="{{ $d['x'] }}" y="{{ $c['y'] + 140 }}" font-family="Unbounded" font-weight="800" font-size="80" fill="{{ $c['clockInk'] }}" text-anchor="middle">{{ $d['ch'] }}</text>@endforeach
+@foreach ($c['digits'] as $d)<text x="{{ $d['x'] }}" y="{{ $c['y'] + 140 }}" font-family="Unbounded" font-weight="800" font-size="{{ $c['clockSize'] }}" fill="{{ $c['clockInk'] }}" text-anchor="middle">{{ $d['ch'] }}</text>@endforeach
 
 @endforeach
 

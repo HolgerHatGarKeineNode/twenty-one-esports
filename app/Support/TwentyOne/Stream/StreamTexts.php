@@ -29,10 +29,11 @@ final class StreamTexts
         $white = PublicName::limit($game->white->displayName(), self::NAME_LIMIT) ?: 'White player';
         $black = PublicName::limit($game->black->displayName(), self::NAME_LIMIT) ?: 'Black player';
         $players = $white.' vs '.$black;
+        [$kind, $described] = $game->isCorrespondence() ? ['Chess Correspondence', 'correspondence chess, one move a day,'] : ['Chess Blitz', 'live blitz chess'];
 
         return [
-            'title' => 'Live now: '.$players.' · Chess Blitz',
-            'summary' => $players.': live blitz chess on TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Play the next game at '.config('twentyone.stream.scene.url').'. Login via Nostr.',
+            'title' => 'Live now: '.$players.' · '.$kind,
+            'summary' => $players.': '.$described.' on TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Play the next game at '.config('twentyone.stream.scene.url').'. Login via Nostr.',
         ];
     }
 }

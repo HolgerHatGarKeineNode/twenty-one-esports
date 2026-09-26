@@ -11,10 +11,10 @@ use App\Models\Clan;
 use App\Support\Chess\ChessGameService;
 
 /**
- * What the stream scene shows, read from the database: the one live blitz
- * game (the oldest active one when several run), or the one that ended in
- * the last minute, turned into the data contract of
- * resources/views/stream/scene.blade.php.
+ * What the stream scene shows, read from the database: any active chess
+ * game (a blitz game first, the oldest when several run; otherwise the daily
+ * game with the most recent move), or the one that ended in the last minute,
+ * turned into the data contract of resources/views/stream/scene.blade.php.
  *
  * Names are the public profile names the lobby shows (User::displayName()).
  * Stats are real counts only; nothing here is a placeholder or a rating.
@@ -26,18 +26,25 @@ class SceneSource
         private GameRegistry $games,
     ) {}
 
+    /**
+     * The game the scene shows, null only when no chess game is active at
+     * all. `turn_started_ms` is when the last move was made (or the game
+     * began), so the most recent one sorts first.
+     */
     public function liveGame(): ?ChessGame
     {
         return ChessGame::query()->live()->where('status', ChessGameStatus::Active)
-            ->with(['white', 'black'])->oldest('id')->first();
+            ->with(['white', 'black'])->oldest('id')->first()
+            ?? ChessGame::query()->daily()->where('status', ChessGameStatus::Active)
+                ->with(['white', 'black'])->orderByDesc('turn_started_ms')->orderByDesc('id')->first();
     }
 
     /**
-     * The live game that ended most recently, if within `$seconds`.
+     * The game (blitz or daily) that ended most recently, if within `$seconds`.
      */
     public function endedGame(int $seconds): ?ChessGame
     {
-        return ChessGame::query()->live()->whereIn('status', [ChessGameStatus::Finished, ChessGameStatus::Aborted])
+        return ChessGame::query()->whereIn('status', [ChessGameStatus::Finished, ChessGameStatus::Aborted])
             ->where('ended_at', '>=', now()->subSeconds($seconds))
             ->with(['white', 'black'])->latest('ended_at')->latest('id')->first();
     }
@@ -48,9 +55,12 @@ class SceneSource
     public function scene(ChessGame $game, int $nowMs): array
     {
         $clocks = $this->chess->clocks($game, $nowMs);
-        $toMove = $game->isActive() && $game->clocksRunning() ? $game->turn() : null;
+        // A daily game's clock is the deadline for the move, running from the start.
+        $running = $game->isCorrespondence() ? $game->deadline_ms !== null : $game->clocksRunning();
+        $toMove = $game->isActive() && $running ? $game->turn() : null;
         $last = $game->ply > 0 ? $game->moves()->where('ply', $game->ply)->first() : null;
-        $label = $this->games->mode('chess', $game->mode)->name ?? $game->mode;
+        // The lobby calls it "Daily"; on the stream it is correspondence chess.
+        $label = $game->isCorrespondence() ? 'Correspondence' : ($this->games->mode('chess', $game->mode)->name ?? $game->mode);
 
         return [
             'white' => ['name' => $game->white->displayName(), 'clockMs' => $clocks['w'], 'toMove' => $toMove === 'w'],
@@ -66,12 +76,12 @@ class SceneSource
 
     /**
      * One line of real counts: finished games (as the footer counts them),
-     * live games, clans, and the blitz queue when someone waits.
+     * active games (blitz and daily), clans, and the blitz queue when someone waits.
      */
     public function stats(): string
     {
         $played = ChessGame::query()->where('status', ChessGameStatus::Finished)->count();
-        $live = ChessGame::query()->live()->where('status', ChessGameStatus::Active)->count();
+        $live = ChessGame::query()->where('status', ChessGameStatus::Active)->count();
         $clans = Clan::query()->count();
         $queue = ChessQueueEntry::query()->count();
 

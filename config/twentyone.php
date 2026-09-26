@@ -138,8 +138,8 @@ return [
         ],
 
         /*
-        | The live-game scene: one still per second while a live blitz game
-        | runs, back to the loop `hysteresis_seconds` after the last one ended.
+        | The live-game scene: one still per second while any chess game
+        | (blitz or daily) is active, back to the loop `hysteresis_seconds` after the last one ended.
         | CRF 35 (x264 veryfast, no lookahead) gave 58 kbit/s of video on 120
         | rendered scene frames with ticking clocks (P3; CRF 32: 68, CRF 36: 55).
         */

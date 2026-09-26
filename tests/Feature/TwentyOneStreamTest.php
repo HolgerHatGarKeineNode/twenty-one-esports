@@ -380,6 +380,17 @@ test('a scene that cannot be rendered gives way to the loop', function () {
         ->and($output)->toContain('ffmpeg started mode=scene', 'ffmpeg started mode=loop');
 });
 
+test('an active daily game alone brings the scene, not the loop', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    ChessGame::factory()->daily()->create(['ply' => 68]);
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 3]);
+
+    expect(Artisan::output())->toContain('ffmpeg started mode=scene')
+        ->and(Artisan::output())->not->toContain('ffmpeg started mode=loop');
+});
+
 test('a hanging renderer is cut off after its timeout and the loop takes over by wall-clock time', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     fakeEncoder($this->dir);
