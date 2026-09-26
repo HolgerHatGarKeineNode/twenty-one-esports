@@ -778,30 +778,75 @@ document.addEventListener('alpine:init', () => {
         connection: 'connecting',
         now: Date.now(),
         ticker: null,
-        poller: null,
+        // Server clock minus this browser's, so data-check-at (server ms) is read right.
+        skew: 0,
+        checkedAt: null,
+        refreshedAt: Date.now(),
+        subscribedOnce: false,
 
+        /*
+         * Pairings, an accepted invite and invites received arrive by push on
+         * the player's own channel (ChessGameStarted, ChessInviteChanged); the
+         * lobby does not poll for them. It asks the server itself only when the
+         * searching or waiting card says so (data-check-at: a wider range may
+         * fit now, the invite expires, or the slow net under a lost push), and
+         * every `poll` seconds while the websocket is down.
+         */
         init() {
-            this.ticker = setInterval(() => (this.now = Date.now()), 1000);
+            // Read once from data-*: a render may change them, but a changed x-data restarts this
+            // component (the notification question vanished, every listener was added again).
+            this.skew = Number(this.$root.dataset.serverNow || Date.now()) - Date.now();
+            this.looking = this.savedLooking = this.$root.dataset.looking === 'true';
+            this.ticker = setInterval(() => {
+                this.now = Date.now();
+                this.checkIfDue();
+            }, 1000);
 
-            watchConnection((current) => {
-                this.connection = current;
-                // No websocket: invites and pairings still arrive by asking the server.
-                if (current !== 'connected' && config.userId && !this.poller) {
-                    this.poller = setInterval(() => this.$wire.pollQueue(), 5000);
-                } else if (current === 'connected' && this.poller) {
-                    clearInterval(this.poller);
-                    this.poller = null;
-                }
-            });
+            watchConnection((current) => (this.connection = current));
 
             if (!window.Echo || !config.userId) return;
 
             // The page-wide `online` membership (resources/js/echo.js), joined on every logged-in page.
             this.unsubscribe = window.esportsPresence?.subscribe((members) => (this.online = members));
 
-            window.Echo.private('App.Models.User.' + config.userId)
+            const channel = window.Echo.private('App.Models.User.' + config.userId)
                 .listen('.chess.game-started', ({ url }) => this.gameStarted(url))
                 .listen('.chess.invite', () => this.$wire.$refresh());
+            // A push sent before this subscription (or while the socket was away) is lost: ask once.
+            channel.subscribed?.(() => this.catchUp());
+        },
+
+        /** The searching or waiting-for-a-friend card, while there is one. */
+        waitingCard() {
+            return this.$root.querySelector('[data-check-at]');
+        },
+
+        checkIfDue() {
+            const card = this.waitingCard();
+            if (card) {
+                const at = Number(card.dataset.checkAt);
+                // Once per rendered moment: a failed request does not turn into one per second.
+                if (at && at !== this.checkedAt && this.now + this.skew >= at) {
+                    this.checkedAt = at;
+                    this.$wire.pollQueue();
+                }
+
+                return;
+            }
+            if (config.userId && this.connection !== 'connected' && this.now - this.refreshedAt >= config.poll * 1000) {
+                this.refreshedAt = this.now;
+                this.$wire.$refresh();
+            }
+        },
+
+        catchUp() {
+            const first = !this.subscribedOnce;
+            this.subscribedOnce = true;
+            if (this.waitingCard()) {
+                this.$wire.pollQueue();
+            } else if (!first) {
+                this.$wire.$refresh();
+            }
         },
 
         /**
@@ -829,13 +874,12 @@ document.addEventListener('alpine:init', () => {
 
         destroy() {
             clearInterval(this.ticker);
-            clearInterval(this.poller);
             this.unsubscribe?.();
         },
 
         /* "Looking to play" (P5e): the switch shows the wanted state at once and the server catches up. */
-        looking: Boolean(config.looking),
-        savedLooking: Boolean(config.looking),
+        looking: false,
+        savedLooking: false,
         savingLooking: false,
         lookingFailed: false,
 

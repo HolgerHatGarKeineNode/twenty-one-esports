@@ -33,6 +33,10 @@ beforeEach(function () {
 
     config(['session.driver' => 'database']);
 
+    // Pairings and invites must arrive by push: the lobby's own checks (the
+    // slow net and the widening search range) are pushed an hour away.
+    config(['esports.chess.lobby_poll_seconds' => 3600, 'esports.chess.queue.range.every_seconds' => 3600]);
+
     app()->rebinding('request', function ($app): void {
         $app['session']->forgetDrivers();
         // The guard reads the `session.store` singleton, not the manager's driver.
@@ -47,11 +51,13 @@ beforeEach(function () {
 
 /**
  * Console errors, uncaught errors, rejected promises, failed websockets and
- * >= 400 answers to fetch/XHR, collected from the first script on.
+ * >= 400 answers to fetch/XHR, collected from the first script on. Kept in
+ * sessionStorage, so a page the tab has left (the lobby a pairing moved
+ * away from) still counts.
  */
 const BLITZ_COLLECTOR = <<<'JS'
-    window.__errors = [];
-    const push = (entry) => window.__errors.push(entry);
+    window.__errors = JSON.parse(sessionStorage.getItem('__errors') ?? '[]');
+    const push = (entry) => { window.__errors.push(entry); sessionStorage.setItem('__errors', JSON.stringify(window.__errors)); };
     const originalError = console.error;
     console.error = function (...args) { push('console.error: ' + args.map(String).join(' ')); originalError.apply(console, args); };
     window.addEventListener('error', (e) => push('error: ' + e.message));
@@ -103,11 +109,15 @@ test('two players find each other, play over Reverb, survive a reload and end by
     // Queue: Anna searches, Bert searches, both land on the same game.
     $pageA->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
+    expect($pageA->evaluate('() => [...document.querySelectorAll("*")].some((el) => [...el.attributes].some((a) => a.name.startsWith("wire:poll")))'))->toBeFalse()
+        ->and($pageA->evaluate('() => window.__errors'))->toBe([]);
     $pageB->locator('[data-test=find-opponent-button]')->click();
 
-    $game = null;
+    // Anna waited: the pairing reaches her by push on her own channel. The
+    // lobby's own checks are an hour away, and the match-found toast would
+    // only open the game after its 5 s countdown.
     BrowserWait::until($pageB, '() => location.pathname.startsWith("/games/")', 10_000);
-    BrowserWait::until($pageA, '() => location.pathname.startsWith("/games/")', 10_000);
+    BrowserWait::until($pageA, '() => location.pathname.startsWith("/games/")', 3_000);
     $game = ChessGame::query()->sole();
     expect($pageA->url())->toEndWith('/games/'.$game->id)->and($pageB->url())->toEndWith('/games/'.$game->id);
 

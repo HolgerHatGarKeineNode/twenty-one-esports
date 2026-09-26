@@ -229,6 +229,28 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         unset($this->dailyChallenges);
     }
 
+    /**
+     * When this lobby asks the server on its own (ms, server clock), or null
+     * while there is nothing to wait for. Pairings and answers to an invite
+     * arrive by push; the lobby asks when a wider search range could now
+     * fit, when its invite expires, and otherwise every lobby_poll_seconds
+     * as a net under a push that did not arrive.
+     */
+    #[Computed]
+    public function checkAt(): ?int
+    {
+        if ($this->entry === null && $this->outgoing === null) {
+            return null;
+        }
+
+        $now = now();
+        $net = (int) $now->copy()->addSeconds(max(30, (int) config('esports.chess.lobby_poll_seconds')))->getTimestampMs();
+        $due = $this->entry !== null ? app(ChessQueue::class)->nextWidening($this->entry, $now) : $this->outgoing?->expires_at;
+
+        // Half a second late, so the server's clock has passed that moment too.
+        return $due === null ? $net : min($net, (int) $due->getTimestampMs() + 500);
+    }
+
     #[Computed]
     public function searching(): int
     {
@@ -293,7 +315,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'looking' => $user?->looking_to_play !== null]))">
+<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play !== null ? 'true' : 'false' }}">
 
     <div class="grid grid-cols-1 gap-4 px-4 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Mobile title (MobileChessLobby) --}}
@@ -336,7 +358,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
             @if ($entry)
                 {{-- ChessStates "Finding opponent" --}}
-                <div wire:poll.2s="pollQueue" role="status" aria-live="polite" class="flex flex-col items-center gap-4 rounded-lg bg-ground p-4 shadow-ring-hairline" data-test="searching">
+                <div data-check-at="{{ $this->checkAt }}" role="status" aria-live="polite" class="flex flex-col items-center gap-4 rounded-lg bg-ground p-4 shadow-ring-hairline" data-test="searching">
                     <div class="cube mt-4 flex size-[124px] flex-col items-center justify-between bg-[linear-gradient(180deg,#2A1F0E,#17120A)] px-2 py-2.5 text-center" aria-hidden="true">
                         <span class="text-[13px] font-bold">~{{ $entry->rating }} Elo</span>
                         <span class="text-[11px] text-btc-hi">{{ $entry->rating - app(ChessQueue::class)->range($entry) }} – {{ $entry->rating + app(ChessQueue::class)->range($entry) }}</span>
@@ -365,7 +387,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 </div>
             @elseif ($outgoing)
                 {{-- ChessStates "Waiting for a friend" --}}
-                <div wire:poll.5s="pollQueue" class="flex flex-col gap-3.5 rounded-lg bg-ground p-5 shadow-ring-hairline" data-test="waiting-for-friend">
+                <div data-check-at="{{ $this->checkAt }}" class="flex flex-col gap-3.5 rounded-lg bg-ground p-5 shadow-ring-hairline" data-test="waiting-for-friend">
                     <span class="flex items-center gap-3"><span aria-hidden="true" class="block size-5 shrink-0 animate-spin rounded-full border-2 border-line border-t-btc"></span><b class="text-base">{{ __('Waiting for :name', ['name' => $outgoing->invitee->displayName()]) }}</b></span>
                     <div class="flex flex-col">
                         <div class="grid h-9 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Time control') }}</span><span>{{ __('Blitz 5+3, colours at random') }}</span></div>

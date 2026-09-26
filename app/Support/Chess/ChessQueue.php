@@ -116,6 +116,25 @@ final class ChessQueue
     }
 
     /**
+     * When this entry's range next opens, or null once it is at `max`. The
+     * searching lobby asks for a pairing then: nobody new has to join for a
+     * wider range to fit, so no push would announce it.
+     */
+    public function nextWidening(ChessQueueEntry $entry, ?CarbonInterface $now = null): ?CarbonInterface
+    {
+        $now ??= now();
+
+        if ($this->range($entry, $now) >= (int) config('esports.chess.queue.range.max')) {
+            return null;
+        }
+
+        $every = max(1, (int) config('esports.chess.queue.range.every_seconds'));
+        $waited = max(0, (int) $entry->joined_at->diffInSeconds($now));
+
+        return $entry->joined_at->copy()->addSeconds((intdiv($waited, $every) + 1) * $every);
+    }
+
+    /**
      * Pair this player with the longest-waiting fitting opponent, if any.
      * Returns the new game, or the live game a pairing already gave them.
      */

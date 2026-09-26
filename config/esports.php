@@ -144,6 +144,12 @@ return [
     |
     | invite_seconds: how long a blitz invite to a friend stays open.
     |
+    | lobby_poll_seconds: pairings, accepted invites and invites received reach
+    | the lobby by push on the player's private channel. The lobby asks the
+    | server itself only this often: while searching or waiting for a friend
+    | (a push the server could not deliver), and on any lobby while the
+    | websocket is down. Never below 30 (it once polled every 2 s).
+    |
     | disconnect_claim_seconds: how long a live opponent must be gone from the
     | game before the other player may claim the win (ChessOverlays "Opponent
     | disconnected: claim the win after 60 s").
@@ -164,6 +170,7 @@ return [
         ],
         'pairing_limit_per_day' => ['rated' => 3, 'casual' => null],
         'invite_seconds' => 120,
+        'lobby_poll_seconds' => 30,
     ],
 
     /*
