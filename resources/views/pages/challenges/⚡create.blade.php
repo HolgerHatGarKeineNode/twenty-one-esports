@@ -9,6 +9,7 @@ use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\PreSeason;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
@@ -340,7 +341,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $lineup = $this->lineup;
     $opponents = $this->opponents;
     $picked = $opponents->first(fn ($row) => $row['lineup']->id === $opponentId);
-    $ratedOpen = $lineup !== null && Ladders::isOpen($lineup->game, $lineup->mode);
+    $ladderOpen = $lineup !== null && Ladders::isOpen($lineup->game, $lineup->mode);
+    // After Block 0 rated play also needs trust ranks (RatedTrustGate); without them it stays locked.
+    $trustReady = app(RatedTrustGate::class)->isAvailable();
+    $ratedOpen = $ladderOpen && $trustReady;
     $block0 = PreSeason::block0At();
     $card = 'rounded-lg bg-card px-4 py-5 lg:px-6';
     $choice = 'flex min-h-[88px] cursor-pointer flex-col gap-1.5 rounded-lg border bg-ground px-5 py-4 text-left lg:px-12';
@@ -412,8 +416,12 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                         @else
                             <span role="radio" aria-checked="false" aria-disabled="true" class="{{ $choice }} cursor-not-allowed border-line opacity-60" data-test="type-rated-locked">
                                 <b class="font-display text-lg lg:text-xl">{{ __('Rated') }}</b>
-                                <span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ __('from Block 0') }}</span>
-                                @if ($block0 && $block0->isFuture())
+                                @if ($ladderOpen && ! $trustReady)
+                                    <span class="text-xs leading-normal text-ink-2 lg:text-[13px]" data-test="rated-needs-trust">{{ __('Rated play opens once trust ranks are computed') }}</span>
+                                @else
+                                    <span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ __('from Block 0') }}</span>
+                                @endif
+                                @if (! $ladderOpen && $block0 && $block0->isFuture())
                                     <span class="text-xs font-bold text-btc">{{ __('Block 0: :time', ['time' => $block0->copy()->timezone(PreSeason::timezoneFor($me))->locale(app()->getLocale())->translatedFormat('D M j, H:i')]) }}</span>
                                 @endif
                             </span>

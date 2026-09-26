@@ -7,9 +7,11 @@ use App\Models\RelayDelivery;
 use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesService;
 use Tests\Support\TestSigner;
+use Tests\Support\TrustedFacts;
 use WebSocket\Client;
 use WebSocket\Message\Text;
 
@@ -56,6 +58,7 @@ test('a rated series publishes 2150 to 2153 to every ndak relay, each comes back
         'queue.default' => 'sync',
     ]);
     openSeason(['slug' => 'relay-probe']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
     $series = app(SeriesService::class);
 
     $side = function (): array {

@@ -25,6 +25,7 @@ use App\Support\Nostr\SignedEventGate;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\UploadedFile;
@@ -63,6 +64,7 @@ final class SeriesService
         private Notifier $notifier,
         private RatingService $ratings,
         private SeasonChains $chains,
+        private RatedTrustGate $trustGate,
     ) {}
 
     /* ---------- Challenge (2150) ------------------------------------------------------------------------------ */
@@ -152,6 +154,12 @@ final class SeriesService
         if ($draft->rated) {
             $ladder = Ladders::address($challenger->game, $challenger->mode)
                 ?? throw new SeriesRuleViolation('rated_not_open', Seasons::restMessage($author));
+
+            $refusal = $this->trustGate->forChallenge($challenger, $challenged, $author, $this->captainPubkeys($challenged));
+
+            if ($refusal !== null) {
+                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
+            }
         }
 
         $now = now()->getTimestamp();
@@ -267,6 +275,7 @@ final class SeriesService
                 'answered_by_id' => $user->id,
                 'answered_at' => now(),
                 'start_at' => $status === 'accepted' ? now()->setTimestamp((int) $start) : null,
+                'clans_at_accept' => $status === 'accepted' ? json_encode($this->clansOf($this->fresh($match))) : null,
                 'finished_at' => $status === 'accepted' ? null : now(),
                 'answer_event_id' => $stored[0]->id ?? null,
             ]);
@@ -312,6 +321,12 @@ final class SeriesService
 
             if (! $match->challengerLineup?->isReady() || ! $match->challengedLineup?->isReady()) {
                 throw new SeriesRuleViolation('lineup_not_ready', __('Both lineups need enough active players.'));
+            }
+
+            $refusal = $match->rated ? $this->trustGate->forAccept($match, $user) : null;
+
+            if ($refusal !== null) {
+                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
             }
         }
 
@@ -820,6 +835,25 @@ final class SeriesService
         });
 
         $this->broadcastChange($match);
+    }
+
+    /**
+     * Each active player's clan now (pubkey => clan address): stored at the
+     * accept for consensus rule 3 and the 2154 `clan` rows.
+     *
+     * @return array<string, string>
+     */
+    private function clansOf(SeriesMatch $match): array
+    {
+        $clans = [];
+
+        foreach ([$match->challengerLineup, $match->challengedLineup] as $lineup) {
+            foreach ($lineup === null ? [] : $lineup->activeSeats() as $seat) {
+                $clans[$seat->user->pubkey] = $lineup->clan->address();
+            }
+        }
+
+        return $clans;
     }
 
     /**

@@ -10,10 +10,14 @@ namespace App\Support\SeasonChain;
  * The league has no trust job yet (NIP "Trust", `anchored-trust-v1`), so the
  * bound implementation is {@see NoTrustFacts}: no rank, not connected. Rule 1
  * then rejects every win (`not-trusted`), which is the fail-closed reading of
- * "a player without a pinned trust rank is below the minimum".
+ * "a player without a pinned trust rank is below the minimum", and the rated
+ * trust gate ({@see RatedTrustGate}) keeps rated play closed.
  */
 interface TrustFacts
 {
+    /** Whether trust ranks exist at all; false until the trust job runs. */
+    public function available(): bool;
+
     /**
      * @param  list<string>  $players  pubkeys of every rated player
      * @param  array{0: string, 1: string}  $gatekeepers

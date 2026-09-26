@@ -19,6 +19,7 @@ use App\Support\Board;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\ConsensusRule;
+use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\TrustFacts;
@@ -44,7 +45,7 @@ function chainLineup(string $mode = '3v3'): array
  * @param  array{0: Lineup, 1: User, 2: TestSigner}  $a
  * @param  array{0: Lineup, 1: User, 2: TestSigner}  $b
  */
-function chainSeries(array $a, array $b): SeriesMatch
+function chainSeries(array $a, array $b, ?Closure $beforeConfirm = null): SeriesMatch
 {
     $service = app(SeriesService::class);
     $start = now()->addHour()->startOfMinute()->getTimestamp();
@@ -59,6 +60,12 @@ function chainSeries(array $a, array $b): SeriesMatch
     }
 
     $service->report($match, $a[1], $a[2]->signTemplates($service->prepareReport($match, $a[1])));
+
+    if ($beforeConfirm !== null) {
+        $beforeConfirm();
+        $service = app(SeriesService::class);
+    }
+
     $service->respond($match, $b[1], 'confirmed', '', $b[2]->signTemplates($service->prepareResponse($match, $b[1], 'confirmed')));
 
     return $match->refresh();
@@ -127,8 +134,10 @@ test('an invalid win is attested with the rule that rejected it and names the ti
         ->and(attestationTags($third))->toContain(['prev', $rejected->event_id]);
 });
 
-test('without trust data every win fails closed at rule 1 and mines nothing', function () {
-    chainSeries(chainLineup(), chainLineup());
+test('a win whose players have no trust rank at the attestation fails closed at rule 1 and mines nothing', function () {
+    // Trusted through challenge and accept, then the ranks are gone (NoTrustFacts) at the result.
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    chainSeries(chainLineup(), chainLineup(), fn () => app()->bind(TrustFacts::class, NoTrustFacts::class));
 
     $attestation = SeasonAttestation::query()->sole();
 

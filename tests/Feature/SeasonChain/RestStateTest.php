@@ -25,9 +25,11 @@ use App\Support\Chess\DailyChallenges;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
+use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use Tests\Support\TrustedFacts;
 
 beforeEach(function () {
     $this->freezeTime();
@@ -140,6 +142,8 @@ test('between seasons: the same refusals, with the season end instead of a count
 
 test('control: in a live season the same rated challenge is prepared and signed as 2150', function () {
     openSeason();
+    // Trusted players who list each other: the rated trust gate is not what this control tests.
+    app()->bind(TrustFacts::class, TrustedFacts::class);
     [$a, $captain] = restLineup();
     [$b] = restLineup();
 

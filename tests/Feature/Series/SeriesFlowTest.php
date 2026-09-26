@@ -16,12 +16,14 @@ use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
+use Tests\Support\TrustedFacts;
 
 beforeEach(function () {
     Queue::fake();
@@ -211,6 +213,8 @@ test('rated play is refused until a ladder is open', function () {
 
 test('a rated series signs 2150, 2151, 2152 and 2153 that pass the NIP rules, and none of them carries the lobby', function () {
     openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $this->series = app(SeriesService::class);
 
     [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true, bestOf: 5);
     $this->series->setLobby($match, $captainA, 'e21-lsr-mmp', 'hunter2-secret', 'EU');
@@ -345,6 +349,8 @@ test('an admin decision that lands while the other captain accepts the result is
 
 test('a confirmed rated series on an open ladder moves the rated Elo, never the casual one', function () {
     openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $this->series = app(SeriesService::class);
 
     [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true);
     enterGames($match, $captainA, [[1, 3], [0, 2]]);

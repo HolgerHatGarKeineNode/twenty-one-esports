@@ -8,6 +8,11 @@ namespace App\Support\SeasonChain;
  */
 final class NoTrustFacts implements TrustFacts
 {
+    public function available(): bool
+    {
+        return false;
+    }
+
     public function at(array $players, array $gatekeepers): array
     {
         return ['trust' => [], 'anchors' => [], 'connected' => false];

@@ -11,6 +11,10 @@ return [
     | scale; `provisional` is the number of rated results below which a side
     | uses `provisional_k` and shows no tier.
     |
+    | daily_pair_limit: at most this many rated results per pairing (the same
+    | two players or lineups) and UTC day move the rated rating, as for
+    | casual below (farming guard, security gate P7c). null = no limit.
+    |
     */
 
     'rating' => [
@@ -19,6 +23,7 @@ return [
         'provisional_k' => 40,
         'provisional' => 5,
         'scale' => 400,
+        'daily_pair_limit' => 3,
     ],
 
     /*

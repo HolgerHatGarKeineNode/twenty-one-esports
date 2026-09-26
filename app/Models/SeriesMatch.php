@@ -48,6 +48,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $message
  * @property int|null $answered_by_id
  * @property Carbon|null $answered_at
+ * @property array<string, string>|null $clans_at_accept pubkey => clan address at the accept
  * @property string|null $lobby_name
  * @property string|null $lobby_password
  * @property string|null $lobby_region
@@ -80,7 +81,7 @@ use Illuminate\Support\Carbon;
     'number', 'game', 'mode', 'best_of', 'rated',
     'challenger_lineup_id', 'challenged_lineup_id', 'challenger_name', 'challenged_name', 'challenger_tag', 'challenged_tag',
     'challenger_lineup_address', 'challenged_lineup_address', 'ladder_address', 'created_by_id',
-    'status', 'proposals', 'respond_by', 'start_at', 'message', 'answered_by_id', 'answered_at',
+    'status', 'proposals', 'respond_by', 'start_at', 'message', 'answered_by_id', 'answered_at', 'clans_at_accept',
     'lobby_name', 'lobby_password', 'lobby_region', 'lobby_updated_by_id',
     'live_games', 'rosters', 'noshow_side', 'noshow_reported_at', 'new_report_requested_at',
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
@@ -103,6 +104,7 @@ class SeriesMatch extends Model
             'respond_by' => 'datetime',
             'start_at' => 'datetime',
             'answered_at' => 'datetime',
+            'clans_at_accept' => 'array',
             'lobby_name' => 'encrypted',
             'lobby_password' => 'encrypted',
             'live_games' => 'array',

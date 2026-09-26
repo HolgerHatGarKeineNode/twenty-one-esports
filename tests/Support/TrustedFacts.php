@@ -10,6 +10,11 @@ use App\Support\SeasonChain\TrustFacts;
  */
 final class TrustedFacts implements TrustFacts
 {
+    public function available(): bool
+    {
+        return true;
+    }
+
     public function at(array $players, array $gatekeepers): array
     {
         return ['trust' => array_fill_keys($players, 100), 'anchors' => [], 'connected' => true];

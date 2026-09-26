@@ -7,6 +7,7 @@ use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
+use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
 
@@ -21,9 +22,12 @@ use Illuminate\Support\Facades\DB;
  *   and a series with a deleted lineup rate nothing.
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
- *   result moves nothing (fail closed). A casual one goes to the permanent
- *   casual ladder, capped per pairing and UTC day
- *   (`season.casual.daily_pair_limit`). Casual never touches a rated row.
+ *   result moves nothing (fail closed). A rated series also has to pass the
+ *   trust gate again at the result ({@see RatedTrustGate}); without trust
+ *   ranks it moves nothing. A casual one goes to the permanent casual
+ *   ladder. Both are capped per pairing and UTC day
+ *   (`season.rating.daily_pair_limit`, `season.casual.daily_pair_limit`).
+ *   Casual never touches a rated row.
  *
  * Idempotent: a result that already has rating changes is skipped, and the
  * unique (rating, source, source id) index refuses a second write even if
@@ -31,6 +35,8 @@ use Illuminate\Support\Facades\DB;
  */
 final class RatingService
 {
+    public function __construct(private RatedTrustGate $trustGate) {}
+
     /**
      * @return bool whether any rating moved
      */
@@ -44,6 +50,10 @@ final class RatingService
         };
 
         if ($score === null) {
+            return false;
+        }
+
+        if ($game->rated && $this->trustGate->forChessGame($game) !== null) {
             return false;
         }
 
@@ -65,6 +75,10 @@ final class RatingService
         }
 
         if ($match->challenger_lineup_id === null || $match->challenged_lineup_id === null) {
+            return false;
+        }
+
+        if ($match->rated && $this->trustGate->forResult($match) !== null) {
             return false;
         }
 
@@ -106,7 +120,7 @@ final class RatingService
             $c = $locked[$ids[0]];
             $d = $locked[$ids[1]];
 
-            if ($pool === Rating::CASUAL && $this->pairCapReached($c, $d)) {
+            if ($this->pairCapReached($pool, $c, $d)) {
                 return false;
             }
 
@@ -141,12 +155,12 @@ final class RatingService
     }
 
     /**
-     * Casual farming guard: this pairing already moved the casual rating
+     * Farming guard: this pairing already moved the rating of this pool
      * `daily_pair_limit` times today (UTC).
      */
-    private function pairCapReached(Rating $a, Rating $b): bool
+    private function pairCapReached(string $pool, Rating $a, Rating $b): bool
     {
-        $limit = config('season.casual.daily_pair_limit');
+        $limit = config($pool === Rating::RATED ? 'season.rating.daily_pair_limit' : 'season.casual.daily_pair_limit');
 
         if ($limit === null) {
             return false;

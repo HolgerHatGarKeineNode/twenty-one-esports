@@ -327,7 +327,7 @@ final class SeasonChains
             $gatekeepers,
             $facts['connected'],
             $facts['trust'],
-            $this->clans([...$winners, ...$losers]),
+            $this->clans([...$winners, ...$losers], $match),
             $facts['anchors'],
         );
     }
@@ -345,12 +345,32 @@ final class SeasonChains
     }
 
     /**
-     * Each player's clan address at the attestation, null without a clan.
+     * Each player's clan address at the accept (stored on the series then),
+     * null without a clan. A player the accept did not see (a series from
+     * before the column, a player seated later) falls back to the clan now.
      *
      * @param  list<string>  $pubkeys
      * @return array<string, ?string>
      */
-    private function clans(array $pubkeys): array
+    private function clans(array $pubkeys, SeriesMatch $match): array
+    {
+        $atAccept = $match->clans_at_accept ?? [];
+        $clans = [];
+
+        foreach ($pubkeys as $pubkey) {
+            $clans[$pubkey] = $atAccept[$pubkey] ?? null;
+        }
+
+        $missing = array_values(array_filter($pubkeys, fn (string $pubkey): bool => ! array_key_exists($pubkey, $atAccept)));
+
+        return array_replace($clans, $missing === [] ? [] : $this->currentClans($missing));
+    }
+
+    /**
+     * @param  list<string>  $pubkeys
+     * @return array<string, ?string>
+     */
+    private function currentClans(array $pubkeys): array
     {
         $members = ClanMember::query()->with(['clan', 'user'])
             ->whereHas('user', fn ($query) => $query->whereIn('pubkey', $pubkeys))
@@ -430,7 +450,7 @@ final class SeasonChains
 
         $tags[] = ['match', (string) $match->number];
 
-        foreach ($this->clans(array_column($this->roster($match), 'pubkey')) as $pubkey => $clan) {
+        foreach ($this->clans(array_column($this->roster($match), 'pubkey'), $match) as $pubkey => $clan) {
             if ($clan !== null) {
                 $tags[] = ['clan', $pubkey, $clan];
             }

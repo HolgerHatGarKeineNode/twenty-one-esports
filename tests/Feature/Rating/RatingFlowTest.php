@@ -12,8 +12,10 @@ use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Rating\Ratings;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\TrustFacts;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\TrustedFacts;
 
 /**
  * Ratings at result time (P7b): chess games rate their players, casual and
@@ -23,6 +25,8 @@ use Illuminate\Support\Facades\DB;
 function openLadders(): void
 {
     openSeason(['slug' => 'season-1']);
+    // Rated results also need Trusted players who list each other (RatedTrustGate).
+    app()->bind(TrustFacts::class, TrustedFacts::class);
 }
 
 /** Seeds a rating row as if the entity had played `$results` rated results. */
@@ -123,6 +127,7 @@ test('an aborted game rates nothing', function () {
 
 test('a rating is provisional below five results, then gets a tier on the rated ladder', function () {
     openLadders();
+    config(['season.rating.daily_pair_limit' => null]);
     [$a, $b] = [User::factory()->create(), User::factory()->create()];
     $rate = fn (bool $rated) => app(RatingService::class)->applyChessGame(ChessGame::factory()->finished('1/2-1/2')->create(['rated' => $rated, 'white_id' => $a->id, 'black_id' => $b->id]));
     $summary = fn (string $pool) => Ratings::forUser($a->id, 'chess', 'blitz', $pool);
