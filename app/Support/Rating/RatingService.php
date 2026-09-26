@@ -7,7 +7,6 @@ use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
-use App\Models\SeriesReport;
 use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
@@ -76,8 +75,16 @@ final class RatingService
             return false;
         }
 
-        if ($match->challenger_lineup_id === null || $match->challenged_lineup_id === null) {
-            return false;
+        // A rated series rates the entities pinned at its accept, so a lineup gone since
+        // (security gate F3) cannot take the loss away; casual needs both lineups.
+        $subjects = $match->rated ? $match->rated_subjects : null;
+
+        if (! isset($subjects['challenger'], $subjects['challenged'])) {
+            if ($match->challenger_lineup_id === null || $match->challenged_lineup_id === null) {
+                return false;
+            }
+
+            $subjects = ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
         }
 
         if ($match->rated && ! $this->pinAdmits(GatePin::fromArray($match->gate_at_accept), $this->rosterOf($match))) {
@@ -86,8 +93,8 @@ final class RatingService
 
         return $this->apply(
             (bool) $match->rated, $match->game, $match->mode,
-            ['subject' => 'lineup:'.$match->challenger_lineup_id, 'lineup_id' => $match->challenger_lineup_id],
-            ['subject' => 'lineup:'.$match->challenged_lineup_id, 'lineup_id' => $match->challenged_lineup_id],
+            ['subject' => $subjects['challenger'], 'lineup_id' => $match->challenger_lineup_id],
+            ['subject' => $subjects['challenged'], 'lineup_id' => $match->challenged_lineup_id],
             $match->winner === 'challenger' ? 1.0 : 0.0, RatingChange::SERIES, $match->id, $match->number,
         );
     }
@@ -121,9 +128,7 @@ final class RatingService
      */
     private function rosterOf(SeriesMatch $match): array
     {
-        $report = $match->latestReport;
-
-        return $report instanceof SeriesReport ? array_map(fn (array $entry): string => $entry['pubkey'], $report->roster) : [];
+        return array_map(fn (array $entry): string => $entry['pubkey'], $match->countedRoster());
     }
 
     /**

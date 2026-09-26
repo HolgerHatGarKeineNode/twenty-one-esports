@@ -5,6 +5,7 @@ namespace App\Support\Clans;
 use App\Enums\ClanRole;
 use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
+use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
 use App\Jobs\PublishNostrEvent;
 use App\Models\Clan;
@@ -14,6 +15,7 @@ use App\Models\ClanMember;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\NostrEvent;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\RejectedEvent;
@@ -613,7 +615,13 @@ final class ClanService
     {
         $membership = $player->clanMember()->with('clan.members')->first();
 
-        if ($membership === null || $membership->clan->owner_id !== $player->id) {
+        if ($membership === null) {
+            return;
+        }
+
+        $this->assertNoRunningRatedMatch($player, $membership->clan);
+
+        if ($membership->clan->owner_id !== $player->id) {
             return;
         }
 
@@ -621,6 +629,31 @@ final class ClanService
 
         if ($others->isNotEmpty() && ! $others->contains(fn (ClanMember $member) => $member->role === ClanRole::Captain)) {
             throw new ClanRuleViolation(__('Make another player captain of :clan before you leave.', ['clan' => $membership->clan->name]));
+        }
+    }
+
+    /**
+     * Security gate F3: while a rated series of the clan runs, a player the
+     * accept pinned cannot leave, and nobody can leave if that ends the clan
+     * (its lineup, and with it the loser's Elo, would be gone). After the
+     * result the way out is open again.
+     */
+    private function assertNoRunningRatedMatch(User $player, Clan $clan): void
+    {
+        $lineups = Lineup::query()->where('clan_id', $clan->id)->pluck('id')->all();
+
+        $running = SeriesMatch::query()
+            ->where('rated', true)
+            ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
+            ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups))
+            ->get();
+
+        $last = $clan->members->reject(fn (ClanMember $member) => $member->user_id === $player->id)->isEmpty();
+
+        foreach ($running as $match) {
+            if ($last || isset(($match->gate_at_accept['players'] ?? [])[$player->pubkey])) {
+                throw new ClanRuleViolation(__('You cannot leave :clan while its rated match :number is running. Leave once it is decided.', ['clan' => $clan->name, 'number' => $match->label()]));
+            }
         }
     }
 

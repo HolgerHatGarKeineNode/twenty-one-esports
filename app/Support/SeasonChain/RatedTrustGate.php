@@ -8,9 +8,10 @@ use App\Models\User;
 
 /**
  * The trust gate of rated play (NIP "Trust gate"; plan: rated only for
- * Trusted players who list each other): every rated player and both
- * gatekeepers at or above `season.trust_minimum`, and the two gatekeepers
- * (the captains, or the two players of a chess game) list each other.
+ * Trusted players who list each other): both gatekeepers (the captains, or
+ * the two players of a chess game) at or above the minimum ({@see minimum()})
+ * and listing each other; every other player below it is ineligible for the
+ * match (condition 3), and each side needs enough eligible players.
  * Checked when a rated series is challenged and when it is accepted (a
  * rated chess game: when the league pairs it); at the accept the facts are
  * pinned ({@see GatePin}) and nothing after it re-checks them: "Nothing
@@ -29,12 +30,24 @@ final class RatedTrustGate
 
     public const NOT_CONNECTED = 'not_connected';
 
+    public const NOT_ENOUGH_ELIGIBLE = 'not_enough_eligible';
+
     public function __construct(private TrustFacts $facts) {}
 
     /** Whether rated play can be offered at all (trust ranks exist). */
     public function isAvailable(): bool
     {
         return $this->facts->available();
+    }
+
+    /**
+     * The trust minimum in force: the live season's (pinned in its genesis
+     * and ladders, read by the consensus rules), the Pre-Season draft value
+     * before Block 0. One value for the gate, the chain and the ladders.
+     */
+    public static function minimum(): int
+    {
+        return Seasons::live()->minimum_trust ?? (int) config('season.trust_minimum');
     }
 
     /**
@@ -60,7 +73,7 @@ final class RatedTrustGate
      */
     public function pin(array $players, array $gatekeepers): GatePin
     {
-        return GatePin::fromFacts($players, $gatekeepers, $this->facts->at($players, $gatekeepers), (int) config('season.trust_minimum'));
+        return GatePin::fromFacts($players, $gatekeepers, $this->facts->at($players, $gatekeepers), self::minimum());
     }
 
     /**
@@ -71,11 +84,10 @@ final class RatedTrustGate
      */
     public function forChallenge(Lineup $challenger, Lineup $challenged, User $author, array $challengedCaptains): ?string
     {
-        $players = self::players($challenger, $challenged);
         $refusal = self::NOT_CONNECTED;
 
         foreach ($challengedCaptains as $captain) {
-            $refusal = $this->refusal($players, [$author->pubkey, $captain]);
+            $refusal = $this->lineupRefusal($challenger, $challenged, [$author->pubkey, $captain]);
 
             if ($refusal === null) {
                 return null;
@@ -92,7 +104,43 @@ final class RatedTrustGate
             return self::NOT_TRUSTED;
         }
 
-        return $this->refusal(self::players($match->challengerLineup, $match->challengedLineup), [(string) $match->createdBy?->pubkey, $answering->pubkey]);
+        return $this->lineupRefusal($match->challengerLineup, $match->challengedLineup, [(string) $match->createdBy?->pubkey, $answering->pubkey]);
+    }
+
+    /**
+     * NIP conditions 1 and 2 for the gatekeepers, and enough eligible players
+     * on each side to field the mode (condition 3 leaves the others out).
+     *
+     * @param  array{0: string, 1: string}  $gatekeepers
+     */
+    private function lineupRefusal(Lineup $a, Lineup $b, array $gatekeepers): ?string
+    {
+        if (! $this->facts->available()) {
+            return self::NOT_COMPUTED;
+        }
+
+        $pin = $this->pin(self::players($a, $b), $gatekeepers);
+
+        return $pin->refusal() ?? self::sidesRefusal($pin, $a, $b);
+    }
+
+    /**
+     * Each lineup has at least the mode's team size of active players who
+     * are eligible in the pin; null when both do.
+     *
+     * @return self::NOT_ENOUGH_ELIGIBLE|null
+     */
+    public static function sidesRefusal(GatePin $pin, Lineup $a, Lineup $b): ?string
+    {
+        foreach ([$a, $b] as $lineup) {
+            $eligible = array_filter($lineup->activeSeats(), fn ($seat): bool => $pin->isEligible($seat->user->pubkey));
+
+            if (count($eligible) < $lineup->gameMode()->teamSize) {
+                return self::NOT_ENOUGH_ELIGIBLE;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -113,7 +161,8 @@ final class RatedTrustGate
     {
         return match ($refusal) {
             self::NOT_COMPUTED => __('Rated play opens once trust ranks are computed. Until then every match is casual.'),
-            self::NOT_TRUSTED => __('Rated play needs every player of both lineups to be Trusted (trust rank :minimum or more).', ['minimum' => (int) config('season.trust_minimum')]),
+            self::NOT_TRUSTED => __('Rated play needs both captains to be Trusted (trust rank :minimum or more).', ['minimum' => self::minimum()]),
+            self::NOT_ENOUGH_ELIGIBLE => __('Rated play needs enough Trusted players (trust rank :minimum or more) in each lineup to field the mode. Players below it sit out rated matches.', ['minimum' => self::minimum()]),
             default => __('Rated play needs both captains to have added each other as opponents.'),
         };
     }

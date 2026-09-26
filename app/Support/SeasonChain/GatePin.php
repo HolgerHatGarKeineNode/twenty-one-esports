@@ -90,15 +90,17 @@ final class GatePin
     }
 
     /**
-     * Conditions 1 and 2 plus every player's rank, on the pinned values:
-     * null when the gate passed.
+     * NIP conditions 2 and 1 on the pinned values: each gatekeeper at or
+     * above the minimum, and the two list each other; null when they pass.
+     * Other players below the minimum do not refuse the accept (condition
+     * 3): they are ineligible for this match ({@see isEligible()}).
      *
      * @return RatedTrustGate::NOT_TRUSTED|RatedTrustGate::NOT_CONNECTED|null
      */
     public function refusal(): ?string
     {
-        foreach ($this->players as $facts) {
-            if ($facts['rank'] < $this->minimum) {
+        foreach ($this->gatekeepers as $gatekeeper) {
+            if (! $this->isEligible($gatekeeper)) {
                 return RatedTrustGate::NOT_TRUSTED;
             }
         }

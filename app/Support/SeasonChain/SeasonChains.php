@@ -10,7 +10,6 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonParameterChange;
 use App\Models\SeriesMatch;
-use App\Models\SeriesReport;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Series\Ladders;
@@ -507,8 +506,8 @@ final class SeasonChains
             null,
             $winners,
             $losers,
-            'lineup:'.($match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id),
-            ['lineup:'.$match->challenger_lineup_id, 'lineup:'.$match->challenged_lineup_id],
+            self::subjects($match)[$match->winner === 'challenger' ? 'challenger' : 'challenged'],
+            [self::subjects($match)['challenger'], self::subjects($match)['challenged']],
             $gatekeepers,
             $pin->connected ?? false,
             $pin?->ranks([...$winners, ...$losers]) ?? [],
@@ -518,15 +517,14 @@ final class SeasonChains
     }
 
     /**
-     * The roster of the counted report (the latest one), as signed.
+     * The roster the result counts: an admin decision's, else the latest
+     * report's, as signed.
      *
      * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>
      */
     private function roster(SeriesMatch $match): array
     {
-        $report = $match->latestReport;
-
-        return $report instanceof SeriesReport ? $report->roster : [];
+        return $match->countedRoster();
     }
 
     /**
@@ -598,14 +596,15 @@ final class SeasonChains
         $tags[] = ['resolution', $match->resolution->value];
         $tags[] = ['winner', (string) $match->winner];
 
-        $entities = [$match->challenger_lineup_id => $match->challenger_lineup_address, $match->challenged_lineup_id => $match->challenged_lineup_address];
+        $subjects = self::subjects($match);
+        $entities = [$subjects['challenger'] => $match->challenger_lineup_address, $subjects['challenged'] => $match->challenged_lineup_address];
         $changes = RatingChange::query()->with('rating')->where('source', RatingChange::SERIES)->where('source_id', $match->id)->orderBy('id')->get();
 
         foreach ($changes as $change) {
-            $lineupId = $change->rating->lineup_id;
+            $subject = $change->rating->subject;
 
-            if ($lineupId !== null && isset($entities[$lineupId])) {
-                $tags[] = ['elo', $entities[$lineupId], (string) $change->before, (string) $change->after];
+            if (isset($entities[$subject])) {
+                $tags[] = ['elo', $entities[$subject], (string) $change->before, (string) $change->after];
             }
         }
 
@@ -634,6 +633,22 @@ final class SeasonChains
         $tags[] = ['alt', "Esports league attestation: match #{$match->number}, {$match->game} {$match->mode}, ".($match->resolution->value)];
 
         return $tags;
+    }
+
+    /**
+     * The two rated entities of a series: pinned at a rated accept, else the
+     * lineups it names now.
+     *
+     * @return array{challenger: string, challenged: string}
+     */
+    private static function subjects(SeriesMatch $match): array
+    {
+        $pinned = $match->rated_subjects ?? [];
+
+        return [
+            'challenger' => $pinned['challenger'] ?? 'lineup:'.$match->challenger_lineup_id,
+            'challenged' => $pinned['challenged'] ?? 'lineup:'.$match->challenged_lineup_id,
+        ];
     }
 
     /** NIP: with `admin`, `forfeit` or `void` the content states the public reason. */

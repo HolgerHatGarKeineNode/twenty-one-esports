@@ -45,7 +45,7 @@ final class RatedChess
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {
-            return __('Rated chess needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.', ['minimum' => (int) config('season.trust_minimum')]);
+            return __('Rated chess needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.', ['minimum' => RatedTrustGate::minimum()]);
         }
 
         return null;

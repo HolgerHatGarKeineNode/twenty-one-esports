@@ -15,6 +15,7 @@ use App\Enums\ClanRole;
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
@@ -26,6 +27,8 @@ use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Clans\ClanRuleViolation;
+use App\Support\Clans\ClanService;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\TrustFacts;
@@ -63,11 +66,11 @@ function gateFacts(bool $connected = true, array $untrusted = []): TrustFacts
 }
 
 /** @return array{0: Lineup, 1: User, 2: TestSigner} */
-function gateLineup(string $mode = '1v1'): array
+function gateLineup(string $mode = '1v1', int $substitutes = 0): array
 {
     $signer = new TestSigner;
     $captain = User::factory()->withPubkey($signer->pubkey)->create();
-    $lineup = Lineup::factory()->mode($mode)->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id])->id]);
+    $lineup = Lineup::factory()->mode($mode)->ready($substitutes)->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id])->id]);
 
     return [$lineup->load('clan', 'seats.user'), $captain, $signer];
 }
@@ -302,4 +305,108 @@ test('after Block 0 the challenge page keeps rated locked until trust ranks exis
 
 test('the TrustedFacts double reports trust as available', function () {
     expect((new TrustedFacts)->available())->toBeTrue();
+});
+
+/** Enter a 2-0 for the challenger and report it (nobody answers yet). */
+function gateReport(SeriesMatch $match, array $a): void
+{
+    $service = app(SeriesService::class);
+
+    foreach ([[3, 1], [2, 0]] as $index => [$c, $d]) {
+        $service->saveLiveGame($match, $a[1], $index, $c, $d, null);
+    }
+
+    $service->report($match, $a[1], $a[2]->signTemplates($service->prepareReport($match, $a[1])));
+}
+
+function gateAdmin(): User
+{
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    return $admin;
+}
+
+test('NIP condition 3 (DoD review): an untrusted substitute does not block the rated accept, but cannot be on the rated roster', function () {
+    [$a, $b] = [gateLineup('2v2', substitutes: 1), gateLineup('2v2')];
+    $substitute = $a[0]->seats->firstWhere('role', LineupRole::Substitute)->user;
+    app()->instance(TrustFacts::class, gateFacts(untrusted: [$substitute->pubkey]));
+
+    $match = gateAccepted($a, $b);
+    $regulars = $a[0]->seats->where('role', '!=', LineupRole::Substitute)->pluck('user_id')->all();
+
+    expect($match->status)->toBe(SeriesStatus::Accepted)
+        ->and($match->gate_at_accept['players'][$substitute->pubkey]['rank'])->toBe(0)
+        ->and(gateRefusal(fn () => app(SeriesService::class)->setRoster($match, $a[1], [$regulars[0], $substitute->id])))->toBe('roster_not_eligible');
+});
+
+test('NIP condition 3: a rated accept is refused when a side has too few eligible players for the mode', function () {
+    [$a, $b] = [gateLineup('2v2'), gateLineup('2v2')];
+    $player = $b[0]->seats->firstWhere('role', LineupRole::Player)->user;
+    app()->instance(TrustFacts::class, gateFacts());
+    $service = app(SeriesService::class);
+    $draft = gateDraft($a[0], $b[0]);
+    $match = $service->challenge($a[1], $draft, $a[2]->signTemplates($service->prepareChallenge($a[1], $draft)['templates']));
+
+    $c = gateLineup('2v2');
+    $cPlayer = $c[0]->seats->firstWhere('role', LineupRole::Player)->user;
+    app()->instance(TrustFacts::class, gateFacts(untrusted: [$player->pubkey, $cPlayer->pubkey]));
+
+    expect(gateRefusal(fn () => app(SeriesService::class)->prepareAnswer($match, $b[1], 'accepted', $match->proposals[0])))->toBe('not_enough_eligible')
+        ->and(gateRefusal(fn () => app(SeriesService::class)->prepareChallenge($a[1], gateDraft($a[0], $c[0]))))->toBe('not_enough_eligible');
+});
+
+test('regression (security gate F2): the loser cannot empty "Who played"; the winner keeps his Elo and his block reward', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+
+    expect(gateRefusal(fn () => app(SeriesService::class)->setRoster($match, $b[1], [])))->toBe('roster_short');
+
+    // A short list stored before this check (or a seat gone since) falls back to the pinned eligible seats.
+    $match->update(['rosters' => ['challenged' => []]]);
+    gateReport($match->refresh(), $a);
+
+    // The loser never answers; an admin decides by the report.
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'report', 'report' => $match->latestReport->id], 'No answer from the loser.');
+
+    $attestation = SeasonAttestation::query()->sole();
+
+    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and($attestation->height)->toBe(1)
+        ->and($attestation->reward)->toBeGreaterThan(0);
+});
+
+test('security gate F2: an admin result without any report carries the pinned roster, so the winner is paid', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+    // An open case without any report: a no-show claim the admin checks and decides with the real result.
+    app(SeriesService::class)->reportNoShow($match, $a[1]);
+
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'result', 'games' => [
+        ['winner' => 'challenger', 'challenger' => 3, 'challenged' => 1], ['winner' => 'challenger', 'challenger' => 2, 'challenged' => 0],
+    ]], 'Both captains sent screenshots; no report was signed.');
+
+    $attestation = SeasonAttestation::query()->sole();
+
+    expect($attestation->reward)->toBeGreaterThan(0)
+        ->and($attestation->candidate['winners'])->toBe([$a[1]->pubkey])
+        ->and(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload()['tags'])->toContain(['p', $a[1]->pubkey, '', 'challenger', 'captain']);
+});
+
+test('regression (security gate F3): the loser cannot dissolve his one-member clan during a rated match, and a vanished lineup is still rated', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+    gateReport($match, $a);
+
+    expect(fn () => app(ClanService::class)->prepareLeave($b[1]))->toThrow(ClanRuleViolation::class, 'rated match');
+
+    // Were the lineup gone anyway (an admin, an old path), the subjects pinned at the accept still rate it.
+    Lineup::query()->whereKey($b[0]->id)->delete();
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'report', 'report' => $match->refresh()->latestReport->id], 'Loser gone.');
+
+    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'lineup:'.$b[0]->id)->value('rating'))->toBeLessThan(1000);
 });

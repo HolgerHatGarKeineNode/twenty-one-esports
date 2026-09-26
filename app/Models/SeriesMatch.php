@@ -50,6 +50,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $answered_at
  * @property array<string, string>|null $clans_at_accept pubkey => clan address at the accept
  * @property array<string, mixed>|null $gate_at_accept the trust gate pinned at a rated accept (App\Support\SeasonChain\GatePin)
+ * @property array{challenger?: string, challenged?: string}|null $rated_subjects the rated entities pinned at a rated accept (`lineup:<id>`)
+ * @property list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>|null $resolved_roster the roster of an admin decision
  * @property string|null $lobby_name
  * @property string|null $lobby_password
  * @property string|null $lobby_region
@@ -82,7 +84,7 @@ use Illuminate\Support\Carbon;
     'number', 'game', 'mode', 'best_of', 'rated',
     'challenger_lineup_id', 'challenged_lineup_id', 'challenger_name', 'challenged_name', 'challenger_tag', 'challenged_tag',
     'challenger_lineup_address', 'challenged_lineup_address', 'ladder_address', 'created_by_id',
-    'status', 'proposals', 'respond_by', 'start_at', 'message', 'answered_by_id', 'answered_at', 'clans_at_accept', 'gate_at_accept',
+    'status', 'proposals', 'respond_by', 'start_at', 'message', 'answered_by_id', 'answered_at', 'clans_at_accept', 'gate_at_accept', 'rated_subjects', 'resolved_roster',
     'lobby_name', 'lobby_password', 'lobby_region', 'lobby_updated_by_id',
     'live_games', 'rosters', 'noshow_side', 'noshow_reported_at', 'new_report_requested_at',
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
@@ -96,6 +98,17 @@ class SeriesMatch extends Model
 
     public const SIDES = ['challenger', 'challenged'];
 
+    /**
+     * The roster the result counts: an admin decision's own, otherwise the
+     * latest report's (NIP "League Attestation"), empty without either.
+     *
+     * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>
+     */
+    public function countedRoster(): array
+    {
+        return $this->resolved_roster ?? ($this->latestReport instanceof SeriesReport ? $this->latestReport->roster : []);
+    }
+
     protected function casts(): array
     {
         return [
@@ -107,6 +120,8 @@ class SeriesMatch extends Model
             'answered_at' => 'datetime',
             'clans_at_accept' => 'array',
             'gate_at_accept' => 'array',
+            'rated_subjects' => 'array',
+            'resolved_roster' => 'array',
             'lobby_name' => 'encrypted',
             'lobby_password' => 'encrypted',
             'live_games' => 'array',

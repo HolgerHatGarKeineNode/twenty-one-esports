@@ -8,6 +8,7 @@
  * block. Nothing after the pairing undoes the gate.
  */
 
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\NostrEvent;
@@ -19,6 +20,8 @@ use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
+use Illuminate\Validation\ValidationException;
+use Livewire\Livewire;
 
 /** Trust facts with fixed answers, naming a trust key and assertion ids. */
 function chessFacts(bool $connected = true, array $untrusted = []): TrustFacts
@@ -155,6 +158,31 @@ test('the rated queue refuses while rated chess is off, without trust ranks or f
         ->and(ChessGame::query()->count())->toBe(0)
         // A casual search next to it still pairs as before.
         ->and($queue->join(User::factory()->create()))->toBeNull();
+});
+
+test('regression (security gate F3): an account cannot be deleted during a rated game, so the pinned game is not cascaded away', function () {
+    app()->instance(TrustFacts::class, chessFacts());
+    [$a, $b] = [clanPlayer(), clanPlayer()];
+    app(ChessQueue::class)->join($a, 'blitz', rated: true);
+    $game = app(ChessQueue::class)->join($b, 'blitz', rated: true);
+
+    expect(fn () => app(DeleteAccount::class)($b))->toThrow(ValidationException::class, 'rated game')
+        ->and(User::query()->whereKey($b->id)->exists())->toBeTrue()
+        ->and(ChessGame::query()->whereKey($game->id)->exists())->toBeTrue();
+
+    // The settings page says why instead of failing.
+    Livewire::actingAs($b)->test('pages::settings.gaming')
+        ->set('confirmDeletion', true)
+        ->call('deleteAccount')
+        ->assertHasErrors('confirmDeletion')
+        ->assertSee('Finish your rated game first');
+
+    // Casual games do not hold an account back.
+    $casual = User::factory()->create();
+    ChessGame::factory()->create(['white_id' => $casual->id]);
+    app(DeleteAccount::class)($casual);
+
+    expect(User::query()->whereKey($casual->id)->exists())->toBeFalse();
 });
 
 test('a rated draw moves the rated Elo and is attested, but is no block candidate', function () {

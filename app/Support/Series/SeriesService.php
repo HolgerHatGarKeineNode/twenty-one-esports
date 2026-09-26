@@ -279,6 +279,8 @@ final class SeriesService
                 'start_at' => $status === 'accepted' ? now()->setTimestamp((int) $start) : null,
                 'clans_at_accept' => $status === 'accepted' ? json_encode($this->clansOf($this->fresh($match))) : null,
                 'gate_at_accept' => $pin === null ? null : json_encode($pin->toArray()),
+                // The rated entities as the accept saw them: a lineup gone later is still rated (security gate F3).
+                'rated_subjects' => $pin === null ? null : json_encode(['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id]),
                 'finished_at' => $status === 'accepted' ? null : now(),
                 'answer_event_id' => $stored[0]->id ?? null,
             ]);
@@ -304,8 +306,12 @@ final class SeriesService
             throw new SeriesRuleViolation(RatedTrustGate::NOT_COMPUTED, RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED));
         }
 
-        $pin = $this->trustGate->pinForAccept($this->fresh($match), $user);
-        $refusal = $pin->refusal();
+        $fresh = $this->fresh($match);
+        $pin = $this->trustGate->pinForAccept($fresh, $user);
+        $refusal = $pin->refusal()
+            ?? ($fresh->challengerLineup === null || $fresh->challengedLineup === null
+                ? RatedTrustGate::NOT_TRUSTED
+                : RatedTrustGate::sidesRefusal($pin, $fresh->challengerLineup, $fresh->challengedLineup));
 
         if ($refusal !== null) {
             throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
@@ -500,6 +506,12 @@ final class SeriesService
             throw new SeriesRuleViolation('roster_not_eligible', __('Only players who were in the lineup and Trusted when the match was accepted can play this rated match.'));
         }
 
+        // Security gate F2: an empty or short list would make every report fail and leave the
+        // winner unpaid; a rated side lists at least the mode's team size.
+        if ($match->rated && count($ids) < $match->gameMode()->teamSize) {
+            throw new SeriesRuleViolation('roster_short', __('":clan" needs at least :count players in "Who played".', ['clan' => $match->sideName($side), 'count' => $match->gameMode()->teamSize]));
+        }
+
         $rosters = $match->rosters ?? [];
         $rosters[$side] = array_values(array_filter($allowed, fn (int $id) => in_array($id, $ids, true)));
         $match->update(['rosters' => $rosters]);
@@ -509,7 +521,10 @@ final class SeriesService
     /**
      * Who played for a side: the captain's list, or the regulars (captain and
      * player seats) until the captain changes it. In a rated match only
-     * players eligible at the accept ({@see eligibleSeats()}).
+     * players eligible at the accept ({@see eligibleSeats()}); a list that
+     * falls short of the team size (stored before the check, or a player left
+     * since) gives way to the eligible regulars, then to every eligible seat,
+     * so one captain cannot block the result (security gate F2).
      *
      * @return list<LineupSeat>
      */
@@ -517,10 +532,14 @@ final class SeriesService
     {
         $seats = $this->eligibleSeats($match, $match->lineup($side)?->activeSeats() ?? []);
         $chosen = $match->rosters[$side] ?? null;
+        $regulars = array_values(array_filter($seats, fn (LineupSeat $seat) => $seat->role !== LineupRole::Substitute));
+        $roster = $chosen === null ? $regulars : array_values(array_filter($seats, fn (LineupSeat $seat) => in_array($seat->user_id, $chosen, true)));
 
-        return array_values(array_filter($seats, fn (LineupSeat $seat) => $chosen === null
-            ? $seat->role !== LineupRole::Substitute
-            : in_array($seat->user_id, $chosen, true)));
+        if (! $match->rated || count($roster) >= $match->gameMode()->teamSize) {
+            return $roster;
+        }
+
+        return count($regulars) >= $match->gameMode()->teamSize ? $regulars : $seats;
     }
 
     /**
@@ -869,13 +888,16 @@ final class SeriesService
             'void' => [SeriesResolution::Void, 'none', $match->latestReport?->games],
         };
 
+        $roster = $this->decisionRoster($match, $decision);
+
         // The decision and its rating change commit together.
-        DB::transaction(function () use ($match, $admin, $resolution, $winner, $games, $reason): void {
+        DB::transaction(function () use ($match, $admin, $resolution, $winner, $games, $reason, $roster): void {
             $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $match->status)->update([
                 'status' => SeriesStatus::Resolved,
                 'resolution' => $resolution,
                 'winner' => $winner,
                 'result_games' => $games === null ? null : json_encode($games),
+                'resolved_roster' => $roster === null ? null : json_encode($roster),
                 'resolution_reason' => $reason,
                 'resolved_by_id' => $admin->id,
                 'finished_at' => now(),
@@ -986,6 +1008,38 @@ final class SeriesService
 
         if (! self::isOpenCase($match) && $match->status !== SeriesStatus::Reported) {
             throw new SeriesRuleViolation('not_open_case', __('This match has nothing to decide.'));
+        }
+    }
+
+    /**
+     * The roster of an admin decision (NIP: with `admin` roster and score are
+     * the league's decision): the chosen report's for a decision by report;
+     * for a result of the admin's own, the latest report's or, without any,
+     * who played as the room has it (the pinned eligible seats in a rated
+     * match), so a result decided without a report still names its winners
+     * (security gate F2). Forfeit and void copy the latest report, if any.
+     *
+     * @param  array<string, mixed>  $decision
+     * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>|null
+     */
+    private function decisionRoster(SeriesMatch $match, array $decision): ?array
+    {
+        if ($decision['type'] === 'report') {
+            return $match->reports()->whereKey((int) $decision['report'])->first()?->roster;
+        }
+
+        if ($decision['type'] !== 'result') {
+            return null;
+        }
+
+        if ($match->latestReport !== null) {
+            return $match->latestReport->roster;
+        }
+
+        try {
+            return $this->rosterFor($match);
+        } catch (SeriesRuleViolation) {
+            return null;
         }
     }
 
