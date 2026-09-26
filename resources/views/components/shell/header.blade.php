@@ -102,15 +102,24 @@
 
             {{-- Between lg and xl the bar has no room for the name (1024 px overflowed by up to 145 px): the chip shows the avatar, the name stays for screen readers. --}}
             <flux:dropdown position="bottom" align="end" class="hidden lg:block">
-                <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well px-2 text-[13px] text-ink xl:pr-3" data-test="account-chip">
-                    <x-avatar :user="$user" :size="26" />
+                {{-- A long name never widens the chip: the chip is capped, the name ends in "…" inside it, and the full name is in the tooltip and at the top of the menu. --}}
+                <button type="button" title="{{ $user->displayName() }} · {{ $user->shortNpub() }}" class="flex h-11 max-w-56 min-w-0 shrink-0 items-center gap-2 rounded-lg border border-line bg-well px-2 text-[13px] text-ink xl:pr-3" data-test="account-chip">
+                    <x-avatar :user="$user" :size="26" class="shrink-0" />
                     <span class="flex min-w-0 flex-col items-start leading-tight max-xl:sr-only">
-                        <span class="max-w-40 truncate">{{ $user->displayName() }}</span>
-                        <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
+                        <span class="block w-full truncate" data-test="account-chip-name">{{ $user->displayName() }}</span>
+                        <span class="block w-full truncate text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
                     </span>
                 </button>
 
-                <flux:menu>
+                <flux:menu class="max-w-72">
+                    <div class="flex items-center gap-2.5 px-2 pt-1.5 pb-2" data-test="account-menu-name">
+                        <x-avatar :user="$user" :size="32" class="shrink-0" />
+                        <span class="flex min-w-0 flex-col leading-tight">
+                            <span class="text-sm font-bold break-words text-ink">{{ $user->displayName() }}</span>
+                            <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
+                        </span>
+                    </div>
+                    <flux:menu.separator />
                     <flux:menu.item :href="route('dashboard')" icon="user">{{ __('Your page') }}</flux:menu.item>
                     <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Your daily games') }}</flux:menu.item>
                     <flux:menu.item :href="route('gaming.edit')" icon="cog-6-tooth">{{ __('Settings') }}</flux:menu.item>
