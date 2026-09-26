@@ -6,7 +6,6 @@ use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
-use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonInterface;
 
 /**
@@ -43,12 +42,11 @@ final class ChessQueue
             throw new ChessRuleViolation('already_playing');
         }
 
-        if ($rated) {
-            // Rated play rests before Block 0 and between seasons (P7c), and rated
-            // chess games are not built yet: the queue pairs casual games only.
-            throw new ChessRuleViolation('rated_not_open', Seasons::isLive()
-                ? __('Rated chess is not open yet. Blitz games are casual for now.')
-                : Seasons::restMessage($user));
+        // Rated (P7d): only while the season is live, trust ranks exist and the player is Trusted.
+        $refusal = $rated ? $this->ratedChess()->refusal($user, $mode) : null;
+
+        if ($refusal !== null) {
+            throw new ChessRuleViolation('rated_not_open', $refusal);
         }
 
         $invited = $this->fromOpenInvite($user, $mode);
@@ -170,7 +168,14 @@ final class ChessQueue
 
                 [$white, $black] = random_int(0, 1) === 0 ? [$user, $candidate->user] : [$candidate->user, $user];
 
-                $game = $this->games->start($white, $black, $entry->mode);
+                // Rated (P7d): the pairing is the accept; its trust gate is pinned with the game.
+                $gate = $entry->rated ? $this->ratedChess()->pin($white, $black) : null;
+
+                if ($entry->rated && $gate === null) {
+                    continue;
+                }
+
+                $game = $this->games->start($white, $black, $entry->mode, ratedGate: $gate);
 
                 // The waiting player may be on another page, or in another tab.
                 $this->notifications->matchFound($game);
@@ -203,5 +208,12 @@ final class ChessQueue
             ->count();
 
         return $played >= (int) $limit;
+    }
+
+    /* ---------- Rated (P7d) ------------------------------------------------------------------------------------ */
+
+    private function ratedChess(): RatedChess
+    {
+        return app(RatedChess::class);
     }
 }

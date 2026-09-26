@@ -64,7 +64,8 @@ new #[Title('Mining')] #[Layout('layouts::app', ['section' => null])] class exte
 
     <section aria-label="{{ __('Chain stats') }}" class="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4" data-test="mining-stats">
         @php
-            $firstKey = array_key_first($chain['rewards_now']);
+            // Only a game whose wins can mine now headlines what a win pays (rated chess may be off).
+            $firstKey = collect(array_keys($chain['rewards_now']))->first(fn (string $key): bool => ChainOverview::mines($key));
             $stats = $live ? [
                 [__('Era'), (string) $chain['era'], $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'])]) : __('last era')],
                 [__('Mined'), $sats($chain['mined']), __(':percent % of :supply', ['percent' => number_format($chain['mined'] / max(1, $chain['supply']) * 100, 1), 'supply' => $sats($chain['supply'])])],
@@ -117,7 +118,7 @@ new #[Title('Mining')] #[Layout('layouts::app', ['section' => null])] class exte
                         <th scope="col" class="py-2 pr-3 font-normal">{{ __('Era') }}</th>
                         <th scope="col" class="py-2 pr-3 font-normal">{{ __('From') }}</th>
                         @foreach (array_keys($chain['rewards_now']) as $key)
-                            <th scope="col" class="py-2 pr-3 text-right font-normal">{{ ChainOverview::keyLabel($key) }}</th>
+                            <th scope="col" class="py-2 pr-3 text-right font-normal" @unless (ChainOverview::mines($key)) data-test="reward-not-open" @endunless>{{ ChainOverview::keyLabel($key) }}@unless (ChainOverview::mines($key)) <span class="text-ink-3">· {{ __('not open') }}</span>@endunless</th>
                         @endforeach
                         @foreach ($games as $game)
                             <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __(':game mined', ['game' => ChainOverview::gameLabel($game)]) }}</th>
@@ -129,8 +130,8 @@ new #[Title('Mining')] #[Layout('layouts::app', ['section' => null])] class exte
                         <tr @class(['border-b border-hairline last:border-0', 'text-btc-hi' => $row['current']])>
                             <td class="py-2 pr-3 font-bold">{{ $row['era'] }}</td>
                             <td class="py-2 pr-3 whitespace-nowrap">{{ $date($row['from'], 'D j M') }}</td>
-                            @foreach ($row['rewards'] as $reward)
-                                <td class="py-2 pr-3 text-right">{{ $sats($reward) }}</td>
+                            @foreach ($row['rewards'] as $key => $reward)
+                                <td class="py-2 pr-3 text-right">{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                             @endforeach
                             @foreach ($games as $game)
                                 @php($minedHere = (int) ($live ? ($chain['mined_by_game_and_era'][$game][$row['era']] ?? 0) : 0))
@@ -142,6 +143,9 @@ new #[Title('Mining')] #[Layout('layouts::app', ['section' => null])] class exte
             </table>
         </div>
         <p class="m-0 text-xs text-ink-3">{{ __('Inside an era every valid win of a game pays the same, fixed when its block is saved; halvings never reverse. Mined / cap: no game can take more than its share of an era.') }}</p>
+        @unless (collect(array_keys($chain['rewards_now']))->every(fn (string $key): bool => ChainOverview::mines($key)))
+            <p class="m-0 text-xs text-ink-2" data-test="rated-chess-not-open">{{ __('Rated chess is not open yet, so chess wins do not mine. Its rewards apply from the day rated blitz opens.') }}</p>
+        @endunless
     </section>
 
     @if ($live)

@@ -331,7 +331,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                 <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __(':game cap', ['game' => ChainOverview::gameLabel($game)]) }}</th>
                             @endforeach
                             @foreach (array_keys($chain['rewards_now']) as $key)
-                                <th scope="col" class="py-2 pr-3 text-right font-normal">{{ ChainOverview::keyLabel($key) }}</th>
+                                <th scope="col" class="py-2 pr-3 text-right font-normal" @unless (ChainOverview::mines($key)) data-test="reward-not-open" @endunless>{{ ChainOverview::keyLabel($key) }}@unless (ChainOverview::mines($key)) <span class="text-ink-3">· {{ __('not open') }}</span>@endunless</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -344,14 +344,17 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                 @foreach ($games as $game)
                                     <td class="py-2 pr-3 text-right">{{ $sats($row['caps'][$game] ?? 0) }}</td>
                                 @endforeach
-                                @foreach ($row['rewards'] as $reward)
-                                    <td class="py-2 pr-3 text-right">{{ $sats($reward) }}</td>
+                                @foreach ($row['rewards'] as $key => $reward)
+                                    <td class="py-2 pr-3 text-right">{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                                 @endforeach
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
             </div>
+            @unless (collect(array_keys($chain['rewards_now']))->every(fn (string $key): bool => ChainOverview::mines($key)))
+                <p class="m-0 text-xs text-ink-2" data-test="rated-chess-not-open">{{ __('Rated chess is not open yet (ESPORTS_RATED_CHESS), so chess wins do not mine and the estimator leaves chess out. The chess weights apply from the day rated blitz opens.') }}</p>
+            @endunless
         </section>
 
         {{-- Estimator --}}

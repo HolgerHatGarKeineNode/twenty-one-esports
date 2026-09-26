@@ -10,6 +10,7 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\RatedChess;
 use Carbon\CarbonImmutable;
 
 /**
@@ -35,6 +36,16 @@ final class ChainOverview
             'chess/correspondence' => __('Chess daily'),
             default => str_starts_with($key, 'rocket-league/') ? 'Rocket League '.substr($key, strlen('rocket-league/')) : $key,
         };
+    }
+
+    /**
+     * Whether wins of this `<game>/<mode>` can mine now, so a view may show
+     * its reward as achievable: chess only while rated chess is offered
+     * (RatedChess::offered()), every other game while it has rated play.
+     */
+    public static function mines(string $key): bool
+    {
+        return ! str_starts_with($key, 'chess/') || RatedChess::offered();
     }
 
     public static function gameLabel(string $game): string
@@ -118,7 +129,8 @@ final class ChainOverview
             'supply' => $parameters->supply,
             'rewards_now' => $this->rewards($parameters, $parameters->genesis, 1),
             'schedule' => $this->schedule($parameters, $now),
-            'streams' => $streams = $this->recentWins($now->subDays($estimator->windowDays), $now, $estimator->windowDays / 7),
+            // Only games that can mine feed the forecast: casual chess wins say nothing about chess blocks while rated chess is off.
+            'streams' => $streams = array_values(array_filter($this->recentWins($now->subDays($estimator->windowDays), $now, $estimator->windowDays / 7), fn (array $stream): bool => self::mines($stream['weight_key']))),
             'estimate' => $estimator->forecast($parameters, $now, $streams, 0, []),
             'in_force' => $parameters->genesis,
         ];

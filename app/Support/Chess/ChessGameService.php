@@ -18,6 +18,8 @@ use App\Models\RatingChange;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\GatePin;
+use App\Support\SeasonChain\SeasonChains;
 use Closure;
 use Illuminate\Support\Facades\DB;
 
@@ -46,19 +48,22 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessGameService
 {
-    public function __construct(private GameRegistry $games, private RatingService $ratings) {}
+    public function __construct(private GameRegistry $games, private RatingService $ratings, private SeasonChains $chains) {}
 
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
     /**
+     * A rated game comes with the trust gate the league pinned at the pairing
+     * (RatedChess, P7d); without one the game is casual.
+     *
      * @throws ChessRuleViolation when either player already plays a live game
      */
-    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null): ChessGame
+    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null, ?GatePin $ratedGate = null): ChessGame
     {
         [$initialMs, $incrementMs] = $this->timeControl($mode);
         $daily = $mode === ChessGame::CORRESPONDENCE;
 
-        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily): ChessGame {
+        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate): ChessGame {
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
@@ -69,7 +74,9 @@ final class ChessGameService
 
             $game = ChessGame::query()->create([
                 'mode' => $mode,
-                'rated' => false,
+                'rated' => $ratedGate !== null,
+                'gate_at_accept' => $ratedGate?->toArray(),
+                'clans_at_accept' => $ratedGate === null ? null : RatedChess::clans($white, $black),
                 'white_id' => $white->id,
                 'black_id' => $black->id,
                 'status' => ChessGameStatus::Active,
@@ -739,8 +746,10 @@ final class ChessGameService
     {
         $this->end($game, ChessGameStatus::Finished, $result, $reason, $at);
 
-        // Same transaction as the result: the game and its rating change commit together.
+        // Same transaction as the result: the game, its rating change and, for a
+        // rated game in a live season, its league attestation commit together.
         $this->ratings->applyChessGame($game);
+        $this->chains->attestChessGame($game);
     }
 
     /**

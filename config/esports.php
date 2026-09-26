@@ -158,9 +158,16 @@ return [
     | "has 48 h to accept"). The time per daily move comes from the mode's PGN
     | TimeControl (`1/86400`, App\Games\Chess).
     |
+    | rated_queue: whether rated blitz is offered (P7d, App\Support\Chess\RatedChess).
+    | Off until the lobby shows a Rated choice: while off, the rated queue
+    | refuses and /mining and AdminSeason show chess rewards as not open,
+    | because no chess win can mine. On, rated blitz still needs a live
+    | season, trust ranks and two Trusted players who list each other.
+    |
     */
 
     'chess' => [
+        'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', false),
         'first_move_seconds' => 30,
         'disconnect_claim_seconds' => (int) env('ESPORTS_DISCONNECT_CLAIM_SECONDS', 60),
         'challenge_hours' => 48,

@@ -2,7 +2,9 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
+use App\Models\ChessGame;
 use App\Models\RatingChange;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -121,6 +123,181 @@ final class SeasonChains
         $event = $league->publish(self::ATTESTATION, $this->seriesTags($match, $season, $ladder, $block), $this->publicReason($match), $attestedAt->getTimestamp());
 
         return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+    }
+
+    /**
+     * Attest a finished rated chess game (P7d): one `2154` on the player
+     * ladder of its mode with one `board` row (NIP "League Attestation",
+     * "Chess"). Null for a casual or unfinished game, or outside a live
+     * season. A decisive game is a block candidate; a draw is not.
+     *
+     * The game was played on the league's server, which checked every move,
+     * and no player signed a report or a response for it: the resolution is
+     * `admin` and the content says so. When a player's final record (`64`)
+     * exists already, it is referenced.
+     */
+    public function attestChessGame(ChessGame $game): ?SeasonAttestation
+    {
+        if (! $game->rated || $game->status !== ChessGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)) {
+            return null;
+        }
+
+        $live = Seasons::live();
+        $ladder = Ladders::address('chess', $game->mode);
+
+        if ($live === null || $ladder === null) {
+            return null;
+        }
+
+        $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+        $existing = $season->attestations()->where(['source' => SeasonAttestation::CHESS, 'source_id' => $game->id, 'board' => 1])->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $league = LeagueKey::required();
+        $game->loadMissing(['white', 'black', 'recordEvent']);
+        $attestedAt = $this->nextAttestationTime($season);
+        $candidate = $this->chessCandidate($game, $attestedAt);
+
+        $row = [
+            'season_id' => $season->id,
+            'source' => SeasonAttestation::CHESS,
+            'source_id' => $game->id,
+            'board' => 1,
+            'match_number' => $game->number,
+            'label' => '#'.$game->number,
+            'game' => 'chess',
+            'mode' => $game->mode,
+            'ladder_address' => $ladder,
+            'attested_at' => $attestedAt,
+            'candidate' => $candidate?->toArray(),
+        ];
+        $block = null;
+
+        if ($candidate !== null) {
+            $verdict = $this->chain($season)->attest($candidate);
+            $tip = $this->tip($season);
+
+            $row += [
+                'height' => $verdict->mines() ? ($tip['height'] ?? 0) + 1 : null,
+                'rule' => $verdict->rule?->value,
+                'reason' => $verdict->reason,
+                'subject' => $verdict->subject === null ? null : mb_substr($verdict->subject, 0, 200),
+                'era' => $verdict->era,
+                'reward_per_player' => $verdict->rewardPerPlayer,
+                'reward' => $verdict->mines() ? $verdict->reward : 0,
+                'link_event_id' => $tip['id'],
+            ];
+            $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
+        }
+
+        $content = 'Played on the league server, which checked every move; no signed report or response.';
+        $event = $league->publish(self::ATTESTATION, $this->chessTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
+
+        return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+    }
+
+    /**
+     * The block candidate of a decisive rated game, or null (a draw). White
+     * is the challenger, as in the rating (RatingService).
+     */
+    private function chessCandidate(ChessGame $game, CarbonImmutable $attestedAt): ?Candidate
+    {
+        if ($game->result === '1/2-1/2') {
+            return null;
+        }
+
+        [$winner, $loser] = $game->result === '1-0' ? [$game->white->pubkey, $game->black->pubkey] : [$game->black->pubkey, $game->white->pubkey];
+        $pin = GatePin::fromArray($game->gate_at_accept);
+        $clans = $this->clans([$winner, $loser], $game->clans_at_accept);
+
+        return new Candidate(
+            '#'.$game->number,
+            'chess:'.$game->id,
+            'chess',
+            'chess/'.$game->mode,
+            $attestedAt,
+            Resolution::Admin,
+            intdiv($game->ply + 1, 2),
+            [$winner],
+            [$loser],
+            $clans[$winner],
+            [$game->white->pubkey, $game->black->pubkey],
+            [$game->white->pubkey, $game->black->pubkey],
+            $pin->connected ?? false,
+            $pin?->ranks([$winner, $loser]) ?? [],
+            $clans,
+            $pin?->anchors([$winner, $loser]) ?? [],
+        );
+    }
+
+    /**
+     * The `2154` of a solo chess game: the players as challenger (White) and
+     * challenged, one `board` row, `elo` per player, and the gate pinned at
+     * the pairing.
+     *
+     * @param  list<string>|null  $block
+     * @return list<list<string>>
+     */
+    private function chessTags(ChessGame $game, Season $season, string $ladder, ?array $block): array
+    {
+        $white = $game->white->pubkey;
+        $black = $game->black->pubkey;
+        $tags = [];
+
+        if ($game->recordEvent !== null) {
+            $tags[] = ['e', $game->recordEvent->event_id, '', $game->recordEvent->pubkey];
+        }
+
+        $tags[] = ['a', $ladder, ''];
+        $tags[] = ['p', $white, '', 'challenger'];
+        $tags[] = ['p', $black, '', 'challenged'];
+        $tags[] = ['board', '1', $white, $black, (string) $game->result];
+        $tags[] = ['resolution', Resolution::Admin->value];
+        $tags[] = ['winner', match ($game->result) {
+            '1-0' => 'challenger',
+            '0-1' => 'challenged',
+            default => 'draw',
+        }];
+
+        $players = [$game->white_id => $white, $game->black_id => $black];
+        $changes = RatingChange::query()->with('rating')->where('source', RatingChange::CHESS)->where('source_id', $game->id)->orderBy('id')->get();
+
+        foreach ($changes as $change) {
+            $userId = $change->rating->user_id;
+
+            if ($userId !== null && isset($players[$userId])) {
+                $tags[] = ['elo', $players[$userId], (string) $change->before, (string) $change->after];
+            }
+        }
+
+        $previous = $season->attestations()->where('ladder_address', $ladder)->orderByDesc('id')->value('event_id');
+
+        if (is_string($previous)) {
+            $tags[] = ['prev', $previous];
+        }
+
+        $tags[] = ['match', (string) $game->number];
+
+        foreach (GatePin::fromArray($game->gate_at_accept)?->tags([$white, $black]) ?? [] as $tag) {
+            $tags[] = $tag;
+        }
+
+        foreach ($this->clans([$white, $black], $game->clans_at_accept) as $pubkey => $clan) {
+            if ($clan !== null) {
+                $tags[] = ['clan', $pubkey, $clan];
+            }
+        }
+
+        if ($block !== null) {
+            $tags[] = $block;
+        }
+
+        $tags[] = ['alt', "Esports league attestation: match #{$game->number}, chess {$game->mode} {$game->result}"];
+
+        return $tags;
     }
 
     /**

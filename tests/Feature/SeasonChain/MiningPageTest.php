@@ -5,6 +5,7 @@
  * Block 0, the tip, supply, blocks and change log of a live season.
  */
 
+use App\Models\ChessGame;
 use App\Models\SeasonAttestation;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
@@ -54,6 +55,36 @@ test('in a live season /mining shows mined sats, the blocks with their miners an
         ->assertSee('Long blitz evenings.')
         ->assertSee('by mempoolmax')
         ->assertSee('Chess 4');
+});
+
+test('while rated chess is off, /mining and AdminSeason show no chess reward as achievable; switched on, they do', function () {
+    $board = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
+    // Casual chess wins of the last weeks must not forecast chess blocks while chess cannot mine.
+    ChessGame::factory()->count(3)->finished('1-0')->create(['updated_at' => now()->subHour()]);
+
+    $this->get(route('mining'))
+        ->assertOk()
+        ->assertSee('data-test="rated-chess-not-open"', false)
+        ->assertSee('data-test="reward-not-open"', false)
+        ->assertDontSee('Chess blitz win pays')
+        ->assertSee('Rocket League 1v1 win pays');
+    $this->actingAs($board)->get(route('admin.season'))
+        ->assertOk()
+        ->assertSee('data-test="rated-chess-not-open"', false)
+        ->assertDontSee('Chess blitz 0.');
+
+    config(['esports.chess.rated_queue' => true]);
+
+    $this->get(route('mining'))
+        ->assertOk()
+        ->assertDontSee('data-test="rated-chess-not-open"', false)
+        ->assertDontSee('data-test="reward-not-open"', false)
+        ->assertSee('Chess blitz win pays');
+    $this->actingAs($board)->get(route('admin.season'))
+        ->assertOk()
+        ->assertDontSee('data-test="rated-chess-not-open"', false)
+        ->assertSee('Chess blitz 0.');
 });
 
 test('both chain pages survive a Livewire roundtrip, before Block 0 and live', function () {
