@@ -276,24 +276,20 @@ test('a series link needs a lineup the taker captains, and refuses before using 
 
 /* ---------- Making links -------------------------------------------------------------------------------------------- */
 
-test('the chess challenge page makes a daily or blitz link and opens it to share', function (string $game, InviteLinkType $type) {
+test('the chess challenge page makes a daily link and opens it to share', function () {
     $anna = User::factory()->create();
 
     Livewire::actingAs($anna)->test('pages::chess.challenge')
-        ->set('linkGame', $game)
+        ->assertDontSee('data-test="link-game-blitz"', false)
         ->set('linkUses', 'several')
         ->call('createLink')
         ->assertRedirect(InviteLink::query()->sole()->url());
 
-    expect(InviteLink::query()->sole()->only(['type', 'inviter_id', 'max_uses']))->toBe(['type' => $type, 'inviter_id' => $anna->id, 'max_uses' => null]);
-})->with([
-    'daily' => ['daily', InviteLinkType::Daily],
-    'blitz' => ['blitz', InviteLinkType::Blitz],
-]);
+    expect(InviteLink::query()->sole()->only(['type', 'inviter_id', 'max_uses']))->toBe(['type' => InviteLinkType::Daily, 'inviter_id' => $anna->id, 'max_uses' => null]);
+});
 
 test('a link with an expiry that is not offered is refused with a message', function () {
     Livewire::actingAs(User::factory()->create())->test('pages::chess.challenge')
-        ->set('linkGame', 'blitz')
         ->set('linkHours', 999)
         ->call('createLink')
         ->assertSet('linkError', 'Pick how long the link works.')

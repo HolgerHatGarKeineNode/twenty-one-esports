@@ -37,7 +37,6 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
     public string $error = '';
 
     /** Invite by link (P6b): the game, who may use it, how long it works. */
-    public string $linkGame = 'daily';
 
     public string $linkUses = 'once';
 
@@ -85,15 +84,14 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
 
     /**
      * A link anyone can take (P6b): whoever opens it and accepts plays you.
-     * Daily uses the colour picked above; blitz draws colours at random.
+     * Daily only: a blitz link would need both players online at the same
+     * moment, which a shared link can't promise. Uses the colour picked above.
      */
     public function createLink(InviteLinks $links): void
     {
         $this->linkError = '';
-        $type = $this->linkGame === 'blitz' ? InviteLinkType::Blitz : InviteLinkType::Daily;
-
         try {
-            $link = $links->create($this->user(), $type, ['uses' => $this->linkUses, 'hours' => $this->linkHours, 'color' => $this->color]);
+            $link = $links->create($this->user(), InviteLinkType::Daily, ['uses' => $this->linkUses, 'hours' => $this->linkHours, 'color' => $this->color]);
         } catch (InviteLinkRefused $refused) {
             $this->linkError = $refused->getMessage();
 
@@ -101,15 +99,6 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
         }
 
         $this->redirectRoute('invites.link', $link);
-    }
-
-    public function updatedLinkGame(): void
-    {
-        $type = $this->linkGame === 'blitz' ? InviteLinkType::Blitz : InviteLinkType::Daily;
-
-        if (! in_array($this->linkHours, $type->expiryChoices(), true)) {
-            $this->linkHours = $type->defaultExpiryHours();
-        }
     }
 
     /**
@@ -257,17 +246,8 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                     <h2 id="link-h" class="m-0 text-[15px] font-bold">{{ __('Invite a friend by link') }}</h2>
                     <span class="text-xs leading-normal text-ink-2">{{ __('Whoever opens the link and accepts, plays you. Share it on Signal, Telegram or Nostr; your friend logs in with Google or Nostr and lands right in the game.') }}</span>
                 </span>
-                @php($expiry = ($linkGame === 'blitz' ? InviteLinkType::Blitz : InviteLinkType::Daily)->expiryChoices())
-                <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                    <div class="flex flex-col gap-2">
-                        <span id="lg-h" class="text-xs text-ink-2">{{ __('Game') }}</span>
-                        <div role="radiogroup" aria-labelledby="lg-h" class="grid grid-cols-2 gap-2">
-                            @foreach (['daily' => __('Daily'), 'blitz' => __('Blitz 5+3')] as $value => $label)
-                                <button type="button" role="radio" wire:click="$set('linkGame', '{{ $value }}')" aria-checked="{{ $linkGame === $value ? 'true' : 'false' }}" data-test="link-game-{{ $value }}"
-                                        @class(['h-12 cursor-pointer rounded-md border bg-ground text-[13px] text-ink', 'border-btc' => $linkGame === $value, 'border-line' => $linkGame !== $value])>{{ $label }}</button>
-                            @endforeach
-                        </div>
-                    </div>
+                @php($expiry = InviteLinkType::Daily->expiryChoices())
+                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div class="flex flex-col gap-2">
                         <span id="lu-h" class="text-xs text-ink-2">{{ __('Who can use it') }}</span>
                         <div role="radiogroup" aria-labelledby="lu-h" class="grid grid-cols-2 gap-2">
