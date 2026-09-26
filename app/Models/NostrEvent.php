@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\OpponentLists;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,6 +26,12 @@ use Illuminate\Support\Carbon;
 #[Fillable(['event_id', 'pubkey', 'kind', 'd', 'signed_at', 'raw'])]
 class NostrEvent extends Model
 {
+    /** An archived opponent list version keeps the per-player current row up to date (P7e gate, Low). */
+    protected static function booted(): void
+    {
+        static::created(fn (self $event) => OpponentLists::track($event));
+    }
+
     public static function fromSigned(SignedEvent $event): self
     {
         return self::query()->create([

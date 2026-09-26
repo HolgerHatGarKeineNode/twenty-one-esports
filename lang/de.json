@@ -2328,5 +2328,7 @@
     "the winner reached the daily block limit": "der Gewinner hat das Tageslimit an Blöcken erreicht",
     "this pairing already mined a block today": "diese Paarung hat heute schon einen Block geschürft",
     "this pairing reached its blocks for the season": "diese Paarung hat ihre Blöcke für die Season erreicht",
-    "too short to count as a real game": "zu kurz, um als echte Partie zu zählen"
+    "too short to count as a real game": "zu kurz, um als echte Partie zu zählen",
+    "Wait a moment: your opponent list changed a second ago. Try again.": "Einen Moment: Deine Gegnerliste hat sich gerade erst geändert. Versuch es gleich noch einmal.",
+    "You changed your opponent list often. Try again in :time.": "Du hast deine Gegnerliste oft geändert. Versuch es in :time wieder."
 }

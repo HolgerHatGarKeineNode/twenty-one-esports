@@ -166,6 +166,17 @@ return [
     |
     */
 
+    /*
+    | Opponent lists (P7e, App\Support\SeasonChain\Opponents): how often one
+    | player may change their list. Every change is a signed version the
+    | league archives and publishes, so the limits keep one account from
+    | flooding the archive and the relays (P7e gate, Low).
+    */
+    'opponents' => [
+        'changes_per_minute' => (int) env('ESPORTS_OPPONENT_CHANGES_PER_MINUTE', 10),
+        'changes_per_day' => (int) env('ESPORTS_OPPONENT_CHANGES_PER_DAY', 100),
+    ],
+
     'chess' => [
         'rated_queue' => (bool) env('ESPORTS_RATED_CHESS', false),
         'first_move_seconds' => 30,

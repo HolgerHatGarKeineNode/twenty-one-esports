@@ -47,6 +47,7 @@ function listOpponent(User $player, TestSigner $signer, User $opponent): void
 {
     $opponents = app(Opponents::class);
     $opponents->add($player, $opponent, $signer->signTemplates($opponents->prepareAdd($player, $opponent)));
+    test()->travel(1)->seconds();
 }
 
 /**

@@ -18,6 +18,8 @@ use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\OpponentListRefused;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\Opponents;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -41,7 +43,11 @@ function opponentAction(User $me, TestSigner $signer, User $player, string $acti
 
     expect($templates)->toBeArray();
 
-    return $page->call($action, json_encode($signer->signTemplates($templates)))->assertHasNoErrors();
+    $page->call($action, json_encode($signer->signTemplates($templates)))->assertHasNoErrors();
+    // A new version needs a later second than the last one (no versions dated ahead of now).
+    test()->travel(1)->seconds();
+
+    return $page;
 }
 
 test('adding an opponent stores a valid signed 30000 of this league, with the player\'s p, and queues it for the league relays', function () {
@@ -189,6 +195,7 @@ test('the settings list shows the entries, who lists you back, who waits for you
         ->assertSeeInOrder(['bob', 'lists you back', 'carol', 'not listing you yet', 'They list you', 'dave', 'Add back']);
 
     $page->call('remove', $carol->pubkey, json_encode($this->aliceSigner->signTemplates($page->instance()->prepareRemove($carol->pubkey, $opponents))))->assertHasNoErrors();
+    $this->travel(1)->seconds();
     $page->call('add', $dave->pubkey, json_encode($this->aliceSigner->signTemplates($page->instance()->prepareAdd($dave->pubkey, $opponents))))->assertHasNoErrors();
 
     expect($opponents->entries($this->alice))->toBe([$this->bob->pubkey, $dave->pubkey])
@@ -196,3 +203,106 @@ test('the settings list shows the entries, who lists you back, who waits for you
 
     $this->actingAs($this->alice)->get(route('settings.opponents'))->assertOk()->assertSee('2 listed, 2 list you back')->assertSee('Nobody is waiting for you to add them back.');
 });
+
+test('P7e gate, Low: list changes are rate limited per player, with a friendly message, and the limit is per player', function () {
+    config(['esports.opponents.changes_per_minute' => 3, 'esports.opponents.changes_per_day' => 5]);
+    $opponents = app(Opponents::class);
+    $toggle = function (User $me, TestSigner $signer, User $other) use ($opponents): void {
+        $templates = $opponents->lists($me, $other) ? $opponents->prepareRemove($me, $other->pubkey) : $opponents->prepareAdd($me, $other);
+        $opponents->lists($me, $other)
+            ? $opponents->remove($me, $other->pubkey, $signer->signTemplates($templates))
+            : $opponents->add($me, $other, $signer->signTemplates($templates));
+        $this->travel(1)->seconds();
+    };
+
+    foreach (range(1, 3) as $i) {
+        $toggle($this->alice, $this->aliceSigner, $this->bob);
+    }
+
+    // The fourth change within the minute is refused, before anything is signed.
+    expect(fn () => $opponents->prepareAdd($this->alice, User::factory()->create()))->toThrow(OpponentListRefused::class, 'changed your opponent list often')
+        ->and(NostrEvent::query()->where('kind', 30000)->count())->toBe(3);
+    Livewire::actingAs($this->alice)->test('opponent-button', ['player' => $this->bob])->call('prepareRemove')->assertHasErrors('opponent');
+
+    // Another player is not affected.
+    $toggle($this->bob, $this->bobSigner, $this->alice);
+
+    // A minute later two more fit, then the day is used up.
+    $this->travel(61)->seconds();
+    $toggle($this->alice, $this->aliceSigner, $this->bob);
+    $toggle($this->alice, $this->aliceSigner, $this->bob);
+    $this->travel(61)->seconds();
+
+    expect(fn () => $opponents->prepareAdd($this->alice, User::factory()->create()))->toThrow(OpponentListRefused::class, 'changed your opponent list often')
+        ->and(NostrEvent::query()->where('kind', 30000)->where('pubkey', $this->alice->pubkey)->count())->toBe(5);
+});
+
+test('P7e gate, Low: a version is never dated ahead of now: a second change in the same second waits, and a signed version from the future is refused', function () {
+    $this->freezeSecond();
+    $opponents = app(Opponents::class);
+    $carol = User::factory()->create();
+    $opponents->add($this->alice, $this->bob, $this->aliceSigner->signTemplates($opponents->prepareAdd($this->alice, $this->bob)));
+
+    // Same second: no banked future timestamp, "wait a moment" instead.
+    expect(fn () => $opponents->prepareAdd($this->alice, $carol))->toThrow(OpponentListRefused::class, 'Wait a moment');
+
+    // A version the player signs with a later created_at than now is refused as well.
+    $this->travel(1)->seconds();
+    $template = $opponents->prepareAdd($this->alice, $carol)[0];
+    $ahead = $this->aliceSigner->sign($template['kind'], $template['tags'], $template['content'], now()->getTimestamp() + 60);
+
+    expect(fn () => $opponents->add($this->alice, $carol, [$ahead]))->toThrow(OpponentListRefused::class, 'Wait a moment')
+        ->and(NostrEvent::query()->where('kind', 30000)->max('signed_at'))->toBeLessThanOrEqual(now()->getTimestamp());
+});
+
+test('P7e gate, Low: the newest list per player is read from one current row, however many versions are archived', function () {
+    $d = OpponentLists::forLeague()->d();
+    $carol = User::factory()->create();
+
+    // 40 archived versions of alice's list (the newest lists bob), 1 of carol's.
+    foreach (range(1, 40) as $i) {
+        NostrEvent::fromSigned(SignedEvent::fromInput($this->aliceSigner->sign(30000, [['d', $d], ['p', $i % 2 === 0 ? $this->bob->pubkey : $carol->pubkey], ['alt', 'x']], '', now()->getTimestamp() - 100 + $i)));
+    }
+    NostrEvent::fromSigned(SignedEvent::fromInput((new TestSigner)->sign(30000, [['d', $d], ['p', $this->bob->pubkey], ['alt', 'x']], '', now()->getTimestamp())));
+
+    $entries = OpponentLists::forLeague()->newestEntries();
+    $listedBy = app(Opponents::class)->listedBy($this->bob);
+
+    expect(DB::table('opponent_lists_current')->where('d', $d)->count())->toBe(2)
+        ->and($entries[$this->alice->pubkey])->toBe([$this->bob->pubkey])
+        ->and($listedBy)->toHaveCount(2)
+        ->and(app(Opponents::class)->listedBy($carol))->toBe([])
+        // Neither reads the archive of versions.
+        ->and(opponentQueriesTouchingArchive(fn () => OpponentLists::forLeague()->newestEntries()))->toBe(0)
+        ->and(opponentQueriesTouchingArchive(fn () => app(Opponents::class)->listedBy($this->bob)))->toBe(0);
+});
+
+test('P7e gate, Low: the migration fills the current rows from the archived versions, the newest per player', function () {
+    $d = OpponentLists::forLeague()->d();
+    $at = now()->getTimestamp();
+    foreach ([[$at - 20, $this->bob], [$at - 10, User::factory()->create()]] as [$signedAt, $listed]) {
+        NostrEvent::fromSigned(SignedEvent::fromInput($this->aliceSigner->sign(30000, [['d', $d], ['p', $listed->pubkey], ['alt', 'x']], '', $signedAt)));
+    }
+    $newest = NostrEvent::query()->where('kind', 30000)->orderByDesc('signed_at')->first();
+    $migration = require database_path('migrations/2026_09_26_075940_create_opponent_lists_current_table.php');
+
+    $migration->down();
+    $migration->up();
+
+    expect(DB::table('opponent_lists_current')->where('d', $d)->get(['pubkey', 'event_id'])->map(fn (object $row) => [$row->pubkey, $row->event_id])->all())
+        ->toBe([[$this->alice->pubkey, $newest->event_id]]);
+});
+
+/** How many queries $call runs against the nostr_events archive with kind 30000. */
+function opponentQueriesTouchingArchive(Closure $call): int
+{
+    $count = 0;
+    DB::listen(function (QueryExecuted $query) use (&$count): void {
+        if (str_contains($query->sql, 'from "nostr_events"') && ! str_contains($query->sql, '"id" in') && ! str_contains($query->sql, '"nostr_events"."id" =')) {
+            $count++;
+        }
+    });
+    $call();
+
+    return $count;
+}

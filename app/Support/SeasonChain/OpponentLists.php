@@ -6,6 +6,7 @@ use App\Models\NostrEvent;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The players' opponent lists (NIP "Opponent list", NIP-51 follow set
@@ -17,6 +18,11 @@ use Illuminate\Database\Eloquent\Builder;
  * The newest version of a player is the highest `created_at`, ties broken by
  * the lowest id (NIP-01). Only public `p` entries count; `content` (private
  * items) is ignored.
+ *
+ * The newest version per league and player is also kept in one row of
+ * `opponent_lists_current` (P7e gate, Low), updated whenever a version is
+ * archived ({@see track()}): reads of "the newest list" never scan the
+ * versions, however many one account files.
  */
 final class OpponentLists
 {
@@ -107,7 +113,9 @@ final class OpponentLists
     /** The newest archived list of one player, or null. */
     public function newest(string $pubkey): ?NostrEvent
     {
-        return $this->query()->where('pubkey', $pubkey)->orderByDesc('signed_at')->orderBy('event_id')->first();
+        $id = DB::table('opponent_lists_current')->where('d', $this->d())->where('pubkey', $pubkey)->value('nostr_event_id');
+
+        return $id === null ? null : NostrEvent::query()->whereKey($id)->first();
     }
 
     /**
@@ -119,11 +127,63 @@ final class OpponentLists
     {
         $newest = [];
 
-        foreach ($this->query()->orderByDesc('signed_at')->orderBy('event_id')->cursor() as $event) {
-            $newest[$event->pubkey] ??= self::entries($event);
+        foreach (DB::table('opponent_lists_current')->where('d', $this->d())->orderBy('pubkey')->get(['pubkey', 'entries']) as $row) {
+            $newest[(string) $row->pubkey] = self::decode((string) $row->entries);
         }
 
         return $newest;
+    }
+
+    /**
+     * The players whose newest list names $pubkey, from the current rows
+     * only (one per player), never from the versions.
+     *
+     * @return list<string>
+     */
+    public function listing(string $pubkey): array
+    {
+        $rows = DB::table('opponent_lists_current')->where('d', $this->d())->where('pubkey', '!=', $pubkey)
+            ->where('entries', 'like', '%'.$pubkey.'%')->orderBy('pubkey')->get(['pubkey', 'entries']);
+
+        return array_values(array_map(fn (object $row): string => (string) $row->pubkey,
+            array_filter($rows->all(), fn (object $row): bool => in_array($pubkey, self::decode((string) $row->entries), true))));
+    }
+
+    /**
+     * Keep the current row of an archived opponent list version: taken when
+     * it is the author's first version in that league, or newer (higher
+     * `created_at`, ties to the lower id, NIP-01). Any other event is left
+     * alone. Called for every created NostrEvent.
+     */
+    public static function track(NostrEvent $event): void
+    {
+        if ($event->kind !== self::KIND || preg_match('#^esports/[0-9a-f]{64}$#', (string) $event->d) !== 1) {
+            return;
+        }
+
+        $current = DB::table('opponent_lists_current')->where('d', $event->d)->where('pubkey', $event->pubkey)->lockForUpdate()->first(['signed_at', 'event_id']);
+
+        $newer = $current === null || $event->signed_at > (int) $current->signed_at
+            || ($event->signed_at === (int) $current->signed_at && $event->event_id < (string) $current->event_id);
+
+        if (! $newer) {
+            return;
+        }
+
+        DB::table('opponent_lists_current')->updateOrInsert(['d' => $event->d, 'pubkey' => $event->pubkey], [
+            'nostr_event_id' => $event->id,
+            'event_id' => $event->event_id,
+            'signed_at' => $event->signed_at,
+            'entries' => (string) json_encode(self::entries($event)),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /** @return list<string> */
+    private static function decode(string $entries): array
+    {
+        return array_values(array_filter((array) json_decode($entries, true), is_string(...)));
     }
 
     /**

@@ -7,7 +7,9 @@ use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * "Add as opponent" (NIP "Opponent list", P7e): the player's own NIP-51
@@ -23,6 +25,11 @@ use Illuminate\Support\Facades\DB;
  *
  * Two players list each other when the newest list of each names the other,
  * the same test as the gate's condition 1 ({@see AnchoredTrustFacts}).
+ *
+ * Throttled (P7e gate, Low): at most `esports.opponents.changes_per_minute`
+ * and `changes_per_day` changes per player, and a version is never dated
+ * ahead of now, so nobody can bank future timestamps: a second change in
+ * the same second is asked to wait a moment.
  */
 final class Opponents
 {
@@ -132,14 +139,7 @@ final class Opponents
             return [];
         }
 
-        $authors = NostrEvent::query()->where('kind', OpponentLists::KIND)->where('d', $lists->d())
-            ->where('raw', 'like', '%'.$player->pubkey.'%')->where('pubkey', '!=', $player->pubkey)->distinct()->pluck('pubkey');
-
-        return array_values(array_filter(array_map(strval(...), $authors->all()), function (string $author) use ($lists, $player): bool {
-            $newest = $lists->newest($author);
-
-            return $newest !== null && in_array($player->pubkey, OpponentLists::entries($newest), true);
-        }));
+        return $lists->listing($player->pubkey);
     }
 
     /**
@@ -189,11 +189,38 @@ final class Opponents
             throw new OpponentListRefused(__('You cannot add yourself as an opponent.'));
         }
 
+        foreach (self::limits($player) as [$key, $max]) {
+            if (RateLimiter::tooManyAttempts($key, $max)) {
+                throw new OpponentListRefused(__('You changed your opponent list often. Try again in :time.', [
+                    'time' => now()->addSeconds(RateLimiter::availableIn($key))->diffForHumans(syntax: CarbonInterface::DIFF_ABSOLUTE),
+                ]));
+            }
+        }
+
         return $this->entries($player);
     }
 
     /**
-     * An unsigned version; `created_at` keeps it newer than the stored one.
+     * The player's change limits: rate limiter key, maximum, decay seconds.
+     *
+     * @return list<array{0: string, 1: int, 2: int}>
+     */
+    private static function limits(User $player): array
+    {
+        return [
+            ['opponent-list-minute:'.$player->id, max(1, (int) config('esports.opponents.changes_per_minute')), 60],
+            ['opponent-list-day:'.$player->id, max(1, (int) config('esports.opponents.changes_per_day')), 86_400],
+        ];
+    }
+
+    private static function waitAMoment(): OpponentListRefused
+    {
+        return new OpponentListRefused(__('Wait a moment: your opponent list changed a second ago. Try again.'));
+    }
+
+    /**
+     * An unsigned version dated now. When the stored version is from this
+     * second already (or later), the change has to wait: never dated ahead.
      *
      * @param  list<string>  $entries
      * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
@@ -210,11 +237,15 @@ final class Opponents
         $tags[] = ['alt', self::ALT];
         $stored = NostrEvent::query()->where(['kind' => OpponentLists::KIND, 'pubkey' => $player->pubkey, 'd' => $d])->max('signed_at');
 
+        if ($stored !== null && (int) $stored >= now()->getTimestamp()) {
+            throw self::waitAMoment();
+        }
+
         return [
             'kind' => OpponentLists::KIND,
             'tags' => $tags,
             'content' => '',
-            'created_at' => max(now()->getTimestamp(), $stored === null ? 0 : (int) $stored + 1),
+            'created_at' => now()->getTimestamp(),
         ];
     }
 
@@ -225,7 +256,7 @@ final class Opponents
      * @param  array{kind: int, tags: list<list<string>>, content: string, created_at: int}  $template
      * @param  list<mixed>  $signed
      *
-     * @throws RejectedEvent
+     * @throws RejectedEvent|OpponentListRefused
      */
     private function submit(User $player, array $template, array $signed): NostrEvent
     {
@@ -234,6 +265,15 @@ final class Opponents
         }
 
         $event = $this->gate->check($signed[0], $template, $player);
+
+        // The gate lets events run up to five minutes ahead; a list version may not.
+        if ($event->createdAt > now()->getTimestamp()) {
+            throw self::waitAMoment();
+        }
+
+        foreach (self::limits($player) as [$key, , $decay]) {
+            RateLimiter::hit($key, $decay);
+        }
 
         return DB::transaction(function () use ($event): NostrEvent {
             $stored = NostrEvent::fromSigned($event);
