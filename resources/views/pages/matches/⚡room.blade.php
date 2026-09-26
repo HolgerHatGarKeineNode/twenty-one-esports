@@ -6,6 +6,7 @@ use App\Models\ChatMute;
 use App\Models\LineupSeat;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Rating\Ratings;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
@@ -57,6 +58,13 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     #[Locked]
     public string $shown = '';
 
+    /** Unix time of the last render: a tick renders at least every RENDER_AT_LEAST seconds, whatever the fingerprint says. */
+    #[Locked]
+    public int $renderedAt = 0;
+
+    /** Safety net for whatever the fingerprint does not see. */
+    public const RENDER_AT_LEAST = 60;
+
     /** The match with every relation the room reads, loaded once per request (fresh()). */
     private ?SeriesMatch $current = null;
 
@@ -83,7 +91,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {
         $this->readSheet();
 
-        if ($this->fingerprint() === $this->shown) {
+        if ($this->fingerprint() === $this->shown && now()->getTimestamp() - $this->renderedAt < self::RENDER_AT_LEAST) {
             $this->skipRender();
         }
     }
@@ -91,6 +99,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     public function rendering(): void
     {
         $this->shown = $this->fingerprint();
+        $this->renderedAt = now()->getTimestamp();
     }
 
     /** Rebuild the sheet from the stored live games. */
@@ -361,16 +370,20 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     /**
      * Everything a render depends on that can change while the page is open:
      * the match row with all loaded relations (every write of SeriesService
-     * touches the row: sheet, rosters, lobby, report, answer, decision), the
-     * two clock edges the view compares against now (kick-off, no-show
-     * window), and the error line.
+     * touches the row: sheet, rosters, lobby, report, answer, decision; the
+     * clan owners, who carry the captain lines), the ratings of both lineups
+     * as the Elo block reads them (Ratings::forSeries: rating rows and the
+     * series' rating changes, which live outside the match row), the two
+     * clock edges the view compares against now (kick-off, no-show window),
+     * and the error line. Whatever this misses, sync() still renders once
+     * every RENDER_AT_LEAST seconds.
      */
     private function fingerprint(): string
     {
         $match = $this->fresh();
         $noshowFrom = $match->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
 
-        return hash('xxh128', (string) json_encode([$match->toArray(), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error]));
+        return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error]));
     }
 
     /**
@@ -386,7 +399,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     private function fresh(): SeriesMatch
     {
         return $this->current ??= SeriesMatch::query()
-            ->with(['challengerLineup.clan', 'challengerLineup.seats.user.clanMember', 'challengedLineup.clan', 'challengedLineup.seats.user.clanMember',
+            ->with(['challengerLineup.clan.owner', 'challengerLineup.seats.user.clanMember', 'challengedLineup.clan.owner', 'challengedLineup.seats.user.clanMember',
                 'latestReport.event', 'latestReport.responseEvent', 'latestReport.user', 'challengeEvent', 'answerEvent', 'createdBy', 'answeredBy'])
             ->findOrFail($this->match->id);
     }

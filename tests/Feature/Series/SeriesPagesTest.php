@@ -5,6 +5,7 @@ use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\MatchNumber;
+use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Series\SeriesService;
@@ -129,6 +130,47 @@ test('the room tick answers without a render until something changed, and loads 
     expect($room->effects)->toHaveKey('html')
         ->and($room->get('sheet')[0])->toMatchArray(['c' => 3, 'd' => 1])
         ->and($room->html())->toContain('data-test="series-score">1 : 0<');
+});
+
+test('the room tick renders when a rating or a captain changed outside the match row', function () {
+    $match = SeriesMatch::factory()->accepted()->create();
+    $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
+
+    $room->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html');
+
+    // A casual rating for the challenger lineup (another series ended meanwhile).
+    Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'rocket-league', 'mode' => $match->mode,
+        'subject' => 'lineup:'.$match->challenger_lineup_id, 'lineup_id' => $match->challenger_lineup_id, 'rating' => 1800, 'results' => 6, 'wins' => 6]);
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->html())->toContain($match->challenger_tag.' 1800');
+
+    // The challenged clan's owner, who sits in no lineup, renames themselves: the captain line follows.
+    $owner = User::factory()->create(['name' => 'Old Captain']);
+    $match->lineup('challenged')->clan->forceFill(['owner_id' => $owner->id])->save();
+    $room->call('sync')->assertOk();
+    expect($room->html())->toContain('Old Captain');
+
+    $owner->forceFill(['name' => 'Renamed Captain'])->save();
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->html())->toContain('Renamed Captain');
+});
+
+test('the room renders at least once a minute, even when nothing it knows of changed', function () {
+    $match = SeriesMatch::factory()->accepted()->create();
+    $room = Livewire::actingAs(seriesCaptain($match))->test('pages::matches.room', ['match' => $match]);
+
+    $room->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html');
+
+    $this->travel(61)->seconds();
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html');
+
+    $room->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html');
 });
 
 test('a captain can copy the opposing players\' npubs in the room and on the match page', function (string $state) {

@@ -1,11 +1,20 @@
 @php
     // Three counts on every page: fresh for 60 s, then served stale for up to
     // another 60 s while one request recounts them after its response (P5g).
-    $stats = \Illuminate\Support\Facades\Cache::flexible('footer.stats', [60, 120], fn () => [
+    // A failing cache store is reported and the counts are taken directly:
+    // the footer never takes a page down.
+    $count = fn () => [
         'players' => \App\Models\User::query()->count(),
         'clans' => \App\Models\Clan::query()->count(),
         'games' => \App\Models\ChessGame::query()->where('status', \App\Enums\ChessGameStatus::Finished)->count(),
-    ]);
+    ];
+
+    try {
+        $stats = \Illuminate\Support\Facades\Cache::flexible('footer.stats', [60, 120], $count);
+    } catch (\Throwable $e) {
+        report($e);
+        $stats = $count();
+    }
     $locales = ['en' => 'English', 'de' => 'Deutsch'];
     $current = app()->getLocale();
 @endphp

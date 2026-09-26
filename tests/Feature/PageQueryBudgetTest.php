@@ -5,7 +5,9 @@ use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
 
 /*
 |--------------------------------------------------------------------------
@@ -82,4 +84,17 @@ test('/challenges/create lists the opponents without a query per opponent', func
 
     expect(Clan::query()->count())->toBe(7)
         ->and($many)->toBe($few);
+});
+
+test('a failing cache store does not take the pages down: the footer counts directly', function () {
+    User::factory()->count(2)->create();
+    // Only flexible() fails; every other cache call goes to the real manager.
+    $cache = Mockery::mock(Cache::getFacadeRoot());
+    $cache->shouldReceive('flexible')->andThrow(new RuntimeException('cache store down'));
+    Cache::swap($cache);
+    Exceptions::fake();
+
+    $this->get(route('rules'))->assertOk()->assertSee(__('Players').' <b class="text-ink">2</b>', false);
+
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'cache store down');
 });
