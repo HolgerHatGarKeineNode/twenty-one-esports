@@ -43,9 +43,35 @@ const CLAN_LOGO_VISIBLE = <<<'JS'
         return logos.map((img) => {
             const chip = img.parentElement.getBoundingClientRect();
             const r = img.getBoundingClientRect();
-            return { natural: img.naturalWidth, w: Math.round(r.width), h: Math.round(r.height), chipH: Math.round(chip.height), loading: img.loading, alt: img.getAttribute('alt') };
+            return { natural: img.naturalWidth, w: Math.round(r.width), h: Math.round(r.height), chipW: Math.round(chip.width), chipH: Math.round(chip.height), title: img.parentElement.getAttribute('title'), loading: img.loading, alt: img.getAttribute('alt') };
         });
     }
+    JS;
+
+/**
+ * Per side name in the match list: its width and how many characters show
+ * before the ellipsis (a character counts when it ends left of the box's
+ * right edge minus one character, the room the ellipsis takes).
+ */
+const CLAN_LOGO_NAMES = <<<'JS'
+    () => [...document.querySelectorAll('[data-test=match-side-name]')].filter((el) => el.checkVisibility()).map((el) => {
+        const node = el.firstChild;
+        const text = node ? node.textContent : '';
+        const box = el.getBoundingClientRect();
+        if (el.scrollWidth <= el.clientWidth) {
+            return { name: text, shown: text.length, width: Math.round(box.width) };
+        }
+        const range = document.createRange();
+        range.setStart(node, 0); range.setEnd(node, 1);
+        const one = range.getBoundingClientRect().width;
+        let shown = 0;
+        for (let i = 0; i < text.length; i++) {
+            range.setStart(node, i); range.setEnd(node, i + 1);
+            if (range.getBoundingClientRect().right > box.right - one + 0.5) { break; }
+            shown = i + 1;
+        }
+        return { name: text, shown, width: Math.round(box.width) };
+    })
     JS;
 
 beforeEach(function () {
@@ -115,7 +141,11 @@ function clanLogoShot(Page $page, string $name): void
 }
 
 test('clan logos show in front of the tag on the chess ladder, the clan list and the match list', function () {
-    $matches = SeriesMatch::factory()->accepted()->count(2)->create();
+    // Real-length names: the 375 px rows must still show 8 characters of each.
+    $matches = SeriesMatch::factory()->accepted()->count(2)->sequence(
+        ['challenger_name' => 'Laser Eyes Allgäu', 'challenged_name' => 'Mempool Maniacs'],
+        ['challenger_name' => 'Orange Pill Squad', 'challenged_name' => 'HODL Rockets Kempten'],
+    )->create();
     $clans = $matches->flatMap(fn (SeriesMatch $match) => [$match->sideClan('challenger'), $match->sideClan('challenged')])->values();
     $viewer = User::factory()->create();
 
@@ -134,7 +164,7 @@ test('clan logos show in front of the tag on the chess ladder, the clan list and
     $plain = $clans[3];
 
     foreach (['ladder' => '/ladder/chess/blitz?pool=casual', 'clans' => '/clans', 'matches' => '/matches'] as $name => $path) {
-        foreach ([375, 1440] as $width) {
+        foreach ($name === 'matches' ? [375, 390, 1440] : [375, 1440] as $width) {
             $page = clanLogoPage($viewer, $path, $width);
             BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("img[data-clan-logo]") !== null', 10_000);
 
@@ -146,6 +176,20 @@ test('clan logos show in front of the tag on the chess ladder, the clan list and
                 ->and(collect($logos)->every(fn (array $logo) => $logo['natural'] > 0 && $logo['loading'] === 'lazy' && $logo['alt'] === ''))->toBeTrue()
                 ->and($overflow[0])->toBeLessThanOrEqual($overflow[1])
                 ->and($page->evaluate('() => document.body.innerText'))->toContain($plain->clantag);
+
+            // Tight rows (compact): below lg the chip is the logo alone, the tag in title and sr-only.
+            if ($name !== 'clans') {
+                $logoOnly = collect($logos)->every(fn (array $logo) => $logo['chipW'] === $logo['w'] && $logo['title'] !== null);
+                expect($logoOnly)->toBe($width < 1024);
+            }
+
+            if ($name === 'matches') {
+                $names = $page->evaluate(CLAN_LOGO_NAMES);
+                fwrite(STDERR, "[clan-logo] matches {$width}px names ".json_encode($names, JSON_UNESCAPED_UNICODE)."\n");
+
+                expect($names)->toHaveCount(4)
+                    ->and(collect($names)->every(fn (array $side) => $side['shown'] >= min(8, mb_strlen($side['name']))))->toBeTrue();
+            }
 
             clanLogoShot($page, "clan-logo-{$name}-{$width}");
 

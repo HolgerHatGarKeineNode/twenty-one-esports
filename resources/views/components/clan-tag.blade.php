@@ -1,4 +1,4 @@
-@props(['clan' => null, 'tag' => null, 'size' => 'md', 'tile' => null])
+@props(['clan' => null, 'tag' => null, 'size' => 'md', 'tile' => null, 'compact' => false])
 
 {{--
     A clan's mark wherever the clan appears.
@@ -7,6 +7,10 @@
     has an uploaded logo, the logo sits flush in front of the tag inside the
     same chip, so logo and tag read as one mark and list columns keep their
     rhythm. Without a logo the chip is exactly the plain tag.
+
+    Compact (`compact`, for tight rows): below lg a chip with a logo shows
+    the logo alone; the tag stays for screen readers and in the title.
+    Without a logo it is the plain text chip at every width.
 
     Tile (`tile` = side in px): a square slot that holds the logo, or the
     tag when there is none. The caller sizes and colours the square; the tag
@@ -27,10 +31,10 @@
     <span {{ $attributes->class(['overflow-hidden' => $logo]) }}>@if ($logo)<img src="{{ $logo }}" alt="" width="{{ $side }}" height="{{ $side }}" loading="lazy" decoding="async" class="size-full bg-card object-cover" data-clan-logo><span class="sr-only">{{ $label }}</span>@else{{ $label }}@endif</span>
 @elseif (filled($label) && $logo)
     <span {{ $attributes->class([
-        'inline-flex shrink-0 items-stretch overflow-hidden rounded-sm bg-btc-tint font-bold text-btc',
+        'relative inline-flex shrink-0 items-stretch overflow-hidden rounded-sm bg-btc-tint font-bold text-btc',
         'h-6 text-[11px]' => $size === 'md',
         'h-5 text-[10px]' => $size === 'sm',
-    ]) }}><img src="{{ $logo }}" alt="" width="{{ $side }}" height="{{ $side }}" loading="lazy" decoding="async" class="aspect-square h-full w-auto shrink-0 bg-card object-cover" data-clan-logo><span @class(['inline-flex items-center justify-center px-1', 'min-w-9' => $size === 'md', 'min-w-8' => $size === 'sm'])>{{ $label }}</span></span>
+    ])->merge($compact ? ['title' => $label] : []) }}><img src="{{ $logo }}" alt="" width="{{ $side }}" height="{{ $side }}" loading="lazy" decoding="async" class="aspect-square h-full w-auto shrink-0 bg-card object-cover" data-clan-logo><span @class(['inline-flex items-center justify-center px-1', 'min-w-9' => $size === 'md', 'min-w-8' => $size === 'sm', 'max-lg:sr-only' => $compact])>{{ $label }}</span></span>
 @elseif (filled($label))
     <span {{ $attributes->class([
         'inline-flex shrink-0 items-center justify-center rounded-sm bg-btc-tint font-bold text-btc',

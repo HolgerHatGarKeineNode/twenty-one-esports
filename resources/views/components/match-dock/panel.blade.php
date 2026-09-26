@@ -51,7 +51,7 @@
                 @if ($item->face)<x-avatar :user="$item->face" :size="40" class="rounded-lg" />@endif
                 <span class="flex min-w-0 flex-col gap-1">
                     <span class="flex min-w-0 items-center gap-2 text-sm font-bold"><span class="truncate">{{ $item->name }}</span>
-                        <x-clan-tag :clan="$item->face?->clanMember?->clan" size="sm" />
+                        <x-clan-tag :clan="$item->face?->clanMember?->clan" size="sm" compact />
                     </span>
                     <span class="text-xs text-ink-2">{{ $item->kind === 'daily' ? __('Daily chess, casual') : __('Blitz :control, casual', ['control' => intdiv($model->initial_ms, 60_000).'+'.intdiv($model->increment_ms, 1000)]) }}</span>
                 </span>
@@ -89,7 +89,7 @@
                         </span>
                     @else
                         <span class="flex min-w-0 flex-col items-center gap-1.5 text-center text-xs">
-                            <x-clan-tag :clan="$model->sideClan($column)" :tag="$model->sideTag($column)" />
+                            <x-clan-tag :clan="$model->sideClan($column)" :tag="$model->sideTag($column)" compact />
                             <span class="w-full truncate">{{ $model->sideName($column) }}</span>
                         </span>
                     @endif

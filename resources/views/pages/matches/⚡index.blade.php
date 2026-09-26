@@ -281,12 +281,17 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 <a href="{{ route('matches.show', $match) }}" wire:key="m-{{ $match->id }}" data-test="match-row"
                    class="tr grid min-h-11 grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-sm px-2 py-2 text-[13px] text-ink hover:text-ink lg:h-11 lg:grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_200px_120px] lg:gap-4 lg:py-0">
                     <span class="font-bold text-btc">{{ $match->label() }}</span>
-                    <span class="flex min-w-0 items-center gap-2 whitespace-nowrap">
-                        <x-clan-tag :clan="$match->sideClan('challenger')" :tag="$match->challenger_tag" size="sm" />
-                        <span @class(['truncate', 'font-bold' => $match->winner === 'challenger', 'text-ink-2' => $match->winner === 'challenged'])>{{ $match->challenger_name }}</span>
-                        <span class="text-ink-3">vs</span>
-                        <x-clan-tag :clan="$match->sideClan('challenged')" :tag="$match->challenged_tag" size="sm" />
-                        <span @class(['truncate', 'font-bold' => $match->winner === 'challenged', 'text-ink-2' => $match->winner === 'challenger'])>{{ $match->challenged_name }}</span>
+                    {{-- Below lg one side per line, so each name keeps the full column; from lg one line. --}}
+                    <span class="flex min-w-0 flex-col gap-1 whitespace-nowrap lg:flex-row lg:items-center lg:gap-2">
+                        <span class="flex min-w-0 items-center gap-2">
+                            <x-clan-tag :clan="$match->sideClan('challenger')" :tag="$match->challenger_tag" size="sm" compact />
+                            <span @class(['truncate', 'font-bold' => $match->winner === 'challenger', 'text-ink-2' => $match->winner === 'challenged']) data-test="match-side-name">{{ $match->challenger_name }}</span>
+                        </span>
+                        <span class="flex min-w-0 items-center gap-2">
+                            <span class="text-ink-3">vs</span>
+                            <x-clan-tag :clan="$match->sideClan('challenged')" :tag="$match->challenged_tag" size="sm" compact />
+                            <span @class(['truncate', 'font-bold' => $match->winner === 'challenged', 'text-ink-2' => $match->winner === 'challenger']) data-test="match-side-name">{{ $match->challenged_name }}</span>
+                        </span>
                     </span>
                     <span class="flex flex-col leading-tight lg:order-none"><b>{{ $score['text'] }}</b>@if ($score['sub'] !== '')<span class="text-[11px] text-btc-hi">{{ $score['sub'] }}</span>@endif</span>
                     <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-icon name="rocket-league" :size="14" />{{ SeriesPresenter::format($match) }}@if (! $match->rated)<span class="ml-1 rounded-xs border border-line px-1 text-[10px] lg:hidden">{{ __('casual') }}</span>@endif</span>

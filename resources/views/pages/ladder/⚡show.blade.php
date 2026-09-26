@@ -236,7 +236,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                     <span class="flex min-w-0 flex-col gap-1">
                         <span class="flex min-w-0 items-center gap-2">
                             @if ($players && $row->user)<x-avatar :name="$row->user->displayName()" :src="$row->user->avatarUrl()" :size="22" />@endif
-                            <x-clan-tag :clan="$clan" />
+                            <x-clan-tag :clan="$clan" compact />
                             <span class="truncate font-bold" data-test="ladder-name">{{ $name }}</span>
                         </span>
                         @if ($rated)
