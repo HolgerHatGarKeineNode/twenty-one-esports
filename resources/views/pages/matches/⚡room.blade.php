@@ -487,7 +487,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 </span>
             @else
                 <span @class(['flex items-center gap-3 lg:gap-4', 'flex-row-reverse text-right' => $cell === 'challenged'])>
-                    <span class="cube hidden size-16 shrink-0 items-center justify-center font-display text-[15px] font-extrabold lg:mt-2.5 lg:flex {{ $sideInk[$cell] }}" style="background: {{ $sideColor[$cell] }}">{{ $m->sideTag($cell) }}</span>
+                    <x-clan-tag :clan="$m->sideClan($cell)" :tag="$m->sideTag($cell)" :tile="64" class="cube hidden size-16 shrink-0 items-center justify-center font-display text-[15px] font-extrabold lg:mt-2.5 lg:flex {{ $sideInk[$cell] }}" style="background: {{ $sideColor[$cell] }}" />
                     <span @class(['flex min-w-0 flex-col gap-1', 'lg:ml-2.5' => $cell === 'challenger', 'items-end lg:mr-6' => $cell === 'challenged'])>
                         <b class="font-display text-[26px] font-extrabold lg:hidden" style="color: {{ $cell === 'challenger' ? '#F7931A' : '#ADADB0' }}">{{ $m->sideTag($cell) }}</b>
                         <b class="truncate text-[13px] lg:font-display lg:text-xl">{{ $m->sideName($cell) }}</b>
@@ -531,7 +531,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <section aria-label="{{ __('Result') }}" class="grid grid-cols-1 items-center gap-4 rounded-lg px-5 py-6 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:px-8" style="background: linear-gradient(90deg, {{ $won ? '#111A14' : '#17171B' }}, #121215 60%); box-shadow: inset 0 0 0 1px {{ $won ? '#1F5A34' : '#2A2A30' }}" data-test="win-moment">
             <span class="flex items-center gap-4">
                 @if ($m->winner === 'challenger' || $m->winner === 'challenged')
-                    <span class="flex size-14 shrink-0 items-center justify-center rounded-md font-display text-[15px] font-extrabold {{ $sideInk[$m->winner] }}" style="background: {{ $sideColor[$m->winner] }}">{{ $m->sideTag($m->winner) }}</span>
+                    <x-clan-tag :clan="$m->sideClan($m->winner)" :tag="$m->sideTag($m->winner)" :tile="56" class="flex size-14 shrink-0 items-center justify-center rounded-md font-display text-[15px] font-extrabold {{ $sideInk[$m->winner] }}" style="background: {{ $sideColor[$m->winner] }}" />
                     <span class="flex flex-col gap-1"><b class="font-display text-[22px]">{{ $m->sideName($m->winner) }}</b><span class="inline-flex items-center gap-1 text-[13px] text-win"><x-icon name="check" :size="14" />{{ __('Win') }}</span></span>
                 @else
                     <b class="font-display text-[22px]">{{ __('No winner') }}</b>

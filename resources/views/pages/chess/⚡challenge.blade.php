@@ -176,7 +176,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                             <span class="flex min-w-0 items-center gap-2">
                                 <x-avatar :user="$player" :size="20" class="rounded-sm" />
                                 <span class="truncate">{{ $player->displayName() }}</span>
-                                @if ($player->clanMember?->clan?->clantag)<x-clan-tag :tag="$player->clanMember->clan->clantag" size="sm" />@endif
+                                <x-clan-tag :clan="$player->clanMember?->clan" size="sm" />
                                 @if ($player->is_member)<x-member-badge />@endif
                             </span>
                             @php($daily = $ratings[$player->id])

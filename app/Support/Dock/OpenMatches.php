@@ -167,6 +167,7 @@ final class OpenMatches
             deadlineMs: $deadline,
             tick: $tick,
             model: $match,
+            clan: $match->sideClan($other),
         );
     }
 
@@ -418,6 +419,7 @@ final class OpenMatches
             deadlineMs: null,
             tick: null,
             model: $invite,
+            clan: $invite->clan,
         ))->all());
     }
 

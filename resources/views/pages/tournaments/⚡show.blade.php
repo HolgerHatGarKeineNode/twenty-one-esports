@@ -283,7 +283,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     @foreach ($this->entries as $entry)
                         <li class="flex items-center gap-3 border-t border-hairline py-2 text-[13px]" wire:key="entry-{{ $entry->id }}">
                             @if ($entry->lineup?->clan)
-                                <x-clan-tag :tag="$entry->lineup->clan->clantag" size="sm" />
+                                <x-clan-tag :clan="$entry->lineup->clan" size="sm" />
                             @else
                                 <span class="inline-flex h-5 items-center rounded-xs bg-raised px-1.5 text-[10px] text-ink-2">{{ $teams ? __('solo') : __('player') }}</span>
                             @endif

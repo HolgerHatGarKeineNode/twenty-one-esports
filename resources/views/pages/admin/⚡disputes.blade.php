@@ -71,7 +71,7 @@ new #[Title('Disputes')] #[Layout('layouts::app', ['section' => 'admin'])] class
     #[Computed]
     public function cases(): Collection
     {
-        return $this->scope(SeriesMatch::query()->with(['reports.user', 'latestReport']), $this->tab)
+        return $this->scope(SeriesMatch::query()->with(['reports.user', 'latestReport', 'challengerLineup.clan']), $this->tab)
             ->orderBy('updated_at', $this->sort === 'newest' ? 'desc' : 'asc')
             ->get();
     }
@@ -178,7 +178,7 @@ new #[Title('Disputes')] #[Layout('layouts::app', ['section' => 'admin'])] class
                         @endforeach
                     </ol>
                     <span class="flex flex-col gap-1">
-                        <span class="flex items-center gap-2"><x-clan-tag :tag="$case->challenger_tag" size="sm" /><b class="font-display text-lg">{{ $wins ? $wins['challenger'].':'.$wins['challenged'] : '–:–' }}</b><x-clan-tag :tag="$case->challenged_tag" size="sm" /></span>
+                        <span class="flex items-center gap-2"><x-clan-tag :clan="$case->sideClan('challenger')" :tag="$case->challenger_tag" size="sm" /><b class="font-display text-lg">{{ $wins ? $wins['challenger'].':'.$wins['challenged'] : '–:–' }}</b><x-clan-tag :tag="$case->challenged_tag" size="sm" /></span>
                         <span class="text-[11px] text-ink-2">{{ $report ? __('Reported by :clan', ['clan' => $case->sideName($report->side)]) : __('No-show, no result') }}</span>
                     </span>
                     <span class="flex flex-col text-xs"><b @class(['text-loss' => $hours >= 48, 'text-btc-hi' => $hours < 48])>{{ $case->updated_at?->diffForHumans(null, true) }}</b>@if ($hours >= 48)<span class="text-ink-3">{{ __('overdue') }}</span>@endif</span>

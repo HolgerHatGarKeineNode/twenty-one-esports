@@ -147,14 +147,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 <div class="flex grow flex-col gap-4 px-4 pb-6 lg:gap-6 lg:px-12 lg:pb-8">
     {{-- Header: tag cube, name, chips, manage --}}
     <div class="flex flex-wrap items-end gap-5 pt-4 lg:flex-nowrap lg:gap-7">
-        {{-- Logo slot: the clan logo replaces the tag cube in the imagery pass. --}}
-        <div class="cube mr-4 flex size-16 shrink-0 items-center justify-center bg-[linear-gradient(180deg,#F9B25F,#F7931A)] font-display text-base font-extrabold text-on-btc lg:size-[88px] lg:text-[22px]">
-            @if ($clan->picture)
-                <img src="{{ $clan->picture }}" alt="" class="size-full object-cover" loading="lazy">
-            @else
-                {{ $tag }}
-            @endif
-        </div>
+        {{-- The clan logo, or the tag cube when there is none (x-clan-tag tile). --}}
+        <x-clan-tag :clan="$clan" :tile="88" class="cube mr-4 flex size-16 shrink-0 items-center justify-center bg-[linear-gradient(180deg,#F9B25F,#F7931A)] font-display text-base font-extrabold text-on-btc lg:size-[88px] lg:text-[22px]" />
         <div class="flex min-w-0 basis-full flex-col gap-3 sm:basis-auto">
             <h1 class="m-0 font-display text-[28px] leading-[1.1] font-bold break-words lg:text-4xl">{{ $clan->name }}</h1>
             <div class="flex flex-wrap items-center gap-2 text-xs">

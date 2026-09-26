@@ -198,13 +198,17 @@ test('the collectors see a broken image and a thrown error (positive control)', 
     $owner = User::factory()->create();
     $signer = TestSigner::forBrowser($owner);
     $service = app(ClanService::class);
-    $draft = new ClanDraft('Laser Eyes', 'LSR', null, '/'.basename($this->logoRoot).'/clan-logos/missing.png');
+    $draft = new ClanDraft('Laser Eyes', 'LSR', 'Rocket League clan of the Kempten meetup.');
     $clan = $service->create($owner, $draft, $signer->signTemplates($service->prepareCreate($owner, $draft)));
+    // One of our logo URLs by its form (only those are rendered), with no file
+    // behind it. Set after the first visit, so it carries the test server's origin.
+    visit(route('testing.login', ['user' => $owner, 'to' => '/']));
+    $clan->update(['picture' => url('/'.basename($this->logoRoot).'/'.ClanLogos::DIRECTORY.'/'.str_repeat('0', 64).'.png')]);
 
     $page = clanEditPage($owner, route('clans.manage', $clan, false), 1440);
     BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=open-edit]") !== null', 10_000);
     $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
 
-    expect(implode("\n", $page->evaluate(CLAN_EDIT_BAD_RESPONSES)))->toMatch('#^404 http://\S+/clan-logos/missing\.png$#m');
+    expect(implode("\n", $page->evaluate(CLAN_EDIT_BAD_RESPONSES)))->toMatch('#^404 http://\S+/clan-logos/0{64}\.png$#m');
 });

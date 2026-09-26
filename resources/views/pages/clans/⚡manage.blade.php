@@ -794,10 +794,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 <div class="mx-auto flex w-full max-w-[1232px] grow flex-col gap-5 px-4 pb-6"
      x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js($messages) })">
     <div class="flex flex-wrap items-center gap-4">
-        {{-- Logo slot: the clan logo replaces the tag tile in the imagery pass. --}}
-        <span class="flex size-[52px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] font-display text-[15px] font-extrabold text-on-btc">
-            @if ($clan->picture)<img src="{{ $clan->picture }}" alt="" class="size-full object-cover" loading="lazy">@else{{ $tag }}@endif
-        </span>
+        {{-- The clan logo, or the tag tile when there is none. --}}
+        <x-clan-tag :clan="$clan" :tile="52" class="flex size-[52px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] font-display text-[15px] font-extrabold text-on-btc" />
         <span class="flex min-w-0 flex-col gap-1.5">
             <span class="flex flex-wrap items-center gap-3">
                 <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ $clan->name }}</h1>

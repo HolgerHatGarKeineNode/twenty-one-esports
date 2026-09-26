@@ -152,7 +152,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $perPage = 20;
         $page = $this->getPage();
         $take = $page * $perPage;
-        $series = $this->game === 'chess' ? collect() : $this->filtered(SeriesMatch::query()->with('latestReport'), $this->status)->latest()->limit($take)->get();
+        $series = $this->game === 'chess' ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $total = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
             + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0);
@@ -282,10 +282,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                    class="tr grid min-h-11 grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-sm px-2 py-2 text-[13px] text-ink hover:text-ink lg:h-11 lg:grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_200px_120px] lg:gap-4 lg:py-0">
                     <span class="font-bold text-btc">{{ $match->label() }}</span>
                     <span class="flex min-w-0 items-center gap-2 whitespace-nowrap">
-                        <x-clan-tag :tag="$match->challenger_tag" size="sm" />
+                        <x-clan-tag :clan="$match->sideClan('challenger')" :tag="$match->challenger_tag" size="sm" />
                         <span @class(['truncate', 'font-bold' => $match->winner === 'challenger', 'text-ink-2' => $match->winner === 'challenged'])>{{ $match->challenger_name }}</span>
                         <span class="text-ink-3">vs</span>
-                        <x-clan-tag :tag="$match->challenged_tag" size="sm" />
+                        <x-clan-tag :clan="$match->sideClan('challenged')" :tag="$match->challenged_tag" size="sm" />
                         <span @class(['truncate', 'font-bold' => $match->winner === 'challenged', 'text-ink-2' => $match->winner === 'challenger'])>{{ $match->challenged_name }}</span>
                     </span>
                     <span class="flex flex-col leading-tight lg:order-none"><b>{{ $score['text'] }}</b>@if ($score['sub'] !== '')<span class="text-[11px] text-btc-hi">{{ $score['sub'] }}</span>@endif</span>

@@ -5,6 +5,7 @@ namespace App\Support\Dock;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
+use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
@@ -49,6 +50,7 @@ final readonly class DockItem
         public ?int $deadlineMs,
         public ?array $tick,
         public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite $model,
+        public ?Clan $clan = null,
     ) {}
 
     public function isChess(): bool

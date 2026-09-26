@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
+use App\Models\Clan;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
@@ -129,7 +130,7 @@ final class TournamentView
      * The table of a Swiss stage, a round robin or one group.
      *
      * @param  Collection<int, TournamentMatch>  $matches
-     * @return list<array{rank: int, name: string, tag: string|null, mix: bool, points: string, wins: int, ties: int, losses: int, games: string, buchholz: string}>
+     * @return list<array{rank: int, name: string, tag: string|null, clan: Clan|null, mix: bool, points: string, wins: int, ties: int, losses: int, games: string, buchholz: string}>
      */
     private function table(TournamentStage $stage, int $group, Collection $matches): array
     {
@@ -170,6 +171,7 @@ final class TournamentView
                 'rank' => $row->rank,
                 'name' => $participant->name ?? '?',
                 'tag' => $participant?->lineup?->clan->clantag,
+                'clan' => $participant?->lineup?->clan,
                 'mix' => $participant?->isMixTeam() ?? false,
                 'points' => self::number($row->points),
                 'wins' => $row->wins,
@@ -207,6 +209,7 @@ final class TournamentView
                 'name' => $participant->name ?? self::source($slot->source),
                 'known' => $participant !== null,
                 'tag' => $participant?->lineup?->clan->clantag,
+                'clan' => $participant?->lineup?->clan,
                 'mix' => $participant?->isMixTeam() ?? false,
                 'score' => $score,
                 'won' => $result !== null && $winner === $index,

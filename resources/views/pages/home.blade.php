@@ -294,9 +294,10 @@
                                 <li class="border-t border-hairline">
                                     <a href="{{ route('clans.show', $clan) }}" class="grid min-h-11 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5 py-1 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                                         <span class="relative flex size-7 items-center justify-center" aria-hidden="true">
-                                            <x-clan-tag :tag="$clan->clantag" size="sm" class="min-w-7 px-0.5" />
-                                            @if ($clan->picture)
-                                                <img src="{{ $clan->picture }}" alt="" width="28" height="28" loading="lazy" referrerpolicy="no-referrer" class="absolute inset-0 size-7 rounded-sm bg-card object-cover" onerror="this.remove()">
+                                            @if ($clan->localLogoUrl())
+                                                <x-clan-tag :clan="$clan" :tile="28" class="size-7 rounded-sm" />
+                                            @else
+                                                <x-clan-tag :clan="$clan" size="sm" class="min-w-7 px-0.5" />
                                             @endif
                                         </span>
                                         <span class="flex min-w-0 flex-col gap-0.5">

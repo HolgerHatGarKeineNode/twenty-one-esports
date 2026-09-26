@@ -24,7 +24,7 @@
 <span class="relative flex min-w-0 grow flex-col gap-0.5 lg:gap-1">
     <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm font-bold lg:text-[15px]">
         <x-player-link :user="$user" class="relative inline-flex min-h-6 min-w-0 items-center after:absolute after:inset-x-0 after:-inset-y-2.5" data-test="player-name"><span class="truncate">{{ $player['name'] }}</span></x-player-link>
-        @if ($player['tag'])<x-clan-tag :tag="$player['tag']" size="sm" />@endif
+        <x-clan-tag :clan="$user->clanMember?->clan" size="sm" />
         @if ($player['member'])<x-member-badge solid class="max-lg:hidden" /><x-member-badge class="lg:hidden" />@endif
         @if ($you)<span class="text-[11px] font-normal text-ink-3">{{ __('you') }}</span>@else<x-copy-npub :npub="$player['npub']" :name="$player['name']" />@endif
     </span>

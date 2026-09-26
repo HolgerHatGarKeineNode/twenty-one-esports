@@ -268,7 +268,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                             <span class="flex items-center gap-2 text-xs text-ink-3"><a href="{{ route('games.show', $game) }}">{{ $game->number() }}</a>{{ __('Daily chess') }}</span>
                             <span class="flex min-w-0 flex-wrap items-center gap-2">
                                 @if ($opp)<x-player-link :user="$opp" class="flex min-h-6 min-w-0 items-center gap-2 text-[15px] font-bold" data-test="correspondence-opponent"><x-avatar :user="$opp" :size="20" class="rounded-sm" /><span class="truncate">{{ $opp->displayName() }}</span></x-player-link>@endif
-                                @if ($opp?->clanMember?->clan?->clantag)<x-clan-tag :tag="$opp->clanMember->clan->clantag" size="sm" />@endif
+                                <x-clan-tag :clan="$opp?->clanMember?->clan" size="sm" />
                                 @if ($opp?->is_member)<x-member-badge />@endif
                                 @if ($opp)<x-copy-npub :npub="$opp->npub" :name="$opp->displayName()" />@endif
                             </span>

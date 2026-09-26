@@ -37,7 +37,7 @@
     @foreach ($box['sides'] as $side)
         <span class="flex min-w-0 items-center gap-2">
             @if ($side['tag'])
-                <x-clan-tag :tag="$side['tag']" />
+                <x-clan-tag :clan="$side['clan']" :tag="$side['tag']" />
             @elseif ($side['mix'])
                 <span class="inline-flex h-5 items-center rounded-xs bg-raised px-1.5 text-[10px] text-ink-2">{{ __('mix') }}</span>
             @endif

@@ -74,7 +74,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         return [
             'wins' => $top,
             'recent' => (clone $done)->orderByDesc('finished_at')->limit(6)->get()->all(),
-            'open' => SeriesMatch::query()->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])->orderBy('respond_by')->limit(5)->get()->all(),
+            'open' => SeriesMatch::query()->with('challengerLineup.clan')->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])->orderBy('respond_by')->limit(5)->get()->all(),
             'weeks' => array_map(fn (int $week) => (int) ($perWeek[$week] ?? 0), range(0, 11)),
         ];
     }
@@ -118,7 +118,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @foreach ($rows as $row)
                 <a href="{{ route('clans.show', $row['clan']) }}" wire:key="rl-{{ $row['clan']->id }}" class="tr grid h-[38px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_180px_minmax(0,1fr)_52px_52px_52px]">
                     <span class="text-ink-3">{{ $row['rank'] }}</span>
-                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :tag="$row['clan']->clantag" size="sm" /><span class="truncate">{{ $row['clan']->name }}</span></span>
+                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :clan="$row['clan']" size="sm" /><span class="truncate">{{ $row['clan']->name }}</span></span>
                     <span class="hidden h-3.5 rounded-r-sm bg-raised lg:block"><span class="block h-3.5 animate-fill rounded-r-sm bg-btc" style="width: {{ $row['width'] }}"></span></span>
                     <b class="text-right">{{ $row['points'] }}</b>
                     <span class="hidden text-right text-ink-2 lg:block">+{{ $row['bonus'] }}</span>
@@ -223,7 +223,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <div class="grid h-8 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 px-2 text-xs text-ink-2 lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]"><span>{{ __('Clan') }}</span><span>{{ __('Format') }}</span><span>{{ __('Match kind') }}</span><span class="hidden text-right lg:block">{{ __('When') }}</span></div>
             @forelse ($series['open'] as $match)
                 <a href="{{ route('matches.show', $match) }}" wire:key="os-{{ $match->id }}" class="tr grid h-12 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]">
-                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :tag="$match->challenger_tag" size="sm" /><span class="truncate">{{ $match->status === SeriesStatus::Open ? __('challenges :clan', ['clan' => $match->challenged_name]) : __(':number vs :clan', ['number' => $match->label(), 'clan' => $match->challenged_name]) }}</span></span>
+                    <span class="flex min-w-0 items-center gap-2"><x-clan-tag :clan="$match->sideClan('challenger')" :tag="$match->challenger_tag" size="sm" /><span class="truncate">{{ $match->status === SeriesStatus::Open ? __('challenges :clan', ['clan' => $match->challenged_name]) : __(':number vs :clan', ['number' => $match->label(), 'clan' => $match->challenged_name]) }}</span></span>
                     <span class="text-ink-2">{{ $match->mode }} · BO{{ $match->best_of }}</span><span class="text-ink-2">{{ $match->rated ? __('rated') : __('casual') }}</span><span class="hidden text-right text-ink-2 lg:block">{{ SeriesPresenter::when($match, auth()->user()) }}</span>
                 </a>
             @empty

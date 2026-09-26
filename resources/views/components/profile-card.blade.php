@@ -114,7 +114,7 @@
             <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-clan">
                 <span class="text-ink-3">{{ __('Clan') }}</span>
                 <span class="flex min-w-0 items-center gap-2">
-                    <x-clan-tag :tag="$profile->clan->clantag" size="sm" />
+                    <x-clan-tag :clan="$profile->clan" size="sm" />
                     <span class="truncate">{{ $profile->clan->name }}</span>
                     <span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
                 </span>

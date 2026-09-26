@@ -175,7 +175,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                     $badge = \App\Support\Rating\Ratings::badge($summary['tier']);
                     $href = $players ? ($row->user ? route('players.show', $row->user->npub) : null) : ($row->lineup?->clan ? route('clans.show', $row->lineup->clan) : null);
                     $name = $players ? ($row->user?->displayName() ?? __('Deleted account')) : ($row->lineup?->clan?->name ?? __('Deleted lineup'));
-                    $tag = $players ? $row->user?->clanMember?->clan?->clantag : $row->lineup?->clan?->clantag;
+                    $clan = $players ? $row->user?->clanMember?->clan : $row->lineup?->clan;
                 @endphp
                 <a @if ($href) href="{{ $href }}" @endif wire:key="r-{{ $row->id }}" data-test="ladder-row"
                    @class(['tr grid min-h-[52px] items-center gap-3 rounded-sm px-2 py-1.5 text-[13px] text-ink hover:text-ink',
@@ -185,7 +185,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                     <span class="flex min-w-0 flex-col gap-1">
                         <span class="flex min-w-0 items-center gap-2">
                             @if ($players && $row->user)<x-avatar :name="$row->user->displayName()" :src="$row->user->avatarUrl()" :size="22" />@endif
-                            @if ($tag)<x-clan-tag :tag="$tag" />@endif
+                            <x-clan-tag :clan="$clan" />
                             <span class="truncate font-bold" data-test="ladder-name">{{ $name }}</span>
                         </span>
                         @if ($rated)

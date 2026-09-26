@@ -212,7 +212,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         @php($otherReport = collect($compare)->first(fn ($x) => $x->id !== $r->id))
                         @php($w = $r->score())
                         <div class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6" data-test="report-{{ $r->side }}">
-                            <span class="flex items-center gap-3 pb-2"><x-clan-tag :tag="$case->sideTag($r->side)" /><span class="flex flex-col"><b class="text-[15px]">{{ $case->sideName($r->side) }}</b><span class="text-xs text-ink-2">{{ $r->user?->displayName() }}, {{ __('captain') }}</span></span><span class="grow"></span><span class="inline-flex items-center gap-1 text-xs text-proof"><x-icon name="shield-check" :size="14" />{{ $r->event ? __('Signed') : __('Casual') }}</span></span>
+                            <span class="flex items-center gap-3 pb-2"><x-clan-tag :clan="$case->sideClan($r->side)" :tag="$case->sideTag($r->side)" /><span class="flex flex-col"><b class="text-[15px]">{{ $case->sideName($r->side) }}</b><span class="text-xs text-ink-2">{{ $r->user?->displayName() }}, {{ __('captain') }}</span></span><span class="grow"></span><span class="inline-flex items-center gap-1 text-xs text-proof"><x-icon name="shield-check" :size="14" />{{ $r->event ? __('Signed') : __('Casual') }}</span></span>
                             @for ($i = 0; $i < $case->best_of; $i++)
                                 @php($g = $r->games[$i] ?? null)
                                 @php($o = $otherReport?->games[$i] ?? null)

@@ -84,7 +84,7 @@
                         @if ($profile->clan)
                             <a href="{{ route('clans.show', $profile->clan) }}" data-test="header-clan"
                                class="relative inline-flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md bg-card px-3 text-xs whitespace-nowrap text-ink shadow-ring after:absolute after:inset-x-0 after:-inset-y-1.5 hover:text-ink">
-                                <x-clan-tag :tag="$profile->clan->clantag" size="sm" /><span class="truncate">{{ $profile->clan->name }}</span><span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
+                                <x-clan-tag :clan="$profile->clan" size="sm" /><span class="truncate">{{ $profile->clan->name }}</span><span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
                             </a>
                         @endif
                     </div>

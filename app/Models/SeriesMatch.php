@@ -257,6 +257,16 @@ class SeriesMatch extends Model
         return $side === 'challenger' ? $this->challenger_tag : $this->challenged_tag;
     }
 
+    /**
+     * The clan behind a side, for its logo. Null for a side without a clan
+     * lineup (a mix team); lists eager-load `challengerLineup.clan` and
+     * `challengedLineup.clan` so this stays one query per list.
+     */
+    public function sideClan(string $side): ?Clan
+    {
+        return $this->lineup($side)?->clan;
+    }
+
     public static function otherSide(string $side): string
     {
         return $side === 'challenger' ? 'challenged' : 'challenger';

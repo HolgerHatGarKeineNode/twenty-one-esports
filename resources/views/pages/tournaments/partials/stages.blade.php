@@ -54,7 +54,7 @@
                                     @foreach ($part['rows'] as $row)
                                         <tr class="border-t border-hairline">
                                             <td class="py-2 pr-2 text-ink-3">{{ $row['rank'] }}</td>
-                                            <td class="py-2 pr-2"><span class="flex items-center gap-2">@if ($row['tag'])<x-clan-tag :tag="$row['tag']" size="sm" />@endif<span class="truncate">{{ $row['name'] }}</span></span></td>
+                                            <td class="py-2 pr-2"><span class="flex items-center gap-2"><x-clan-tag :clan="$row['clan']" :tag="$row['tag']" size="sm" /><span class="truncate">{{ $row['name'] }}</span></span></td>
                                             <td class="py-2 pr-2 text-right font-bold tabular-nums">{{ $row['points'] }}</td>
                                             <td class="py-2 pr-2 text-right whitespace-nowrap tabular-nums text-ink-2">{{ $row['wins'] }} {{ $row['ties'] }} {{ $row['losses'] }}</td>
                                             <td class="py-2 text-right tabular-nums text-ink-2">{{ $stage['format'] === \App\Enums\TournamentFormat::Swiss ? $row['buchholz'] : $row['games'] }}</td>

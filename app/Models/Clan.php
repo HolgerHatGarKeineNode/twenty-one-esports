@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ClanRole;
+use App\Support\Clans\ClanLogos;
 use App\Support\Nostr\NostrKeys;
 use Database\Factories\ClanFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -136,6 +137,17 @@ class Clan extends Model
     public function isCaptain(User $user): bool
     {
         return $this->memberOf($user)?->role === ClanRole::Captain;
+    }
+
+    /**
+     * The logo URL when it is one this league redrew and stored itself
+     * (`clan-logos/<sha256>.png` on the public disk), else null. A portal
+     * logo or any other foreign `picture` is never rendered: it would
+     * hotlink a third party on every page that shows the clan.
+     */
+    public function localLogoUrl(): ?string
+    {
+        return app(ClanLogos::class)->pathOf($this->picture) !== null ? $this->picture : null;
     }
 
     /**

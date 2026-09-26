@@ -384,9 +384,7 @@ new #[Layout('layouts::app')] class extends Component {
                         </div>
                     @else
                         <span @class(['flex flex-col items-center gap-2', 'opacity-45 grayscale' => $closed])>
-                            <span class="flex size-16 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] font-display text-sm font-extrabold text-on-btc lg:size-28 lg:text-2xl">
-                                @if ($clan?->picture)<img src="{{ $clan->picture }}" alt="" class="size-full object-cover" loading="lazy" referrerpolicy="no-referrer">@else{{ $clan?->clantag }}@endif
-                            </span>
+                            <x-clan-tag :clan="$clan" :tile="112" class="flex size-16 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] font-display text-sm font-extrabold text-on-btc lg:size-28 lg:text-2xl" />
                             <b class="max-w-full truncate text-center text-xs lg:text-sm">{{ $clan?->name }}</b>
                         </span>
                     @endif

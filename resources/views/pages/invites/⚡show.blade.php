@@ -167,9 +167,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
         <div class="rounded-lg bg-card px-4 py-4 lg:px-6">
             <div class="flex items-start justify-between gap-3 pb-2">
                 <span class="flex min-w-0 items-center gap-3">
-                    <span class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] text-xs font-bold text-on-btc">
-                        @if ($clan->picture)<img src="{{ $clan->picture }}" alt="" class="size-full object-cover" loading="lazy">@else{{ $clan->clantag }}@endif
-                    </span>
+                    <x-clan-tag :clan="$clan" :tile="40" class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[linear-gradient(135deg,#F9B25F,#F7931A_55%,#B9640A)] text-xs font-bold text-on-btc" />
                     <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate text-[15px]">{{ $clan->name }} <span class="font-normal text-ink-3">[{{ $clan->clantag }}]</span></b>
                         @if ($stats)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@endif</span>
                 </span>

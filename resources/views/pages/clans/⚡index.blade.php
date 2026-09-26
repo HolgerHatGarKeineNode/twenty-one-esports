@@ -71,13 +71,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
      * Pins on the placeholder map: a plain projection of the meetup
      * coordinates onto the German-speaking area.
      *
-     * @return list<array{tag: string, city: string, x: string, y: string}>
+     * @return list<array{clan: Clan, tag: string, city: string, x: string, y: string}>
      */
     #[Computed]
     public function pins(): array
     {
         return Clan::query()->whereNotNull('meetup_latitude')->whereNotNull('meetup_longitude')->get()
             ->map(fn (Clan $clan) => [
+                'clan' => $clan,
                 'tag' => $clan->clantag,
                 'city' => (string) $clan->meetup_city,
                 'x' => max(1, min(80, round(((float) $clan->meetup_longitude - 7.0) / 12.3 * 100))).'%',
@@ -181,7 +182,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @foreach ($this->pins as $pin)
                 <span class="absolute flex items-center gap-2" style="left: {{ $pin['x'] }}; top: {{ $pin['y'] }}">
                     <span class="block size-3 rounded-full bg-btc shadow-[0_0_0_4px_rgba(247,147,26,.25)]"></span>
-                    <span class="rounded-sm bg-card px-1.5 py-0.5 text-xs"><b>{{ $pin['tag'] }}</b> <span class="hidden text-ink-2 sm:inline">{{ $pin['city'] }}</span></span>
+                    <span class="flex items-center gap-1.5 rounded-sm bg-card px-1.5 py-0.5 text-xs">@if ($pin['clan']->localLogoUrl())<x-clan-tag :clan="$pin['clan']" :tile="16" class="block size-4 shrink-0 rounded-xs" aria-hidden="true" />@endif<b>{{ $pin['tag'] }}</b> <span class="hidden text-ink-2 sm:inline">{{ $pin['city'] }}</span></span>
                 </span>
             @endforeach
             <span class="absolute right-3 bottom-2.5 hidden text-[11px] text-ink-3 sm:block">{{ __('Map placeholder: coordinates come from the portal meetup') }}</span>
@@ -206,7 +207,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                    class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
                     <span class="text-ink-3">{{ $row['rank'] }}</span>
                     <span class="flex min-w-0 items-center gap-2.5">
-                        <x-clan-tag :tag="$row['clan']->clantag" />
+                        <x-clan-tag :clan="$row['clan']" />
                         <span class="flex min-w-0 flex-col gap-0.5">
                             <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $row['clan']->name }}</span>@if ($row['member'])<x-member-badge />@endif</span>
                             <span class="text-[11px] whitespace-nowrap text-ink-2">{{ trans_choice(':count player|:count players', $row['clan']->members->count()) }}</span>
@@ -248,7 +249,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                    class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
                     <span class="text-ink-3">{{ $row['rank'] }}</span>
                     <span class="flex min-w-0 items-center gap-2.5">
-                        <x-clan-tag :tag="$row['clan']->clantag" />
+                        <x-clan-tag :clan="$row['clan']" />
                         <span class="truncate">{{ $row['clan']->name }}</span>
                         @if ($row['member'])<x-member-badge />@endif
                     </span>

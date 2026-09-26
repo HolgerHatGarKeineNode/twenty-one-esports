@@ -464,7 +464,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                             <button type="button" role="radio" wire:key="o-{{ $opp->id }}" wire:click="pickOpponent({{ $opp->id }})" aria-checked="{{ $opponentId === $opp->id ? 'true' : 'false' }}" @disabled($row['state'] !== 'ok') data-test="pick-opponent"
                                     @class(['grid min-h-12 cursor-pointer grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-3 rounded-md border bg-transparent px-3 py-1.5 text-left text-[13px] text-ink disabled:cursor-not-allowed md:grid-cols-[52px_minmax(0,1fr)_100px_110px_180px]',
                                         'border-btc bg-btc-press' => $opponentId === $opp->id, 'border-transparent hover:bg-row-hover' => $opponentId !== $opp->id])>
-                                <x-clan-tag :tag="$opp->clan->clantag" size="sm" />
+                                <x-clan-tag :clan="$opp->clan" size="sm" />
                                 <span class="truncate">{{ $opp->clan->name }}</span>
                                 <span class="text-ink-2 max-md:hidden">{{ $opp->activeCount() }} / {{ $opp->gameMode()->teamSize }}</span>
                                 <span class="truncate text-ink-2 max-md:hidden">{{ $opp->clan->owner?->displayName() }}</span>
@@ -526,7 +526,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 @if ($picked)
                     @php($opp = $picked['lineup'])
                     <span class="flex items-start gap-3">
-                        <span class="flex size-11 shrink-0 items-center justify-center rounded-md bg-btc-tint text-xs font-bold text-btc">{{ $opp->clan->clantag }}</span>
+                        <x-clan-tag :clan="$opp->clan" :tile="44" class="flex size-11 shrink-0 items-center justify-center rounded-md bg-btc-tint text-xs font-bold text-btc" />
                         <span class="flex min-w-0 grow flex-col gap-1"><b class="truncate text-[15px]">{{ $opp->clan->name }}, {{ $opp->mode }}</b><span class="text-xs text-ink-2">{{ __('captain :name', ['name' => $opp->clan->owner?->displayName() ?? '']) }}</span></span>
                         <span class="inline-flex h-7 items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $rated ? __('Rated') : __('Casual') }}</span>
                     </span>
