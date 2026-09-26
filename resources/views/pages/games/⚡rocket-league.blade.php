@@ -133,7 +133,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <div role="img" aria-label="{{ __('Rocket League Hashrate per clan, last 7 days') }}" class="flex h-[180px] items-end gap-1.5 border-b border-line lg:gap-2">
                 @foreach ($rl as $index => $row)
                     <span class="flex h-full min-w-0 flex-1 flex-col justify-end gap-1" title="{{ $row['clan']->name }}: {{ $row['rl'] }}">
-                        <span class="truncate text-[10px] text-ink-2 lg:text-[11px]">{{ $row['clan']->clantag }} {{ $row['rl'] }}</span>
+                        <span class="flex min-w-0 items-center gap-1 text-[10px] text-ink-2 lg:text-[11px]"><x-clan-tag :clan="$row['clan']" size="sm" compact /><span class="truncate">{{ $row['rl'] }}</span></span>
                         <span class="bar block bg-btc" style="height: {{ max($row['rl'] / 40 * 100, 1) }}%; animation-delay: {{ $index * 0.05 }}s"></span>
                     </span>
                 @endforeach

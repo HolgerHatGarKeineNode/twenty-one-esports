@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\SeriesStatus;
+use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\User;
 use App\Support\Clans\ClanLogos;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
@@ -87,4 +90,17 @@ test('the match list reads the clans of its rows in one query, however many rows
 
     expect($few)->toBe(2)
         ->and($clanQueries())->toBe($few);
+});
+
+test('the disputes list shows the logos of both sides and loads both clans with the list', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $case = SeriesMatch::factory()->accepted()->create();
+    $case->forceFill(['status' => SeriesStatus::Disputed])->save();
+    $case->challengerLineup->clan->update(['picture' => $challenger = localClanLogo()]);
+    $case->challengedLineup->clan->update(['picture' => $challenged = localClanLogo()]);
+
+    Livewire\Livewire::actingAs($admin)->test('pages::admin.disputes')
+        ->assertSeeHtml('src="'.$challenger.'"')
+        ->assertSeeHtml('src="'.$challenged.'"');
 });
