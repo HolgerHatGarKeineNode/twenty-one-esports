@@ -333,7 +333,7 @@ test('re-adding a director never changes who appointed them', function () {
 
 test('regression (S1b): a director who left the player\'s clan while sign-up was still open is refused', function () {
     $tournament = runningChess(TournamentFormat::SingleElimination, 4, clans: true);
-    $tournament->forceFill(['published_at' => now()->subDays(3), 'signup_closes_at' => now()->subHour()])->save();
+    $tournament->forceFill(['created_at' => now()->subDays(5), 'published_at' => now()->subDays(3), 'signup_closes_at' => now()->subHour()])->save();
     $match = TournamentMatch::query()->where('status', 'ready')->with('slots.participant')->orderBy('id')->first();
     $clan = Clan::query()->where('owner_id', $match->slots[0]->participant->user_id)->sole();
     $mate = User::factory()->create();
@@ -341,6 +341,20 @@ test('regression (S1b): a director who left the player\'s clan while sign-up was
 
     // Left a day before sign-up closed, still inside the tournament's life.
     ClanDeparture::query()->create(['clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name, 'user_id' => $mate->id, 'pubkey' => $mate->pubkey, 'reason' => 'left', 'left_at' => now()->subDay()]);
+
+    expect(fn () => app(TournamentRunner::class)->enterResult($match, $mate, ['result' => '1-0']))->toThrow(TournamentRuleViolation::class, 'interest');
+});
+
+test('regression (S1b): a director who left the player\'s clan while the tournament was a draft is refused', function () {
+    $tournament = runningChess(TournamentFormat::SingleElimination, 4, clans: true);
+    $tournament->forceFill(['created_at' => now()->subDays(5), 'published_at' => now()->subDays(3), 'signup_closes_at' => now()->subHour()])->save();
+    $match = TournamentMatch::query()->where('status', 'ready')->with('slots.participant')->orderBy('id')->first();
+    $clan = Clan::query()->where('owner_id', $match->slots[0]->participant->user_id)->sole();
+    $mate = User::factory()->create();
+    $tournament->directors()->attach($mate->id);
+
+    // Left after the draft was created, before it was published.
+    ClanDeparture::query()->create(['clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name, 'user_id' => $mate->id, 'pubkey' => $mate->pubkey, 'reason' => 'left', 'left_at' => now()->subDays(4)]);
 
     expect(fn () => app(TournamentRunner::class)->enterResult($match, $mate, ['result' => '1-0']))->toThrow(TournamentRuleViolation::class, 'interest');
 });

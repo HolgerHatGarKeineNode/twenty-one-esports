@@ -128,12 +128,13 @@ final class TournamentInterest
 
     /**
      * From when a departure still counts: the start of the live season or the
-     * tournament's publication (its creation for an unpublished one),
-     * whichever is earlier, as the P7d own-clan guard reads the season.
+     * tournament's creation, whichever is earlier, as the P7d own-clan guard
+     * reads the season. Creation, not publication: a director can be named
+     * while the tournament is a draft, and a leave in that window counts too.
      */
     private static function since(Tournament $tournament): ?\DateTimeInterface
     {
-        $dates = array_filter([Seasons::live()?->genesis_at, $tournament->published_at ?? $tournament->created_at]);
+        $dates = array_filter([Seasons::live()?->genesis_at, $tournament->created_at]);
 
         return $dates === [] ? null : min($dates);
     }
