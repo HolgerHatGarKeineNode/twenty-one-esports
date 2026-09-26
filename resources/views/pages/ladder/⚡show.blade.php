@@ -20,6 +20,11 @@ use Livewire\Component;
  * permanent casual rating, which never has a tier and counts for nothing
  * else. Chess rates players, Rocket League rates lineups.
  *
+ * Without `?pool=` the page opens on the view that has rows: rated once it
+ * has a result, casual before (pre-season or an empty season), with a slim
+ * note that links to the rated ladder. So every plain link to a ladder lands
+ * on content; `?pool=rated|casual` pins a tab.
+ *
  * Not built here (later phases): share of wins, tier lines, form, Block
  * Height, Global Rating, the clan tab and the Proof with the ladder snapshot
  * (P7c publishes it).
@@ -29,8 +34,9 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
 
     public string $mode;
 
-    #[Url(except: 'rated')]
-    public string $pool = 'rated';
+    /** The pinned tab, '' = the view that has rows (see activePool()). */
+    #[Url(except: '')]
+    public string $pool = '';
 
     public function mount(string $game, string $mode): void
     {
@@ -38,7 +44,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
 
         $this->game = $game;
         $this->mode = $mode;
-        $this->pool = $this->pool === Rating::CASUAL ? Rating::CASUAL : Rating::RATED;
+        $this->pool = in_array($this->pool, [Rating::RATED, Rating::CASUAL], true) ? $this->pool : '';
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -64,11 +70,41 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
         return app(GameRegistry::class)->mode($this->game, $this->mode);
     }
 
+    /**
+     * The tab on screen: the pinned one, else rated when it has a row and
+     * casual when it has none.
+     */
+    #[Computed]
+    public function activePool(): string
+    {
+        if ($this->pool !== '') {
+            return $this->pool;
+        }
+
+        return $this->ratedHasRows ? Rating::RATED : Rating::CASUAL;
+    }
+
+    /** Null while the rated ladder is closed (before Block 0). */
+    #[Computed]
+    public function ratedSeason(): ?string
+    {
+        return Ratings::season(Rating::RATED, $this->game, $this->mode);
+    }
+
+    #[Computed]
+    public function ratedHasRows(): bool
+    {
+        return $this->ratedSeason !== null && Rating::query()
+            ->where(['pool' => Rating::RATED, 'season' => $this->ratedSeason, 'game' => $this->game, 'mode' => $this->mode])
+            ->where('results', '>', 0)
+            ->exists();
+    }
+
     /** Null while this pool has no open ladder (rated before Block 0). */
     #[Computed]
     public function season(): ?string
     {
-        return Ratings::season($this->pool, $this->game, $this->mode);
+        return $this->activePool === Rating::RATED ? $this->ratedSeason : Ratings::season(Rating::CASUAL, $this->game, $this->mode);
     }
 
     /**
@@ -85,14 +121,14 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
         }
 
         return Rating::query()
-            ->where(['pool' => $this->pool, 'season' => $this->season, 'game' => $this->game, 'mode' => $this->mode])
+            ->where(['pool' => $this->activePool, 'season' => $this->season, 'game' => $this->game, 'mode' => $this->mode])
             ->where('results', '>', 0)
             ->with(['user.clanMember.clan', 'lineup.clan'])
             ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')
             ->limit(200)
             ->get()
             ->values()
-            ->map(fn (Rating $row, int $index) => ['rank' => $index + 1, 'row' => $row, 'summary' => Ratings::summary($row, $this->pool)]);
+            ->map(fn (Rating $row, int $index) => ['rank' => $index + 1, 'row' => $row, 'summary' => Ratings::summary($row, $this->activePool)]);
     }
 
     /**
@@ -112,7 +148,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
     $modeName = $game === 'chess' ? __($this->gameMode->name) : $this->gameMode->name;
     $rows = $this->rows;
     $players = $this->gameMode->rates === 'player';
-    $rated = $pool === 'rated';
+    $active = $this->activePool;
+    $rated = $active === 'rated';
     $tab = 'inline-flex h-11 cursor-pointer items-center border-0 px-4 text-[13px] whitespace-nowrap';
 @endphp
 
@@ -126,19 +163,33 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
         <div class="flex flex-wrap items-center gap-3">
             <nav aria-label="{{ __('Mode') }}" class="flex overflow-hidden rounded-md border border-edge">
                 @foreach ($this->modes as [$slug, $label])
-                    <a href="{{ route('ladder.show', [$game, $slug]) }}{{ $rated ? '' : '?pool=casual' }}" wire:key="m-{{ $slug }}"
+                    <a href="{{ route('ladder.show', [$game, $slug]) }}{{ $pool === '' ? '' : '?pool='.$pool }}" wire:key="m-{{ $slug }}"
                        @if ($slug === $mode) aria-current="page" @endif
                        @class([$tab, 'border-l border-edge' => ! $loop->first, 'bg-btc font-bold text-on-btc hover:text-on-btc' => $slug === $mode, 'bg-ground text-ink-2 hover:text-ink' => $slug !== $mode])>{{ $label }}</a>
                 @endforeach
             </nav>
             <div role="group" aria-label="{{ __('Ladder') }}" class="flex overflow-hidden rounded-md border border-edge">
                 @foreach (['rated' => __('Rated'), 'casual' => __('Casual')] as $key => $label)
-                    <button type="button" wire:click="pickPool('{{ $key }}')" aria-pressed="{{ $pool === $key ? 'true' : 'false' }}" data-test="pool-{{ $key }}"
-                            @class([$tab, 'border-l border-edge' => $key === 'casual', 'bg-raised font-bold text-ink' => $pool === $key, 'bg-ground text-ink-2' => $pool !== $key])>{{ $label }}</button>
+                    <button type="button" wire:click="pickPool('{{ $key }}')" aria-pressed="{{ $active === $key ? 'true' : 'false' }}" data-test="pool-{{ $key }}"
+                            @class([$tab, 'border-l border-edge' => $key === 'casual', 'bg-raised font-bold text-ink' => $active === $key, 'bg-ground text-ink-2' => $active !== $key])>{{ $label }}</button>
                 @endforeach
             </div>
         </div>
     </div>
+
+    {{-- Casual on screen because the rated ladder has no row yet: say why, and link it. --}}
+    @if (! $rated && ! $this->ratedHasRows)
+        @php
+            $locked = $this->ratedSeason === null;
+        @endphp
+        {{-- Below lg: text on one line, the link under it; from lg one 44 px row. --}}
+        <p @class(['m-0 grid items-center gap-x-3 rounded-md px-4 text-[13px] leading-normal text-ink-2 shadow-[inset_0_0_0_1px_#2A2A30] lg:flex',
+                   'grid-cols-[16px_minmax(0,1fr)]' => $locked, 'grid-cols-1' => ! $locked]) data-test="ladder-rated-note">
+            @if ($locked)<x-icon name="lock" :size="16" class="shrink-0" />@endif
+            <span class="min-w-0 pt-2.5 lg:grow lg:pb-2.5">{{ $locked ? __('The rated ladder starts at Block 0.') : __('The rated ladder has no results this season yet.') }}</span>
+            <a href="{{ route('ladder.show', [$game, $mode]) }}?pool=rated" @class(['inline-flex min-h-11 items-center justify-self-start font-bold whitespace-nowrap', 'col-start-2' => $locked]) data-test="ladder-rated-link">{{ __('See the rated ladder') }}</a>
+        </p>
+    @endif
 
     @if ($rated && $this->season === null)
         <section class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-8 lg:py-7" data-test="ladder-preseason">

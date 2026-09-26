@@ -225,7 +225,7 @@ test('the numbering migration gives existing games unique numbers after all seri
 test('the ladder lists players by rating with their tier, and shows the Pre-Season state before Block 0', function () {
     [$low, $top, $mid] = User::factory()->count(3)->sequence(['name' => 'lowkey'], ['name' => 'topdog'], ['name' => 'midway'])->create();
 
-    $this->get(route('ladder.show', ['chess', 'blitz']))
+    $this->get(route('ladder.show', ['chess', 'blitz']).'?pool=rated')
         ->assertOk()->assertSee('Pre-Season starts at Block 0')->assertDontSee('topdog');
 
     seedRating($low, Rating::CASUAL, 940, 2);
@@ -248,6 +248,34 @@ test('the ladder lists players by rating with their tier, and shows the Pre-Seas
 
     $this->get('/ladder/chess/bullet')->assertNotFound();
     $this->get(route('ladder.show', ['rocket-league', '3v3']))->assertOk();
+});
+
+test('the ladder opens on casual while the rated ladder has no row, and on rated once it has one', function () {
+    [$casual, $rated] = User::factory()->count(2)->sequence(['name' => 'casualcarl'], ['name' => 'ratedrita'])->create();
+    seedRating($casual, Rating::CASUAL, 1050, 3);
+    $ladder = route('ladder.show', ['chess', 'blitz']);
+    $pressed = fn (string $pool) => 'aria-pressed="true" data-test="pool-'.$pool.'"';
+
+    // Pre-season: casual, with the note that links to the rated ladder.
+    $this->get($ladder)->assertOk()
+        ->assertSee($pressed('casual'), false)->assertSee('casualcarl')
+        ->assertSee('The rated ladder starts at Block 0.')->assertSee($ladder.'?pool=rated', false)
+        ->assertDontSee('Pre-Season starts at Block 0');
+
+    // Season open, still no rated result: casual, and the note says so.
+    openLadders();
+    $this->get($ladder)->assertOk()
+        ->assertSee($pressed('casual'), false)
+        ->assertSee('The rated ladder has no results this season yet.');
+
+    // The first rated row: rated is the default, no note.
+    seedRating($rated, Rating::RATED, 1020, 1);
+    $this->get($ladder)->assertOk()
+        ->assertSee($pressed('rated'), false)->assertSee('ratedrita')->assertDontSee('casualcarl')
+        ->assertDontSee('data-test="ladder-rated-note"', false);
+
+    // ?pool= pins a tab either way.
+    $this->get($ladder.'?pool=casual')->assertOk()->assertSee($pressed('casual'), false)->assertSee('casualcarl');
 });
 
 test('the player page and the player card show the casual blitz Elo and the lineup Elo before Block 0, the tier after', function () {

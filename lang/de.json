@@ -2800,5 +2800,15 @@
     "not yet: series reported by the players are casual for now": "noch nicht: von Spielern gemeldete Serien sind vorerst ungewertet",
     "yes, on its ladder while that is open and the trust gate passes": "ja, auf seiner Ladder, solange sie offen ist und die Vertrauensprüfung besteht",
     "separate: tournament matches never mine season blocks": "getrennt: Turnier-Matches minen nie Season-Blöcke",
-    "Manage tournaments": "Turniere verwalten"
+    "Manage tournaments": "Turniere verwalten",
+    "The rated ladder starts at Block 0.": "Die gewertete Ladder startet mit Block 0.",
+    "The rated ladder has no results this season yet.": "Die gewertete Ladder hat in dieser Season noch keine Ergebnisse.",
+    "See the rated ladder": "Gewertete Ladder ansehen",
+    "Blitz ladder": "Blitz-Ladder",
+    "rated season": "gewertete Season",
+    "casual until Block 0": "casual bis Block 0",
+    "Rank, Elo and results of every blitz player.": "Rang, Elo und Ergebnisse aller Blitz-Spieler.",
+    "Every casual blitz game counts here. The rated ladder starts at Block 0.": "Jede Casual-Blitzpartie zählt hier. Die gewertete Ladder startet mit Block 0.",
+    "Open the blitz ladder": "Blitz-Ladder öffnen",
+    "See the chess ladder": "Schach-Ladder ansehen"
 }

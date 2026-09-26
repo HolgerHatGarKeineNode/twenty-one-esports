@@ -278,7 +278,10 @@
                             @endforeach
                         </ul>
                     @endif
-                    <a href="{{ route('chess.lobby') }}" class="btn-p mt-auto flex h-11 items-center justify-center rounded-lg bg-btc text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Play casual now') }}</a>
+                    <span class="mt-auto flex flex-col gap-1">
+                        <a href="{{ route('chess.lobby') }}" class="btn-p flex h-11 items-center justify-center rounded-lg bg-btc text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Play casual now') }}</a>
+                        <a href="{{ route('ladder.show', ['chess', 'blitz']) }}" class="flex min-h-11 items-center justify-center text-[13px]" data-test="home-ladder-link">{{ __('See the chess ladder') }}</a>
+                    </span>
                 </div>
 
                 <div class="pl-card" data-test="clans">

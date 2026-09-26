@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
 
 pest()->group('browser');
@@ -22,37 +23,13 @@ pest()->group('browser');
 | Every clan tag chip shows the clan's uploaded logo in front of the tag
 | (<x-clan-tag>). Measured at 375 and 1440 px: no horizontal overflow, every
 | visible logo decoded (naturalWidth > 0), a clean console and no response
-| >= 400. The collector is the one from ClanEditTest, with its positive
-| control below. The public disk points into a throwaway folder under
+| >= 400. The collector is the one from ClanEditTest (BrowserConsole), with
+| its positive control below. The public disk points into a throwaway folder under
 | public/, because the in-process server serves public/ only.
 |
 | CLAN_LOGO_SHOTS=<dir> additionally writes the English screenshots there.
 |
 */
-
-const CLAN_LOGO_COLLECTOR = <<<'JS'
-    window.__errors = [];
-    const push = (entry) => window.__errors.push(entry);
-    const originalError = console.error;
-    console.error = function (...args) { push('console.error: ' + args.map(String).join(' ')); originalError.apply(console, args); };
-    window.addEventListener('error', (e) => push('error: ' + (e.message || (e.target && (e.target.src || e.target.href)) || 'unknown')), true);
-    window.addEventListener('unhandledrejection', (e) => push('unhandledrejection: ' + String(e.reason)));
-    const originalFetch = window.fetch;
-    window.fetch = (...args) => originalFetch(...args).then((r) => { if (r.status >= 400) push(r.status + ' ' + r.url); return r; });
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-        this.addEventListener('loadend', () => { if (this.status >= 400 || this.status === 0) push('xhr ' + this.status + ' ' + url); });
-        return originalOpen.call(this, method, url, ...rest);
-    };
-    JS;
-
-const CLAN_LOGO_BAD_RESPONSES = <<<'JS'
-    () => performance.getEntries()
-        .filter((e) => typeof e.responseStatus === 'number' && e.responseStatus >= 400)
-        .map((e) => e.responseStatus + ' ' + e.name)
-    JS;
-
-const CLAN_LOGO_OVERFLOW = '() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]';
 
 /** Visible logos scrolled into view one by one, so lazy loading fetches each. */
 const CLAN_LOGO_VISIBLE = <<<'JS'
@@ -96,7 +73,7 @@ afterEach(function () {
 function clanLogoPage(User $user, string $to, int $width): Page
 {
     $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
-    $page->context()->addInitScript(CLAN_LOGO_COLLECTOR);
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, 900);
     $page->goto(ComputeUrl::from($to));
 
@@ -162,7 +139,7 @@ test('clan logos show in front of the tag on the chess ladder, the clan list and
             BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("img[data-clan-logo]") !== null', 10_000);
 
             $logos = $page->evaluate(CLAN_LOGO_VISIBLE);
-            $overflow = $page->evaluate(CLAN_LOGO_OVERFLOW);
+            $overflow = $page->evaluate(BrowserConsole::WIDTHS);
             fwrite(STDERR, "\n[clan-logo] {$name} {$width}px scrollWidth/clientWidth ".json_encode($overflow).' logos '.json_encode($logos)."\n");
 
             expect($logos)->not->toBeEmpty()
@@ -173,7 +150,7 @@ test('clan logos show in front of the tag on the chess ladder, the clan list and
             clanLogoShot($page, "clan-logo-{$name}-{$width}");
 
             expect($page->evaluate('() => window.__errors'))->toBe([])
-                ->and($page->evaluate(CLAN_LOGO_BAD_RESPONSES))->toBe([]);
+                ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
         }
     }
 });
@@ -191,5 +168,5 @@ test('the collectors see a broken logo and a thrown error (positive control)', f
     $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
 
-    expect(implode("\n", $page->evaluate(CLAN_LOGO_BAD_RESPONSES)))->toMatch('#^404 http://\S+/clan-logos/0{64}\.png$#m');
+    expect(implode("\n", $page->evaluate(BrowserConsole::BAD_RESPONSES)))->toMatch('#^404 http://\S+/clan-logos/0{64}\.png$#m');
 });
