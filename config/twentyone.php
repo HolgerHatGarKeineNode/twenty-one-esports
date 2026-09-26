@@ -102,7 +102,7 @@ return [
             'd' => 'twentyone-247',
             'title' => 'TWENTY ONE Esports — 24/7 Stream',
             'summary' => '24/7 stream from TWENTY ONE Esports, the esports arm of EINUNDZWANZIG. Currently looping our promo video while our Bitcoiner ladder platform is in development. Login via Nostr.',
-            'image' => 'https://blossom.einundzwanzig.space/3651c44d9e469ec1ceb7cde8581694c86fce248fb5d5eb16ec2cc008b1a3545e.png',
+            'image' => 'https://blossom.einundzwanzig.space/0ae840119d4dc63522b76e596642a79cd92c4ed9378742b008a33228691dd88c.png',
             't' => ['bitcoin', 'esports', 'nostr', 'einundzwanzig', 'gaming'],
         ],
 
