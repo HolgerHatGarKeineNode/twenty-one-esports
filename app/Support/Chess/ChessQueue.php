@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonInterface;
 
 /**
@@ -43,8 +44,11 @@ final class ChessQueue
         }
 
         if ($rated) {
-            // Rated play starts with Elo at Block 0 (P7); before that every game is casual.
-            throw new ChessRuleViolation('rated_not_open');
+            // Rated play rests before Block 0 and between seasons (P7c), and rated
+            // chess games are not built yet: the queue pairs casual games only.
+            throw new ChessRuleViolation('rated_not_open', Seasons::isLive()
+                ? __('Rated chess is not open yet. Blitz games are casual for now.')
+                : Seasons::restMessage($user));
         }
 
         $invited = $this->fromOpenInvite($user, $mode);

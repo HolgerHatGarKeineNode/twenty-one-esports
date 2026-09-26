@@ -6,6 +6,7 @@ use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
+use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesEvents;
 
@@ -26,6 +27,7 @@ use App\Support\Series\SeriesEvents;
  * 11-14 2150-2153, the structure of the rated series flow (P6a; built and
  *    tested now, used once a ladder is open). League state (captaincy,
  *    transitions, reserved match number) is checked by SeriesService.
+ * 29. 1985 with `release-block-0`, an admin's release of Block 0 (P7c).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -57,6 +59,7 @@ final class EsportsEventRules
             SeriesEvents::ANSWER => $this->answer($event),
             SeriesEvents::REPORT => $this->report($event),
             SeriesEvents::RESPONSE => $this->response($event),
+            SeasonRelease::LABEL => $this->releaseLabel($event),
             default => 'kind_not_allowed',
         };
     }
@@ -125,6 +128,30 @@ final class EsportsEventRules
         }
 
         return preg_match('/^[1-9][0-9]*$/', (string) $event->tag('match')) === 1 ? null : 'challenge_match';
+    }
+
+    /**
+     * Rule 29 (rev. 5), a release label: `L` the league namespace, `l`
+     * `release-block-0` in it, one `a` to a season announcement (`31923`),
+     * one 64-character hex `x`. That the signer is on the admin list and the
+     * digest is the genesis' is league state ({@see SeasonRelease}).
+     */
+    private function releaseLabel(SignedEvent $event): ?string
+    {
+        $labels = $event->tagsNamed('l');
+        $announcements = $event->tagsNamed('a');
+        $digests = $event->tagsNamed('x');
+
+        if ($event->tag('L') !== SeasonRelease::NAMESPACE || count($labels) !== 1
+            || ($labels[0][0] ?? null) !== SeasonRelease::RELEASE_LABEL || ($labels[0][1] ?? null) !== SeasonRelease::NAMESPACE) {
+            return 'label_value';
+        }
+
+        if (count($announcements) !== 1 || ! str_starts_with($announcements[0][0] ?? '', SeasonRelease::ANNOUNCEMENT.':')) {
+            return 'label_announcement';
+        }
+
+        return count($digests) === 1 && preg_match('/^[0-9a-f]{64}$/', $digests[0][0] ?? '') === 1 ? null : 'label_digest';
     }
 
     /**

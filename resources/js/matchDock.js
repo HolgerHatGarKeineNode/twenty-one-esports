@@ -5,9 +5,9 @@
  * for a new render.
  *
  * Live: the player's private channel (a notification, a game that started,
- * an invite that changed) and the public watch channel of every chess game
- * on the dock ask for `$refresh`. Without a websocket the dock polls, and it
- * polls slowly with one too, since series changes are not broadcast. A
+ * an invite that changed, a series that changed) and the public watch channel
+ * of every chess game on the dock ask for `$refresh`. Without a websocket the
+ * dock polls, and it polls slowly with one too, in case an event was missed. A
  * refresh waits while the pointer or the keyboard focus is inside the dock,
  * so a tab never moves under the player's hand (MatchDock.dc.html "Order").
  *
@@ -219,7 +219,9 @@ export default function matchDock(config) {
             window.Echo.private('App.Models.User.' + document.querySelector('meta[name="presence-user"]')?.content)
                 .listen('.user.notified', refresh)
                 .listen('.chess.game-started', refresh)
-                .listen('.chess.invite', refresh);
+                .listen('.chess.invite', refresh)
+                // Rocket League series: challenge, answer, live score, result (App\Events\SeriesMatchChanged).
+                .listen('.series.changed', refresh);
             this.watchGames();
             this.schedulePoll();
         },

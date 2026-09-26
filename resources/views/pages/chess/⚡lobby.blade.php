@@ -265,7 +265,7 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
                 'accept_while_playing' => __('You are in a live game. One live game at a time: finish it, then accept the invite.'),
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
-                'rated_not_open' => __('Rated games start at Block 0.'),
+                'rated_not_open' => $violation->getMessage(),
                 'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };

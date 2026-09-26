@@ -54,8 +54,8 @@ test('a rated series publishes 2150 to 2153 to every ndak relay, each comes back
     config([
         'esports.relays' => $relays,
         'queue.default' => 'sync',
-        'esports.ladder' => ['league_pubkey' => (new TestSigner)->pubkey, 'season' => 'relay-probe'],
     ]);
+    openSeason(['slug' => 'relay-probe']);
     $series = app(SeriesService::class);
 
     $side = function (): array {

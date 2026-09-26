@@ -1,7 +1,12 @@
 <?php
 
+use App\Models\NostrEvent;
+use App\Models\Season;
+use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\SeasonChains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Vite;
+use Tests\Support\TestSigner;
 use Tests\TestCase;
 
 /*
@@ -73,7 +78,23 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * A live chain season (Block 0 an hour ago) signed by a throwaway league key,
+ * which becomes `esports.league.nsec`, so rated play is open and every rated
+ * result is attested. The genesis is a real signed 2156, so block 1 can name
+ * it. The real release path is tested in tests/Feature/SeasonChain.
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function openSeason(array $attributes = []): Season
 {
-    // ..
+    $league = new TestSigner;
+    config(['esports.league.nsec' => $league->secret]);
+
+    $season = Season::factory()->make(['league_pubkey' => $league->pubkey, ...$attributes]);
+    $genesis = NostrEvent::fromSigned(SignedEvent::fromInput($league->sign(SeasonChains::GENESIS, [['season', $season->slug], ['alt', 'Season Genesis']], $season->genesis_message, $season->genesis_at->getTimestamp())));
+    $season->genesis_event_id = $genesis->id;
+    $season->save();
+
+    return $season;
 }

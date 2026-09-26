@@ -14,7 +14,6 @@ use App\Support\Rating\Ratings;
 use App\Support\Rating\RatingService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use Tests\Support\TestSigner;
 
 /**
  * Ratings at result time (P7b): chess games rate their players, casual and
@@ -23,7 +22,7 @@ use Tests\Support\TestSigner;
  */
 function openLadders(): void
 {
-    config(['esports.ladder' => ['league_pubkey' => (new TestSigner)->pubkey, 'season' => 'season-1']]);
+    openSeason(['slug' => 'season-1']);
 }
 
 /** Seeds a rating row as if the entity had played `$results` rated results. */

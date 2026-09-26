@@ -37,7 +37,7 @@ final class Ratings
             return '';
         }
 
-        return Ladders::isOpen($game, $mode) ? (string) config('esports.ladder.season') : null;
+        return Ladders::isOpen($game, $mode) ? Ladders::season() : null;
     }
 
     /**

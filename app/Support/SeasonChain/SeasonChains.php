@@ -1,0 +1,453 @@
+<?php
+
+namespace App\Support\SeasonChain;
+
+use App\Enums\SeriesResolution;
+use App\Models\ClanMember;
+use App\Models\RatingChange;
+use App\Models\Season;
+use App\Models\SeasonAttestation;
+use App\Models\SeasonParameterChange;
+use App\Models\SeriesMatch;
+use App\Models\SeriesReport;
+use App\Models\User;
+use App\Support\Board;
+use App\Support\Series\Ladders;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * The season chain of the app (P7c): every rated result inside a live chain
+ * season becomes a League Attestation (`2154`), signed by the league key, in
+ * attestation order. A result with a winner is a block candidate; the
+ * consensus rules of `season-chain-v1` (ConsensusRules) decide, with the
+ * parameters in force at its attestation, whether it mines. A block carries
+ * `["block", "<height>", "<previous block id>"]`, a win that does not mine
+ * `["block", "", "<tip id>"]` and the rule that rejected it is stored.
+ *
+ * The chain is rebuilt from season_attestations for every attestation (a
+ * replay through BlockChain, as a reader of the relays would do it), under a
+ * lock on the season row, so two results cannot race for the same height.
+ * Called inside the transaction that writes the result and its rating
+ * change, so result, rating and block commit together or not at all.
+ */
+final class SeasonChains
+{
+    public const ATTESTATION = 2154;
+
+    public const GENESIS = 2156;
+
+    public const PARAMETER_CHANGE = 2158;
+
+    public function __construct(private TrustFacts $trust) {}
+
+    /** The chain of a season, replayed from its stored attestations. */
+    public function chain(Season $season): BlockChain
+    {
+        $chain = new BlockChain($season->chainParameters(), new ConsensusRules($season->minimum_trust));
+
+        foreach ($season->attestations()->whereNotNull('candidate')->orderBy('id')->cursor() as $row) {
+            $candidate = $row->toCandidate();
+
+            if ($candidate !== null) {
+                $chain->attest($candidate);
+            }
+        }
+
+        return $chain;
+    }
+
+    /**
+     * Attest a finished rated series. Null for a casual series, a series
+     * without a result, or outside a live season (no ladder is open then,
+     * and nothing belongs to a chain).
+     */
+    public function attestSeries(SeriesMatch $match): ?SeasonAttestation
+    {
+        if (! $match->rated || ! $match->status->hasResult() || $match->resolution === null) {
+            return null;
+        }
+
+        $live = Seasons::live();
+        $ladder = Ladders::address($match->game, $match->mode);
+
+        if ($live === null || $ladder === null) {
+            return null;
+        }
+
+        // One writer at a time per season: heights and links follow the lock order.
+        $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+
+        $existing = $season->attestations()->where(['source' => SeasonAttestation::SERIES, 'source_id' => $match->id, 'board' => 1])->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $league = LeagueKey::required();
+        $match->loadMissing(['reports.event', 'reports.responseEvent', 'challengeEvent', 'answerEvent', 'latestReport']);
+        $attestedAt = $this->nextAttestationTime($season);
+        $candidate = $this->seriesCandidate($match, $attestedAt);
+
+        $row = [
+            'season_id' => $season->id,
+            'source' => SeasonAttestation::SERIES,
+            'source_id' => $match->id,
+            'board' => 1,
+            'match_number' => $match->number,
+            'label' => $match->label(),
+            'game' => $match->game,
+            'mode' => $match->mode,
+            'ladder_address' => $ladder,
+            'attested_at' => $attestedAt,
+            'candidate' => $candidate?->toArray(),
+        ];
+        $block = null;
+
+        if ($candidate !== null) {
+            $verdict = $this->chain($season)->attest($candidate);
+            $tip = $this->tip($season);
+
+            $row += [
+                'height' => $verdict->mines() ? ($tip['height'] ?? 0) + 1 : null,
+                'rule' => $verdict->rule?->value,
+                'reason' => $verdict->reason,
+                'subject' => $verdict->subject === null ? null : mb_substr($verdict->subject, 0, 200),
+                'era' => $verdict->era,
+                'reward_per_player' => $verdict->rewardPerPlayer,
+                'reward' => $verdict->mines() ? $verdict->reward : 0,
+                'link_event_id' => $tip['id'],
+            ];
+            $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
+        }
+
+        $event = $league->publish(self::ATTESTATION, $this->seriesTags($match, $season, $ladder, $block), $this->publicReason($match), $attestedAt->getTimestamp());
+
+        return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+    }
+
+    /**
+     * A Parameter Change (`2158`) of the live season by a board admin: in
+     * force for every attestation from `effective` on, never before (NIP
+     * "Parameter changes"; the core refuses an `effective` at or before the
+     * latest attestation). Only the parameters given change; the rest stay.
+     *
+     * @param  array{weights?: array<string, int>, shares?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}|null, subtree?: int|null, moves?: int|null}  $changes
+     *
+     * @throws SeasonReleaseRefused
+     */
+    public function changeParameters(User $admin, array $changes, string $reason, CarbonImmutable $effective): SeasonParameterChange
+    {
+        if (! Board::contains($admin->pubkey)) {
+            throw new SeasonReleaseRefused(__('Only a board member on the public admin list can change the chain rules.'));
+        }
+
+        $reason = trim($reason);
+
+        if ($reason === '' || mb_strlen($reason) > SeasonRelease::MESSAGE_MAX) {
+            throw new SeasonReleaseRefused(__('Say why you change it, up to :max characters. It is shown in the public change log.', ['max' => SeasonRelease::MESSAGE_MAX]));
+        }
+
+        if (array_diff(array_keys($changes), ['weights', 'shares', 'daily', 'pairlimit', 'subtree', 'moves']) !== []) {
+            throw new SeasonReleaseRefused(__('Only weights, share caps, daily limits, pairing limits, the trust circle and the minimum moves can change during a season.'));
+        }
+
+        $changes = array_filter($changes, fn (mixed $value): bool => $value !== null && $value !== []);
+
+        if ($changes === []) {
+            throw new SeasonReleaseRefused(__('Nothing changed.'));
+        }
+
+        $league = LeagueKey::fromConfig() ?? throw new SeasonReleaseRefused(__('The league key is not set on this server, so the rules cannot change.'));
+
+        return DB::transaction(function () use ($admin, $changes, $reason, $effective, $league): SeasonParameterChange {
+            $live = Seasons::live() ?? throw new SeasonReleaseRefused(__('No season is live. Rules change only during a season.'));
+            $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+            $effective = CarbonImmutable::createFromTimestamp(max($effective->getTimestamp(), now()->getTimestamp()));
+            $this->validateChanges($season, $changes);
+
+            $change = new ParameterChange(CarbonImmutable::createFromTimestamp(now()->getTimestamp()), $effective, $admin->pubkey, $reason,
+                $changes['weights'] ?? [], $changes['shares'] ?? [], $changes['daily'] ?? [], $changes['pairlimit'] ?? null, $changes['subtree'] ?? null, $changes['moves'] ?? null);
+
+            try {
+                $this->chain($season)->changeParameters($change);
+            } catch (ChainViolation $violation) {
+                throw new SeasonReleaseRefused(__('A rule change is never retroactive: it can only take effect after the latest saved result, and before the season ends.'), 0, $violation);
+            }
+
+            $adminList = app(SeasonRelease::class)->adminList($league);
+            $tip = $this->tip($season);
+            $tags = [
+                ['e', $season->genesisId(), '', $season->league_pubkey],
+                ['e', $adminList->event_id, '', $adminList->pubkey],
+                ['effective', (string) $effective->getTimestamp()],
+                ['tip', $tip['id']],
+            ];
+
+            foreach ($changes['weights'] ?? [] as $key => $milli) {
+                $tags[] = ['weight', (string) $key, SeasonRelease::factor($milli)];
+            }
+
+            foreach ($changes['shares'] ?? [] as $game => $percent) {
+                $tags[] = ['share', (string) $game, (string) $percent];
+            }
+
+            foreach ($changes['daily'] ?? [] as $game => $blocks) {
+                $tags[] = ['daily', (string) $game, (string) $blocks];
+            }
+
+            if (isset($changes['pairlimit'])) {
+                $tags[] = ['pairlimit', (string) $changes['pairlimit'][0], (string) $changes['pairlimit'][1]];
+            }
+
+            foreach (['subtree', 'moves'] as $name) {
+                if (isset($changes[$name])) {
+                    $tags[] = [$name, (string) $changes[$name]];
+                }
+            }
+
+            $tags[] = ['p', $admin->pubkey, '', 'change'];
+            $tags[] = ['alt', 'Esports season parameter change: '.$season->slug.', effective '.gmdate('Y-m-d H:i', $effective->getTimestamp()).' UTC'];
+
+            $event = $league->publish(self::PARAMETER_CHANGE, $tags, $reason, $change->createdAt->getTimestamp());
+
+            return SeasonParameterChange::query()->create([
+                'season_id' => $season->id,
+                'signed_at' => $change->createdAt,
+                'effective_at' => $effective,
+                'changed_by_id' => $admin->id,
+                'changed_by_pubkey' => $admin->pubkey,
+                'reason' => $reason,
+                'parameters' => $changes,
+                'tip_event_id' => $tip['id'],
+                'nostr_event_id' => $event->id,
+            ]);
+        });
+    }
+
+    /**
+     * The NIP ranges of each changeable parameter; weights only for a game
+     * and mode of the genesis.
+     *
+     * @param  array<string, mixed>  $changes
+     *
+     * @throws SeasonReleaseRefused
+     */
+    private function validateChanges(Season $season, array $changes): void
+    {
+        $in = fn (mixed $value, int $min, int $max): bool => is_int($value) && $value >= $min && $value <= $max;
+        $games = array_keys($season->parameters['shares'] + $season->parameters['daily']);
+        $ok = true;
+
+        foreach ((array) ($changes['weights'] ?? []) as $key => $milli) {
+            $ok = $ok && array_key_exists($key, $season->parameters['weights']) && $in($milli, 0, 10_000);
+        }
+
+        foreach ((array) ($changes['shares'] ?? []) as $game => $percent) {
+            $ok = $ok && in_array($game, $games, true) && $in($percent, 1, 100);
+        }
+
+        foreach ((array) ($changes['daily'] ?? []) as $game => $blocks) {
+            $ok = $ok && in_array($game, $games, true) && $in($blocks, 1, 100);
+        }
+
+        if (isset($changes['pairlimit'])) {
+            $pair = (array) $changes['pairlimit'];
+            $ok = $ok && count($pair) === 2 && $in($pair[0] ?? null, 1, 100) && $in($pair[1] ?? null, 1, 1000);
+        }
+
+        $ok = $ok && (! isset($changes['subtree']) || $in($changes['subtree'], 1, 101)) && (! isset($changes['moves']) || $in($changes['moves'], 1, 200));
+
+        if (! $ok) {
+            throw new SeasonReleaseRefused(__('A value is out of range. Check the limits next to each field.'));
+        }
+    }
+
+    /**
+     * The newest block (or the genesis): its height and the id a `block` tag names.
+     *
+     * @return array{height: ?int, id: string}
+     */
+    public function tip(Season $season): array
+    {
+        $last = $season->attestations()->whereNotNull('height')->orderByDesc('height')->first();
+
+        return $last === null ? ['height' => null, 'id' => $season->genesisId()] : ['height' => $last->height, 'id' => $last->event_id];
+    }
+
+    /**
+     * Whole seconds, never before the previous attestation: the chain only
+     * grows forward (BlockChain refuses anything older).
+     */
+    private function nextAttestationTime(Season $season): CarbonImmutable
+    {
+        $now = CarbonImmutable::createFromTimestamp(now()->getTimestamp());
+        $latest = $season->attestations()->max('attested_at');
+
+        if ($latest === null) {
+            return $now;
+        }
+
+        $latest = CarbonImmutable::parse((string) $latest);
+
+        return $now->lt($latest) ? $latest : $now;
+    }
+
+    /**
+     * The block candidate of a series with a winner, or null (void, no winner).
+     */
+    private function seriesCandidate(SeriesMatch $match, CarbonImmutable $attestedAt): ?Candidate
+    {
+        if (! in_array($match->winner, SeriesMatch::SIDES, true) || $match->resolution === SeriesResolution::Void) {
+            return null;
+        }
+
+        $roster = $this->roster($match);
+        $winners = array_values(array_map(fn (array $entry): string => $entry['pubkey'], array_filter($roster, fn (array $entry): bool => $entry['side'] === $match->winner)));
+        $losers = array_values(array_map(fn (array $entry): string => $entry['pubkey'], array_filter($roster, fn (array $entry): bool => $entry['side'] !== $match->winner)));
+        $gatekeepers = [(string) $match->createdBy?->pubkey, (string) $match->answeredBy?->pubkey];
+        $facts = $this->trust->at([...$winners, ...$losers], $gatekeepers);
+
+        return new Candidate(
+            $match->label(),
+            'series:'.$match->id,
+            $match->game,
+            $match->game.'/'.$match->mode,
+            $attestedAt,
+            match ($match->resolution) {
+                SeriesResolution::Confirmed => Resolution::Confirmed,
+                SeriesResolution::Forfeit => Resolution::Forfeit,
+                default => Resolution::Admin,
+            },
+            null,
+            $winners,
+            $losers,
+            'lineup:'.($match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id),
+            ['lineup:'.$match->challenger_lineup_id, 'lineup:'.$match->challenged_lineup_id],
+            $gatekeepers,
+            $facts['connected'],
+            $facts['trust'],
+            $this->clans([...$winners, ...$losers]),
+            $facts['anchors'],
+        );
+    }
+
+    /**
+     * The roster of the counted report (the latest one), as signed.
+     *
+     * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>
+     */
+    private function roster(SeriesMatch $match): array
+    {
+        $report = $match->latestReport;
+
+        return $report instanceof SeriesReport ? $report->roster : [];
+    }
+
+    /**
+     * Each player's clan address at the attestation, null without a clan.
+     *
+     * @param  list<string>  $pubkeys
+     * @return array<string, ?string>
+     */
+    private function clans(array $pubkeys): array
+    {
+        $members = ClanMember::query()->with(['clan', 'user'])
+            ->whereHas('user', fn ($query) => $query->whereIn('pubkey', $pubkeys))
+            ->get();
+        $clans = array_fill_keys($pubkeys, null);
+
+        foreach ($members as $member) {
+            $clans[$member->user->pubkey] = $member->clan->address();
+        }
+
+        return $clans;
+    }
+
+    /**
+     * The `2154` of a series (NIP "League Attestation"), without `trust` and
+     * `gate`: the league has no trust job yet.
+     *
+     * @param  list<string>|null  $block
+     * @return list<list<string>>
+     */
+    private function seriesTags(SeriesMatch $match, Season $season, string $ladder, ?array $block): array
+    {
+        $tags = [];
+
+        foreach ([$match->challengeEvent, $match->answerEvent] as $event) {
+            if ($event !== null) {
+                $tags[] = ['e', $event->event_id, '', $event->pubkey];
+            }
+        }
+
+        foreach ($match->reports as $report) {
+            foreach ([$report->event, $report->responseEvent] as $event) {
+                if ($event !== null) {
+                    $tags[] = ['e', $event->event_id, '', $event->pubkey];
+                }
+            }
+        }
+
+        $tags[] = ['a', $ladder, ''];
+        $tags[] = ['a', $match->challenger_lineup_address, '', 'challenger'];
+        $tags[] = ['a', $match->challenged_lineup_address, '', 'challenged'];
+
+        foreach ($this->roster($match) as $entry) {
+            $tags[] = ['p', $entry['pubkey'], '', $entry['side'], $entry['role']];
+        }
+
+        foreach ($match->result_games ?? [] as $index => $game) {
+            $score = ['score', (string) ($index + 1), $game['winner']];
+
+            if ($game['challenger'] !== null && $game['challenged'] !== null) {
+                $score[] = (string) $game['challenger'];
+                $score[] = (string) $game['challenged'];
+            }
+
+            $tags[] = $score;
+        }
+
+        $tags[] = ['resolution', $match->resolution->value];
+        $tags[] = ['winner', (string) $match->winner];
+
+        $entities = [$match->challenger_lineup_id => $match->challenger_lineup_address, $match->challenged_lineup_id => $match->challenged_lineup_address];
+        $changes = RatingChange::query()->with('rating')->where('source', RatingChange::SERIES)->where('source_id', $match->id)->orderBy('id')->get();
+
+        foreach ($changes as $change) {
+            $lineupId = $change->rating->lineup_id;
+
+            if ($lineupId !== null && isset($entities[$lineupId])) {
+                $tags[] = ['elo', $entities[$lineupId], (string) $change->before, (string) $change->after];
+            }
+        }
+
+        $previous = $season->attestations()->where('ladder_address', $ladder)->orderByDesc('id')->value('event_id');
+
+        if (is_string($previous)) {
+            $tags[] = ['prev', $previous];
+        }
+
+        $tags[] = ['match', (string) $match->number];
+
+        foreach ($this->clans(array_column($this->roster($match), 'pubkey')) as $pubkey => $clan) {
+            if ($clan !== null) {
+                $tags[] = ['clan', $pubkey, $clan];
+            }
+        }
+
+        if ($block !== null) {
+            $tags[] = $block;
+        }
+
+        $tags[] = ['alt', "Esports league attestation: match #{$match->number}, {$match->game} {$match->mode}, ".($match->resolution->value)];
+
+        return $tags;
+    }
+
+    /** NIP: with `admin`, `forfeit` or `void` the content states the public reason. */
+    private function publicReason(SeriesMatch $match): string
+    {
+        return $match->resolution === SeriesResolution::Confirmed ? '' : (string) $match->resolution_reason;
+    }
+}

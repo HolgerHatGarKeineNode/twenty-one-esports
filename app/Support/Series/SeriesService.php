@@ -7,6 +7,7 @@ use App\Enums\NotificationKind;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Events\SeriesMatchChanged;
 use App\Games\GameRegistry;
 use App\Jobs\PublishNostrEvent;
 use App\Models\DisputeEvidence;
@@ -17,12 +18,15 @@ use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\SeriesReport;
 use App\Models\User;
+use App\Support\Chess\Broadcasts;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -58,6 +62,7 @@ final class SeriesService
         private GameRegistry $games,
         private Notifier $notifier,
         private RatingService $ratings,
+        private SeasonChains $chains,
     ) {}
 
     /* ---------- Challenge (2150) ------------------------------------------------------------------------------ */
@@ -99,6 +104,7 @@ final class SeriesService
         });
 
         $this->notifyChallenged($match);
+        $this->broadcastChange($match);
 
         return $match;
     }
@@ -145,7 +151,7 @@ final class SeriesService
 
         if ($draft->rated) {
             $ladder = Ladders::address($challenger->game, $challenger->mode)
-                ?? throw new SeriesRuleViolation('rated_not_open', __('Rated matches start at Block 0. Until then every match is casual.'));
+                ?? throw new SeriesRuleViolation('rated_not_open', Seasons::restMessage($author));
         }
 
         $now = now()->getTimestamp();
@@ -271,6 +277,7 @@ final class SeriesService
         });
 
         $match->refresh();
+        $this->broadcastChange($match);
     }
 
     /**
@@ -369,6 +376,7 @@ final class SeriesService
         }
 
         $match->update(['lobby_name' => $name, 'lobby_password' => $password === '' ? null : $password, 'lobby_region' => $region, 'lobby_updated_by_id' => $user->id]);
+        $this->broadcastChange($match);
     }
 
     /**
@@ -417,6 +425,7 @@ final class SeriesService
         $sheet[$index] = ['challenger' => $challengerGoals, 'challenged' => $challengedGoals, 'winner' => $winner];
 
         $match->update(['live_games' => $sheet]);
+        $this->broadcastChange($match);
     }
 
     /**
@@ -447,6 +456,7 @@ final class SeriesService
         $rosters = $match->rosters ?? [];
         $rosters[$side] = array_values(array_filter($allowed, fn (int $id) => in_array($id, $ids, true)));
         $match->update(['rosters' => $rosters]);
+        $this->broadcastChange($match);
     }
 
     /**
@@ -489,6 +499,7 @@ final class SeriesService
         }
 
         $match->update(['noshow_side' => $side, 'noshow_reported_at' => now()]);
+        $this->broadcastChange($match);
     }
 
     /* ---------- Result report (2152) -------------------------------------------------------------------------- */
@@ -556,6 +567,9 @@ final class SeriesService
 
             SeriesReport::query()->where('series_match_id', $match->id)->whereIn('status', [ReportStatus::Open, ReportStatus::Disputed])
                 ->update(['status' => ReportStatus::Superseded]);
+
+            // Sent after the commit (Broadcasts), like every series change.
+            $this->broadcastChange($match);
 
             return SeriesReport::query()->create([
                 'series_match_id' => $match->id,
@@ -689,11 +703,12 @@ final class SeriesService
             }
 
             if ($status === 'confirmed') {
-                $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
+                $this->rateAndAttest($match);
             }
         });
 
         $match->refresh();
+        $this->broadcastChange($match);
     }
 
     /**
@@ -801,8 +816,50 @@ final class SeriesService
                 throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
             }
 
-            $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
+            $this->rateAndAttest($match);
         });
+
+        $this->broadcastChange($match);
+    }
+
+    /**
+     * Tell every player of both lineups and both clan owners that the series
+     * changed, after the commit (App\Support\Chess\Broadcasts: a websocket
+     * failure never undoes the change). Their match dock refreshes on it.
+     */
+    private function broadcastChange(SeriesMatch $match): void
+    {
+        $fresh = $match->fresh(['challengerLineup.clan', 'challengedLineup.clan']);
+
+        if ($fresh === null) {
+            return;
+        }
+
+        $users = LineupSeat::query()->whereIn('lineup_id', array_filter([$fresh->challenger_lineup_id, $fresh->challenged_lineup_id]))
+            ->whereNotNull('accepted_at')->pluck('user_id')->all();
+
+        foreach ([$fresh->challengerLineup, $fresh->challengedLineup] as $lineup) {
+            if ($lineup !== null) {
+                $users[] = $lineup->clan->owner_id;
+            }
+        }
+
+        $users = array_values(array_unique(array_map(intval(...), $users)));
+
+        if ($users !== []) {
+            Broadcasts::send(new SeriesMatchChanged($users, $fresh->number, $fresh->status->value));
+        }
+    }
+
+    /**
+     * Inside the result's transaction: the rating change first, then the
+     * league attestation, which copies the Elo rows and is checked by the
+     * season chain's consensus rules (P7c).
+     */
+    private function rateAndAttest(SeriesMatch $match): void
+    {
+        $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
+        $this->chains->attestSeries(SeriesMatch::query()->findOrFail($match->id));
     }
 
     public function requestNewReport(SeriesMatch $match, User $admin): void
@@ -815,6 +872,7 @@ final class SeriesService
         }
 
         $match->update(['new_report_requested_at' => now()]);
+        $this->broadcastChange($match);
     }
 
     /**

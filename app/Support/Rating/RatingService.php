@@ -87,7 +87,7 @@ final class RatingService
         }
 
         $pool = $rated ? Rating::RATED : Rating::CASUAL;
-        $season = $rated ? (string) config('esports.ladder.season') : '';
+        $season = $rated ? (string) Ladders::season() : '';
         $engine = EloRating::fromConfig($rated ? 'rating' : 'casual');
 
         return DB::transaction(function () use ($pool, $season, $game, $mode, $challenger, $challenged, $score, $source, $sourceId, $number, $engine): bool {

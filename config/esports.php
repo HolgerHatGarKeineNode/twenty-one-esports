@@ -191,21 +191,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Ladder (rated play)
+    | League key (season chain, P7c)
     |--------------------------------------------------------------------------
     |
-    | Rated play needs an open ladder (NIP rule 11), and before Block 0 there
-    | is none: every match is casual and produces no match-flow events (NIP
-    | "Game registry"). P7 opens the ladders from the season genesis and
-    | replaces this seam (App\Support\Series\Ladders). Deliberately not read
-    | from the environment, so no deployment can switch rated play on early;
-    | only tests set it.
+    | The key the league signs its own events with: the admin list (30000),
+    | the season announcement (31923), the Season Genesis (2156), parameter
+    | changes (2158) and every League Attestation (2154). Hex or nsec, in
+    | `.env` only; it never leaves the server process
+    | (App\Support\SeasonChain\LeagueKey). Without it Block 0 cannot be
+    | released, so rated play stays closed (fail closed).
+    |
+    | Rated play needs an open ladder (NIP rule 11). A ladder is open while a
+    | released season is live (App\Support\SeasonChain\Seasons), never
+    | from a setting: before Block 0 and between seasons every match is
+    | casual.
     |
     */
 
-    'ladder' => [
-        'league_pubkey' => null,
-        'season' => null,
+    'league' => [
+        'nsec' => env('ESPORTS_LEAGUE_NSEC'),
     ],
 
     /*
@@ -285,10 +289,11 @@ return [
     ],
 
     /*
-    | The match dock (P5f) refreshes on the player's websocket events. Without
-    | a websocket it polls every `poll_seconds`; with one it still polls every
-    | `poll_seconds_with_socket`, because Rocket League series changes are not
-    | broadcast yet. Only while the tab is visible.
+    | The match dock (P5f) refreshes on the player's websocket events, series
+    | changes included (P7c, App\Events\SeriesMatchChanged). Without a
+    | websocket it polls every `poll_seconds`; with one it still polls every
+    | `poll_seconds_with_socket` as a safety net for a missed event (a
+    | reconnect, a failed push). Only while the tab is visible.
     */
     'dock' => [
         'poll_seconds' => 20,

@@ -47,6 +47,50 @@ final class Candidate
         public readonly array $anchors,
     ) {}
 
+    /**
+     * The stored form (season_attestations.candidate), keyed as the ledger
+     * fixture (tests/Fixtures/SeasonChain/pre-season-ledger.json).
+     *
+     * @return array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>}
+     */
+    public function toArray(): array
+    {
+        return [
+            'label' => $this->label,
+            'match' => $this->match,
+            'game' => $this->game,
+            'weight_key' => $this->weightKey,
+            'attested_at' => $this->attestedAt->utc()->toIso8601ZuluString(),
+            'resolution' => $this->resolution->value,
+            'moves' => $this->moves,
+            'winners' => $this->winners,
+            'losers' => $this->losers,
+            'winning_side' => $this->winningSide,
+            'pairing' => $this->pairing,
+            'gatekeepers' => $this->gatekeepers,
+            'gatekeepers_connected' => $this->gatekeepersConnected,
+            'trust' => $this->trust,
+            'clans' => $this->clans,
+            'anchors' => $this->anchors,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row  as written by toArray()
+     */
+    public static function fromArray(array $row): self
+    {
+        /** @var array{label: string, match: string, game: string, weight_key: string, attested_at: string, resolution: string, moves: ?int, winners: list<string>, losers: list<string>, winning_side: ?string, pairing: array{0: string, 1: string}, gatekeepers: array{0: string, 1: string}, gatekeepers_connected: bool, trust: array<string, int>, clans: array<string, ?string>, anchors: array<string, array{0: string, 1: int}|null>} $row */
+        return new self(
+            $row['label'], $row['match'], $row['game'], $row['weight_key'],
+            CarbonImmutable::parse($row['attested_at']),
+            Resolution::from($row['resolution']),
+            $row['moves'], $row['winners'], $row['losers'], $row['winning_side'],
+            $row['pairing'], $row['gatekeepers'], $row['gatekeepers_connected'],
+            $row['trust'], $row['clans'], $row['anchors'],
+        );
+    }
+
     /** @return list<string> */
     public function players(): array
     {

@@ -210,7 +210,7 @@ test('rated play is refused until a ladder is open', function () {
 });
 
 test('a rated series signs 2150, 2151, 2152 and 2153 that pass the NIP rules, and none of them carries the lobby', function () {
-    config(['esports.ladder' => ['league_pubkey' => (new TestSigner)->pubkey, 'season' => 'season-1']]);
+    openSeason(['slug' => 'season-1']);
 
     [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true, bestOf: 5);
     $this->series->setLobby($match, $captainA, 'e21-lsr-mmp', 'hunter2-secret', 'EU');
@@ -218,7 +218,8 @@ test('a rated series signs 2150, 2151, 2152 and 2153 that pass the NIP rules, an
     $this->series->report($match, $captainA, seriesSigned($signerA, $this->series->prepareReport($match, $captainA)));
     $this->series->respond($match, $captainB, 'disputed', 'Game 4 went to overtime.', seriesSigned($signerB, $this->series->prepareResponse($match, $captainB, 'disputed', 'Game 4 went to overtime.')));
 
-    $events = NostrEvent::query()->orderBy('id')->get();
+    // Every event but the league's own genesis of the open season (openSeason()).
+    $events = NostrEvent::query()->where('kind', '!=', 2156)->orderBy('id')->get();
 
     expect($events->pluck('kind')->all())->toBe([2150, 2151, 2152, 2153])
         ->and($match->refresh()->challenge_event_id)->toBe($events[0]->id);
@@ -343,7 +344,7 @@ test('an admin decision that lands while the other captain accepts the result is
 });
 
 test('a confirmed rated series on an open ladder moves the rated Elo, never the casual one', function () {
-    config(['esports.ladder' => ['league_pubkey' => (new TestSigner)->pubkey, 'season' => 'season-1']]);
+    openSeason(['slug' => 'season-1']);
 
     [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true);
     enterGames($match, $captainA, [[1, 3], [0, 2]]);
