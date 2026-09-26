@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Models\ClanDeparture;
 use App\Models\ClanMember;
 use App\Models\NostrEvent;
 use App\Models\TrustDecision;
@@ -122,18 +123,28 @@ final class TrustAdmin
     }
 
     /**
+     * The admin himself, and everybody in a clan he belonged to during the
+     * live season (round 4: leaving the clan does not lift the guard): its
+     * members now and those who left it this season. Without a live season
+     * every clan he ever left counts.
+     *
      * @param  list<string>  $pubkeys
      *
      * @throws TrustAdminRefused
      */
     private function assertNotOwn(User $admin, array $pubkeys): void
     {
-        $own = [$admin->pubkey];
-        $clanId = ClanMember::query()->where('user_id', $admin->id)->value('clan_id');
-
-        if ($clanId !== null) {
-            $own = [...$own, ...ClanMember::query()->where('clan_id', $clanId)->with('user')->get()->map(fn (ClanMember $member): string => $member->user->pubkey)->all()];
-        }
+        $since = Seasons::live()?->genesis_at;
+        $departures = fn () => ClanDeparture::query()->when($since !== null, fn ($query) => $query->where('left_at', '>=', $since));
+        $clanIds = [
+            ...ClanMember::query()->where('user_id', $admin->id)->pluck('clan_id')->all(),
+            ...$departures()->where('user_id', $admin->id)->pluck('clan_id')->all(),
+        ];
+        $userIds = [
+            ...ClanMember::query()->whereIn('clan_id', $clanIds)->pluck('user_id')->all(),
+            ...$departures()->whereIn('clan_id', $clanIds)->pluck('user_id')->all(),
+        ];
+        $own = [$admin->pubkey, ...User::query()->whereKey(array_unique($userIds))->pluck('pubkey')->all()];
 
         if (array_intersect($pubkeys, $own) !== []) {
             throw new TrustAdminRefused(__('You cannot decide about yourself or your own clan. Another admin has to.'));

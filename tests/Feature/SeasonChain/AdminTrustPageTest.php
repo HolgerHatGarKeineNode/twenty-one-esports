@@ -9,6 +9,7 @@
 use App\Enums\ClanRole;
 use App\Models\Admin;
 use App\Models\Clan;
+use App\Models\ClanDeparture;
 use App\Models\ClanMember;
 use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
@@ -124,6 +125,43 @@ test('round 3: excluding a key is for the board; dismissing a single report stay
     $trust->exclude($this->admin, $this->reporter->pubkey, 'Mass reporting.');
 
     expect(TrustExclusion::query()->count())->toBe(1);
+});
+
+test('regression (security re-check round 4): leaving the clan does not lift the own-clan guard for the rest of the season', function () {
+    openSeason(); // Block 0 an hour ago
+    $trust = app(TrustAdmin::class);
+    $join = fn (Clan $clan, User $user) => ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $user->id, 'role' => ClanRole::Member, 'joined_at' => now()->subDays(3)]);
+    $leave = function (Clan $clan, User $user, $at): void {
+        ClanMember::query()->where('clan_id', $clan->id)->where('user_id', $user->id)->delete();
+        ClanDeparture::query()->create(['clan_id' => $clan->id, 'user_id' => $user->id, 'reason' => 'left', 'left_at' => $at]);
+    };
+
+    // The admin and the target share a clan; the admin leaves it during the season.
+    $clan = Clan::factory()->create();
+    $join($clan, $this->admin);
+    $join($clan, $this->target);
+    $leave($clan, $this->admin, now()->subMinutes(10));
+
+    expect(fn () => $trust->dismiss($this->admin, $this->report->event_id, 'Not him.'))->toThrow(TrustAdminRefused::class, 'your own clan');
+
+    // The target left the admin's clan during the season: refused as well.
+    $mine = Clan::factory()->create();
+    $join($mine, $this->admin);
+    $other = User::factory()->create();
+    $join($mine, $other);
+    $leave($mine, $other, now()->subMinutes(5));
+    $aboutOther = NostrEvent::fromSigned(SignedEvent::fromInput($this->reporter->sign(TrustJob::REPORT, [
+        ['p', $other->pubkey, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'abuse', TrustJob::LABEL_NAMESPACE],
+    ], 'x', now()->getTimestamp())));
+
+    expect(fn () => $trust->dismiss($this->admin, $aboutOther->event_id, 'Not her.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(TrustReportDismissal::query()->count())->toBe(0);
+
+    // Left before the season began: that clan is not his any more.
+    ClanDeparture::query()->where('clan_id', $clan->id)->update(['left_at' => now()->subHours(2)]);
+    $trust->dismiss($this->admin, $this->report->event_id, 'Not him.');
+
+    expect(TrustReportDismissal::query()->count())->toBe(1);
 });
 
 test('round 4: the page shows which reports count now, and a dismissal takes the mark away', function () {
