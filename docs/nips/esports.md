@@ -16,11 +16,14 @@ clan hashrate, a public anchor list, league discovery, the league relay policy, 
 notifications, prize-pool zaps; round 5, **revision 5**: the season chain, pots and zap targets,
 clan ownership, 21 rank tiers, rank badges, bounties; round 6, **revision 6** (2026-09-25): clan
 invitations into the roster only, the membership as consent to lineups, the wording of consensus
-rule 7). Not submitted to `nostr-protocol/nips`. Kind
+rule 7; **revision 7** (2026-09-26): running tournaments, with the sign-up consent `22150`, director
+results, tournaments before Block 0, and no blocks from tournaments). Not submitted to
+`nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
-(`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6).
+(`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
+no example yet (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -31,7 +34,33 @@ Season Genesis (`2156`) by `e` is a **revision-5 ladder**, and its season is a c
 marked "rev. 5"). Rules marked "rev. 5" that do not depend on a ladder (clan ownership, lineup
 signer, rank tiers, badges, bounties, pots) apply from the day a league adopts revision 5. The rules
 marked "rev. 6" (clans and lineups only; no ladder depends on them) apply from the day a league adopts
-revision 6.
+revision 6. The rules marked "rev. 7" concern tournaments only; they apply to every tournament whose
+first `31923` version the league signs after it adopts revision 7.
+
+### Changelog of revision 7 (2026-09-26)
+
+- **Tournament Consent** (new ephemeral kind `22150`, [Tournament Consent](#tournament-consent-22150)):
+  a sign-up or withdrawal is signed by the player (solo) or an acting captain (lineup), checked and
+  stored by the league and **never published**. It replaces the NIP-98 event (`27235`) that an early
+  implementation used: NIP-98 authorises one HTTP request, and signers show and pre-approve it as
+  "HTTP Authentication", not as a consent.
+- **Director results** ([Director results](#director-results-rev-7)): in a tournament whose results are
+  entered by its directors, the attestation carries `entered-by` (the director's pubkey) and the
+  tournament `a`, and has no challenge, answer, report or game record behind it; `resolution` is
+  `admin` or `forfeit`. Validation rule 16 amended.
+- **Tournaments before Block 0** ([Tournaments](#tournaments)): the ladder `a` of a `31923` and of a
+  `2155` is optional. It is frozen with the tournament's first version: a tournament published while
+  no ladder of its game and mode is open is **unrated** for its whole run. Validation rules 17 and 21
+  amended.
+- **Tournaments never mine** ([Blocks](#blocks-block-in-2154)): an attestation with a tournament `a`
+  carries no `block` tag and is not a candidate; a tournament challenge carries no match-fee `zap`.
+  The chain belongs to the season (decision of 2026-09-26). Validation rules 11 and 27 amended.
+- **`zap` in a tournament is optional** until the league runs the tournament's prize pool; without it
+  the tournament has no pool and the league's LNURL endpoint refuses zaps to it.
+- **Draw**: a `2155` needs at least one full team (rule 17 already said so); a solo pool smaller than
+  a team is not drawn, which the section now states.
+- New tags `action` (`22150`) and `entered-by` (`2154`); validation rule 34; collision check for
+  `22150`; no new example yet.
 
 ### Changelog of revision 6 (2026-09-25)
 
@@ -122,8 +151,9 @@ and confirmed by the other, and correspondence games put every move on the relay
 strength is derived from its players' ratings and needs no events of its own. The second game is
 Rocket League, a team game played in series and rated per lineup. Ratings live in **seasons**: each season is a rating
 epoch whose parameters are published with the ladder, so every rating can be recomputed from the
-public events. Tournament matches are ordinary challenges; a tournament can optionally publish a
-**draw** that anyone can re-run.
+public events. Tournament matches are rated like ordinary matches; a tournament can optionally publish a
+**draw** that anyone can re-run, and its results can be entered by its **directors**. Tournaments
+never mine: the season chain belongs to the season.
 
 Seasons are league-wide: one parameter set for all games, with per-game overrides. Because anyone can
 join, a game is only rated if the two players list each other as opponents and both have a **trust
@@ -188,9 +218,14 @@ by this NIP.
 - **Acting captain** of a lineup: a pubkey that is currently an active member of the lineup's clan
   and is either the lineup's author (the clan owner) or listed in the lineup with role `captain`.
 - **Roster** of a match: the players who actually played in the series, per side.
-- **Tournament**: a set of challenges that the league groups. Revision 4 publishes it as a NIP-52
-  time-based calendar event (`31923`) in the league's calendar (`31924`); registration and bracket
-  state stay league data. See [Tournaments](#tournaments).
+- **Tournament**: a set of matches that the league pairs from a bracket. Revision 4 publishes it as a
+  NIP-52 time-based calendar event (`31923`) in the league's calendar (`31924`); registration and
+  bracket state stay league data. See [Tournaments](#tournaments).
+- **Tournament consent** (rev. 7): the signed sign-up or withdrawal of a tournament entry (`22150`),
+  kept by the league and never published. See [Tournament Consent](#tournament-consent-22150).
+- **Tournament director** (rev. 7): a person the league lets enter the results of a tournament (its
+  organiser and the directors named for it). Who is a director is league data; a director's entry is
+  public only as the `entered-by` of the attestation. See [Director results](#director-results-rev-7).
 - **Trust key**: a second league pubkey, used only to sign trust ranks (NIP-85 assertions).
 - **Anchor**: a pubkey trust flows from: a paid member of the association or a league admin.
 - **Opponent list**: a player's NIP-51 follow set for this league; listing someone means "I play
@@ -225,10 +260,12 @@ by this NIP.
 | `2156` | regular | Season Genesis, Block 0 (rev. 5) | league key |
 | `2157` | regular | Payout (rev. 5) | league key |
 | `2158` | regular | Parameter Change (rev. 5) | league key |
+| `22150` | ephemeral | Tournament Consent (rev. 7), **never published** | the entering player (solo), an acting captain of the entered lineup |
 
 The numbers form one family: `2150+n` for the regular match flow and the season chain, `12150` for the one-per-player
-membership, `32150+n` for the addressable definitions. Classes follow NIP-01 (`1000 <= n < 10000`
-regular, `10000 <= n < 20000` replaceable, `30000 <= n < 40000` addressable).
+membership, `22150` for the one signed statement that never goes to a relay, `32150+n` for the
+addressable definitions. Classes follow NIP-01 (`1000 <= n < 10000` regular, `10000 <= n < 20000`
+replaceable, `20000 <= n < 30000` ephemeral, `30000 <= n < 40000` addressable).
 
 Why these classes:
 
@@ -239,6 +276,9 @@ Why these classes:
   most one clan", enforced by the relay's replace semantics instead of by convention.
 - **Clan, lineup and ladder are addressable.** They are current state with a stable address that
   the history can point at with `a` tags.
+- **The tournament consent is ephemeral** (rev. 7). It is evidence for the league, not history for
+  readers, and it is never published. The ephemeral class is the safety net: a copy that reaches a
+  relay by mistake is "not expected to be stored by relays" (NIP-01).
 
 A league that does not publish draws implements every other kind and never emits `2155`.
 
@@ -307,9 +347,9 @@ it and returns non-matching events; see the relay proof).
 | tag | format | used in | meaning |
 |---|---|---|---|
 | `d` | `<identifier>` | 32150, 32151, 32152 | see [Identifiers](#identifiers) |
-| `a` | `<kind>:<pubkey>:<d>`, `<relay>`, `[role]` | all except 32150 | reference to clan, lineup, ladder or tournament. In 2150 and 2154 the two lineup references carry the role `challenger` / `challenged` in position 3; the tournament `31923` (rev. 4, 2150-2155 of a tournament) and the ladder carry no role; in a revision-3 2155 each entrant lineup carries `entrant`; in a ladder that continues a previous season, see `reset` |
-| `e` | `<id>`, `<relay>`, `<author pubkey>` | 2150 (optional), 2151-2158, 64, 32152 | reference to the event this one answers (NIP-01 form, no NIP-10 markers). Which reference is which follows from the referenced event's kind. In 2150 an `e` can only point at a draw (2155); in a correspondence move (64) the second `e` points at the previous move; in a revision-5 ladder one `e` names the genesis (2156, frozen); in 2156, 2157 and 2158 see [Season chain](#season-chain-rev-5) |
-| `p` | `<pubkey>`, `<relay>`, `[role]`, `[lineup role]` | 32150, 32151, 32152, 2150-2158, 64 | in 32150 role `captain` or `member`; in 32151 role `captain`, `player` or `substitute`; in a solo 2150 the two players with side `challenger` / `challenged`; in a 2150 with a **roster side** (rev. 4, a mix team) one `p` per team member with that side; in 2152 and 2154 a **roster entry** has the side `challenger` or `challenged` in position 3 and the player's lineup role (`captain`, `player`, `substitute`; `player` on a roster side) in position 4; in 2155 role `entrant` (solo entrant); in 64 role `white` or `black`; in a player ladder (32152) one plain `p` per ranked player; rev. 5: in 2156 the admin with role `release`, in 2158 the admin with role `change`, in 2157 the paid player. A `p` without position 3 only notifies (e.g. the other captain) |
+| `a` | `<kind>:<pubkey>:<d>`, `<relay>`, `[role]` | all except 32150 | reference to clan, lineup, ladder or tournament. In 2150 and 2154 the two lineup references carry the role `challenger` / `challenged` in position 3; the tournament `31923` (rev. 4, 2150-2155 of a tournament; rev. 7 also every 2154 of a tournament match and 22150) and the ladder carry no role; in a revision-3 2155 each entrant lineup carries `entrant`; rev. 7: in 22150 the entered lineup carries `entrant`; in a ladder that continues a previous season, see `reset` |
+| `e` | `<id>`, `<relay>`, `<author pubkey>` | 2150 (optional), 2151-2158, 64, 32152 | reference to the event this one answers (NIP-01 form, no NIP-10 markers). Which reference is which follows from the referenced event's kind. In 2150 an `e` can only point at a draw (2155); in a correspondence move (64) the second `e` points at the previous move; in a revision-5 ladder one `e` names the genesis (2156, frozen); in 2156, 2157 and 2158 see [Season chain](#season-chain-rev-5); rev. 7: in 22150 the `31923` version signed up for, or the sign-up consent withdrawn |
+| `p` | `<pubkey>`, `<relay>`, `[role]`, `[lineup role]` | 32150, 32151, 32152, 2150-2158, 64 | in 32150 role `captain` or `member`; in 32151 role `captain`, `player` or `substitute`; in a solo 2150 the two players with side `challenger` / `challenged`; in a 2150 with a **roster side** (rev. 4, a mix team) one `p` per team member with that side; in 2152 and 2154 a **roster entry** has the side `challenger` or `challenged` in position 3 and the player's lineup role (`captain`, `player`, `substitute`; `player` on a roster side) in position 4; in 2155 role `entrant` (solo entrant); rev. 7: in 22150 role `entrant`, one per player entered; in 64 role `white` or `black`; in a player ladder (32152) one plain `p` per ranked player; rev. 5: in 2156 the admin with role `release`, in 2158 the admin with role `change`, in 2157 the paid player. A `p` without position 3 only notifies (e.g. the other captain) |
 | `name` | `<text>` | 32150, 2155 | display name of the clan or tournament, at most 64 characters |
 | `clantag` | `<text>` | 32150 (optional) | short clan tag shown next to names, `^[A-Z0-9]{2,4}$` |
 | `picture` | `<url>` | 32150 | logo |
@@ -353,7 +393,9 @@ it and returns non-matching events; see the relay proof).
 | `moves` | `<full moves>` | 2156, 2158 (rev. 5) | minimum length of a chess game that mines (rule 2) |
 | `effective` | `<unix seconds>` | 2158 (rev. 5) | from when a parameter change is in force |
 | `tip` | `<block id>` | 2158 (rev. 5) | the newest block when the change was signed |
-| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5), 31923, 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
+| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
+| `action` | `signup` \| `withdraw` | 22150 (rev. 7) | what the tournament consent does |
+| `entered-by` | `<director pubkey>` | 2154 (rev. 7) | the tournament director whose entry decided this result, lower-case hex; see [Director results](#director-results-rev-7) |
 | `bolt11`, `preimage` | `<invoice>`; `<hex>` | 2157 (rev. 5) | the paid invoice and its preimage |
 | `rates` | `lineup` \| `player` | 32152 | what the ladder rates; absent means `lineup` |
 | `time_control` | `<PGN TimeControl>` | 32152 | e.g. `300+3` (5 minutes plus 3 seconds per move), `1/86400` (one move per day) |
@@ -550,6 +592,12 @@ bracket, the registration and the seeding live with the league. A tournament pai
 accepted (declined or expired) produces no attestation and no rating change; how the bracket
 continues is tournament policy. (Revision 3: optional `tournament` slug and `e` to a slot-order draw.)
 
+Revision 7 adds three limits. A match of a tournament that names no ladder (see
+[Tournaments](#tournaments)) is casual and produces no match-flow event. A tournament challenge never
+carries the match-fee `zap` tag: tournament matches mine no blocks, so there would be no block for a
+fee to go to ([Fees](#fees)); the tournament's pot is its `31923`. And in a tournament whose directors
+enter the results, no challenge is signed at all ([Director results](#director-results-rev-7)).
+
 **Trust gate.** On a ladder with `trust`, the league SHOULD refuse a challenge whose
 [trust gate](#trust-gate) would fail when it is submitted. The binding check happens at the accept.
 
@@ -654,7 +702,10 @@ Revision 4 adds three things to every attestation of a revision-4 ladder:
   pointed at the clan and the clan listed them), one row `["clan", "<pubkey>", "<clan address>"]`. The
   league knows the membership at the accept from its archive of `12150` versions; relays keep only the
   newest one, which is why the attestation freezes it;
-- the tournament `a` if the challenge has one.
+- the tournament `a` if the challenge has one. Revision 7: every attestation of a tournament match
+  carries the tournament `a`, also a [director result](#director-results-rev-7), which has no
+  challenge. It is the marker that keeps the attestation out of the season chain
+  ([Blocks](#blocks-block-in-2154)).
 
 **Mix teams are unrated** (rev. 4). An attestation of a challenge with a roster side carries `score`,
 the roster, `resolution`, `winner` and `match`, but no `elo`, no `trust`, no `gate` and no `clan`. The
@@ -695,6 +746,48 @@ recompute from the ladder's `rating` and the `elo` chain. With `admin`, `forfeit
 league decides; the resolution says so openly, so a reader can weigh admin decisions differently
 from confirmed results.
 
+#### Director results (rev. 7)
+
+A tournament can be run by **directors** instead of by its players: the organiser and the directors
+named for it enter each result, for example for games played over the board at a meetup. The players
+then sign nothing for the match: no challenge, no answer, no report, no game record, no response.
+The only event is the attestation, and it says so:
+
+- `["entered-by", "<director pubkey>"]`: exactly one, lower-case hex (never an `npub`), naming the
+  director whose entry stands when the league signs, that is, the last one who entered or corrected
+  the result. The earlier entries and corrections stay in the league's log.
+- the tournament `a` (required with `entered-by`, and `entered-by` appears in no other attestation);
+- `resolution` `admin` for a played result, `forfeit` for a no-show; never `confirmed` (nobody
+  confirmed anything) and never `void` (a director does not void; an admin does, as in any match);
+- no `e` is required, because nothing exists to reference; `content` states that the result was
+  entered by a tournament director;
+- **series**: `score` and roster as for `admin` ("the league's decision"): the roster comes from the
+  director's entry; a no-show `forfeit` has neither, as in [League Attestation](#league-attestation-2154);
+- **chess**: one `board` row with the director's result, the two players as roster entries by side
+  (White `challenger`), and `winner` following from the `board` row;
+- everything else as for any attestation of the ladder: `elo`, `prev`, `match`, `trust` and `gate`
+  rows on a ladder with `trust` (a league pairing needs no opponent list), `clan` rows for every rated
+  player with a clan at the pairing.
+
+A director result is rated like any `admin` or `forfeit` result ([Rating](#rating), step 4) and counts
+for [Block Height](#block-height) and [Clan hashrate](#clan-hashrate) by the same rules. It never
+mines; no tournament match does ([Blocks](#blocks-block-in-2154)).
+
+The **pairing** is the tournament's: it happens when the league puts the two sides into a match of
+the director's open round. Everything "at the accept" (trust gate, `clan` rows, the ladder being open)
+is read at that moment.
+
+**What it proves.** `entered-by` is the league's statement about its own process: the director's key
+signs nothing, so the tag cannot prove that this director entered this result, only that the league
+names them for it. It makes a result accountable to a person, not verifiable. A reader weighs a
+director result like any `admin` decision. (A director who signs a Result Report of their own would
+close the gap; see [Open points](#open-points).)
+
+**Why a tag and not a `p`.** A `p` in an attestation is a roster entry (side in position 3) or a
+notification. A director is neither: the query "matches a player played in" (`#p`) and
+[Block Height](#block-height) must not return the results a director entered. `entered-by` carries
+data and is never filtered on, like every multi-letter tag here.
+
 ### Tournament Draw (`2155`, optional)
 
 Signed by the league key. It freezes a tournament's **solo pool** and commits to a future Bitcoin
@@ -706,6 +799,12 @@ Required tags (rev. 4): `a` ladder (the one the tournament's matches are played 
 (`31923`), one `p` per solo entrant with role `entrant`, `draw`, `teams`, at least as many `teamname`
 as there are teams, `alt`. Optional: `name`, `format`, and an `e` pointing at an earlier draw of the
 same tournament that this one replaces (the reason goes into `content`).
+
+Revision 7: the ladder `a` is the tournament's. A draw carries it exactly when the tournament's
+`31923` names a ladder, and then with the same value; a draw of an unrated tournament (published
+before Block 0 or between seasons, see [Tournaments](#tournaments)) carries no ladder `a`. The draw
+never looks up which ladder is open when it is signed. A draw needs **at least one full team**: a
+solo pool with fewer players than the team size is not drawn, and its players are reserves.
 
 **Algorithm `sha256-v1`.** Let `H` be the block hash at the height given in `draw`, as lower-case
 hex. For every entrant compute `SHA-256(UTF-8("<H>:<pubkey>"))` with the lower-case hex pubkey. The
@@ -732,9 +831,66 @@ hand simply does not publish a draw; nothing else in this NIP depends on it.
 public as the first; a league that replaces a draw after its block was mined has re-rolled it, and
 everyone can see that it did. Short of a miner withholding a found block, nobody can steer the hash.
 
-Registration is deliberately not an event. Sign-ups and withdrawals change often until the draw and
-matter to nobody outside the tournament; the draw freezes the final solo pool publicly, and an
-entrant who is missing can object before block `H`.
+Registration is deliberately not a published event. Sign-ups and withdrawals change often until the
+draw and matter to nobody outside the tournament; the draw freezes the final solo pool publicly, and
+an entrant who is missing can object before block `H`. Each sign-up and withdrawal is still signed by
+the person who makes it, as a [Tournament Consent](#tournament-consent-22150) that only the league
+keeps (rev. 7).
+
+### Tournament Consent (`22150`)
+
+Rev. 7. The signed statement of a player or captain who enters a tournament or pulls an entry out. The
+league checks it, stores it with the entry, and **never publishes it**: not on the league relay, not
+anywhere else. It is ephemeral (NIP-01 `20000 <= n < 30000`), so a copy that reaches a relay by
+mistake is not stored there.
+
+| tag | `signup` | `withdraw` | meaning |
+|---|---|---|---|
+| `a` | required | required | `31923:<league>:<slug>`, the tournament, exactly one without role |
+| `action` | `signup` | `withdraw` | what this consent does |
+| `e` | the id of the tournament's `31923` version shown when signing | the id of the sign-up consent it withdraws | exactly one; binds a sign-up to the rules it accepted, a withdrawal to the entry it ends |
+| `a` with role `entrant` | lineup entry only | lineup entry only | `["a", "<lineup address>", "", "entrant"]`, the lineup entered |
+| `p` with role `entrant` | required | required, copied from the sign-up | `["p", "<pubkey>", "", "entrant"]`, one per player entered: the author for a solo entry; the players the captain enters for a lineup |
+| `alt` | required | required | NIP-31 text, e.g. `Tournament sign-up: <name>` |
+
+`content` is the sentence the player agrees to, in words a person reads in a signer's prompt (for
+example "I enter <tournament> and accept its rules."); it holds nothing private (rule 6). No
+`expiration`, no `u`, no `method`.
+
+**Who signs.** A solo entry and its withdrawal: the entering player, who is the only `p`. A lineup
+entry and its withdrawal: an acting captain of that lineup. The captain enters players of the lineup
+without their signature: under revision 6 an active clan member is an active player of every lineup of
+the clan that lists them, and that membership is their consent to play for it.
+
+**What the league checks** before it acts on a consent, and stores:
+
+1. `id` and `sig` valid, kind `22150`, author equal to the logged-in account that submits it;
+   `created_at` within the window of rule 4; the id not seen before (rule 5), so every consent is used
+   once and a player who re-enters signs again;
+2. the tournament `a` names a `31923` of the league key whose sign-up is open; for `signup` the `e`
+   is the id of its current version; for `withdraw` the `e` is the stored sign-up consent of an active
+   entry, and the `p` and lineup `a` are that consent's;
+3. the author may make this entry (rules above); each `p` is an active player of the entered lineup,
+   or the author for a solo entry; the league's entry rules hold (one entry per person, lineup size,
+   capacity): those are tournament policy and are not part of this NIP;
+4. `alt` present, no `expiration`, the tags and `content` as the league prepared them for signing.
+
+The league stores the **complete signed event** (id, pubkey, created_at, kind, tags, content, sig)
+with the entry, and the withdrawal next to it, at least until the tournament's prizes are settled
+([Payout](#payout-2157)). That is the evidence if an entrant later says they never entered, or never
+pulled out. The draw (`2155`) is the only public trace of the entries.
+
+**Why not NIP-98 (`27235`).** NIP-98 "defines an ephemeral event used to authorize requests to HTTP
+servers": its `u` "MUST be exactly the same as the absolute request URL" and its `content` "SHOULD be
+empty". A consent authorises no request (the sign-up is not a request to the URL it would name) and its
+content is the text agreed to. It also matters in the signer. nostr-mill, the league app's signer,
+names a known kind by its table before it looks at `alt`, so a `27235` prompt reads "HTTP
+Authentication", and it keeps grants per kind, so an "always" or "this session" that a player gave for
+the login (the same kind) signs a sign-up without asking. An unknown kind is named by its `alt` and
+needs a grant of its own; only a category-wide pre-approval chosen at setup ("other") covers both kinds
+alike. (A remote signer that was granted `sign_event` for every kind at connect,
+which is what nostr-mill's NIP-46 client requests, asks for nothing either way; there the app's own
+confirmation is the consent.)
 
 ## Tournaments
 
@@ -747,22 +903,56 @@ target of the prize pool (see [Prize pool funding](#prize-pool-funding)).
 |---|---|
 | `d` | the tournament slug |
 | `title`, `summary`, `image` | as in NIP-52 |
-| `start`, `end`, `D`, `start_tzid` | NIP-52 time fields (`D` is required by NIP-52); the prize pool closes at `end` |
+| `start`, `end`, `D`, `start_tzid` | NIP-52 time fields (`D` is required by NIP-52, which adds "Multiple tags SHOULD be included to cover the event's timeframe": one `D` per UTC day from `start` to `end`); the prize pool closes at `end` |
 | `location` | the tournament page |
 | `r` | the rules page |
-| `a` | the league calendar (`31924:<league>:tournaments`) and the ladder the matches are played on |
-| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key |
+| `a` | the league calendar (`31924:<league>:tournaments`), and the ladder the matches are rated on; rev. 7: the ladder only in a rated tournament, see below |
+| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below |
 | `t` | hashtags, e.g. `esports` and the game |
 | `alt` | NIP-31 text |
 
-`content` states format, match size, seeding and prize split in words. **What a tournament event never
+`content` states format, match size, seeding, how results are reached (players or directors), whether
+the matches are rated, and the prize split in words. **What a tournament event never
 contains:** the bracket, registrations, the pool amount or results. They change during the tournament;
 an addressable event keeps only its newest version, and a stale copy would be a second truth next to
 the attestations. A change of time or rules is a new version of the same address.
 
+**Rated or unrated (rev. 7).** Before Block 0 of the first chain season, and between seasons, no ladder
+is open ([Rest](#rest-before-block-0-and-between-seasons)), yet tournaments go on. The ladder `a` of a
+tournament is therefore optional, and it is **frozen with the first version**:
+
+- the league adds the ladder `a` exactly when, at the signing of the tournament's first `31923`
+  version, a ladder of the tournament's game and mode is open (its season has started, rev. 5: its
+  genesis exists, and it has no `ends`). Later versions carry the same ladder `a`, or none if the
+  first had none; a ladder that opens later is never added;
+- a tournament **without** a ladder `a` is **unrated** for its whole run: its matches are casual,
+  produce no match-flow event and no attestation, even if a ladder of its game and mode opens while it
+  runs. Its `content` says so;
+- in a tournament **with** a ladder `a`, a match is rated on that ladder only if the ladder is still
+  open (no `ends`) at the match's pairing and the [trust gate](#trust-gate) passes on rank; otherwise
+  the match is casual. A season that ends during a tournament ends its rated matches. A match is
+  never rated on any other ladder.
+
+Why frozen: whether a tournament counts is then decided and public before anyone signs up, the consent
+(`22150`) names the version that says so, and one bracket never mixes rated and unrated rounds because
+Block 0 happened to fall between them.
+
+**No blocks (rev. 7).** Tournament matches never mine: the season chain belongs to the season, and a
+tournament has its own prize pool. An attestation that carries a tournament `a` is not a block
+candidate and carries no `block` tag ([Blocks](#blocks-block-in-2154)); a tournament challenge carries
+no match-fee `zap`. Rating, Block Height and clan hashrate count tournament matches like any other.
+
+**Prize pool and `zap` (rev. 7).** A tournament version without `zap` has no zappable pool. A client
+that zaps it anyway follows NIP-57 and pays the author's lightning address, the league key's; the
+league's LNURL endpoint refuses a zap request whose `a` names a tournament without `zap` in its current
+version, so no receipt arises and nothing is counted. The league adds `zap` with a new version when the
+pool opens; receipts count from then on, under the rules of [Counting the pool](#prize-pool-funding).
+
 **Seeding.** Clan lineups are seeded by their rating on the tournament's ladder at registration
 close, mix teams follow in the order of the draw. The rating is public (`32152`), so the seeding can
-be checked; the tie-break is league policy (see [Open points](#open-points)).
+be checked; the tie-break is league policy (see [Open points](#open-points)). In an unrated tournament
+(rev. 7) the seeding ratings are the league's casual ratings, which are not on Nostr: that seeding
+cannot be checked from relays.
 
 **Everything of a tournament** references its address: `{"#a":["31923:<league>:<slug>"]}` returns the
 challenges, answers, reports, responses, attestations, the draw and the zap receipts.
@@ -1342,7 +1532,8 @@ ratings go on until `ends`.
 
 Every attestation of a chain season that is a rated result with a winner (it has `elo`, its
 `resolution` is `confirmed`, `admin` or `forfeit`, its `winner` is `challenger` or `challenged`; for
-a chess board the board has a winner) carries exactly one `block` tag:
+a chess board the board has a winner) and that is not a tournament match (rev. 7, below) carries
+exactly one `block` tag:
 
 - `["block", "<height>", "<previous block id>"]` if it mines; block 1 names the genesis;
 - `["block", "", "<tip id>"]` if it does not: the id of the newest block (or the genesis) at the time
@@ -1353,6 +1544,12 @@ candidate: one block per board won. The heights form one chain across all ladder
 season: exactly one block names each previous block, and a reader walks it from the genesis. The link,
 not `created_at`, is the order: timestamps tie within a second, and a link makes a dropped or reordered
 block visible, as `prev` does within a ladder.
+
+**Tournament matches are not candidates** (rev. 7). An attestation that carries a tournament `a`
+(`31923`) carries no `block` tag, not even an empty one, whatever its result: it is not checked
+against the consensus rules, it does not count for rules 4, 5, 8 and 9, and it pays no reward. It
+stays in its ladder's `prev` chain and moves ratings as usual. This holds for every rated result of a
+tournament, including [director results](#director-results-rev-7), also while a chain season runs.
 
 ### Consensus rules (`season-chain-v1`)
 
@@ -1438,7 +1635,9 @@ anchors most pairings fall into one subtree; see [Open points](#open-points).
 ### Fees
 
 Zaps on a live match are **fees** for its winner. The target is the challenge (`2150`): the app adds
-`["zap", "<pool key>", "<relay>", "1"]` to every challenge of a chain season, so that any client that
+`["zap", "<pool key>", "<relay>", "1"]` to every challenge of a chain season except a tournament's
+(rev. 7: a tournament match mines no block, so its fees could only go to the reserve; zaps for a
+tournament go to its `31923`), so that any client that
 follows NIP-57 appendix G sends the zap to the league's LNURL endpoint instead of the challenger. The
 zap request carries `e` = the challenge, `k` = `2150`, `p` = the pool key. A receipt counts for the
 match if it passes the checks of [Counting the pool](#prize-pool-funding) and its `created_at` lies
@@ -1448,8 +1647,8 @@ The fees of a challenge go to the blocks of that challenge won by the side that 
 solo game or a series: its one block; a chess team match: the blocks of the boards the winning lineup
 won), in equal parts per block and within a block per winning player, rounded down. They go to the
 league reserve if there is no such block: a draw, a `void`, a win that does not mine, a voided block,
-and the remainders of the division. A receipt before the accept or after the last attestation also
-goes to the reserve.
+a tournament match, and the remainders of the division. A receipt before the accept or after the last
+attestation also goes to the reserve.
 
 ### Review and corrections
 
@@ -1525,6 +1724,10 @@ memberships, opponent lists, tournament sign-ups and zaps to the reserve go on. 
   them. Other relays may store anything; readers ignore them.
 - **Casual correspondence games** may be published as plain NIP-64 notes without an `e` to a challenge
   and without a ladder `a`; they never become part of a chain.
+- **Tournaments** (rev. 7) go on as well. One published during rest has a `31923` and, with a solo
+  pool, a `2155`, both without a ladder `a`; it stays unrated to its end, also if Block 0 falls into it
+  ([Tournaments](#tournaments), "Rated or unrated"). Its sign-up consents (`22150`) are never published
+  in any case.
 
 ### Signed and derived
 
@@ -1625,6 +1828,7 @@ of their own (`quest/<slug>`) and one award per player; this NIP does not specif
 | confirmed | 2154 `confirmed` | league | attested | exactly one attestation per challenge, or per board of a chess team match |
 | disputed | 2154 `admin`, `forfeit`, `void` | league | attested | decided by a league admin; reason in `content` |
 | accepted | 2154 `forfeit`, `void` | league | attested | no report exists; `created_at` is at least the chosen `start` plus the league's grace period; reason in `content` |
+| none | 2154 `admin`, `forfeit` with `entered-by` | league | attested | rev. 7: a [director result](#director-results-rev-7) of a rated tournament match; no 2150 to 2153 or game record exists; the director's round is closed |
 
 For a **roster side** (rev. 4), "acting captain" of that side reads "a roster player of that side".
 In a **queue pairing** the league makes the pairing before `2150` exists; the apps sign `2150` and
@@ -1699,7 +1903,8 @@ Per kind:
     ladder, needs an `e` to a draw of that tournament, and its `p` set equals one team of that draw;
     an author on a roster side is a member of it; a solo game on a player ladder never has a roster
     side. Revision 5: on a revision-5 ladder the challenge carries a `zap` tag naming the pool key
-    (the app adds it; see [Fees](#fees)); a challenge created before the ladder's `starts` or after
+    (the app adds it; see [Fees](#fees)), except (rev. 7) a challenge with `pairing` `tournament`,
+    which carries no `zap`; a challenge created before the ladder's `starts` or after
     its `ends` is refused and never attested ([Rest](#rest-before-block-0-and-between-seasons)).
 12. **2151**: see the state machine for author and timing (a roster player for a roster side); `a`
     references equal the challenge's; on a ladder with `trust`, an `accepted` answer passes the
@@ -1743,8 +1948,17 @@ Per kind:
     `match` equals the challenge's; one `clan` row per rated player who was an active clan member at
     the accept, naming that clan, and none for anyone else; the tournament `a` equals the challenge's;
     an attestation of a challenge with a roster side has no `elo`, `trust`, `gate` or `clan`.
+    Revision 7: every attestation of a tournament match carries the tournament `a`, a `31923` of the
+    league key whose ladder `a` is this ladder (an unrated tournament has no attestations). With
+    `entered-by` (a [director result](#director-results-rev-7)): exactly one, a 64-character lower-case
+    hex pubkey; the tournament `a` is present; `resolution` is `admin` or `forfeit`; there is no
+    challenge, so no `e` is required, and "without any report or game record, `resolution` is
+    `forfeit` or `void`" does not apply; with `admin`, a series carries `score` and roster, a chess
+    game one `board` row; "at the accept" reads "at the pairing". Without a tournament `a`, no
+    `entered-by`.
 17. **2155**: signed by the league key; `a` ladder of this league whose season window contains
-    `created_at` (at submission: the ladder has no `ends` yet); the height in `draw` is above the
+    `created_at` (at submission: the ladder has no `ends` yet), rev. 7: present exactly when the
+    tournament's `31923` names a ladder, and then equal to it; the height in `draw` is above the
     chain tip at publication; algorithm `sha256-v1`. Revision 3: at least two entrants, none listed
     twice, every entrant lineup valid for the ladder's game and mode; an `e`, if present, points at
     an earlier draw with the same `tournament`. Revision 4: an `a` to a `31923` of the league key; only
@@ -1759,7 +1973,11 @@ Per kind:
 20. **1984** (report): counts only as described in [Reports](#reports-1984-reused-from-nip-56).
 21. **31923** (tournament, rev. 4): signed by the league key; NIP-52 required tags (`d`, `title`,
     `start`, `D`) and `end` later than `start`; `d` matches the slug pattern; an `a` to the league's
-    calendar and one to a ladder of this league; `zap` names the pool key; `alt`.
+    calendar and one to a ladder of this league; `zap` names the pool key; `alt`. Revision 7: the
+    ladder `a` is optional and frozen: present in every version exactly when it is present in the
+    first, with the same value, and present in the first exactly when a ladder of this league with the
+    tournament's game and mode was open at its `created_at`; `zap` is optional, and if present names
+    the pool key.
 22. **31924** (calendar): signed by the league key; `d` = `tournaments`; every `a` is a `31923` of the
     league key.
 23. **30000** (anchor list, rev. 4): signed by the trust key; `d` = `esports/<league key>/anchors`;
@@ -1790,7 +2008,9 @@ Per kind:
     the genesis), and no other block names the same previous block; an empty height names the newest
     block at signing; a block passes, and a non-mining candidate fails, the
     [consensus rules](#consensus-rules-season-chain-v1) checked against the blocks up to the named id.
-    The `gate` rows follow the revision-5 rule for opponent-list ids.
+    The `gate` rows follow the revision-5 rule for opponent-list ids. Rev. 7: an attestation with a
+    tournament `a` has no `block` tag; it is not a rated result "with a winner" for this rule, and no
+    block counts it.
 28. **2157** (rev. 5): signed by the league key; either one `e` to a genesis whose season has ended
     (season settlement: blocks, fees, bounties), or no genesis and one `a` to a tournament whose `end`
     has passed (tournament settlement); one `p`;
@@ -1812,6 +2032,10 @@ Per kind:
 33. **30000** (admin list, rev. 5): signed by the league key; `d` = `esports/<league key>/admins`.
 31. **30382** (rev. 5): the `anchor` row names an anchor of the anchor list the assertion references,
     with an integer share from 0 to 100, as computed in [Anchor subtree](#consensus-rules-season-chain-v1).
+34. **22150** (tournament consent, rev. 7): checked by the league only, never published; see
+    [Tournament Consent](#tournament-consent-22150) for the checks. A league relay refuses the kind like
+    any event not from the league publisher. A reader that meets a `22150` anywhere gives it no meaning:
+    registrations are not public data.
 
 ## Replay protection
 
@@ -2256,6 +2480,9 @@ These stay on the league server, on purpose:
 | clan hashrate as a number | a game metric, not a rating; recomputable from `clan` rows and `hashrate` (rev. 4), so the league signs no number (a signed copy would be a second truth). Revision-3 seasons lack the inputs |
 | no-show claims | a button in the match room; the league's decision is public as `resolution forfeit` |
 | tournaments: registration, bracket state, seeding snapshot, per-player prize shares | league data that changes during the tournament; the tournament itself is a `31923`, the mix teams follow from the draw, the prize split is stated in the tournament's `content` |
+| tournament consents (`22150`, rev. 7) | signed by the entrant or captain and kept by the league as evidence; registrations matter to nobody outside the tournament, and the draw is their public trace ([Tournament Consent](#tournament-consent-22150)) |
+| tournament directors, their entries and corrections (rev. 7) | who may enter results is league data; the append-only log of entries and corrections stays with the league; the final entry is public as the attestation with `entered-by` |
+| casual ratings (before Block 0, between seasons, unrated tournaments) | never attested; an unrated tournament's seeding rests on them and cannot be checked from relays |
 | pool balance of the wallet, sponsor contracts, sponsor logos, NWC secret | operational; the pool is counted from receipts (see [Prize pool funding](#prize-pool-funding)) |
 | Google e-mail address of a login | known to nostr-mill's servers (pomegranate), not to the league |
 | sessions, presence, online counters, live ticker | ephemeral, high-frequency, worthless as history |
@@ -2308,6 +2535,7 @@ wanted protected player events would have to accept them from their authenticate
 | 65 | the league key publishes a relay list (`10002`) so clients find the ladder |
 | 75 | rev. 5: the league reserve is a zap goal (`9041`), the zap target of the reserve pot; tournaments still use no goal |
 | 70 | optional: protected user events (see above) |
+| 98 | the league's login only (`27235` with `u`, `method` and a one-time `challenge`); rev. 7: deliberately **not** used for the tournament consent, see [Tournament Consent](#tournament-consent-22150) |
 | 85 | trust ranks as user assertions (`30382`) and the trust key's kind `0`, signed by a trust key separate from the league key (one key per algorithm); not used for rating attestations (see [Prior art](#prior-art)) |
 
 ## Kind numbers and collision check
@@ -2324,6 +2552,17 @@ Checked on 2026-09-25, `2155` again in round 2 the same day, `2156` to `2158` in
 | GitHub code search, round 2 | `2155`: `"kind: 2155"`, `"kinds: [2155"`, `"kind === 2155"`, `"kind == 2155"`, `"kind\":2155"` | 0 hits each; controls `"kind: 30023"` 934, `"kind === 30023"` 351 |
 | EINUNDZWANZIG repositories (`einundzwanzig-verein`, `-portal`, `-group`, `-autobot`) | kind constants | free; round 2: no file contains `2155` as a number, control `32121` finds 3 files in `einundzwanzig-verein` |
 | nostrhub.io custom NIPs (kind `30817` events) | | **unconfirmed**: the site renders client-side and returned only its header over HTTP; public relays were not reachable over WebSocket from the sandbox this was written in |
+
+**Round 7** adds `22150` (Tournament Consent, ephemeral), checked on 2026-09-26: free in the kind table
+of the `nostr-protocol/nips` README at `b82211e` (still the head; the registered ephemeral kinds are
+`21059`, `22242`, `23194`, `23195`, `24133`, `24242`, `27235`, `28934`-`28936`) and in
+`registry-of-kinds` at `5cf2b84` (still the head; nearest entries `21059` and `22242`); GitHub code
+search `"kind: 22150"`, `"kinds: [22150"`, `"kind === 22150"`, `"kind == 22150"`, `"kind\":22150"` 0
+hits each (controls `"kind: 27235"` 756, `"kind === 27235"` 39); the five EINUNDZWANZIG repositories
+(`-verein`, `-portal`, `-group`, `-autobot`, `-esports`) contain `22150` only inside hex ids and
+signatures in a browser log (control `32121`: 7 files in `einundzwanzig-verein`). The new tags
+`action` and `entered-by` appear in none of the 100 NIP files at `b82211e` nor in the README's tag
+table (controls: `["rank"` in `85.md`, `["method"` in `98.md`).
 
 **Round 5, second pass** adds `2158` (Parameter Change), checked the same way on 2026-09-25: free in
 the README kind table at `b82211e` (still the head); GitHub code search `"kind: 2158"`, `"kinds: [2158"`,
@@ -4744,6 +4983,21 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 - **Legal and tax questions** of paying sats from a donated pot for won games are not checked.
 - **The reserve's goal amount.** NIP-75 requires one; the examples use 21 000 000 sats as a number that
   promises nothing. Whether clients show that as a target is a design question.
+- **Revision 7 has no signed example yet.** A director result (`2154` with `entered-by`), a draw and a
+  tournament without a ladder `a`, and a tournament consent (`22150`, signed but not published) still
+  need their round in the relay proof.
+- **Director results are not verifiable** (rev. 7). `entered-by` names a person, but the director's
+  key signs nothing. A director could sign a Result Report (`2152`) of their own, with the tournament
+  `a` and no challenge, which the attestation would reference by `e`; that needs rules for a report
+  without a challenge and is not specified.
+- **Draw block distance.** The draw commitment holds only if the draw is public before block `H`; a
+  NIP-03 proof needs a confirmation below `H` ([Tournament Draw](#tournament-draw-2155-optional)). A
+  league that commits to the next block (`H` = tip + 1) meets rule 17 but can never prove it with
+  OpenTimestamps, and loses the commitment if the block is found between reading the tip and
+  publishing. How far ahead is tournament policy.
+- **Tournament prize pools** (rev. 7). Until the league runs a tournament's pool, its `31923` carries
+  no `zap` and zaps to it are refused ([Tournaments](#tournaments)); the pool, the endpoint's refusal
+  and the version that adds `zap` are implemented later.
 - **Not every rule has a failing example.** The signed examples show wins that fail rules 1, 4 and 7,
   and the checker shows rule 9 as a counterfactual (the same games with a supply of 8 400 sats). Failures
   of rules 0, 2, 3, 5 and 8 exist only in the checker's code, not in any signed event.
