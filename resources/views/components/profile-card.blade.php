@@ -15,6 +15,11 @@
     $name = $profile->name;
     $pubkey = $user->pubkey;
     $chips = \App\Support\Rating\Ratings::chipsFor($user);
+    // P7e: whether the viewer and this player list each other as opponents (read only; the page has the button).
+    $viewer = auth()->user();
+    $opponents = $viewer instanceof \App\Models\User && $viewer->id !== $user->id && \App\Support\SeasonChain\OpponentLists::forLeague() !== null
+        ? app(\App\Support\SeasonChain\Opponents::class) : null;
+    $listed = [$opponents?->lists($viewer, $user) ?? false, $opponents?->lists($user, $viewer) ?? false];
 @endphp
 <div data-test="profile-card" data-pubkey="{{ $pubkey }}" data-name="{{ $name }}" class="flex flex-col"
      x-data="{ get status() { return this.$store.profiles?.statusOf(@js($pubkey)) ?? 'idle' } }">
@@ -113,6 +118,16 @@
                     <span class="truncate">{{ $profile->clan->name }}</span>
                     <span class="shrink-0 text-ink-3">{{ mb_strtolower((string) $profile->clanRole) }}</span>
                 </span>
+            </div>
+        @endif
+        @if ($listed[0] || $listed[1])
+            <div class="grid min-h-7 grid-cols-[104px_minmax(0,1fr)] items-center gap-2" data-test="card-opponents">
+                <span class="text-ink-3">{{ __('Opponents') }}</span>
+                @if ($listed[0] && $listed[1])
+                    <span class="flex items-center gap-1.5 text-win"><x-icon name="check" :size="14" />{{ __('you list each other') }}</span>
+                @else
+                    <span class="text-ink-2">{{ $listed[0] ? __('on your list, not listing you yet') : __('lists you, not on your list yet') }}</span>
+                @endif
             </div>
         @endif
     </div>

@@ -2,7 +2,8 @@
     Player page. The header follows PlayerHeader.dc.html (1440) and
     MobilePlayerHeader.dc.html (390): banner, picture, name, NIP-05, bio,
     clan, website, Lightning address, npub, and the rating chips (P7b: chess
-    blitz and each Rocket League lineup, casual before Block 0). Trust and the
+    blitz and each Rocket League lineup, casual before Block 0) and, for a
+    signed-in visitor, "Add as opponent" (P7e). Trust and the
     stats below the header come with their phases; until then the rest of the
     page is the "coming soon" state.
 --}}
@@ -79,6 +80,8 @@
                     </div>
                 </div>
                 <div class="flex flex-col border-t border-hairline lg:border-t-0 lg:border-l lg:pl-6">
+                    {{-- Add as opponent (P7e): signed-in players on someone else's page --}}
+                    <livewire:opponent-button :player="$user" />
                     @if ($profile->hasProfile && $profile->website)
                         <div class="flex min-h-11 min-w-0 items-center border-b border-hairline">
                             <a href="{{ $profile->website }}" rel="nofollow noopener noreferrer" target="_blank" data-test="header-website"

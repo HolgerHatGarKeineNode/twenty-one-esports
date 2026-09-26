@@ -6,6 +6,7 @@ use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
+use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesEvents;
@@ -27,6 +28,9 @@ use App\Support\Series\SeriesEvents;
  * 11-14 2150-2153, the structure of the rated series flow (P6a; built and
  *    tested now, used once a ladder is open). League state (captaincy,
  *    transitions, reserved match number) is checked by SeriesService.
+ * 18. 30000 opponent list of this league, a player's own (P7e): `d` is
+ *     `esports/<league key>`, content empty, the `p` entries distinct hex
+ *     pubkeys other than the author.
  * 29. 1985 with `release-block-0`, an admin's release of Block 0 (P7c).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
@@ -60,6 +64,7 @@ final class EsportsEventRules
             SeriesEvents::REPORT => $this->report($event),
             SeriesEvents::RESPONSE => $this->response($event),
             SeasonRelease::LABEL => $this->releaseLabel($event),
+            OpponentLists::KIND => $this->opponentList($event),
             default => 'kind_not_allowed',
         };
     }
@@ -152,6 +157,34 @@ final class EsportsEventRules
         }
 
         return count($digests) === 1 && preg_match('/^[0-9a-f]{64}$/', $digests[0][0] ?? '') === 1 ? null : 'label_digest';
+    }
+
+    /**
+     * Rule 18, a player's opponent list as the app writes it. The other
+     * `30000` of this NIP (anchor and admin lists) are signed by league keys
+     * and never pass here.
+     */
+    private function opponentList(SignedEvent $event): ?string
+    {
+        $lists = OpponentLists::forLeague();
+
+        if ($lists === null || $event->tag('d') !== $lists->d()) {
+            return 'opponent_list_d';
+        }
+
+        if ($event->content !== '') {
+            return 'opponent_list_content';
+        }
+
+        $entries = array_map(fn (array $tag): ?string => $tag[0] ?? null, $event->tagsNamed('p'));
+
+        foreach ($entries as $entry) {
+            if (! NostrKeys::isHexPubkey($entry) || $entry === $event->pubkey) {
+                return 'opponent_list_entry';
+            }
+        }
+
+        return count($entries) === count(array_unique($entries)) ? null : 'opponent_list_entry';
     }
 
     /**
