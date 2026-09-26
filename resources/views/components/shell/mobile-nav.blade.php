@@ -38,7 +38,7 @@
                         <a href="{{ $href }}"
                            @if ($section === $key) aria-current="page" @endif
                            @class([
-                               'flex min-h-12 min-w-0 items-center gap-3 rounded-lg px-3 text-sm',
+                               'flex min-h-11 min-w-0 items-center gap-3 rounded-lg px-3 text-sm',
                                'bg-raised font-bold text-btc hover:text-btc' => $section === $key,
                                'text-ink hover:bg-row-hover hover:text-ink' => $section !== $key,
                            ])>
@@ -68,15 +68,24 @@
 
         <div class="mt-2 flex flex-col gap-2 border-t border-hairline px-1 pt-3">
             @if ($user)
-                <a href="{{ $profile['href'] }}" class="flex min-h-11 items-center gap-2 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="{{ $profile['mobileTest'] }}">
-                    <x-avatar :user="$user" :size="26" />
-                    <span class="flex min-w-0 flex-col leading-tight">
-                        <span class="truncate">{{ $user->displayName() }}</span>
-                        <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
-                    </span>
-                    <span class="grow"></span>
-                    <span class="shrink-0 text-xs text-ink-2">{{ $profile['label'] }}</span>
-                </a>
+                {{-- The player and "Log out" share one row, so an admin's whole menu fits a 667 px phone. --}}
+                <div class="flex items-center gap-2">
+                    <a href="{{ $profile['href'] }}" class="flex min-h-11 min-w-0 grow items-center gap-2 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="{{ $profile['mobileTest'] }}">
+                        <x-avatar :user="$user" :size="26" class="shrink-0" />
+                        <span class="flex min-w-0 flex-col leading-tight">
+                            <span class="truncate">{{ $user->displayName() }}</span>
+                            <span class="text-[11px] text-ink-2">{{ $profile['label'] }}</span>
+                        </span>
+                    </a>
+                    {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
+                    <form method="POST" action="{{ route('logout') }}" x-on:submit="window.forgetNostrSigner?.()" class="shrink-0">
+                        @csrf
+                        <button type="submit" class="btn-s flex h-11 items-center justify-center gap-2 rounded-lg border border-edge px-3 text-[13px] text-ink">
+                            <x-icon name="logout" :size="16" />
+                            {{ __('Log out') }}
+                        </button>
+                    </form>
+                </div>
                 <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                     @foreach ($accountLinks as $link)
                         <li class="min-w-0">
@@ -87,14 +96,6 @@
                         </li>
                     @endforeach
                 </ul>
-                {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
-                <form method="POST" action="{{ route('logout') }}" x-on:submit="window.forgetNostrSigner?.()">
-                    @csrf
-                    <button type="submit" class="btn-s flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-edge text-[13px] text-ink">
-                        <x-icon name="logout" :size="16" />
-                        {{ __('Log out') }}
-                    </button>
-                </form>
             @else
                 <a href="{{ route('login') }}" class="btn-p flex h-11 items-center justify-center rounded-lg bg-btc text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Log in') }}</a>
             @endif

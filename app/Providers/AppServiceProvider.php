@@ -92,6 +92,9 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('player-search', fn (Request $request): Limit => Limit::perMinute(60)
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 
+        // The site search (P16): three capped lookups per request, open to guests, so per IP.
+        RateLimiter::for('search', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+
         // Share cards and badge art (P11): drawn with GD on a miss, so a tight limit per IP.
         RateLimiter::for('cards', fn (Request $request): Limit => Limit::perMinute((int) config('esports.badges.cards_per_minute'))->by($request->ip()));
 

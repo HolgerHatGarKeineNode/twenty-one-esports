@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\Clan;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\BrowserConsole;
@@ -174,4 +176,51 @@ test('positive controls: the crawler misses a link nobody can see, and the colle
     navOpen($page, route('testing.server-error', absolute: false), $caught);
     expect($problems)->toBe([])
         ->and(implode("\n", $caught))->toContain('500 ');
+});
+
+test('the header search: type and press Enter at 375 and 1440 px, results for a name, a jump for a match number', function () {
+    User::factory()->create(['name' => 'Mempool Max']);
+    Clan::factory()->create(['name' => 'Mempool Miners', 'clantag' => 'MEM1']);
+    $series = SeriesMatch::factory()->create();
+    $problems = [];
+
+    foreach ([375 => '#site-search-mobile', 1440 => '#site-search'] as $width => $field) {
+        $page = navPage(null, $width);
+        navOpen($page, '/rules', $problems);
+
+        if ($width === 375) {
+            $page->locator('[aria-controls=mobile-search]')->click();
+            BrowserWait::until($page, '() => document.getElementById("site-search-mobile").checkVisibility()', 5_000);
+        }
+
+        $page->locator($field)->fill('mempool');
+        $page->locator($field)->press('Enter');
+        BrowserWait::until($page, '() => location.pathname === "/search" && document.readyState === "complete"', 10_000);
+        $state = $page->evaluate('() => ({ players: document.querySelectorAll("[data-test=search-player]").length, clans: document.querySelectorAll("[data-test=search-clan]").length, q: document.getElementById("search-page-q").value, lang: document.documentElement.lang })');
+        fwrite(STDERR, "\n[nav-search] {$width}px results ".json_encode($state).' widths '.json_encode($page->evaluate(BrowserConsole::WIDTHS)));
+        expect($state)->toBe(['players' => 1, 'clans' => 1, 'q' => 'mempool', 'lang' => 'en']);
+        [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
+        expect($scroll)->toBeLessThanOrEqual($client);
+        foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
+            $problems[] = "{$width}px results: {$problem}";
+        }
+        navShot($page, "p16-search-results-{$width}");
+
+        // Nothing found: the empty state, searched from the field on the results page.
+        $page->locator('#search-page-q')->fill('zzzz');
+        $page->locator('#search-page-q')->press('Enter');
+        BrowserWait::until($page, '() => document.querySelector("[data-test=search-empty]") !== null', 10_000);
+        expect($page->evaluate(BrowserConsole::WIDTHS)[0])->toBeLessThanOrEqual($width);
+        navShot($page, "p16-search-empty-{$width}");
+
+        // A match number jumps straight to the match.
+        $page->locator('#search-page-q')->fill('#'.$series->number);
+        $page->locator('#search-page-q')->press('Enter');
+        BrowserWait::until($page, '() => location.pathname === "/matches/'.$series->number.'" && document.readyState === "complete"', 10_000);
+        foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
+            $problems[] = "{$width}px match: {$problem}";
+        }
+    }
+
+    expect($problems)->toBe([]);
 });

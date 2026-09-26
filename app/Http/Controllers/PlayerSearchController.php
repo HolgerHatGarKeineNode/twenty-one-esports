@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\PlayerProfile;
-use Illuminate\Database\Eloquent\Builder;
+use App\Support\Search\PlayerMatches;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -22,17 +22,16 @@ use Illuminate\Support\Str;
  * back as one row marked `unregistered`: roles and invites that are granted
  * to a key before its owner ever logs in. A name never becomes a key.
  *
- * Cost: a full key is a unique-index lookup and an npub prefix a range on
- * the unique npub index. A name or NIP-05 is a LIKE over the players, capped
- * at LIMIT rows, and needs MIN_TERM characters.
+ * The matching itself is App\Support\Search\PlayerMatches, shared with the
+ * site search (SearchController); here it is capped at LIMIT rows.
  */
 class PlayerSearchController extends Controller
 {
     public const LIMIT = 8;
 
-    public const MIN_TERM = 2;
+    public const MIN_TERM = PlayerMatches::MIN_TERM;
 
-    public const NPUB_PREFIX = 8;
+    public const NPUB_PREFIX = PlayerMatches::NPUB_PREFIX;
 
     public function __invoke(Request $request): JsonResponse
     {
@@ -44,10 +43,8 @@ class PlayerSearchController extends Controller
         ]);
 
         $keys = (bool) ($validated['keys'] ?? false);
-        $term = trim((string) ($validated['q'] ?? ''));
-        // A pasted profile link stands for its npub.
-        $term = str_contains($term, '/') ? (string) preg_replace('#^.*/(npub1[0-9a-z]+).*$#', '$1', $term) : $term;
-        $query = $this->matching($term);
+        $term = PlayerMatches::normalize((string) ($validated['q'] ?? ''));
+        $query = PlayerMatches::query($term);
 
         if ($query === null) {
             return response()->json([]);
@@ -84,41 +81,5 @@ class PlayerSearchController extends Controller
         }
 
         return response()->json($rows);
-    }
-
-    /**
-     * The players the term can mean, or null when it is too short to search.
-     *
-     * @return Builder<User>|null
-     */
-    private function matching(string $term): ?Builder
-    {
-        $pubkey = NostrKeys::toHex($term);
-
-        if ($pubkey !== null) {
-            return User::query()->where('pubkey', $pubkey);
-        }
-
-        $lower = mb_strtolower($term);
-
-        if (str_starts_with($lower, 'npub1')) {
-            // bech32 only: '~' sorts after every bech32 character, so the range is exactly the prefix.
-            return strlen($lower) - 5 >= self::NPUB_PREFIX && preg_match('/^npub1[02-9ac-hj-np-z]+$/', $lower) === 1
-                ? User::query()->where('npub', '>=', $lower)->where('npub', '<', $lower.'~')->orderBy('npub')
-                : null;
-        }
-
-        if (mb_strlen($term) < self::MIN_TERM) {
-            return null;
-        }
-
-        $like = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $lower);
-
-        return User::query()
-            ->where(fn (Builder $query) => $query
-                ->whereRaw("lower(name) like ? escape '!'", ['%'.$like.'%'])
-                ->orWhereRaw("nip05 like ? escape '!'", [$like.'%']))
-            ->orderByRaw("case when lower(name) like ? escape '!' then 0 else 1 end", [$like.'%'])
-            ->orderBy('name');
     }
 }

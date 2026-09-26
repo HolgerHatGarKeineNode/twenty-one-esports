@@ -81,6 +81,7 @@ const NAV_PAGES = [
     'settings.opponents' => ['roles' => NAV_LOGGED_IN, 'max' => 2],
     'settings.badges' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'rules' => ['roles' => NAV_ROLES, 'max' => 1],
+    'search' => ['roles' => NAV_ROLES, 'max' => 1],
     'protocol' => ['roles' => NAV_ROLES, 'max' => 1],
 ];
 
@@ -128,8 +129,9 @@ const NAV_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', 
 
 /**
  * Every link a person can reach on the page: visible, or behind a visible
- * opener (a Flux dropdown, the mobile menu, a <details>). `chrome` is true
- * outside <main>.
+ * opener (a Flux dropdown, the mobile menu or search, a <details>). A GET
+ * form (the site search) counts as a link to its action, reachable when its
+ * field is. `chrome` is true outside <main>.
  */
 const NAV_LINKS_SCRIPT = <<<'JS'
     () => {
@@ -138,11 +140,12 @@ const NAV_LINKS_SCRIPT = <<<'JS'
             const drop = a.closest('ui-dropdown');
             if (drop) return visible(drop.querySelector('button')) ? 'menu' : null;
             if (a.closest('#mobile-nav')) return visible(document.querySelector('[aria-controls=mobile-nav]')) ? 'mobile-menu' : null;
+            if (a.closest('#mobile-search')) return visible(document.querySelector('[aria-controls=mobile-search]')) ? 'mobile-search' : null;
             const details = a.closest('details');
             if (details) return visible(details.querySelector('summary')) ? 'details' : null;
             return null;
         };
-        return [...document.querySelectorAll('a[href]')].map((a) => {
+        const links = [...document.querySelectorAll('a[href]')].map((a) => {
             const url = new URL(a.getAttribute('href'), location.href);
             return {
                 url: url.origin === location.origin ? url.pathname + url.search : null,
@@ -150,7 +153,18 @@ const NAV_LINKS_SCRIPT = <<<'JS'
                 how: visible(a) ? 'visible' : opener(a),
                 text: (a.getAttribute('aria-label') || a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60),
             };
-        }).filter((link) => link.url !== null && link.how !== null);
+        });
+        const forms = [...document.querySelectorAll('form[action]')].filter((f) => (f.getAttribute('method') || 'get').toLowerCase() === 'get').map((f) => {
+            const url = new URL(f.getAttribute('action'), location.href);
+            const field = f.querySelector('input:not([type=hidden])');
+            return {
+                url: url.origin === location.origin ? url.pathname : null,
+                chrome: !f.closest('main'),
+                how: field && visible(field) ? 'form' : (field ? opener(field) : null),
+                text: 'form: ' + (f.getAttribute('aria-label') || f.getAttribute('role') || ''),
+            };
+        });
+        return [...links, ...forms].filter((link) => link.url !== null && link.how !== null);
     }
     JS;
 

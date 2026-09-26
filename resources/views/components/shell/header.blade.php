@@ -75,6 +75,8 @@
     }
 
     $onLogin = request()->routeIs('login');
+    // On the results page the field keeps what was searched.
+    $searchTerm = request()->routeIs('search') ? (string) request()->string('q') : '';
 @endphp
 
 {{-- An open notification panel lifts the header above the toast stack (z-50), so a toast never covers the list. --}}
@@ -139,9 +141,12 @@
 
         <span class="grow"></span>
 
-        <label for="site-search" class="sr-only max-lg:hidden">{{ __('Search') }}</label>
-        <input id="site-search" type="search" placeholder="{{ __('Search players, clans or match #') }}"
-               class="hidden h-10 w-[420px] min-w-32 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3 lg:block">
+        {{-- The site search (P16, SearchController): Enter opens the results, a match number the match. --}}
+        <form method="GET" action="{{ route('search') }}" role="search" class="hidden w-[420px] min-w-32 shrink lg:block" data-test="site-search-form">
+            <label for="site-search" class="sr-only">{{ __('Search') }}</label>
+            <input id="site-search" name="q" type="search" value="{{ $searchTerm }}" maxlength="200" enterkeyhint="search" placeholder="{{ __('Search players, clans or match #') }}"
+                   class="h-10 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
+        </form>
 
         @if ($user)
             <livewire:notification-bell />
@@ -206,9 +211,11 @@
     <div id="mobile-search" class="border-t border-hairline px-4 py-3 lg:hidden" x-show="search" x-cloak
          x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="-translate-y-2 opacity-0"
          x-transition:leave="transition duration-150 ease-in" x-transition:leave-end="opacity-0">
-        <label for="site-search-mobile" class="sr-only">{{ __('Search') }}</label>
-        <input id="site-search-mobile" x-ref="mobileSearch" type="search" placeholder="{{ __('Search players, clans or match #') }}"
-               class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
+        <form method="GET" action="{{ route('search') }}" role="search">
+            <label for="site-search-mobile" class="sr-only">{{ __('Search') }}</label>
+            <input id="site-search-mobile" name="q" x-ref="mobileSearch" type="search" value="{{ $searchTerm }}" maxlength="200" enterkeyhint="search" placeholder="{{ __('Search players, clans or match #') }}"
+                   class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
+        </form>
     </div>
 
     <x-shell.mobile-nav :items="$items" :games="$games" :account="$account" :section="$section" :user="$user" />

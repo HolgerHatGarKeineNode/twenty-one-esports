@@ -10,6 +10,7 @@ use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\PlayerSearchController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RobotsController;
+use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShareCardController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SwitchLocaleController;
@@ -145,6 +146,8 @@ foreach ($placeholders as [$uri, $name, $page, $section]) {
  */
 Route::post('profiles', [ProfileController::class, 'store'])->middleware('throttle:profiles')->name('profiles.store');
 // The player picker (<x-player-picker>): suggestions for logged-in players only.
+// The site search (P16): the header's search field, for guests too; noindex, throttled per IP.
+Route::get('search', SearchController::class)->middleware('throttle:search')->name('search');
 Route::get('search/players', PlayerSearchController::class)->middleware(['auth', 'throttle:player-search'])->name('players.search');
 Route::get('players/{npub}', [PlayerController::class, 'show'])->name('players.show');
 Route::get('players/{npub}/card', [PlayerController::class, 'card'])->name('players.card');

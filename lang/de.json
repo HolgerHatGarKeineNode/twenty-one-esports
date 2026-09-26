@@ -2978,5 +2978,13 @@
     "How :season works": "So funktioniert :season",
     "Draws mine nothing. Admins can tune these limits during the season; a change only counts for blocks after it.": "Remis schürfen nichts. Admins können diese Grenzen während der Season anpassen; eine Änderung gilt nur für Blöcke danach.",
     ":season: :n points.": ":season: :n Punkte.",
-    "Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.": "Alles erscheint in der Glocke und auf der Seite, auf der du gerade bist. Fernschach-, Clan- und Match-Herausforderungs-Benachrichtigungen gehen außerdem per Browser-Push und Nostr-DM raus, wie oben eingeschaltet. Blitz-Benachrichtigungen bleiben in der App: Eine Live-Partie schickt weder Push noch DM."
+    "Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.": "Alles erscheint in der Glocke und auf der Seite, auf der du gerade bist. Fernschach-, Clan- und Match-Herausforderungs-Benachrichtigungen gehen außerdem per Browser-Push und Nostr-DM raus, wie oben eingeschaltet. Blitz-Benachrichtigungen bleiben in der App: Eine Live-Partie schickt weder Push noch DM.",
+    "Search: :term": "Suche: :term",
+    "Find a player, a clan or a match": "Finde einen Spieler, einen Clan oder ein Match",
+    "Search for a player by name, NIP-05 or npub, a clan by name or tag, or a match by its number, like #123.": "Suche einen Spieler nach Name, NIP-05 oder npub, einen Clan nach Name oder Kürzel, oder ein Match nach seiner Nummer, etwa #123.",
+    "Nothing found for “:term”": "Nichts gefunden für „:term“",
+    "Browse the clans": "Clans ansehen",
+    "See the ladder": "Zur Ladder",
+    "There is no match #:number yet.": "Ein Match #:number gibt es noch nicht.",
+    "See all matches": "Alle Matches ansehen"
 }
