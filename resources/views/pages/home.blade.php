@@ -1,7 +1,9 @@
 {{--
     Home before Block 0, from MainPrelaunch.dc.html (from 1024 px) and
-    MobileHomePrelaunch.dc.html (below). There is no released season yet, so
-    this is the only state of `/` for now.
+    MobileHomePrelaunch.dc.html (below). While a season is live (Seasons::live(),
+    after the board released Block 0) the countdown gives way to the live head:
+    the season, its block height and the mined supply from the chain, with the
+    way into rated play and the mining page.
 
     Everything shown is real or configured (config/esports.php, `preseason`):
     the date, pot and genesis message appear only when set; clans and casual
@@ -16,8 +18,23 @@
     use App\Support\Engagement\Quests;
     use App\Support\Engagement\WeeklySlots;
     use App\Support\PreSeason;
+    use App\Support\SeasonChain\SeasonChains;
+    use App\Support\SeasonChain\Seasons;
 
     $user = auth()->user();
+
+    // A live season replaces the Pre-Season countdown with the live head.
+    $liveSeason = Seasons::live();
+    if ($liveSeason !== null) {
+        $chains = app(SeasonChains::class);
+        $tip = $chains->tip($liveSeason);
+        $chain = $chains->chain($liveSeason);
+        $liveFacts = [
+            [__('Block height'), $tip['height'] ?? 0, __('blocks mined this season')],
+            [__('Mined'), PreSeason::formatSats($chain->mined()), __('of :supply sats', ['supply' => PreSeason::formatSats($liveSeason->supply)])],
+            [__('Season ends'), $liveSeason->ends_at->setTimezone(PreSeason::timezoneFor($user))->locale(app()->getLocale())->isoFormat('ddd YYYY-MM-DD'), __('then the season review, then the payout')],
+        ];
+    }
     $state = PreSeason::state();
     $timed = $state !== 'undated';
     $secondsLeft = PreSeason::secondsLeft();
@@ -75,11 +92,35 @@
 
     app(App\Support\PageMeta::class)->describe(
         __('Chess and Rocket League ladder for Bitcoiners'),
-        __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The Pre-Season starts at Block 0.'),
+        $liveSeason !== null
+            ? __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The season is live: every fair rated win mines a block.')
+            : __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The Pre-Season starts at Block 0.'),
     );
 @endphp
 
 <x-layouts::app section="home" flush>
+    @if ($liveSeason !== null)
+    <section aria-labelledby="live-h1" class="flex flex-col gap-6 px-4 pt-7 lg:gap-8 lg:px-10 lg:pt-12" data-test="season-live">
+        <div class="flex flex-col gap-3 lg:px-2">
+            <span class="flex items-center gap-2 text-xs font-bold tracking-[0.12em] text-win uppercase"><span class="size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>{{ __('Live now') }}</span>
+            <h1 id="live-h1" class="m-0 font-display text-3xl leading-[1.15] font-extrabold tracking-[-0.01em] lg:text-5xl lg:leading-[1.1]">{{ __(':season is live', ['season' => \Illuminate\Support\Str::headline($liveSeason->slug)]) }}</h1>
+            <p class="m-0 max-w-[60ch] text-sm leading-[1.6] text-ink-2">{{ __('Every fair rated win mines a block. Play rated chess or a Rocket League series and climb the ladder.') }}</p>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:gap-5">
+            @foreach ($liveFacts as [$label, $value, $hint])
+                <div class="pl-card" data-test="live-fact">
+                    <span class="text-xs text-ink-2">{{ $label }}</span>
+                    <b class="font-display text-3xl leading-[1.15] font-extrabold">{{ $value }}</b>
+                    <span class="text-xs text-ink-3">{{ $hint }}</span>
+                </div>
+            @endforeach
+        </div>
+        <div class="flex flex-col gap-3 lg:flex-row">
+            <a href="{{ route('chess.lobby') }}" class="btn-p inline-flex h-13 items-center justify-center gap-2.5 rounded-lg bg-btc px-7 text-[15px] font-bold text-on-btc hover:text-on-btc"><x-icon name="pawn" :size="20" />{{ __('Play rated now') }}</a>
+            <a href="{{ route('mining') }}" class="btn-s inline-flex h-11 items-center justify-center gap-2.5 rounded-lg border border-edge px-[22px] text-sm text-ink hover:text-ink lg:h-13">{{ __('The chain on the mining page') }}</a>
+        </div>
+    </section>
+    @else
     <div id="block0" class="flex flex-col"
          @if ($timed) x-data="blockZeroCountdown(@js(['secondsLeft' => $secondsLeft, 'labels' => $labels]))" @endif
          data-state="{{ $state }}">
@@ -206,9 +247,10 @@
             </div>
         </section>
     </div>
+    @endif
 
     <div class="grid grow grid-cols-1 content-start gap-4 px-4 pt-7 pb-6 lg:grid-cols-12 lg:gap-5 lg:px-12 lg:pt-14 lg:pb-12">
-        @if ($pot)
+        @if ($pot && $liveSeason === null)
             <section aria-labelledby="pot-h" class="pl-card lg:col-span-5" data-test="pot">
                 <h2 id="pot-h" class="pl-h2">{{ __('The pot') }}</h2>
                 <span class="flex items-baseline gap-2.5">
@@ -220,7 +262,7 @@
             </section>
         @endif
 
-        <section aria-labelledby="how-h" @class(['pl-card', 'lg:col-span-7' => $pot, 'lg:col-span-12' => ! $pot])>
+        <section aria-labelledby="how-h" @class(['pl-card', 'lg:col-span-7' => $pot && $liveSeason === null, 'lg:col-span-12' => ! $pot || $liveSeason !== null])>
             <h2 id="how-h" class="pl-h2">{{ __('How the Pre-Season works') }}</h2>
             <p class="m-0 max-w-[75ch] text-[13px] leading-[1.6] text-ink-2">{{ __('From Block 0 on, every fair rated win mines a block. Mined blocks earn sats from the pot. Rewards are paid once, after the season review.') }}</p>
             <h3 class="m-0 mt-2 text-[13px] font-bold">{{ __('A rated win mines a block when') }}</h3>
@@ -251,7 +293,7 @@
         @endif
 
         <section aria-labelledby="open-h" class="flex flex-col gap-3 lg:col-span-12 lg:mt-3">
-            <h2 id="open-h" class="m-0 mt-2 font-display text-lg font-bold lg:mt-0 lg:text-xl">{{ __('Already open before Block 0') }}</h2>
+            <h2 id="open-h" class="m-0 mt-2 font-display text-lg font-bold lg:mt-0 lg:text-xl">{{ $liveSeason !== null ? __('Play now') : __('Already open before Block 0') }}</h2>
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
                 <div class="pl-card" data-test="casual-games">
                     <span class="flex items-baseline justify-between gap-3">

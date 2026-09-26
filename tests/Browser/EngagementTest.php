@@ -155,7 +155,7 @@ test('the P10 pages fit 375 and 1440 px with a clean console, and the placement 
         $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => 'season-1', 'game' => $game, 'mode' => $mode, 'subject' => 'user:'.$player->id, 'user_id' => $player->id, 'rating' => $value, 'results' => 5]);
         PlacementReveal::query()->create(['user_id' => $player->id, 'rating_id' => $rating->id, 'game' => $game, 'mode' => $mode, 'rating' => $value, 'tier' => $tier]);
 
-        // Home: the reveal first, then the page under it.
+        // Home, in its live state: the reveal first, then the page under it.
         $page = p10Page($player, route('home', absolute: false), $width);
         BrowserWait::until($page, '() => document.querySelector("[data-test=placement-reveal]") !== null', 10_000);
         // The cube fills with the tier colour once the animation ran.
@@ -171,8 +171,10 @@ test('the P10 pages fit 375 and 1440 px with a clean console, and the placement 
         $page->locator('[data-test=placement-close]')->click();
         BrowserWait::until($page, '() => getComputedStyle(document.querySelector("[data-test=placement-reveal]")).display === "none"', 5_000);
 
-        expect($page->evaluate('() => document.querySelectorAll("[data-test=weekly-event]").length'))->toBe(app(WeeklySlots::class)->upcoming(4)->count())
+        expect($page->evaluate('() => document.querySelector("[data-test=season-live]") !== null'))->toBeTrue()
+            ->and($page->evaluate('() => document.querySelectorAll("[data-test=weekly-event]").length'))->toBe(app(WeeklySlots::class)->upcoming(4)->count())
             ->and($page->evaluate('() => document.querySelector("[data-test=quests]") !== null'))->toBeTrue();
+        p10Shot($page, "home-live-{$width}", fullPage: false);
         $page->evaluate('() => document.querySelector("[data-test=weekly-events]").scrollIntoView()');
         p10Shot($page, "home-weekly-quests-{$width}");
         p10Clean($page, "home {$width}");
@@ -181,6 +183,7 @@ test('the P10 pages fit 375 and 1440 px with a clean console, and the placement 
         foreach ([
             ['lobby', route('chess.lobby', absolute: false), '[data-test=weekly-events]'],
             ['clans', route('clans.index', absolute: false), '[data-test=city-ranking]'],
+            ['clan', route('clans.show', $kempten, absolute: false), '[data-test=clan-rating]'],
             ['player', route('players.show', $player->npub, absolute: false), '[data-test=invite-frame-chip]'],
         ] as [$name, $url, $selector]) {
             $page = p10Page($player, $url, $width);

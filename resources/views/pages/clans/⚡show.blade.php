@@ -7,7 +7,7 @@ use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\NostrEvent;
 use App\Models\User;
-use App\Support\Clans\ClanStatsPreview;
+use App\Support\Clans\ClanStats;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
 use App\Support\Seo\LocalizedUrls;
@@ -18,10 +18,10 @@ use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /*
- * Clan page, 1:1 from ClanShow.dc.html. Name, tag, meetup, players, roles,
- * lineups and the Proof block are real; Elo, tiers, Block Height, Clan
- * Rating, Hashrate, series and matches come from ClanStatsPreview until
- * P6/P7 deliver them.
+ * Clan page, 1:1 from ClanShow.dc.html. Everything is real: name, tag,
+ * meetup, players, roles, lineups, the Proof block, and from ClanStats the
+ * Elo, tiers, Block Height, Clan Rating, Hashrate, series record and
+ * matches. Before Block 0 the rated panels show their empty state.
  */
 new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     #[Locked]
@@ -38,6 +38,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     public function pickWindow(string $window): void
     {
         $this->window = $window === 's' ? 's' : 'w';
+    }
+
+    /** The page's clan numbers, computed once per request. */
+    #[Computed]
+    public function stats(): ClanStats
+    {
+        return app(ClanStats::class);
     }
 
     #[Computed]
@@ -127,18 +134,22 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $tag = $clan->clantag;
     $lineups = $this->lineups;
     $lead = $lineups['3v3'] ?? reset($lineups) ?: null;
-    $leadStats = $lead ? ClanStatsPreview::lineup($tag, $lead->mode) : null;
-    $rating = ClanStatsPreview::clanRating($tag);
-    $ranks = ClanStatsPreview::ranks($tag);
-    $hash = ClanStatsPreview::hashrate($tag);
-    $record = ClanStatsPreview::record($tag);
+    $stats = $this->stats;
+    $live = $stats->seasonLive();
+    $leadStats = $lead ? $stats->lineup($lead) : null;
+    $rating = $stats->clanRating($clan);
+    $ranks = $stats->ranks($clan);
+    $hash = $stats->hashrate($clan);
+    $record = $stats->record($clan);
+    $heights = ClanStats::blockHeights($clan->members->pluck('user_id'));
     $season = $window === 's';
+    $playerPoints = $stats->playerHashrate($clan, ! $season);
     $membersCount = $clan->members->count();
     $paid = $clan->members->filter(fn ($member) => $member->user->is_member)->count();
     $owner = $clan->members->firstWhere('user_id', $clan->owner_id)?->user;
 
-    // Hashrate contributions: players plus the team-win bonus (P7 computes these).
-    $contrib = collect($this->members)->map(fn ($member) => ['name' => $member->user->displayName(), 'points' => ClanStatsPreview::player((string) $member->user->name)[$season ? 'season' : 'week'], 'bonus' => false])
+    // Hashrate contributions: players plus the team-win bonus (ClanHashrate).
+    $contrib = collect($this->members)->map(fn ($member) => ['name' => $member->user->displayName(), 'points' => $playerPoints[$member->user->pubkey] ?? 0, 'bonus' => false])
         ->push(['name' => __('Team wins +5'), 'points' => $season ? $hash['seasonBonus'] : $hash['weekBonus'], 'bonus' => true]);
     $sum = max(1, $contrib->sum('points'));
     $peak = max(1, $contrib->max('points'));
@@ -179,7 +190,6 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         <div class="flex flex-col">
             <div class="flex h-11 items-center justify-between gap-3 border-b border-hairline text-sm"><span class="text-ink-2">{{ __('Players') }}</span><span class="hidden text-xs text-ink-3 sm:inline">{{ __('everyone joined with their own invite') }}</span></div>
             @foreach ($this->members as $member)
-                @php($stats = ClanStatsPreview::player((string) $member->user->name))
                 <div wire:key="m-{{ $member->id }}" class="row grid h-14 grid-cols-[32px_minmax(0,1fr)_76px] items-center gap-3 border-b border-hairline px-2 text-[13px] sm:grid-cols-[32px_minmax(0,1fr)_132px_110px]">
                     {{-- The Nostr picture, or the generated Blockpile (P10a). --}}
                     <x-avatar :user="$member->user" :size="32" />
@@ -194,7 +204,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                                   @class(['inline-flex h-[22px] items-center rounded-sm border border-dash px-1.5 text-[11px]', 'text-ink' => $seated, 'border-dashed text-ink-3' => ! $seated])>{{ $mode }}</span>
                         @endforeach
                     </span>
-                    <span class="flex flex-col items-end gap-0.5 text-xs" title="{{ __('Block Height: rated games in any game') }}"><b class="text-sm">{{ $stats['blockHeight'] }}</b><span class="text-[11px] text-ink-3">{{ __('Block Height') }}</span></span>
+                    <span class="flex flex-col items-end gap-0.5 text-xs" title="{{ __('Block Height: rated games in any game') }}"><b class="text-sm" data-test="block-height">{{ $heights[$member->user_id] ?? 0 }}</b><span class="text-[11px] text-ink-3">{{ __('Block Height') }}</span></span>
                 </div>
             @endforeach
             <div class="grid h-11 grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-sm lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Captain') }}</span>
@@ -204,13 +214,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         </div>
 
         <div class="flex flex-col">
-            <div class="grid h-11 grid-cols-[minmax(0,1fr)_56px_56px_96px] items-center border-b border-hairline text-xs text-ink-2 lg:grid-cols-[minmax(0,1fr)_64px_72px_136px] lg:text-[13px]"><span></span><span class="text-right">{{ __('30 days') }}</span><span class="text-right">{{ __('Total') }}</span><span class="text-right">Testnet Cup</span></div>
-            @foreach ($record['stats'] ?? [['Series', '0', '0', '–'], ['Wins', '0', '0', '–'], ['Goals (team)', '0', '0', '–']] as [$label, $days, $total, $cup])
-                <div class="grid h-11 grid-cols-[minmax(0,1fr)_56px_56px_96px] items-center border-b border-hairline text-sm lg:grid-cols-[minmax(0,1fr)_64px_72px_136px]"><span class="text-ink-2">{{ __($label) }}</span><span class="text-right">{{ $days }}</span><b class="text-right">{{ $total }}</b><span class="text-right">{{ $cup }}</span></div>
+            <div class="grid h-11 grid-cols-[minmax(0,1fr)_64px_72px] items-center border-b border-hairline text-xs text-ink-2 lg:text-[13px]"><span></span><span class="text-right">{{ __('30 days') }}</span><span class="text-right">{{ __('Total') }}</span></div>
+            @foreach ($record['stats'] ?? [['Series', 0, 0], ['Wins', 0, 0], ['Goals (team)', 0, 0]] as [$label, $days, $total])
+                <div class="grid h-11 grid-cols-[minmax(0,1fr)_64px_72px] items-center border-b border-hairline text-sm" data-test="record-row"><span class="text-ink-2">{{ __($label) }}</span><span class="text-right">{{ $days }}</span><b class="text-right">{{ $total }}</b></div>
             @endforeach
             @foreach (['3v3', '2v2', '1v1'] as $mode)
                 @continue(! isset($lineups[$mode]))
-                @php($line = ClanStatsPreview::lineup($tag, $mode))
+                @php($line = $stats->lineup($lineups[$mode]))
                 <div class="grid h-11 grid-cols-[minmax(0,1fr)_auto_48px] items-center gap-3 border-b border-hairline text-sm sm:grid-cols-[minmax(0,1fr)_auto_64px_136px]">
                     <span class="text-ink-2">{{ __('Elo :mode', ['mode' => $mode]) }}</span>
                     <span @class(['inline-flex h-6 items-center rounded-sm bg-ground px-2', 'border border-dashed border-edge' => $line['tier'] === 'provisional', 'border border-line' => $line['tier'] !== 'provisional'])><x-rank-badge :tier="$line['tier']" :level="$line['level']" /></span>
@@ -227,31 +237,25 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <span class="flex items-baseline justify-between gap-3"><h2 id="cr-h" class="m-0 text-[15px] font-bold">{{ __('Clan Rating · chess') }}</h2>
                 <span class="text-xs text-ink-3">{{ $ranks['rating'] ? __('#:rank of :of rated clans', ['rank' => $ranks['rating'], 'of' => $ranks['ratedClans']]) : __('not rated yet') }}</span></span>
             <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <b class="font-display text-[40px] leading-[1.1] font-bold">{{ $rating['rating'] ?? '–' }}</b>
-                @if ($tag === 'LSR')
-                    <span class="inline-flex min-h-6 items-center gap-1.5 text-[13px] font-bold text-win">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
-                        {{ __('+9 from team match #404') }}
-                    </span>
-                @endif
+                <b class="font-display text-[40px] leading-[1.1] font-bold" data-test="clan-rating">{{ $rating['rating'] ?? '–' }}</b>
             </div>
             <span class="text-[13px] leading-[1.6] text-ink-2">{{ __('Average of the 3 best solo Elos in the clan. Chess has no separate team Elo.') }}</span>
             <div class="flex flex-col">
-                @php($top = collect($this->members)->map(fn ($member) => ['user' => $member->user, 'stats' => ClanStatsPreview::player((string) $member->user->name)])->filter(fn ($row) => $row['stats']['blitz'] > 0)->sortByDesc(fn ($row) => $row['stats']['blitz'])->take(3)->values())
-                @forelse ($top as $index => $row)
+                @forelse ($stats->topPlayers($clan) as $index => $row)
+                    @php($badge = \App\Support\Rating\Ratings::badge($row['tier']))
                     <div class="grid h-11 grid-cols-[20px_minmax(0,1fr)_auto_48px] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[20px_minmax(0,1fr)_124px_48px]">
                         <span class="text-ink-3">{{ $index + 1 }}</span>
                         <x-player-link :user="$row['user']" class="relative inline-flex min-h-6 min-w-0 items-center font-bold after:absolute after:inset-x-0 after:-inset-y-2.5"><span class="truncate">{{ $row['user']->displayName() }}</span></x-player-link>
-                        <x-rank-badge :tier="$row['stats']['tier']" :level="$row['stats']['level']" class="font-normal" />
-                        <b class="text-right">{{ $row['stats']['blitz'] }}</b>
+                        <x-rank-badge :tier="$badge['tier']" :level="$badge['level']" class="font-normal" />
+                        <b class="text-right">{{ $row['rating'] }}</b>
                     </div>
                 @empty
-                    <p class="m-0 text-[13px] text-ink-2">{{ __('No player has a blitz Elo yet.') }}</p>
+                    <p class="m-0 text-[13px] text-ink-2" data-test="rating-empty">{{ $live ? __('No player has a blitz Elo yet.') : __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
                 @endforelse
             </div>
             <span class="text-xs text-ink-3">
                 @if ($rating['rating'])
-                    ({{ implode(' + ', $rating['top']) }}) / 3 = {{ $rating['rating'] }}@if ($tag === 'LSR'){{ __(', before #404: 1082') }}@endif
+                    ({{ implode(' + ', $rating['top']) }}) / 3 = {{ $rating['rating'] }}
                 @else
                     {{ __('needs 3 blitz Elos') }}
                 @endif
@@ -269,10 +273,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     @endforeach
                 </div>
             </span>
+            @if (! $live)
+                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="hashrate-empty">{{ __('Hashrate starts at Block 0: rated games earn points for their clan.') }}</p>
+            @else
             <div class="grid grid-cols-2 gap-3">
                 @foreach ([['s', __('Pre-Season'), $hash['season'], $ranks['season']], ['w', __('last 7 days'), $hash['week'], $ranks['week']]] as [$key, $label, $points, $rank])
                     <span @class(['flex flex-col gap-1 rounded-md bg-ground px-4 py-3', 'shadow-[inset_0_0_0_1px_#F7931A]' => $window === $key, 'shadow-ring' => $window !== $key])>
-                        <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-2xl">{{ $points }}</b>
+                        <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-2xl" data-test="hashrate-{{ $key }}">{{ $points }}</b>
                         <span class="text-xs text-ink-3">{{ $rank ? __('#:rank of :of clans', ['rank' => $rank, 'of' => $ranks['clans']]) : __('no points yet') }}</span>
                     </span>
                 @endforeach
@@ -289,24 +296,27 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @endforeach
                 <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 text-[13px] lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><b>{{ __('Total') }}</b><span class="truncate text-xs text-ink-3">{{ __('win 3, draw 2, loss 1, team match +5') }}</span><b class="text-right text-btc">{{ $contrib->sum('points') }}</b><span class="text-right text-ink-2">100%</span></div>
             </div>
+            @endif
         </section>
     </div>
 
     {{-- Elo over time (P6/P7) --}}
     <section aria-labelledby="elo-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1"><h2 id="elo-h" class="m-0 text-[15px] font-bold">{{ __('Elo over time') }}</h2><span class="text-xs text-ink-3">{{ __('Rocket League 3v3 lineup, per rated series') }}</span></div>
-        @if ($record)
-            @php($points = collect($record['line'])->map(fn ($elo, $i) => number_format($i / (count($record['line']) - 1) * 600, 1, '.', '').','.number_format(160 - ($elo - 1000) / 200 * 160, 1, '.', ''))->implode(' '))
+        @if ($record !== null && count($record['line']) > 1)
+            @php($low = intdiv(min($record['line']), 50) * 50)
+            @php($high = max($low + 100, (intdiv(max($record['line']) - 1, 50) + 1) * 50))
+            @php($points = collect($record['line'])->map(fn ($elo, $i) => number_format($i / (count($record['line']) - 1) * 600, 1, '.', '').','.number_format(160 - ($elo - $low) / ($high - $low) * 160, 1, '.', ''))->implode(' '))
             <div class="grid h-[200px] grid-cols-[44px_minmax(0,1fr)] gap-2">
-                <div class="flex flex-col justify-between pb-5 text-right text-[11px] text-ink-3"><span>1200</span><span>1100</span><span>1000</span></div>
+                <div class="flex flex-col justify-between pb-5 text-right text-[11px] text-ink-3"><span>{{ $high }}</span><span>{{ intdiv($high + $low, 2) }}</span><span>{{ $low }}</span></div>
                 <div class="flex flex-col gap-1.5">
                     <div class="relative grow border-b border-line [background-image:linear-gradient(#1E1E22_1px,transparent_1px)] [background-size:100%_50%]">
-                        <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" class="absolute inset-0" role="img" aria-label="{{ __('Elo of the 3v3 lineup over all :n rated series, from 1000 at the start to :elo', ['n' => count($record['line']) - 1, 'elo' => end($record['line'])]) }}">
+                        <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" class="absolute inset-0" role="img" aria-label="{{ __('Elo of the 3v3 lineup over :n series, from :start to :elo', ['n' => count($record['line']) - 1, 'start' => $record['line'][0], 'elo' => end($record['line'])]) }}">
                             <polyline points="{{ $points }}" fill="none" stroke="#F7931A" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
                         </svg>
                         <span class="absolute top-1 right-0 bg-card px-1 text-xs font-bold">{{ end($record['line']) }}</span>
                     </div>
-                    <div class="flex justify-between text-[11px] text-ink-3"><span>{{ __('start') }}</span><span>{{ __('series :n', ['n' => 10]) }}</span><span>{{ __('series :n', ['n' => 20]) }}</span></div>
+                    <div class="flex justify-between text-[11px] text-ink-3"><span>{{ __('start') }}</span><span>{{ __('series :n', ['n' => intdiv(count($record['line']) - 1, 2)]) }}</span><span>{{ __('series :n', ['n' => count($record['line']) - 1]) }}</span></div>
                 </div>
             </div>
         @else

@@ -2,21 +2,24 @@
 
 use App\Models\Clan;
 use App\Models\ClanMember;
-use App\Support\Clans\ClanStatsPreview;
+use App\Models\Rating;
+use App\Models\RatingChange;
+use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
 use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /*
- * Clans, 1:1 from Clans.dc.html. Clans, players and meetup pins are real;
- * Clan Rating, Hashrate and "Blocks mined" come from ClanStatsPreview until
- * P6/P7 compute them.
+ * Clans, 1:1 from Clans.dc.html. Clans, players, meetup pins, Clan Rating,
+ * Hashrate and the rated results are real (ClanStats); before Block 0 the
+ * rated panels show their empty state.
  */
 new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -69,6 +72,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     /**
      * @return array{clans: int, newest: Clan|null, players: int, meetups: int, blocks: int}
      */
+    /** The page's clan numbers, computed once per request. */
+    #[Computed]
+    public function stats(): ClanStats
+    {
+        return app(ClanStats::class);
+    }
+
     #[Computed]
     public function counters(): array
     {
@@ -77,7 +87,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             'newest' => Clan::query()->latest('created_at')->latest('id')->first(),
             'players' => ClanMember::query()->count(),
             'meetups' => Clan::query()->whereNotNull('meetup_name')->count(),
-            'blocks' => ClanStatsPreview::BLOCKS_MINED, // P7: count of confirmed rated results
+            // Rated results since launch: every game or series that moved a rated rating, once.
+            'blocks' => DB::query()->fromSub(RatingChange::query()->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
+                ->where('ratings.pool', Rating::RATED)->distinct()->select(['rating_changes.source', 'rating_changes.source_id']), 'results')->count(),
         ];
     }
 
@@ -106,7 +118,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     #[Computed]
     public function byRating(): array
     {
-        $rows = $this->clans->map(fn (Clan $clan) => ['clan' => $clan, ...ClanStatsPreview::clanRating($clan->clantag), 'member' => $clan->isMemberClan()])
+        $rows = $this->clans->map(fn (Clan $clan) => ['clan' => $clan, ...$this->stats->clanRating($clan), 'member' => $clan->isMemberClan()])
             ->sortBy([fn ($a, $b) => ($b['rating'] ?? -1) <=> ($a['rating'] ?? -1)])->values()->all();
 
         foreach ($rows as $index => $row) {
@@ -124,7 +136,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     {
         $season = $this->window === 's';
         $rows = $this->clans->map(function (Clan $clan) use ($season) {
-            $hashrate = ClanStatsPreview::hashrate($clan->clantag);
+            $hashrate = $this->stats->hashrate($clan);
 
             return ['clan' => $clan, 'points' => $season ? $hashrate['season'] : $hashrate['week'], 'bonus' => $season ? $hashrate['seasonBonus'] : $hashrate['weekBonus'], 'member' => $clan->isMemberClan()];
         })->sortByDesc('points')->values();
@@ -204,7 +216,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     </section>
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        {{-- Strongest clans: Clan Rating (P7 computes it; preview numbers until then). --}}
+        {{-- Strongest clans: Clan Rating of the live season. --}}
         <section aria-labelledby="cr-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex min-h-10 items-center justify-between gap-3 pb-3">
                 <span class="flex flex-col gap-0.5">
@@ -216,6 +228,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
                 <span>#</span><span>{{ __('Clan') }}</span><span class="text-right">{{ __('Clan Rating') }}</span><span class="hidden text-right lg:block">{{ __('Top 3 solo Elo') }}</span>
             </div>
+            @if (! $this->stats->seasonLive())
+                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="rating-empty">{{ __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
+            @else
             @forelse ($this->byRating as $row)
                 <a href="{{ route('clans.show', $row['clan']) }}" wire:key="cr-{{ $row['clan']->id }}"
                    class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
@@ -236,10 +251,11 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @empty
                 <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
             @endforelse
+            @endif
             <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Chess has no separate team Elo: every board of a team match is a rated solo game. Rocket League keeps its Elo per lineup.') }}</p>
         </section>
 
-        {{-- Most active clans: Hashrate (P7 computes it; preview numbers until then). --}}
+        {{-- Most active clans: Hashrate of the live season (ClanHashrate). --}}
         @php($hash = $this->byHash)
         <section aria-labelledby="hs-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex min-h-10 flex-wrap items-center justify-between gap-3 pb-3">
@@ -258,6 +274,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
                 <span>#</span><span>{{ __('Clan') }}</span><span>{{ __('Hashrate') }}</span><span class="hidden text-right lg:block">{{ __('Team wins') }}</span><span class="hidden text-right lg:block">{{ __('Share') }}</span>
             </div>
+            @if (! $this->stats->seasonLive())
+                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="hashrate-empty">{{ __('Hashrate starts at Block 0: rated games earn points for their clan.') }}</p>
+            @else
             @forelse ($hash['rows'] as $row)
                 <a href="{{ route('clans.show', $row['clan']) }}" wire:key="hs-{{ $row['clan']->id }}"
                    class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
@@ -277,6 +296,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @empty
                 <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
             @endforelse
+            @endif
             <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">
                 {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __('Pre-Season: :n points.', ['n' => $hash['total']]) }}
                 {{ __('Win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}

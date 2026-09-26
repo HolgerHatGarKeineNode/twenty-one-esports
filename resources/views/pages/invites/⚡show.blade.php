@@ -8,7 +8,7 @@ use App\Models\Lineup;
 use App\Models\User;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
-use App\Support\Clans\ClanStatsPreview;
+use App\Support\Clans\ClanStats;
 use App\Support\Nostr\RejectedEvent;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
@@ -108,7 +108,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
     $mine = $this->isInvitee();
     $lineups = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, ['3v3', '2v2', '1v1'], true))->values();
     $lead = $lineups->first();
-    $stats = $lead ? ClanStatsPreview::lineup($clan->clantag, $lead->mode) : null;
+    $stats = $lead ? app(ClanStats::class)->lineup($lead) : null;
     $members = $clan->members->sortBy(fn (ClanMember $member) => [$member->user_id === $clan->owner_id ? 0 : 1, $member->joined_at->getTimestamp()])->values();
     $captains = $members->filter(fn (ClanMember $member) => $member->role === ClanRole::Captain)->map(fn (ClanMember $member) => $member->user->displayName())->implode(', ');
     $lineupSummary = $lineups->map(fn (Lineup $lineup) => $lineup->mode.' '.($lineup->isReady() ? __('ready') : __('needs players')))->implode(', ');

@@ -2864,5 +2864,20 @@
     "City": "Stadt",
     "No clan is linked to a meetup yet.": "Noch kein Clan ist mit einem Meetup verknüpft.",
     "A clan counts for the city of the portal meetup it is linked to.": "Ein Clan zählt für die Stadt des Portal-Meetups, mit dem er verknüpft ist.",
-    "Brought a friend": "Hat einen Freund eingeladen"
+    "Brought a friend": "Hat einen Freund eingeladen",
+    "Clan Ratings start at Block 0, with the first rated blitz games.": "Clan-Ratings starten mit Block 0 und den ersten gewerteten Blitzpartien.",
+    "Hashrate starts at Block 0: rated games earn points for their clan.": "Die Hashrate startet mit Block 0: gewertete Partien bringen ihrem Clan Punkte.",
+    "Elo of the 3v3 lineup over :n series, from :start to :elo": "Elo des 3v3-Lineups über :n Serien, von :start auf :elo",
+    "starts at Block 0": "startet mit Block 0",
+    "Provisional, :n series": "Vorläufig, :n Serien",
+    "No rated game in the last 7 days.": "Keine gewertete Partie in den letzten 7 Tagen.",
+    "Block height": "Blockhöhe",
+    "blocks mined this season": "Blöcke in dieser Season gemined",
+    "Season ends": "Season endet",
+    "then the season review, then the payout": "danach die Season-Prüfung, dann die Auszahlung",
+    "The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The season is live: every fair rated win mines a block.": "Die Esports-Liga der Bitcoin-Community EINUNDZWANZIG: Blitz- und Fernschach, Rocket-League-Serien zwischen Clans, Login mit Nostr. Die Season läuft: jeder faire gewertete Sieg mined einen Block.",
+    "Live now": "Jetzt live",
+    ":season is live": ":season läuft",
+    "Every fair rated win mines a block. Play rated chess or a Rocket League series and climb the ladder.": "Jeder faire gewertete Sieg mined einen Block. Spiel gewertetes Schach oder eine Rocket-League-Serie und steig in der Ladder auf.",
+    "Play rated now": "Jetzt gewertet spielen"
 }

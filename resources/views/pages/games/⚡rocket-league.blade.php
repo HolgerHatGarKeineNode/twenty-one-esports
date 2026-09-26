@@ -5,7 +5,7 @@ use App\Enums\SeriesStatus;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Support\Series\SeriesPresenter;
-use App\Support\Clans\ClanStatsPreview;
+use App\Support\Clans\ClanStats;
 use App\Support\PageMeta;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -27,20 +27,19 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         app(PageMeta::class)->describe(__('Rocket League'), __('Rocket League in the TWENTY ONE esports league: clan lineups play series in 1v1, 2v2 and 3v3, with Elo per lineup, the latest results and open challenges.'));
     }
 
-    /** Rocket League share of each clan's 7-day Hashrate (ledger 2.1: total minus chess). */
-    private const RL_WEEK = ['HDL' => 36, 'LSR' => 30, 'OPS' => 17, 'MMP' => 11, 'B21' => 5, 'STK' => 4, 'LNB' => 0, 'NCE' => 0];
-
     /**
      * @return Collection<int, array{clan: Clan, rank: int, points: int, bonus: int, rl: int, width: string, share: string}>
      */
     #[Computed]
     public function hashrate(): Collection
     {
-        $rows = Clan::query()->orderBy('name')->get()->map(function (Clan $clan) {
-            $hash = ClanStatsPreview::hashrate($clan->clantag);
+        // The live season's last 7 days (ClanStats); clans without points are left out.
+        $stats = app(ClanStats::class);
+        $rows = Clan::query()->orderBy('name')->get()->map(function (Clan $clan) use ($stats) {
+            $hash = $stats->hashrate($clan);
 
-            return ['clan' => $clan, 'points' => $hash['week'], 'bonus' => $hash['weekBonus'], 'rl' => self::RL_WEEK[$clan->clantag] ?? 0];
-        })->sortByDesc('points')->values();
+            return ['clan' => $clan, 'points' => $hash['week'], 'bonus' => $hash['weekBonus'], 'rl' => $stats->seriesHashrate($clan, true)];
+        })->filter(fn (array $row): bool => $row['points'] > 0)->sortByDesc('points')->values();
 
         $top = max(1, (int) $rows->max('points'));
         $total = max(1, (int) $rows->sum('points'));
@@ -97,6 +96,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $rows = $this->hashrate;
     $rl = $rows->sortByDesc('rl')->values();
     $rlTotal = $rl->sum('rl');
+    $rlTop = max(1, (int) $rl->max('rl'));
+    $hashEmpty = \App\Support\Series\Ladders::season() === null ? __('Hashrate starts at Block 0: rated games earn points for their clan.') : __('No rated game in the last 7 days.');
     $weekTotal = $rows->sum('points');
     $series = $this->series;
     $weeks = $series['weeks'];
@@ -115,7 +116,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs text-ink-2 lg:grid-cols-[24px_180px_minmax(0,1fr)_52px_52px_52px]">
                 <span>#</span><span>{{ __('Clan') }}</span><span class="hidden lg:block">{{ __('Hashrate') }}</span><span class="text-right">{{ __('Points') }}</span><span class="hidden text-right lg:block">{{ __('Bonus') }}</span><span class="hidden text-right lg:block">{{ __('Share') }}</span>
             </div>
-            @foreach ($rows as $row)
+            @forelse ($rows as $row)
                 <a href="{{ route('clans.show', $row['clan']) }}" wire:key="rl-{{ $row['clan']->id }}" class="tr grid h-[38px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_180px_minmax(0,1fr)_52px_52px_52px]">
                     <span class="text-ink-3">{{ $row['rank'] }}</span>
                     <span class="flex min-w-0 items-center gap-2"><x-clan-tag :clan="$row['clan']" size="sm" /><span class="truncate">{{ $row['clan']->name }}</span></span>
@@ -124,7 +125,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <span class="hidden text-right text-ink-2 lg:block">+{{ $row['bonus'] }}</span>
                     <span class="hidden text-right text-ink-2 lg:block">{{ $row['share'] }}</span>
                 </a>
-            @endforeach
+            @empty
+                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="rl-hashrate-empty">{{ $hashEmpty }}</p>
+            @endforelse
         </section>
 
         {{-- Rocket League share (P7) --}}
@@ -134,7 +137,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 @foreach ($rl as $index => $row)
                     <span class="flex h-full min-w-0 flex-1 flex-col justify-end gap-1" title="{{ $row['clan']->name }}: {{ $row['rl'] }}">
                         <span class="flex min-w-0 items-center gap-1 text-[10px] text-ink-2 lg:text-[11px]"><x-clan-tag :clan="$row['clan']" size="sm" compact /><span class="truncate">{{ $row['rl'] }}</span></span>
-                        <span class="bar block bg-btc" style="height: {{ max($row['rl'] / 40 * 100, 1) }}%; animation-delay: {{ $index * 0.05 }}s"></span>
+                        <span class="bar block bg-btc" style="height: {{ max($row['rl'] / $rlTop * 100, 1) }}%; animation-delay: {{ $index * 0.05 }}s"></span>
                     </span>
                 @endforeach
             </div>

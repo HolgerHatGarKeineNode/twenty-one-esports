@@ -19,7 +19,7 @@ use App\Support\Clans\ClanJoinRequests;
 use App\Support\Clans\ClanLogos;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
-use App\Support\Clans\ClanStatsPreview;
+use App\Support\Clans\ClanStats;
 use App\Support\Clans\PortalMeetups;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
@@ -43,7 +43,7 @@ use Livewire\WithFileUploads;
  * P4b: "Invite a player" brings a player into the roster only. Lineups are
  * built here from the active members; a member's clan membership is their
  * consent, so no player confirms anything for a lineup (NIP rev. 6).
- * Elo, tiers, Clan Rating and Hashrate are ClanStatsPreview until P6/P7.
+ * Elo, tiers, Block Height, Clan Rating and Hashrate come from ClanStats (real).
  *
  * "Edit clan": the owner changes name, tag, description, logo and meetup
  * link with a new version of the clan event (same `d`, roster unchanged).
@@ -781,12 +781,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     $modes = ['3v3', '2v2', '1v1'];
     $lineups = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, $modes, true))->values();
     $lead = $lineups->first();
-    $leadStats = $lead ? ClanStatsPreview::lineup($tag, $lead->mode) : null;
+    $clanStats = app(ClanStats::class);
+    $leadStats = $lead ? $clanStats->lineup($lead) : null;
     $members = $clan->members->sortBy(fn (ClanMember $member) => [$member->user_id === $clan->owner_id ? 0 : ($member->role === ClanRole::Captain ? 1 : 2), $member->joined_at->getTimestamp()])->values();
     $pending = $clan->invites->where('status', InviteStatus::Pending)->values();
     $paid = $members->filter(fn ($member) => $member->user->is_member)->count();
-    $rating = ClanStatsPreview::clanRating($tag);
-    $hash = ClanStatsPreview::hashrate($tag);
+    $rating = $clanStats->clanRating($clan);
+    $hash = $clanStats->hashrate($clan);
+    $heights = ClanStats::blockHeights($members->pluck('user_id'));
     $captains = $members->filter(fn ($member) => $member->role === ClanRole::Captain)->map(fn ($member) => $member->user->displayName().($member->user_id === $clan->owner_id ? ' ('.__('owner').')' : ''))->implode(', ');
     $messages = \App\Support\Nostr\SignerMessages::labels();
 @endphp
@@ -1048,17 +1050,17 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                 [__('Players'), trans_choice(':count active|:count active', $members->count()).', '.trans_choice(':count invite open|:count invites open', $pending->count()), 'text-ink'],
                 [__('Captains'), $captains, 'text-ink'],
                 [__('Founded'), $clan->created_at?->translatedFormat('M j'), 'text-ink'],
-                [__('Clan Rating, chess'), $rating['rating'] ? __(':n, average of the top 3 players', ['n' => $rating['rating']]) : __('needs 3 blitz Elos'), 'text-ink'],
-                [__('Hashrate'), __(':season this season, :week in the last 7 days', ['season' => $hash['season'], 'week' => $hash['week']]), 'text-btc'],
+                [__('Clan Rating, chess'), ! $clanStats->seasonLive() ? __('starts at Block 0') : ($rating['rating'] ? __(':n, average of the top 3 players', ['n' => $rating['rating']]) : __('needs 3 blitz Elos')), 'text-ink'],
+                [__('Hashrate'), ! $clanStats->seasonLive() ? __('starts at Block 0') : __(':season this season, :week in the last 7 days', ['season' => $hash['season'], 'week' => $hash['week']]), 'text-btc'],
             ] as [$key, $value, $colour])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-1 text-sm lg:grid-cols-[160px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="{{ $colour }}">{{ $value }}</span></div>
             @endforeach
         </div>
         <div class="rounded-lg bg-card px-4 py-2 lg:px-6">
             @foreach (['3v3', '2v2', '1v1'] as $statsMode)
-                @php($stats = ClanStatsPreview::lineup($tag, $statsMode))
+                @php($stats = ($statsLineup = $lineups->firstWhere('mode', $statsMode)) ? $clanStats->lineup($statsLineup) : null)
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-1 text-sm lg:grid-cols-[160px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Elo :mode', ['mode' => $statsMode]) }}</span>
-                    <span>{{ $lineups->firstWhere('mode', $statsMode) === null ? __('no lineup yet') : $stats['elo'].', '.($stats['tier'] === 'provisional' ? __('Provisional, no series yet') : __(':tier, rank :rank of :of', ['tier' => __(ucfirst($stats['tier'])).' '.['I', 'II', 'III'][$stats['level'] - 1], 'rank' => $stats['rank'], 'of' => $stats['of']])) }}</span></div>
+                    <span>{{ $lineups->firstWhere('mode', $statsMode) === null ? __('no lineup yet') : $stats['elo'].', '.($stats['tier'] === 'provisional' ? ($stats['series'] === 0 ? __('Provisional, no series yet') : __('Provisional, :n series', ['n' => $stats['series']])) : __(':tier, rank :rank of :of', ['tier' => __(ucfirst($stats['tier'])).' '.['I', 'II', 'III'][$stats['level'] - 1], 'rank' => $stats['rank'], 'of' => $stats['of']])) }}</span></div>
             @endforeach
             <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-1 text-sm lg:grid-cols-[160px_minmax(0,1fr)]"><span class="text-ink-2">{{ __('Meetup') }}</span><span>{{ $clan->meetup_name ?? '–' }}</span></div>
             <div class="pt-3 pb-2">
@@ -1083,7 +1085,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             <div class="hidden grid-cols-[110px_minmax(0,1fr)_190px_100px_auto] gap-3 px-2 pt-1 text-xs text-ink-3 lg:grid"><span>{{ __('Lineup') }}</span><span>{{ __('Seats') }}</span><span>{{ __('Status') }}</span><span>Elo</span><span></span></div>
             @foreach ($modes as $rowMode)
                 @php($lineup = $lineups->firstWhere('mode', $rowMode))
-                @php($stats = ClanStatsPreview::lineup($tag, $rowMode))
+                @php($stats = $lineup ? $clanStats->lineup($lineup) : null)
                 @php($needed = app(GameRegistry::class)->mode('rocket-league', $rowMode)?->lineupMinimum() ?? 1)
                 @php($active = $lineup?->activeCount() ?? 0)
                 <div wire:key="lu-{{ $rowMode }}" class="tr grid min-h-[60px] grid-cols-[104px_minmax(0,1fr)] items-center gap-3 rounded-sm border-b border-hairline p-2 lg:grid-cols-[110px_minmax(0,1fr)_190px_100px_auto]">
@@ -1157,7 +1159,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
                 <div wire:key="mb-{{ $member->id }}" class="tr grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border-b border-hairline px-2 py-1.5 text-[13px] lg:grid-cols-[minmax(0,1fr)_180px_160px_300px]">
                     <span class="flex min-w-0 flex-col gap-0.5">
                         <b class="truncate">{{ $user->displayName() }}@if ($user->is(auth()->user())) ({{ __('you') }})@endif</b>
-                        <span @class(['text-xs', 'text-btc' => $user->is_member, 'text-ink-3' => ! $user->is_member])>{{ $user->is_member ? __('EINUNDZWANZIG member') : __('Block Height :n', ['n' => ClanStatsPreview::player((string) $user->name)['blockHeight']]) }}</span>
+                        <span @class(['text-xs', 'text-btc' => $user->is_member, 'text-ink-3' => ! $user->is_member])>{{ $user->is_member ? __('EINUNDZWANZIG member') : __('Block Height :n', ['n' => $heights[$user->id] ?? 0]) }}</span>
                     </span>
                     <span class="hidden text-ink-2 lg:block">{{ $member->user_id === $clan->owner_id ? __('Owner, captain') : $member->role->label() }}</span>
                     <span class="hidden text-ink-2 lg:block">{{ $seats ?: '–' }}</span>
