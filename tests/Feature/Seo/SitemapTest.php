@@ -15,6 +15,12 @@ use App\Support\Seo\Sitemap;
 |--------------------------------------------------------------------------
 */
 
+// Search engines may index only production on the APP_URL host (App\Support\Seo\SearchIndexing);
+// the test requests go to that host, so production is what these tests describe.
+beforeEach(function () {
+    $this->app['env'] = 'production';
+});
+
 /**
  * The <loc> values of a sitemap document, parsed as XML (fails the test if it is not).
  *
@@ -139,4 +145,19 @@ test('robots.txt keeps crawlers out of private areas and points to the sitemap',
 test('robots.txt and the sitemap set no cookie', function () {
     expect($this->get('/robots.txt')->headers->getCookies())->toBe([])
         ->and($this->get('/sitemap.xml')->headers->getCookies())->toBe([]);
+});
+
+test('robots.txt closes every host but production on the APP_URL host', function (string $env, string $host) {
+    $this->app['env'] = $env;
+
+    expect($this->get('http://'.$host.'/robots.txt')->assertOk()->getContent())->toBe("User-agent: *\nDisallow: /\n");
+})->with([
+    'interim domain' => ['production', 'esports-twentyone.on-forge.com'],
+    'staging environment' => ['staging', 'localhost'],
+    'local environment' => ['local', 'localhost'],
+]);
+
+test('the production host is the one of APP_URL', function () {
+    expect(parse_url(config('app.url'), PHP_URL_HOST))->toBe('localhost')
+        ->and($this->get('/robots.txt')->getContent())->toContain('Sitemap: ');
 });

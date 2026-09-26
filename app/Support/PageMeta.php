@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Support\Seo\SearchIndexing;
+
 /**
  * Search, link-preview and robots tags of the current page (P6b, P14),
  * printed by partials/head.blade.php: a page sets them while it renders,
@@ -15,6 +17,7 @@ namespace App\Support;
  *
  * Indexing is opt-in: a page that never calls describe() is `noindex`, so a
  * new private page cannot end up in a search index by forgetting a line.
+ * Outside production on the APP_URL host every page is `noindex`.
  * A public page calls describe() with its own title and description and
  * gets the canonical URL, the hreflang alternates and the preview tags.
  *
@@ -70,10 +73,11 @@ final class PageMeta
     }
 
     /**
-     * Search engines may index the page: it described itself and is not private.
+     * Search engines may index the page: it described itself, is not private,
+     * and this is the production site on its own host (SearchIndexing).
      */
     public function isIndexable(): bool
     {
-        return ! $this->noindex && $this->description !== null;
+        return ! $this->noindex && $this->description !== null && SearchIndexing::allowed();
     }
 }

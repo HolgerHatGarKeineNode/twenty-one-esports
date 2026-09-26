@@ -21,6 +21,12 @@ use App\Support\Invites\InviteLinks;
 |
 */
 
+// Search engines may index only production on the APP_URL host (App\Support\Seo\SearchIndexing);
+// the test requests go to that host, so production is what these tests describe.
+beforeEach(function () {
+    $this->app['env'] = 'production';
+});
+
 /**
  * The public pages with their fixtures: name => fn () => [url, JSON-LD types beyond Organization].
  *
@@ -257,3 +263,15 @@ test('a name cannot close the JSON-LD script', function () {
     expect($html)->not->toContain('</script><script>alert(1)')
         ->and(jsonLdGraph($html)[1]['mainEntity']['name'])->toBe('</script><script>alert(1)</script>');
 });
+
+test('outside production, or on another host, every page is noindex', function (string $env, string $host) {
+    $this->app['env'] = $env;
+
+    expect($this->get('http://'.$host.'/clans')->assertOk()->getContent())
+        ->toContain('<meta name="robots" content="noindex, nofollow">')
+        ->not->toContain('rel="canonical"')
+        ->not->toContain('rel="alternate" hreflang=');
+})->with([
+    'interim domain' => ['production', 'esports-twentyone.on-forge.com'],
+    'staging environment' => ['staging', 'localhost'],
+]);
