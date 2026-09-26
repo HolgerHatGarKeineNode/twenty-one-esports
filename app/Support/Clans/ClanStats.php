@@ -351,7 +351,6 @@ final class ClanStats
             return [];
         }
 
-        // Rounded to the minute, so both reads of a page share the memo.
-        return $this->hashrate->breakdown($this->season, $week ? now()->subDays(7)->startOfMinute() : null);
+        return $this->hashrate->breakdown($this->season, $week);
     }
 }

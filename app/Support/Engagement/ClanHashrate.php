@@ -2,13 +2,15 @@
 
 namespace App\Support\Engagement;
 
-use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Support\Rating\ClanRating;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Clan hashrate of a season from the league's own records (docs/nips/
@@ -25,103 +27,158 @@ use Carbon\CarbonInterface;
  *    rated ladders. Casual games, void series and players without a clan
  *    earn nothing.
  *
- * "Last 7 days" is the same over the results recorded since then. Chess
+ * "Last 7 days" is the same over the results recorded since then (from a
+ * whole minute), counted in the same pass as the season. Chess
  * team matches over boards do not exist yet, so there is no chess team-win
  * bonus to count.
+ *
+ * Cost (security gate P10, Low): the whole season is read, so a breakdown
+ * is computed in one pass for both windows and cached for
+ * {@see CACHE_SECONDS} per season, the rows are read without model
+ * hydration, and one instance serves a request (AppServiceProvider). A
+ * result shows in the numbers within a minute.
  */
 final class ClanHashrate
 {
-    /** @var array<string, array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>> */
+    public const CACHE_SECONDS = 60;
+
+    /** Rows per whereIn, below every driver's bound-parameter limit. */
+    private const CHUNK = 1000;
+
+    /** @var array<string, array{season: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>, week: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>}> */
     private array $memo = [];
 
     /**
      * @return array<string, int> clan address => hashrate points
      */
-    public function forSeason(string $season, ?CarbonInterface $since = null): array
+    public function forSeason(string $season, bool $week = false): array
     {
-        return array_map(fn (array $clan): int => $clan['points'], $this->breakdown($season, $since));
+        return array_map(fn (array $clan): int => $clan['points'], $this->breakdown($season, $week));
     }
 
     /**
      * Per clan address: the points, the part of them from team wins, the
      * number of team wins, the part from Rocket League series, and the
-     * points each player (pubkey) earned.
+     * points each player (pubkey) earned; for the season or its last 7 days.
      *
      * @return array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>
      */
-    public function breakdown(string $season, ?CarbonInterface $since = null): array
+    public function breakdown(string $season, bool $week = false): array
     {
-        $key = $season.'|'.($since?->getTimestamp() ?? '');
+        $key = 'clan-hashrate:'.$season;
+        // The window starts on a whole minute, so one cached pass serves the whole minute.
+        $since = now()->subDays(7)->startOfMinute();
 
-        return $this->memo[$key] ??= $this->compute($season, $since);
+        $this->memo[$key] ??= Cache::remember($key, self::CACHE_SECONDS, fn (): array => $this->compute($season, $since));
+
+        return $this->memo[$key][$week ? 'week' : 'season'];
     }
 
     /**
-     * @return array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>
+     * @return array{season: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>, week: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>}
      */
-    private function compute(string $season, ?CarbonInterface $since): array
+    private function compute(string $season, CarbonInterface $since): array
     {
+        // Each rated result once, with the time it was recorded.
         $sources = RatingChange::query()
+            ->toBase()
             ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
             ->where('ratings.pool', Rating::RATED)
             ->where('ratings.season', $season)
-            ->when($since !== null, fn ($query) => $query->where('rating_changes.created_at', '>=', $since))
-            ->distinct()
-            ->get(['rating_changes.source', 'rating_changes.source_id']);
+            ->groupBy('rating_changes.source', 'rating_changes.source_id')
+            ->selectRaw('rating_changes.source as source, rating_changes.source_id as source_id, max(rating_changes.created_at) as recorded_at')
+            ->get();
+        $recent = $sources->filter(fn (object $row): bool => $row->recorded_at !== null && CarbonImmutable::parse($row->recorded_at)->gte($since))
+            ->map(fn (object $row): string => $row->source.':'.$row->source_id)->flip();
 
         $weights = ClanRating::fromConfig();
         $points = [$weights->winPoints, $weights->drawPoints, $weights->lossPoints];
-        $clans = [];
-        $add = function (?string $address, ?string $pubkey, int $slot, bool $series = false) use (&$clans, $points, $weights): void {
+        /** @var array{season: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>, week: array<string, array{points: int, bonus: int, teamWins: int, series: int, players: array<string, int>}>} $windows */
+        $windows = ['season' => [], 'week' => []];
+        $add = function (?string $address, ?string $pubkey, int $slot, bool $series, bool $isRecent) use (&$windows, $points, $weights): void {
             if ($address === null || $address === '') {
                 return;
             }
 
-            $clans[$address] ??= ['points' => 0, 'bonus' => 0, 'teamWins' => 0, 'series' => 0, 'players' => []];
+            foreach ($isRecent ? ['season', 'week'] : ['season'] as $window) {
+                $row = $windows[$window][$address] ?? ['points' => 0, 'bonus' => 0, 'teamWins' => 0, 'series' => 0, 'players' => []];
 
-            if ($pubkey === null) {
-                $clans[$address]['points'] += $weights->teamWinBonus;
-                $clans[$address]['bonus'] += $weights->teamWinBonus;
-                $clans[$address]['teamWins']++;
-                $clans[$address]['series'] += $weights->teamWinBonus;
+                if ($pubkey === null) {
+                    $row['points'] += $weights->teamWinBonus;
+                    $row['bonus'] += $weights->teamWinBonus;
+                    $row['teamWins']++;
+                    $row['series'] += $weights->teamWinBonus;
+                } else {
+                    $row['points'] += $points[$slot];
+                    $row['series'] += $series ? $points[$slot] : 0;
+                    $row['players'][$pubkey] = ($row['players'][$pubkey] ?? 0) + $points[$slot];
+                }
 
-                return;
+                $windows[$window][$address] = $row;
             }
-
-            $clans[$address]['points'] += $points[$slot];
-            $clans[$address]['series'] += $series ? $points[$slot] : 0;
-            $clans[$address]['players'][$pubkey] = ($clans[$address]['players'][$pubkey] ?? 0) + $points[$slot];
         };
 
-        $chessIds = $sources->where('source', RatingChange::CHESS)->pluck('source_id')->all();
+        foreach ($sources->where('source', RatingChange::CHESS)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
+            $games = DB::table('chess_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'result', 'clans_at_accept']);
+            $pubkeys = DB::table('users')->whereIn('id', $games->pluck('white_id')->merge($games->pluck('black_id'))->filter()->unique()->values()->all())->pluck('pubkey', 'id');
 
-        foreach (ChessGame::query()->with(['white:id,pubkey', 'black:id,pubkey'])->whereKey($chessIds)->get() as $game) {
-            $atAccept = $game->clans_at_accept ?? [];
-            [$white, $black] = match ($game->result) {
-                '1-0' => [0, 2],
-                '0-1' => [2, 0],
-                default => [1, 1],
-            };
+            foreach ($games as $game) {
+                $atAccept = self::json($game->clans_at_accept);
+                [$white, $black] = match ($game->result) {
+                    '1-0' => [0, 2],
+                    '0-1' => [2, 0],
+                    default => [1, 1],
+                };
 
-            $add($atAccept[$game->white->pubkey] ?? null, $game->white->pubkey, $white);
-            $add($atAccept[$game->black->pubkey] ?? null, $game->black->pubkey, $black);
-        }
+                foreach ([[$game->white_id, $white], [$game->black_id, $black]] as [$userId, $slot]) {
+                    $pubkey = $userId === null ? null : ($pubkeys[$userId] ?? null);
 
-        $seriesIds = $sources->where('source', RatingChange::SERIES)->pluck('source_id')->all();
-
-        foreach (SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan'])->whereKey($seriesIds)->get() as $match) {
-            $atAccept = $match->clans_at_accept ?? [];
-
-            foreach ($match->countedRoster() as $entry) {
-                $add($atAccept[$entry['pubkey']] ?? null, $entry['pubkey'], $entry['side'] === $match->winner ? 0 : 2, true);
-            }
-
-            if (in_array($match->winner, SeriesMatch::SIDES, true)) {
-                $add($match->lineup($match->winner)?->clan?->address(), null, 0);
+                    if (is_string($pubkey)) {
+                        $add($atAccept[$pubkey] ?? null, $pubkey, $slot, false, isset($recent['chess:'.$game->id]));
+                    }
+                }
             }
         }
 
-        return $clans;
+        foreach ($sources->where('source', RatingChange::SERIES)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
+            $matches = DB::table('series_matches')->whereIn('id', $ids->all())
+                ->get(['id', 'winner', 'resolved_roster', 'clans_at_accept', 'challenger_lineup_id', 'challenged_lineup_id']);
+            // The roster of the latest report, for series without an admin decision (SeriesMatch::countedRoster()).
+            $reports = DB::table('series_reports')
+                ->whereIn('id', DB::table('series_reports')->whereIn('series_match_id', $ids->all())->groupBy('series_match_id')->selectRaw('max(id)'))
+                ->pluck('roster', 'series_match_id');
+            $lineupClans = DB::table('lineups')->join('clans', 'clans.id', '=', 'lineups.clan_id')
+                ->whereIn('lineups.id', $matches->pluck('challenger_lineup_id')->merge($matches->pluck('challenged_lineup_id'))->filter()->unique()->values()->all())
+                ->get(['lineups.id', 'clans.owner_pubkey', 'clans.slug'])
+                ->mapWithKeys(fn (object $row): array => [$row->id => Clan::KIND.':'.$row->owner_pubkey.':'.$row->slug]);
+
+            foreach ($matches as $match) {
+                $atAccept = self::json($match->clans_at_accept);
+                $isRecent = isset($recent['series:'.$match->id]);
+                $roster = $match->resolved_roster !== null ? self::json($match->resolved_roster) : self::json($reports[$match->id] ?? null);
+
+                foreach ($roster as $entry) {
+                    $add($atAccept[$entry['pubkey']] ?? null, $entry['pubkey'], $entry['side'] === $match->winner ? 0 : 2, true, $isRecent);
+                }
+
+                if (in_array($match->winner, SeriesMatch::SIDES, true)) {
+                    $lineupId = $match->winner === 'challenger' ? $match->challenger_lineup_id : $match->challenged_lineup_id;
+                    $add($lineupId === null ? null : ($lineupClans[$lineupId] ?? null), null, 0, true, $isRecent);
+                }
+            }
+        }
+
+        return $windows;
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    private static function json(mixed $value): array
+    {
+        $decoded = is_string($value) ? json_decode($value, true) : null;
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**

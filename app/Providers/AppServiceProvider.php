@@ -6,6 +6,8 @@ use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Clans\ClanStats;
+use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
@@ -43,6 +45,20 @@ class AppServiceProvider extends ServiceProvider
 
             return $attributes->get(PageMeta::class);
         });
+
+        // One clan-statistics instance per request (security gate P10), kept on the
+        // request like PageMeta above: every panel of a page shares one hashrate read.
+        foreach ([ClanHashrate::class, ClanStats::class] as $perRequest) {
+            $this->app->bind($perRequest, function (Application $app) use ($perRequest): object {
+                $attributes = $app->make('request')->attributes;
+
+                if (! $attributes->get($perRequest) instanceof $perRequest) {
+                    $attributes->set($perRequest, $app->build($perRequest));
+                }
+
+                return $attributes->get($perRequest);
+            });
+        }
 
         // The trust job's ranks (P7d); without a run in the live season rated play stays closed.
         $this->app->bind(TrustFacts::class, AnchoredTrustFacts::class);
