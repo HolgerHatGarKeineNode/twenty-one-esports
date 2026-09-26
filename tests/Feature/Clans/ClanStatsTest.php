@@ -91,6 +91,8 @@ test('before Block 0 every rated clan panel shows its empty state and no numbers
         ->assertSee('data-test="rating-empty"', false)
         ->assertSee('data-test="hashrate-empty"', false)
         ->assertSee(__('Clan Ratings start at Block 0, with the first rated blitz games.'))
+        // The rating panel is the clan directory too: the clan stays listed, without numbers.
+        ->assertSeeInOrder(['id="cr-h"', 'Laser Eyes', __('starts at Block 0')], false)
         ->assertDontSee('1151 · 1089 · 1034');
 
     $this->get(route('clans.show', $clan))->assertOk()

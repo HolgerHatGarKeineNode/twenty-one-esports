@@ -228,9 +228,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
                 <span>#</span><span>{{ __('Clan') }}</span><span class="text-right">{{ __('Clan Rating') }}</span><span class="hidden text-right lg:block">{{ __('Top 3 solo Elo') }}</span>
             </div>
+            {{-- Also the clan directory: before Block 0 it lists every clan, without numbers. --}}
             @if (! $this->stats->seasonLive())
-                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="rating-empty">{{ __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
-            @else
+                <p class="m-0 border-b border-hairline py-3 text-[13px] text-ink-2" data-test="rating-empty">{{ __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
+            @endif
             @forelse ($this->byRating as $row)
                 <a href="{{ route('clans.show', $row['clan']) }}" wire:key="cr-{{ $row['clan']->id }}"
                    class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
@@ -244,14 +245,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     </span>
                     <span class="flex flex-col items-end gap-0.5">
                         <b @class(['text-[15px]', 'text-ink-3' => $row['rating'] === null])>{{ $row['rating'] ?? '–' }}</b>
-                        <span class="text-[11px] whitespace-nowrap text-ink-3">{{ $row['rating'] === null ? __('needs 3 blitz Elos') : __('avg top 3') }}</span>
+                        <span class="text-[11px] whitespace-nowrap text-ink-3">{{ $row['rating'] !== null ? __('avg top 3') : ($this->stats->seasonLive() ? __('needs 3 blitz Elos') : __('starts at Block 0')) }}</span>
                     </span>
-                    <span class="hidden text-right text-xs whitespace-nowrap text-ink-2 lg:block">{{ implode(' · ', [...$row['top'], ...(count($row['top']) < 3 ? [__('missing')] : [])]) }}</span>
+                    <span class="hidden text-right text-xs whitespace-nowrap text-ink-2 lg:block">{{ $this->stats->seasonLive() ? implode(' · ', [...$row['top'], ...(count($row['top']) < 3 ? [__('missing')] : [])]) : '–' }}</span>
                 </a>
             @empty
                 <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
             @endforelse
-            @endif
             <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Chess has no separate team Elo: every board of a team match is a rated solo game. Rocket League keeps its Elo per lineup.') }}</p>
         </section>
 
