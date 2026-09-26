@@ -17,7 +17,9 @@ notifications, prize-pool zaps; round 5, **revision 5**: the season chain, pots 
 clan ownership, 21 rank tiers, rank badges, bounties; round 6, **revision 6** (2026-09-25): clan
 invitations into the roster only, the membership as consent to lineups, the wording of consensus
 rule 7; **revision 7** (2026-09-26): running tournaments, with the sign-up consent `22150`, director
-results, tournaments before Block 0, and no blocks from tournaments). Not submitted to
+results, tournaments before Block 0, and no blocks from tournaments; **revision 7.1** (2026-09-26):
+director forfeits unrated, disinterested directors, Rocket League 1v1 as a player ladder). Not
+submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
@@ -35,7 +37,26 @@ marked "rev. 5"). Rules marked "rev. 5" that do not depend on a ladder (clan own
 signer, rank tiers, badges, bounties, pots) apply from the day a league adopts revision 5. The rules
 marked "rev. 6" (clans and lineups only; no ladder depends on them) apply from the day a league adopts
 revision 6. The rules marked "rev. 7" concern tournaments only; they apply to every tournament whose
-first `31923` version the league signs after it adopts revision 7.
+first `31923` version the league signs after it adopts revision 7. The rules marked "rev. 7.1" on
+director results apply with revision 7; the one on Rocket League 1v1 applies to every
+`rocket-league/1v1` ladder whose first version is signed after the league adopts revision 7.1,
+because `rates` is a frozen ladder parameter.
+
+### Changelog of revision 7.1 (2026-09-26)
+
+- **Director forfeits are unrated** ([Director results](#director-results-rev-7)): a no-show or forfeit
+  entered by a tournament director is attested with `resolution` `forfeit` and **no `elo`**; it moves
+  no rating, counts for no Block Height and no clan hashrate. Rating step 4 and validation rule 16
+  amended.
+- **Only a disinterested director enters a rated result**: whoever plays in the match, belongs to a
+  clan in it, or was appointed along the chain of appointments by someone who does, may not enter or
+  correct it; an admin only for their own interest.
+- **Rocket League 1v1 is a player ladder** ([Rocket League 1v1](#rocket-league-1v1-rev-71)): `rates`
+  `player`, one entity per player (the pubkey), whether the player plays for a clan's 1v1 lineup or
+  from a tournament's solo entry. A side without a lineup is a `p` side, as in a solo chess game. The
+  open point "Rocket League 1v1" is settled.
+- Validation rule 16: an `elo` "before" value follows the entity's last attestation **with an `elo`
+  row for it**, which also covers the unrated attestations that already existed.
 
 ### Changelog of revision 7 (2026-09-26)
 
@@ -422,13 +443,13 @@ describes itself.
 | field | ladder | chess | Rocket League |
 |---|---|---|---|
 | game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` |
-| rated entity | `rates` | `player`; there is no team rating | `lineup` |
+| rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) |
 | time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none |
 | variant | `variant` | `standard` | none |
 | rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes |
 | match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 |
 | team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 |
-| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | the lineup's own Elo; clan hashrate recomputable (rev. 4) |
+| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) |
 | draws | | yes, a game can end `1/2-1/2` | no |
 | result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) |
 | moves on Nostr | | correspondence only; blitz moves stay on the league server | none |
@@ -436,6 +457,33 @@ describes itself.
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
 games never produce match-flow events; a player may still publish the finished game as a plain
 NIP-64 note.
+
+### Rocket League 1v1 (rev. 7.1)
+
+A Rocket League 1v1 ladder is a **player ladder**: `d` = `rocket-league/1v1/<season>` (unchanged),
+`rates` `player`, and the rated entity is always the **player's pubkey**, whether the player plays for
+a clan or alone. Revision 6 had it as a lineup ladder of one-player lineups; a tournament's solo
+entries have no lineup, and a lineup address for a single player would split one person's rating over
+every clan they ever played 1v1 for. Chess solved the same problem the same way: the player is rated,
+the clan appears as context.
+
+A 1v1 **side** is one of two things:
+
+- **a lineup side**: a clan's `1v1` lineup, as before. The challenge and the attestation carry the
+  lineup `a` with role `challenger` or `challenged` (context, like the lineups of a chess team match),
+  and the roster `p` with side and lineup role; the `elo` entity is the roster player's pubkey;
+- **a player side**: a player without a lineup (a tournament's solo entry). The challenge carries
+  `["p", "<pubkey>", "<relay>", "<side>"]` and no lineup `a` for that side, exactly like a solo chess
+  game; report and attestation carry the player as a roster entry
+  `["p", "<pubkey>", "<relay>", "<side>", "player"]`; the `elo` entity is that pubkey.
+
+The two kinds of side can meet: a clan's 1v1 lineup against a solo entry is one lineup `a` and one
+`p` side. Every 1v1 side has exactly one roster player. `clan` rows follow the players, as always:
+a player side gets one if its player was an active clan member at the accept (the pairing, in a
+tournament). A 1v1 **team win** (clan hashrate step 2) needs a lineup side that won.
+
+A `rocket-league/1v1` ladder whose first version was signed with `rates` `lineup` keeps it for its
+season (frozen parameter). On such a ladder a player side is never rated: its matches are casual.
 
 ## Events
 
@@ -569,6 +617,10 @@ where the game has one, one to three `start`, `respond_by`, `alt`.
   with side `challenged`, and no lineup `a`. **Roster side** (rev. 4): on a lineup ladder, a mix team
   of a tournament plays as one `p` per team member with its side and no lineup `a`; the team must be
   one team of the tournament's draw. On a player ladder a `p` side is always a single player.
+  **Player side** (rev. 7.1): on the Rocket League 1v1 player ladder a side is either a clan's 1v1
+  lineup (lineup `a` with its role) or a single player (`p` with its side, no lineup `a`), and the
+  two can meet; see [Rocket League 1v1](#rocket-league-1v1-rev-71). A player side is not a roster
+  side and is rated.
 - **Match number** (rev. 4). `match` with the number the league reserved for this challenge. The
   client asks the league for a number, puts it into the challenge and signs; the league refuses a
   challenge whose number it did not reserve for this author or that another challenge already uses.
@@ -707,7 +759,8 @@ Revision 4 adds three things to every attestation of a revision-4 ladder:
   challenge. It is the marker that keeps the attestation out of the season chain
   ([Blocks](#blocks-block-in-2154)).
 
-**Mix teams are unrated** (rev. 4). An attestation of a challenge with a roster side carries `score`,
+**Mix teams are unrated** (rev. 4). An attestation of a challenge with a roster side (a mix team;
+rev. 7.1: not a single-player side on the 1v1 player ladder) carries `score`,
 the roster, `resolution`, `winner` and `match`, but no `elo`, no `trust`, no `gate` and no `clan`. The
 other side's rating does not move, and the match counts for no Block Height and no clan hashrate. The
 result is still backed by signatures: the report and the confirmation are signed by roster players or
@@ -762,16 +815,46 @@ The only event is the attestation, and it says so:
 - no `e` is required, because nothing exists to reference; `content` states that the result was
   entered by a tournament director;
 - **series**: `score` and roster as for `admin` ("the league's decision"): the roster comes from the
-  director's entry; a no-show `forfeit` has neither, as in [League Attestation](#league-attestation-2154);
+  director's entry; where the entry does not say who played, it is each side's regular players
+  (lineup roles `captain` and `player`, no `substitute`) as pinned at the pairing, and for a player
+  side its one player (rev. 7.1). A no-show `forfeit` has neither, as in
+  [League Attestation](#league-attestation-2154);
 - **chess**: one `board` row with the director's result, the two players as roster entries by side
   (White `challenger`), and `winner` following from the `board` row;
-- everything else as for any attestation of the ladder: `elo`, `prev`, `match`, `trust` and `gate`
-  rows on a ladder with `trust` (a league pairing needs no opponent list), `clan` rows for every rated
-  player with a clan at the pairing.
+- everything else as for any attestation of the ladder: `elo` (except for a forfeit, below), `prev`,
+  `match`, `trust` and `gate` rows on a ladder with `trust` (a league pairing needs no opponent list),
+  `clan` rows for every rated player with a clan at the pairing.
 
-A director result is rated like any `admin` or `forfeit` result ([Rating](#rating), step 4) and counts
-for [Block Height](#block-height) and [Clan hashrate](#clan-hashrate) by the same rules. It never
-mines; no tournament match does ([Blocks](#blocks-block-in-2154)).
+**What is rated (rev. 7.1).** A director's word is the only evidence behind a director result, so two
+limits apply:
+
+1. **A director forfeit is never rated.** A no-show or other forfeit that a director entered is
+   attested with `resolution` `forfeit` and **no `elo` row**; it moves no rating and is no
+   [rated result](#rating) (step 5), so it counts for no Block Height and no clan hashrate. The bracket
+   still advances. On a ladder with `trust` it keeps the `trust` tag and the `gate` rows pinned at the
+   pairing, for the gatekeepers and the players on its roster, and it has `clan` rows only for players
+   on its roster (a chess forfeit names both players; a
+   series forfeit has no roster, so none). (A forfeit that the league decides outside director mode, after a no-show in a
+   match the players run, stays rated as before.)
+2. **A played result is rated only if a disinterested director entered it.** A person has an
+   **interest** in a match if they
+   - play in it (belong to either entry),
+   - belong to a clan in it, as member, captain or owner: the clan of an entered lineup, or the clan of
+     any player of either entry, entered or not, or
+   - were appointed director, directly or along the chain of appointments (who added whom), by someone
+     with an interest; a director with no recorded appointer counts as appointed by the organiser.
+
+   An **admin** of the league counts only with a personal interest (the first two); the appointment
+   chain does not apply to them. An interested person never enters or corrects the result, and a
+   league that let one do so must not rate it: that result carries no `elo`. Interest is judged at each
+   entry and correction; `entered-by` names the last one, and every earlier one had to pass as well.
+
+A played director result that passes both limits is rated like any `admin` result
+([Rating](#rating), step 4) and counts for [Block Height](#block-height) and
+[Clan hashrate](#clan-hashrate) by the same rules. No director result mines; no tournament match does
+([Blocks](#blocks-block-in-2154)). Who is a director, who appointed whom, and clan memberships at entry
+time are league data: a reader cannot check the interest rule, only the league's claim of it (see
+"What it proves" below).
 
 The **pairing** is the tournament's: it happens when the league puts the two sides into a match of
 the director's open round. Everything "at the accept" (trust gate, `clan` rows, the ladder being open)
@@ -1005,7 +1088,9 @@ The `rating` tag of the ladder fixes the arithmetic for the whole season.
    provisional k-factor both are the `rating` k-factor and the result is zero-sum; with one, a pairing
    of a provisional and an established entity is not zero-sum, by design.
 4. `confirmed`, `admin` and `forfeit` are rated. `void` is not: its `elo` values have `before` equal
-   to `after`.
+   to `after`. Rev. 7.1: a forfeit entered by a tournament director is not rated and carries no `elo`,
+   nor is a director result entered by an interested person
+   ([Director results](#director-results-rev-7)).
 5. A **rated result** is an attestation with `confirmed`, `admin` or `forfeit` that carries `elo`.
    An entity's `wins`, `losses` and `draws` in `standing` count its rated results; while their sum is
    below `provisional`, its tier is shown as `provisional`, afterwards it is the highest `tier` whose
@@ -1374,7 +1459,8 @@ returns plain notification `p` tags, for example in a no-show forfeit.
 What counts: each board of a chess team match for the two players of that board; a Rocket League
 series once per roster player, however many of its games they played; a chess time-out forfeit for
 both players; a no-show forfeit without a report for nobody; a match with a mix team (unrated, no
-`elo`) for nobody.
+`elo`) for nobody; a director forfeit (rev. 7.1, no `elo`) for nobody; a Rocket League 1v1 series
+(rev. 7.1) once for each of its two players.
 
 ### Global Rating
 
@@ -1916,8 +2002,9 @@ Per kind:
     side `challenger` or `challenged` and a lineup role in position 4; each side lists at least the
     mode's team size; every roster player of a lineup side is an active lineup player of that side's
     lineup when the report is signed, with the role that lineup gives them; every roster player of a
-    roster side (rev. 4) is a member of that side in the challenge, with role `player`; no pubkey
-    appears twice in the event.
+    roster side (rev. 4) is a member of that side in the challenge, with role `player`; the roster
+    entry of a 1v1 player side (rev. 7.1) is the side's `p` of the challenge, with role `player`; no
+    pubkey appears twice in the event.
 14. **2153**: the author is an acting captain of the lineup (or a roster player of the roster side)
     that did not author the report; the report is the latest one for the challenge. For a chess game record: the author is the other
     player of that game, and the record is the counted final record of the game.
@@ -1931,13 +2018,18 @@ Per kind:
 16. **2154**: signed by the key in the ladder address; `prev` equals the id of the latest
     attestation of this ladder; the `elo` entities match the ladder's `rates` (lineup addresses or
     pubkeys); each `elo` "before" value equals the entity's "after" value in its previous
-    attestation of this ladder, or else its `seed`, or else the ladder's start rating; each
+    attestation of this ladder that has an `elo` row for it (rev. 7.1: attestations without one, such
+    as a mix-team match or a director forfeit, are skipped), or else its `seed`, or else the ladder's
+    start rating; each
     "after" value follows [Rating](#rating); `score` and roster `p` tags follow
     [League Attestation](#league-attestation-2154) for the given `resolution` and pass the checks of
     rule 13; a `board` row equals the counted game record, and `winner` follows from it; without
     any report or game record, `resolution` is `forfeit` or `void`; the only attestations without
-    `elo` are the unrated whole-team forfeit or void of a chess team match and (rev. 4) an
-    attestation of a challenge with a roster side. On a ladder with `trust`:
+    `elo` are the unrated whole-team forfeit or void of a chess team match, (rev. 4) an
+    attestation of a challenge with a roster side of several players, and (rev. 7.1) a director
+    result with `resolution` `forfeit`, which never has `elo`. Rev. 7.1: on a player ladder, each `elo`
+    entity is the pubkey of a roster player; a 1v1 side's entity is its one roster player, with or
+    without a lineup `a`. On a ladder with `trust`:
     the attestation (except one with a roster side) carries `trust` and a `gate` row for both
     gatekeepers and every rated player; each
     row's assertion is a `30382` by the key in `trust` with `d` equal to the row's pubkey and `rank`
@@ -1947,8 +2039,8 @@ Per kind:
     accepting answer's. On a ladder without `trust`, neither `trust` nor `gate` appears. Revision 4:
     `match` equals the challenge's; one `clan` row per rated player who was an active clan member at
     the accept, naming that clan, and none for anyone else; the tournament `a` equals the challenge's;
-    an attestation of a challenge with a roster side has no `elo`, `trust`, `gate` or `clan`.
-    Revision 7: every attestation of a tournament match carries the tournament `a`, a `31923` of the
+    an attestation of a challenge with a roster side (a mix team) has no `elo`, `trust`, `gate` or
+    `clan`. Revision 7: every attestation of a tournament match carries the tournament `a`, a `31923` of the
     league key whose ladder `a` is this ladder (an unrated tournament has no attestations). With
     `entered-by` (a [director result](#director-results-rev-7)): exactly one, a 64-character lower-case
     hex pubkey; the tournament `a` is present; `resolution` is `admin` or `forfeit`; there is no
@@ -4936,8 +5028,8 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   second value; the arithmetic is already defined.
 - **Clan rating per mode.** The top-three average is per chess mode (blitz, correspondence), since
   each mode has its own player ladder; which one the clan page shows first is a design question.
-- **Rocket League 1v1** stays a lineup ladder (a one-player lineup of a clan). It could become a
-  player ladder (`rates player`) like chess, so that players without a clan can play Duel.
+- **Rocket League 1v1**: settled in revision 7.1, it is a player ladder
+  ([Rocket League 1v1](#rocket-league-1v1-rev-71)).
 - **Correspondence time-outs and pauses** (holidays) are not modelled beyond the time control; a
   time-out is a league `forfeit`.
 - **Fair play** (engine use) is out of scope; a verdict would be `admin` or `void` with a public
