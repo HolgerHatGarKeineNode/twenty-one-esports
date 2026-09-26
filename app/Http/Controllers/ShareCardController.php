@@ -8,6 +8,7 @@ use App\Models\SeasonAttestation;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Cards\ShareCard;
+use App\Support\Cards\ShareMoments;
 use App\Support\Tournaments\TournamentChampion;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\App;
@@ -51,7 +52,7 @@ class ShareCardController extends Controller
     {
         $season = Season::query()->where('slug', $season)->firstOrFail();
         $user = User::query()->where('npub', $npub)->first();
-        abort_if($user === null || $season->genesis_at->isFuture(), 404);
+        abort_if($user === null || ! ShareMoments::hasWrapped($season, $user), 404);
 
         return $this->png($locale, fn (): ShareCard => ShareCard::wrapped($season, $user), $format);
     }

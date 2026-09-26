@@ -2,98 +2,48 @@
  * Rank badges on the player's Nostr profile and share posts (P11).
  *
  * profileBadge: "Show on my Nostr profile" (NIP-58 kind 10008).
- *   1. read the player's NIP-65 relay list (10002) from the read relays, then
- *      the newest 10008 and a deprecated 30008 `profile_badges` from their
- *      write relays and the read relays
- *   2. $wire.prepareProfile(badge, found, reached) -> { template, kept }: the
- *      league builds the new list from the newest one it knows, every entry
- *      kept (App\Support\Badges\ProfileBadges); it refuses when no relay was
- *      reached and it knows no list, so an outage can never wipe a profile
- *   3. the player confirms ("N badges stay"), signs, $wire.submitProfile()
- *   4. the signed list goes to the player's write relays (fallback: the read
- *      relays); the league queues it for its own relays
+ *   1. read the player's lists (resources/js/relayRead.js): the relay list,
+ *      then the newest VALID 10008 and 30008 `profile_badges`; a relay counts
+ *      as read only after its EOSE, and at least one write relay must answer
+ *   2. $wire.prepareProfile(badge, found, read) -> { template, kept }: the
+ *      league re-checks the events and builds the new list, every entry kept
+ *      (App\Support\Badges\ProfileBadges); it refuses when no write relay was
+ *      read, or when the read came back empty but it knows a list
+ *   3. the dialog says how many badges stay and how many relays answered;
+ *      the player signs
+ *   4. the signed list goes to the player's write relays first; only when at
+ *      least one answered OK does it go to the league ($wire.submitProfile())
+ *      and the badge count as shown
  *
  * sharePost: the share button of one moment. $wire.prepareShare() -> kind 1
- *   template, sign, $wire.submitShare(), publish to the write relays.
+ *   template, sign, publish to the write relays, then $wire.submitShare().
  *
  * Signed events travel as JSON strings (TrimStrings must never touch them).
  */
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
+import { newest, publishToRelays, readProfileBadges, readRelays, relayUrls, writeRelaysOf } from './relayRead.js';
 
-const WAIT_MS = 4000;
+/** The player's write relays, or the configured relays when they have no relay list. */
+async function writeRelaysFor(pubkey, relays) {
+    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }]);
+    const own = writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002));
 
-function unique(list) {
-    return [...new Set(list.filter((url) => typeof url === 'string' && /^wss?:\/\//.test(url)))];
-}
-
-async function withPool(callback) {
-    const { SimplePool } = await import('nostr-tools/pool');
-    const pool = new SimplePool();
-    let reached = false;
-    pool.onRelayConnectionSuccess = () => {
-        reached = true;
-    };
-
-    try {
-        return await callback(pool, () => reached);
-    } finally {
-        try {
-            pool.destroy();
-        } catch {
-            // already closed
-        }
-    }
-}
-
-function query(pool, relays, filter) {
-    if (relays.length === 0) {
-        return Promise.resolve([]);
-    }
-
-    return Promise.race([
-        pool.querySync(relays, filter, { maxWait: WAIT_MS }),
-        new Promise((resolve) => setTimeout(() => resolve([]), WAIT_MS + 500)),
-    ]);
-}
-
-function newest(events, pubkey, kind) {
-    return events
-        .filter((event) => event.pubkey === pubkey && event.kind === kind)
-        .sort((a, b) => b.created_at - a.created_at || (a.id < b.id ? -1 : 1))[0];
-}
-
-/** The player's write relays from their newest 10002, or []. */
-async function writeRelays(pool, relays, pubkey) {
-    const list = newest(await query(pool, relays, { kinds: [10002], authors: [pubkey], limit: 1 }), pubkey, 10002);
-
-    return unique((list?.tags ?? [])
-        .filter((tag) => tag[0] === 'r' && (tag[2] === undefined || tag[2] === 'write'))
-        .map((tag) => tag[1]));
-}
-
-/** Publish to every relay; resolves with the number that answered OK. */
-async function publish(pool, relays, event) {
-    if (relays.length === 0) {
-        return 0;
-    }
-
-    const results = await Promise.allSettled(pool.publish(relays, event).map((promise) => Promise.race([
-        promise,
-        new Promise((resolve, reject) => setTimeout(() => reject(new Error('timeout')), WAIT_MS)),
-    ])));
-
-    return results.filter((result) => result.status === 'fulfilled').length;
+    return own.length > 0 ? own : relayUrls(relays);
 }
 
 function profileBadge({ pubkey, relays = [], messages = {} }) {
     return {
         step: 'idle',
         error: null,
+        warning: null,
         kept: 0,
+        answered: 0,
+        asked: 0,
         badge: null,
         found: [],
-        reached: false,
+        read: false,
+        writeRelays: [],
         template: null,
         published: 0,
 
@@ -103,21 +53,19 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
             }
 
             this.error = null;
+            this.warning = null;
             this.badge = badge;
             this.step = 'reading';
 
             try {
-                const read = await withPool(async (pool, reached) => {
-                    const own = unique([...relays, ...(await writeRelays(pool, unique(relays), pubkey))]);
-                    const events = await query(pool, own, { kinds: [10008], authors: [pubkey] });
-                    const legacy = await query(pool, own, { kinds: [30008], authors: [pubkey], '#d': ['profile_badges'] });
+                const result = await readProfileBadges(pubkey, relays);
+                this.found = result.found;
+                this.read = result.read;
+                this.answered = result.answered;
+                this.asked = result.asked;
+                this.writeRelays = result.writeRelays;
 
-                    return { events: [newest(events, pubkey, 10008), newest(legacy, pubkey, 30008)].filter(Boolean), reached: reached() };
-                });
-
-                this.found = read.events;
-                this.reached = read.reached;
-                const prepared = await this.$wire.prepareProfile(badge, JSON.stringify(this.found), this.reached);
+                const prepared = await this.$wire.prepareProfile(badge, JSON.stringify(this.found), this.read);
 
                 if (! prepared || typeof prepared !== 'object') {
                     this.step = 'idle';
@@ -165,20 +113,19 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
                     return;
                 }
 
-                const accepted = await this.$wire.submitProfile(this.badge, JSON.stringify(this.found), this.reached, JSON.stringify(signed));
+                // The player's relays first: the league records the list only once one of them holds it,
+                // so "On your Nostr profile" never shows for a list no relay of the player has.
+                this.published = await publishToRelays(this.writeRelays, signed);
 
-                if (accepted !== true) {
+                if (this.published === 0) {
+                    this.warning = messages.notPublished ?? 'None of your relays took the new list. Nothing was changed.';
                     this.step = 'idle';
 
                     return;
                 }
 
-                this.published = await withPool(async (pool) => {
-                    const targets = await writeRelays(pool, unique(relays), pubkey);
-
-                    return publish(pool, targets.length > 0 ? targets : unique(relays), signed);
-                });
-                this.step = 'done';
+                const accepted = await this.$wire.submitProfile(this.badge, JSON.stringify(this.found), this.read, JSON.stringify(signed));
+                this.step = accepted === true ? 'done' : 'idle';
             } catch (error) {
                 console.warn('[badges] adding the badge failed:', error);
                 this.error = messages.failed ?? 'That did not work. Please try again.';
@@ -193,6 +140,7 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
         busy: false,
         done: false,
         error: null,
+        warning: null,
         published: 0,
 
         async share() {
@@ -202,6 +150,7 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
 
             this.busy = true;
             this.error = null;
+            this.warning = null;
 
             try {
                 const template = await this.$wire.prepareShare();
@@ -225,16 +174,15 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
                     return;
                 }
 
-                if ((await this.$wire.submitShare(JSON.stringify(signed))) !== true) {
+                this.published = await publishToRelays(await writeRelaysFor(pubkey, relays), signed);
+
+                if (this.published === 0) {
+                    this.warning = messages.notPosted ?? 'None of your relays took the post. Try again later.';
+
                     return;
                 }
 
-                this.published = await withPool(async (pool) => {
-                    const targets = await writeRelays(pool, unique(relays), pubkey);
-
-                    return publish(pool, targets.length > 0 ? targets : unique(relays), signed);
-                });
-                this.done = true;
+                this.done = (await this.$wire.submitShare(JSON.stringify(signed))) === true;
             } catch (error) {
                 console.warn('[share] posting failed:', error);
                 this.error = messages.failed ?? 'That did not work. Please try again.';

@@ -2905,7 +2905,6 @@
     "You sent as many challenges as a day allows. Try again in :time.": "Du hast so viele Herausforderungen geschickt, wie ein Tag erlaubt. Versuch es in :time wieder.",
     ":rank in :ladder, :season of the TWENTY ONE Esports league. Compare it with the ladder named in the badge.": ":rank in :ladder, :season der TWENTY-ONE-Esports-Liga. Vergleiche es mit der Ladder, die das Abzeichen nennt.",
     "This badge is not yours to show.": "Dieses Abzeichen gehört nicht dir.",
-    "Your current badges could not be read from any relay, so nothing was changed. Try again in a moment.": "Deine aktuellen Abzeichen ließen sich von keinem Relay lesen, deshalb wurde nichts geändert. Versuch es gleich noch einmal.",
     "This badge is on your Nostr profile already.": "Dieses Abzeichen ist schon auf deinem Nostr-Profil.",
     "Your badges changed a second ago. Try again in a moment.": "Deine Abzeichen haben sich gerade erst geändert. Versuch es gleich noch einmal.",
     "ranked up": "ist aufgestiegen",
@@ -2967,5 +2966,12 @@
     "Won :tournament": ":tournament gewonnen",
     "A post signed by you, with the card. Or download the card for Signal and Telegram.": "Ein von dir signierter Beitrag mit der Karte. Oder lade die Karte für Signal und Telegram herunter.",
     "Nothing to share yet. Rank ups, mined blocks and tournament wins show up here, and your season card once Block 0 is out.": "Noch nichts zu teilen. Aufstiege, geminte Blöcke und Turniersiege erscheinen hier, deine Season-Karte ab Block 0.",
-    "Share your moments": "Deine Momente teilen"
+    "Share your moments": "Deine Momente teilen",
+    "Your badges could not be read from your relays, so nothing was changed. Try again in a moment.": "Deine Abzeichen ließen sich von deinen Relays nicht lesen, deshalb wurde nichts geändert. Versuch es gleich noch einmal.",
+    "Your relays returned no badge list, but you have one. Nothing was changed. Try again in a moment.": "Deine Relays haben keine Abzeichen-Liste geliefert, obwohl du eine hast. Nichts wurde geändert. Versuch es gleich noch einmal.",
+    "You tried this often. Try again in a minute.": "Du hast das oft versucht. Versuch es in einer Minute noch einmal.",
+    "One badge change at a time. Try again.": "Immer nur eine Abzeichen-Änderung auf einmal. Versuch es noch einmal.",
+    "None of your relays took the new list. Nothing was changed.": "Keines deiner Relays hat die neue Liste angenommen. Nichts wurde geändert.",
+    ":answered of :asked of your relays answered.": ":answered von :asked deiner Relays haben geantwortet.",
+    "None of your relays took the post. Try again later.": "Keines deiner Relays hat den Beitrag angenommen. Versuch es später noch einmal."
 }

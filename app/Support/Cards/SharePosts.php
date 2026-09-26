@@ -71,15 +71,15 @@ final class SharePosts
      */
     public function submit(User $user, string $type, string $id, mixed $signed): NostrEvent
     {
-        $template = $this->template($user, $this->card($user, $type, $id));
-        $key = 'share-posts:'.$user->id;
-
-        if (RateLimiter::tooManyAttempts($key, max(1, (int) config('esports.badges.shares_per_hour')))) {
+        // Counted before anything else (gate F3): hit() increments atomically in the cache store, so
+        // parallel requests each get their own count and only the first N pass; a refused or
+        // rejected attempt counts too.
+        if (RateLimiter::hit('share-posts:'.$user->id, 3600) > max(1, (int) config('esports.badges.shares_per_hour'))) {
             throw new ShareRefused(__('You shared a lot this hour. Try again later.'));
         }
 
+        $template = $this->template($user, $this->card($user, $type, $id));
         $event = $this->gate->check($signed, $template, $user);
-        RateLimiter::hit($key, 3600);
 
         return DB::transaction(function () use ($event): NostrEvent {
             $stored = NostrEvent::fromSigned($event);
@@ -150,6 +150,6 @@ final class SharePosts
     {
         $season = Season::query()->where('slug', $slug)->first();
 
-        return $season !== null && ! $season->genesis_at->isFuture() ? ShareCard::wrapped($season, $user) : null;
+        return $season !== null && ShareMoments::hasWrapped($season, $user) ? ShareCard::wrapped($season, $user) : null;
     }
 }

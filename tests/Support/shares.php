@@ -84,6 +84,6 @@ function shareBlock(Season $season, int $height, User $winner, User $loser): Sea
     return SeasonAttestation::query()->create([
         'season_id' => $season->id, 'source' => 'chess', 'source_id' => $height, 'label' => $candidate->label, 'game' => 'chess', 'mode' => 'blitz',
         'ladder_address' => 'chess/blitz', 'attested_at' => $at, 'candidate' => $candidate->toArray(),
-        'height' => $height, 'era' => 1, 'reward_per_player' => 5_000, 'reward' => 5_000, 'event_id' => hash('sha256', 'share-block-'.$height.'-'.$season->id),
+        'height' => $height, 'era' => 1, 'reward_per_player' => 5_000, 'reward' => 5_000, 'event_id' => hash('sha256', 'share-block-'.$height.'-'.$season->id.'-'.$winner->pubkey),
     ]);
 }

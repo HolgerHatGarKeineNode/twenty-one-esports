@@ -72,8 +72,11 @@ final class ShareCard
             throw new InvalidArgumentException("Unknown share card format {$format}.");
         }
 
-        $prefix = $this->type.'-'.$this->key.'-'.$format.'-'.App::getLocale().'-';
-        $path = 'share-cards/'.$prefix.$this->fingerprint($format).'.png';
+        // One directory per card (gate F4): a miss lists only this card's files. The file name is the
+        // fingerprint of what the card shows; nothing from the request (a `?v`) reaches it.
+        $directory = 'share-cards/'.$this->type.'/'.$this->key;
+        $prefix = $format.'-'.App::getLocale().'-';
+        $path = $directory.'/'.$prefix.$this->fingerprint($format).'.png';
         $disk = Storage::disk('local');
 
         if ($disk->exists($path)) {
@@ -82,7 +85,7 @@ final class ShareCard
 
         $png = $this->render($format);
 
-        foreach ($disk->files('share-cards') as $old) {
+        foreach ($disk->files($directory) as $old) {
             if (str_starts_with(basename($old), $prefix)) {
                 $disk->delete($old);
             }

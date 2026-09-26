@@ -2,6 +2,8 @@
 
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\Lineup;
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Tournaments\TournamentChampion;
@@ -62,7 +64,7 @@ test('a card is drawn once per content: the same card comes from the cache, a ne
     $first = $card->png('wide');
     $url = $card->url('wide');
 
-    expect(Storage::disk('local')->files('share-cards'))->toHaveCount(1)
+    expect(Storage::disk('local')->allFiles('share-cards'))->toHaveCount(1)
         ->and($card->png('wide'))->toBe($first);
 
     $this->user->forceFill(['name' => 'hodlqueen'])->save();
@@ -70,7 +72,7 @@ test('a card is drawn once per content: the same card comes from the cache, a ne
     $renamed->png('wide');
 
     expect($renamed->url('wide'))->not->toBe($url)
-        ->and(Storage::disk('local')->files('share-cards'))->toHaveCount(1);
+        ->and(Storage::disk('local')->allFiles('share-cards'))->toHaveCount(1);
 });
 
 test('only moments that happened are drawn', function () {
@@ -103,4 +105,55 @@ test('the wrapped card counts the player\'s blocks, sats and best rank of the se
 
     expect([$facts['blocks'], $facts['sats'], $facts['wins'], $facts['tournaments'], $facts['best']['tier']])->toBe([2, 10_000, 7, 1, 'gold-2'])
         ->and(ShareCard::block($this->moments['block'], $this->user)->facts['personal_height'])->toBe(2);
+});
+
+test('Season Wrapped exists only for players with rated results in that season, their own or their lineup\'s', function () {
+    $stranger = User::factory()->create();
+    $url = fn (User $user) => '/cards/en/wrapped/pre-season/'.$user->npub.'-wide.png';
+
+    $this->get($url($stranger))->assertNotFound();
+    expect(Storage::disk('local')->allFiles('share-cards/wrapped'))->toBe([]);
+
+    $lineup = Lineup::factory()->mode('2v2')->ready()->create();
+    Rating::query()->create(['pool' => 'rated', 'season' => 'pre-season', 'game' => 'rocket-league', 'mode' => '2v2',
+        'subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1010, 'results' => 3]);
+
+    $this->get($url($lineup->clan->owner))->assertOk();
+    $this->get($url($this->user))->assertOk();
+});
+
+test('the fingerprint is the only cache key: a changed ?v draws nothing new', function () {
+    $path = ShareCard::block($this->moments['block'], $this->user)->path('wide');
+    $base = strtok($path, '?');
+    $bodies = [];
+
+    foreach ([$path, $base.'?v=0000000000000000', $base.'?v=x', $base] as $url) {
+        $bodies[] = $this->get($url)->assertOk()->getContent();
+    }
+
+    expect(array_unique($bodies))->toHaveCount(1)
+        ->and(Storage::disk('local')->allFiles('share-cards'))->toHaveCount(1);
+});
+
+test('the card and badge art routes are limited per IP', function () {
+    config(['esports.badges.cards_per_minute' => 3]);
+    $card = strtok(ShareCard::block($this->moments['block'], $this->user)->path('wide'), '?');
+
+    foreach (range(1, 3) as $request) {
+        $this->get($card)->assertOk();
+    }
+
+    $this->get($card)->assertTooManyRequests();
+    $this->get('/badges/rank/chess/gold-2-v1.png')->assertTooManyRequests();
+    $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->get($card)->assertOk();
+});
+
+test('ids beyond an int, an unknown artwork version and a short npub are a 404, never a 500', function () {
+    $this->get('/cards/en/rank-up/99999999999999999999-wide.png')->assertNotFound();
+    $this->get('/cards/en/block/99999999999999999999/'.$this->user->npub.'-wide.png')->assertNotFound();
+    $this->get('/cards/en/tournament/99999999999999999999-wide.png')->assertNotFound();
+    $this->get('/cards/en/wrapped/pre-season/npub1abc-wide.png')->assertNotFound();
+    $this->get('/badges/rank/chess/gold-2-v2.png')->assertNotFound();
+    $this->get('/badges/rank/chess/gold-2-v9999999999999999999999.png')->assertNotFound();
+    $this->get('/badges/rank/chess/gold-2-v1.png')->assertOk();
 });

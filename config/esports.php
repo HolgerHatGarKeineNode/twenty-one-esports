@@ -320,6 +320,10 @@ return [
         'artwork' => 1,
         // Share posts (kind 1) per player and hour that the league accepts and relays.
         'shares_per_hour' => 10,
+        // "Show on my Nostr profile" calls (prepare and submit) per player and minute; each may check signatures.
+        'profile_calls_per_minute' => 10,
+        // Share card and badge image requests per IP and minute.
+        'cards_per_minute' => 30,
     ],
 
     /*

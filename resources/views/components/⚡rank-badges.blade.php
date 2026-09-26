@@ -39,14 +39,31 @@ new class extends Component {
     /**
      * @return array{template: array<string, mixed>, kept: int}|null
      */
-    public function prepareProfile(int $badge, string $found, bool $reached, ProfileBadges $profiles): ?array
+    public function prepareProfile(int $badge, string $found, bool $read, ProfileBadges $profiles): ?array
     {
-        return $this->refusable(fn () => $profiles->prepare($this->me(), $this->badge($badge), $this->events($found), $reached));
+        return $this->refusable(fn () => $this->once() ?? $profiles->prepare($this->me(), $this->badge($badge), $this->events($found), $read));
     }
 
-    public function submitProfile(int $badge, string $found, bool $reached, string $signed, ProfileBadges $profiles): bool
+    public function submitProfile(int $badge, string $found, bool $read, string $signed, ProfileBadges $profiles): bool
     {
-        return $this->refusable(fn () => $profiles->submit($this->me(), $this->badge($badge), $this->events($found), $reached, json_decode($signed, true)) !== null) ?? false;
+        return $this->refusable(fn () => $this->once() ?? $profiles->submit($this->me(), $this->badge($badge), $this->events($found), $read, json_decode($signed, true)) !== null) ?? false;
+    }
+
+    /**
+     * One badge call per Livewire request (gate F2): a request that batches
+     * several would multiply the signature checks past the rate limit.
+     *
+     * @throws ProfileBadgesRefused
+     */
+    private function once(): null
+    {
+        if (request()->attributes->getBoolean('profile-badges.called')) {
+            throw new ProfileBadgesRefused(__('One badge change at a time. Try again.'));
+        }
+
+        request()->attributes->set('profile-badges.called', true);
+
+        return null;
     }
 
     /**
@@ -65,7 +82,7 @@ new class extends Component {
      */
     private function events(string $found): array
     {
-        return array_values(array_slice((array) json_decode($found, true), 0, ProfileBadges::MAX_FOUND));
+        return array_values(array_slice((array) json_decode(substr($found, 0, 65_536), true), 0, ProfileBadges::MAX_FOUND));
     }
 
     private function badge(int $id): RankBadge
@@ -109,7 +126,7 @@ new class extends Component {
 @endphp
 
 <section aria-labelledby="rb-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="rank-badges"
-         @if ($mine) x-data="profileBadge({ pubkey: @js($viewer->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js(SignerMessages::labels()) })" @endif>
+         @if ($mine) x-data="profileBadge({ pubkey: @js($viewer->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js([...SignerMessages::labels(), 'notPublished' => __('None of your relays took the new list. Nothing was changed.')]) })" @endif>
     <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 id="rb-h" class="m-0 text-[15px] font-bold">{{ __('Rank badges') }}</h2>
         <span class="text-xs text-ink-2">{{ __('NIP-58 badges, signed by the league on every rank change') }}</span>
@@ -159,6 +176,7 @@ new class extends Component {
                 <span x-text="kept === 0 ? @js(__('Your profile has no other badges yet.')) : (kept === 1 ? @js(__('Your 1 other badge stays on your profile.')) : @js(__('Your :count other badges stay on your profile.')).replace(':count', kept))" data-test="badge-kept"></span>
                 {{ __('Your signer asks you to sign the new list; it goes to your own relays.') }}
             </p>
+            <p class="m-0 text-xs text-ink-2" data-test="badge-relays" x-text="@js(__(':answered of :asked of your relays answered.')).replace(':answered', answered).replace(':asked', asked)"></p>
             <div class="flex flex-wrap gap-2">
                 <button type="button" x-on:click="confirm()" x-bind:disabled="step === 'signing'" data-test="badge-confirm-sign"
                         class="btn-p inline-flex h-11 cursor-pointer items-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc disabled:cursor-wait disabled:opacity-70"><x-icon name="shield-check" :size="16" />{{ __('Sign and add') }}</button>
@@ -167,6 +185,7 @@ new class extends Component {
         </div>
         <p x-show="step === 'reading'" x-cloak role="status" class="m-0 text-xs text-ink-2">{{ __('Reading your current badges from your relays…') }}</p>
         <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>
+        <p x-show="warning" x-text="warning" x-cloak class="m-0 text-[13px] text-loss" role="alert" data-test="badge-warning"></p>
         @error('badges')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
     @endif
 </section>

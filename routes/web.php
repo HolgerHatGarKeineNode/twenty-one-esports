@@ -159,12 +159,14 @@ Route::get('avatars/{pubkey}.svg', GeneratedAvatarController::class)
  * definitions. Public, no session: Nostr clients fetch them.
  */
 Route::get('badges/rank/{game}/{tier}-v{artwork}.png', BadgeImageController::class)
-    ->where(['game' => '[a-z0-9-]+', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]|provisional', 'artwork' => '[0-9]+'])
+    ->where(['game' => '[a-z0-9-]{1,40}', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]|provisional', 'artwork' => '[0-9]{1,6}'])
     ->withoutMiddleware('web')
+    ->middleware('throttle:cards')
     ->name('badges.rank');
 Route::get('badges/rank/{game}/{tier}-v{artwork}-{size}.png', BadgeImageController::class)
-    ->where(['game' => '[a-z0-9-]+', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]', 'artwork' => '[0-9]+', 'size' => '256'])
+    ->where(['game' => '[a-z0-9-]{1,40}', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]', 'artwork' => '[0-9]{1,6}', 'size' => '256'])
     ->withoutMiddleware('web')
+    ->middleware('throttle:cards')
     ->name('badges.rank.thumb');
 
 /*
@@ -177,12 +179,13 @@ Route::prefix('cards/{locale}')
     // One where(): a group's whereIn() does not reach its routes (measured: /cards/fr/… matched).
     ->where(['locale' => implode('|', config('app.supported_locales')), 'format' => 'wide|story'])
     ->withoutMiddleware('web')
-    ->middleware('throttle:invites')
+    ->middleware('throttle:cards')
     ->group(function () {
-        Route::get('rank-up/{version}-{format}.png', [ShareCardController::class, 'rankUp'])->whereNumber('version')->name('cards.rank-up');
-        Route::get('block/{block}/{npub}-{format}.png', [ShareCardController::class, 'block'])->whereNumber('block')->where('npub', 'npub1[0-9a-z]+')->name('cards.block');
-        Route::get('tournament/{finished}-{format}.png', [ShareCardController::class, 'tournament'])->whereNumber('finished')->name('cards.tournament');
-        Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]+', 'npub' => 'npub1[0-9a-z]+'])->name('cards.wrapped');
+        // Ids capped at 18 digits: a longer one would not fit an int and must be a 404, not a 500.
+        Route::get('rank-up/{version}-{format}.png', [ShareCardController::class, 'rankUp'])->where('version', '[0-9]{1,18}')->name('cards.rank-up');
+        Route::get('block/{block}/{npub}-{format}.png', [ShareCardController::class, 'block'])->where(['block' => '[0-9]{1,18}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.block');
+        Route::get('tournament/{finished}-{format}.png', [ShareCardController::class, 'tournament'])->where('finished', '[0-9]{1,18}')->name('cards.tournament');
+        Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]{1,64}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.wrapped');
     });
 
 // NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.

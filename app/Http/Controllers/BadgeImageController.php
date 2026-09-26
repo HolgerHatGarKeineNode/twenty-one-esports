@@ -15,7 +15,7 @@ class BadgeImageController extends Controller
 {
     public function __invoke(BadgeImage $images, string $game, string $tier, int $artwork, int $size = 1024): Response
     {
-        abort_unless($images->exists($game, $tier) && in_array($size, BadgeImage::SIZES, true), 404);
+        abort_unless($artwork === (int) config('esports.badges.artwork') && $images->exists($game, $tier) && in_array($size, BadgeImage::SIZES, true), 404);
 
         return response($images->png($game, $tier, $size), 200, [
             'Content-Type' => 'image/png',

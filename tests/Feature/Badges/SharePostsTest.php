@@ -79,3 +79,17 @@ test('shares are limited per hour', function () {
     expect($share)->toThrow(ShareRefused::class, 'a lot')
         ->and(NostrEvent::query()->where('kind', 1)->count())->toBe(2);
 });
+
+test('the share limit counts before the signature check, so refused attempts use it up too', function () {
+    config(['esports.badges.shares_per_hour' => 2]);
+    $posts = app(SharePosts::class);
+    $template = $posts->prepare($this->user, 'wrapped', 'pre-season');
+    $forged = [...signShare($this->signer, $template), 'sig' => str_repeat('0', 128)];
+
+    foreach (range(1, 2) as $attempt) {
+        expect(fn () => $posts->submit($this->user, 'wrapped', 'pre-season', $forged))->toThrow(RejectedEvent::class);
+    }
+
+    expect(fn () => $posts->submit($this->user, 'wrapped', 'pre-season', signShare($this->signer, $template)))->toThrow(ShareRefused::class, 'a lot')
+        ->and(NostrEvent::query()->where('kind', 1)->count())->toBe(0);
+});

@@ -87,7 +87,7 @@ new class extends Component {
 <div @class(['flex min-w-0 flex-col gap-1.5', 'hidden' => $card === null])>
     @if ($card)
         <div class="flex min-w-0 flex-wrap items-center gap-2" data-test="share-button" data-type="{{ $type }}"
-             x-data="sharePost({ pubkey: @js(auth()->user()->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js(SignerMessages::labels()) })">
+             x-data="sharePost({ pubkey: @js(auth()->user()->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js([...SignerMessages::labels(), 'notPosted' => __('None of your relays took the post. Try again later.')]) })">
             <button type="button" x-on:click="share()" x-bind:disabled="busy || done" data-test="share-post"
                     class="btn-p inline-flex h-11 min-w-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold whitespace-nowrap text-on-btc disabled:cursor-default disabled:opacity-80">
                 <x-icon name="send" :size="16" class="shrink-0" />
@@ -99,6 +99,7 @@ new class extends Component {
                class="btn-w inline-flex h-11 shrink-0 items-center gap-1.5 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink"><x-icon name="download" :size="16" />{{ __('Story') }}</a>
             <span x-show="done" x-cloak role="status" class="text-xs text-win" data-test="share-done">{{ __('Signed by you, sent to your relays.') }}</span>
             <p x-show="error" x-text="error" x-cloak class="m-0 basis-full text-[13px] text-loss" role="alert"></p>
+            <p x-show="warning" x-text="warning" x-cloak class="m-0 basis-full text-[13px] text-loss" role="alert" data-test="share-warning"></p>
         </div>
         @error('share')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
     @endif

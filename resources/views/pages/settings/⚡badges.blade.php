@@ -21,7 +21,7 @@ new #[Title('Badges and sharing')] class extends Component {}; ?>
 @php
     $user = auth()->user();
     $season = Seasons::live() ?? Seasons::latest();
-    $wrapped = $season !== null && ! $season->genesis_at->isFuture() ? ShareCard::wrapped($season, $user) : null;
+    $wrapped = $season !== null && ShareMoments::hasWrapped($season, $user) ? ShareCard::wrapped($season, $user) : null;
     $rankUps = ShareMoments::rankUpsOf($user);
     $blocks = ShareMoments::minedBy($user)->take(6);
     $tournaments = array_slice(ShareMoments::tournamentWins($user), 0, 6);

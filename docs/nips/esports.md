@@ -57,8 +57,9 @@ adopts revision 8.
   `a` and `p`; a new badge key is a new definition address and gets one award of its own.
 - **Badge artwork URL**: `<site>/badges/rank/<game>/<tier>-v<artwork>.png` (`image`, 1024 × 1024) and
   `…-v<artwork>-256.png` (`thumb`, 256 × 256), a function of game, tier and artwork version only.
-- **Profile badge list** ([Profile](#rank-badges-rev-5)): the app refuses to write a `10008` when it
-  reached no relay and knows no earlier list of the player; new validation rule 36.
+- **Profile badge list** ([Profile](#rank-badges-rev-5)): read only after a write relay's `EOSE`,
+  events verified before they are compared, the newest valid list wins, a `30008` merged only when
+  it is the newer list, relays first and the league second; new validation rule 36.
 - **Share posts** (new section [Share posts (rev. 8)](#share-posts-rev-8)): a kind `1` note the player
   signs, with a share card of the league (NIP-92 `imeta`); new validation rule 37. Rule 35 states the
   badge rules above.
@@ -1889,7 +1890,8 @@ only, for example `https://example.org/badges/rank/chess/gold-2-v1.png`. Clients
 a URL per player whose picture changes with the rank would keep showing the old rank. All players of
 a tier share one URL, and new artwork gets a new version in the URL. Rev. 8 fixes the form:
 `<site>/badges/rank/<game>/<tier>-v<artwork>.png` for `image` (1024 × 1024) and
-`<site>/badges/rank/<game>/<tier>-v<artwork>-256.png` for `thumb` (256 × 256).
+`<site>/badges/rank/<game>/<tier>-v<artwork>-256.png` for `thumb` (256 × 256). Only the current artwork version is served; any other version is not found, so no cache keeps a
+picture under a URL meant for future artwork.
 
 **Profile.** "Show on my Nostr profile" in the app adds the pair (`a` definition, `e` award) to the
 player's kind `10008` after a confirmation, once per definition. Like the opponent list, the app first
@@ -1897,13 +1899,23 @@ reads the newest `10008` from the player's NIP-65 write relays and the league re
 end, and keeps every other entry and its order; it never writes from a stale copy. A deprecated
 `30008` with `d` = `profile_badges` (NIP-58: "Clients should treat these events as equivalent to kind
 `10008` and migrate") is merged into the new `10008`. Rev. 8: the new version keeps the newest
-list's tags in order and its `content` verbatim (it may hold private NIP-51 items), appends the
-pairs of the `30008` that the `10008` lacks and then the new pair, and adds an `alt` only if there is
-none. When the app reached no relay at all and knows no earlier list of the player, it MUST NOT
-write: a list written then could drop every badge the player has. The list is dated now, never
-ahead; if the newest list is from this second or later, the change waits. The league archives the
-signed list and sends it to its relays; the app sends it to the player's NIP-65 write relays, or to
-the relays it read from when the player has no relay list.
+list's tags in order and its `content` verbatim (it may hold private NIP-51 items), appends the new
+pair, and adds an `alt` only if there is none. The pairs of a `30008` are merged in only when there
+is no `10008` or the `30008` is the newer list: a pair the player removed in a newer `10008` never
+comes back from an older `30008`.
+
+- **Read before writing** (rev. 8). A relay counts as read only after its `EOSE`; a relay that is
+  down, closes the subscription or times out is not read, whatever it sent before. At least one of
+  the player's NIP-65 write relays (the relays the app reads from, when the player has no relay
+  list) MUST have been read, or the app MUST NOT write; it never falls back to a copy it archived
+  earlier. When the read returns no list although the app knows one, it MUST NOT write either.
+- **Verify before choosing.** Every event is signature-checked before it counts, and ids are not
+  deduplicated before that check: a relay that serves a forged copy of the right id first must not
+  hide the real list. Of the valid lists the newest wins (highest `created_at`, then lowest id).
+- **Relays first.** The app sends the signed list to the player's write relays first and shows the
+  badge as on the profile only when at least one answered `OK` true; only then does the league
+  archive it and send it to its relays. The list is dated now, never ahead; if the newest list is
+  from this second or later, the change waits.
 
 **Why a badge key.** Every rank change of every player means a signature, automatically on the server.
 A leaked badge key can forge badges, which are cosmetic and checkable against the ladder; it cannot
@@ -1925,7 +1937,7 @@ stories) and prepares the note; the player signs it in the app.
 | rank up | `rank-up/<version>-<format>.png` | one signed version of the player's rank badge definition that is the first tier or a higher tier than the version before |
 | block mined | `block/<attestation>/<npub>-<format>.png` | a `2154` whose `block` tag has a height and names the player among its winners |
 | tournament win | `tournament/<tournament>-<format>.png` | a finished tournament; its winner is read from the bracket |
-| season wrapped | `wrapped/<season>/<npub>-<format>.png` | the player's blocks, sats, rated wins, tournament wins and best tier of the season |
+| season wrapped | `wrapped/<season>/<npub>-<format>.png` | the player's blocks, sats, rated wins, tournament wins and best tier of the season; only for a player with rated results in that season (their own or their lineup's) |
 
 `<format>` is `wide` or `story`. A card URL carries `?v=<fingerprint>`, a hash of everything the card
 shows: a new name or picture is a new URL, so clients that cache by URL show the new card. A card is
@@ -1948,7 +1960,7 @@ drawn from one version or one attestation, so a posted card keeps showing what h
   events (the badge, the attestation, the tournament).
 - **Relays.** The app sends the note to the player's NIP-65 write relays (or the relays it read from
   when the player has none); the league archives it and sends it to its relays. A league limits share
-  posts per player and hour.
+  posts per player and hour, counting every attempt before it checks it.
 - **Not league state.** A share post changes nothing in the league: no rating, no block, no badge.
 
 ## State machine
@@ -2208,8 +2220,9 @@ Per kind:
     the entity's tier in the `standing` of that ladder at `created_at` (never `provisional`); at most
     one `8` per definition address and `p`, with `p` the definition's `p`.
 36. **10008** (profile badges written by the app, rev. 8): signed by the player; at least one `a`/`e`
-    pair; every `a` a `30009` address, every `e` an event id; every pair of the newest list the league
-    knew is kept, in order, and its `content` is unchanged.
+    pair; every `a` a `30009` address, every `e` an event id; every pair of the newest valid list the
+    league knew is kept, in order, and its `content` is unchanged; written only after a write relay of
+    the player delivered `EOSE` (see [Rank badges](#rank-badges-rev-5), Profile).
 37. **1** (share post, rev. 8): signed by the player; exactly one `imeta` whose `url` is a share card on
     the league's site (`<site>/cards/…`) and appears in `content`; no `e`, `p`, `q` or `a`.
 

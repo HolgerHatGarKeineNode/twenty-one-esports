@@ -2,8 +2,11 @@
 
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\Rating;
 use App\Models\User;
+use App\Support\Badges\RankBadges;
 use App\Support\Nostr\SignedEvent;
+use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -181,7 +184,8 @@ test('badges go on the Nostr profile without losing the old list, a share post r
     $page = sharePage($user, $pages['badges'], 1440);
     $page->locator('[data-test=badge-show]')->click();
     BrowserWait::until($page, '() => getComputedStyle(document.querySelector("[data-test=badge-confirm]")).display !== "none"', 15_000);
-    expect($page->evaluate('() => document.querySelector("[data-test=badge-kept]").textContent.trim()'))->toBe('Your 1 other badge stays on your profile.');
+    expect($page->evaluate('() => document.querySelector("[data-test=badge-kept]").textContent.trim()'))->toBe('Your 1 other badge stays on your profile.')
+        ->and($page->evaluate('() => document.querySelector("[data-test=badge-relays]").textContent.trim()'))->toBe('1 of 1 of your relays answered.');
     shareShot($page, 'share-badge-confirm-1440');
 
     $page->locator('[data-test=badge-confirm-sign]')->click();
@@ -221,4 +225,77 @@ test('the share collectors see a thrown error and a failed card (positive contro
     BrowserWait::until($page, '() => performance.getEntries().some((e) => e.name.includes("/cards/en/rank-up/999999"))', 5_000);
 
     expect(implode("\n", $page->evaluate(SHARE_BAD_RESPONSES)))->toMatch('#^404 http://\S+/cards/en/rank-up/999999-wide\.png$#m');
+});
+
+/**
+ * A throwaway MiniRelay (tests/Support/MiniRelay.php: no signature check, events served in seed order).
+ *
+ * @param  list<array<string, mixed>>  $seed
+ * @return array{0: InvokedProcess, 1: string}
+ */
+function shareMiniRelay(array $seed): array
+{
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $file = storage_path('framework/testing/share-seed-'.$port.'.json');
+    File::ensureDirectoryExists(dirname($file));
+    File::put($file, (string) json_encode($seed));
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $file]);
+
+    for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
+        usleep(100_000);
+    }
+
+    return [$relay, 'ws://127.0.0.1:'.$port];
+}
+
+test('a forged copy served first does not hide the real list, a write relay that is down refuses, and no relay taking the list shows no success', function () {
+    $season = openSeason(['slug' => 'pre-season']);
+    [$anna, $bert] = [User::factory()->create(['name' => 'anna']), User::factory()->create(['name' => 'bert'])];
+    $annaKey = TestSigner::forBrowser($anna);
+    $bertKey = TestSigner::forBrowser($bert);
+    shareMoments($anna->refresh(), $season);
+    // Bert needs a rank badge only (blocks are unique per season and height, Anna has them).
+    Rating::query()->create(['pool' => Rating::RATED, 'season' => 'pre-season', 'game' => 'chess', 'mode' => 'blitz',
+        'subject' => 'user:'.$bert->id, 'user_id' => $bert->id, 'rating' => 1040, 'results' => 6]);
+    app(RankBadges::class)->sync($bert->refresh(), 'chess', 'blitz');
+
+    // Anna's real list, and a forged copy with the same id and a junk signature, served FIRST.
+    $real = $annaKey->sign(10008, [['a', '30009:'.str_repeat('a', 64).':bravery'], ['e', str_repeat('1', 64)]], '', now()->getTimestamp() - 3600);
+    $forged = [...$real, 'sig' => str_repeat('0', 128)];
+    // Bert's relay list names one write relay, and it is down.
+    $closed = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relayList = $bertKey->sign(10002, [['r', 'ws://127.0.0.1:'.$closed]]);
+
+    [$relay, $url] = shareMiniRelay([$forged, $real, $relayList]);
+    config(['esports.profile_relays' => [$url], 'esports.relays' => []]);
+
+    try {
+        // Bert: the write relay never answers, so nothing is read and the league refuses.
+        $page = sharePage($bert, route('settings.badges', absolute: false), 1440);
+        $page->locator('[data-test=badge-show]')->click();
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=rank-badges] [role=alert]")].some((e) => e.offsetParent !== null && e.textContent.includes("could not be read"))', 15_000);
+
+        expect($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=badge-confirm]")).display'))->toBe('none')
+            ->and(NostrEvent::query()->where('kind', 10008)->where('pubkey', $bert->pubkey)->exists())->toBeFalse();
+
+        // Anna: the forged copy arrives first and is dropped; the real list is found.
+        $page = sharePage($anna, route('settings.badges', absolute: false), 1440);
+        $page->locator('[data-test=badge-show]')->click();
+        BrowserWait::until($page, '() => getComputedStyle(document.querySelector("[data-test=badge-confirm]")).display !== "none"', 15_000);
+
+        expect($page->evaluate('() => document.querySelector("[data-test=badge-kept]").textContent.trim()'))->toBe('Your 1 other badge stays on your profile.');
+    } finally {
+        // The relay goes away before Anna signs: no relay takes her list.
+        $relay->stop(1);
+    }
+
+    $page->locator('[data-test=badge-confirm-sign]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=badge-warning]")?.offsetParent != null', 15_000);
+
+    expect($page->evaluate('() => document.querySelector("[data-test=badge-warning]").textContent.trim()'))->toBe('None of your relays took the new list. Nothing was changed.')
+        ->and($page->evaluate('() => document.querySelector("[data-test=badge-added]")?.offsetParent ?? null'))->toBeNull()
+        ->and($page->evaluate('() => document.querySelector("[data-test=badge-listed]")'))->toBeNull()
+        // Only the real list the read found is archived; the new one never reached the league.
+        ->and(NostrEvent::query()->where('kind', 10008)->where('pubkey', $anna->pubkey)->pluck('event_id')->all())->toBe([$real['id']])
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });

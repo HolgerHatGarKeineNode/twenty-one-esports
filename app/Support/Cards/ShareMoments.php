@@ -122,6 +122,19 @@ final class ShareMoments
     }
 
     /**
+     * Whether the player has a Season Wrapped card: rated results in that
+     * season, their own (a player ladder) or their lineup's (gate F4: a card
+     * is drawn and stored only for players who played).
+     */
+    public static function hasWrapped(Season $season, User $user): bool
+    {
+        return $season->genesis_at->isPast() && Rating::query()->where(['pool' => Rating::RATED, 'season' => $season->slug])->where('results', '>', 0)
+            ->where(fn ($query) => $query->where('user_id', $user->id)
+                ->orWhereIn('lineup_id', LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')->select('lineup_id')))
+            ->exists();
+    }
+
+    /**
      * The player's rank-up versions, newest first.
      *
      * @return Collection<int, RankBadgeVersion>

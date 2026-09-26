@@ -197,7 +197,14 @@ function sweepFixtures(): array
         'user' => fn (?User $user, array $made): Model => $user ?? User::factory()->create(),
         // Share cards (P11) of the `npub` player, in an ENDED season, so no ladder opens for the other
         // pages of the sweep: a mined block, a rank-up version of a badge, a won tournament.
-        'season' => fn (?User $user, array $made): Model => Season::factory()->ended()->create(['slug' => 'sweep-season']),
+        'season' => function (?User $user, array $made): Model {
+            $season = Season::factory()->ended()->create(['slug' => 'sweep-season']);
+            // Season Wrapped exists only for a player with rated results in the season (P11 gate F4).
+            Rating::query()->create(['pool' => Rating::RATED, 'season' => 'sweep-season', 'game' => 'chess', 'mode' => 'blitz',
+                'subject' => 'user:'.$made['npub']->getKey(), 'user_id' => $made['npub']->getKey(), 'rating' => 1061, 'results' => 9, 'wins' => 6]);
+
+            return $season;
+        },
         'block' => fn (?User $user, array $made): Model => shareBlock($made['season'], 1, $made['npub'], User::factory()->create()),
         'version' => function (?User $user, array $made): Model {
             $badge = RankBadge::query()->create([
