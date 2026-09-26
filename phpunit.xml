@@ -50,6 +50,7 @@
         <env name="ESPORTS_NOTIFICATION_NSEC" value="" force="true"/>
         <env name="ESPORTS_LEAGUE_NSEC" value="" force="true"/>
         <env name="ESPORTS_TRUST_NSEC" value="" force="true"/>
+        <env name="ESPORTS_BADGE_NSEC" value="" force="true"/>
         <env name="WEBPUSH_VAPID_PUBLIC_KEY" value="" force="true"/>
         <env name="WEBPUSH_VAPID_PRIVATE_KEY" value="" force="true"/>
         <env name="PULSE_ENABLED" value="false"/>

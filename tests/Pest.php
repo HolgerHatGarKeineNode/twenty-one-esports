@@ -24,6 +24,7 @@ use Tests\TestCase;
 pest()->tia()->defaultBranch('master');
 
 require_once __DIR__.'/Support/tournaments.php';
+require_once __DIR__.'/Support/shares.php';
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)

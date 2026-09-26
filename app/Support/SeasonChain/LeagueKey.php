@@ -41,6 +41,16 @@ final class LeagueKey
         return self::fromSecret(config('esports.trust.nsec'));
     }
 
+    /**
+     * The badge key (`esports.badges.nsec`, NIP "Rank badges"): signs only
+     * the NIP-58 badge definitions (30009) and awards (8), automatically on
+     * every rank change. Never the league key. Null without a valid secret.
+     */
+    public static function badge(): ?self
+    {
+        return self::fromSecret(config('esports.badges.nsec'));
+    }
+
     private static function fromSecret(mixed $secret): ?self
     {
         $hex = NostrKeys::secretToHex(is_string($secret) ? $secret : null);

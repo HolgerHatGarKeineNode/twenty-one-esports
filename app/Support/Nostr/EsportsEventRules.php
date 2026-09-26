@@ -7,6 +7,8 @@ use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\Tournament;
+use App\Support\Badges\ProfileBadges;
+use App\Support\Cards\SharePosts;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
@@ -34,6 +36,8 @@ use App\Support\Tournaments\TournamentSignups;
  *     `esports/<league key>`, content empty, the `p` entries distinct hex
  *     pubkeys other than the author.
  * 29. 1985 with `release-block-0`, an admin's release of Block 0 (P7c).
+ * 36. 10008 the player's profile badges (P11, rev. 8).
+ * 37. 1 a share post with a share card (P11, rev. 8).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -68,8 +72,77 @@ final class EsportsEventRules
             SeasonRelease::LABEL => $this->releaseLabel($event),
             OpponentLists::KIND => $this->opponentList($event),
             TournamentSignups::CONSENT => $this->tournamentConsent($event),
+            ProfileBadges::KIND => $this->profileBadges($event),
+            SharePosts::KIND => $this->sharePost($event),
             default => 'kind_not_allowed',
         };
+    }
+
+    /**
+     * Rule 36 (rev. 8), the player's profile badges (10008) as the app writes
+     * them: every `a` a badge definition address (`30009:<hex>:<d>`), every
+     * `e` an event id, at least one pair. Which pairs and in what order is the
+     * league's template ({@see ProfileBadges}): the newest list, every entry
+     * kept, the new pair appended.
+     */
+    private function profileBadges(SignedEvent $event): ?string
+    {
+        $definitions = $event->tagsNamed('a');
+        $awards = $event->tagsNamed('e');
+
+        if ($definitions === [] || $awards === []) {
+            return 'profile_badges_empty';
+        }
+
+        foreach ($definitions as $a) {
+            if (preg_match('/^30009:[0-9a-f]{64}:.+$/', $a[0] ?? '') !== 1) {
+                return 'profile_badges_a';
+            }
+        }
+
+        foreach ($awards as $e) {
+            if (preg_match('/^[0-9a-f]{64}$/', $e[0] ?? '') !== 1) {
+                return 'profile_badges_e';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Rule 37 (rev. 8), a share post (kind 1): exactly one NIP-92 `imeta`
+     * whose `url` is a share card of this league (`<app url>/cards/…`) and
+     * appears in the content; no `e`, `p`, `q` or `a` (not a reply, no
+     * mentions). The text and the card are the league's template
+     * ({@see SharePosts}).
+     */
+    private function sharePost(SignedEvent $event): ?string
+    {
+        $imeta = $event->tagsNamed('imeta');
+
+        if (count($imeta) !== 1) {
+            return 'share_post_imeta';
+        }
+
+        $url = null;
+
+        foreach ($imeta[0] as $field) {
+            if (str_starts_with((string) $field, 'url ')) {
+                $url = substr((string) $field, 4);
+            }
+        }
+
+        if ($url === null || ! str_starts_with($url, rtrim((string) config('app.url'), '/').'/cards/') || ! str_contains($event->content, $url)) {
+            return 'share_post_card';
+        }
+
+        foreach (['e', 'p', 'q', 'a'] as $name) {
+            if ($event->tagsNamed($name) !== []) {
+                return 'share_post_reference';
+            }
+        }
+
+        return null;
     }
 
     /**

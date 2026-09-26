@@ -300,6 +300,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Badge key (P11, NIP "Rank badges")
+    |--------------------------------------------------------------------------
+    |
+    | Signs the NIP-58 rank badges: one definition (30009) per player, game
+    | and mode, replaced on every rank change, and one award (8) per
+    | definition. Signing happens on the server on every rank change, so this
+    | is its own key and never the league key: a leak can forge cosmetic
+    | badges, which anyone can check against the ladder, never a result.
+    | Hex or nsec, in `.env` only. Without it no badge is signed (fail closed).
+    |
+    | artwork: the version in the badge image URLs. Clients cache images by
+    | URL, so new artwork needs a new number.
+    |
+    */
+
+    'badges' => [
+        'nsec' => env('ESPORTS_BADGE_NSEC'),
+        'artwork' => 1,
+        // Share posts (kind 1) per player and hour that the league accepts and relays.
+        'shares_per_hour' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Relays the league publishes to
     |--------------------------------------------------------------------------
     |

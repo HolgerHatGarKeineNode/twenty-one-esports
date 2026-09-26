@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BadgeImageController;
 use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
 use App\Http\Controllers\NostrJsonController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\PlayerSearchController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RobotsController;
+use App\Http\Controllers\ShareCardController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
@@ -150,6 +152,38 @@ Route::get('avatars/{pubkey}.svg', GeneratedAvatarController::class)
     ->where('pubkey', '[0-9a-f]{64}')
     ->withoutMiddleware('web')
     ->name('avatars.generated');
+
+/*
+ * Rank badge artwork (P11, NIP "Image URL per rank"): one URL per game, tier
+ * and artwork version, the `image` (1024) and `thumb` (256) of the NIP-58
+ * definitions. Public, no session: Nostr clients fetch them.
+ */
+Route::get('badges/rank/{game}/{tier}-v{artwork}.png', BadgeImageController::class)
+    ->where(['game' => '[a-z0-9-]+', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]|provisional', 'artwork' => '[0-9]+'])
+    ->withoutMiddleware('web')
+    ->name('badges.rank');
+Route::get('badges/rank/{game}/{tier}-v{artwork}-{size}.png', BadgeImageController::class)
+    ->where(['game' => '[a-z0-9-]+', 'tier' => '[a-z]+(?:-[a-z]+)*-[123]', 'artwork' => '[0-9]+', 'size' => '256'])
+    ->withoutMiddleware('web')
+    ->name('badges.rank.thumb');
+
+/*
+ * Share cards (P11): PNG link previews (`wide`, 1200 × 630) and stories
+ * (`story`, 1080 × 1920) of a rank up, a mined block, a tournament win and a
+ * player's season. Public and without a session, like the invite card: the
+ * share posts on Nostr link them.
+ */
+Route::prefix('cards/{locale}')
+    // One where(): a group's whereIn() does not reach its routes (measured: /cards/fr/… matched).
+    ->where(['locale' => implode('|', config('app.supported_locales')), 'format' => 'wide|story'])
+    ->withoutMiddleware('web')
+    ->middleware('throttle:invites')
+    ->group(function () {
+        Route::get('rank-up/{version}-{format}.png', [ShareCardController::class, 'rankUp'])->whereNumber('version')->name('cards.rank-up');
+        Route::get('block/{block}/{npub}-{format}.png', [ShareCardController::class, 'block'])->whereNumber('block')->where('npub', 'npub1[0-9a-z]+')->name('cards.block');
+        Route::get('tournament/{tournament}-{format}.png', [ShareCardController::class, 'tournament'])->whereNumber('tournament')->name('cards.tournament');
+        Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]+', 'npub' => 'npub1[0-9a-z]+'])->name('cards.wrapped');
+    });
 
 // NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.
 Route::get('.well-known/nostr.json', NostrJsonController::class)

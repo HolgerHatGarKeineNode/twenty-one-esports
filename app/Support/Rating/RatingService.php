@@ -4,6 +4,7 @@ namespace App\Support\Rating;
 
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
+use App\Jobs\SyncRankBadges;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -237,7 +238,7 @@ final class RatingService
         $season = $rated ? (string) Ladders::season() : '';
         $engine = EloRating::fromConfig($rated ? 'rating' : 'casual');
 
-        return DB::transaction(function () use ($pool, $season, $game, $mode, $challenger, $challenged, $score, $source, $sourceId, $number, $engine): bool {
+        $moved = DB::transaction(function () use ($pool, $season, $game, $mode, $challenger, $challenged, $score, $source, $sourceId, $number, $engine): bool {
             if (RatingChange::query()->where('source', $source)->where('source_id', $sourceId)->exists()) {
                 return false;
             }
@@ -267,6 +268,13 @@ final class RatingService
 
             return true;
         });
+
+        // Rank badges come from rated results only (NIP "Rank badges"); casual has no tiers.
+        if ($moved && $pool === Rating::RATED) {
+            SyncRankBadges::dispatch($game, $mode, [$challenger['subject'], $challenged['subject']]);
+        }
+
+        return $moved;
     }
 
     /**
