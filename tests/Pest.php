@@ -6,6 +6,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\SeasonChains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Vite;
+use Tests\Support\BrowserAssets;
 use Tests\Support\TestSigner;
 use Tests\TestCase;
 
@@ -48,7 +49,13 @@ pest()->extend(TestCase::class)
     // "failed to connect to websocket" console error and stale/missing
     // assets. Point at a path that never exists instead of touching or
     // deleting the developer's real public/hot.
-    ->beforeEach(fn () => Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests')))
+    //
+    // The built assets come through /__test/assets/ (Tests\Support\BrowserAssets),
+    // which lets the browser cache them within a context.
+    ->beforeEach(function (): void {
+        Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests'));
+        BrowserAssets::use();
+    })
     ->group('browser')
     ->in('Browser');
 

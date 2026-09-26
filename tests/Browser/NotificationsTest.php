@@ -5,6 +5,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 
 pest()->group('browser');
@@ -26,6 +27,10 @@ beforeEach(function () {
     Http::fake(fn () => Http::response([]));
 
     config(['session.driver' => 'database']);
+
+    // The jump's countdown, shorter than the 5 s players get: both tests
+    // wait it out in full, and the steps before it take well under a second.
+    config(['esports.notifications.countdown_seconds' => 3]);
 
     app()->rebinding('request', function ($app): void {
         $app['session']->forgetDrivers();
@@ -93,7 +98,7 @@ const NOTIFY_SPIES = <<<'JS'
 
 function notifyPage(User $user, string $to, bool $notificationsAllowed = false): Page
 {
-    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(NOTIFY_SPIES);
 
     if ($notificationsAllowed) {

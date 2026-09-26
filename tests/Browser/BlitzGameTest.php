@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 
 pest()->group('browser');
@@ -73,7 +74,7 @@ const BLITZ_COLLECTOR = <<<'JS'
 
 function blitzPage(User $user, string $to): Page
 {
-    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BLITZ_COLLECTOR);
     $page->goto(ComputeUrl::from($to));
 
@@ -204,6 +205,8 @@ test('two players find each other, play over Reverb, survive a reload and end by
     expect(board($black, 'g.connection'))->toBe('connected');
     playSan($white, 'Bb5');
     BrowserWait::until($black, '() => Alpine.$data(document.querySelector("[data-test=chess-game]")).state.ply === 5', 7_000);
+    // Heard again, so the end below reaches Black by push, not after another heartbeat.
+    $black->evaluate('() => window.Echo.private("game.'.$game->id.'").listen(".game.updated", (update) => Alpine.$data(document.querySelector("[data-test=chess-game]")).receive(update))');
 
     $white->locator('[data-test=resign]')->click();
     $white->locator('[data-test=confirm-resign]')->click();

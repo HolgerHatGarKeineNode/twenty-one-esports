@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use swentel\nostr\Encryption\Nip44;
+use Symfony\Component\Mime\MimeTypes;
 use Tests\Support\TestSigner;
 
 /*
@@ -99,4 +100,23 @@ Route::prefix('__test')->name('testing.')->group(function () {
 
         return response()->json(['result' => $request->json('op') === 'encrypt' ? Nip44::encrypt($text, $key) : Nip44::decrypt($text, $key)]);
     })->name('nostr-nip44')->withoutMiddleware(ValidateCsrfToken::class);
+
+    // The built assets, with a cache lifetime. The browser tests' in-process
+    // server sends public/build/* with no caching headers at all, so every
+    // navigation fetched all ~15 of them again through the one PHP process
+    // (measured: ~160 of ~190 ms per page load). Tests\Support\BrowserAssets
+    // points Vite's asset paths here; the file names carry the build's hash.
+    Route::get('assets/{path}', function (string $path) {
+        abort_unless(app()->environment('testing'), 404);
+        $root = realpath(public_path('build'));
+        $file = realpath(public_path($path));
+        abort_unless($root !== false && $file !== false && str_starts_with($file, $root.DIRECTORY_SEPARATOR) && is_file($file), 404);
+
+        // By extension, as the plugin's server does: content sniffing calls CSS text/plain, which a browser refuses.
+        $type = (new MimeTypes)->getMimeTypes(pathinfo($file, PATHINFO_EXTENSION))[0] ?? 'application/octet-stream';
+
+        // A string body, not response()->file(): the plugin's server buffers a
+        // streamed body and mb_trim()s it, which cut bytes off every font.
+        return response((string) file_get_contents($file), 200, ['Content-Type' => $type, 'Cache-Control' => 'public, max-age=31536000, immutable']);
+    })->where('path', 'build/.+')->name('assets')->withoutMiddleware('web');
 });

@@ -19,9 +19,11 @@ use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Pest\Browser\Execution;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use PHPUnit\Framework\ExpectationFailedException;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 
 pest()->group('browser');
@@ -348,11 +350,12 @@ const SWEEP_READ_SCRIPT = <<<'JS'
  */
 function freshSweepPage(string $url): Page
 {
-    $page = visit($url)->page();
+    $page = visit(BrowserLogin::LANDING)->page();
     $page->context()->addInitScript(SWEEP_COLLECTOR_SCRIPT);
     // The context's init script only applies to navigations after it was
     // registered, and the visit() call above already navigated once without
-    // it — re-navigate so the very first page is measured too.
+    // it (to a static file, BrowserLogin::LANDING, so no page renders for
+    // nothing) — navigate so the very first page is measured too.
     $page->goto(ComputeUrl::from($url));
 
     return $page;
@@ -516,14 +519,14 @@ const SWEEP_GAP_SCRIPT = <<<'JS'
     JS;
 
 /**
- * @param  list<string>  &$violations
+ * The collector's findings (SWEEP_READ_SCRIPT) and the top-gap probe
+ * (SWEEP_GAP_SCRIPT) at the current viewport, in one round trip to the
+ * browser: read first, as two separate calls did, then the probe.
+ *
+ * @return array{read: array<string, mixed>, gap: array<string, mixed>}
  */
-function recordGapViolation(Page $page, string $routeName, string $label, int $width, array &$violations): void
+function sweepProbe(Page $page): array
 {
-    if (in_array($routeName, SWEEP_NO_HEADER_ROUTES, true)) {
-        return;
-    }
-
     // A navigation after load tears the probe's execution context down
     // mid-frame. Seen once in seven guest sweeps (the page was not
     // identified); retry on the page it lands on, rethrow anything else.
@@ -531,14 +534,27 @@ function recordGapViolation(Page $page, string $routeName, string $label, int $w
 
     for ($attempt = 1; $data === null; $attempt++) {
         try {
-            $data = $page->evaluate(SWEEP_GAP_SCRIPT);
+            $data = $page->evaluate('async () => ({ read: ('.SWEEP_READ_SCRIPT.')(), gap: await ('.SWEEP_GAP_SCRIPT.')() })');
         } catch (Throwable $e) {
             if ($attempt === 3 || ! str_contains($e->getMessage(), 'Execution context was destroyed')) {
                 throw $e;
             }
 
-            usleep(300_000);
+            Execution::instance()->wait(0.3);
         }
+    }
+
+    return $data;
+}
+
+/**
+ * @param  array<string, mixed>  $data  the probe's answer (sweepProbe()['gap'])
+ * @param  list<string>  &$violations
+ */
+function recordGapViolation(array $data, string $routeName, string $label, int $width, array &$violations): void
+{
+    if (in_array($routeName, SWEEP_NO_HEADER_ROUTES, true)) {
+        return;
     }
 
     if ($data['gap'] === null) {
@@ -593,18 +609,18 @@ test('every route renders without console errors, page errors, bad responses or 
         $label = "{$route['name']} ({$route['url']})";
 
         $page->goto(ComputeUrl::from($route['url']));
-        $mobile = $page->evaluate(SWEEP_READ_SCRIPT);
+        $mobile = sweepProbe($page);
 
-        recordSweepViolations($mobile, $label, $violations);
-        recordOverflowViolation($mobile, "{$label} at 375px", $violations);
-        recordGapViolation($page, $route['name'], $label, 375, $violations);
+        recordSweepViolations($mobile['read'], $label, $violations);
+        recordOverflowViolation($mobile['read'], "{$label} at 375px", $violations);
+        recordGapViolation($mobile['gap'], $route['name'], $label, 375, $violations);
 
         // 1024 is the first desktop width (lg): the header is at its tightest there.
         foreach ([1024, 1440] as $width) {
             $page->setViewportSize($width, 900);
-            $desktop = $page->evaluate(SWEEP_READ_SCRIPT);
-            recordOverflowViolation($desktop, "{$label} at {$width}px", $violations);
-            recordGapViolation($page, $route['name'], $label, $width, $violations);
+            $desktop = sweepProbe($page);
+            recordOverflowViolation($desktop['read'], "{$label} at {$width}px", $violations);
+            recordGapViolation($desktop['gap'], $route['name'], $label, $width, $violations);
         }
         $page->setViewportSize(375, 800);
     }

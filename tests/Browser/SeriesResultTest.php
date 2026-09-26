@@ -9,6 +9,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 
 pest()->group('browser');
@@ -58,7 +59,7 @@ const P6_COLLECTOR = <<<'JS'
 
 function captainPage(User $user, string $to, int $width): Page
 {
-    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(P6_COLLECTOR);
     $page->setViewportSize($width, 900);
     $page->goto(ComputeUrl::from($to));

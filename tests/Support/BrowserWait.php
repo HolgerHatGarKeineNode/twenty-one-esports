@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use Pest\Browser\Execution;
 use Pest\Browser\Playwright\Page;
 use RuntimeException;
 use Throwable;
@@ -33,7 +34,10 @@ final class BrowserWait
                 // condition resolving, not a failure. Retry.
             }
 
-            usleep($intervalMs * 1000);
+            // The app under test runs in this process: usleep() froze it, so a
+            // request the page made waited for the next evaluate(). The plugin's
+            // own wait keeps its event loop, and with it the server, running.
+            Execution::instance()->wait($intervalMs / 1000);
         } while (microtime(true) < $deadline);
 
         throw new RuntimeException("Condition did not become true within {$timeoutMs}ms: {$jsCondition}");

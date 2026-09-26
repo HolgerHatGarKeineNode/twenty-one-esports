@@ -10,6 +10,7 @@ use App\Support\Clans\ClanService;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
 
@@ -56,7 +57,7 @@ const P4B_COLLECTOR = <<<'JS'
 
 function rosterPage(User $user, string $to, int $width): Page
 {
-    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(P4B_COLLECTOR);
     $page->context()->addInitScript(TestSigner::browserStub($user));
     $page->setViewportSize($width, 900);

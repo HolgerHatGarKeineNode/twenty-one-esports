@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
 
@@ -61,7 +62,7 @@ const P5B_COLLECTOR = <<<'JS'
 
 function playerPage(User $user, string $to): Page
 {
-    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page = visit(BrowserLogin::url($user))->page();
     $page->context()->addInitScript(P5B_COLLECTOR);
     $page->context()->addInitScript(TestSigner::browserStub($user));
     $page->goto(ComputeUrl::from($to));
@@ -365,7 +366,7 @@ test('a daily move the signer refuses says why, logs the signer\'s error, and go
     TestSigner::forBrowser($bert);
     $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
 
-    $page = visit(route('testing.login', ['user' => $anna, 'to' => route('games.show', $game, false)]))->page();
+    $page = visit(BrowserLogin::url($anna))->page();
     $page->context()->addInitScript(P5B_COLLECTOR);
     $page->context()->addInitScript(TestSigner::browserStub($anna));
     // The signer answers as window.__signMode says, with the errors real signers throw.
@@ -483,7 +484,7 @@ test('an opponent profile read from the relay shows on the board and in the play
         BrowserWait::until($page, '() => ! document.querySelector("[data-test=profile-popover]").checkVisibility()', 2_000);
 
         // On a touch screen a tap opens the same card as a bottom sheet and does not leave the game.
-        $phone = visit(route('testing.login', ['user' => $anna, 'to' => route('games.show', $game, false)]))->on()->mobile()->page();
+        $phone = visit(BrowserLogin::url($anna))->on()->mobile()->page();
         $phone->context()->addInitScript(P5B_COLLECTOR);
         $phone->goto(ComputeUrl::from(route('games.show', $game, false)));
         BrowserWait::until($phone, '() => window.Alpine && document.querySelector("[data-test=profile-sheet]") !== null', 5_000);
