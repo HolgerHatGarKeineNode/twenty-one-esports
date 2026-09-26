@@ -13,6 +13,9 @@ use App\Support\Tournaments\FormatOptions;
  */
 final class BracketBuilder
 {
+    /** Most seed orders of a two-stage final tried before the fewest clashes win. */
+    private const FINAL_SEED_TRIES = 500;
+
     /**
      * @param  list<Entrant>  $entrants
      */
@@ -37,10 +40,10 @@ final class BracketBuilder
 
     /**
      * Balanced groups filled in snake order (A B C C B A …), then the final
-     * stage fed by the group places: the group winners are the top seeds, then
-     * the runners-up in group order. With 2 or 4 groups the standard seed
-     * order keeps two of one group apart until the final (A1 meets B2 or D2);
-     * with an odd group count a first-round rematch can happen.
+     * stage fed by the group places: the group winners are the top seeds,
+     * then the other places. The order of the groups within each place is a
+     * rotation (forward or reversed), the first combination that lets no two
+     * of one group meet in their first final-stage match.
      *
      * @param  list<int>  $ordered
      * @param  array<int, list<int>>  $groups
@@ -70,19 +73,109 @@ final class BracketBuilder
         }
 
         $advance = min($options->advance, min($sizes));
-        $finalSeeds = [];
-
-        for ($rank = 1; $rank <= $advance; $rank++) {
-            foreach (array_keys($groups) as $number) {
-                $finalSeeds[] = Slot::groupRank($number, $rank);
-            }
-        }
+        $finalSeeds = self::finalSeeds(array_keys($groups), $advance);
 
         array_push($matches, ...($options->finalStage === 'double-elimination'
             ? Elimination::double($finalSeeds, 'single', false, 'f-', 2)
             : Elimination::single($finalSeeds, false, 'f-', 2)));
 
         return $matches;
+    }
+
+    /**
+     * @param  list<int>  $groups  group numbers
+     * @return list<Slot>
+     */
+    private static function finalSeeds(array $groups, int $advance): array
+    {
+        $count = count($groups);
+        $orders = [];
+
+        foreach ([$groups, array_reverse($groups)] as $order) {
+            for ($shift = 0; $shift < $count; $shift++) {
+                $orders[] = [...array_slice($order, $shift), ...array_slice($order, 0, $shift)];
+            }
+        }
+
+        $winners = array_map(fn (int $number): array => [$number, 1], $groups);
+        $search = ['best' => $winners, 'fewest' => PHP_INT_MAX, 'tried' => 0];
+        self::searchFinalSeeds($winners, 2, $advance, $orders, $search);
+
+        return array_map(fn (array $seed): Slot => Slot::groupRank($seed[0], $seed[1]), $search['best']);
+    }
+
+    /**
+     * Every place below the winners gets its own group order; the first
+     * combination without a clash wins, else the one with the fewest.
+     * Returns true to stop the search.
+     *
+     * @param  list<array{0: int, 1: int}>  $seeds
+     * @param  list<list<int>>  $orders
+     * @param  array{best: list<array{0: int, 1: int}>, fewest: int, tried: int}  $search
+     */
+    private static function searchFinalSeeds(array $seeds, int $rank, int $advance, array $orders, array &$search): bool
+    {
+        if ($rank > $advance) {
+            $clashes = self::firstMeetingClashes($seeds);
+            $search['tried']++;
+
+            if ($clashes < $search['fewest']) {
+                $search['best'] = $seeds;
+                $search['fewest'] = $clashes;
+            }
+
+            return $clashes === 0 || $search['tried'] >= self::FINAL_SEED_TRIES;
+        }
+
+        foreach ($orders as $order) {
+            $next = $seeds;
+
+            foreach ($order as $number) {
+                $next[] = [$number, $rank];
+            }
+
+            if (self::searchFinalSeeds($next, $rank + 1, $advance, $orders, $search)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * First meetings of two of the same group in a bracket over these seeds:
+     * a seed with a bye meets its first opponent later, so the tree is walked
+     * up until each seed has met somebody.
+     *
+     * @param  list<array{0: int, 1: int}>  $seeds  [group, place]
+     */
+    private static function firstMeetingClashes(array $seeds): int
+    {
+        $size = 1 << Estimator::log2(count($seeds));
+        // A node is a seed that has not played yet, 'match' once somebody has, or null (empty).
+        $nodes = array_map(fn (int $seed): ?array => $seeds[$seed - 1] ?? null, Seeding::bracketOrder($size));
+        $clashes = 0;
+
+        while (count($nodes) > 1) {
+            $next = [];
+
+            for ($i = 0; $i < count($nodes); $i += 2) {
+                [$a, $b] = [$nodes[$i], $nodes[$i + 1]];
+
+                if ($a === null || $b === null) {
+                    $next[] = $a ?? $b;
+
+                    continue;
+                }
+
+                $clashes += is_array($a) && is_array($b) && $a[0] === $b[0] ? 1 : 0;
+                $next[] = 'match';
+            }
+
+            $nodes = $next;
+        }
+
+        return $clashes;
     }
 
     /**

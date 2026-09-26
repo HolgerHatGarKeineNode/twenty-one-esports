@@ -369,6 +369,18 @@ test('two stage: snake groups, the group places feed a final where the two of a 
         ->and($state['f-m2-1']['winner'])->toBe(1);
 });
 
+test('two stage: no two of one group meet in the first round of the final stage, 8 to 40 entrants', function (int $advance) {
+    foreach (range(8, 40) as $n) {
+        $bracket = bracket(TournamentFormat::TwoStage, $n, ['advance' => $advance]);
+
+        foreach ($bracket->matches as $match) {
+            if ($match->stage === 2 && $match->slots[0]->take === 'group-rank' && $match->slots[1]->take === 'group-rank') {
+                expect($match->slots[0]->group)->not->toBe($match->slots[1]->group, "{$n} entrants, {$match->key}");
+            }
+        }
+    }
+})->with([2, 3]);
+
 test('two stage: groups of every kind fit the estimator\'s rounds', function (int $n, string $groupStage, string $finalStage) {
     $options = ['groupStage' => $groupStage, 'finalStage' => $finalStage];
     $bracket = bracket(TournamentFormat::TwoStage, $n, $options);
