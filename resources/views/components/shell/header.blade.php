@@ -13,6 +13,8 @@
     $user = auth()->user();
     // Asked once per page: the gate reads the admins table (P5g, it was asked three times).
     $isAdmin = (bool) $user?->can('admin');
+    // Organizers an admin unlocked (P8) reach their tournaments from the menu; admins through Admin.
+    $isOrganizer = ! $isAdmin && (bool) $user?->isTournamentOrganizer();
 
     if ($isAdmin) {
         $items[] = ['admin', __('Admin'), route('admin.status')];
@@ -115,6 +117,8 @@
                     <flux:menu.item :href="route('settings.chess')" icon="adjustments-horizontal">{{ __('Chess settings') }}</flux:menu.item>
                     @if ($isAdmin)
                         <flux:menu.item :href="route('admin.admins')" icon="shield-check">{{ __('Admin') }}</flux:menu.item>
+                    @elseif ($isOrganizer)
+                        <flux:menu.item :href="route('admin.tournaments')" icon="trophy">{{ __('Your tournaments') }}</flux:menu.item>
                     @endif
                     <flux:menu.separator />
                     {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
@@ -158,5 +162,5 @@
                class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
     </div>
 
-    <x-shell.mobile-nav :items="$items" :section="$section" :user="$user" :is-admin="$isAdmin" />
+    <x-shell.mobile-nav :items="$items" :section="$section" :user="$user" :is-admin="$isAdmin" :is-organizer="$isOrganizer" />
 </header>

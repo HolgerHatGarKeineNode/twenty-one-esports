@@ -3,6 +3,7 @@
 use App\Enums\ChessEndReason;
 use App\Enums\InviteLinkType;
 use App\Enums\InviteStatus;
+use App\Enums\TournamentFormat;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -11,6 +12,7 @@ use App\Models\DisputeEvidence;
 use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Invites\InviteLinks;
@@ -160,6 +162,9 @@ function sweepFixtures(): array
         // play?". The same code fills the preview image route.
         'link' => fn (?User $user, array $made): Model => app(InviteLinks::class)->create(User::factory()->create(['name' => 'satsjäger']), InviteLinkType::Daily),
         'code' => fn (?User $user, array $made): Model => $made['link'],
+
+        // A Rocket League tournament with sign-up open (P8a): public, so the guest sweep sees it too.
+        'tournament' => fn (?User $user, array $made): Model => Tournament::factory()->rocketLeague(TournamentFormat::DoubleElimination)->signup()->create(),
 
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {

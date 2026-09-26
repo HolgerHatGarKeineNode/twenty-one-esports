@@ -2,7 +2,7 @@
 
 {{--
     Admin sub-navigation from AdminDisputes.dc.html / AdminDispute.dc.html.
-    Built pages link; the ones of later phases (tournaments P8, payouts P9,
+    Built pages link; the ones of later phases (payouts P9,
     settings) are shown muted and not clickable yet.
 --}}
 @php
@@ -13,7 +13,7 @@
     $items = [
         ['status', __('Status'), route('admin.status'), null],
         ['disputes', __('Disputes'), route('admin.disputes'), $open],
-        ['tournaments', __('Tournaments'), null, null],
+        ['tournaments', __('Tournaments'), route('admin.tournaments'), null],
         ['payouts', __('Payouts'), null, null],
         ['seasons', __('Seasons'), route('admin.season'), null],
         ['trust', __('Trust'), route('admin.trust'), null],

@@ -90,6 +90,9 @@ Route::livewire('mining', 'pages::mining')->name('mining');
 Route::livewire('matches', 'pages::matches.index')->name('matches.index');
 Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')->name('matches.show');
 
+// A tournament (P8a): the minimal page until P8b builds TournamentShow.dc.html.
+Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNumber('tournament')->name('tournaments.show');
+
 /*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
  * shell with a "Coming soon" empty state until its phase builds the real page.

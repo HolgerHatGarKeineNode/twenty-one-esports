@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\PageMeta;
 use App\Support\SeasonChain\AnchoredTrustFacts;
@@ -43,6 +44,14 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
+
+        // Tournaments (P8): admins and the organizers an admin unlocked create
+        // them; an organizer manages only their own. Directors (the creator and
+        // the named ones) enter results in director mode (P8b).
+        Gate::define('create-tournaments', fn (User $user): bool => $user->isAdmin() || $user->isTournamentOrganizer());
+        Gate::define('manage-tournament', fn (User $user, Tournament $tournament): bool => $user->isAdmin()
+            || ($tournament->created_by_id === $user->id && $user->isTournamentOrganizer()));
+        Gate::define('direct-tournament', fn (User $user, Tournament $tournament): bool => $tournament->isDirectedBy($user));
 
         // Profile hand-ins (P10a): one batch per page load is the normal case.
         // Invite links (P6b): the codes are unguessable anyway; this keeps a

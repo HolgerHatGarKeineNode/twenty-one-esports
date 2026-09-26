@@ -147,6 +147,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Unlocked by an admin to create tournaments (P8). Admins create them anyway.
+     */
+    public function isTournamentOrganizer(): bool
+    {
+        return TournamentOrganizer::query()->where('pubkey', $this->pubkey)->exists();
+    }
+
+    /**
      * The kind-0 name, or a shortened npub when the profile is unknown.
      */
     public function displayName(): string

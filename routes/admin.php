@@ -22,3 +22,13 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::livewire('disputes/{match}', 'pages::admin.dispute')->name('disputes.show');
     Route::get('disputes/{match}/evidence/{evidence}', DisputeEvidenceController::class)->name('disputes.evidence');
 });
+
+/*
+| Tournaments (P8a): admins and the organizers an admin unlocked. The list
+| shows an organizer their own tournaments; the organizer list itself is for
+| admins only (checked in the page).
+*/
+Route::middleware(['auth', 'can:create-tournaments'])->prefix('admin')->name('admin.')->group(function () {
+    Route::livewire('tournaments', 'pages::admin.tournaments')->name('tournaments');
+    Route::livewire('tournaments/create', 'pages::admin.tournament-create')->name('tournaments.create');
+});
