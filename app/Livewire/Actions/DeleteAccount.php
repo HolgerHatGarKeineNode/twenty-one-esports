@@ -5,6 +5,7 @@ namespace App\Livewire\Actions;
 use App\Enums\ChessGameStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
+use App\Models\ClanDeparture;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
@@ -57,6 +58,17 @@ class DeleteAccount
 
         DB::transaction(function () use ($user): void {
             Admin::query()->where('pubkey', $user->pubkey)->delete();
+
+            // The clan membership goes with the account; its departure stays with the pubkey,
+            // so the trust admin's own-clan guard still sees this key (P7e).
+            $membership = $user->clanMember()->with('clan')->first();
+
+            if ($membership !== null) {
+                ClanDeparture::query()->create([
+                    'clan_id' => $membership->clan_id, 'clan_address' => $membership->clan->address(), 'clan_name' => $membership->clan->name,
+                    'user_id' => $user->id, 'pubkey' => $user->pubkey, 'reason' => 'deleted', 'left_at' => now(),
+                ]);
+            }
 
             if (config('session.driver') === 'database') {
                 DB::table((string) config('session.table', 'sessions'))->where('user_id', $user->id)->delete();

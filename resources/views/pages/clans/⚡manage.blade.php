@@ -1207,8 +1207,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         @else
             @forelse ($clan->departures->sortByDesc('left_at') as $departure)
                 <div wire:key="dp-{{ $departure->id }}" class="grid min-h-[52px] grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline px-2 text-[13px]">
-                    <b class="truncate">{{ $departure->user->displayName() }}</b>
-                    <span class="text-xs text-ink-3">{{ ['left' => __('left'), 'removed' => __('removed'), 'switched' => __('joined another clan')][$departure->reason] ?? $departure->reason }}, {{ $departure->left_at->diffForHumans() }}</span>
+                    <b class="truncate">{{ $departure->user?->displayName() ?? __('Deleted player') }}</b>
+                    <span class="text-xs text-ink-3">{{ ['left' => __('left'), 'removed' => __('removed'), 'switched' => __('joined another clan'), 'deleted' => __('deleted their account')][$departure->reason] ?? $departure->reason }}, {{ $departure->left_at->diffForHumans() }}</span>
                 </div>
             @empty
                 <p class="m-0 py-4 text-[13px] text-ink-2">{{ __('Nobody has left yet.') }}</p>

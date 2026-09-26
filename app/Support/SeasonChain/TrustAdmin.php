@@ -126,7 +126,9 @@ final class TrustAdmin
      * The admin himself, and everybody in a clan he belonged to during the
      * live season (round 4: leaving the clan does not lift the guard): its
      * members now and those who left it this season. Without a live season
-     * every clan he ever left counts.
+     * every clan he ever left counts. Departures are read by pubkey, so
+     * neither an ended clan (P7d gate, Low A) nor a deleted account (P7e)
+     * takes anybody out of the guard.
      *
      * @param  list<string>  $pubkeys
      *
@@ -138,13 +140,15 @@ final class TrustAdmin
         $departures = fn () => ClanDeparture::query()->when($since !== null, fn ($query) => $query->where('left_at', '>=', $since));
         $clanIds = [
             ...ClanMember::query()->where('user_id', $admin->id)->pluck('clan_id')->all(),
-            ...$departures()->where('user_id', $admin->id)->pluck('clan_id')->all(),
+            ...$departures()->where(fn ($query) => $query->where('pubkey', $admin->pubkey)->orWhere('user_id', $admin->id))->pluck('clan_id')->all(),
         ];
-        $userIds = [
-            ...ClanMember::query()->whereIn('clan_id', $clanIds)->pluck('user_id')->all(),
-            ...$departures()->whereIn('clan_id', $clanIds)->pluck('user_id')->all(),
+        $left = $departures()->whereIn('clan_id', $clanIds)->get(['user_id', 'pubkey']);
+        $userIds = [...ClanMember::query()->whereIn('clan_id', $clanIds)->pluck('user_id')->all(), ...$left->pluck('user_id')->filter()->all()];
+        $own = [
+            $admin->pubkey,
+            ...User::query()->whereKey(array_unique($userIds))->pluck('pubkey')->all(),
+            ...$left->pluck('pubkey')->filter()->all(),
         ];
-        $own = [$admin->pubkey, ...User::query()->whereKey(array_unique($userIds))->pluck('pubkey')->all()];
 
         if (array_intersect($pubkeys, $own) !== []) {
             throw new TrustAdminRefused(__('You cannot decide about yourself or your own clan. Another admin has to.'));

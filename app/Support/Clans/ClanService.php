@@ -679,7 +679,7 @@ final class ClanService
 
         ClanDeparture::query()->create([
             'clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name,
-            'user_id' => $player->id, 'reason' => $reason, 'left_at' => now(),
+            'user_id' => $player->id, 'pubkey' => $player->pubkey, 'reason' => $reason, 'left_at' => now(),
         ]);
 
         if (! ClanMember::query()->where('clan_id', $clan->id)->exists()) {

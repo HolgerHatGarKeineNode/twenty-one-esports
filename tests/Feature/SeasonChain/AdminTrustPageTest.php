@@ -7,6 +7,7 @@
  */
 
 use App\Enums\ClanRole;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
@@ -195,6 +196,54 @@ test('regression (P7d gate, Low A): a clan that ends keeps its departures, so th
 
     expect(fn () => $trust->exclude($this->admin, $mate->pubkey, 'Mass reporting.'))->toThrow(TrustAdminRefused::class, 'your own clan')
         ->and(TrustExclusion::query()->count())->toBe(0);
+});
+
+test('regression (P7e): a former mate who deletes their account stays under the own-clan guard', function () {
+    Queue::fake();
+    openSeason(); // Block 0 an hour ago
+    config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
+    $clans = app(ClanService::class);
+    $trust = app(TrustAdmin::class);
+
+    $draft = new ClanDraft('Laser Eyes', 'LSR', 'Rocket League clan of the Kempten meetup.');
+    $clan = $clans->create($this->admin, $draft, $this->adminSigner->signTemplates($clans->prepareCreate($this->admin, $draft)));
+    $mateSigner = new TestSigner;
+    $mate = User::factory()->withPubkey($mateSigner->pubkey)->create();
+    $invite = $clans->invite($this->admin, $clan, $mate, $this->adminSigner->signTemplates($clans->prepareInvite($this->admin, $clan, $mate)));
+    $clans->accept($invite, $mate, $mateSigner->signTemplates($clans->prepareAccept($invite, $mate)));
+
+    // The mate leaves, then deletes the account: the departure stays, with the pubkey.
+    $clans->leave($mate, $mateSigner->signTemplates($clans->prepareLeave($mate)));
+    app(DeleteAccount::class)($mate);
+
+    expect(User::query()->whereKey($mate->id)->exists())->toBeFalse()
+        ->and(ClanDeparture::query()->where('clan_id', $clan->id)->get()->map(fn (ClanDeparture $row) => [$row->user_id, $row->pubkey])->all())
+        ->toBe([[null, $mateSigner->pubkey]]);
+
+    expect(fn () => $trust->exclude($this->admin, $mateSigner->pubkey, 'Mass reporting.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(TrustExclusion::query()->count())->toBe(0);
+
+    // The clan's "Former" tab still renders the row, as a deleted player.
+    Livewire::actingAs($this->admin)->test('pages::clans.manage', ['clan' => $clan])->call('pickTab', 'former')->assertOk()->assertSee('Deleted player');
+});
+
+test('regression (P7e): a mate who deletes their account while still in the clan stays under the own-clan guard', function () {
+    Queue::fake();
+    openSeason();
+    config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
+    $clans = app(ClanService::class);
+
+    $draft = new ClanDraft('Laser Eyes', 'LSR', 'Rocket League clan of the Kempten meetup.');
+    $clan = $clans->create($this->admin, $draft, $this->adminSigner->signTemplates($clans->prepareCreate($this->admin, $draft)));
+    $mateSigner = new TestSigner;
+    $mate = User::factory()->withPubkey($mateSigner->pubkey)->create();
+    $invite = $clans->invite($this->admin, $clan, $mate, $this->adminSigner->signTemplates($clans->prepareInvite($this->admin, $clan, $mate)));
+    $clans->accept($invite, $mate, $mateSigner->signTemplates($clans->prepareAccept($invite, $mate)));
+
+    app(DeleteAccount::class)($mate);
+
+    expect(fn () => app(TrustAdmin::class)->exclude($this->admin, $mateSigner->pubkey, 'Mass reporting.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(ClanDeparture::query()->where('clan_id', $clan->id)->sole()->only(['user_id', 'pubkey', 'reason']))->toBe(['user_id' => null, 'pubkey' => $mateSigner->pubkey, 'reason' => 'deleted']);
 });
 
 test('round 4: the page shows which reports count now, and a dismissal takes the mark away', function () {
