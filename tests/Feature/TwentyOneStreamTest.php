@@ -46,7 +46,7 @@ beforeEach(function () {
 afterEach(function () {
     File::deleteDirectory($this->dir);
 
-    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_DELAY', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
+    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_DELAY', 'FAKE_ENCODER_EXIT_AFTER', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
         putenv($name);
         unset($_SERVER[$name]);
     }
@@ -322,6 +322,25 @@ test('a kept playlist does not count as live before this run has written it', fu
     Artisan::call('twentyone:stream', ['--relays' => 'ws://'.stream_socket_get_name($silent, false), '--stop-after' => 1.5]);
 
     expect(Artisan::output())->not->toContain('status=live');
+});
+
+test('a rewritten kept window is not live either: only a segment of this process counts', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    $hlsDir = config('twentyone.stream.hls_dir');
+    $silent = stream_socket_server('tcp://127.0.0.1:0');
+    config(['twentyone.nostr.publish_timeout_seconds' => 1, 'twentyone.stream.shutdown_publish_seconds' => 1]);
+    fakeEncoder($this->dir);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+
+    // The kept playlist is gone (the state still has its window), so the next
+    // update rewrites it; the new encoder dies without a segment.
+    File::delete($hlsDir.'/stream.m3u8');
+    setChildEnv('FAKE_ENCODER_SEGMENTS', '0');
+    setChildEnv('FAKE_ENCODER_EXIT_AFTER', '0.1');
+    Artisan::call('twentyone:stream', ['--relays' => 'ws://'.stream_socket_get_name($silent, false), '--stop-after' => 2]);
+
+    expect(File::exists($hlsDir.'/stream.m3u8'))->toBeTrue()
+        ->and(Artisan::output())->not->toContain('status=live');
 });
 
 test('--clear starts from an empty window, a lost state drops the kept playlist', function () {

@@ -98,6 +98,9 @@ class TwentyOneStreamCommand extends Command
 
     private ?EncoderRun $pending = null;
 
+    /** @var list<string> run ids of the encoders this process started */
+    private array $runIds = [];
+
     /**
      * Execute the console command.
      */
@@ -126,6 +129,8 @@ class TwentyOneStreamCommand extends Command
         $this->removeLegacyLayout($hlsDir);
         $this->limitPollWaits();
         $public = new PublicPlaylist($hlsDir, $playlistName);
+        // The instance can be reused (Artisan::call in one process): only runs of this start count.
+        $this->runIds = [];
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -331,8 +336,9 @@ class TwentyOneStreamCommand extends Command
             $texts = StreamTexts::for($this->active?->mode === ModeMachine::SCENE ? $sceneGame : null);
 
             // A playlist kept from before this start is fresh after a quick
-            // restart, but says nothing about whether this run's encoder works.
-            if ($this->signer !== null && $public->writtenThisRun() && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
+            // restart (and rewritten when trimmed), but says nothing about
+            // whether an encoder of this process works: only its segments count.
+            if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
                 $this->startedAt ??= time();
                 // A SIGTERM during this publish aborts it; `ended` follows below.
                 $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping);
@@ -417,6 +423,7 @@ class TwentyOneStreamCommand extends Command
         $ffmpeg = new FfmpegCommands((string) config('twentyone.stream.ffmpeg'));
         // New names for every run: segments and init are never reused.
         $runId = FfmpegCommands::newRunId();
+        $this->runIds[] = $runId;
         $music = $this->writeMusicList();
         $public->prune($mode);
         $pending = Process::forever()->env(ChildEnvironment::withoutSecrets());

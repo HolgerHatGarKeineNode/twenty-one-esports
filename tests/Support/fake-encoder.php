@@ -27,7 +27,18 @@ $directory = dirname($playlist);
 $segmentPattern = basename($option('-hls_segment_filename'));
 $init = $option('-hls_fmp4_init_filename');
 $mode = in_array('image2pipe', $arguments, true) ? 'SCENE' : 'LOOP';
-$setting = fn (string $name, string $default): string => (string) (getenv("FAKE_ENCODER_{$mode}_{$name}") ?: getenv("FAKE_ENCODER_{$name}") ?: $default);
+// Unset or empty falls through; "0" is a value (e.g. no segments at all).
+$setting = function (string $name, string $default) use ($mode): string {
+    foreach (["FAKE_ENCODER_{$mode}_{$name}", "FAKE_ENCODER_{$name}"] as $variable) {
+        $value = getenv($variable);
+
+        if ($value !== false && $value !== '') {
+            return $value;
+        }
+    }
+
+    return $default;
+};
 $count = (int) $setting('SEGMENTS', '3');
 $exitAfter = (float) $setting('EXIT_AFTER', '0');
 usleep((int) (1_000_000 * (float) $setting('DELAY', '0')));

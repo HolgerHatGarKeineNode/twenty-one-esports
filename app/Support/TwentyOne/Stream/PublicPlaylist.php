@@ -20,8 +20,6 @@ final class PublicPlaylist
     /** Why the state was rebuilt on start ('missing' or 'unreadable'), null when it was read. */
     public readonly ?string $recoveredFrom;
 
-    private bool $writtenThisRun = false;
-
     public function __construct(
         private string $hlsDir,
         private string $playlistName = 'stream.m3u8',
@@ -72,7 +70,6 @@ final class PublicPlaylist
             File::delete($this->path());
         } else {
             PlaylistWriter::writeAtomically($this->path(), $this->writer->render($next));
-            $this->writtenThisRun = true;
         }
 
         PlaylistWriter::writeAtomically($this->statePath(), $next->toJson());
@@ -105,12 +102,20 @@ final class PublicPlaylist
     }
 
     /**
-     * Whether this instance has written the public playlist, as opposed to
-     * one kept from a previous run.
+     * Whether the window holds a segment of one of these encoder runs. A
+     * rewritten or trimmed window kept from a previous process does not.
+     *
+     * @param  list<string>  $runIds
      */
-    public function writtenThisRun(): bool
+    public function hasSegmentOf(array $runIds): bool
     {
-        return $this->writtenThisRun;
+        foreach ($this->state->window as $segment) {
+            if (in_array($segment->runId, $runIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
