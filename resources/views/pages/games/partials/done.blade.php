@@ -62,9 +62,9 @@
                 @if ($aborted)
                     {{ __('No result, nothing recorded: the game ended before both sides made their first move.') }}
                 @elseif ($daily)
-                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').$lastMove->san.' · ' : '' }}{{ __('Daily chess') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ trans_choice(':count day|:count days', $days) }}
+                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ __('Daily chess') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ trans_choice(':count day|:count days', $days) }}
                 @else
-                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').$lastMove->san.' · ' : '' }}{{ __('Blitz 5+3') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ __('time left :white vs :black', ['white' => $clock($game->white_ms), 'black' => $clock($game->black_ms)]) }}
+                    {{ $lastMove ? $moveCount.'. '.($game->ply % 2 === 0 ? '… ' : '').\App\Support\Chess\SanNotation::display($lastMove->san).' · ' : '' }}{{ __('Blitz 5+3') }} · {{ trans_choice(':count move|:count moves', $moveCount) }} · {{ __('time left :white vs :black', ['white' => $clock($game->white_ms), 'black' => $clock($game->black_ms)]) }}
                 @endif
             </span>
         </span>
@@ -148,7 +148,7 @@
                 <button type="button" aria-label="{{ __('Next move') }}" x-on:click="go(index + 1)" class="btn-w flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink"><x-icon name="next" :size="16" /></button>
                 <button type="button" aria-label="{{ __('Last move') }}" x-on:click="go(fens.length - 1)" class="btn-w flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink"><x-icon name="last" :size="16" /></button>
                 <span class="flex min-w-0 flex-col gap-0.5 pl-2">
-                    <b class="text-sm" x-text="index === 0 ? '{{ __('Start') }}' : Math.ceil(index / 2) + (index % 2 === 0 ? '… ' : '. ') + moves[index - 1].san"></b>
+                    <b class="text-sm" x-text="index === 0 ? '{{ __('Start') }}' : Math.ceil(index / 2) + (index % 2 === 0 ? '… ' : '. ') + window.displaySan(moves[index - 1].san)"></b>
                     <span class="text-xs text-ink-2" x-text="`${index} / ${fens.length - 1}`"></span>
                 </span>
             </div>
@@ -163,7 +163,7 @@
                             <span class="text-ink-3">{{ intdiv($i, 2) + 1 }}.</span>
                     @endif
                             <button type="button" x-on:click="go({{ $i + 1 }})" :aria-current="index === {{ $i + 1 }} ? 'step' : 'false'"
-                                    :class="index === {{ $i + 1 }} ? 'bg-btc-press text-btc-hi' : 'text-ink'" class="flex h-9 cursor-pointer items-center rounded-sm border-0 bg-transparent px-1.5 text-left text-sm">{{ $move['san'] }}</button>
+                                    :class="index === {{ $i + 1 }} ? 'bg-btc-press text-btc-hi' : 'text-ink'" class="flex h-9 cursor-pointer items-center rounded-sm border-0 bg-transparent px-1.5 text-left text-sm">{{ \App\Support\Chess\SanNotation::display($move['san']) }}</button>
                     @if ($i % 2 === 1 || $loop->last)
                         </li>
                     @endif

@@ -45,7 +45,7 @@
             @php
                 $color = $model->colorOf($viewer);
                 $last = $model->moves()->reorder('ply', 'desc')->first();
-                $lastLabel = $last ? intdiv($last->ply + 1, 2).($last->ply % 2 === 1 ? '. ' : '… ').$last->san : __('none yet');
+                $lastLabel = $last ? intdiv($last->ply + 1, 2).($last->ply % 2 === 1 ? '. ' : '… ').\App\Support\Chess\SanNotation::display($last->san) : __('none yet');
             @endphp
             <div class="flex items-center gap-3">
                 @if ($item->face)<x-avatar :user="$item->face" :size="40" class="rounded-lg" />@endif

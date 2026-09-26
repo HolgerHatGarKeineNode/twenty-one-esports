@@ -8,6 +8,7 @@ use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\User;
+use App\Support\Chess\SanNotation;
 use Illuminate\Support\Carbon;
 
 /**
@@ -43,7 +44,7 @@ final class ChessNotifications
             __('Your move in daily chess :number', ['number' => $game->number()], $locale),
             __(':name played :move. You have until :deadline.', [
                 'name' => $opponent?->displayName() ?? '',
-                'move' => $last === null ? '' : $this->moveLabel($last->ply, $last->san),
+                'move' => $last === null ? '' : $this->moveLabel($last->ply, $last->san, $locale),
                 'deadline' => $this->deadline($game, $player),
             ], $locale),
             route('games.show', $game),
@@ -231,9 +232,9 @@ final class ChessNotifications
         return intdiv((int) $game->initial_ms, 60_000).'+'.intdiv((int) $game->increment_ms, 1000);
     }
 
-    private function moveLabel(int $ply, string $san): string
+    private function moveLabel(int $ply, string $san, string $locale): string
     {
-        return intdiv($ply + 1, 2).($ply % 2 === 1 ? '. ' : '… ').$san;
+        return intdiv($ply + 1, 2).($ply % 2 === 1 ? '. ' : '… ').SanNotation::display($san, $locale);
     }
 
     private function deadline(ChessGame $game, User $user): string

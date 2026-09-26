@@ -427,7 +427,7 @@
     "due now": "jetzt fällig",
     "During the game": "Während der Partie",
     "e.g. :move": "z. B. :move",
-    "e.g. Nf3": "z. B. Nf3",
+    "e.g. Nf3": "z. B. Sf3",
     "Each goes out by browser push and Nostr DM, as switched on above.": "Jede geht per Browser-Push und Nostr-DM raus, so wie oben eingeschaltet.",
     "each move a NIP-64 note, signed by the player who makes it": "jeder Zug eine NIP-64-Notiz, bestätigt von dem, der zieht",
     "each move is its own NIP-64 note, chained to the previous one, confirmed automatically by the player who made it": "jeder Zug ist eine eigene NIP-64-Notiz, verkettet mit der vorigen, automatisch bestätigt von dem, der gezogen hat",

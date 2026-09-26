@@ -103,7 +103,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
             'opponent' => $opponent,
             'mine' => $game->turn() === $color,
             'colorText' => __('You play :color, move :n', ['color' => $color === 'w' ? __('White') : __('Black'), 'n' => intdiv($game->ply, 2) + 1]),
-            'last' => $last === null ? null : intdiv($last->ply + 1, 2).($last->ply % 2 === 1 ? '. ' : '… ').$last->san,
+            'last' => $last === null ? null : intdiv($last->ply + 1, 2).($last->ply % 2 === 1 ? '. ' : '… ').\App\Support\Chess\SanNotation::display($last->san),
             'lastSquares' => $last === null ? [] : [substr($last->uci, 0, 2), substr($last->uci, 2, 2)],
             'left' => __(':h h :m min left', ['h' => intdiv($minutes, 60), 'm' => str_pad((string) ($minutes % 60), 2, '0', STR_PAD_LEFT)]),
             'share' => round($left / max(1, $game->initial_ms) * 100, 1),

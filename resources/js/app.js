@@ -13,6 +13,7 @@ import { dropFailedBunker } from './millAuth.js';
 import matchDock from './matchDock.js';
 import './nostrSign.js';
 import './captured.js';
+import './sanNotation.js';
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {

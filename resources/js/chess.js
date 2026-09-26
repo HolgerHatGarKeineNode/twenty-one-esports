@@ -11,6 +11,7 @@ import { boardKey } from './hotkeys.js';
 import { ensureSigner } from './nostrSign.js';
 import { signTemplate } from './signing.js';
 import { moveSound, playSound, sounds } from './sounds.js';
+import { displaySan, inputSan } from './sanNotation.js';
 
 const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const VS16 = '︎';
@@ -464,7 +465,7 @@ document.addEventListener('alpine:init', () => {
         get boardLabel() {
             const last = this.state.moves[this.state.moves.length - 1];
 
-            return this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? last.san : '–');
+            return this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? displaySan(last.san) : '–');
         },
 
         get cells() {
@@ -560,7 +561,7 @@ document.addEventListener('alpine:init', () => {
         },
 
         submitSan() {
-            const san = this.sanInput.trim();
+            const san = inputSan(this.sanInput);
             if (!san || !this.canMove) return;
             const chess = new Chess(this.state.fen);
             let move = null;
@@ -661,8 +662,8 @@ document.addEventListener('alpine:init', () => {
             for (let i = 0; i < moves.length; i += 2) {
                 rows.push({
                     n: i / 2 + 1,
-                    w: moves[i].san,
-                    b: moves[i + 1]?.san ?? '',
+                    w: displaySan(moves[i].san),
+                    b: displaySan(moves[i + 1]?.san ?? ''),
                     wt: spent(moves[i]),
                     bt: spent(moves[i + 1]),
                     wCur: current === i,
@@ -731,7 +732,7 @@ document.addEventListener('alpine:init', () => {
         flipped: config.flipped,
 
         get boardLabel() {
-            return this.index === 0 ? config.labels.start : config.labels.after.replace(':move', this.moves[this.index - 1].san);
+            return this.index === 0 ? config.labels.start : config.labels.after.replace(':move', displaySan(this.moves[this.index - 1].san));
         },
 
         get cells() {

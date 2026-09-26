@@ -13,6 +13,7 @@ import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
 import { boardKey } from './hotkeys.js';
 import { moveSound, playSound } from './sounds.js';
+import { displaySan, inputSan } from './sanNotation.js';
 
 const PIECES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' };
 const DAY = 86_400_000;
@@ -110,7 +111,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
         get boardLabel() {
             const last = this.state.moves[this.state.moves.length - 1];
 
-            return this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? last.san : '–');
+            return this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? displaySan(last.san) : '–');
         },
 
         clickSquare(square) {
@@ -178,7 +179,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
         },
 
         submitSan() {
-            const san = this.sanInput.trim();
+            const san = inputSan(this.sanInput);
             if (!san || !this.myTurn || this.pending) return;
             let move = null;
             try {
@@ -232,7 +233,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
             if (!this.pending) return '';
             const n = Math.floor(this.state.ply / 2) + 1;
 
-            return n + (this.state.ply % 2 === 0 ? '. ' : '… ') + this.pending.san;
+            return n + (this.state.ply % 2 === 0 ? '. ' : '… ') + displaySan(this.pending.san);
         },
 
         clear() {
@@ -358,7 +359,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
             if (!last) return null;
             const ply = moves.length;
 
-            return { ...last, label: Math.ceil(ply / 2) + (ply % 2 === 1 ? '. ' : '… ') + last.san, mine: (ply % 2 === 1) === (this.color === 'w') };
+            return { ...last, label: Math.ceil(ply / 2) + (ply % 2 === 1 ? '. ' : '… ') + displaySan(last.san), mine: (ply % 2 === 1) === (this.color === 'w') };
         },
 
         get moveRows() {
@@ -367,8 +368,8 @@ export function dailyGame(config, boardCells, kingInCheck) {
             for (let i = 0; i < moves.length; i += 2) {
                 rows.push({
                     n: i / 2 + 1,
-                    w: moves[i].san,
-                    b: moves[i + 1]?.san ?? '',
+                    w: displaySan(moves[i].san),
+                    b: displaySan(moves[i + 1]?.san ?? ''),
                     wt: moves[i].at ? this.t.day.replace(':n', this.day(moves[i].at)) : '',
                     bt: moves[i + 1]?.at ? this.t.day.replace(':n', this.day(moves[i + 1].at)) : '',
                     wCur: moves.length - 1 === i,
