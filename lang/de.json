@@ -2620,5 +2620,8 @@
     "The lowest seeds may play only 1 match, everyone else at least 2. The winner plays up to :max.": "Die niedrigsten Setzplätze spielen vielleicht nur 1 Spiel, alle anderen mindestens 2. Der Sieger spielt bis zu :max.",
     "The lowest seeds start in the lower bracket, with one life: here :seeds. Shorter, but less fair.": "Die niedrigsten Setzplätze starten unten, mit nur einem Leben: hier :seeds. Kürzer, aber weniger fair.",
     "seed :seed": "Setzplatz :seed",
-    "seeds :from to :to": "Setzplätze :from bis :to"
+    "seeds :from to :to": "Setzplätze :from bis :to",
+    "Games in this series": "Spiele der Serie",
+    "Series played": "Spiele",
+    "Series type": "Spielart"
 }

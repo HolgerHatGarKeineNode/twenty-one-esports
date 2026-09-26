@@ -152,7 +152,7 @@ new #[Title('Ladder')] #[Layout('layouts::app', ['section' => 'ladder'])] class 
                 <span>{{ $players ? __('Player') : __('Lineup') }}</span>
                 @if ($rated)<span class="hidden lg:block">{{ __('Tier') }}</span>@endif
                 <span class="text-right">{{ __('Elo') }}</span>
-                <span class="hidden text-right lg:block">{{ __('Games') }}</span>
+                <span class="hidden text-right lg:block">{{ $this->game === 'chess' ? __('Games') : __('Series played') }}</span>
                 <span class="hidden text-right lg:block">{{ $this->gameMode->allowsDraws ? __('W / D / L') : __('W / L') }}</span>
             </div>
 

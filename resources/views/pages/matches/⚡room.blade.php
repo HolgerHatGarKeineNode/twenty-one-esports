@@ -617,7 +617,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {{-- Games + Who played --}}
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section aria-labelledby="games-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="games">
-            <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games') }}</h2><span class="text-xs text-ink-2">{{ __('after each game, enter the team goals from the end screen') }}</span></span>
+            <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games in this series') }}</h2><span class="text-xs text-ink-2">{{ __('after each game, enter the team goals from the end screen') }}</span></span>
             <div class="grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-center gap-2 text-xs text-ink-3 lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]">
                 <span>{{ __('Game #') }}</span><span class="text-center">{{ $m->challenger_tag }}</span><span></span><span class="text-center">{{ $m->challenged_tag }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
             </div>
@@ -827,7 +827,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                         @foreach ([
                             [__('Match'), $m->label().', '.$m->challenger_name.' vs '.$m->challenged_name.', '.$m->mode],
                             [__('Match kind'), ($m->rated ? __('Rated') : __('Casual')).', Rocket League '.$m->mode],
-                            [__('Games'), implode(', ', array_map(fn ($g) => $g['challenger'] !== null ? $g['challenger'].' : '.$g['challenged'] : __(':tag win', ['tag' => $m->sideTag($g['winner'])]), $draft['games']))],
+                            [__('Games in this series'), implode(', ', array_map(fn ($g) => $g['challenger'] !== null ? $g['challenger'].' : '.$g['challenged'] : __(':tag win', ['tag' => $m->sideTag($g['winner'])]), $draft['games']))],
                             [__('Played'), implode(', ', array_column(array_filter($draft['roster'], fn ($r) => $r['side'] === ($captainSide ?? 'challenger')), 'name'))],
                             [__('Rating'), $m->rated ? __('with the league record') : __('casual Elo only, no rank')],
                             [__('Result'), __('Series :a : :b for :clan', ['a' => max($draftWins), 'b' => min($draftWins), 'clan' => $m->sideName($leader)])],
