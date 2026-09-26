@@ -385,6 +385,14 @@ final class SeasonChains
 
             $event = $league->publish(self::PARAMETER_CHANGE, $tags, $reason, $change->createdAt->getTimestamp());
 
+            // A new version of every ladder with the standings so far (P7d). Without the
+            // trust key there is no `trust` to repeat, and the ladders stay as they are.
+            $trust = LeagueKey::trust();
+
+            if ($trust !== null) {
+                app(LadderEvents::class)->publish($season, $league, $trust->pubkey());
+            }
+
             return SeasonParameterChange::query()->create([
                 'season_id' => $season->id,
                 'signed_at' => $change->createdAt,

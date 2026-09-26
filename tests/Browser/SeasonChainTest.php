@@ -141,7 +141,7 @@ function chainBlock(int $seasonId, int $height, User $winner, User $loser, Carbo
 test('/mining and AdminSeason stay clean before Block 0, through the release, and in the live season', function () {
     $board = User::factory()->create(['name' => 'satsjaeger']);
     TestSigner::forBrowser($board);
-    config(['esports.board' => [NostrKeys::hexToNpub($board->refresh()->pubkey)], 'esports.league.nsec' => (new TestSigner)->secret]);
+    config(['esports.board' => [NostrKeys::hexToNpub($board->refresh()->pubkey)], 'esports.league.nsec' => (new TestSigner)->secret, 'esports.trust.nsec' => (new TestSigner)->secret]);
 
     $admin = chainPage($board, route('admin.season'), TestSigner::browserStub($board));
 

@@ -29,7 +29,7 @@ const RELEASE_MESSAGE = '26/Sep/2026 TWENTY ONE Esports: every fair win is a blo
 beforeEach(function () {
     Queue::fake();
     $this->league = new TestSigner;
-    config(['esports.league.nsec' => $this->league->secret]);
+    config(['esports.league.nsec' => $this->league->secret, 'esports.trust.nsec' => (new TestSigner)->secret]);
 
     $this->boardSigner = new TestSigner;
     $this->board = User::factory()->withPubkey($this->boardSigner->pubkey)->create();
@@ -77,7 +77,11 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
     $label = SignedEvent::fromInput($events[SeasonRelease::LABEL]->payload());
     $adminList = SignedEvent::fromInput($events[SeasonRelease::ADMIN_LIST]->payload());
 
-    expect($events->keys()->sort()->values()->all())->toBe([SeasonRelease::LABEL, SeasonChains::GENESIS, SeasonRelease::ADMIN_LIST, SeasonRelease::ANNOUNCEMENT])
+    $ladders = NostrEvent::query()->where('kind', Ladders::KIND)->orderBy('d')->pluck('d')->all();
+
+    expect($events->keys()->sort()->values()->all())->toBe([SeasonRelease::LABEL, SeasonChains::GENESIS, SeasonRelease::ADMIN_LIST, SeasonRelease::ANNOUNCEMENT, Ladders::KIND])
+        // Every rated game and mode opens its ladder right after the genesis.
+        ->and($ladders)->toBe(['chess/blitz/pre-season', 'chess/correspondence/pre-season', 'rocket-league/1v1/pre-season', 'rocket-league/2v2/pre-season', 'rocket-league/3v3/pre-season'])
         ->and($genesis->pubkey)->toBe($this->league->pubkey)
         ->and($genesis->hasValidSignature())->toBeTrue()
         ->and($genesis->content)->toBe(RELEASE_MESSAGE)
@@ -96,7 +100,7 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
         ->and(Seasons::state())->toBe('live')
         ->and(Ladders::address('rocket-league', '3v3'))->toBe('32152:'.$this->league->pubkey.':rocket-league/3v3/pre-season');
 
-    Queue::assertPushed(PublishNostrEvent::class, 4);
+    Queue::assertPushed(PublishNostrEvent::class, 9);
 });
 
 test('Block 0 is refused for anyone not on the board list, even an admin of the admins table', function () {
@@ -112,14 +116,17 @@ test('Block 0 is refused for anyone not on the board list, even an admin of the 
     Queue::assertNothingPushed();
 });
 
-test('Block 0 is refused with a wrongly retyped supply, without the league key, and a second time', function () {
+test('Block 0 is refused with a wrongly retyped supply, without the league key or the trust key, and a second time', function () {
     expect(fn () => releaseAs($this->board, $this->boardSigner, '2 100 001'))->toThrow(SeasonReleaseRefused::class, 'Type the supply')
         ->and(fn () => releaseAs($this->board, $this->boardSigner, ''))->toThrow(SeasonReleaseRefused::class, 'Type the supply');
 
     config(['esports.league.nsec' => null]);
     expect(fn () => releaseAs($this->board, $this->boardSigner))->toThrow(SeasonReleaseRefused::class, 'league key');
 
-    config(['esports.league.nsec' => $this->league->secret]);
+    config(['esports.league.nsec' => $this->league->secret, 'esports.trust.nsec' => null]);
+    expect(fn () => releaseAs($this->board, $this->boardSigner))->toThrow(SeasonReleaseRefused::class, 'trust key');
+
+    config(['esports.trust.nsec' => (new TestSigner)->secret]);
     releaseAs($this->board, $this->boardSigner, '2100000');
 
     expect(fn () => releaseAs($this->board, $this->boardSigner))->toThrow(SeasonReleaseRefused::class, 'Only one chain')

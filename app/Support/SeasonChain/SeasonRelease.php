@@ -20,14 +20,15 @@ use Illuminate\Support\Facades\DB;
  * digest. The league then signs, in one transaction, the admin list
  * (`30000`) if the board changed, the season announcement (`31923`) and the
  * Season Genesis (`2156`) with the label, the admin list and the admin as
- * `p` with role `release`, and writes the season row. Everything goes to the
- * league relays after the commit.
+ * `p` with role `release`, writes the season row and opens the ladders
+ * (`32152`, LadderEvents). Everything goes to the league relays after the
+ * commit.
  *
  * The draft is config/season.php (the Pre-Season defaults) plus the genesis
  * message the admin types. Only the Pre-Season can be released here: later
  * seasons need a season planner that does not exist yet.
  *
- * Fail closed: without the league key, for anyone not on the board, with a
+ * Fail closed: without the league key or the trust key, for anyone not on the board, with a
  * wrong supply, while a season exists, or with a label that is not exactly
  * the prepared one, nothing is signed and nothing is written.
  */
@@ -108,7 +109,18 @@ final class SeasonRelease
             return __('The league key is not set on this server, so Block 0 cannot be released. Rated play stays closed.');
         }
 
+        // The ladders carry `trust` from their first version on, and its presence is frozen for the season.
+        if (LeagueKey::trust() === null) {
+            return __('The trust key is not set on this server, so the ladders cannot name their trust gate and Block 0 cannot be released. Rated play stays closed.');
+        }
+
         return null;
+    }
+
+    /** @throws SeasonReleaseRefused */
+    private function trustKey(): string
+    {
+        return LeagueKey::trust()?->pubkey() ?? throw new SeasonReleaseRefused(__('The trust key is not set on this server, so the ladders cannot name their trust gate and Block 0 cannot be released. Rated play stays closed.'));
     }
 
     /**
@@ -161,7 +173,7 @@ final class SeasonRelease
 
                 $genesis = $league->publish(SeasonChains::GENESIS, $tags, $message, $genesisAt);
 
-                return Season::query()->create([
+                $season = Season::query()->create([
                     'slug' => $draft['slug'],
                     'league_pubkey' => $league->pubkey(),
                     'supply' => $draft['supply'],
@@ -181,6 +193,11 @@ final class SeasonRelease
                     'released_by_id' => $admin->id,
                     'released_by_pubkey' => $admin->pubkey,
                 ]);
+
+                // The first version of every ladder, right after the genesis (NIP "Season transition").
+                app(LadderEvents::class)->publish($season, $league, $this->trustKey());
+
+                return $season;
             });
         } catch (UniqueConstraintViolationException) {
             throw new SeasonReleaseRefused(__('The Pre-Season has been released. Only one chain runs at a time, and later seasons are not planned here.'));

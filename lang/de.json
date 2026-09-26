@@ -2053,6 +2053,7 @@
     "Only a board member on the public admin list can release Block 0.": "Nur ein Vorstandsmitglied auf der öffentlichen Admin-Liste kann Block 0 freigeben.",
     "The Pre-Season has been released. Only one chain runs at a time, and later seasons are not planned here.": "Die Pre-Season ist freigegeben. Es läuft immer nur eine Chain, und spätere Seasons werden nicht hier geplant.",
     "The league key is not set on this server, so Block 0 cannot be released. Rated play stays closed.": "Der Liga-Schlüssel ist auf diesem Server nicht gesetzt, deshalb kann Block 0 nicht freigegeben werden. Gewertete Partien bleiben geschlossen.",
+    "The trust key is not set on this server, so the ladders cannot name their trust gate and Block 0 cannot be released. Rated play stays closed.": "Der Trust-Schlüssel ist auf diesem Server nicht gesetzt. Die Ladders können ihr Vertrauens-Gate nicht nennen, deshalb kann Block 0 nicht freigegeben werden. Gewertete Partien bleiben geschlossen.",
     "The signed release does not match these parameters. Please start again.": "Die signierte Freigabe passt nicht zu diesen Parametern. Bitte fang noch einmal an.",
     "Type the supply exactly as shown: :supply sats.": "Tippe den Supply genau wie angezeigt ein: :supply sats.",
     "Write the genesis message, up to :max characters.": "Schreib die Genesis-Botschaft, bis zu :max Zeichen.",

@@ -18,7 +18,7 @@ beforeEach(function () {
     Queue::fake();
     $this->boardSigner = new TestSigner;
     $this->board = User::factory()->withPubkey($this->boardSigner->pubkey)->create();
-    config(['esports.board' => [NostrKeys::hexToNpub($this->board->pubkey)], 'esports.league.nsec' => (new TestSigner)->secret]);
+    config(['esports.board' => [NostrKeys::hexToNpub($this->board->pubkey)], 'esports.league.nsec' => (new TestSigner)->secret, 'esports.trust.nsec' => (new TestSigner)->secret]);
 });
 
 test('the page is for admins only, and only the board may release Block 0', function () {
