@@ -34,6 +34,31 @@ final class MiniRelay
     /** @var array<int, array{connection: ConnectionInterface, buffer: MessageBuffer, subscriptions: array<string, list<array<string, mixed>>>}> */
     private array $clients = [];
 
+    /** Filters one REQ may carry; more are refused with CLOSED, as rnostr does (10). */
+    private ?int $maxFilters = null;
+
+    /** What the NIP-11 document says about max_filters (may differ, to test a relay that lies). */
+    private ?int $advertisedMaxFilters = null;
+
+    /** Answer without applying `limit`, like a relay that ignores it. */
+    private bool $ignoreLimits = false;
+
+    /**
+     * Relay limits for the trust job's tests (RelayReader): max_filters
+     * enforced and advertised in the NIP-11 document, and whether `limit` is
+     * ignored.
+     *
+     * @param  array{max_filters?: int, advertised_max_filters?: int, ignore_limits?: bool}  $options
+     */
+    public function limits(array $options): self
+    {
+        $this->maxFilters = $options['max_filters'] ?? null;
+        $this->advertisedMaxFilters = $options['advertised_max_filters'] ?? $this->maxFilters;
+        $this->ignoreLimits = $options['ignore_limits'] ?? false;
+
+        return $this;
+    }
+
     /**
      * Events the relay holds before the first client connects (e.g. a
      * player's kind-0 profile for tests/Browser/ChatAndDailyTest.php).
@@ -66,6 +91,14 @@ final class MiniRelay
                 $head .= $data;
 
                 if (! str_contains($head, "\r\n\r\n")) {
+                    return;
+                }
+
+                // NIP-11: a plain HTTP request for the relay information document.
+                if (stripos($head, 'application/nostr+json') !== false && stripos($head, 'upgrade: websocket') === false) {
+                    $document = (string) json_encode(['name' => 'mini-relay', 'limitation' => array_filter(['max_filters' => $this->advertisedMaxFilters])]);
+                    $connection->end("HTTP/1.1 200 OK\r\nContent-Type: application/nostr+json\r\nContent-Length: ".strlen($document)."\r\nConnection: close\r\n\r\n".$document);
+
                     return;
                 }
 
@@ -152,6 +185,12 @@ final class MiniRelay
      */
     private function subscribe(int $key, string $subscription, array $filters): void
     {
+        if ($this->maxFilters !== null && count($filters) > $this->maxFilters) {
+            $this->send($key, ['CLOSED', $subscription, 'error: too many filters (max '.$this->maxFilters.')']);
+
+            return;
+        }
+
         $this->clients[$key]['subscriptions'][$subscription] = $filters;
 
         // NIP-01: `limit` applies to each filter's own initial query; the answer is their union.
@@ -161,7 +200,7 @@ final class MiniRelay
             $own = array_values(array_filter($this->events, fn (array $event) => $this->matchesAny($event, [$filter])));
             usort($own, fn (array $a, array $b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
 
-            foreach (array_slice($own, 0, (int) ($filter['limit'] ?? PHP_INT_MAX)) as $event) {
+            foreach (array_slice($own, 0, $this->ignoreLimits ? PHP_INT_MAX : (int) ($filter['limit'] ?? PHP_INT_MAX)) as $event) {
                 $matching[(string) ($event['id'] ?? '')] = $event;
             }
         }

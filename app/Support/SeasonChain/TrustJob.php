@@ -8,7 +8,6 @@ use App\Models\TrustExclusion;
 use App\Models\TrustRank;
 use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
-use App\Models\User;
 use App\Support\Board;
 use App\Support\Membership;
 use App\Support\Nostr\NostrKeys;
@@ -36,12 +35,12 @@ use Illuminate\Support\Facades\DB;
  * relay outage leaves the archived lists in place instead of emptying the
  * graph. Admin dismissals and exclusions have no storage yet: none apply.
  *
- * Cost (security re-check, note 5): the league users are an open set, and
- * every new list or report costs one signature check (about 0.1 s). Known
- * ids skip the check, so a steady state is cheap, but a first run or a wave
- * of sign-ups scales with them. `esports.trust.max_events` caps what one run
- * reads and verifies per kind (lists, reports); what is left comes with the
- * next run.
+ * Cost (security re-check, note 5): every new list or report costs one
+ * signature check (about 0.1 s); known ids skip it. The authors are a closed
+ * set (anchors and ranked players for lists, rank 50+ for reports), each read
+ * with its own filter and a per-author cap (one list, `reports_limit_per_author`
+ * reports), so the cost scales with the ranked players, not with sign-ups,
+ * and nobody can starve anybody else's events.
  *
  * Fail closed: without the trust key, the league key or a readable member
  * list for both years the job refuses ({@see TrustJobRefused}); the ranks of
@@ -84,14 +83,16 @@ final class TrustJob
         $lists = new OpponentLists($league->pubkey());
 
         // Network first, outside the transaction; the archive keeps every version read.
-        // Only lists by league players and anchors, and only reports by authors whose
-        // rank lets them count (security gate F1: a flood by anyone else is never read).
+        // A closed author set: the anchors and every pubkey ranked above 0 in the last run.
+        // Only their lists can change a rank or a connection check (a pubkey without rank
+        // vouches for nobody); a newly vouched player's list is read one run later. One
+        // filter and one list per author, so nobody can crowd anybody out (round 3, Q5).
         $since = TrustRun::query()->latest('id')->value('computed_at');
         $since = $since === null ? null : CarbonImmutable::parse((string) $since)->subDay()->getTimestamp();
-        $authors = array_values(array_unique([...User::query()->pluck('pubkey')->all(), ...$anchors]));
-        $max = (int) config('esports.trust.max_events');
+        $ranked = array_map(strval(...), TrustRank::query()->where('rank', '>', 0)->pluck('pubkey')->all());
+        $authors = array_values(array_unique([...$anchors, ...$ranked]));
 
-        $lists->archive($this->reader->fetch($lists->filters($authors, $since), known: $lists->knownIds(), max: $max));
+        $lists->archive($this->reader->fetch($lists->filters($authors, $since), known: $lists->knownIds(), perAuthor: 1));
 
         $reporters = array_values(array_map(strval(...), TrustRank::query()->where('rank', '>=', self::REPORTER_MINIMUM)->pluck('pubkey')->all()));
         // One filter per reporter with its own limit (security re-check): a burst by one
@@ -101,7 +102,7 @@ final class TrustJob
             'since' => now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp(), 'limit' => (int) config('esports.trust.reports_limit_per_author'),
         ], $reporters);
         $knownReports = array_fill_keys(NostrEvent::query()->where('kind', self::REPORT)->pluck('event_id')->all(), true);
-        $this->archiveReports($this->reader->fetch($reportFilters, known: $knownReports, max: $max));
+        $this->archiveReports($this->reader->fetch($reportFilters, known: $knownReports, perAuthor: (int) config('esports.trust.reports_limit_per_author')));
 
         return DB::transaction(fn (): TrustRun => $this->compute($trust, $league, $anchors, $lists));
     }

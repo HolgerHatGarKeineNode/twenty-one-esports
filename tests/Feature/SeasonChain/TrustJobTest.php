@@ -15,6 +15,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Nostr\RelayReader;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -25,6 +26,7 @@ use App\Support\SeasonChain\TrustJobRefused;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Tests\Support\TestSigner;
 
@@ -82,12 +84,12 @@ function seasonThreeEvents(int $at): array
  *
  * @param  list<array<string, mixed>>  $events
  */
-function withRelay(array $events, Closure $body): mixed
+function withRelay(array $events, Closure $body, array $limits = []): mixed
 {
     $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
     $seed = tempnam(sys_get_temp_dir(), 'trust-relay');
     file_put_contents($seed, json_encode($events));
-    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed, (string) json_encode($limits)]);
 
     try {
         for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
@@ -103,16 +105,36 @@ function withRelay(array $events, Closure $body): mixed
     }
 }
 
+/**
+ * Two runs: the first reads the anchors' lists and ranks their entries, the
+ * second reads the lists of the players ranked by then (a newly vouched
+ * player's list is read one run later), which reaches layer 2 (frank).
+ */
+function runTwice(): TrustRun
+{
+    app(TrustJob::class)->run();
+
+    return app(TrustJob::class)->run();
+}
+
 /** @param list<string> $names */
 function payMembers(array $names): void
 {
     $pubkeys = array_map(fn (string $name): array => ['pubkey' => pk($name)], $names);
     config(['test.members_down' => false]);
 
+    // The member API is faked; NIP-11 documents come from the local test relay itself.
     Http::preventStrayRequests();
-    Http::fake(fn (Request $request) => ! config('test.members_down') && str_starts_with($request->url(), rtrim((string) config('esports.membership.api_url'), '/').'/')
-        ? Http::response(str_ends_with($request->url(), '/'.now()->year) ? $pubkeys : [])
-        : Http::response('down', 503));
+    Http::allowStrayRequests(['http://127.0.0.1:*']);
+    Http::fake(function (Request $request) use ($pubkeys) {
+        if (str_starts_with($request->url(), 'http://127.0.0.1:')) {
+            return null;
+        }
+
+        return ! config('test.members_down') && str_starts_with($request->url(), rtrim((string) config('esports.membership.api_url'), '/').'/')
+            ? Http::response(str_ends_with($request->url(), '/'.now()->year) ? $pubkeys : [])
+            : Http::response('down', 503);
+    });
 }
 
 function rankOf(string $name): ?int
@@ -150,11 +172,12 @@ test('regression (security gate F1): a flood of newer lists from throwaway keys 
     }
 
     config(['esports.relay_timeout_seconds' => 1]);
-    $run = withRelay([...seasonThreeEvents($at), ...$flood], fn () => app(TrustJob::class)->run());
+    $run = withRelay([...seasonThreeEvents($at), ...$flood], runTwice(...));
 
     expect(array_map(rankOf(...), ['bob', 'dave', 'erin', 'frank']))->toBe([100, 100, 100, 46])
-        ->and($run->lists)->toBe(9)
-        ->and(NostrEvent::query()->where('kind', 30000)->where('d', 'esports/'.$league)->count())->toBe(9);
+        // Lists of the closed author set only: anchors, then the players ranked in the first run.
+        ->and($run->lists)->toBe(5)
+        ->and(NostrEvent::query()->where('kind', 30000)->where('d', 'esports/'.$league)->count())->toBe(5);
 });
 
 test('trust run 1 of the season-3 test bed: anchors and their entries 100, frank 46, the sybils get no assertion; the gate opens and pins them', function () {
@@ -163,11 +186,11 @@ test('trust run 1 of the season-3 test bed: anchors and their entries 100, frank
 
     expect($gate->refusal([pk('alice'), pk('bob')], [pk('alice'), pk('bob')]))->toBe(RatedTrustGate::NOT_COMPUTED);
 
-    $run = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), fn () => app(TrustJob::class)->run());
+    $run = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), runTwice(...));
 
     expect(array_map(rankOf(...), ['alice', 'carol', 'bob', 'dave', 'erin', 'frank']))->toBe([100, 100, 100, 100, 100, 46])
         ->and(array_map(rankOf(...), ['sybil1', 'sybil2', 'sybil3']))->toBe([null, null, null])
-        ->and($run->only(['season_id', 'anchors', 'lists', 'ranked', 'published']))->toBe(['season_id' => $this->season->id, 'anchors' => 2, 'lists' => 9, 'ranked' => 6, 'published' => 6])
+        ->and($run->only(['season_id', 'anchors', 'lists', 'ranked', 'published']))->toBe(['season_id' => $this->season->id, 'anchors' => 2, 'lists' => 5, 'ranked' => 6, 'published' => 1])
         ->and($run->trust_pubkey)->toBe($this->trustKey->pubkey);
 
     // The assertion as NIP-85 and the NIP print it: d = p = the player, rank, anchor, e to the anchor list.
@@ -183,7 +206,8 @@ test('trust run 1 of the season-3 test bed: anchors and their entries 100, frank
         ->and(collect($anchorList->payload()['tags'])->where(0, 'p')->pluck(1)->sort()->values()->all())->toBe(collect([pk('alice'), pk('carol')])->sort()->values()->all())
         ->and(NostrEvent::query()->where('kind', 0)->where('pubkey', $this->trustKey->pubkey)->count())->toBe(1)
         // Every opponent list version read is archived and served by id.
-        ->and(NostrEvent::query()->where('kind', 30000)->where('d', 'esports/'.LeagueKey::fromConfig()->pubkey())->count())->toBe(9);
+        // Read are only the lists that can change a rank: the anchors' and the ranked players'.
+        ->and(NostrEvent::query()->where('kind', 30000)->where('d', 'esports/'.LeagueKey::fromConfig()->pubkey())->count())->toBe(5);
 
     // The gate pins ranks, assertion ids and the lists that name each other.
     $pin = $gate->pin([pk('alice'), pk('bob')], [pk('alice'), pk('bob')]);
@@ -205,7 +229,7 @@ test('trust run 2: after alice adds frank only the changed assertions are republ
     $before = now()->subMinutes(2)->getTimestamp();
     $events = seasonThreeEvents($before);
 
-    withRelay($events, fn () => app(TrustJob::class)->run());
+    withRelay($events, runTwice(...));
     $unchanged = withRelay($events, fn () => app(TrustJob::class)->run());
 
     $bob = TrustRank::query()->where('pubkey', pk('bob'))->value('event_id');
@@ -241,6 +265,83 @@ test('a counted report halves the target; a report by an unranked author does no
     // bob: raw 1/6 halved to 1/12 -> round(100 + 25 * log2(2/3)) = 85.
     expect(rankOf('bob'))->toBe(85)
         ->and(rankOf('dave'))->toBe(100);
+});
+
+test('regression (security re-check round 3, Q5): throwaway accounts republishing lists cannot starve a ranked player\'s edit', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(20)->getTimestamp();
+    $league = LeagueKey::fromConfig()->pubkey();
+    $throwaways = array_map(function (): TestSigner {
+        $signer = new TestSigner;
+        User::factory()->withPubkey($signer->pubkey)->create();
+
+        return $signer;
+    }, range(1, 10));
+    $listBy = fn (TestSigner $signer, int $createdAt) => $signer->sign(30000, [['d', 'esports/'.$league], ['p', pk('alice')]], '', $createdAt);
+
+    withRelay([...seasonThreeEvents($at), ...array_map(fn (TestSigner $s) => $listBy($s, $at), $throwaways)], runTwice(...));
+
+    // bob drops frank; ten sign-ups republish newer lists than bob's edit.
+    config(['esports.trust.max_events' => 5]);
+    $second = [
+        ...array_filter(seasonThreeEvents($at), fn (array $event) => $event['pubkey'] !== pk('bob')),
+        opponentList('bob', ['alice', 'dave'], $at + 120),
+        ...array_map(fn (TestSigner $s) => $listBy($s, $at + 200 + random_int(1, 50)), $throwaways),
+    ];
+    withRelay(array_values($second), fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('frank'))->toBe(0)
+        ->and(NostrEvent::query()->where('kind', 30000)->whereIn('pubkey', array_map(fn (TestSigner $s) => $s->pubkey, $throwaways))->count())->toBe(0);
+});
+
+test('round 3: a relay that allows 3 filters per REQ (NIP-11) gets REQs of 3, and every reporter is read', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), runTwice(...));
+
+    // Six ranked reporters, six filters: more than the relay takes in one REQ.
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], fn () => app(TrustJob::class)->run(), ['max_filters' => 3]);
+
+    expect(rankOf('bob'))->toBe(85);
+});
+
+test('round 3: a relay that refuses with CLOSED is a failed read: logged with its reason, the last ranks stay', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), runTwice(...));
+    Log::spy();
+
+    // It says 10 in NIP-11 but refuses more than 3: the REQs of 6 reporter filters are CLOSED.
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], fn () => app(TrustJob::class)->run(), ['max_filters' => 3, 'advertised_max_filters' => 10]);
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'Relay refused a read' && str_contains($context['reason'], 'too many filters'));
+
+    expect(rankOf('bob'))->toBe(100)
+        ->and(rankOf('frank'))->toBe(46);
+});
+
+test('round 3: never more than 10 filters per REQ, even when a relay advertises more', function () {
+    payMembers([]);
+    Log::spy();
+    $filters = array_map(fn () => ['kinds' => [TrustJob::REPORT], 'authors' => [(new TestSigner)->pubkey], 'limit' => 1], range(1, 12));
+
+    // rnostr-like: 10 filters at most, while its NIP-11 document claims 50.
+    withRelay([], fn () => app(RelayReader::class)->fetch($filters), ['max_filters' => 10, 'advertised_max_filters' => 50]);
+
+    Log::shouldNotHaveReceived('warning');
+});
+
+test('round 3: a relay that ignores `limit` still gets at most the per-author cap of one author\'s reports', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), runTwice(...));
+
+    $burst = array_map(fn (int $i) => leagueReport('alice', (new TestSigner)->pubkey, $at + 60 + $i), range(1, 8));
+    config(['esports.trust.max_events' => 6, 'esports.trust.reports_limit_per_author' => 3]);
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30), ...$burst], fn () => app(TrustJob::class)->run(), ['ignore_limits' => true]);
+
+    expect(NostrEvent::query()->where('kind', 1984)->where('pubkey', pk('alice'))->count())->toBe(3)
+        ->and(rankOf('bob'))->toBe(85);
 });
 
 /** A signed league report by a test-bed player against any pubkey. */
@@ -312,7 +413,7 @@ test('an admin dismissal stops a report counting, and an exclusion takes a pubke
 
 test('the job refuses without the trust key, with the league key as trust key, or without the member list, and keeps the last ranks', function () {
     payMembers(['alice', 'carol']);
-    withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), fn () => app(TrustJob::class)->run());
+    withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), runTwice(...));
 
     config(['test.members_down' => true]);
     Cache::flush(); // the member lists are cached for an hour (Membership)
@@ -323,7 +424,7 @@ test('the job refuses without the trust key, with the league key as trust key, o
 
     config(['esports.trust.nsec' => null]);
     expect(fn () => app(TrustJob::class)->run())->toThrow(TrustJobRefused::class, 'ESPORTS_TRUST_NSEC')
-        ->and(TrustRun::query()->count())->toBe(1)
+        ->and(TrustRun::query()->count())->toBe(2)
         ->and(rankOf('frank'))->toBe(46);
 
     // A run before Block 0 (no live season then) does not open rated play in the season released later.
@@ -335,7 +436,7 @@ test('the job refuses without the trust key, with the league key as trust key, o
 test('the league admins are anchors too', function () {
     payMembers(['alice']);
     Admin::query()->create(['pubkey' => pk('carol')]);
-    $run = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), fn () => app(TrustJob::class)->run());
+    $run = withRelay(seasonThreeEvents(now()->subMinute()->getTimestamp()), runTwice(...));
 
     expect($run->anchors)->toBe(2)
         ->and(array_map(rankOf(...), ['carol', 'dave', 'frank']))->toBe([100, 100, 46]);

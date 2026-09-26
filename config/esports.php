@@ -245,9 +245,6 @@ return [
 
     'trust' => [
         'nsec' => env('ESPORTS_TRUST_NSEC'),
-        // Most events one run reads and verifies per kind (lists, reports), over all relays:
-        // each signature check costs about 0.1 s, and the league users are an open set.
-        'max_events' => 5000,
         // Newest reports read per reporter and run: a burst buries only its author's own reports.
         'reports_limit_per_author' => 50,
         // Reports of one author that count per season (mass reports, NIP "Reports").
