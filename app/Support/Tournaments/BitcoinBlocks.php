@@ -6,7 +6,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Reads the Bitcoin chain tip and block hashes from an Esplora-compatible
+ * Reads the Bitcoin chain tip, block hashes and block times from an Esplora-compatible
  * API (`esports.bitcoin.api`). Null whenever the answer is missing or not
  * what a height or a hash looks like: a draw never runs on a guess.
  */
@@ -28,6 +28,18 @@ class BitcoinBlocks
         $body = $this->get('/block-height/'.$height);
 
         return $body !== null && preg_match('/^[0-9a-f]{64}$/', strtolower($body)) === 1 ? strtolower($body) : null;
+    }
+
+    /**
+     * When the block with this hash was mined (its header timestamp, unix
+     * seconds), or null.
+     */
+    public function timeOf(string $hash): ?int
+    {
+        $body = $this->get('/block/'.$hash);
+        $time = $body === null ? null : (json_decode($body, true)['timestamp'] ?? null);
+
+        return is_int($time) && $time > 0 ? $time : null;
     }
 
     private function get(string $path): ?string

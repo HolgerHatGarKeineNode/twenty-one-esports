@@ -9,8 +9,8 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\LeagueKey;
-use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * From sign-up to the bracket (TournamentDraw.dc.html, NIP "Tournament Draw"):
@@ -52,19 +52,38 @@ final class TournamentDraws
         $closed = 0;
         $drawn = 0;
 
+        // Each tournament on its own: one that fails is reported and the others go on.
         foreach (Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '<=', now())->get() as $tournament) {
-            $closed += $this->close($tournament) ? 1 : 0;
+            $closed += $this->isolated(fn (): bool => $this->close($tournament)) ? 1 : 0;
         }
 
         foreach (Tournament::query()->where('status', TournamentStatus::Drawing)->get() as $tournament) {
-            $drawn += $this->resolve($tournament) ? 1 : 0;
+            $drawn += $this->isolated(fn (): bool => $this->resolve($tournament)) ? 1 : 0;
         }
 
         foreach (Tournament::query()->where('status', TournamentStatus::Running)->get() as $tournament) {
-            $this->runner->sync($tournament);
+            $this->isolated(function () use ($tournament): bool {
+                $this->runner->sync($tournament);
+
+                return true;
+            });
         }
 
         return ['closed' => $closed, 'drawn' => $drawn];
+    }
+
+    /**
+     * @param  callable(): bool  $step
+     */
+    private function isolated(callable $step): bool
+    {
+        try {
+            return $step();
+        } catch (Throwable $e) {
+            report($e);
+
+            return false;
+        }
     }
 
     public function close(Tournament $tournament): bool
@@ -98,15 +117,7 @@ final class TournamentDraws
                 return true;
             }
 
-            $locked->draw_height = $tip + 1;
-
-            if ($locked->profile()->entersTeams() && $solos->isNotEmpty()) {
-                $pubkeys = User::query()->whereIn('id', $solos->pluck('members')->flatten()->all())->pluck('pubkey', 'id');
-                $entrants = array_values(array_filter($solos->map(fn (TournamentSignup $signup): ?string => $pubkeys[$signup->members[0] ?? 0] ?? null)->all()));
-                $event = $league->publish(self::TOURNAMENT_DRAW, $this->drawTags($locked, $entrants, $size), $this->drawContent($locked, count($entrants), $size), now()->getTimestamp());
-                $locked->draw_event_id = $event->id;
-            }
-
+            $this->commit($locked, $league, $tip, null);
             $locked->status = TournamentStatus::Drawing;
             $locked->save();
 
@@ -114,15 +125,74 @@ final class TournamentDraws
         });
     }
 
+    /**
+     * Commit the draw to the next block (tip + 1) and, with at least one full
+     * mix team in the solo pool, publish the `2155` (NIP: "Tournament Draw").
+     * A replacement names the draw it replaces and why.
+     */
+    private function commit(Tournament $locked, LeagueKey $league, int $tip, ?string $reason): void
+    {
+        $size = $locked->teamSize();
+        $solos = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->whereNull('lineup_id')->orderBy('id')->get();
+        $previous = $locked->drawEvent;
+
+        $locked->forceFill(['draw_height' => $tip + 1, 'draw_committed_at' => now()]);
+
+        if ($locked->profile()->entersTeams() && $solos->count() >= $size) {
+            $pubkeys = User::query()->whereIn('id', $solos->pluck('members')->flatten()->all())->pluck('pubkey', 'id');
+            $entrants = array_values(array_filter($solos->map(fn (TournamentSignup $signup): ?string => $pubkeys[$signup->members[0] ?? 0] ?? null)->all()));
+            $tags = $this->drawTags($locked, $entrants, $size);
+
+            if ($previous !== null) {
+                array_splice($tags, count($tags) - 1, 0, [['e', $previous->event_id, '', $previous->pubkey]]);
+            }
+
+            $content = $this->drawContent($locked, count($entrants), $size).($reason === null ? '' : ' '.$reason);
+            $locked->draw_event_id = $league->publish(self::TOURNAMENT_DRAW, $tags, $content, now()->getTimestamp())->id;
+        }
+
+        $locked->save();
+    }
+
+    /**
+     * Draw once the committed block has `esports.bitcoin.confirmations`
+     * confirmations and was mined after the commitment. A block that is older
+     * than the commitment (a stale tip from the API) proves nothing: the draw
+     * commits again to the next block, publicly.
+     */
     public function resolve(Tournament $tournament): bool
     {
         if ($tournament->status !== TournamentStatus::Drawing || $tournament->draw_height === null) {
             return false;
         }
 
-        $hash = $this->blocks->hashAt($tournament->draw_height);
+        $tip = $this->blocks->tipHeight();
+        $confirmations = max(1, (int) config('esports.bitcoin.confirmations', 6));
 
-        if ($hash === null) {
+        if ($tip === null || $tip - $tournament->draw_height + 1 < $confirmations) {
+            return false;
+        }
+
+        $hash = $this->blocks->hashAt($tournament->draw_height);
+        $minedAt = $hash === null ? null : $this->blocks->timeOf($hash);
+
+        if ($hash === null || $minedAt === null) {
+            return false;
+        }
+
+        if ($tournament->draw_committed_at === null || $minedAt <= $tournament->draw_committed_at->getTimestamp()) {
+            $league = LeagueKey::fromConfig();
+
+            if ($league !== null) {
+                DB::transaction(function () use ($tournament, $league, $tip): void {
+                    $locked = Tournament::query()->with('drawEvent')->lockForUpdate()->findOrFail($tournament->id);
+
+                    if ($locked->status === TournamentStatus::Drawing && $locked->draw_height === $tournament->draw_height) {
+                        $this->commit($locked, $league, $tip, "Replaces the earlier draw: block {$tournament->draw_height} was mined before that draw was committed.");
+                    }
+                });
+            }
+
             return false;
         }
 
@@ -180,7 +250,8 @@ final class TournamentDraws
 
     private function createParticipants(Tournament $tournament, string $hash): void
     {
-        $pool = Ratings::pool(Ladders::isOpen($tournament->game, $tournament->mode));
+        // Seeded on the frozen ladder while it is open, else by the casual ratings (NIP rev. 7).
+        $pool = Ratings::pool($tournament->openLadder() !== null);
         $signups = TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->orderBy('id')->get();
         $teams = $tournament->profile()->entersTeams();
         $lineupRatings = Ratings::forLineups($signups->pluck('lineup_id')->filter()->all(), $tournament->game, $tournament->mode, $pool);
@@ -232,10 +303,10 @@ final class TournamentDraws
     private function drawTags(Tournament $tournament, array $entrants, int $size): array
     {
         $tags = [];
-        $ladder = Ladders::address($tournament->game, $tournament->mode);
 
-        if ($ladder !== null) {
-            $tags[] = ['a', $ladder, ''];
+        // The tournament's frozen ladder, none in an unrated tournament (NIP rev. 7).
+        if ($tournament->ladder_address !== null) {
+            $tags[] = ['a', $tournament->ladder_address, ''];
         }
 
         $tags[] = ['a', (string) $tournament->address(), ''];

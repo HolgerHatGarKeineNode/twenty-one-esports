@@ -20,16 +20,22 @@ use Illuminate\Support\Carbon;
  * @property string|null $d
  * @property int $signed_at
  * @property string $raw
+ * @property Carbon|null $queued_at when it was queued for the relays (PublishNostrEvent); null = stored only
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['event_id', 'pubkey', 'kind', 'd', 'signed_at', 'raw'])]
+#[Fillable(['event_id', 'pubkey', 'kind', 'd', 'signed_at', 'raw', 'queued_at'])]
 class NostrEvent extends Model
 {
     /** An archived opponent list version keeps the per-player current row up to date (P7e gate, Low). */
     protected static function booted(): void
     {
         static::created(fn (self $event) => OpponentLists::track($event));
+    }
+
+    protected function casts(): array
+    {
+        return ['queued_at' => 'datetime'];
     }
 
     public static function fromSigned(SignedEvent $event): self

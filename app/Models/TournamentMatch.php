@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property bool $if_needed
  * @property string $status waiting|ready|done|skipped
  * @property array<string, mixed>|null $result
+ * @property array{gate?: array<string, mixed>|null, clans?: array<string, string>}|null $pairing what the league read at the pairing of a director chess match
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentRound $round
@@ -42,12 +43,12 @@ use Illuminate\Support\Carbon;
  * @property-read SeriesMatch|null $seriesMatch
  * @property-read ChessGame|null $chessGame
  */
-#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result'])]
+#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing'])]
 class TournamentMatch extends Model
 {
     protected function casts(): array
     {
-        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array'];
+        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array'];
     }
 
     /**

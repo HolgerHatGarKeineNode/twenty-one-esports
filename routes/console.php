@@ -15,6 +15,7 @@ use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -144,8 +145,9 @@ Artisan::command('esports:notification-profile', function (RelayPublisher $publi
 
 /*
  * Retries the public copy (ChessStates "Public record delayed": "we retry on
- * our own"): signed events of the last day that some configured relay has
- * not accepted yet are sent again to exactly those relays. Gift wraps are
+ * our own"): signed events of the last day that were queued for the relays
+ * and that some configured relay has not accepted yet are sent again to
+ * exactly those relays. Gift wraps are
  * left alone; a late notification is worth less than none.
  */
 Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
@@ -156,8 +158,11 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
         return;
     }
 
+    // Only events that were queued for the relays (flag or a delivery attempt): a stored-only
+    // event never goes out, and a tournament consent (22150) never, whatever its rows say.
     $events = NostrEvent::query()
-        ->where('kind', '!=', 1059)
+        ->where(fn ($query) => $query->whereNotNull('queued_at')->orWhereHas('deliveries'))
+        ->whereNotIn('kind', [1059, TournamentSignups::CONSENT])
         ->whereBetween('created_at', [now()->subDay(), now()->subMinute()])
         ->with('deliveries')
         ->oldest('id')

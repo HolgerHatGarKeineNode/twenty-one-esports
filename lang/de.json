@@ -2793,5 +2793,11 @@
     "Enter solo": "Solo anmelden",
     "By registering you accept the tournament rules. You can pull out until registration closes.": "Mit der Anmeldung akzeptierst du die Turnierregeln. Bis zum Anmeldeschluss kannst du dich abmelden.",
     "Places": "Plätze",
-    "Tournament page": "Turnierseite"
+    "Tournament page": "Turnierseite",
+    "You have an interest in this match (you play in it, belong to a clan in it, or were named by someone who does), so another director or an admin has to enter its result.": "Du hast ein Interesse an diesem Match (du spielst mit, gehörst zu einem beteiligten Clan oder wurdest von jemandem ernannt, auf den das zutrifft). Deshalb muss ein anderer Turnierleiter oder ein Admin das Ergebnis eintragen.",
+    "decided when it is published": "wird bei Veröffentlichung festgelegt",
+    "no: published before Block 0, so every match is casual": "nein: vor Block 0 veröffentlicht, jedes Match ist ungewertet",
+    "not yet: series reported by the players are casual for now": "noch nicht: von Spielern gemeldete Serien sind vorerst ungewertet",
+    "yes, on its ladder while that is open and the trust gate passes": "ja, auf seiner Ladder, solange sie offen ist und die Vertrauensprüfung besteht",
+    "separate: tournament matches never mine season blocks": "getrennt: Turnier-Matches minen nie Season-Blöcke"
 }

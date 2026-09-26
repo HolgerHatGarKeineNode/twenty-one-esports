@@ -45,10 +45,15 @@ test('the draw order is sha256 of block hash and pubkey, whatever order the pool
 
 test('sign-up closes into a committed draw, and the mined block draws mix teams with meme names and starts the bracket', function () {
     $hash = hash('sha256', 'block 900001');
-    Http::fake([
-        '*/blocks/tip/height' => Http::response('900000'),
-        '*/block-height/900001' => Http::response($hash),
-    ]);
+    $tip = 900000;
+    Http::fake(function ($request) use (&$tip, $hash) {
+        return match (true) {
+            str_ends_with($request->url(), '/blocks/tip/height') => Http::response((string) $tip),
+            str_ends_with($request->url(), '/block-height/900001') => Http::response($hash),
+            str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->addMinutes(10)->getTimestamp()]),
+            default => Http::response('', 404),
+        };
+    });
 
     $tournament = openTournament(['capacity' => 5], rocketLeague: true);
     [$lineupA, $captainA, $signerA] = keyedLineup();
@@ -77,6 +82,8 @@ test('sign-up closes into a committed draw, and the mined block draws mix teams 
         ->and($draw['pubkey'])->toBe($this->league->pubkey)
         ->and(collect($draw['tags'])->where(0, 'p')->pluck(1)->sort()->values()->all())->toBe($solos->pluck('pubkey')->sort()->values()->all())
         ->and($draw['tags'])->toContain(['draw', '900001', 'sha256-v1'], ['teams', '3'], ['teamname', $names[0]], ['teamname', $names[1]], ['a', $tournament->address(), '']);
+
+    $tip = 900006;
 
     expect($draws->resolve($tournament))->toBeTrue();
 

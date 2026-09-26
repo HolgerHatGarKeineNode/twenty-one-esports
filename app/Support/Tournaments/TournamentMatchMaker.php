@@ -6,6 +6,7 @@ use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\MatchNumber;
@@ -16,9 +17,11 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Chess\RatedChess;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
-use App\Support\Series\Ladders;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Tournament matches are played as normal matches (NIP: "Tournament matches
@@ -77,16 +80,24 @@ final class TournamentMatchMaker
                 continue;
             }
 
-            if ($tournament->profile()->isChess()) {
-                if (! $tournament->isDirectorMode() && self::needsGame($match)) {
-                    $this->startGame($tournament, $match, $a, $b);
+            try {
+                if ($tournament->profile()->isChess()) {
+                    if ($tournament->isDirectorMode()) {
+                        $this->pinPairing($tournament, $match, $a, $b);
+                    } elseif (self::needsGame($match)) {
+                        $this->startGame($tournament, $match, $a, $b);
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
-
-            if ($match->seriesMatch === null) {
-                $this->createSeries($tournament, $match, $a, $b);
+                if ($match->seriesMatch === null) {
+                    DB::transaction(fn () => $this->createSeries($tournament, $match, $a, $b));
+                }
+            } catch (UniqueConstraintViolationException) {
+                // A concurrent run started this match first: it has its series or game.
+            } catch (TournamentRuleViolation $violation) {
+                report($violation);
             }
         }
     }
@@ -103,6 +114,31 @@ final class TournamentMatchMaker
         return $game === null || ($game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match));
     }
 
+    /**
+     * Director chess is played over the board and gets its game record only
+     * when the round closes; what the league reads at the pairing (the trust
+     * gate on the frozen ladder, each player's clan) is kept on the match now
+     * (NIP "Director results": everything "at the accept" is read at the pairing).
+     */
+    private function pinPairing(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): void
+    {
+        if ($match->pairing !== null) {
+            return;
+        }
+
+        $white = User::query()->find($a->memberIds()[0] ?? 0);
+        $black = User::query()->find($b->memberIds()[0] ?? 0);
+        $pin = null;
+        $clans = [];
+
+        if ($white !== null && $black !== null) {
+            $pin = $this->chessPin($tournament, $white, $black);
+            $clans = $pin === null ? [] : RatedChess::clans($white, $black);
+        }
+
+        $match->forceFill(['pairing' => ['gate' => $pin?->toArray(), 'clans' => $clans]])->save();
+    }
+
     private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): void
     {
         $first = User::query()->find($a->memberIds()[0] ?? 0);
@@ -116,7 +152,8 @@ final class TournamentMatchMaker
         [$white, $black] = $match->chessGame !== null && $match->chessGame->white_id === $first->id ? [$second, $first] : [$first, $second];
 
         try {
-            $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id);
+            $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id,
+                ChessGame::query()->where('tournament_match_id', $match->id)->count() + 1);
         } catch (ChessRuleViolation) {
             // Busy in another live game: the next run tries again.
         }
@@ -128,7 +165,7 @@ final class TournamentMatchMaker
      */
     public function chessPin(Tournament $tournament, User $white, User $black): ?GatePin
     {
-        if (! Ladders::isOpen('chess', $tournament->mode) || ! $this->gate->isAvailable()) {
+        if ($tournament->openLadder() === null || ! $this->gate->isAvailable()) {
             return null;
         }
 
@@ -142,7 +179,9 @@ final class TournamentMatchMaker
         $lineups = [$this->lineup($a), $this->lineup($b)];
         $mode = $this->games->mode($tournament->game, $tournament->mode);
         $bestOf = $this->bestOf($tournament, $match, $mode === null ? [3, 5] : $mode->bestOf);
-        $numberOwner = $a->memberIds()[0] ?? $b->memberIds()[0] ?? null;
+        // The number is recorded for a player who still has an account (a mix team can lose some).
+        $numberOwner = User::query()->whereIn('id', [...$a->memberIds(), ...$b->memberIds()])->orderBy('id')->value('id')
+            ?? throw new TournamentRuleViolation('no_players', "Tournament match {$match->id} has no player with an account left.");
         $pin = $tournament->isDirectorMode() ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : null;
         $now = now();
 
@@ -168,7 +207,7 @@ final class TournamentMatchMaker
             'challenged_tag' => $lineups[1]?->clan->clantag ?? self::tag($b),
             'challenger_lineup_address' => $lineups[0]?->address() ?? '',
             'challenged_lineup_address' => $lineups[1]?->address() ?? '',
-            'ladder_address' => $pin !== null ? Ladders::address($tournament->game, $tournament->mode) : null,
+            'ladder_address' => $pin !== null ? $tournament->openLadder() : null,
             'status' => SeriesStatus::Accepted,
             'proposals' => [$now->getTimestamp()],
             'respond_by' => $now,
@@ -189,7 +228,7 @@ final class TournamentMatchMaker
      */
     private function seriesPin(Tournament $tournament, ?Lineup $a, ?Lineup $b): ?GatePin
     {
-        if ($a === null || $b === null || ! Ladders::isOpen($tournament->game, $tournament->mode) || ! $this->gate->isAvailable()) {
+        if ($a === null || $b === null || $tournament->openLadder() === null || ! $this->gate->isAvailable()) {
             return null;
         }
 

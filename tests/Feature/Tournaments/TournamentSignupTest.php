@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentSignups;
@@ -71,7 +72,7 @@ test('only the organizer or an admin publishes, never without the league key, an
         ->and(NostrEvent::query()->count())->toBe(0);
 });
 
-test('a solo sign-up is a signed consent that is stored, never published, and passes the NIP rules', function () {
+test('a solo sign-up is a signed 22150 consent that is stored, never published, and passes the NIP rules', function () {
     $tournament = openTournament();
     Queue::fake();
     [$player, $signer] = keyedPlayer();
@@ -80,12 +81,82 @@ test('a solo sign-up is a signed consent that is stored, never published, and pa
     $consent = SignedEvent::fromInput($signup->event->payload());
 
     expect($signup->members)->toBe([$player->id])
-        ->and($consent->kind)->toBe(27235)
+        ->and($consent->kind)->toBe(22150)
         ->and($consent->pubkey)->toBe($player->pubkey)
-        ->and($consent->tagsNamed('a'))->toBe([[$tournament->address(), '']])
-        ->and($consent->tag('action'))->toBe('signup')
+        ->and($consent->tags)->toBe([
+            ['a', $tournament->address(), ''],
+            ['action', 'signup'],
+            ['e', $tournament->event->event_id, ''],
+            ['p', $player->pubkey, '', 'entrant'],
+            ['alt', 'Tournament sign-up: '.$tournament->name],
+        ])
+        ->and($consent->content)->toBe("I enter {$tournament->name} and accept its rules.")
         ->and(app(EsportsEventRules::class)->check($consent))->toBeNull();
     Queue::assertNothingPushed();
+});
+
+test('a lineup consent names the lineup and its players as entrants; its withdrawal answers it and copies them', function () {
+    $tournament = openTournament(rocketLeague: true);
+    [$lineup, $captain, $signer] = keyedLineup();
+    $service = app(TournamentSignups::class);
+    $signup = lineupSignup($tournament, $lineup, $captain, $signer);
+    $consent = SignedEvent::fromInput($signup->event->payload());
+    $players = array_map(fn ($seat) => $seat->user->pubkey, $lineup->activeSeats());
+
+    $service->withdraw($tournament, $captain, $signer->signTemplates($service->prepareWithdraw($tournament, $captain)));
+    $withdrawal = SignedEvent::fromInput(NostrEvent::query()->findOrFail($signup->refresh()->withdraw_event_id)->payload());
+    $rules = app(EsportsEventRules::class);
+
+    expect($consent->tagsNamed('a'))->toBe([[$tournament->address(), ''], [$lineup->address(), '', 'entrant']])
+        ->and(array_column($consent->tagsNamed('p'), 0))->toBe($players)
+        ->and($withdrawal->tag('action'))->toBe('withdraw')
+        ->and($withdrawal->tagsNamed('e'))->toBe([[$consent->id, '']])
+        ->and($withdrawal->tagsNamed('p'))->toBe($consent->tagsNamed('p'))
+        ->and($withdrawal->tagsNamed('a'))->toBe($consent->tagsNamed('a'))
+        ->and($rules->check($consent))->toBeNull()
+        ->and($rules->check($withdrawal))->toBeNull();
+});
+
+test('the consent rule counts only the role-less tournament a and refuses the old NIP-98 form', function () {
+    $signer = new TestSigner;
+    $rules = app(EsportsEventRules::class);
+    $base = [['a', '31923:'.str_repeat('a', 64).':cup', ''], ['action', 'signup'], ['e', str_repeat('b', 64), ''], ['p', $signer->pubkey, '', 'entrant'], ['alt', 'Tournament sign-up: Cup']];
+    $check = fn (array $tags) => $rules->check(SignedEvent::fromInput($signer->sign(22150, $tags, 'I enter Cup and accept its rules.')));
+
+    expect($check($base))->toBeNull()
+        ->and($check([['a', '32151:'.str_repeat('c', 64).':x/rocket-league/3v3', '', 'entrant'], ...$base]))->toBeNull()
+        ->and($check([['a', '31923:'.str_repeat('a', 64).':other', ''], ...$base]))->toBe('consent_tournament')
+        ->and($check([['u', 'https://x'], ['method', 'POST'], ...$base]))->toBe('consent_tags')
+        ->and($check(array_values(array_filter($base, fn ($tag) => $tag[0] !== 'e'))))->toBe('consent_tags')
+        ->and($check([...array_slice($base, 0, 3), ['p', $signer->pubkey], $base[4]]))->toBe('consent_entrants')
+        // 27235 stays the login's kind only: a consent in it is no event the rules accept.
+        ->and($rules->check(SignedEvent::fromInput($signer->sign(27235, $base, ''))))->toBe('kind_not_allowed');
+});
+
+test('publishing freezes the open ladder, says whether matches are rated, and lists every UTC day', function () {
+    openSeason(['slug' => 'season-1']);
+    // 23:00 UTC plus a Swiss evening (about 1 h 39 min) crosses midnight UTC: two days.
+    $rated = openTournament(['starts_at' => now()->utc()->addDays(2)->setTime(23, 0)]);
+    $ratedEvent = $rated->event->payload();
+    $rl = openTournament([], rocketLeague: true);
+
+    expect($rated->ladder_address)->toBe(Ladders::address('chess', 'blitz'))
+        ->and($ratedEvent['tags'])->toContain(['a', $rated->ladder_address, ''])
+        ->and($ratedEvent['content'])->toContain('rated on the ladder')
+        ->and(collect($ratedEvent['tags'])->where(0, 'D')->pluck(1)->values()->all())->toBe([(string) intdiv($rated->starts_at->getTimestamp(), 86400), (string) (intdiv($rated->starts_at->getTimestamp(), 86400) + 1)])
+        ->and($rl->event->payload()['content'])->toContain('casual for now');
+});
+
+test('a tournament published before Block 0 stays unrated, even once a ladder opens', function () {
+    $tournament = openTournament();
+
+    expect($tournament->ladder_address)->toBeNull()
+        ->and($tournament->event->payload()['content'])->toContain('unrated')
+        ->and(collect($tournament->event->payload()['tags'])->where(0, 'a')->count())->toBe(1);
+
+    openSeason(['slug' => 'season-1']);
+
+    expect($tournament->refresh()->openLadder())->toBeNull();
 });
 
 test('a sign-up signed by another key is refused', function () {

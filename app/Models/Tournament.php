@@ -7,6 +7,7 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Series\Ladders;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -54,6 +55,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $draw_height the Bitcoin block the draw committed to (NIP 2155 `draw`)
  * @property string|null $draw_hash its hash once mined: the draw and bracket seed
  * @property int|null $draw_event_id the league's 2155 (only with a solo pool)
+ * @property Carbon|null $draw_committed_at when the draw committed to `draw_height`
+ * @property string|null $ladder_address the ladder frozen with the first 31923 version; null = unrated (NIP rev. 7)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -66,7 +69,7 @@ use Illuminate\Support\Carbon;
  * @property-read NostrEvent|null $drawEvent
  */
 #[Fillable(['name', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
-    'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id'])]
+    'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */
@@ -97,6 +100,7 @@ class Tournament extends Model
             'signup_closes_at' => 'datetime',
             'published_at' => 'datetime',
             'draw_height' => 'integer',
+            'draw_committed_at' => 'datetime',
         ];
     }
 
@@ -212,6 +216,17 @@ class Tournament extends Model
         return $this->status === TournamentStatus::Signup
             && $this->signup_closes_at !== null
             && $this->signup_closes_at->isFuture();
+    }
+
+    /**
+     * The ladder a match paired now is rated on: the frozen ladder, while that
+     * same ladder is still open (NIP rev. 7 "Rated or unrated"); else null.
+     */
+    public function openLadder(): ?string
+    {
+        return $this->ladder_address !== null && Ladders::address($this->game, $this->mode) === $this->ladder_address
+            ? $this->ladder_address
+            : null;
     }
 
     public function isDirectorMode(): bool

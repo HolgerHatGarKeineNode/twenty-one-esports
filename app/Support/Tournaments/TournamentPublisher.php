@@ -61,6 +61,8 @@ final class TournamentPublisher
                 'signup_closes_at' => $signupClosesAt,
                 'status' => TournamentStatus::Signup,
                 'published_at' => now(),
+                // Frozen with the first version (NIP rev. 7): no open ladder now = unrated for the whole run.
+                'ladder_address' => $locked->event_id === null ? Ladders::address($locked->game, $locked->mode) : $locked->ladder_address,
             ]);
 
             $event = $league->publish(Tournament::CALENDAR_EVENT, $this->tags($locked, $league->pubkey()), $this->content($locked), $now);
@@ -93,8 +95,9 @@ final class TournamentPublisher
     }
 
     /**
-     * NIP-52 tags of the tournament (NIP "Tournaments" table). The ladder `a`
-     * only while a ladder is open; the pool's `zap` tag follows with P9.
+     * NIP-52 tags of the tournament (NIP "Tournaments" table): one `D` per UTC
+     * day of the timeframe, the ladder `a` only when it was frozen with the
+     * first version (rated tournament); the pool's `zap` follows with P9.
      *
      * @return list<list<string>>
      */
@@ -111,7 +114,7 @@ final class TournamentPublisher
             ['summary', $this->summary($tournament)],
             ['start', (string) $start],
             ['end', (string) $end],
-            ['D', (string) intdiv($start, 86400)],
+            ...array_map(fn (int $day): array => ['D', (string) $day], range(intdiv($start, 86400), intdiv(max($start, $end - 1), 86400))),
             ['start_tzid', (string) config('esports.preseason.display_timezone', 'UTC')],
             ['location', $page],
             ['r', route('rules')],
@@ -120,10 +123,8 @@ final class TournamentPublisher
             ['a', Tournament::CALENDAR.':'.$league.':tournaments', ''],
         ];
 
-        $ladder = Ladders::address($tournament->game, $tournament->mode);
-
-        if ($ladder !== null) {
-            $tags[] = ['a', $ladder, ''];
+        if ($tournament->ladder_address !== null) {
+            $tags[] = ['a', $tournament->ladder_address, ''];
         }
 
         $tags[] = ['alt', 'Tournament: '.$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
@@ -151,7 +152,12 @@ final class TournamentPublisher
         $lines[] = $tournament->isDirectorMode()
             ? 'Results are entered by the tournament directors.'
             : 'Players report results and the other side accepts them.';
-        $lines[] = 'Tournament matches count for Elo and never mine season blocks. The prize pool is the tournament\'s own.';
+        $lines[] = match (true) {
+            $tournament->ladder_address === null => 'The matches are unrated: no ladder was open when the tournament was published, so they are casual for its whole run.',
+            ! $profile->isChess() && ! $tournament->isDirectorMode() => 'The matches are casual for now: Rocket League series reported by the players are not rated yet.',
+            default => 'Matches are rated on the ladder named here while it is open and the trust gate passes; otherwise casual.',
+        };
+        $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
         $lines[] = 'Page: '.route('tournaments.show', $tournament);
 
         return implode(' ', $lines);

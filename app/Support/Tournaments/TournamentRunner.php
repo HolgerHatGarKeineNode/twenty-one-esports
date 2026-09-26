@@ -19,6 +19,7 @@ use App\Models\TournamentStage;
 use App\Models\User;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\Series\SeriesService;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\MatchResult;
 use App\Support\Tournaments\Engine\Swiss;
@@ -392,10 +393,8 @@ final class TournamentRunner
                 throw new TournamentRuleViolation('round_closed', __('Round :round is closed, so its results are locked. If a result there is wrong, report a problem on the match; an admin can fix it.', ['round' => $match->round->number]));
             }
 
-            foreach ($match->slots as $slot) {
-                if (in_array($director->id, $slot->participant?->memberIds() ?? [], true)) {
-                    throw new TournamentRuleViolation('own_match', __('You play in this match, so another director has to enter its result.'));
-                }
+            if (TournamentInterest::of($tournament, $match, $director, followAppointers: ! $director->isAdmin())) {
+                throw new TournamentRuleViolation('interested', __('You have an interest in this match (you play in it, belong to a clan in it, or were named by someone who does), so another director or an admin has to enter its result.'));
             }
 
             $result = $tournament->profile()->isChess()
@@ -483,14 +482,16 @@ final class TournamentRunner
             return;
         }
 
-        $pin = $this->maker->chessPin($tournament, $white, $black);
+        // Rated as read at the pairing (TournamentMatchMaker::pinPairing), never later.
+        $gate = $match->pairing['gate'] ?? null;
         $winner = $match->result['winner'] ?? null;
+        $forfeit = (bool) ($match->result['forfeit'] ?? false);
 
         $game = ChessGame::query()->create([
             'mode' => $tournament->mode,
-            'rated' => $pin !== null,
-            'gate_at_accept' => $pin?->toArray(),
-            'clans_at_accept' => null,
+            'rated' => $gate !== null,
+            'gate_at_accept' => $gate,
+            'clans_at_accept' => $gate === null ? null : ($match->pairing['clans'] ?? []),
             'white_id' => $white->id,
             'black_id' => $black->id,
             'status' => ChessGameStatus::Finished,
@@ -505,9 +506,14 @@ final class TournamentRunner
             'turn_started_ms' => (int) now()->getTimestampMs(),
             'ended_at' => now(),
             'tournament_match_id' => $match->id,
+            'tournament_game' => ChessGame::query()->where('tournament_match_id', $match->id)->count() + 1,
         ]);
 
-        $this->ratings->applyChessGame($game);
+        // A director's no-show moves no Elo (security gate P8b); it is attested as `forfeit`.
+        if (! $forfeit) {
+            $this->ratings->applyChessGame($game);
+        }
+
         $this->chains->attestChessGame($game);
     }
 
@@ -530,6 +536,7 @@ final class TournamentRunner
         }
 
         $winner = ($match->result['winner'] ?? 0) === 0 ? 'challenger' : 'challenged';
+        $forfeit = (bool) ($match->result['forfeit'] ?? false);
 
         $series->forceFill([
             'status' => SeriesStatus::Resolved,
@@ -539,10 +546,34 @@ final class TournamentRunner
             'resolution_reason' => 'Entered by the tournament director.',
             'resolved_by_id' => $match->result['corrected']['user_id'] ?? $match->result['user_id'] ?? null,
             'finished_at' => now(),
+            // Who played (NIP "Director results": the roster comes from the director's entry): the
+            // pinned eligible regulars of each side; a no-show forfeit has none.
+            'resolved_roster' => $forfeit ? null : $this->directorRoster($series),
         ])->save();
 
-        $this->ratings->applySeries($series->fresh() ?? $series);
+        // A director's no-show moves no Elo (security gate P8b); it is attested as `forfeit`.
+        if (! $forfeit) {
+            $this->ratings->applySeries($series->fresh() ?? $series);
+        }
+
         $this->chains->attestSeries($series->fresh() ?? $series);
+    }
+
+    /**
+     * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>
+     */
+    private function directorRoster(SeriesMatch $series): array
+    {
+        $roster = [];
+        $service = app(SeriesService::class);
+
+        foreach (SeriesMatch::SIDES as $side) {
+            foreach ($service->rosterSeats($series, $side) as $seat) {
+                $roster[] = ['user_id' => $seat->user_id, 'pubkey' => $seat->user->pubkey, 'name' => $seat->user->displayName(), 'side' => $side, 'role' => $seat->role->value];
+            }
+        }
+
+        return $roster;
     }
 
     /**

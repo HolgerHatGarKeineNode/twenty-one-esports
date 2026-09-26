@@ -243,15 +243,18 @@ return [
     |--------------------------------------------------------------------------
     |
     | An Esplora-compatible API (mempool.space shape): `GET /blocks/tip/height`
-    | and `GET /block-height/{height}`. When sign-up closes the draw commits
-    | to the next block; its hash seeds the mix teams and the bracket. Read
-    | only; if the API cannot be reached the draw simply waits (fail closed).
+    | `GET /block-height/{height}` and `GET /block/{hash}`. When sign-up closes
+    | the draw commits to the next block; its hash seeds the mix teams and the
+    | bracket once it has `confirmations` confirmations (NIP: about six blocks)
+    | and was mined after the commitment. Read only; if the API cannot be
+    | reached the draw simply waits (fail closed).
     |
     */
 
     'bitcoin' => [
         'api' => env('ESPORTS_BITCOIN_API', 'https://mempool.space/api'),
         'timeout_seconds' => 5,
+        'confirmations' => (int) env('ESPORTS_BITCOIN_CONFIRMATIONS', 6),
     ],
 
     /*

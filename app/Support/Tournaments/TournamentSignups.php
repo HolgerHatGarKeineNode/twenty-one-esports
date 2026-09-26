@@ -9,7 +9,6 @@ use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
-use App\Support\Nostr\NostrLogin;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -26,8 +25,8 @@ use Illuminate\Support\Facades\DB;
  * Every step is signed by the person who takes it, in two halves like every
  * signed action here (prepareX() → the browser signs → x() rebuilds the plan
  * and checks the signed event against it, SignedEventGate). The event is a
- * NIP-98-style consent (27235) that is stored and never published: the NIP
- * keeps registration off the relays.
+ * Tournament Consent (NIP rev. 7, kind 22150) that is stored and never
+ * published.
  *
  * Rules (open question 10, CEO defaults 2026-09-26):
  * - one entry per person: nobody is in two active entries, and a member of
@@ -40,6 +39,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class TournamentSignups
 {
+    /** NIP rev. 7: Tournament Consent, ephemeral, stored by the league and never published. */
+    public const CONSENT = 22150;
+
     public function __construct(private SignedEventGate $gate) {}
 
     /* ---------- Solo ------------------------------------------------------------------------------------------ */
@@ -53,7 +55,7 @@ final class TournamentSignups
     {
         $this->soloPlan($tournament, $user);
 
-        return [$this->consent($tournament, 'signup', [$user->pubkey], null)];
+        return [$this->consent($tournament, 'signup', [$user->pubkey], null, $this->version($tournament))];
     }
 
     /**
@@ -66,7 +68,7 @@ final class TournamentSignups
         return $this->store($tournament, $user, $signed, function (Tournament $locked) use ($user): array {
             $this->soloPlan($locked, $user);
 
-            return [null, $user->displayName(), [$user->id], $this->consent($locked, 'signup', [$user->pubkey], null)];
+            return [null, $user->displayName(), [$user->id], $this->consent($locked, 'signup', [$user->pubkey], null, $this->version($locked))];
         });
     }
 
@@ -100,7 +102,7 @@ final class TournamentSignups
     {
         [$lineup, $members] = $this->lineupPlan($tournament, $captain, $lineupId, $memberIds);
 
-        return [$this->consent($tournament, 'signup', array_values($members->map(fn (LineupSeat $seat): string => $seat->user->pubkey)->all()), $lineup)];
+        return [$this->consent($tournament, 'signup', array_values($members->map(fn (LineupSeat $seat): string => $seat->user->pubkey)->all()), $lineup->address(), $this->version($tournament))];
     }
 
     /**
@@ -115,7 +117,7 @@ final class TournamentSignups
             [$lineup, $members] = $this->lineupPlan($locked, $captain, $lineupId, $memberIds);
             $pubkeys = array_values($members->map(fn (LineupSeat $seat): string => $seat->user->pubkey)->all());
 
-            return [$lineup->id, $lineup->clan->name, array_values($members->map(fn (LineupSeat $seat): int => $seat->user_id)->all()), $this->consent($locked, 'signup', $pubkeys, $lineup)];
+            return [$lineup->id, $lineup->clan->name, array_values($members->map(fn (LineupSeat $seat): int => $seat->user_id)->all()), $this->consent($locked, 'signup', $pubkeys, $lineup->address(), $this->version($locked))];
         });
     }
 
@@ -183,7 +185,7 @@ final class TournamentSignups
     {
         $signup = $this->withdrawPlan($tournament, $user);
 
-        return [$this->consent($tournament, 'withdraw', $this->pubkeys($signup), $signup->lineup)];
+        return [$this->withdrawal($tournament, $signup)];
     }
 
     /**
@@ -194,7 +196,7 @@ final class TournamentSignups
     public function withdraw(Tournament $tournament, User $user, array $signed): void
     {
         $signup = $this->withdrawPlan($tournament, $user);
-        $event = $this->verify($signed, $this->consent($tournament, 'withdraw', $this->pubkeys($signup), $signup->lineup), $user);
+        $event = $this->verify($signed, $this->withdrawal($tournament, $signup), $user);
 
         DB::transaction(function () use ($signup, $event): void {
             $stored = NostrEvent::fromSigned($event);
@@ -295,44 +297,68 @@ final class TournamentSignups
     }
 
     /**
-     * @return list<string>
+     * The id of the tournament's current `31923` version, which a sign-up
+     * accepts (NIP rev. 7, Tournament Consent: `e`).
      */
-    private function pubkeys(TournamentSignup $signup): array
+    private function version(Tournament $tournament): string
     {
-        $pubkeys = User::query()->whereIn('id', $signup->members)->pluck('pubkey', 'id');
-
-        return array_values(array_filter(array_map(fn (int $id): ?string => $pubkeys[$id] ?? null, $signup->members)));
+        return $tournament->event->event_id
+            ?? throw new TournamentRuleViolation('signup_closed', __('Sign-up for this tournament is closed.'));
     }
 
     /**
-     * The consent to sign: a NIP-98-style event for the tournament page,
-     * naming the tournament, the action, the lineup and the players entered.
+     * A withdrawal names the sign-up consent it ends and copies its entrants.
+     *
+     * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
+     */
+    private function withdrawal(Tournament $tournament, TournamentSignup $signup): array
+    {
+        $signed = $signup->event?->payload()
+            ?? throw new TournamentRuleViolation('not_entered', __('You are not signed up.'));
+        $pubkeys = [];
+        $lineup = null;
+
+        foreach ($signed['tags'] ?? [] as $tag) {
+            if (($tag[0] ?? null) === 'p' && ($tag[3] ?? null) === 'entrant') {
+                $pubkeys[] = (string) $tag[1];
+            } elseif (($tag[0] ?? null) === 'a' && ($tag[3] ?? null) === 'entrant') {
+                $lineup = (string) $tag[1];
+            }
+        }
+
+        return $this->consent($tournament, 'withdraw', $pubkeys, $lineup, $signup->event->event_id);
+    }
+
+    /**
+     * The Tournament Consent (NIP rev. 7, kind 22150) to sign: the tournament
+     * `a`, the action, the `e` it answers (sign-up: the 31923 version shown;
+     * withdrawal: the sign-up consent), the lineup and the players entered
+     * with role `entrant`. Stored with the entry, never published.
      *
      * @param  list<string>  $pubkeys
      * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
      */
-    private function consent(Tournament $tournament, string $action, array $pubkeys, ?Lineup $lineup): array
+    private function consent(Tournament $tournament, string $action, array $pubkeys, ?string $lineup, string $answers): array
     {
         $tags = [
-            ['u', route('tournaments.show', $tournament)],
-            ['method', 'POST'],
             ['a', (string) $tournament->address(), ''],
             ['action', $action],
+            ['e', $answers, ''],
         ];
 
         if ($lineup !== null) {
-            $tags[] = ['lineup', $lineup->address()];
+            $tags[] = ['a', $lineup, '', 'entrant'];
         }
 
         foreach ($pubkeys as $pubkey) {
-            $tags[] = ['p', $pubkey];
+            $tags[] = ['p', $pubkey, '', 'entrant'];
         }
 
-        $what = $action === 'signup' ? 'Sign-up' : 'Withdrawal';
+        $what = $action === 'signup' ? 'sign-up' : 'withdrawal';
         $tags[] = ['alt', "Tournament {$what}: {$tournament->name}"];
 
         return [
-            'kind' => NostrLogin::KIND,
+            'kind' => self::CONSENT,
             'tags' => $tags,
             'content' => $action === 'signup'
                 ? "I enter {$tournament->name} and accept its rules."

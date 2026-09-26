@@ -159,7 +159,7 @@ final class SeasonChains
         }
 
         $league = LeagueKey::required();
-        $game->loadMissing(['white', 'black', 'recordEvent']);
+        $game->loadMissing(['white', 'black', 'recordEvent', 'tournamentMatch']);
         $attestedAt = $this->nextAttestationTime($season);
         // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season").
         $candidate = $game->tournament_match_id === null ? $this->chessCandidate($game, $attestedAt) : null;
@@ -260,7 +260,9 @@ final class SeasonChains
         $tags[] = ['p', $white, '', 'challenger'];
         $tags[] = ['p', $black, '', 'challenged'];
         $tags[] = ['board', '1', $white, $black, (string) $game->result];
-        $tags[] = ['resolution', Resolution::Admin->value];
+        // A director's no-show is a `forfeit` (NIP rev. 7, "Director results"); every other chess result `admin`.
+        $forfeit = $game->end_reason === ChessEndReason::Director && (bool) ($game->tournamentMatch->result['forfeit'] ?? false);
+        $tags[] = ['resolution', ($forfeit ? Resolution::Forfeit : Resolution::Admin)->value];
         $tags[] = ['winner', match ($game->result) {
             '1-0' => 'challenger',
             '0-1' => 'challenged',

@@ -58,12 +58,14 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
 
         // Tournaments (P8): admins and the organizers an admin unlocked create
-        // them; an organizer manages only their own. Directors (the creator and
-        // the named ones) enter results in director mode (P8b).
+        // them; an organizer manages only their own. Directors (the creator, the
+        // named ones and admins) enter results in director mode (P8b).
         Gate::define('create-tournaments', fn (User $user): bool => $user->isAdmin() || $user->isTournamentOrganizer());
         Gate::define('manage-tournament', fn (User $user, Tournament $tournament): bool => $user->isAdmin()
             || ($tournament->created_by_id === $user->id && $user->isTournamentOrganizer()));
-        Gate::define('direct-tournament', fn (User $user, Tournament $tournament): bool => $tournament->isDirectedBy($user));
+        // Admins direct every tournament too: they enter the matches a director has an interest in
+        // (App\Support\Tournaments\TournamentInterest; security gate P8b).
+        Gate::define('direct-tournament', fn (User $user, Tournament $tournament): bool => $user->isAdmin() || $tournament->isDirectedBy($user));
 
         // Profile hand-ins (P10a): one batch per page load is the normal case.
         // Invite links (P6b): the codes are unguessable anyway; this keeps a

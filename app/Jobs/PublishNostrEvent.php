@@ -19,6 +19,11 @@ class PublishNostrEvent implements ShouldQueue
     public function __construct(public NostrEvent $event)
     {
         $this->afterCommit();
+
+        // Marks the event as one for the relays: nostr:republish retries only those (never a stored-only consent).
+        if ($event->exists && $event->queued_at === null) {
+            $event->forceFill(['queued_at' => now()])->saveQuietly();
+        }
     }
 
     public function handle(RelayPublisher $publisher): void

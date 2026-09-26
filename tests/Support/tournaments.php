@@ -16,6 +16,7 @@ use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Series\Ladders;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
@@ -95,6 +96,8 @@ function runningChess(TournamentFormat $format, int $n, TournamentResultsMode $m
         'results_mode' => $mode,
         'status' => TournamentStatus::Running,
         'slug' => 'test-cup-'.fake()->unique()->numberBetween(1, 1_000_000),
+        // Frozen as a publish would freeze it: the open ladder, or none (unrated).
+        'ladder_address' => Ladders::address('chess', 'blitz'),
     ]);
 
     foreach (range(1, $n) as $index) {
@@ -145,4 +148,25 @@ function playOutAsDirector(Tournament $tournament): int
     }
 
     return $rounds;
+}
+
+/** A running director-mode RL 3v3 tournament of two lineups (one final). */
+function directedSeries(): array
+{
+    $tournament = Tournament::factory()->rocketLeague(TournamentFormat::SingleElimination)->create([
+        'capacity' => 2, 'results_mode' => TournamentResultsMode::Director, 'status' => TournamentStatus::Running,
+        'ladder_address' => Ladders::address('rocket-league', '3v3'), 'slug' => 'rl-desk-'.fake()->unique()->numberBetween(1, 1_000_000),
+    ]);
+    $lineups = [];
+
+    foreach ([1, 2] as $index) {
+        $lineup = Lineup::factory()->mode('3v3')->ready()->create();
+        $lineups[] = $lineup;
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'lineup_id' => $lineup->id, 'name' => $lineup->clan->name, 'rating' => 1100 - $index, 'members' => $lineup->seats->pluck('user_id')->all()]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('cd', 32));
+    app(TournamentRunner::class)->sync($tournament);
+
+    return [$tournament->refresh(), $lineups];
 }

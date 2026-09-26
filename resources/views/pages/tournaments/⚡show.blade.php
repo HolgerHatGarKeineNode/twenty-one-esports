@@ -151,7 +151,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         [__('Seeding'), $teams
             ? __('by Elo at sign-up close, equal Elo by earlier sign-up; mix teams after the lineups, in draw order')
             : __('by Elo at sign-up close, equal Elo by earlier sign-up')],
-        [__('Season chain'), __('separate: tournament matches count for Elo and never mine season blocks')],
+        [__('Rated'), match (true) {
+            $tournament->status === TournamentStatus::Draft => __('decided when it is published'),
+            $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
+            ! $profile->isChess() && ! $tournament->isDirectorMode() => __('not yet: series reported by the players are casual for now'),
+            default => __('yes, on its ladder while that is open and the trust gate passes'),
+        }],
+        [__('Season chain'), __('separate: tournament matches never mine season blocks')],
         [__('Prize pool'), __('the tournament’s own pot, paid out when it ends after an admin check')],
     ];
     $proof = array_values(array_filter([

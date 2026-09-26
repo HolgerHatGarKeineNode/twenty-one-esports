@@ -60,12 +60,12 @@ final class ChessGameService
      *
      * @throws ChessRuleViolation when either player already plays a live game
      */
-    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null, ?GatePin $ratedGate = null, ?int $tournamentMatchId = null): ChessGame
+    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null, ?GatePin $ratedGate = null, ?int $tournamentMatchId = null, ?int $tournamentGame = null): ChessGame
     {
         [$initialMs, $incrementMs] = $this->timeControl($mode);
         $daily = $mode === ChessGame::CORRESPONDENCE;
 
-        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $tournamentMatchId): ChessGame {
+        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $tournamentMatchId, $tournamentGame): ChessGame {
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
@@ -92,6 +92,7 @@ final class ChessGameService
                 'deadline_ms' => $now + ($daily ? $initialMs : $this->firstMoveMs()),
                 'rematch_of_id' => $rematchOf?->id,
                 'tournament_match_id' => $tournamentMatchId,
+                'tournament_game' => $tournamentGame,
             ]);
 
             // Freeze the PGN tag pairs now (names can change, signed notes cannot).

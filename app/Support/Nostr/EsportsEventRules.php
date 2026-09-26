@@ -11,6 +11,7 @@ use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesEvents;
+use App\Support\Tournaments\TournamentSignups;
 
 /**
  * Structural validation rules of `docs/nips/esports.md` ("Validation rules")
@@ -66,29 +67,43 @@ final class EsportsEventRules
             SeriesEvents::RESPONSE => $this->response($event),
             SeasonRelease::LABEL => $this->releaseLabel($event),
             OpponentLists::KIND => $this->opponentList($event),
-            NostrLogin::KIND => $this->tournamentConsent($event),
+            TournamentSignups::CONSENT => $this->tournamentConsent($event),
             default => 'kind_not_allowed',
         };
     }
 
     /**
-     * A tournament sign-up or withdrawal (P8b). The NIP keeps registration
-     * off the relays ("Registration is deliberately not an event"), so the
-     * consent is a NIP-98-style event (27235) the league stores and never
-     * publishes: `u` the tournament page, `method` POST, one `a` to the
-     * tournament's `31923`, `action` signup or withdraw. Who may enter what is
-     * league state (App\Support\Tournaments\TournamentSignups).
+     * Rule 34 (rev. 7), a Tournament Consent (22150): exactly one role-less
+     * `a` to a `31923`, `action` signup or withdraw, exactly one `e`, at least
+     * one `p` with role `entrant`, at most one lineup `a` with role
+     * `entrant`, no `u` or `method`. Stored by the league, never published;
+     * who may enter what is league state (App\Support\Tournaments\TournamentSignups).
      */
     private function tournamentConsent(SignedEvent $event): ?string
     {
-        $addresses = $event->tagsNamed('a');
+        $tournaments = [];
+        $lineups = 0;
 
-        if (count($event->tagsNamed('u')) !== 1 || $event->tag('method') !== 'POST') {
-            return 'consent_request';
+        foreach ($event->tagsNamed('a') as $a) {
+            match ($a[2] ?? '') {
+                '' => $tournaments[] = $a[0] ?? '',
+                'entrant' => $lineups++,
+                default => $lineups += 100,
+            };
         }
 
-        if (count($addresses) !== 1 || ! str_starts_with($addresses[0][0] ?? '', Tournament::CALENDAR_EVENT.':')) {
+        if (count($tournaments) !== 1 || ! str_starts_with($tournaments[0], Tournament::CALENDAR_EVENT.':') || $lineups > 1) {
             return 'consent_tournament';
+        }
+
+        if ($event->tagsNamed('u') !== [] || $event->tagsNamed('method') !== [] || count($event->tagsNamed('e')) !== 1) {
+            return 'consent_tags';
+        }
+
+        $entrants = array_filter($event->tagsNamed('p'), fn (array $p): bool => ($p[2] ?? '') === 'entrant');
+
+        if ($entrants === [] || count($entrants) !== count($event->tagsNamed('p'))) {
+            return 'consent_entrants';
         }
 
         return in_array($event->tag('action'), ['signup', 'withdraw'], true) ? null : 'consent_action';

@@ -3,21 +3,17 @@
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
-use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
-use App\Models\Lineup;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentOrganizer;
-use App\Models\TournamentParticipant;
 use App\Models\TournamentResultEntry;
 use App\Models\User;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
-use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Queue;
@@ -37,26 +33,6 @@ use Livewire\Livewire;
 beforeEach(function () {
     Queue::fake();
 });
-
-/** A running director-mode RL 3v3 tournament of two lineups (one final). */
-function directedSeries(): array
-{
-    $tournament = Tournament::factory()->rocketLeague(TournamentFormat::SingleElimination)->create([
-        'capacity' => 2, 'results_mode' => TournamentResultsMode::Director, 'status' => TournamentStatus::Running, 'slug' => 'rl-desk',
-    ]);
-    $lineups = [];
-
-    foreach ([1, 2] as $index) {
-        $lineup = Lineup::factory()->mode('3v3')->ready()->create();
-        $lineups[] = $lineup;
-        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'lineup_id' => $lineup->id, 'name' => $lineup->clan->name, 'rating' => 1100 - $index, 'members' => $lineup->seats->pluck('user_id')->all()]);
-    }
-
-    app(TournamentBrackets::class)->generate($tournament, str_repeat('cd', 32));
-    app(TournamentRunner::class)->sync($tournament);
-
-    return [$tournament->refresh(), $lineups];
-}
 
 test('in a director tournament the players report, score and accept nothing; the room says so', function () {
     [, [$lineup]] = directedSeries();
@@ -144,7 +120,7 @@ test('a director who plays may not enter their own match', function () {
     $tournament->directors()->attach($player->id);
 
     expect(fn () => app(TournamentRunner::class)->enterResult($match, $player, ['result' => '1-0']))
-        ->toThrow(TournamentRuleViolation::class, 'another director');
+        ->toThrow(TournamentRuleViolation::class, 'interest');
 });
 
 test('who may do what: guest, member, organizer, admin and named director, also by direct Livewire calls', function () {
@@ -161,7 +137,7 @@ test('who may do what: guest, member, organizer, admin and named director, also 
     $this->get(route('tournaments.director', $tournament))->assertRedirect(route('login'));
     $this->get(route('tournaments.show', $tournament))->assertOk();
     $this->actingAs($member)->get(route('tournaments.director', $tournament))->assertForbidden();
-    $this->actingAs($admin)->get(route('tournaments.director', $tournament))->assertForbidden();
+    $this->actingAs($admin)->get(route('tournaments.director', $tournament))->assertOk();
     $this->actingAs($director)->get(route('tournaments.director', $tournament))->assertOk()->assertSee('Director desk');
     $this->actingAs($creator)->get(route('tournaments.director', $tournament))->assertOk();
 
@@ -177,10 +153,13 @@ test('who may do what: guest, member, organizer, admin and named director, also 
     Livewire::actingAs($director)->test('pages::tournaments.director', ['tournament' => $tournament])
         ->call('enter', $match->id, ['result' => '1-0'])->assertSet('error', '')
         ->set('directorKey', $member->npub)->call('addDirector')->assertForbidden();
-    Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])->assertForbidden();
 
     expect($match->refresh()->result['by'])->toBe('director');
 
+    // Admins direct every tournament: they open the desk and change the directors, like the organizer.
+    Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])
+        ->set('directorKey', $member->npub)->call('addDirector')->assertHasNoErrors();
+    $tournament->directors()->detach($member->id);
     Livewire::actingAs($creator)->test('pages::tournaments.director', ['tournament' => $tournament])
         ->set('directorKey', $member->npub)->call('addDirector')->assertHasNoErrors();
 
