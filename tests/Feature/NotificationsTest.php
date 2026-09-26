@@ -100,6 +100,7 @@ test('each kind of notification is stored for the right player and can be marked
         ->and($notification->data['url'])->toStartWith('http');
 
     Livewire::actingAs($recipient)->test('notification-bell')
+        ->call('loadList')
         ->assertSee($notification->data['title'])
         ->call('markRead', $notification->id);
 
@@ -128,6 +129,29 @@ test('the bell opens a notification, marks everything read and never touches ano
         ->and($other->unreadNotifications()->count())->toBe(1);
 
     Livewire::actingAs($anna)->test('notification-bell')->call('markRead', $other->notifications()->sole()->id)->assertNotFound();
+});
+
+test('a page carries one bell with its count, and the list only once the panel opens', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    app(DailyChallenges::class)->challenge($bert, $anna);
+    $title = $anna->notifications()->sole()->data['title'];
+
+    $page = $this->actingAs($anna)->get(route('clans.index'))->assertOk()->getContent();
+
+    expect(substr_count($page, 'data-test="bell"'))->toBe(1)
+        ->and($page)->toContain('data-test="bell-count">1<')
+        ->and($page)->not->toContain('data-test="bell-item"')
+        ->and($page)->toContain('data-test="bell-loading"');
+
+    // A reload of the closed bell (a new notification arrives) stays without the list.
+    Livewire::actingAs($anna)->test('notification-bell')
+        ->call('$refresh')->assertOk()
+        ->assertDontSee($title)
+        ->call('loadList')->assertOk()
+        ->assertSee($title)
+        ->assertDontSeeHtml('data-test="bell-loading"')
+        ->call('$refresh')->assertOk()
+        ->assertSee($title);
 });
 
 test('a switched-off event is not stored, not broadcast and not pushed', function () {

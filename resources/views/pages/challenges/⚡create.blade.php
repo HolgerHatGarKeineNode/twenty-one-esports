@@ -304,7 +304,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             ->where(fn ($query) => $query->where('challenger_lineup_id', $mine->id)->orWhere('challenged_lineup_id', $mine->id))
             ->get();
 
-        return Lineup::query()->with(['clan', 'seats.user.clanMember'])
+        return Lineup::query()->with(['clan.owner', 'seats.user.clanMember'])
             ->where('game', $mine->game)->where('mode', $mine->mode)->where('clan_id', '!=', $mine->clan_id)
             ->when($term !== '', fn ($query) => $query->whereHas('clan', fn ($query) => $query->whereLike('name', "%{$term}%")->orWhereLike('clantag', "%{$term}%")))
             ->get()

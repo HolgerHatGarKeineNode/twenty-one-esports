@@ -8,6 +8,7 @@ use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Series\SeriesService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /**
@@ -93,6 +94,41 @@ test('an outsider is sent from the room to the public match page, an unknown num
 
     $this->actingAs(User::factory()->create())->get(route('matches.room', $match))->assertRedirect(route('matches.show', $match));
     $this->get('/matches/999999')->assertNotFound()->assertSee('Match #999999 not found');
+});
+
+test('the room tick answers without a render until something changed, and loads the match once per tick', function () {
+    $match = SeriesMatch::factory()->accepted()->create(['start_at' => now()->addMinutes(2)->startOfMinute()]);
+    $captain = seriesCaptain($match);
+    $room = Livewire::actingAs($captain)->test('pages::matches.room', ['match' => $match]);
+
+    $seatQueries = function () use ($room): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $room->call('sync')->assertOk();
+        DB::disableQueryLog();
+
+        return collect(DB::getQueryLog())->filter(fn (array $query) => str_contains($query['query'], 'from "lineup_seats"'))->count();
+    };
+
+    // Nothing new: no HTML in the answer, and one load of both lineups' seats.
+    expect($seatQueries())->toBe(2)
+        ->and($room->effects)->not->toHaveKey('html');
+
+    // The kick-off passes: the status line changes, so the tick renders.
+    $this->travel(3)->minutes();
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->html())->toContain(__('Score to submit'));
+
+    $room->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html');
+
+    // The other captain writes a score: the next tick shows it.
+    app(SeriesService::class)->saveLiveGame($match->refresh(), seriesCaptain($match, 'challenged'), 0, 3, 1, null);
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->get('sheet')[0])->toMatchArray(['c' => 3, 'd' => 1])
+        ->and($room->html())->toContain('data-test="series-score">1 : 0<');
 });
 
 test('a captain can copy the opposing players\' npubs in the room and on the match page', function (string $state) {

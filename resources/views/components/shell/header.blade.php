@@ -10,19 +10,35 @@
         ['clans', __('Clans'), route('clans.index')],
     ];
 
-    if (auth()->user()?->can('admin')) {
+    $user = auth()->user();
+    // Asked once per page: the gate reads the admins table (P5g, it was asked three times).
+    $isAdmin = (bool) $user?->can('admin');
+
+    if ($isAdmin) {
         $items[] = ['admin', __('Admin'), route('admin.status')];
     }
 
-    $user = auth()->user();
     $onLogin = request()->routeIs('login');
 @endphp
 
 {{-- An open notification panel lifts the header above the toast stack (z-50), so a toast never covers the list. --}}
 <header class="relative z-30 shrink-0 border-b border-hairline bg-bar" x-data="{ menu: false, search: false, bell: false }" x-bind:style="bell ? 'z-index: 55' : ''" x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="menu = false; search = false">
-    {{-- Desktop bar (Main.dc.html header, 64 px) --}}
-    <div class="hidden h-16 items-center gap-7 px-8 lg:flex">
-        <a href="{{ route('home') }}" class="flex min-h-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
+    {{--
+        One bar for both sizes, so the notification bell exists once: below lg it
+        is the mobile bar (MobileHome.dc.html header, 56 px: logo, bell, search,
+        menu), from lg on the desktop bar (Main.dc.html header, 64 px). Items of
+        the other size are display:none and take no gap.
+    --}}
+    <div class="flex h-14 items-center gap-1 pr-2 pl-4 lg:h-16 lg:gap-7 lg:px-8">
+        <a href="{{ route('home') }}" class="flex min-h-11 min-w-0 items-center gap-2.5 text-ink hover:text-ink lg:hidden" aria-label="{{ __('TWENTY ONE esports, home') }}">
+            <x-logo :size="32" class="shadow-none" />
+            <span class="flex items-baseline gap-1.5 whitespace-nowrap">
+                <span class="font-display text-sm font-extrabold tracking-[0.02em]">TWENTY ONE</span>
+                <span class="text-xs text-ink-2">esports</span>
+            </span>
+        </a>
+
+        <a href="{{ route('home') }}" class="hidden min-h-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink lg:flex" aria-label="{{ __('TWENTY ONE esports, home') }}">
             <x-logo :size="36" />
             <span class="flex items-baseline gap-1.5 whitespace-nowrap">
                 <span class="font-display text-base font-extrabold tracking-[0.02em]">TWENTY ONE</span>
@@ -57,7 +73,7 @@
             </flux:menu>
         </flux:dropdown>
 
-        <nav class="flex gap-1" aria-label="{{ __('Main navigation') }}">
+        <nav class="hidden gap-1 lg:flex" aria-label="{{ __('Main navigation') }}">
             @foreach ($items as [$key, $label, $href])
                 <a href="{{ $href }}"
                    aria-label="{{ $label }}"
@@ -75,14 +91,14 @@
 
         <span class="grow"></span>
 
-        <label for="site-search" class="sr-only">{{ __('Search') }}</label>
+        <label for="site-search" class="sr-only max-lg:hidden">{{ __('Search') }}</label>
         <input id="site-search" type="search" placeholder="{{ __('Search players, clans or match #') }}"
-               class="h-10 w-[420px] min-w-40 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
+               class="hidden h-10 w-[420px] min-w-40 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3 lg:block">
 
         @if ($user)
-            <livewire:notification-bell variant="desktop" />
+            <livewire:notification-bell />
 
-            <flux:dropdown position="bottom" align="end">
+            <flux:dropdown position="bottom" align="end" class="hidden lg:block">
                 <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well pr-3 pl-2 text-[13px] text-ink" data-test="account-chip">
                     <x-avatar :user="$user" :size="26" />
                     <span class="flex min-w-0 flex-col items-start leading-tight">
@@ -96,9 +112,9 @@
                     <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Your daily games') }}</flux:menu.item>
                     <flux:menu.item :href="route('gaming.edit')" icon="cog-6-tooth">{{ __('Settings') }}</flux:menu.item>
                     <flux:menu.item :href="route('settings.chess')" icon="adjustments-horizontal">{{ __('Chess settings') }}</flux:menu.item>
-                    @can('admin')
+                    @if ($isAdmin)
                         <flux:menu.item :href="route('admin.admins')" icon="shield-check">{{ __('Admin') }}</flux:menu.item>
-                    @endcan
+                    @endif
                     <flux:menu.separator />
                     {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
                     <form method="POST" action="{{ route('logout') }}" x-on:submit="window.forgetNostrSigner?.()">
@@ -111,37 +127,20 @@
             <a href="{{ route('login') }}"
                @if ($onLogin) aria-current="page" @endif
                @class([
-                   'flex shrink-0 items-center rounded-lg border border-edge text-[13px] font-bold text-ink hover:text-ink',
+                   'hidden shrink-0 items-center rounded-lg border border-edge text-[13px] font-bold text-ink hover:text-ink lg:flex',
                    'h-10 bg-well px-3.5' => $onLogin,
                    'btn-s h-11 px-4' => ! $onLogin,
                ])>{{ __('Log in') }}</a>
         @endif
-    </div>
 
-    {{-- Mobile bar (MobileHome.dc.html header, 56 px) --}}
-    <div class="flex h-14 items-center gap-1 pr-2 pl-4 lg:hidden">
-        <a href="{{ route('home') }}" class="flex min-h-11 min-w-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
-            <x-logo :size="32" class="shadow-none" />
-            <span class="flex items-baseline gap-1.5 whitespace-nowrap">
-                <span class="font-display text-sm font-extrabold tracking-[0.02em]">TWENTY ONE</span>
-                <span class="text-xs text-ink-2">esports</span>
-            </span>
-        </a>
-
-        <span class="grow"></span>
-
-        @if ($user)
-            <livewire:notification-bell variant="mobile" />
-        @endif
-
-        <button type="button" class="flex size-11 items-center justify-center rounded-lg text-ink-2 hover:text-ink"
+        <button type="button" class="flex size-11 items-center justify-center rounded-lg text-ink-2 hover:text-ink lg:hidden"
                 aria-controls="mobile-search" x-bind:aria-expanded="search.toString()"
                 x-on:click="search = ! search; menu = false; search && $nextTick(() => $refs.mobileSearch.focus())">
             <span class="sr-only" x-text="search ? @js(__('Close search')) : @js(__('Open search'))">{{ __('Open search') }}</span>
             <x-icon name="search" />
         </button>
 
-        <button type="button" class="flex size-11 items-center justify-center rounded-lg text-ink"
+        <button type="button" class="flex size-11 items-center justify-center rounded-lg text-ink lg:hidden"
                 aria-controls="mobile-nav" x-bind:aria-expanded="menu.toString()"
                 x-on:click="menu = ! menu; search = false">
             <span class="sr-only" x-text="menu ? @js(__('Close menu')) : @js(__('Open menu'))">{{ __('Open menu') }}</span>
@@ -158,5 +157,5 @@
                class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
     </div>
 
-    <x-shell.mobile-nav :items="$items" :section="$section" :user="$user" />
+    <x-shell.mobile-nav :items="$items" :section="$section" :user="$user" :is-admin="$isAdmin" />
 </header>

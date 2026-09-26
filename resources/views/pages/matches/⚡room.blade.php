@@ -12,6 +12,7 @@ use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -52,6 +53,13 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     public string $error = '';
 
+    /** Fingerprint of what the last render showed; an unchanged room skips the render on sync(). */
+    #[Locked]
+    public string $shown = '';
+
+    /** The match with every relation the room reads, loaded once per request (fresh()). */
+    private ?SeriesMatch $current = null;
+
     public function mount(SeriesMatch $match): mixed
     {
         $this->match = $match;
@@ -61,13 +69,32 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
 
         $this->pickedStart = $match->proposals[0] ?? null;
-        $this->sync();
+        $this->readSheet();
 
         return null;
     }
 
-    /** Pull the live sheet written by the other captain (called every few seconds). */
+    /**
+     * The 8 s tick of the page: pull the live sheet written by the other
+     * captain. Most ticks find nothing new; they answer without a render
+     * (P5g: the full room was ~57 KB per tick) and the page stays as it is.
+     */
     public function sync(): void
+    {
+        $this->readSheet();
+
+        if ($this->fingerprint() === $this->shown) {
+            $this->skipRender();
+        }
+    }
+
+    public function rendering(): void
+    {
+        $this->shown = $this->fingerprint();
+    }
+
+    /** Rebuild the sheet from the stored live games. */
+    private function readSheet(): void
     {
         $live = $this->fresh()->live_games ?? [];
         $this->sheet = [];
@@ -104,7 +131,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
 
         $this->attempt(fn () => app(SeriesService::class)->saveLiveGame($this->match, $this->user(), $index, $c, $d, $row['unknown'] ? $row['winner'] : null));
-        $this->sync();
+        $this->readSheet();
     }
 
     public function toggleRoster(int $userId): void
@@ -310,7 +337,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
         try {
             $result = $action();
-            unset($this->room);
+            $this->forget();
 
             return $result ?? true;
         } catch (SeriesRuleViolation $violation) {
@@ -319,9 +346,31 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             $this->error = __('The signed event was refused. Please try again.');
         }
 
-        unset($this->room);
+        $this->forget();
 
         return null;
+    }
+
+    /** After a write: the next fresh() reads the match again, and the view data is rebuilt. */
+    private function forget(): void
+    {
+        $this->current = null;
+        unset($this->room);
+    }
+
+    /**
+     * Everything a render depends on that can change while the page is open:
+     * the match row with all loaded relations (every write of SeriesService
+     * touches the row: sheet, rosters, lobby, report, answer, decision), the
+     * two clock edges the view compares against now (kick-off, no-show
+     * window), and the error line.
+     */
+    private function fingerprint(): string
+    {
+        $match = $this->fresh();
+        $noshowFrom = $match->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
+
+        return hash('xxh128', (string) json_encode([$match->toArray(), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error]));
     }
 
     /**
@@ -336,7 +385,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     private function fresh(): SeriesMatch
     {
-        return SeriesMatch::query()
+        return $this->current ??= SeriesMatch::query()
             ->with(['challengerLineup.clan', 'challengerLineup.seats.user.clanMember', 'challengedLineup.clan', 'challengedLineup.seats.user.clanMember',
                 'latestReport.event', 'latestReport.responseEvent', 'latestReport.user', 'challengeEvent', 'answerEvent', 'createdBy', 'answeredBy'])
             ->findOrFail($this->match->id);

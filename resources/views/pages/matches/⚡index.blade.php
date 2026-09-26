@@ -37,7 +37,15 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
 
     public function updatedClan(): void
     {
+        unset($this->selectedClan);
         $this->resetPage();
+    }
+
+    /** The clan of the filter, looked up once per request, and not at all without a filter (P5g: it was asked 16 times per page). */
+    #[Computed]
+    public function selectedClan(): ?Clan
+    {
+        return $this->clan === '' ? null : Clan::query()->where('slug', $this->clan)->first();
     }
 
     public function pickGame(string $game): void
@@ -75,7 +83,7 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
     private function filtered(Builder $query, string $status): Builder
     {
         $statuses = $this->statusFilters()[$status] ?? [];
-        $clan = Clan::query()->where('slug', $this->clan)->first();
+        $clan = $this->selectedClan;
 
         return $query
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
@@ -92,7 +100,7 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
      */
     private function filteredChess(Builder $query, string $status): Builder
     {
-        $clan = Clan::query()->where('slug', $this->clan)->first();
+        $clan = $this->selectedClan;
         $statuses = match ($status) {
             'all' => null,
             'live' => [ChessGameStatus::Active],

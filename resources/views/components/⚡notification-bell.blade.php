@@ -5,15 +5,19 @@ use App\Models\User;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\Locked;
 use Livewire\Component;
 
 /*
  * The notification bell (P5c): unread count, the last 20 notifications, mark
  * one or all as read. No artboard draws it; it is built from the Overlays
  * toast vocabulary (tone bar, icon, bold title, grey text, orange action) and
- * the header's 44 px targets. The header renders it twice, once in the
- * desktop bar and once in the mobile bar; only one is visible at a time.
+ * the header's 44 px targets. The header renders it once; responsive classes
+ * give it the mobile look below `lg` and the desktop look from `lg` on.
+ *
+ * The list is rendered only while the panel is open (P5g): a page load and a
+ * reload of a closed bell carry the count, not 20 notifications. Opening the
+ * panel asks for the list; closing it clears the flag without a request, so
+ * the next reload of a closed bell leaves the list out again.
  *
  * A new notification reaches the page as a window event (resources/js/alerts.js,
  * `esports-notification`), and the bell reloads itself.
@@ -21,8 +25,13 @@ use Livewire\Component;
 new class extends Component {
     public const LIMIT = 20;
 
-    #[Locked]
-    public string $variant = 'desktop';
+    /** True while the panel is open: only then does a render carry the list. */
+    public bool $showList = false;
+
+    public function loadList(): void
+    {
+        $this->showList = true;
+    }
 
     /**
      * @return Collection<int, DatabaseNotification>
@@ -79,13 +88,14 @@ new class extends Component {
 
 @php
     $unread = $this->unread;
-    $mobile = $variant === 'mobile';
 @endphp
 
-<div class="relative" x-data="{ open: false }" x-init="$watch('open', (value) => $dispatch('bell-toggle', value))" x-on:esports-notification.window="$wire.$refresh()" x-on:dock-toggle.window="$event.detail && (open = false)"
-     x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell-{{ $variant }}">
-    <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel-{{ $variant }}"
-            @class(['relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg hover:text-ink', 'text-ink-2' => $mobile, 'border border-line bg-well text-ink-2' => ! $mobile])
+<div class="relative" x-data="{ open: false }"
+     x-init="$watch('open', (value) => { $dispatch('bell-toggle', value); value ? $wire.loadList() : ($wire.showList = false) })"
+     x-on:esports-notification.window="$wire.$refresh()" x-on:dock-toggle.window="$event.detail && (open = false)"
+     x-on:keydown.escape.window="open = false" x-on:click.outside="open = false" data-test="bell">
+    <button type="button" x-on:click="open = ! open" x-bind:aria-expanded="open.toString()" aria-controls="bell-panel"
+            class="relative flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink-2 hover:text-ink lg:border lg:border-line lg:bg-well"
             aria-label="{{ $unread > 0 ? trans_choice('Notifications, :count unread|Notifications, :count unread', $unread) : __('Notifications') }}" data-test="bell-button">
         <x-icon name="bell" />
         @if ($unread > 0)
@@ -93,14 +103,11 @@ new class extends Component {
         @endif
     </button>
 
-    <div id="bell-panel-{{ $variant }}" x-show="open" x-cloak role="region" aria-label="{{ __('Notifications') }}"
+    {{-- Mobile: fixed under the 56 px bar; desktop: anchored to the bell. The two class sets never overlap, so no utility has to win the cascade. --}}
+    <div id="bell-panel" x-show="open" x-cloak role="region" aria-label="{{ __('Notifications') }}"
          x-transition:enter="transition duration-150 ease-out" x-transition:enter-start="-translate-y-1 opacity-0"
          x-transition:leave="transition duration-100 ease-in" x-transition:leave-end="opacity-0"
-         @class([
-             'z-40 flex flex-col overflow-hidden rounded-lg bg-card shadow-ring',
-             'fixed inset-x-4 top-[60px] max-h-[calc(100svh-76px)]' => $mobile,
-             'absolute top-full right-0 mt-2 max-h-[min(640px,calc(100svh-96px))] w-[420px]' => ! $mobile,
-         ]) data-test="bell-panel">
+         class="z-40 flex flex-col overflow-hidden rounded-lg bg-card shadow-ring max-lg:fixed max-lg:inset-x-4 max-lg:top-[60px] max-lg:max-h-[calc(100svh-76px)] lg:absolute lg:top-full lg:right-0 lg:mt-2 lg:max-h-[min(640px,calc(100svh-96px))] lg:w-[420px]" data-test="bell-panel">
         <div class="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-hairline pr-2 pl-4">
             <b class="text-[13px]">{{ __('Notifications') }}</b>
             @if ($unread > 0)
@@ -108,7 +115,16 @@ new class extends Component {
             @endif
         </div>
 
-        @if ($this->notifications->isEmpty())
+        @if (! $showList)
+            <div role="status" aria-label="{{ __('Loading…') }}" class="flex flex-col" data-test="bell-loading">
+                @foreach (['70%', '55%', '82%'] as $width)
+                    <div class="flex h-[72px] flex-col justify-center gap-2 border-b border-hairline px-4 last:border-0" aria-hidden="true">
+                        <span class="sk h-3" style="width: {{ $width }}"></span>
+                        <span class="sk h-2.5 w-2/5"></span>
+                    </div>
+                @endforeach
+            </div>
+        @elseif ($this->notifications->isEmpty())
             <div class="flex flex-col gap-1.5 px-4 py-6">
                 <b class="text-[13px]">{{ __('No notifications yet') }}</b>
                 <span class="text-xs leading-normal text-ink-2">{{ __('Opponents found, invites, daily moves and results show up here.') }}</span>
