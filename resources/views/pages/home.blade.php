@@ -66,6 +66,11 @@
 
     $hideWhenDue = $state === 'due' ? 'display: none' : null;
     $showWhenDue = $state === 'due' ? null : 'display: none';
+
+    app(App\Support\PageMeta::class)->describe(
+        __('Chess and Rocket League ladder for Bitcoiners'),
+        __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The Pre-Season starts at Block 0.'),
+    );
 @endphp
 
 <x-layouts::app section="home" flush>

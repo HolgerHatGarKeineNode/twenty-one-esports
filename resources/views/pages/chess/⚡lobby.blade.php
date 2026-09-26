@@ -14,6 +14,7 @@ use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Chess\RatedChess;
+use App\Support\PageMeta;
 use App\Support\SeasonChain\Opponents;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
@@ -22,7 +23,6 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Renderless;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
@@ -53,7 +53,7 @@ use Livewire\Component;
  * other with at least one player; otherwise the page says why. The choice
  * is the page's (Alpine `rated`) and travels with "Find opponent".
  */
-new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
 
     /**
@@ -213,8 +213,11 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
         return $user->looking_to_play !== null;
     }
 
-    public function rendering(): void
+    public function rendering(\Illuminate\View\View $view): void
     {
+        $view->title(__('Chess'));
+        app(PageMeta::class)->describe(__('Chess'), __('Play blitz chess 5+3 live or daily chess against Bitcoiners: find an opponent, watch the live boards and follow your daily games.'));
+
         $outgoing = $this->outgoing;
         $this->invitedUserId = $outgoing?->invitee_id;
         $this->invitedUntilMs = $outgoing?->expires_at->getTimestampMs() ?? 0;

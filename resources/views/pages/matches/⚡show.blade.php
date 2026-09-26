@@ -4,12 +4,14 @@ use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
+use App\Support\PageMeta;
+use App\Support\Seo\LocalizedUrls;
+use App\Support\Seo\StructuredData;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesService;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
@@ -21,7 +23,7 @@ use Livewire\Component;
  * right card shows the casual stakes. An unknown number shows the "Match not found"
  * state of States.dc.html with a 404.
  */
-new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public int $number;
 
     public function mount(string $match): void
@@ -40,6 +42,34 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
 
             abort(response()->view('pages.matches.not-found', ['number' => $this->number, 'latest' => $latest], 404));
         }
+    }
+
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $match = $this->match;
+        $locale = app()->getLocale();
+        $series = __('Series :number', ['number' => $match->label()]);
+        $title = $series.': '.$match->challenger_name.' vs '.$match->challenged_name;
+        $view->title($title);
+
+        $description = __('Rocket League :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
+            'mode' => $match->mode, 'best_of' => $match->best_of, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name,
+        ]);
+
+        if ($match->status->hasResult()) {
+            $description .= ' '.(in_array($match->winner, SeriesMatch::SIDES, true)
+                ? __('Result: :clan won.', ['clan' => $match->sideName((string) $match->winner)])
+                : __('Void · no winner'));
+        }
+
+        app(PageMeta::class)
+            ->describe($title, $description)
+            ->addStructuredData(StructuredData::series($match, LocalizedUrls::for($locale)))
+            ->addStructuredData(StructuredData::breadcrumbs([
+                [__('Home'), LocalizedUrls::for($locale, route('home'))],
+                [__('Matches'), LocalizedUrls::for($locale, route('matches.index'))],
+                [$series, LocalizedUrls::for($locale, route('matches.show', $match->number))],
+            ]));
     }
 
     #[Computed]

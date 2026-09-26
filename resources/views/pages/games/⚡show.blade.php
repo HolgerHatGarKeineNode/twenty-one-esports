@@ -12,11 +12,13 @@ use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
+use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
+use App\Support\Seo\LocalizedUrls;
+use App\Support\Seo\StructuredData;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
@@ -39,7 +41,7 @@ use Livewire\Component;
  * "opponent disconnected" overlay with claim-win.
  * At the end of any game the players' app signs the NIP-64 record.
  */
-new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     #[Locked]
     public ChessGame $game;
 
@@ -48,6 +50,34 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
         // A flag that fell while nobody was looking is settled before the clock is shown.
         $this->game = $game->isActive() ? app(ChessGameService::class)->checkClock($game) : $game;
         $this->markPresent();
+    }
+
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $game = $this->game;
+        $locale = app()->getLocale();
+        $daily = $game->isCorrespondence();
+        $name = trim(($daily ? __('Daily chess') : __('Game')).' '.($game->number !== null ? $game->number() : ''));
+        $white = $game->white->displayName();
+        $black = $game->black->displayName();
+        $title = $name.': '.$white.' vs '.$black;
+        $view->title($title);
+
+        $kind = $game->rated ? ($daily ? __('Rated · Daily chess') : __('Rated · Blitz 5+3')) : ($daily ? __('Casual · Daily chess') : __('Casual · Blitz 5+3'));
+        $description = __(':kind: :white (white) vs :black (black) in the TWENTY ONE esports league.', ['kind' => $kind, 'white' => $white, 'black' => $black]).' '.match ($game->status) {
+            ChessGameStatus::Active => __('Live now: watch the board move by move.'),
+            ChessGameStatus::Aborted => __('Aborted before both first moves'),
+            ChessGameStatus::Finished => __('Result: :result.', ['result' => $game->result ?? '?']),
+        };
+
+        app(PageMeta::class)
+            ->describe($title, $description)
+            ->addStructuredData(StructuredData::chessGame($game, $title, LocalizedUrls::for($locale)))
+            ->addStructuredData(StructuredData::breadcrumbs([
+                [__('Home'), LocalizedUrls::for($locale, route('home'))],
+                [__('Matches'), LocalizedUrls::for($locale, route('matches.index'))],
+                [$name, LocalizedUrls::for($locale, route('games.show', $game))],
+            ]));
     }
 
     /**

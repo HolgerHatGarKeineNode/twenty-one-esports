@@ -3,13 +3,25 @@
 namespace App\Support;
 
 /**
- * Link-preview and robots tags of the current page (P6b), printed by
- * partials/head.blade.php: a page sets them while it renders, before the
- * layout's <head> is written. One instance per request (scoped binding), so
- * nothing leaks from one request into the next under Octane or a queue worker.
+ * Search, link-preview and robots tags of the current page (P6b, P14),
+ * printed by partials/head.blade.php: a page sets them while it renders,
+ * before the layout's <head> is written. One instance per request (bound to
+ * the request in AppServiceProvider), so nothing leaks from one request into
+ * the next, under Octane, in a queue worker or in a test.
  *
  * The tags are plain HTML in the first response: messengers and crawlers
- * (Signal, Telegram, Nostr clients) read them without running JavaScript.
+ * (Signal, Telegram, Nostr clients, search engines) read them without
+ * running JavaScript.
+ *
+ * Indexing is opt-in: a page that never calls describe() is `noindex`, so a
+ * new private page cannot end up in a search index by forgetting a line.
+ * A public page calls describe() with its own title and description and
+ * gets the canonical URL, the hreflang alternates and the preview tags.
+ *
+ * Structured data: a page adds its JSON-LD nodes with addStructuredData();
+ * the Organization node is printed on every page by the head itself. The
+ * tournament pages (P8b) hook in here the same way, e.g. with
+ * App\Support\Seo\StructuredData::sportsEvent().
  */
 final class PageMeta
 {
@@ -22,14 +34,46 @@ final class PageMeta
      */
     public array $images = [];
 
+    /** The page's own URL (og:url, canonical); null = the current URL. */
     public ?string $url = null;
 
     public bool $noindex = false;
 
     public ?string $title = null;
 
-    public function isEmpty(): bool
+    /**
+     * JSON-LD nodes of the page, each a complete schema.org object.
+     *
+     * @var list<array<string, mixed>>
+     */
+    public array $structuredData = [];
+
+    /**
+     * Marks the page as public and indexable, with its own title and description.
+     */
+    public function describe(string $title, string $description): self
     {
-        return $this->description === null && $this->images === [] && ! $this->noindex;
+        $this->title = $title;
+        $this->description = $description;
+
+        return $this;
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     */
+    public function addStructuredData(array $node): self
+    {
+        $this->structuredData[] = $node;
+
+        return $this;
+    }
+
+    /**
+     * Search engines may index the page: it described itself and is not private.
+     */
+    public function isIndexable(): bool
+    {
+        return ! $this->noindex && $this->description !== null;
     }
 }

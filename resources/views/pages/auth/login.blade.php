@@ -11,6 +11,10 @@
         [__("Members' prize pools:"), __('some tournaments pay their sats to members only. Everyone can still play them.')],
         [__('A say and early access:'), __('vote on the next game, try new features first.')],
     ];
+
+    // Shared links get a preview; search engines leave the page out.
+    $meta = app(App\Support\PageMeta::class)->describe(__('Log in'), __('Log in to TWENTY ONE esports with Google or Nostr and play chess and Rocket League in the league.'));
+    $meta->noindex = true;
 @endphp
 
 <x-layouts::app :title="__('Log in')">

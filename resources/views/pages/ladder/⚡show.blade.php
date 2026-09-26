@@ -3,11 +3,11 @@
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Rating;
+use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -24,7 +24,7 @@ use Livewire\Component;
  * Height, Global Rating, the clan tab and the Proof with the ladder snapshot
  * (P7c publishes it).
  */
-new #[Title('Ladder')] #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
     public string $game;
 
     public string $mode;
@@ -39,6 +39,18 @@ new #[Title('Ladder')] #[Layout('layouts::app', ['section' => 'ladder'])] class 
         $this->game = $game;
         $this->mode = $mode;
         $this->pool = $this->pool === Rating::CASUAL ? Rating::CASUAL : Rating::RATED;
+    }
+
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $game = __(app(GameRegistry::class)->get($this->game)->name());
+        $mode = $this->game === 'chess' ? __($this->gameMode->name) : $this->gameMode->name;
+        $title = __(':game :mode ladder', ['game' => $game, 'mode' => $mode]);
+        $view->title($title);
+        $replace = ['game' => $game, 'mode' => $mode];
+        app(PageMeta::class)->describe($title, $this->gameMode->rates === 'player'
+            ? __('The rated season ladder and the casual ladder of :game :mode in the TWENTY ONE esports league: rank, rating and results of every player.', $replace)
+            : __('The rated season ladder and the casual ladder of :game :mode in the TWENTY ONE esports league: rank, rating and results of every lineup.', $replace));
     }
 
     public function pickPool(string $pool): void

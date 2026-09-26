@@ -6,10 +6,10 @@ use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Clans\ClanStatsPreview;
+use App\Support\PageMeta;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
@@ -20,7 +20,13 @@ use Livewire\Component;
  * and the block strip feed (P7).
  * The "what a series is worth" numbers are the Elo formula (K 32) itself.
  */
-new #[Title('Rocket League')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title(__('Rocket League'));
+        app(PageMeta::class)->describe(__('Rocket League'), __('Rocket League in the TWENTY ONE esports league: clan lineups play series in 1v1, 2v2 and 3v3, with Elo per lineup, the latest results and open challenges.'));
+    }
+
     /** Rocket League share of each clan's 7-day Hashrate (ledger 2.1: total minus chess). */
     private const RL_WEEK = ['HDL' => 36, 'LSR' => 30, 'OPS' => 17, 'MMP' => 11, 'B21' => 5, 'STK' => 4, 'LNB' => 0, 'NCE' => 0];
 

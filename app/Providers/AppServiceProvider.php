@@ -11,6 +11,7 @@ use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
@@ -30,7 +31,18 @@ class AppServiceProvider extends ServiceProvider
             array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
         ));
 
-        $this->app->scoped(PageMeta::class);
+        // One PageMeta per request, kept on the request itself: a scoped
+        // binding is only reset by Octane and queue workers, so in HTTP tests
+        // the tags of one request leaked into the next one.
+        $this->app->bind(PageMeta::class, function (Application $app): PageMeta {
+            $attributes = $app->make('request')->attributes;
+
+            if (! $attributes->get(PageMeta::class) instanceof PageMeta) {
+                $attributes->set(PageMeta::class, new PageMeta);
+            }
+
+            return $attributes->get(PageMeta::class);
+        });
 
         // The trust job's ranks (P7d); without a run in the live season rated play stays closed.
         $this->app->bind(TrustFacts::class, AnchoredTrustFacts::class);

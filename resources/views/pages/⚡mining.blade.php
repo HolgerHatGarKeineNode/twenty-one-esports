@@ -1,13 +1,13 @@
 <?php
 
 use App\Models\User;
+use App\Support\PageMeta;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\Seasons;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /*
@@ -21,7 +21,13 @@ use Livewire\Component;
  * Not built here (later phases): the supply chart over time, fees and zaps,
  * the league reserve, payouts and the season review (P9, P10).
  */
-new #[Title('Mining')] #[Layout('layouts::app', ['section' => null])] class extends Component {
+new #[Layout('layouts::app', ['section' => null])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title(__('Mining'));
+        app(PageMeta::class)->describe(__('Mining'), __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.'));
+    }
+
     /**
      * @return array<string, mixed>
      */

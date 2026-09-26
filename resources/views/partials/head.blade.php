@@ -3,37 +3,62 @@
 <meta name="color-scheme" content="dark" />
 <meta name="theme-color" content="#111114" />
 
-<title>{{ filled($title ?? null) ? $title.' – TWENTY ONE esports' : 'TWENTY ONE esports' }}</title>
-{{-- Link previews and robots (P6b, App\Support\PageMeta): plain tags in the first response, no JavaScript needed. --}}
-@php($pageMeta = app(App\Support\PageMeta::class))
-@unless ($pageMeta->isEmpty())
-    @if ($pageMeta->noindex)
-        <meta name="robots" content="noindex, nofollow">
-    @endif
-    @if ($pageMeta->description !== null)
-        <meta name="description" content="{{ $pageMeta->description }}">
-        <meta property="og:site_name" content="TWENTY ONE esports">
-        <meta property="og:type" content="website">
-        <meta property="og:title" content="{{ $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports') }}">
-        <meta property="og:description" content="{{ $pageMeta->description }}">
-        @if ($pageMeta->url !== null)
-            <meta property="og:url" content="{{ $pageMeta->url }}">
-        @endif
-        @foreach ($pageMeta->images as [$imageUrl, $imageWidth, $imageHeight, $imageAlt])
-            <meta property="og:image" content="{{ $imageUrl }}">
-            <meta property="og:image:type" content="image/png">
-            <meta property="og:image:width" content="{{ $imageWidth }}">
-            <meta property="og:image:height" content="{{ $imageHeight }}">
-            <meta property="og:image:alt" content="{{ $imageAlt }}">
-        @endforeach
-        <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="{{ $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports') }}">
-        <meta name="twitter:description" content="{{ $pageMeta->description }}">
-        @if ($pageMeta->images !== [])
-            <meta name="twitter:image" content="{{ $pageMeta->images[0][0] }}">
-        @endif
-    @endif
+{{--
+    Search and link previews (P6b, P14, App\Support\PageMeta): plain tags in the first response, no JavaScript needed.
+    Indexing is opt-in: only a page that described itself gets indexed, with canonical and hreflang alternates.
+    The layout's `title` wins over the page meta title, which may be in another language (an invite's preview
+    speaks the inviter's language, its <title> the visitor's).
+--}}
+@php
+    $pageMeta = app(App\Support\PageMeta::class);
+    $pageTitle = filled($title ?? null) ? $title : $pageMeta->title;
+    $shareTitle = $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports');
+    $indexable = $pageMeta->isIndexable();
+    $canonical = $indexable ? App\Support\Seo\LocalizedUrls::for(app()->getLocale(), $pageMeta->url) : $pageMeta->url;
+    $shareImages = $pageMeta->images !== [] || ! $indexable ? $pageMeta->images : [[asset('images/twentyone/cover.png'), 1280, 720, 'TWENTY ONE esports']];
+    // JSON_HEX_TAG keeps a `</script>` in a player's name from closing the element.
+    $jsonLd = json_encode(['@context' => 'https://schema.org', '@graph' => [App\Support\Seo\StructuredData::organization(), ...$pageMeta->structuredData]],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE);
+@endphp
+<title>{{ filled($pageTitle) ? $pageTitle.' – TWENTY ONE esports' : 'TWENTY ONE esports' }}</title>
+@unless ($indexable)
+    <meta name="robots" content="noindex, nofollow">
 @endunless
+@if ($pageMeta->description !== null)
+    <meta name="description" content="{{ $pageMeta->description }}">
+@endif
+@if ($indexable)
+    <link rel="canonical" href="{{ $canonical }}">
+    @foreach (App\Support\Seo\LocalizedUrls::alternates($pageMeta->url) as $hreflang => $alternate)
+        <link rel="alternate" hreflang="{{ $hreflang }}" href="{{ $alternate }}">
+    @endforeach
+@endif
+@if ($pageMeta->description !== null)
+    <meta property="og:site_name" content="TWENTY ONE esports">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="{{ app()->getLocale() === 'de' ? 'de_DE' : 'en_US' }}">
+    <meta property="og:title" content="{{ $shareTitle }}">
+    <meta property="og:description" content="{{ $pageMeta->description }}">
+    @if ($canonical !== null)
+        <meta property="og:url" content="{{ $canonical }}">
+    @endif
+    @foreach ($shareImages as [$imageUrl, $imageWidth, $imageHeight, $imageAlt])
+        <meta property="og:image" content="{{ $imageUrl }}">
+        <meta property="og:image:type" content="image/png">
+        <meta property="og:image:width" content="{{ $imageWidth }}">
+        <meta property="og:image:height" content="{{ $imageHeight }}">
+        <meta property="og:image:alt" content="{{ $imageAlt }}">
+    @endforeach
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ $shareTitle }}">
+    <meta name="twitter:description" content="{{ $pageMeta->description }}">
+    @if ($shareImages !== [])
+        <meta name="twitter:image" content="{{ $shareImages[0][0] }}">
+    @endif
+@endif
+@if ($jsonLd !== false)
+    <script type="application/ld+json">{!! $jsonLd !!}</script>
+@endif
 
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">

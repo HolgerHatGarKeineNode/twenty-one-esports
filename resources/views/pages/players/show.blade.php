@@ -12,6 +12,16 @@
     $name = $profile->name;
     $isMe = auth()->id() === $user->id;
     $chips = \App\Support\Rating\Ratings::chipsFor($user);
+
+    $plays = $profile->games();
+    $description = ($plays !== null
+        ? __(':name plays :games in the TWENTY ONE esports league.', ['name' => $name, 'games' => $plays])
+        : __(':name is a player in the TWENTY ONE esports league, the chess and Rocket League ladder of the Bitcoin community EINUNDZWANZIG.', ['name' => $name]))
+        .($profile->clan !== null ? ' '.__('Clan: :clan.', ['clan' => $profile->clan->name]) : '')
+        .(filled($profile->about) ? ' '.\Illuminate\Support\Str::limit(\Illuminate\Support\Str::squish($profile->about), 100, '…') : '');
+    app(\App\Support\PageMeta::class)
+        ->describe($name, $description)
+        ->addStructuredData(\App\Support\Seo\StructuredData::profilePage($profile, \App\Support\Seo\LocalizedUrls::for(app()->getLocale())));
 @endphp
 <x-layouts::app :title="$name">
     <div class="flex flex-col gap-6 pb-6 lg:px-12 lg:pb-8">

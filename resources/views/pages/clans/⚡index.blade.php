@@ -3,11 +3,11 @@
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Support\Clans\ClanStatsPreview;
+use App\Support\PageMeta;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -16,7 +16,13 @@ use Livewire\Component;
  * Clan Rating, Hashrate and "Blocks mined" come from ClanStatsPreview until
  * P6/P7 compute them.
  */
-new #[Title('Clans')] #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title(__('Clans'));
+        app(PageMeta::class)->describe(__('Clans'), __('All clans of the TWENTY ONE esports league: players, meetups on the map, Clan Rating and Hashrate.'));
+    }
+
     #[Url(as: 'q', except: '')]
     public string $search = '';
 

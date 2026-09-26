@@ -9,6 +9,9 @@ use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Clans\ClanStatsPreview;
 use App\Support\Nostr\NostrKeys;
+use App\Support\PageMeta;
+use App\Support\Seo\LocalizedUrls;
+use App\Support\Seo\StructuredData;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -45,7 +48,20 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title($this->clan->name);
+        $clan = $this->clan;
+        $view->title($clan->name);
+
+        $locale = app()->getLocale();
+        $description = trans_choice(':name [:tag] is a clan in the TWENTY ONE esports league with :count player.|:name [:tag] is a clan in the TWENTY ONE esports league with :count players.',
+            $clan->members->count(), ['name' => $clan->name, 'tag' => $clan->clantag]);
+
+        app(PageMeta::class)
+            ->describe($clan->name, $description.($clan->meetup_name ? ' '.__('Meetup: :name', ['name' => $clan->meetup_name]).'.' : ''))
+            ->addStructuredData(StructuredData::breadcrumbs([
+                [__('Home'), LocalizedUrls::for($locale, route('home'))],
+                [__('Clans'), LocalizedUrls::for($locale, route('clans.index'))],
+                [$clan->name, LocalizedUrls::for($locale, route('clans.show', $clan))],
+            ]));
     }
 
     /**

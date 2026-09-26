@@ -5,13 +5,13 @@ use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Support\PageMeta;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
-use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -23,7 +23,13 @@ use Livewire\WithPagination;
  * games only know "live" and "done" (a chess game starts when it is created);
  * every row carries its league match number, one sequence for both (P7b).
  */
-new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title(__('Matches'));
+        app(PageMeta::class)->describe(__('Matches'), __('Every Rocket League series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.'));
+    }
+
     use WithPagination;
 
     #[Url(except: 'all')]
