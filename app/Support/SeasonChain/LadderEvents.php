@@ -153,7 +153,11 @@ final class LadderEvents
         $standings = [];
 
         foreach ($rows as $row) {
-            $entity = $row->user_id !== null ? $users->get($row->user_id) : $lineups->get((int) $row->lineup_id)?->address();
+            // An entity of the ladder's own kind only: a player ladder lists pubkeys, a lineup ladder
+            // lineup addresses, never a mix (NIP rev. 7.1; no `['a', <pubkey>, '']`, no `['p', <address>]`).
+            $entity = $rates === 'player'
+                ? ($row->user_id !== null ? $users->get($row->user_id) : null)
+                : ($row->lineup_id !== null ? $lineups->get((int) $row->lineup_id)?->address() : null);
 
             if (! is_string($entity)) {
                 continue; // a deleted player or lineup keeps its attestations, not a standing

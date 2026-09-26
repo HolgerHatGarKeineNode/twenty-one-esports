@@ -14,6 +14,7 @@ use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Board;
+use App\Support\Rating\RatingService;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -660,19 +661,17 @@ final class SeasonChains
     }
 
     /**
-     * The two rated entities of a series: pinned at a rated accept, else the
-     * lineups it names now.
+     * The two rated entities of a series, as RatingService rates them: the
+     * players of a 1v1 (player ladder), else pinned at a rated accept, else
+     * the lineups it names now.
      *
      * @return array{challenger: string, challenged: string}
      */
     private static function subjects(SeriesMatch $match): array
     {
-        $pinned = $match->rated_subjects ?? [];
-
-        return [
-            'challenger' => $pinned['challenger'] ?? 'lineup:'.$match->challenger_lineup_id,
-            'challenged' => $pinned['challenged'] ?? 'lineup:'.$match->challenged_lineup_id,
-        ];
+        // The same entities the rating moved (a 1v1 player, a pinned or current lineup).
+        return RatingService::seriesSubjects($match)
+            ?? ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
     }
 
     /**

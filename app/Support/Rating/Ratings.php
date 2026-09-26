@@ -132,9 +132,22 @@ final class Ratings
             ->whereHas('lineup', fn ($query) => $query->where('game', 'rocket-league'))
             ->with('lineup')->get()->sortBy(fn (LineupSeat $seat) => $seat->lineup->mode);
 
+        $players = [];
+
         foreach ($seats as $seat) {
             $mode = $seat->lineup->mode;
             $pool = self::pool(Ladders::isOpen('rocket-league', $mode));
+
+            // A player ladder (RL 1v1, NIP rev. 7.1) rates the player: one chip, whatever lineups they sit in.
+            if ($seat->lineup->gameMode()->rates === 'player') {
+                if (! isset($players[$mode])) {
+                    $players[$mode] = true;
+                    $chips[] = ['label' => 'RL '.$mode, 'rating' => self::forUser($user->id, 'rocket-league', $mode, $pool)];
+                }
+
+                continue;
+            }
+
             $chips[] = ['label' => 'RL '.$mode, 'rating' => self::forLineups([$seat->lineup_id], 'rocket-league', $mode, $pool)[$seat->lineup_id]];
         }
 
@@ -178,15 +191,26 @@ final class Ratings
     public static function forSeries(SeriesMatch $match): array
     {
         $pool = self::pool((bool) $match->rated);
-        $now = self::forLineups([$match->challenger_lineup_id, $match->challenged_lineup_id], $match->game, $match->mode, $pool);
+        // The entities the series rates: both lineups, or on a player ladder (RL 1v1) the two players.
+        $subjects = RatingService::seriesSubjects($match)
+            ?? ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
+        $ids = fn (string $kind): array => array_values(array_filter(array_map(
+            fn (string $subject): ?int => str_starts_with($subject, $kind.':') ? (int) substr($subject, strlen($kind) + 1) : null,
+            $subjects,
+        )));
+        $now = ['user' => self::forUsers($ids('user'), $match->game, $match->mode, $pool), 'lineup' => self::forLineups($ids('lineup'), $match->game, $match->mode, $pool)];
         $changes = self::changesOf(RatingChange::SERIES, $match->id);
-        $side = fn (?int $lineupId) => ($lineupId !== null && isset($now[$lineupId]) ? $now[$lineupId] : self::summary(null, $pool)) + [
-            'before' => ($changes['lineup:'.$lineupId] ?? null)?->before,
-            'delta' => ($changes['lineup:'.$lineupId] ?? null)?->delta,
-        ];
+        $side = function (string $subject) use ($now, $changes, $pool): array {
+            [$kind, $id] = array_pad(explode(':', $subject, 2), 2, '0');
 
-        $c = $side($match->challenger_lineup_id);
-        $d = $side($match->challenged_lineup_id);
+            return ($now[$kind][(int) $id] ?? self::summary(null, $pool)) + [
+                'before' => ($changes[$subject] ?? null)?->before,
+                'delta' => ($changes[$subject] ?? null)?->delta,
+            ];
+        };
+
+        $c = $side($subjects['challenger']);
+        $d = $side($subjects['challenged']);
         $engine = EloRating::fromConfig($pool === Rating::CASUAL ? 'casual' : 'rating');
         $open = $c['delta'] === null && ! $match->status->hasResult();
 

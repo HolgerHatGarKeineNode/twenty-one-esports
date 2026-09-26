@@ -15,6 +15,9 @@ use App\Enums\ClanRole;
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
 use App\Livewire\Actions\DeleteAccount;
 use App\Models\Admin;
 use App\Models\ChessGame;
@@ -27,6 +30,9 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
@@ -34,8 +40,13 @@ use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\ChallengeDraft;
+use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
@@ -180,8 +191,8 @@ test('regression (audit 2026-09-26): the losing captain who unfollows after the 
     $attestation = SeasonAttestation::query()->sole();
 
     expect(RatingChange::query()->where('source', RatingChange::SERIES)->where('source_id', $match->id)->count())->toBe(2)
-        ->and(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
-        ->and(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $b[0]->id)->value('rating'))->toBeLessThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[1]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('user_id', $b[1]->id)->value('rating'))->toBeLessThan(1000)
         ->and($attestation->height)->toBe(1)
         ->and($attestation->rule)->toBeNull()
         // The 2154 states the gate of the accept: the loser still at rank 100.
@@ -373,7 +384,7 @@ test('regression (security gate F2): the loser cannot empty "Who played"; the wi
 
     $attestation = SeasonAttestation::query()->sole();
 
-    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+    expect(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[1]->id)->value('rating'))->toBeGreaterThan(1000)
         ->and($attestation->height)->toBe(1)
         ->and($attestation->reward)->toBeGreaterThan(0);
 });
@@ -404,12 +415,13 @@ test('regression (security gate F3): the loser cannot dissolve his one-member cl
 
     expect(fn () => app(ClanService::class)->prepareLeave($b[1]))->toThrow(ClanRuleViolation::class, 'rated match');
 
-    // Were the lineup gone anyway (an admin, an old path), the subjects pinned at the accept still rate it.
+    // Were the lineup gone anyway (an admin, an old path), the result is still rated: on the 1v1
+    // player ladder (NIP rev. 7.1) the rated entities are the two roster players, not the lineups.
     Lineup::query()->whereKey($b[0]->id)->delete();
     app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'report', 'report' => $match->refresh()->latestReport->id], 'Loser gone.');
 
-    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
-        ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'lineup:'.$b[0]->id)->value('rating'))->toBeLessThan(1000);
+    expect(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[1]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'user:'.$b[1]->id)->value('rating'))->toBeLessThan(1000);
 });
 
 test('P7e: a one-member clan whose player deletes the account during a rated match keeps its lineup until the match is decided', function () {
@@ -474,7 +486,78 @@ test('regression (security re-check, F2 paths): the 1v1 loser who deletes his ac
 
     $attestation = SeasonAttestation::query()->sole();
 
-    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+    expect(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[1]->id)->value('rating'))->toBeGreaterThan(1000)
         ->and($attestation->reward)->toBeGreaterThan(0)
         ->and($attestation->candidate['losers'])->toBe([$b[1]->pubkey]);
+});
+
+/*
+ * NIP rev. 7.1: Rocket League 1v1 is a player ladder. A clan's 1v1 lineup is context; the rated
+ * entity is the side's one roster player, the same one whether they play a ladder challenge or a
+ * tournament match, as a lineup or a solo entry.
+ */
+
+/** A running director RL 1v1 final between two entries (a lineup participant when `$lineup` is given). */
+function playerLadderFinal(array $entries): Tournament
+{
+    $tournament = Tournament::factory()->create([
+        'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => 2,
+        'options' => FormatOptions::defaults(GameProfile::for('rocket-league', '1v1'))->toArray(),
+        'results_mode' => TournamentResultsMode::Director, 'status' => TournamentStatus::Running,
+        'slug' => 'duel-'.fake()->unique()->numberBetween(1, 1_000_000),
+        'ladder_address' => Ladders::address('rocket-league', '1v1'),
+    ]);
+
+    foreach ($entries as $index => [$user, $lineup]) {
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $lineup === null ? $user->id : null, 'lineup_id' => $lineup?->id,
+            'name' => $user->displayName(), 'rating' => 1100 - $index, 'members' => [$user->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+    app(TournamentRunner::class)->sync($tournament);
+
+    return $tournament->refresh();
+}
+
+function playerLadderDecide(Tournament $tournament): SeriesMatch
+{
+    $runner = app(TournamentRunner::class);
+    $runner->enterResult(TournamentMatch::query()->where('tournament_id', $tournament->id)->sole(), $tournament->creator, ['games' => [[3, 1], [2, 0], [4, 1]]]);
+    $runner->closeRound(TournamentRunner::currentRound($tournament), $tournament->creator);
+
+    return SeriesMatch::query()->whereHas('tournamentMatch', fn ($query) => $query->where('tournament_id', $tournament->id))->sole();
+}
+
+test('NIP 7.1: a rated 1v1 ladder challenge rates the two players, keeps the lineups as context, and a tournament match adds to the same rating', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateFinish(gateAccepted($a, $b), $a, $b);
+    $tags = NostrEvent::query()->findOrFail(SeasonAttestation::query()->where('source_id', $match->id)->sole()->nostr_event_id)->payload()['tags'];
+
+    expect(Rating::query()->where('pool', Rating::RATED)->where('mode', '1v1')->pluck('subject')->sort()->values()->all())->toBe(collect(['user:'.$a[1]->id, 'user:'.$b[1]->id])->sort()->values()->all())
+        ->and($tags)->toContain(['a', $a[0]->address(), '', 'challenger'], ['a', $b[0]->address(), '', 'challenged'])
+        ->and(collect($tags)->where(0, 'elo')->pluck(1)->sort()->values()->all())->toBe(collect([$a[1]->pubkey, $b[1]->pubkey])->sort()->values()->all());
+
+    // The same player then plays a tournament 1v1 as a solo entry: one entity, one rating.
+    $stranger = User::factory()->create();
+    playerLadderDecide(playerLadderFinal([[$a[1], null], [$stranger, null]]));
+
+    expect(Rating::query()->where('pool', Rating::RATED)->where('mode', '1v1')->where('user_id', $a[1]->id)->count())->toBe(1)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('mode', '1v1')->where('user_id', $a[1]->id)->value('results'))->toBe(2)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('mode', '1v1')->whereNotNull('lineup_id')->count())->toBe(0);
+});
+
+test('NIP 7.1: a tournament 1v1 of a clan lineup against a solo entry is rated for both players by pubkey', function () {
+    app()->instance(TrustFacts::class, gateFacts());
+    $a = gateLineup();
+    $solo = User::factory()->create();
+    $series = playerLadderDecide(playerLadderFinal([[$a[1], $a[0]], [$solo, null]]));
+    $tags = NostrEvent::query()->findOrFail(SeasonAttestation::query()->where('source_id', $series->id)->sole()->nostr_event_id)->payload()['tags'];
+    $lineupSide = $series->challenger_lineup_id === $a[0]->id ? 'challenger' : 'challenged';
+
+    expect($series->rated)->toBeTrue()
+        ->and(collect($series->rated_subjects)->sort()->values()->all())->toBe(collect(['user:'.$a[1]->id, 'user:'.$solo->id])->sort()->values()->all())
+        ->and(RatingChange::query()->where('source', RatingChange::SERIES)->where('source_id', $series->id)->count())->toBe(2)
+        ->and(collect($tags)->where(0, 'elo')->pluck(1)->sort()->values()->all())->toBe(collect([$a[1]->pubkey, $solo->pubkey])->sort()->values()->all())
+        ->and(collect($tags)->filter(fn ($tag) => $tag[0] === 'a' && isset($tag[3]))->values()->all())->toBe([['a', $a[0]->address(), '', $lineupSide]]);
 });

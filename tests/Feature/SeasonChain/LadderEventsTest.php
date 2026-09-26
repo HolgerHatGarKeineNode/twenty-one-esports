@@ -7,6 +7,7 @@
  * frozen parameters copied from the first version.
  */
 
+use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\SeasonAttestation;
@@ -88,4 +89,22 @@ test('a parameter change republishes every ladder with the standings and the fro
             ['standing', '1', $alice->pubkey, '1020', '1', '0', 'provisional'],
             ['standing', '2', $bob->pubkey, '980', '0', '1', 'provisional'],
         ]);
+});
+
+test('NIP 7.1: the Rocket League 1v1 ladder rates players and lists pubkeys, never a lineup or a malformed a', function () {
+    $player = User::factory()->create();
+    $lineup = Lineup::factory()->mode('1v1')->create();
+    $base = ['pool' => Rating::RATED, 'season' => $this->season->slug, 'game' => 'rocket-league', 'mode' => '1v1', 'results' => 3, 'wins' => 2, 'losses' => 1];
+    Rating::query()->create([...$base, 'subject' => 'user:'.$player->id, 'user_id' => $player->id, 'rating' => 1040]);
+    // A row of the old lineup kind (rev. 6) must not leak into a player ladder.
+    Rating::query()->create([...$base, 'subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1020]);
+
+    app(LadderEvents::class)->publish($this->season, LeagueKey::required(), $this->trust->pubkey);
+    $tags = ladderTags('rocket-league/1v1/'.$this->season->slug);
+
+    expect($tags)->toContain(['rates', 'player'], ['p', $player->pubkey])
+        ->and(collect($tags)->where(0, 'standing')->pluck(2)->all())->toBe([$player->pubkey])
+        ->and(collect($tags)->where(0, 'a')->filter(fn ($tag) => ! str_starts_with($tag[1], '32152:') && ! str_starts_with($tag[1], '2156:'))->all())->toBe([])
+        ->and(collect($tags)->where(0, 'p')->pluck(1)->all())->not->toContain($lineup->address())
+        ->and(ladderTags('rocket-league/2v2/'.$this->season->slug))->toContain(['rates', 'lineup']);
 });

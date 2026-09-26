@@ -2,11 +2,13 @@
 
 namespace App\Support\Rating;
 
+use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
+use App\Models\User;
 use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
@@ -77,16 +79,10 @@ final class RatingService
             return false;
         }
 
-        // A rated series rates the entities pinned at its accept, so a lineup gone since
-        // (security gate F3) cannot take the loss away; casual needs both lineups.
-        $subjects = $match->rated ? $match->rated_subjects : null;
+        $subjects = self::seriesSubjects($match);
 
-        if (! isset($subjects['challenger'], $subjects['challenged'])) {
-            $subjects = self::seriesSubjects($match);
-
-            if ($subjects === null) {
-                return false;
-            }
+        if ($subjects === null) {
+            return false;
         }
 
         if ($match->rated && ! $this->pinAdmits(GatePin::fromArray($match->gate_at_accept), $this->rosterOf($match))) {
@@ -102,25 +98,72 @@ final class RatingService
     }
 
     /**
-     * The two rated entities of a casual series: its lineups, or its two
-     * single players (both sides a roster side of one player, in a mode of
-     * one player per side); null otherwise (a mix team, a deleted lineup).
+     * The two rated entities of a series, or null (nothing to rate):
+     *
+     * - on a player ladder (Rocket League 1v1, NIP rev. 7.1) each side's one
+     *   roster player, whether the side is a lineup or a player: `user:<id>`,
+     *   so a player has one rating however they entered;
+     * - else the entities a rated accept pinned (a lineup gone since cannot
+     *   take the loss away, security gate F3);
+     * - else both lineups. A mix team (a roster side of several players) has
+     *   no rating.
      *
      * @return array{challenger: string, challenged: string}|null
      */
     public static function seriesSubjects(SeriesMatch $match): ?array
     {
+        if ($match->gameMode()->rates === 'player') {
+            return self::playerSubjects($match);
+        }
+
+        $pinned = $match->rated ? $match->rated_subjects : null;
+
+        if (isset($pinned['challenger'], $pinned['challenged'])) {
+            return ['challenger' => (string) $pinned['challenger'], 'challenged' => (string) $pinned['challenged']];
+        }
+
         if ($match->challenger_lineup_id !== null && $match->challenged_lineup_id !== null) {
             return ['challenger' => 'lineup:'.$match->challenger_lineup_id, 'challenged' => 'lineup:'.$match->challenged_lineup_id];
         }
 
-        [$a, $b] = [$match->rosterSide('challenger'), $match->rosterSide('challenged')];
+        return null;
+    }
 
-        if (count($a) === 1 && count($b) === 1 && $match->challenger_lineup_id === null && $match->challenged_lineup_id === null && $match->gameMode()->teamSize === 1) {
-            return ['challenger' => 'user:'.$a[0], 'challenged' => 'user:'.$b[0]];
+    /**
+     * The one player of each 1v1 side: who the counted roster names for it,
+     * else the pinned subject, else the player of a roster side, else the
+     * lineup's one regular (captain or player) seat. Null when a side has none
+     * or more than one (fail closed: unrated). A deleted account keeps its
+     * subject, so the winner is still rated (security re-check F2).
+     *
+     * @return array{challenger: string, challenged: string}|null
+     */
+    private static function playerSubjects(SeriesMatch $match): ?array
+    {
+        $subjects = [];
+        $roster = $match->countedRoster();
+
+        foreach (SeriesMatch::SIDES as $side) {
+            $played = array_values(array_unique(array_column(array_filter($roster, fn (array $entry): bool => $entry['side'] === $side), 'user_id')));
+            $pinned = $match->rated_subjects[$side] ?? null;
+            $regulars = array_values(array_filter($match->lineup($side)?->activeSeats() ?? [], fn ($seat): bool => $seat->role !== LineupRole::Substitute));
+
+            $userId = match (true) {
+                $roster !== [] => count($played) === 1 ? (int) $played[0] : null,
+                is_string($pinned) && str_starts_with($pinned, 'user:') => (int) substr($pinned, 5),
+                count($match->rosterSide($side)) === 1 => $match->rosterSide($side)[0],
+                count($regulars) === 1 => $regulars[0]->user_id,
+                default => null,
+            };
+
+            if ($userId === null) {
+                return null;
+            }
+
+            $subjects[$side] = 'user:'.$userId;
         }
 
-        return null;
+        return $subjects['challenger'] === $subjects['challenged'] ? null : $subjects;
     }
 
     /**
@@ -128,13 +171,18 @@ final class RatingService
      * the lineup as the series still has it (null once deleted: the pinned
      * subject rates on, security gate F3).
      *
-     * @return array{subject: string, user_id?: int, lineup_id?: int|null}
+     * @return array{subject: string, user_id?: int|null, lineup_id?: int|null}
      */
     private static function entity(string $subject, ?int $lineupId): array
     {
-        return str_starts_with($subject, 'user:')
-            ? ['subject' => $subject, 'user_id' => (int) substr($subject, 5)]
-            : ['subject' => $subject, 'lineup_id' => $lineupId];
+        if (str_starts_with($subject, 'user:')) {
+            $userId = (int) substr($subject, 5);
+
+            // A deleted account keeps its rating row by subject, without the user.
+            return ['subject' => $subject, 'user_id' => User::query()->whereKey($userId)->exists() ? $userId : null];
+        }
+
+        return ['subject' => $subject, 'lineup_id' => $lineupId];
     }
 
     /**
@@ -170,8 +218,8 @@ final class RatingService
     }
 
     /**
-     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $challenger
-     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $challenged
+     * @param  array{subject: string, user_id?: int|null, lineup_id?: int|null}  $challenger
+     * @param  array{subject: string, user_id?: int|null, lineup_id?: int|null}  $challenged
      */
     private function apply(bool $rated, string $game, string $mode, array $challenger, array $challenged, float $score, string $source, int $sourceId, ?int $number): bool
     {
@@ -216,7 +264,7 @@ final class RatingService
      * The id of the entity's rating row, created at the start rating if new.
      * insertOrIgnore keeps a concurrent create from aborting the transaction.
      *
-     * @param  array{subject: string, user_id?: int, lineup_id?: int|null}  $entity
+     * @param  array{subject: string, user_id?: int|null, lineup_id?: int|null}  $entity
      */
     private function ensure(string $pool, string $season, string $game, string $mode, array $entity, int $start): int
     {

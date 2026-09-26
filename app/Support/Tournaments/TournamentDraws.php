@@ -258,7 +258,10 @@ final class TournamentDraws
         $userRatings = Ratings::forUsers($signups->pluck('members')->flatten()->all(), $tournament->game, $tournament->mode, $pool);
 
         foreach ($signups as $signup) {
-            if ($signup->lineup_id !== null) {
+            if ($signup->lineup_id !== null && $tournament->teamSize() === 1) {
+                // RL 1v1 is a player ladder (NIP rev. 7.1): a clan's 1v1 lineup is seeded by its player.
+                $rating = $userRatings[$signup->members[0] ?? 0]['rating'] ?? null;
+            } elseif ($signup->lineup_id !== null) {
                 $rating = $lineupRatings[$signup->lineup_id]['rating'] ?? null;
             } elseif (! $teams) {
                 $rating = $userRatings[$signup->members[0] ?? 0]['rating'] ?? null;

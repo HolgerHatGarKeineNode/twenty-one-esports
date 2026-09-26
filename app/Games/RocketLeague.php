@@ -35,7 +35,8 @@ final class RocketLeague implements Game
 
         foreach ([1, 2, 3] as $size) {
             $slug = "{$size}v{$size}";
-            $modes[$slug] = new GameMode($slug, $slug, $size, [3, 5], [], 'lineup', false);
+            // 1v1 is a player ladder (NIP rev. 7.1): one rating per player, a clan's 1v1 lineup is context.
+            $modes[$slug] = new GameMode($slug, $slug, $size, [3, 5], [], $size === 1 ? 'player' : 'lineup', false);
         }
 
         return $modes;

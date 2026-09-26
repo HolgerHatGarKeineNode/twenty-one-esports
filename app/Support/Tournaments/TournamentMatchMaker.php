@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\LineupRole;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
@@ -186,7 +187,7 @@ final class TournamentMatchMaker
         // captains' signed 2150/2151 in the room (P8c). RL 1v1 entries are rated as players.
         $players = $this->singlePlayers($tournament, $a, $b, $lineups);
         $pin = ! $tournament->isDirectorMode() ? null
-            : ($players === null ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : $this->playersPin($tournament, $players[0], $players[1]));
+            : ($players === null ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : $this->playersPin($tournament, $players[0], $players[1], $lineups));
         $now = now();
 
         $sides = [];
@@ -235,36 +236,57 @@ final class TournamentMatchMaker
      * eligible players on each side. Null = casual.
      */
     /**
-     * The two players of an RL 1v1 pairing of two solo entries (no lineup, one
-     * player each, not a mix team), or null.
+     * The two players of an RL 1v1 pairing (NIP rev. 7.1, a player ladder):
+     * a solo entry's one player, or a clan 1v1 lineup's one regular player
+     * among those entered (captain or player seat, not a substitute). Both
+     * kinds of side can meet. Null in a team mode, for a mix team, or when a
+     * side has no single such player.
      *
      * @param  array{0: Lineup|null, 1: Lineup|null}  $lineups
      * @return array{0: User, 1: User}|null
      */
     private function singlePlayers(Tournament $tournament, TournamentParticipant $a, TournamentParticipant $b, array $lineups): ?array
     {
-        if ($tournament->teamSize() !== 1 || $lineups[0] !== null || $lineups[1] !== null || $a->isMixTeam() || $b->isMixTeam()
-            || count($a->memberIds()) !== 1 || count($b->memberIds()) !== 1) {
+        if ($tournament->teamSize() !== 1 || $a->isMixTeam() || $b->isMixTeam()) {
             return null;
         }
 
-        $first = User::query()->find($a->memberIds()[0]);
-        $second = User::query()->find($b->memberIds()[0]);
+        $players = [];
 
-        return $first === null || $second === null ? null : [$first, $second];
+        foreach ([[$a, $lineups[0]], [$b, $lineups[1]]] as [$participant, $lineup]) {
+            $ids = $lineup === null
+                ? $participant->memberIds()
+                : array_values(array_map(fn (LineupSeat $seat): int => $seat->user_id, array_filter(
+                    $lineup->activeSeats(),
+                    fn (LineupSeat $seat): bool => $seat->role !== LineupRole::Substitute && in_array($seat->user_id, $participant->memberIds(), true),
+                )));
+            $user = count($ids) === 1 ? User::query()->find($ids[0]) : null;
+
+            if ($user === null) {
+                return null;
+            }
+
+            $players[] = $user;
+        }
+
+        return [$players[0], $players[1]];
     }
 
     /**
      * The gate of a rated 1v1 series: like a rated chess game, both players
      * at or above the minimum on the frozen ladder while it is open, each
-     * side pinned with its one eligible player. Null = casual.
+     * side pinned with its one eligible player (their seat role on a lineup
+     * side). Null = casual.
+     *
+     * @param  array{0: Lineup|null, 1: Lineup|null}  $lineups
      */
-    private function playersPin(Tournament $tournament, User $a, User $b): ?GatePin
+    private function playersPin(Tournament $tournament, User $a, User $b, array $lineups): ?GatePin
     {
         $pin = $this->chessPin($tournament, $a, $b);
-        $entry = fn (User $user): array => [['user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => $user->displayName(), 'role' => 'player']];
+        $entry = fn (User $user, ?Lineup $lineup): array => [['user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => $user->displayName(),
+            'role' => $lineup?->activeSeatOf($user)?->role->value ?? 'player']];
 
-        return $pin?->withSides(['challenger' => $entry($a), 'challenged' => $entry($b)]);
+        return $pin?->withSides(['challenger' => $entry($a, $lineups[0]), 'challenged' => $entry($b, $lineups[1])]);
     }
 
     private function seriesPin(Tournament $tournament, ?Lineup $a, ?Lineup $b): ?GatePin
