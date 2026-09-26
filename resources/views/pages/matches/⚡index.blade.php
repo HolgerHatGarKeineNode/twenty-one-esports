@@ -101,18 +101,37 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
     private function filteredChess(Builder $query, string $status): Builder
     {
         $clan = $this->selectedClan;
-        $statuses = match ($status) {
-            'all' => null,
-            'live' => [ChessGameStatus::Active],
-            'done' => [ChessGameStatus::Finished, ChessGameStatus::Aborted],
-            default => [],
-        };
+        $statuses = $this->chessStatuses($status);
 
         return $query
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereHas('white.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))
                 ->orWhereHas('black.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))))
-            ->when($statuses !== null, fn (Builder $query) => $statuses === [] ? $query->whereRaw('1 = 0') : $query->whereIn('status', $statuses));
+            ->when($statuses !== null, fn (Builder $query) => $query->whereIn('status', $statuses));
+    }
+
+    /**
+     * The chess statuses a status filter stands for; null for all of them.
+     *
+     * @return list<ChessGameStatus>|null
+     */
+    private function chessStatuses(string $status): ?array
+    {
+        return match ($status) {
+            'all' => null,
+            'live' => [ChessGameStatus::Active],
+            'done' => [ChessGameStatus::Finished, ChessGameStatus::Aborted],
+            default => [],
+        };
+    }
+
+    /**
+     * Whether chess games can show under these filters at all. Waiting,
+     * scheduled, to confirm and disputed are series states: no query for them.
+     */
+    private function listsChess(string $status): bool
+    {
+        return $this->game !== 'rocket-league' && $this->chessStatuses($status) !== [];
     }
 
     /**
@@ -128,9 +147,9 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
         $page = $this->getPage();
         $take = $page * $perPage;
         $series = $this->game === 'chess' ? collect() : $this->filtered(SeriesMatch::query()->with('latestReport'), $this->status)->latest()->limit($take)->get();
-        $chess = $this->game === 'rocket-league' ? collect() : $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get();
+        $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $total = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
-            + ($this->game === 'rocket-league' ? 0 : $this->filteredChess(ChessGame::query(), $this->status)->count());
+            + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0);
 
         $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
             ->concat($chess->map(fn (ChessGame $game) => ['type' => 'chess', 'model' => $game]))
@@ -153,7 +172,7 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
         foreach (array_keys($this->statusFilters()) as $status) {
             if ($status !== 'all') {
                 $counts[$status] = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
-                    + ($this->game === 'rocket-league' ? 0 : $this->filteredChess(ChessGame::query(), $status)->count());
+                    + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0);
             }
         }
 

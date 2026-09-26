@@ -206,3 +206,19 @@ test('the game filter on /matches narrows the table to chess or Rocket League, w
 
     $page->call('pickGame', 'nonsense')->assertSet('game', 'all');
 });
+
+test('/matches asks nothing about chess for the statuses a chess game never has', function () {
+    $open = SeriesMatch::factory()->create(['status' => SeriesStatus::Open]);
+    ChessGame::factory()->create();
+    ChessGame::factory()->daily()->finished()->create();
+
+    DB::enableQueryLog();
+    $page = Livewire::test('pages::matches.index')->call('pickStatus', 'waiting');
+    $sql = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    // Waiting, scheduled, to confirm and disputed are series states only.
+    expect($sql->filter(fn (string $query) => preg_match('/\b(1 = 0|0 = 1)\b/', $query) === 1)->values()->all())->toBe([])
+        ->and($page->get('counts'))->toBe(['waiting' => 1, 'scheduled' => 0, 'live' => 1, 'to_confirm' => 0, 'disputed' => 0, 'done' => 1]);
+    $page->assertSeeHtml('wire:key="m-'.$open->id.'"')->assertDontSeeHtml('data-test="chess-row"');
+});
