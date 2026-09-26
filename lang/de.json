@@ -2799,5 +2799,6 @@
     "no: published before Block 0, so every match is casual": "nein: vor Block 0 veröffentlicht, jedes Match ist ungewertet",
     "not yet: series reported by the players are casual for now": "noch nicht: von Spielern gemeldete Serien sind vorerst ungewertet",
     "yes, on its ladder while that is open and the trust gate passes": "ja, auf seiner Ladder, solange sie offen ist und die Vertrauensprüfung besteht",
-    "separate: tournament matches never mine season blocks": "getrennt: Turnier-Matches minen nie Season-Blöcke"
+    "separate: tournament matches never mine season blocks": "getrennt: Turnier-Matches minen nie Season-Blöcke",
+    "Manage tournaments": "Turniere verwalten"
 }

@@ -61,6 +61,12 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 ? __('Tournament matches are normal challenges and count for Elo. They never mine season blocks; mix teams play without Elo.')
                 : __('Sign-ups are open. Until Block 0 every tournament match is casual and moves the casual Elo.') }}
         </p>
+        @can('create-tournaments')
+            <div class="flex flex-wrap gap-2 lg:ml-auto lg:shrink-0 lg:self-center">
+                <x-button :href="route('admin.tournaments.create')" class="whitespace-nowrap" data-test="index-new-tournament">+ {{ __('New tournament') }}</x-button>
+                <x-button variant="secondary" :href="route('admin.tournaments')" class="whitespace-nowrap" data-test="index-manage-tournaments">{{ __('Manage tournaments') }}</x-button>
+            </div>
+        @endcan
     </div>
 
     <div class="grid gap-3 sm:grid-cols-3">

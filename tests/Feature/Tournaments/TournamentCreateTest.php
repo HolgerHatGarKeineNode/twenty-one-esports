@@ -255,3 +255,19 @@ test('an organizer manages their own tournaments only, an admin all of them', fu
         ->and(Gate::forUser($organizer)->allows('manage-tournament', $other))->toBeFalse()
         ->and(Gate::forUser(tournamentAdmin())->allows('manage-tournament', $other))->toBeTrue();
 });
+
+test('the public tournaments page links admins and organizers to creating one, and nobody else', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    foreach ([$admin, tournamentOrganizer()] as $creator) {
+        $this->actingAs($creator)->get(route('tournaments.index'))->assertOk()
+            ->assertSee('data-test="index-new-tournament"', false)
+            ->assertSee(route('admin.tournaments.create'), false);
+    }
+
+    $this->actingAs(User::factory()->create())->get(route('tournaments.index'))->assertOk()
+        ->assertDontSee('data-test="index-new-tournament"', false);
+    auth()->logout();
+    $this->get(route('tournaments.index'))->assertOk()->assertDontSee('data-test="index-new-tournament"', false);
+});

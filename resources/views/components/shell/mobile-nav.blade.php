@@ -55,15 +55,16 @@
                     <x-icon name="chess" :size="18" class="text-ink-2" />
                     {{ __('Chess settings') }}
                 </a>
+                @if ($isAdmin || $isOrganizer)
+                    <a href="{{ route('admin.tournaments') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
+                        <x-icon name="trophy" :size="18" class="text-ink-2" />
+                        {{ __('Your tournaments') }}
+                    </a>
+                @endif
                 @if ($isAdmin)
                     <a href="{{ route('admin.admins') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                         <x-icon name="shield-check" :size="18" class="text-ink-2" />
                         {{ __('Admin') }}
-                    </a>
-                @elseif ($isOrganizer)
-                    <a href="{{ route('admin.tournaments') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
-                        <x-icon name="trophy" :size="18" class="text-ink-2" />
-                        {{ __('Your tournaments') }}
                     </a>
                 @endif
                 {{-- Forget a mill remote signer first, so the next person on this browser does not inherit it. --}}
