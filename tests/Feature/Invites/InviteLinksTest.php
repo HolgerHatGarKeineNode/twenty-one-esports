@@ -11,6 +11,7 @@ use App\Models\Lineup;
 use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Invites\InviteCard;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use Illuminate\Support\Facades\Http;
@@ -324,8 +325,8 @@ test('the landing carries title, description, preview images and noindex in the 
         ->assertSeeHtml('<title>satsjäger challenges you to blitz chess – TWENTY ONE esports</title>')
         ->assertSeeHtml('<meta property="og:title" content="satsjäger challenges you to blitz chess">')
         ->assertSeeHtml('<meta property="og:description" content="Blitz chess 5+3, casual.')
-        ->assertSeeHtml('<meta property="og:image" content="'.route('invites.card', ['code' => $link->code, 'format' => 'wide']).'">')
-        ->assertSeeHtml('<meta property="og:image" content="'.route('invites.card', ['code' => $link->code, 'format' => 'square']).'">')
+        ->assertSeeHtml('<meta property="og:image" content="'.route('invites.card', ['code' => $link->code, 'format' => 'wide', 'v' => (new InviteCard($link))->fingerprint('wide')]).'">')
+        ->assertSeeHtml('<meta property="og:image" content="'.route('invites.card', ['code' => $link->code, 'format' => 'square', 'v' => (new InviteCard($link))->fingerprint('square')]).'">')
         ->assertSeeHtml('<meta property="og:url" content="'.$link->url().'">');
 });
 

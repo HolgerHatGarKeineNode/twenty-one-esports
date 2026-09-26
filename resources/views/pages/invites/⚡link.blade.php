@@ -163,8 +163,8 @@ new #[Layout('layouts::app')] class extends Component {
         $meta->description = $copy->description();
         $meta->url = $link->url();
         $meta->images = [
-            [route('invites.card', ['code' => $link->code, 'format' => 'wide']), 1200, 630, $copy->cardAlt()],
-            [route('invites.card', ['code' => $link->code, 'format' => 'square']), 1080, 1080, $copy->cardAlt()],
+            [route('invites.card', ['code' => $link->code, 'format' => 'wide', 'v' => (new \App\Support\Invites\InviteCard($link))->fingerprint('wide')]), 1200, 630, $copy->cardAlt()],
+            [route('invites.card', ['code' => $link->code, 'format' => 'square', 'v' => (new \App\Support\Invites\InviteCard($link))->fingerprint('square')]), 1080, 1080, $copy->cardAlt()],
         ];
 
         App::setLocale($locale);
@@ -436,7 +436,7 @@ new #[Layout('layouts::app')] class extends Component {
             @if ($mine && ! $closed)
                 <section aria-labelledby="pv-h" class="flex flex-col gap-3" data-test="invite-preview">
                     <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="pv-h" class="m-0 text-[15px] font-bold">{{ __('What your friend sees in the chat') }}</h2><span class="text-xs text-ink-3">{{ __('link preview') }}</span></span>
-                    <img src="{{ route('invites.card', ['code' => $link->code, 'format' => 'wide']) }}" width="1200" height="630" alt="{{ $copy->cardAlt() }}" loading="lazy" class="block h-auto w-full max-w-[400px] rounded-lg shadow-ring">
+                    <img src="{{ route('invites.card', ['code' => $link->code, 'format' => 'wide', 'v' => (new \App\Support\Invites\InviteCard($link))->fingerprint('wide')]) }}" width="1200" height="630" alt="{{ $copy->cardAlt() }}" loading="lazy" class="block h-auto w-full max-w-[400px] rounded-lg shadow-ring">
                 </section>
             @endif
 

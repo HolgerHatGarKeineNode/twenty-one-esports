@@ -4,9 +4,12 @@ use App\Enums\InviteLinkType;
 use App\Models\Clan;
 use App\Models\InviteLink;
 use App\Models\User;
+use App\Support\Clans\ClanLogos;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\Blockpile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 beforeEach(function () {
     Storage::fake('local');
@@ -97,4 +100,65 @@ test('the raster Blockpile draws exactly the shapes of the SVG avatar', function
     }, $elements[1]);
 
     expect(Blockpile::polygons($pubkey))->toBe($fromSvg);
+});
+
+test('a clan card shows the clan logo, and a logo uploaded later redraws the card', function () {
+    Storage::fake('public');
+    $clan = Clan::factory()->create(['name' => 'Super Toxic', 'clantag' => 'ST', 'picture' => null]);
+    $link = InviteLink::factory()->clan($clan)->create();
+    $url = route('invites.card', ['code' => $link->code, 'format' => 'wide']);
+
+    $before = $this->get($url)->assertOk()->getContent();
+
+    // A pure green logo, stored the way the clan edit stores it.
+    $image = imagecreatetruecolor(512, 512);
+    imagefill($image, 0, 0, imagecolorallocate($image, 0, 200, 0));
+    ob_start();
+    imagepng($image);
+    $png = (string) ob_get_clean();
+    $logos = app(ClanLogos::class);
+    $logos->store($png);
+    $clan->forceFill(['picture' => $logos->urlFor($png)])->save();
+
+    $after = $this->get($url)->assertOk()->getContent();
+
+    expect($after)->not->toBe($before);
+
+    // Somewhere on the card there is now the logo's green, which no card had before.
+    $green = function (string $bytes): int {
+        $card = imagecreatefromstring($bytes);
+        $hits = 0;
+        for ($x = 0; $x < imagesx($card); $x += 6) {
+            for ($y = 0; $y < imagesy($card); $y += 6) {
+                ['red' => $r, 'green' => $g, 'blue' => $b] = imagecolorsforindex($card, imagecolorat($card, $x, $y));
+                $hits += ($g > 170 && $r < 40 && $b < 40) ? 1 : 0;
+            }
+        }
+
+        return $hits;
+    };
+
+    expect($green($before))->toBe(0)
+        ->and($green($after))->toBeGreaterThan(20);
+});
+
+test('a clan card never fetches a remote picture: a portal logo keeps the tag tile', function () {
+    Storage::fake('public');
+    Http::preventStrayRequests();
+    $clan = Clan::factory()->create(['clantag' => 'LSR', 'picture' => 'https://portal.example/logo.png']);
+    $link = InviteLink::factory()->clan($clan)->create();
+
+    $this->get(route('invites.card', ['code' => $link->code, 'format' => 'square']))->assertOk()->assertHeader('Content-Type', 'image/png');
+});
+
+test('the preview card URL changes with what the card shows, so messengers fetch a new logo', function () {
+    Storage::fake('public');
+    $clan = Clan::factory()->create(['picture' => null]);
+    $link = InviteLink::factory()->clan($clan)->create();
+    $cardUrl = fn (): string => collect(Str::matchAll('/property="og:image" content="([^"]+)"/', $this->get($link->url())->getContent()))->first();
+
+    $before = $cardUrl();
+    $clan->forceFill(['picture' => url('/storage/clan-logos/'.str_repeat('a', 64).'.png')])->save();
+
+    expect($before)->toContain('v=')->and($cardUrl())->not->toBe($before);
 });

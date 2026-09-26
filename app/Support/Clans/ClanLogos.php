@@ -140,9 +140,10 @@ final class ClanLogos
     }
 
     /**
-     * The disk path behind one of our logo URLs, or null.
+     * The disk path behind one of our logo URLs, or null (a portal logo, an
+     * older APP_URL, anything that is not `clan-logos/<sha256>.png`).
      */
-    private function pathOf(?string $url): ?string
+    public function pathOf(?string $url): ?string
     {
         $prefix = $this->absoluteUrl(self::DIRECTORY).'/';
 

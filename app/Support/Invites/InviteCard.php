@@ -6,6 +6,7 @@ use App\Enums\InviteLinkType;
 use App\Models\Clan;
 use App\Models\InviteLink;
 use App\Models\User;
+use App\Support\Clans\ClanLogos;
 use App\Support\Nostr\Blockpile;
 use GdImage;
 use Illuminate\Support\Facades\Storage;
@@ -77,14 +78,16 @@ final class InviteCard
     }
 
     /**
-     * Everything the card shows; a change of any of it is a new file.
+     * Everything the card shows; a change of any of it is a new file. It is
+     * also the `v` of the card's URL, so a messenger that caches previews by
+     * URL fetches the new card after a new name or logo.
      */
-    private function fingerprint(string $format): string
+    public function fingerprint(string $format): string
     {
         $inviter = $this->link->inviter;
 
         return substr(hash('sha256', json_encode([
-            'v' => 1,
+            'v' => 2,
             $format,
             app()->getLocale(),
             $this->link->type->value,
@@ -92,7 +95,7 @@ final class InviteCard
             $inviter->displayName(),
             $inviter->pubkey,
             $inviter->avatar_path,
-            $this->link->clan?->only(['name', 'clantag']),
+            $this->link->clan?->only(['name', 'clantag', 'picture']),
             (new InviteCopy($this->link))->clanName(),
             config('app.url'),
         ]) ?: ''), 0, 16);
@@ -257,6 +260,19 @@ final class InviteCard
     private function clanTile(?Clan $clan, int $x, int $y, int $size): void
     {
         $radius = (int) round($size * 0.14);
+
+        // The clan's uploaded logo when there is one. Only our own files on the
+        // public disk are read (a portal logo is a remote URL: never fetched
+        // here), and the picture is part of the fingerprint, so a new logo is a
+        // new card.
+        $logo = app(ClanLogos::class)->pathOf($clan?->picture);
+
+        if ($logo !== null && Storage::disk('public')->exists($logo)) {
+            $this->picture(Storage::disk('public')->path($logo), $x, $y, $size, $radius);
+
+            return;
+        }
+
         $px = $this->pixels($size);
         $tile = imagecreatetruecolor($px, $px);
 
