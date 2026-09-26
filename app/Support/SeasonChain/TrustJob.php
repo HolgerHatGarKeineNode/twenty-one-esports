@@ -115,7 +115,7 @@ final class TrustJob
         $previous = TrustRank::query()->get()->keyBy('pubkey');
         $entries = $lists->newestEntries();
         $excluded = array_values(array_map(strval(...), TrustExclusion::query()->pluck('pubkey')->all()));
-        $result = AnchoredTrust::compute($anchors, $entries, $this->countedReports($previous->map(fn (TrustRank $row): int => $row->rank)->all(), $excluded), $excluded);
+        $result = AnchoredTrust::compute($anchors, $entries, $this->countedReports($previous->map(fn (TrustRank $row): int => $row->rank)->all(), $previous->map(fn (TrustRank $row): ?string => $row->anchor)->all(), $excluded), $excluded);
         $now = now()->getTimestamp();
 
         $this->describe($trust, $now);
@@ -278,15 +278,23 @@ final class TrustJob
      * 365-day window), the earliest first, so a later burst can neither add
      * targets nor displace the reports that counted already.
      *
+     * Anchor subtrees (round 3, N1 residual): the reporters under one anchor
+     * (their `anchor` in the previous run) count at most `reports_per_anchor`
+     * reports together per season, so the accounts one anchor vouches for
+     * cannot halve the players as a group.
+     *
      * @param  array<string, int>  $previousRanks
+     * @param  array<string, ?string>  $previousAnchors  pubkey => anchor with the largest share
      * @param  list<string>  $excluded
      * @return array<string, int> target => counted reports
      */
-    private function countedReports(array $previousRanks, array $excluded): array
+    private function countedReports(array $previousRanks, array $previousAnchors, array $excluded): array
     {
         $since = now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp();
         $seasonStart = Seasons::live()?->genesis_at->getTimestamp() ?? $since;
         $cap = max(0, (int) config('esports.trust.reports_per_author'));
+        $anchorCap = max(0, (int) config('esports.trust.reports_per_anchor'));
+        $perAnchor = [];
         $dismissed = array_fill_keys(TrustReportDismissal::query()->pluck('event_id')->all(), true);
         $excluded = array_fill_keys($excluded, true);
         $targets = [];
@@ -308,8 +316,15 @@ final class TrustJob
                 continue;
             }
 
+            $subtree = $previousAnchors[$event->pubkey] ?? $event->pubkey;
+
+            if (($perAnchor[$subtree] ?? 0) >= $anchorCap) {
+                continue;
+            }
+
             $targets[$target][$event->pubkey] = true;
             $perAuthor[$event->pubkey] = ($perAuthor[$event->pubkey] ?? 0) + 1;
+            $perAnchor[$subtree] = ($perAnchor[$subtree] ?? 0) + 1;
         }
 
         return array_map(count(...), $targets);

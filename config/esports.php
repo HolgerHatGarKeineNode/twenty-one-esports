@@ -249,6 +249,8 @@ return [
         'reports_limit_per_author' => 50,
         // Reports of one author that count per season (mass reports, NIP "Reports").
         'reports_per_author' => (int) env('ESPORTS_TRUST_REPORTS_PER_AUTHOR', 3),
+        // Reports that count per season from all reporters under one anchor (their largest share).
+        'reports_per_anchor' => (int) env('ESPORTS_TRUST_REPORTS_PER_ANCHOR', 5),
         'name' => 'TWENTY ONE Esports trust',
     ],
 

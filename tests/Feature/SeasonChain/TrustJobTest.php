@@ -345,6 +345,49 @@ test('round 3: a relay that ignores `limit` still gets at most the per-author ca
         ->and(rankOf('bob'))->toBe(85);
 });
 
+/**
+ * An event as the archive holds it (the job never re-checks archived events),
+ * for graphs too large to sign in a test.
+ *
+ * @param  list<list<string>>  $tags
+ */
+function archivedEvent(string $pubkey, int $kind, array $tags, int $at): void
+{
+    $id = bin2hex(random_bytes(32));
+    $d = collect($tags)->firstWhere(0, 'd')[1] ?? null;
+
+    NostrEvent::query()->create(['event_id' => $id, 'pubkey' => $pubkey, 'kind' => $kind, 'd' => $d, 'signed_at' => $at,
+        'raw' => json_encode(['id' => $id, 'pubkey' => $pubkey, 'created_at' => $at, 'kind' => $kind, 'tags' => $tags, 'content' => '', 'sig' => str_repeat('a', 128)])]);
+}
+
+test('round 3, N1 residual: the accounts one anchor vouches for count at most reports_per_anchor reports together', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 3]);
+    $at = now()->subMinutes(30)->getTimestamp(); // inside the season (Block 0 an hour ago)
+    $d = 'esports/'.LeagueKey::fromConfig()->pubkey();
+    $socks = array_map(fn () => (new TestSigner)->pubkey, range(1, 14));
+    $players = array_map(fn () => (new TestSigner)->pubkey, range(1, 8));
+
+    // alice vouches for 14 accounts (rank 55 each: allowed to report); carol for 8 players (rank 75).
+    archivedEvent(pk('alice'), 30000, [['d', $d], ...array_map(fn (string $p) => ['p', $p], $socks)], $at);
+    archivedEvent(pk('carol'), 30000, [['d', $d], ...array_map(fn (string $p) => ['p', $p], $players)], $at);
+    app(TrustJob::class)->run();
+
+    // Each of the 14 reports three players: 42 reports, every player hit five times or more.
+    foreach ($socks as $i => $sock) {
+        foreach (range(0, 2) as $j) {
+            archivedEvent($sock, TrustJob::REPORT, [['p', $players[($i * 3 + $j) % 8], 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'cheating', TrustJob::LABEL_NAMESPACE]], $at + 60 + $i * 3 + $j);
+        }
+    }
+    app(TrustJob::class)->run();
+
+    $eligible = TrustRank::query()->whereIn('pubkey', $players)->where('rank', '>=', 50)->count();
+
+    // Without the subtree cap all eight drop to 25; with it three reports count, each player stays at 50 or more.
+    expect(TrustRank::query()->whereIn('pubkey', $socks)->min('rank'))->toBe(55)
+        ->and($eligible)->toBe(8);
+});
+
 /** A signed league report by a test-bed player against any pubkey. */
 function leagueReport(string $author, string $target, int $at): array
 {
