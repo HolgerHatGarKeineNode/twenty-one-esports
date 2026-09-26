@@ -2315,5 +2315,18 @@
     "deleted their account": "hat das Konto gelöscht",
     "This report cannot count again: its anchor subtree used its report budget for this season after the dismissal. It stays dismissed.": "Diese Meldung kann nicht wieder zählen: Ihr Anker-Teilbaum hat sein Meldungsbudget dieser Season nach dem Verwerfen aufgebraucht. Sie bleibt verworfen.",
     "This report cannot count again: its author used their report budget for this season after the dismissal. It stays dismissed.": "Diese Meldung kann nicht wieder zählen: Ihr Absender hat sein Meldungsbudget dieser Season nach dem Verwerfen aufgebraucht. Sie bleibt verworfen.",
-    "Rated is closed for you right now, so this search is casual. :reason": "Gewertet ist für dich gerade geschlossen, deshalb suchst du casual. :reason"
+    "Rated is closed for you right now, so this search is casual. :reason": "Gewertet ist für dich gerade geschlossen, deshalb suchst du casual. :reason",
+    "both players are in the same clan": "beide Spieler sind im selben Clan",
+    "both players get their trust from the same person": "beide Spieler beziehen ihr Vertrauen von derselben Person",
+    "chess reached its share of this era's blocks": "Schach hat seinen Anteil an den Blöcken dieser Ära erreicht",
+    "mined block :height, :sats sats per winner, pending season review": "Block :height geschürft, :sats Sats pro Gewinner, Season-Prüfung steht aus",
+    "no block: a draw mines nothing": "kein Block: ein Remis schürft nichts",
+    "no block: rule :rule, :reason": "kein Block: Regel :rule, :reason",
+    "outside the season or its supply": "außerhalb der Season oder ihres Vorrats",
+    "pending: the league attests the result": "ausstehend: die Liga bestätigt das Ergebnis",
+    "the players do not list each other, or one is below the trust minimum": "die Spieler führen sich nicht gegenseitig, oder einer liegt unter dem Vertrauensminimum",
+    "the winner reached the daily block limit": "der Gewinner hat das Tageslimit an Blöcken erreicht",
+    "this pairing already mined a block today": "diese Paarung hat heute schon einen Block geschürft",
+    "this pairing reached its blocks for the season": "diese Paarung hat ihre Blöcke für die Season erreicht",
+    "too short to count as a real game": "zu kurz, um als echte Partie zu zählen"
 }

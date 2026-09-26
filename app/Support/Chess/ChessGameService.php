@@ -15,6 +15,7 @@ use App\Models\ChessInvite;
 use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
 use App\Models\RatingChange;
+use App\Models\SeasonAttestation;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
@@ -584,6 +585,7 @@ final class ChessGameService
             'rematchUrl' => $game->rematch_id !== null ? route('games.show', $game->rematch_id) : null,
             'lastMove' => $last === null ? null : $this->moveState($last),
             'rating' => $game->status === ChessGameStatus::Finished ? $this->ratingChanges($game) : null,
+            'mining' => $game->status === ChessGameStatus::Finished && $game->rated ? $this->mining($game) : null,
         ];
 
         if ($withMoves) {
@@ -607,6 +609,25 @@ final class ChessGameService
             ->where('source', RatingChange::CHESS)->where('source_id', $game->id)->get()
             ->mapWithKeys(fn (RatingChange $change) => [$colors[$change->rating->subject] => ['pool' => $change->rating->pool, 'after' => $change->after, 'delta' => $change->delta]])
             ->all();
+    }
+
+    /**
+     * What a finished rated game mined, for the end-of-game panel (P7e): a
+     * block, no block with the first consensus rule it failed (a draw is no
+     * candidate), or pending while the league has not attested it.
+     *
+     * @return array{status: 'block'|'none'|'pending', text: string}
+     */
+    private function mining(ChessGame $game): array
+    {
+        $attestation = SeasonAttestation::query()->where('source', SeasonAttestation::CHESS)->where('source_id', $game->id)->latest('id')->first();
+
+        return match (true) {
+            $attestation === null => ['status' => 'pending', 'text' => __('pending: the league attests the result')],
+            $attestation->mines() => ['status' => 'block', 'text' => __('mined block :height, :sats sats per winner, pending season review', ['height' => $attestation->height, 'sats' => $attestation->reward_per_player])],
+            $attestation->consensusRule() !== null => ['status' => 'none', 'text' => __('no block: rule :rule, :reason', ['rule' => $attestation->rule, 'reason' => $attestation->consensusRule()->reason()])],
+            default => ['status' => 'none', 'text' => __('no block: a draw mines nothing')],
+        };
     }
 
     /**

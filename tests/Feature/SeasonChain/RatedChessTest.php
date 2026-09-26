@@ -243,3 +243,38 @@ test('a rated draw moves the rated Elo and is attested, but is no block candidat
         ->and($attestation->height)->toBeNull()
         ->and(NostrEvent::query()->findOrFail($attestation->nostr_event_id)->payload()['tags'])->toContain(['winner', 'draw']);
 });
+
+test('the end-of-game panel says what a rated game mined: a block, or no block with the rule, or pending', function () {
+    app()->instance(TrustFacts::class, chessFacts());
+    $queue = app(ChessQueue::class);
+    $service = app(ChessGameService::class);
+    $mining = fn (ChessGame $game) => $service->snapshot($game->refresh(), withMoves: false)['mining'];
+
+    // Twenty moves, then a resignation: block 1.
+    [$a, $b] = [clanPlayer(), clanPlayer()];
+    $queue->join($a, 'blitz', rated: true);
+    $long = playTwentyMoves($queue->join($b, 'blitz', rated: true));
+    $service->resign($long->refresh(), $long->black);
+
+    expect($mining($long))->toBe(['status' => 'block', 'text' => 'mined block 1, '.SeasonAttestation::query()->sole()->reward_per_player.' sats per winner, pending season review']);
+
+    // Resigned after one move: no block, rule 2.
+    [$c, $d] = [clanPlayer(), clanPlayer()];
+    $queue->join($c, 'blitz', rated: true);
+    $short = $queue->join($d, 'blitz', rated: true);
+    $service->move($short, $short->white, 'e2e4');
+    $service->resign($short->refresh(), $short->black);
+
+    expect($mining($short))->toBe(['status' => 'none', 'text' => 'no block: rule 2, too short to count as a real game']);
+
+    // Rated and finished, but no attestation yet: pending. A casual game has no mining line.
+    $pending = ChessGame::factory()->rated()->finished()->create();
+    $casual = ChessGame::factory()->finished()->create();
+
+    expect($mining($pending))->toBe(['status' => 'pending', 'text' => 'pending: the league attests the result'])
+        ->and($mining($casual))->toBeNull();
+
+    // The live page's end-of-game panel shows that line in the Hashrate row instead of the casual text.
+    $live = ChessGame::factory()->rated()->create();
+    $this->actingAs($live->white)->get(route('games.show', $live))->assertOk()->assertSee('data-test="game-over-mining"', false)->assertSee('state.mining ? state.mining.text', false);
+});
