@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\ClanRole;
 use App\Models\Admin;
 use App\Models\ClanInvite;
+use App\Models\ClanMember;
 use App\Models\Tournament;
 use App\Models\TournamentOrganizer;
 use App\Models\User;
@@ -280,4 +282,38 @@ test('the clan invite takes an npub without an account (a stub player) and refus
     expect($invitee->npub)->toBe(NostrKeys::hexToNpub($stranger))
         ->and(ClanInvite::query()->where('invitee_id', $invitee->id)->exists())->toBeTrue()
         ->and(ClanInvite::query()->where('invitee_id', $queen->id)->exists())->toBeFalse();
+});
+
+test('a captain who is not the founder creates no stub player for a new key', function () {
+    $service = app(ClanService::class);
+    $signer = new TestSigner;
+    $owner = User::factory()->withPubkey($signer->pubkey)->create();
+    $draft = new ClanDraft('Laser Eyes', 'LSR');
+    $clan = $service->create($owner, $draft, $signer->signTemplates($service->prepareCreate($owner, $draft)));
+    $captain = User::factory()->create();
+    ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $captain->id, 'role' => ClanRole::Captain, 'joined_at' => now()]);
+    $stranger = pickerStrangerKey();
+
+    Livewire::actingAs($captain)->test('pages::clans.manage', ['clan' => $clan])
+        ->set('player', $stranger)
+        ->call('prepareInvite')
+        ->assertHasErrors(['player']);
+
+    expect(User::query()->where('pubkey', $stranger)->exists())->toBeFalse();
+});
+
+test('nobody names themselves or the creator on the director desk', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $creator = User::factory()->create();
+    $tournament = Tournament::factory()->create(['results_mode' => 'director', 'created_by_id' => $creator->id]);
+
+    foreach ([$admin, $creator] as $user) {
+        Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])
+            ->set('directorId', $user->id)
+            ->call('addDirector')
+            ->assertHasErrors(['directorId']);
+    }
+
+    expect($tournament->directors()->count())->toBe(0);
 });

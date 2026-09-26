@@ -721,6 +721,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             return null;
         }
 
+        // Only the owner invites (ClanService::assertOwner); checked before a stub account for a new key is created.
+        if ($this->clan->owner_id !== auth()->id()) {
+            $this->addError('player', __('Only the founder of :clan can change its players.', ['clan' => $this->clan->name]));
+
+            return null;
+        }
+
         return User::query()->firstOrCreate(['pubkey' => $pubkey], ['npub' => NostrKeys::hexToNpub($pubkey)]);
     }
 

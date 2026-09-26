@@ -116,6 +116,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             return;
         }
 
+        // The creator already directs; nobody names themselves (the same rule as on the create page).
+        if ($user->id === auth()->id() || $user->id === $this->tournament->created_by_id) {
+            $this->addError('directorId', __('Pick a player from the suggestions.'));
+
+            return;
+        }
+
         // Attach only a missing director: the recorded appointer of an existing one never changes
         // (security re-check S2: the appointment chain decides who has an interest).
         if (! $this->tournament->directors()->whereKey($user->id)->exists()) {
