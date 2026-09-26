@@ -227,7 +227,7 @@
                     <li class="grid grid-cols-[16px_minmax(0,1fr)] gap-2 text-xs leading-[1.5] text-ink-2 lg:grid-cols-[20px_minmax(0,1fr)]"><span class="text-ink-3">{{ $number }}</span><span>{{ $rule }}</span></li>
                 @endforeach
             </ul>
-            <p class="pl-note">{{ __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }}</p>
+            <p class="pl-note">{{ __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }} <a href="{{ route('mining') }}" data-test="mining-link">{{ __('The chain on the mining page') }}</a></p>
         </section>
 
         <section aria-labelledby="open-h" class="flex flex-col gap-3 lg:col-span-12 lg:mt-3">

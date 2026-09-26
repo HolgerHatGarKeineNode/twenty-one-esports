@@ -84,6 +84,9 @@ Route::middleware('auth')->group(function () {
 // Ladders (P7b): the rated season ladder and the casual ladder of a game and mode.
 Route::livewire('ladder/{game}/{mode}', 'pages::ladder.show')->name('ladder.show');
 
+// The season chain (P7c): tip, supply, eras, blocks and rules; the rest state before Block 0.
+Route::livewire('mining', 'pages::mining')->name('mining');
+
 Route::livewire('matches', 'pages::matches.index')->name('matches.index');
 Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')->name('matches.show');
 

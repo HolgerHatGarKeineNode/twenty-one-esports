@@ -3,7 +3,7 @@
 {{--
     Admin sub-navigation from AdminDisputes.dc.html / AdminDispute.dc.html.
     Built pages link; the ones of later phases (tournaments P8, payouts P9,
-    seasons and settings P7) are shown muted and not clickable yet.
+    settings) are shown muted and not clickable yet.
 --}}
 @php
     $open = \App\Models\SeriesMatch::query()
@@ -15,7 +15,7 @@
         ['disputes', __('Disputes'), route('admin.disputes'), $open],
         ['tournaments', __('Tournaments'), null, null],
         ['payouts', __('Payouts'), null, null],
-        ['seasons', __('Seasons'), null, null],
+        ['seasons', __('Seasons'), route('admin.season'), null],
         ['settings', __('Settings'), null, null],
         ['admins', __('Admins'), route('admin.admins'), null],
     ];
