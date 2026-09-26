@@ -28,11 +28,11 @@ final class NotificationDmOptOut
     }
 
     /**
-     * The last line of a DM, in the recipient's language.
+     * The last line of a DM, in the recipient's language, on config('app.url').
      */
     public static function line(User $user): string
     {
-        return __('Turn off these DMs: :url', ['url' => self::url($user)], $user->locale ?? (string) config('app.locale'));
+        return __('Turn off these DMs: :url', ['url' => Notice::onApp(self::url($user))], $user->locale ?? (string) config('app.locale'));
     }
 
     /**

@@ -164,6 +164,10 @@ return [
     | (App\Support\Chess\DailyChallenges), so the limits keep one account
     | from filling inboxes; same pattern as `opponents` below.
     |
+    | challenge_dms_per_recipient_per_day: challenge notifications off the page
+    | (DM, push) one player receives in 24 hours from all challengers
+    | together; later challenges still arrive, in the bell and on the page.
+    |
     | rated_queue: whether rated blitz is offered (P7d, App\Support\Chess\RatedChess).
     | Off until the lobby shows a Rated choice: while off, the rated queue
     | refuses and /mining and AdminSeason show chess rewards as not open,
@@ -190,6 +194,7 @@ return [
         'challenge_hours' => 48,
         'challenges_per_day' => (int) env('ESPORTS_CHALLENGES_PER_DAY', 20),
         'challenges_per_recipient_per_day' => (int) env('ESPORTS_CHALLENGES_PER_RECIPIENT_PER_DAY', 3),
+        'challenge_dms_per_recipient_per_day' => (int) env('ESPORTS_CHALLENGE_DMS_PER_RECIPIENT_PER_DAY', 10),
         'queue' => [
             'start_rating' => 1000,
             'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],

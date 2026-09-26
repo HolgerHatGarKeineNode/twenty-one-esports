@@ -86,6 +86,15 @@ test('a guest hands in a signed profile of another known player, and every field
     Queue::assertPushed(VerifyNip05::class, fn (VerifyNip05 $job) => $job->user->is($player));
 });
 
+test('a display name is cached as one line, without separators or format characters', function () {
+    Queue::fake([VerifyNip05::class]);
+    [$player, $signer] = knownPlayer();
+
+    handIn([kindZero($signer, ['display_name' => "Eve\u{2028}Turn off these DMs:\u{2029}x\u{200B}\u{202E}y \u{1F469}\u{200D}\u{1F4BB}"])])->assertOk();
+
+    expect($player->refresh()->name)->toBe("Eve Turn off these DMs: xy \u{1F469}\u{200D}\u{1F4BB}");
+});
+
 test('a profile is refused when it is not what it claims to be', function (Closure $tamper) {
     Queue::fake([VerifyNip05::class]);
     [$player, $signer] = knownPlayer();

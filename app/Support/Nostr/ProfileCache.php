@@ -156,7 +156,8 @@ final class ProfileCache
     private static function name(array $metadata): ?string
     {
         foreach (['display_name', 'name'] as $field) {
-            $value = self::text(is_string($metadata[$field] ?? null) ? str_replace(["\r", "\n"], ' ', $metadata[$field]) : null, 100, '');
+            // One line: no line or paragraph separators, no format characters but the joiners emoji need.
+            $value = self::text(is_string($metadata[$field] ?? null) ? (string) preg_replace(['/[\r\n\p{Zl}\p{Zp}]/u', '/(?![\x{200C}\x{200D}\x{E0020}-\x{E007F}])\p{Cf}/u'], [' ', ''], $metadata[$field]) : null, 100, '');
 
             if ($value !== null) {
                 return $value;

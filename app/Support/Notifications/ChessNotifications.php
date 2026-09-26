@@ -25,18 +25,6 @@ use Illuminate\Support\Carbon;
  */
 final class ChessNotifications
 {
-    /**
-     * Anything a client may turn into a link: `scheme://…`, the schemes used
-     * without slashes, bare Nostr and Lightning bech32 strings, `www.…`, and
-     * bare domains (`name.tld`, the TLD not followed by a letter or digit, so
-     * `2.Nf3` stays).
-     */
-    private const LINK = '~(?:\b[a-z][a-z0-9+.-]*://\S+'
-        .'|\b(?:nostr|web\+nostr|mailto|lightning|bitcoin|magnet|tel|sms|data|javascript):\S+'
-        .'|\b(?:npub|nprofile|note|nevent|naddr|nsec|nrelay|lnbc|lntb|lnurl)1[0-9a-z]{6,}'
-        .'|\bwww\.\S+'
-        .'|[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?![\p{L}\p{N}_-])(?:[/:?#]\S*)?)~iu';
-
     public function __construct(private Notifier $notifier) {}
 
     public function yourMove(ChessGame $game): void
@@ -83,7 +71,11 @@ final class ChessNotifications
         ), $game);
     }
 
-    public function challengeReceived(ChessChallenge $challenge): void
+    /**
+     * `remote: false` once the player's daily cap of challenge notifications
+     * off the page is reached (DailyChallenges): bell and page only.
+     */
+    public function challengeReceived(ChessChallenge $challenge, bool $remote = true): void
     {
         $player = $challenge->challenged;
         $locale = $this->locale($player);
@@ -93,7 +85,8 @@ final class ChessNotifications
             default => __('a random colour', [], $locale),
         };
 
-        $message = self::plainMessage((string) $challenge->message);
+        // One line, no links, at most 140 characters (PlainText); the DM cleans the rest.
+        $message = PlainText::line((string) $challenge->message, 140);
 
         $this->notifier->send($player, NotificationKind::Challenge, new Notice(
             __(':name challenges you to daily chess', ['name' => $challenge->challenger->displayName()], $locale),
@@ -103,25 +96,7 @@ final class ChessNotifications
             route('me.correspondence'),
             null,
             __('Answer', [], $locale),
-        ), sender: $challenge->challenger);
-    }
-
-    /**
-     * The challenger's free text as it may go into a notification, above all
-     * the DM to someone who never asked for it: one line of plain text, no
-     * links. Links of any form (scheme, www., bare domains, nostr: URIs) are
-     * cut out, not shortened, so a challenge can never carry one; control
-     * and formatting characters (line breaks, bidi overrides) are dropped.
-     * DailyChallenges caps the stored text at 140 characters; the cap here
-     * holds for any caller.
-     */
-    public static function plainMessage(string $message): string
-    {
-        $text = (string) preg_replace('/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+/u', ' ', $message);
-        $text = (string) preg_replace(self::LINK, '', $text);
-        $text = trim((string) preg_replace('/\s+/u', ' ', $text));
-
-        return mb_substr($text, 0, 140);
+        ), remote: $remote, sender: $challenge->challenger);
     }
 
     /**

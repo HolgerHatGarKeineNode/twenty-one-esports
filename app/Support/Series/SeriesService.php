@@ -1235,7 +1235,7 @@ final class SeriesService
                 ], $locale),
                 route('matches.room', $match),
                 $match->number,
-            ));
+            ), sender: $match->createdBy);
         }
     }
 

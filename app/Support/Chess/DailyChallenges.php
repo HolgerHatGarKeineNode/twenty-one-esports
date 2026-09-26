@@ -21,7 +21,15 @@ use Illuminate\Support\Facades\RateLimiter;
  *
  * A challenge reaches the challenged player's Nostr inbox by default, so a
  * player may send only so many per day, in total and to the same player
- * (esports.chess.challenges_per_day, challenges_per_recipient_per_day).
+ * (esports.chess.challenges_per_day, challenges_per_recipient_per_day). The
+ * count is taken first (RateLimiter::hit is one atomic increment), then
+ * compared: two requests at once cannot both slip under the limit.
+ *
+ * A player receives at most `challenge_dms_per_recipient_per_day` challenge
+ * notifications off the page (DM, push) from all challengers together, so a
+ * second account does not reopen the inbox. Past that the challenge is still
+ * stored and shows in the bell and on the daily games page: refusing it
+ * would let one spammer lock everyone else out of challenging that player.
  */
 final class DailyChallenges
 {
@@ -62,8 +70,17 @@ final class DailyChallenges
             throw new ChessRuleViolation('challenge_open');
         }
 
+        $counted = [];
+
         foreach (self::limits($challenger, $challenged) as [$key, $max]) {
-            if (RateLimiter::tooManyAttempts($key, $max)) {
+            $counted[] = $key;
+
+            if (RateLimiter::hit($key, 86_400) > $max) {
+                // A refused challenge does not count: take back this call's hits.
+                foreach ($counted as $taken) {
+                    RateLimiter::decrement($taken, 86_400);
+                }
+
                 throw new ChessRuleViolation('challenge_limit', 'available in '.RateLimiter::availableIn($key).' s');
             }
         }
@@ -78,11 +95,10 @@ final class DailyChallenges
             'expires_at' => now()->addHours((int) config('esports.chess.challenge_hours')),
         ]);
 
-        foreach (self::limits($challenger, $challenged) as [$key]) {
-            RateLimiter::hit($key, 86_400);
-        }
+        $inbound = RateLimiter::hit('daily-challenge-dms-in:'.$challenged->id, 86_400);
+        $remote = $inbound <= max(1, (int) config('esports.chess.challenge_dms_per_recipient_per_day'));
 
-        $this->notifications->challengeReceived($challenge);
+        $this->notifications->challengeReceived($challenge, $remote);
 
         return $challenge;
     }

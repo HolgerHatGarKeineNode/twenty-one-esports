@@ -74,7 +74,7 @@ test('the default covers only the kinds that need the player, an explicit on cov
     $on = User::factory()->create(['chess_settings' => ['dm' => true]]);
 
     expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())
-        ->toBe(['invite', 'challenge', 'your_move', 'reminder', 'clan_join_request'])
+        ->toBe(['challenge', 'your_move', 'reminder', 'clan_join_request'])
         ->and(collect(ChessSettings::triggers())->every(fn (string $trigger) => $on->chessSettings()->dmFor($trigger)))->toBeTrue();
 
     // A daily game over is remote, but not in the default set.
@@ -236,7 +236,7 @@ test('a challenger may send only so many challenges a day, per player and in tot
 test('a challenge from a player the recipient muted sends no DM', function () {
     $anna = User::factory()->create();
     $bert = User::factory()->create();
-    $cleo = User::factory()->create();
+    $cleo = User::factory()->create(['name' => 'Cleo']);
     ChatMute::query()->create(['user_id' => $bert->id, 'muted_pubkey' => $anna->pubkey]);
 
     app(DailyChallenges::class)->challenge($anna, $bert);
@@ -255,7 +255,7 @@ test('a link in the challenge message never reaches the DM', function () {
     [$text] = dmsTo($bert);
     [, $body] = explode("\n", $text);
 
-    expect($text)->not->toContain('evil')
+    expect($text)->not->toContain('evil.example')
         ->and($text)->not->toContain('nostr:')
         ->and($body)->toContain('"gl hf 1.e4 e5 2.Nf3"');
 });

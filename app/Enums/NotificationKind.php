@@ -43,7 +43,7 @@ enum NotificationKind: string
      */
     public function dmByDefault(): bool
     {
-        return in_array($this, [self::Invite, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest], true);
+        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest], true);
     }
 
     /**

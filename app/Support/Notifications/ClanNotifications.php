@@ -35,7 +35,7 @@ final class ClanNotifications
                 route('clans.manage', $clan).'#join-requests',
                 null,
                 __('Answer', [], $locale),
-            ));
+            ), sender: $applicant);
         }
     }
 
@@ -58,7 +58,7 @@ final class ClanNotifications
             route('clans.manage', $request->clan).'#join-requests',
             null,
             __('Confirm', [], $locale),
-        ));
+        ), sender: $request->user);
     }
 
     /**
