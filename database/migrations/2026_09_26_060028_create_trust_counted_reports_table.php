@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -27,8 +28,22 @@ return new class extends Migration
         });
     }
 
+    /**
+     * Dropping the reports that counted in the live season would let
+     * backdated reports push them out again for the rest of it. Rows of
+     * ended seasons hold nothing back. "Live" as Seasons::live() defines it.
+     */
     public function down(): void
     {
+        $now = now();
+        $counted = Schema::hasTable('trust_counted_reports') ? DB::table('trust_counted_reports')
+            ->join('seasons', 'seasons.id', '=', 'trust_counted_reports.season_id')
+            ->where('seasons.genesis_at', '<=', $now)->where('seasons.ends_at', '>', $now)->count() : 0;
+
+        if ($counted > 0) {
+            throw new RuntimeException("Cannot roll back: the live season holds {$counted} counted report(s). Dropping them would let backdated reports push them out again; roll back after the season has ended.");
+        }
+
         Schema::dropIfExists('trust_counted_reports');
     }
 };

@@ -179,6 +179,21 @@ test('round 4: the page shows which reports count now, and a dismissal takes the
         ->assertDontSeeHtml('data-test="trust-counts"');
 });
 
+test('round 4: rolling back the counted reports refuses while the live season has any, so the backdating attack stays closed', function () {
+    $migration = require database_path('migrations/2026_09_26_060028_create_trust_counted_reports_table.php');
+    $season = openSeason();
+    TrustCountedReport::query()->create(['season_id' => $season->id, 'event_id' => $this->report->event_id, 'author' => $this->reporter->pubkey, 'target' => $this->target->pubkey, 'subtree' => $this->reporter->pubkey]);
+
+    expect(fn () => $migration->down())->toThrow(RuntimeException::class, '1 counted report(s)')
+        ->and(TrustCountedReport::query()->count())->toBe(1);
+
+    // Once the season has ended its counted reports no longer hold anything back.
+    $season->update(['ends_at' => now()->subMinute()]);
+    $migration->down();
+    expect(Schema::hasTable('trust_counted_reports'))->toBeFalse();
+    $migration->up();
+});
+
 test('round 4: rolling back the decision log refuses while it holds decisions, so a later refused rollback cannot have dropped it', function () {
     $migration = require database_path('migrations/2026_09_26_053644_create_trust_decisions_table.php');
     app(TrustAdmin::class)->dismiss($this->admin, $this->report->event_id, 'Same household.');
