@@ -76,8 +76,12 @@ test('the founder invites into the roster, the player confirms, and the founder 
 
     $manage = route('clans.manage', $clan, false);
     $founder = rosterPage($owner, $manage, 375);
-    BrowserWait::until($founder, '() => document.querySelector("[data-test=invite-player]") !== null', 10_000);
-    $founder->locator('[data-test=invite-player]')->fill($player->fresh()->npub);
+    BrowserWait::until($founder, '() => document.getElementById("invite-player") !== null && window.Alpine !== undefined', 10_000);
+    // The player picker: a pasted npub is the one suggestion, highlighted; Enter picks it.
+    $founder->locator('#invite-player')->type($player->fresh()->npub);
+    BrowserWait::until($founder, '() => document.getElementById("invite-player").getAttribute("aria-activedescendant") === "invite-player-opt-0"', 10_000);
+    $founder->locator('#invite-player')->press('Enter');
+    BrowserWait::until($founder, '() => document.querySelector("[data-test=picker-chip]")?.offsetParent !== null', 5_000);
     $founder->locator('[data-test=send-invite]')->click();
     BrowserWait::until($founder, '() => document.querySelector("[data-test=invite-link]") !== null', 10_000);
 

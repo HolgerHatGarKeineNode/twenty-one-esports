@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\User;
 use App\Support\Board;
 use App\Support\Nostr\NostrKeys;
 use Illuminate\Database\Eloquent\Collection;
@@ -10,7 +11,8 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 new #[Title('Admins')] class extends Component {
-    public string $key = '';
+    /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
+    public ?string $key = null;
 
     public function mount(): void
     {
@@ -37,13 +39,24 @@ new #[Title('Admins')] class extends Component {
         return Admin::query()->latest()->get();
     }
 
+    /**
+     * Players who are admins already: the picker does not suggest them.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function adminUserIds(): array
+    {
+        return array_values(User::query()->whereIn('pubkey', [...Board::pubkeys(), ...$this->admins->pluck('pubkey')->all()])->pluck('id')->all());
+    }
+
     public function add(): void
     {
         Gate::authorize('admin');
 
-        $this->validate(['key' => ['required', 'string', 'max:100']]);
+        $this->validate(['key' => ['required', 'string', 'max:100']], ['key.required' => __('Pick a player from the suggestions or paste a full npub.')]);
 
-        $pubkey = NostrKeys::toHex($this->key);
+        $pubkey = NostrKeys::toHex((string) $this->key);
 
         if ($pubkey === null) {
             $this->addError('key', __('Enter an npub or a 64-character hex public key.'));
@@ -63,7 +76,7 @@ new #[Title('Admins')] class extends Component {
         ]);
 
         $this->reset('key');
-        unset($this->admins);
+        unset($this->admins, $this->adminUserIds);
     }
 
     public function remove(int $adminId): void
@@ -72,7 +85,7 @@ new #[Title('Admins')] class extends Component {
 
         Admin::query()->whereKey($adminId)->delete();
 
-        unset($this->admins);
+        unset($this->admins, $this->adminUserIds);
     }
 }; ?>
 
@@ -94,9 +107,10 @@ new #[Title('Admins')] class extends Component {
         <flux:heading level="2">{{ __('Further admins') }}</flux:heading>
 
         <form wire:submit="add" class="flex items-end gap-2">
-            <flux:input wire:model="key" :label="__('npub or hex public key')" class="flex-1" />
+            <x-player-picker id="admin-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="$this->adminUserIds" class="flex-1" />
             <flux:button type="submit" variant="primary">{{ __('Add admin') }}</flux:button>
         </form>
+        @error('key')<p class="m-0 text-sm text-loss" role="alert" data-test="admin-key-error">{{ $message }}</p>@enderror
 
         <ul class="space-y-2">
             @forelse ($this->admins as $admin)

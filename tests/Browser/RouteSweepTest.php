@@ -727,7 +727,7 @@ test('a Livewire roundtrip stays clean: submitting the admin form without a key'
     $page = freshSweepPage(route('admin.admins'));
 
     $page->getByRole('button', ['name' => __('Add admin')])->click();
-    BrowserWait::until($page, '() => document.body.innerText.toLowerCase().includes("required")', 10_000);
+    BrowserWait::until($page, '() => document.body.innerText.includes("Pick a player from the suggestions or paste a full npub.")', 10_000);
 
     $violations = [];
     recordSweepViolations($page->evaluate(SWEEP_READ_SCRIPT), 'admin.admins Livewire roundtrip', $violations);

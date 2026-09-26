@@ -11,8 +11,15 @@
  *
  * `submit-on-pick`: choosing a player submits the surrounding form, for
  * "add to the list" forms where the list itself shows the result.
+ *
+ * `allow-npub`: the value is the player's hex pubkey instead of the id, and
+ * a fully valid npub or hex key without an account here is offered too
+ * (the server validates it and marks the row `unregistered`). A pick shows
+ * as a chip until it is cleared.
  */
-export default function playerPicker({ url, submitOnPick = false, labels = {} }) {
+const FULL_KEY = /(^|\/)(npub1[02-9ac-hj-np-z]{58}|[0-9a-f]{64})([/?#]|$)/;
+
+export default function playerPicker({ url, submitOnPick = false, allowNpub = false, labels = {} }) {
     return {
         picked: null,
         chosen: null,
@@ -57,6 +64,9 @@ export default function playerPicker({ url, submitOnPick = false, labels = {} })
             }
 
             const params = new URLSearchParams({ q: term });
+            if (allowNpub) {
+                params.set('keys', '1');
+            }
             this.exclude().forEach((id) => params.append('exclude[]', id));
 
             let response;
@@ -80,7 +90,8 @@ export default function playerPicker({ url, submitOnPick = false, labels = {} })
             }
 
             this.results = await response.json();
-            this.active = -1;
+            // A full key names exactly one player: highlight it, so a pasted npub needs only Enter.
+            this.active = this.results.length === 1 && FULL_KEY.test(term.toLowerCase()) ? 0 : -1;
             this.message = this.results.length === 0 ? labels.none : '';
             this.open = true;
         },
@@ -103,13 +114,25 @@ export default function playerPicker({ url, submitOnPick = false, labels = {} })
 
         choose(player) {
             this.chosen = player;
-            this.picked = player.id;
+            this.picked = allowNpub ? player.key : player.id;
             this.query = player.name;
             this.close();
 
             if (submitOnPick) {
                 this.$nextTick(() => this.$root.closest('form')?.requestSubmit());
             }
+        },
+
+        /** The chip's clear button: back to typing. */
+        clear() {
+            this.chosen = null;
+            this.picked = null;
+            this.query = '';
+            this.$nextTick(() => this.$refs.input?.focus());
+        },
+
+        get showChip() {
+            return this.chosen !== null && !submitOnPick;
         },
 
         close() {

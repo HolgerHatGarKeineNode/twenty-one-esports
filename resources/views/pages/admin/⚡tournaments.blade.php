@@ -2,6 +2,7 @@
 
 use App\Models\Tournament;
 use App\Models\TournamentOrganizer;
+use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\Estimator;
 use Illuminate\Database\Eloquent\Collection;
@@ -18,7 +19,8 @@ use Livewire\Component;
  * prize pool and sponsors of the artboard follow in P8b/P9.
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
-    public string $organizerKey = '';
+    /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
+    public ?string $organizerKey = null;
 
     public function mount(): void
     {
@@ -54,13 +56,24 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
         return TournamentOrganizer::query()->latest('id')->get();
     }
 
+    /**
+     * Players who are organizers already: the picker does not suggest them.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function organizerUserIds(): array
+    {
+        return array_values(User::query()->whereIn('pubkey', $this->organizers->pluck('pubkey'))->pluck('id')->all());
+    }
+
     public function addOrganizer(): void
     {
         Gate::authorize('admin');
 
-        $this->validate(['organizerKey' => ['required', 'string', 'max:100']]);
+        $this->validate(['organizerKey' => ['required', 'string', 'max:100']], ['organizerKey.required' => __('Pick a player from the suggestions or paste a full npub.')]);
 
-        $pubkey = NostrKeys::toHex($this->organizerKey);
+        $pubkey = NostrKeys::toHex((string) $this->organizerKey);
 
         if ($pubkey === null) {
             $this->addError('organizerKey', __('Enter an npub or a 64-character hex public key.'));
@@ -77,7 +90,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
         TournamentOrganizer::query()->create(['pubkey' => $pubkey, 'added_by_pubkey' => auth()->user()?->pubkey]);
 
         $this->reset('organizerKey');
-        unset($this->organizers);
+        unset($this->organizers, $this->organizerUserIds);
     }
 
     public function removeOrganizer(int $organizerId): void
@@ -86,7 +99,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
 
         TournamentOrganizer::query()->whereKey($organizerId)->delete();
 
-        unset($this->organizers);
+        unset($this->organizers, $this->organizerUserIds);
     }
 }; ?>
 
@@ -159,9 +172,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                 </div>
 
                 <form wire:submit="addOrganizer" class="flex flex-col gap-1.5">
-                    <label for="organizer-key" class="text-xs text-ink-2">{{ __('npub or hex public key') }}</label>
-                    <span class="flex gap-2">
-                        <input id="organizer-key" wire:model="organizerKey" class="h-11 min-w-0 grow rounded-md border border-edge bg-ground px-3 font-mono text-[13px] text-ink lg:max-w-[560px]">
+                    <span class="flex items-end gap-2">
+                        <x-player-picker id="organizer-key" wire:model="organizerKey" allow-npub :label="__('Player or npub')" :exclude="$this->organizerUserIds" class="grow lg:max-w-[560px]" />
                         <x-button type="submit" variant="quiet">{{ __('Add organizer') }}</x-button>
                     </span>
                     @error('organizerKey')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror

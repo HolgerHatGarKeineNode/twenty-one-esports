@@ -58,7 +58,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
     #[Locked]
     public int $clanId;
 
-    public string $player = '';
+    /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
+    public ?string $player = null;
 
     /** The lineup mode being edited, null while no lineup is open. */
     #[Locked]
@@ -466,7 +467,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
         if ($invite instanceof ClanInvite) {
             $this->inviteLink = route('invites.show', $invite);
-            $this->player = '';
+            $this->player = null;
             unset($this->clan);
         }
     }
@@ -710,25 +711,17 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
 
     private function resolveInvitee(): ?User
     {
-        $this->validate(['player' => ['required', 'string', 'max:200']]);
+        // The picker (allow-npub) hands over a hex pubkey: a player here, or a key that has no account yet.
+        $this->resetErrorBag('player');
+        $pubkey = NostrKeys::toHex((string) $this->player);
 
-        $query = trim($this->player);
-        $query = (string) preg_replace('#^.*/(npub1[0-9a-z]+).*$#', '$1', $query);
-        $pubkey = NostrKeys::toHex($query);
-
-        if ($pubkey !== null) {
-            return User::query()->firstOrCreate(['pubkey' => $pubkey], ['npub' => NostrKeys::hexToNpub($pubkey)]);
-        }
-
-        $matches = User::query()->whereRaw('lower(name) = ?', [mb_strtolower($query)])->limit(2)->get();
-
-        if ($matches->count() !== 1) {
-            $this->addError('player', $matches->isEmpty() ? __('No player with that name. Paste their npub or profile link.') : __('Several players have that name. Paste their npub instead.'));
+        if ($pubkey === null) {
+            $this->addError('player', __('Pick a player from the suggestions or paste a full npub.'));
 
             return null;
         }
 
-        return $matches->first();
+        return User::query()->firstOrCreate(['pubkey' => $pubkey], ['npub' => NostrKeys::hexToNpub($pubkey)]);
     }
 
     private function member(int $userId): User
@@ -948,9 +941,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 class="m-0 text-[15px] font-bold">{{ __('Invite a player') }}</h2><span class="text-xs text-ink-3">{{ __('They join the clan roster. You place them in lineups afterwards.') }}</span></span>
         @if ($isOwner)
             <div class="grid grid-cols-1 items-end gap-3.5 lg:grid-cols-[minmax(0,1fr)_auto]">
-                <label class="flex flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Player') }}</span>
-                    <input type="search" wire:model="player" data-test="invite-player" placeholder="{{ __('Name, npub or profile link') }}" class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
-                </label>
+                <x-player-picker id="invite-player" wire:model="player" allow-npub :label="__('Player')" :exclude="$members->pluck('user_id')->all()" :placeholder="__('Name, npub or profile link')"
+                                 input-class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3" class="gap-2" />
                 <button type="button" x-on:click="run('prepareInvite', 'invite')" x-bind:disabled="busy" data-test="send-invite"
                         class="btn-p inline-flex h-11 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-[22px] text-sm font-bold whitespace-nowrap text-on-btc disabled:cursor-wait disabled:opacity-70">
                     <x-icon name="shield-check" :size="18" />{{ __('Send invite') }}
