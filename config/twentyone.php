@@ -86,14 +86,16 @@ return [
         // Relays for the kind 30311 live event. Separate from relays.public
         // because the prod host is refused by some relays (measured
         // 2026-09-26 from 21-dedicated-prod-web: relay.damus.io answers the
-        // WebSocket upgrade with 403, nos.lol is unreachable).
+        // WebSocket upgrade with 403, nos.lol is unreachable; relay.zap.stream
+        // answers "restricted: not authorized", relay.nos.social "kind not
+        // allowed").
         'relays' => array_values(array_filter(explode(',', (string) env('TWENTYONE_STREAM_RELAYS')))) ?: [
             'wss://relay.primal.net',
-            'wss://relay.zap.stream',
             'wss://nostr.mom',
             'wss://relay.snort.social',
-            'wss://relay.nos.social',
             'wss://offchain.pub',
+            'wss://nostr.bitcoiner.social',
+            'wss://nostr.oxtr.dev',
         ],
 
         'event' => [
