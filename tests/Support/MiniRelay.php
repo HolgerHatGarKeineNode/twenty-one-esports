@@ -11,6 +11,7 @@ use Ratchet\RFC6455\Messaging\Frame;
 use Ratchet\RFC6455\Messaging\FrameInterface;
 use Ratchet\RFC6455\Messaging\MessageBuffer;
 use Ratchet\RFC6455\Messaging\MessageInterface;
+use React\EventLoop\Loop;
 use React\Socket\ConnectionInterface;
 use React\Socket\SocketServer;
 use Throwable;
@@ -43,18 +44,26 @@ final class MiniRelay
     /** Answer without applying `limit`, like a relay that ignores it. */
     private bool $ignoreLimits = false;
 
+    /** Delay before answering a REQ, like a slow relay. */
+    private int $eoseDelayMs = 0;
+
+    /** A file that gets one line per websocket connection (`connect`) and per REQ (`req`). */
+    private ?string $log = null;
+
     /**
      * Relay limits for the trust job's tests (RelayReader): max_filters
-     * enforced and advertised in the NIP-11 document, and whether `limit` is
-     * ignored.
+     * enforced and advertised in the NIP-11 document, whether `limit` is
+     * ignored, a delay per REQ answer, and a log of connections and REQs.
      *
-     * @param  array{max_filters?: int, advertised_max_filters?: int, ignore_limits?: bool}  $options
+     * @param  array{max_filters?: int, advertised_max_filters?: int, ignore_limits?: bool, eose_delay_ms?: int, log?: string}  $options
      */
     public function limits(array $options): self
     {
         $this->maxFilters = $options['max_filters'] ?? null;
         $this->advertisedMaxFilters = $options['advertised_max_filters'] ?? $this->maxFilters;
         $this->ignoreLimits = $options['ignore_limits'] ?? false;
+        $this->eoseDelayMs = $options['eose_delay_ms'] ?? 0;
+        $this->log = $options['log'] ?? null;
 
         return $this;
     }
@@ -111,6 +120,7 @@ final class MiniRelay
                     return;
                 }
 
+                $this->note('connect');
                 $this->clients[$key] = [
                     'connection' => $connection,
                     'subscriptions' => [],
@@ -184,6 +194,29 @@ final class MiniRelay
      * @param  list<array<string, mixed>>  $filters
      */
     private function subscribe(int $key, string $subscription, array $filters): void
+    {
+        $this->note('req');
+
+        if ($this->eoseDelayMs > 0) {
+            Loop::addTimer($this->eoseDelayMs / 1000, fn () => $this->answer($key, $subscription, $filters));
+
+            return;
+        }
+
+        $this->answer($key, $subscription, $filters);
+    }
+
+    private function note(string $line): void
+    {
+        if ($this->log !== null) {
+            file_put_contents($this->log, $line."\n", FILE_APPEND);
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $filters
+     */
+    private function answer(int $key, string $subscription, array $filters): void
     {
         if ($this->maxFilters !== null && count($filters) > $this->maxFilters) {
             $this->send($key, ['CLOSED', $subscription, 'error: too many filters (max '.$this->maxFilters.')']);

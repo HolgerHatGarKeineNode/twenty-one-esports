@@ -274,6 +274,9 @@ return [
 
     'relay_timeout_seconds' => 5,
 
+    // Total time one relay gets for one read of the trust job (all its REQs); more is a failed read.
+    'relay_fetch_budget_seconds' => 15,
+
     /*
     |--------------------------------------------------------------------------
     | Game chat (NIP-17)

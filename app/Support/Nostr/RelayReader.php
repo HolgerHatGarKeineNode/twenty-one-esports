@@ -16,22 +16,28 @@ use WebSocket\Message\Text;
  * (SignedEvent::fromInput), matching a filter the league sent (a relay may
  * ignore `authors` or `since`), with a valid id and signature. Callers ask
  * with one filter per author and a limit, and the reader keeps at most
- * `$perAuthor` events of each author (newest first), so nobody's events can
- * crowd out anybody else's (security re-check round 3, Q5).
+ * `$perAuthor` events of each author, newest first over every relay, so
+ * nobody's events can crowd out anybody else's (security re-check round 3,
+ * Q5) and the relay order decides nothing (round 4).
  *
  * Filters go out in REQs of at most the relay's NIP-11
  * `limitation.max_filters`, never more than 10 (rnostr's limit, the default
- * when the relay does not say). A relay that fails, times out or refuses a
- * REQ with `CLOSED` is a failed read: logged with its reason, its events of
- * that fetch dropped and its remaining REQs skipped. The caller keeps what it
- * already archived, so an outage or a refusal never turns into "nobody lists
- * anybody" (stale but valid, not "no data"). Uses the same websocket client
- * as {@see RelayPublisher}.
+ * when the relay does not say), one subscription after the other on one
+ * connection per relay and fetch. A relay that advertises fewer than 5 is
+ * not read at all (round 4: it would need too many REQs). A relay that fails,
+ * times out, refuses a REQ with `CLOSED` or uses up its time budget for the
+ * fetch is a failed read: logged with its reason, its events of that fetch
+ * dropped. The caller keeps what it already archived, so an outage or a
+ * refusal never turns into "nobody lists anybody" (stale but valid, not "no
+ * data"). Uses the same websocket client as {@see RelayPublisher}.
  */
 class RelayReader
 {
     /** Filters per REQ when the relay does not say, and the most ever sent (rnostr allows 10). */
     public const MAX_FILTERS = 10;
+
+    /** Fewer filters per REQ than this, and the relay is not read (round 4). */
+    public const MIN_FILTERS = 5;
 
     /** @var array<string, int<1, 10>> relay => filters per REQ, from its NIP-11 document */
     private array $maxFilters = [];
@@ -46,36 +52,28 @@ class RelayReader
      */
     public function fetch(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1): array
     {
-        $events = [];
-        $kept = [];
+        $collected = [];
 
         foreach ($relays ?? config('esports.relays', []) as $relay) {
-            $fromRelay = [];
-
-            foreach (array_chunk($filters, $this->maxFiltersOf($relay)) as $chunk) {
-                $read = $this->read($relay, $chunk, $known + $events, $perAuthor);
-
-                if ($read === null) {
-                    $fromRelay = []; // a failed read: nothing of this relay counts this time
-
-                    break;
-                }
-
-                array_push($fromRelay, ...$read);
-            }
-
-            // Newest first, then at most $perAuthor per author over every relay.
-            usort($fromRelay, fn (SignedEvent $a, SignedEvent $b): int => [$b->createdAt, $a->id] <=> [$a->createdAt, $b->id]);
-
-            foreach ($fromRelay as $event) {
-                if (! isset($events[$event->id]) && ($kept[$event->pubkey] ?? 0) < $perAuthor) {
-                    $events[$event->id] = $event;
-                    $kept[$event->pubkey] = ($kept[$event->pubkey] ?? 0) + 1;
-                }
+            // A failed read (null): nothing of this relay counts this time.
+            foreach ($this->read($relay, $filters, $known + $collected, $perAuthor) ?? [] as $event) {
+                $collected[$event->id] = $event;
             }
         }
 
-        return array_values($events);
+        // Newest first over every relay, then at most $perAuthor per author.
+        usort($collected, fn (SignedEvent $a, SignedEvent $b): int => [$b->createdAt, $a->id] <=> [$a->createdAt, $b->id]);
+        $events = [];
+        $kept = [];
+
+        foreach ($collected as $event) {
+            if (($kept[$event->pubkey] ?? 0) < $perAuthor) {
+                $events[] = $event;
+                $kept[$event->pubkey] = ($kept[$event->pubkey] ?? 0) + 1;
+            }
+        }
+
+        return $events;
     }
 
     /**
@@ -108,14 +106,16 @@ class RelayReader
     }
 
     /**
-     * Collect until EOSE (or the deadline), then check: the signature check
-     * (about 0.1 s each) runs after the connection closed, so a flood of junk
-     * cannot use up the time the real events need. Per author at most a few
-     * times $perAuthor events are collected; the caller keeps $perAuthor.
+     * All filters of one fetch on one connection, a subscription per batch,
+     * each collected until EOSE, then checked: the signature check (about
+     * 0.1 s each) runs after the connection closed, so a flood of junk cannot
+     * use up the time the real events need. Per author at most a few times
+     * $perAuthor events are collected; the caller keeps $perAuthor. Each REQ
+     * gets `relay_timeout_seconds`, the whole read `relay_fetch_budget_seconds`.
      *
      * @param  list<array<string, mixed>>  $filters
      * @param  array<string, mixed>  $skip  ids not to return
-     * @return list<SignedEvent>|null null for a failed read (error, timeout before EOSE, CLOSED)
+     * @return list<SignedEvent>|null null for a failed read (unsupported, error, timeout, CLOSED, budget used up)
      */
     private function read(string $relay, array $filters, array $skip, int $perAuthor): ?array
     {
@@ -123,54 +123,75 @@ class RelayReader
             return [];
         }
 
+        $batch = $this->maxFiltersOf($relay);
+
+        if ($batch < self::MIN_FILTERS) {
+            Log::warning('Relay unsupported', ['relay' => $relay, 'reason' => 'NIP-11 max_filters '.$batch.' is below '.self::MIN_FILTERS]);
+
+            return null;
+        }
+
         $timeout = (float) config('esports.relay_timeout_seconds', 5);
-        $deadline = microtime(true) + $timeout;
-        $subscription = 'read-'.bin2hex(random_bytes(4));
+        $budget = microtime(true) + (float) config('esports.relay_fetch_budget_seconds', 15);
         $received = [];
         $perPubkey = [];
-        $complete = false;
         $client = null;
 
         try {
             $client = new Client($relay);
-            $client->setTimeout($timeout);
-            $client->text((string) json_encode(['REQ', $subscription, ...$filters], JSON_UNESCAPED_SLASHES));
 
-            while (microtime(true) < $deadline) {
-                $frame = $client->receive();
+            foreach (array_chunk($filters, $batch) as $chunk) {
+                $deadline = min(microtime(true) + $timeout, $budget);
+                $subscription = 'read-'.bin2hex(random_bytes(4));
+                $complete = false;
+                $client->setTimeout(max(0.05, $deadline - microtime(true)));
+                $client->text((string) json_encode(['REQ', $subscription, ...$chunk], JSON_UNESCAPED_SLASHES));
 
-                if (! $frame instanceof Text) {
-                    continue;
+                while (($left = $deadline - microtime(true)) > 0) {
+                    $client->setTimeout(max(0.05, $left));
+                    $frame = $client->receive();
+
+                    if (! $frame instanceof Text) {
+                        continue;
+                    }
+
+                    $message = json_decode($frame->getContent(), true);
+
+                    if (! is_array($message) || ($message[1] ?? null) !== $subscription) {
+                        continue;
+                    }
+
+                    if (($message[0] ?? null) === 'CLOSED') {
+                        Log::warning('Relay refused a read', ['relay' => $relay, 'reason' => (string) ($message[2] ?? ''), 'filters' => count($chunk)]);
+
+                        return null;
+                    }
+
+                    if (($message[0] ?? null) === 'EOSE') {
+                        $complete = true;
+
+                        break;
+                    }
+
+                    $event = ($message[0] ?? null) === 'EVENT' ? SignedEvent::fromInput($message[2] ?? null) : null;
+
+                    if ($event !== null && ! isset($skip[$event->id]) && ($perPubkey[$event->pubkey] ?? 0) < 4 * $perAuthor && self::matchesAny($event, $chunk)) {
+                        $received[$event->id] = $event;
+                        $perPubkey[$event->pubkey] = ($perPubkey[$event->pubkey] ?? 0) + 1;
+                    }
                 }
 
-                $message = json_decode($frame->getContent(), true);
-
-                if (! is_array($message) || ($message[1] ?? null) !== $subscription) {
-                    continue;
+                if (! $complete) {
+                    return self::timedOut($relay, $deadline >= $budget, count($chunk));
                 }
 
-                if (($message[0] ?? null) === 'CLOSED') {
-                    Log::warning('Relay refused a read', ['relay' => $relay, 'reason' => (string) ($message[2] ?? ''), 'filters' => count($filters)]);
-
-                    return null;
-                }
-
-                if (($message[0] ?? null) === 'EOSE') {
-                    $complete = true;
-
-                    break;
-                }
-
-                $event = ($message[0] ?? null) === 'EVENT' ? SignedEvent::fromInput($message[2] ?? null) : null;
-
-                if ($event !== null && ! isset($skip[$event->id]) && ($perPubkey[$event->pubkey] ?? 0) < 4 * $perAuthor && self::matchesAny($event, $filters)) {
-                    $received[$event->id] = $event;
-                    $perPubkey[$event->pubkey] = ($perPubkey[$event->pubkey] ?? 0) + 1;
-                }
+                $client->text((string) json_encode(['CLOSE', $subscription]));
+            }
+        } catch (Throwable $exception) {
+            if (microtime(true) >= $budget) {
+                return self::timedOut($relay, true, count($filters));
             }
 
-            $client->text((string) json_encode(['CLOSE', $subscription]));
-        } catch (Throwable $exception) {
             Log::warning('Relay read failed', ['relay' => $relay, 'error' => $exception->getMessage()]);
 
             return null;
@@ -182,13 +203,15 @@ class RelayReader
             }
         }
 
-        if (! $complete) {
-            Log::warning('Relay read timed out before EOSE', ['relay' => $relay, 'filters' => count($filters)]);
-
-            return null;
-        }
-
         return array_values(array_filter($received, fn (SignedEvent $event): bool => $event->hasValidSignature()));
+    }
+
+    /** @return null a failed read */
+    private static function timedOut(string $relay, bool $overBudget, int $filters): null
+    {
+        Log::warning($overBudget ? 'Relay read over its time budget' : 'Relay read timed out before EOSE', ['relay' => $relay, 'filters' => $filters]);
+
+        return null;
     }
 
     /**

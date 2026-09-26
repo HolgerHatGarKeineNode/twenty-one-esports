@@ -296,13 +296,13 @@ test('regression (security re-check round 3, Q5): throwaway accounts republishin
         ->and(NostrEvent::query()->where('kind', 30000)->whereIn('pubkey', array_map(fn (TestSigner $s) => $s->pubkey, $throwaways))->count())->toBe(0);
 });
 
-test('round 3: a relay that allows 3 filters per REQ (NIP-11) gets REQs of 3, and every reporter is read', function () {
+test('round 3: a relay that allows 5 filters per REQ (NIP-11) gets REQs of 5, and every reporter is read', function () {
     payMembers(['alice', 'carol']);
     $at = now()->subMinutes(10)->getTimestamp();
     withRelay(seasonThreeEvents($at), runTwice(...));
 
     // Six ranked reporters, six filters: more than the relay takes in one REQ.
-    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], fn () => app(TrustJob::class)->run(), ['max_filters' => 3]);
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)], fn () => app(TrustJob::class)->run(), ['max_filters' => 5]);
 
     expect(rankOf('bob'))->toBe(85);
 });
@@ -331,6 +331,91 @@ test('round 3: never more than 10 filters per REQ, even when a relay advertises 
     withRelay([], fn () => app(RelayReader::class)->fetch($filters), ['max_filters' => 10, 'advertised_max_filters' => 50]);
 
     Log::shouldNotHaveReceived('warning');
+});
+
+/**
+ * Twelve report filters, one per fresh author; the first author has one report on the relay.
+ *
+ * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>} filters, events
+ */
+function twelveReportFilters(): array
+{
+    $signers = array_map(fn () => new TestSigner, range(1, 12));
+    $filters = array_map(fn (TestSigner $s) => ['kinds' => [TrustJob::REPORT], 'authors' => [$s->pubkey], 'limit' => 1], $signers);
+
+    return [$filters, [$signers[0]->sign(TrustJob::REPORT, [['p', (new TestSigner)->pubkey, 'other']], '', now()->subMinute()->getTimestamp())]];
+}
+
+/** @return array{connect: int, req: int} */
+function relayLog(string $path): array
+{
+    $lines = file_exists($path) ? file($path, FILE_IGNORE_NEW_LINES) : [];
+
+    return ['connect' => count(array_keys($lines, 'connect', true)), 'req' => count(array_keys($lines, 'req', true))];
+}
+
+test('round 4: one connection per relay and fetch, with a subscription per batch of filters', function () {
+    payMembers([]);
+    [$filters, $events] = twelveReportFilters();
+    $log = tempnam(sys_get_temp_dir(), 'relay-log');
+
+    $read = withRelay($events, fn () => app(RelayReader::class)->fetch($filters), ['max_filters' => 5, 'log' => $log]);
+
+    expect($read)->toHaveCount(1)
+        ->and(relayLog($log))->toBe(['connect' => 1, 'req' => 3]);
+    @unlink($log);
+});
+
+test('regression (security re-check round 4): a relay answering just inside the deadline fails the fetch once its total budget is used', function () {
+    payMembers([]);
+    Log::spy();
+    [$filters, $events] = twelveReportFilters();
+    config(['esports.relay_timeout_seconds' => 5, 'esports.relay_fetch_budget_seconds' => 2]);
+
+    // Three REQs of 1.2 s each: every one inside the 5 s deadline, together over the 2 s budget.
+    [$read, $seconds] = withRelay($events, function () use ($filters) {
+        $start = microtime(true);
+
+        return [app(RelayReader::class)->fetch($filters), microtime(true) - $start];
+    }, ['max_filters' => 5, 'eose_delay_ms' => 1200]);
+
+    expect($read)->toBe([])
+        ->and($seconds)->toBeLessThan(2.6);
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message) => $message === 'Relay read over its time budget');
+});
+
+test('round 4: a relay whose NIP-11 max_filters is below 5 is not read at all, with a logged reason', function () {
+    payMembers([]);
+    Log::spy();
+    [$filters, $events] = twelveReportFilters();
+    $log = tempnam(sys_get_temp_dir(), 'relay-log');
+
+    $read = withRelay($events, fn () => app(RelayReader::class)->fetch($filters), ['max_filters' => 3, 'log' => $log]);
+
+    expect($read)->toBe([])
+        ->and(relayLog($log)['connect'])->toBe(0);
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context) => $message === 'Relay unsupported' && str_contains($context['reason'], 'max_filters 3'));
+    @unlink($log);
+});
+
+test('round 4: the newest version wins whatever the relay order (v1 on relay A, v2 on relay B)', function () {
+    payMembers([]);
+    $author = new TestSigner;
+    $v1 = $author->sign(30000, [['d', 'esports/x'], ['p', pk('bob')]], '', now()->subHour()->getTimestamp());
+    $v2 = $author->sign(30000, [['d', 'esports/x'], ['p', pk('carol')]], '', now()->subMinute()->getTimestamp());
+    $filter = [['kinds' => [30000], 'authors' => [$author->pubkey], 'limit' => 1]];
+
+    $read = withRelay([$v1], function () use ($v2, $filter) {
+        $a = config('esports.relays')[0];
+
+        return withRelay([$v2], function () use ($a, $filter) {
+            $b = config('esports.relays')[0];
+
+            return [app(RelayReader::class)->fetch($filter, [$a, $b])[0]->id ?? null, app(RelayReader::class)->fetch($filter, [$b, $a])[0]->id ?? null];
+        });
+    });
+
+    expect($read)->toBe([$v2['id'], $v2['id']]);
 });
 
 test('round 3: a relay that ignores `limit` still gets at most the per-author cap of one author\'s reports', function () {
