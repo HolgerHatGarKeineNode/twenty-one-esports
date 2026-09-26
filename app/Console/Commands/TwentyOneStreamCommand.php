@@ -55,7 +55,7 @@ use Throwable;
  * a segment. `ended` is the offline signal; `--clear` starts from nothing.
  */
 #[Signature('twentyone:stream
-    {--relays= : Comma-separated relay URLs, instead of twentyone.relays.public}
+    {--relays= : Comma-separated relay URLs, instead of twentyone.stream.relays}
     {--no-publish : Run the HLS loop without any Nostr event}
     {--stop-after= : Stop after this many seconds, exactly as on SIGTERM (local checks)}
     {--clear : Remove the public playlist and all segments before starting, instead of continuing them}')]
@@ -557,7 +557,7 @@ class TwentyOneStreamCommand extends Command
             return $e->getMessage();
         }
 
-        $this->relays = RelayPublisher::relayUrls($this->option('relays') ?? config('twentyone.relays.public'));
+        $this->relays = RelayPublisher::relayUrls($this->option('relays') ?? config('twentyone.stream.relays'));
         $invalid = array_filter($this->relays, fn (string $relay): bool => ! EventBuilder::isRelayUrl($relay));
 
         if ($this->relays === []) {
