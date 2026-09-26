@@ -585,10 +585,9 @@
                     @endforeach
                 </ul>
                 <form wire:submit="addDirector" class="flex flex-col gap-1.5">
-                    <label for="dir-new" class="text-xs text-ink-2">{{ __('Add a director by name') }}</label>
-                    <span class="flex gap-2">
-                        <input id="dir-new" wire:model="directorName" placeholder="{{ __('Player name, e.g. nonce_nick') }}" class="h-11 min-w-0 grow rounded-md border border-edge bg-ground px-3 text-[13px] text-ink lg:max-w-80">
-                        <x-button variant="quiet" type="submit">{{ __('Add') }}</x-button>
+                    <span class="flex items-end gap-2">
+                        <x-player-picker id="dir-new" wire:model="directorId" :label="__('Add a director')" :exclude="[auth()->id(), ...$this->directorIds]" submit-on-pick class="grow lg:max-w-80" />
+                        <x-button variant="quiet" type="submit" data-test="add-director">{{ __('Add') }}</x-button>
                     </span>
                     @if ($this->directorError !== '')
                         <span class="text-xs text-loss" role="alert">{{ $this->directorError }}</span>

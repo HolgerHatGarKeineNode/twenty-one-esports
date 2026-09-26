@@ -152,16 +152,16 @@ test('who may do what: guest, member, organizer, admin and named director, also 
     // A named director enters, but only the organizer or an admin changes the directors.
     Livewire::actingAs($director)->test('pages::tournaments.director', ['tournament' => $tournament])
         ->call('enter', $match->id, ['result' => '1-0'])->assertSet('error', '')
-        ->set('directorKey', $member->npub)->call('addDirector')->assertForbidden();
+        ->set('directorId', $member->id)->call('addDirector')->assertForbidden();
 
     expect($match->refresh()->result['by'])->toBe('director');
 
     // Admins direct every tournament: they open the desk and change the directors, like the organizer.
     Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])
-        ->set('directorKey', $member->npub)->call('addDirector')->assertHasNoErrors();
+        ->set('directorId', $member->id)->call('addDirector')->assertHasNoErrors();
     $tournament->directors()->detach($member->id);
     Livewire::actingAs($creator)->test('pages::tournaments.director', ['tournament' => $tournament])
-        ->set('directorKey', $member->npub)->call('addDirector')->assertHasNoErrors();
+        ->set('directorId', $member->id)->call('addDirector')->assertHasNoErrors();
 
     expect($tournament->refresh()->isDirectedBy($member))->toBeTrue();
 

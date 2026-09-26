@@ -4,7 +4,6 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentResultEntry;
 use App\Models\User;
-use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentView;
@@ -28,7 +27,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     public string $error = '';
 
-    public string $directorKey = '';
+    /** The player picked in <x-player-picker>; null = nobody picked. */
+    public ?int $directorId = null;
 
     /** @var array<int, array{games: array<int, array{0: string, 1: string}>, unknown: bool, winners: array<int, string>}> */
     public array $series = [];
@@ -107,11 +107,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {
         Gate::authorize('manage-tournament', $this->tournament);
 
-        $pubkey = NostrKeys::toHex(trim($this->directorKey));
-        $user = $pubkey === null ? null : User::query()->where('pubkey', $pubkey)->first();
+        $this->resetErrorBag('directorId');
+        $user = $this->directorId === null ? null : User::query()->find($this->directorId);
 
         if ($user === null) {
-            $this->addError('directorKey', __('Enter the npub of a player who has logged in here.'));
+            $this->addError('directorId', __('Pick a player from the suggestions.'));
 
             return;
         }
@@ -121,7 +121,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         if (! $this->tournament->directors()->whereKey($user->id)->exists()) {
             $this->tournament->directors()->attach($user->id, ['added_by_id' => auth()->id()]);
         }
-        $this->reset('directorKey');
+        $this->reset('directorId');
     }
 
     public function removeDirector(int $userId): void
@@ -330,8 +330,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </ul>
                 @if ($canManage)
                     <form wire:submit="addDirector" class="flex flex-col gap-2">
-                        <input type="text" wire:model="directorKey" placeholder="npub1…" class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" aria-label="{{ __('Director npub') }}">
-                        @error('directorKey')<p class="m-0 text-xs text-loss">{{ $message }}</p>@enderror
+                        <x-player-picker id="director-new" wire:model="directorId" :label="__('Add a director')" :exclude="array_filter([$tournament->created_by_id, ...$tournament->directors->modelKeys()])" submit-on-pick
+                                         input-class="h-11 w-full rounded-md border border-line bg-well px-3 text-[13px] text-ink" />
+                        @error('directorId')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
                         <div><x-button type="submit" variant="quiet">{{ __('Add director') }}</x-button></div>
                     </form>
                 @endif

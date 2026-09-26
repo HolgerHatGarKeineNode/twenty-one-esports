@@ -5,7 +5,6 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\User;
-use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
 use App\Support\Tournaments\FormatOptions;
@@ -75,7 +74,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
     /** @var list<int> user ids of the named directors */
     public array $directorIds = [];
 
-    public string $directorName = '';
+    /** The player picked in <x-player-picker>; null = nobody picked. */
+    public ?int $directorId = null;
 
     public string $directorError = '';
 
@@ -309,32 +309,19 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
     public function addDirector(): void
     {
         $this->directorError = '';
-        $search = trim($this->directorName);
+        $user = $this->directorId === null ? null : User::query()->find($this->directorId);
 
-        if ($search === '') {
-            $this->directorError = __('Enter a player name or an npub.');
-
-            return;
-        }
-
-        $pubkey = NostrKeys::toHex($search);
-        $matches = $pubkey !== null
-            ? User::query()->where('pubkey', $pubkey)->get()
-            : User::query()->whereRaw('lower(name) = ?', [mb_strtolower($search)])->limit(2)->get();
-
-        if ($matches->count() !== 1) {
-            $this->directorError = $matches->isEmpty() ? __('No player with this name.') : __('Several players have this name. Enter their npub.');
+        if ($user === null) {
+            $this->directorError = __('Pick a player from the suggestions.');
 
             return;
         }
-
-        $user = $matches->first();
 
         if ($user->id !== auth()->id() && ! in_array($user->id, $this->directorIds, true)) {
             $this->directorIds[] = $user->id;
         }
 
-        $this->directorName = '';
+        $this->directorId = null;
         unset($this->directors);
         $this->changed();
     }

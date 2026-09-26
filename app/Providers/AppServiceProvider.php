@@ -88,6 +88,10 @@ class AppServiceProvider extends ServiceProvider
         // scanner from hammering the landing and the preview renderer.
         RateLimiter::for('invites', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
 
+        // The player picker (<x-player-picker>) asks once per typing pause.
+        RateLimiter::for('player-search', fn (Request $request): Limit => Limit::perMinute(60)
+            ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
+
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 

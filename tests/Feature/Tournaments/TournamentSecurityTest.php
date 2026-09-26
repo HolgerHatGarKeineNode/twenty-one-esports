@@ -61,7 +61,7 @@ test('an organizer who plays cannot have the alt he appointed enter his win; an 
     $alt = User::factory()->create();
 
     Livewire::actingAs($organizer)->test('pages::tournaments.director', ['tournament' => $tournament->refresh()])
-        ->set('directorKey', $alt->npub)->call('addDirector')->assertHasNoErrors();
+        ->set('directorId', $alt->id)->call('addDirector')->assertHasNoErrors();
 
     $runner = app(TournamentRunner::class);
 
@@ -323,9 +323,9 @@ test('re-adding a director never changes who appointed them', function () {
     Admin::query()->create(['pubkey' => $admin->pubkey]);
 
     Livewire::actingAs($organizer)->test('pages::tournaments.director', ['tournament' => $tournament->refresh()])
-        ->set('directorKey', $alt->npub)->call('addDirector')->assertHasNoErrors();
+        ->set('directorId', $alt->id)->call('addDirector')->assertHasNoErrors();
     Livewire::actingAs($admin)->test('pages::tournaments.director', ['tournament' => $tournament])
-        ->set('directorKey', $alt->npub)->call('addDirector')->assertHasNoErrors();
+        ->set('directorId', $alt->id)->call('addDirector')->assertHasNoErrors();
 
     expect(DB::table('tournament_directors')->where('user_id', $alt->id)->value('added_by_id'))->toBe($organizer->id)
         ->and(fn () => app(TournamentRunner::class)->enterResult($match, $alt, ['result' => '1-0']))->toThrow(TournamentRuleViolation::class, 'interest');

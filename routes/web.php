@@ -6,6 +6,7 @@ use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
 use App\Http\Controllers\PlayerController;
+use App\Http\Controllers\PlayerSearchController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RobotsController;
 use App\Http\Controllers\SitemapController;
@@ -141,6 +142,8 @@ foreach ($placeholders as [$uri, $name, $page, $section]) {
  * avatar is a pure function of the key: no session, cached for a year.
  */
 Route::post('profiles', [ProfileController::class, 'store'])->middleware('throttle:profiles')->name('profiles.store');
+// The player picker (<x-player-picker>): suggestions for logged-in players only.
+Route::get('search/players', PlayerSearchController::class)->middleware(['auth', 'throttle:player-search'])->name('players.search');
 Route::get('players/{npub}', [PlayerController::class, 'show'])->name('players.show');
 Route::get('players/{npub}/card', [PlayerController::class, 'card'])->name('players.card');
 Route::get('avatars/{pubkey}.svg', GeneratedAvatarController::class)

@@ -11,6 +11,7 @@ import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker } from './millAuth.js';
 import matchDock from './matchDock.js';
+import playerPicker from './playerPicker.js';
 import './nostrSign.js';
 import './captured.js';
 import './sanNotation.js';
@@ -24,6 +25,8 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('profileCardHost', profileCardHost);
     // The match dock of a logged-in player (P5f).
     window.Alpine.data('matchDock', matchDock);
+    // The player picker combobox, <x-player-picker>.
+    window.Alpine.data('playerPicker', playerPicker);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.
