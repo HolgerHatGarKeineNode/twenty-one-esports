@@ -234,3 +234,23 @@ test('the grand-final options and the 3rd-place match change the counts', functi
         ->and($estimator->singleElimination(8, true)->matches)->toBe(8)
         ->and($estimator->singleElimination(2, true)->matches)->toBe(1);
 });
+
+test('3 entrants have one semifinal, so no match for 3rd place is counted', function () {
+    $estimator = new Estimator;
+
+    expect($estimator->singleElimination(3, true)->matches)->toBe(2)
+        ->and(array_column($estimator->singleElimination(3, true)->rounds, 'm'))->toBe([1, 1])
+        ->and($estimator->singleElimination(4, true)->matches)->toBe(4)
+        ->and($estimator->singleElimination(5, true)->matches)->toBe(5);
+});
+
+test('split: upper round 1 is not played, and the lowest seeds may play only 1 match', function () {
+    $estimator = new Estimator;
+    $split = $estimator->doubleElimination(12, 'reset', true);
+
+    // 12 of 16: seeds 9–12 start in the lower bracket, 4 upper round-1 matches are not played.
+    expect($split->matches)->toBe(2 * 12 - 3 - 4 + 2)
+        ->and($split->guaranteed)->toBe(1)
+        ->and($split->max)->toBe(6 + 2)
+        ->and($estimator->doubleElimination(12, 'reset')->guaranteed)->toBe(2);
+});

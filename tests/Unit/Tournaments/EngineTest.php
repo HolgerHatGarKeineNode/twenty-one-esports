@@ -411,6 +411,8 @@ test('every format matches the estimator\'s match count from 2 to 40 entrants', 
     'single elimination' => [TournamentFormat::SingleElimination, []],
     'double elimination, reset' => [TournamentFormat::DoubleElimination, ['grandFinal' => 'reset']],
     'double elimination, one match' => [TournamentFormat::DoubleElimination, ['grandFinal' => 'single']],
+    'double elimination, split' => [TournamentFormat::DoubleElimination, ['split' => true]],
+    'single elimination, 3rd place' => [TournamentFormat::SingleElimination, ['thirdPlace' => true]],
     'round robin twice' => [TournamentFormat::RoundRobin, ['iterations' => 2]],
     'two stage' => [TournamentFormat::TwoStage, []],
 ]);

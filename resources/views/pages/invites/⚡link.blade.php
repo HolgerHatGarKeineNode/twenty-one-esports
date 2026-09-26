@@ -308,7 +308,7 @@ new #[Layout('layouts::app')] class extends Component {
             }],
         ],
         InviteLinkType::Series => [
-            [__('Game'), __('Rocket League :mode, best of :bo', ['mode' => (string) $link->option('mode'), 'bo' => (int) $link->option('best_of')])],
+            [__('Match'), __('Rocket League :mode, best of :bo', ['mode' => (string) $link->option('mode'), 'bo' => (int) $link->option('best_of')])],
             [__('Game type'), __('Casual scrim, no rating change')],
             [__('Against'), collect($copy->lineup()?->activeSeats() ?? [])->map(fn ($seat) => $seat->user->displayName())->implode(', ') ?: '–'],
         ],

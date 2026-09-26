@@ -619,7 +619,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <section aria-labelledby="games-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="games">
             <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games') }}</h2><span class="text-xs text-ink-2">{{ __('after each game, enter the team goals from the end screen') }}</span></span>
             <div class="grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-center gap-2 text-xs text-ink-3 lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]">
-                <span>{{ __('Game') }}</span><span class="text-center">{{ $m->challenger_tag }}</span><span></span><span class="text-center">{{ $m->challenged_tag }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
+                <span>{{ __('Game #') }}</span><span class="text-center">{{ $m->challenger_tag }}</span><span></span><span class="text-center">{{ $m->challenged_tag }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
             </div>
             @foreach ($this->sheet as $index => $row)
                 @php($decided = $index > 0 && max(SeriesMatch::seriesScore(array_slice(array_map(fn ($r) => ['winner' => $r['winner']], $this->sheet), 0, $index))) >= intdiv($m->best_of, 2) + 1)

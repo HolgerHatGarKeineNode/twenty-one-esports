@@ -226,7 +226,7 @@ new #[Title('Matches')] #[Layout('layouts::app', ['section' => 'matches'])] clas
 
             <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-3">
                 <div class="flex items-center gap-2">
-                    <span id="f-game" class="text-xs text-ink-3">{{ __('Game') }}</span>
+                    <span id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</span>
                     <div role="group" aria-labelledby="f-game" class="flex overflow-hidden rounded-md border border-line">
                         @foreach (['all' => __('All'), 'chess' => __('Chess'), 'rocket-league' => 'Rocket League'] as $key => $label)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}"

@@ -97,7 +97,12 @@
         : ($site ? __('Allow more time or add boards.') : __('Allow more time.')));
     $recommendedWhy = $recommended === null ? '' : ($evaluation->nothingFits
         ? __('Nothing fits into :window. This is the shortest: :duration.', ['window' => $duration($window), 'duration' => $duration($recommended->total())]).' '.$lever
-        : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]));
+        : ($profile->isRocketLeague() && $recommended->format->hasFinal()
+            // Rocket League recommends a format with a final first (user, 2026-09-26), so the reason names it.
+            ? ($teams
+                ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
+                : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
+            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])));
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;
@@ -111,8 +116,11 @@
         TournamentFormat::RoundRobin => __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]).($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
         TournamentFormat::TwoStage => __('Everyone plays at least :games games in the groups. The top :advance of each group play on.', ['games' => $structure?->guaranteed ?? 0, 'advance' => $structure?->advance ?? 0]),
         TournamentFormat::SingleElimination => __('The weakest may play only 1 match. The winner plays :rounds.', ['rounds' => $structure?->max ?? 0]).(($structure?->byes ?? 0) > 0 ? ' '.__(':byes of :n skip round 1 (bye), because :n does not fill the bracket.', ['byes' => $structure?->byes, 'n' => $n]) : ''),
-        default => __('Everyone plays at least 2 matches. The winner plays up to :max.', ['max' => $structure?->max ?? 0]),
+        default => ($structure?->guaranteed ?? 2) < 2
+            ? __('The lowest seeds may play only 1 match, everyone else at least 2. The winner plays up to :max.', ['max' => $structure?->max ?? 0])
+            : __('Everyone plays at least 2 matches. The winner plays up to :max.', ['max' => $structure?->max ?? 0]),
     };
+    $splitFrom = intdiv(1 << Estimator::log2($n), 2) + 1;
 
     $firstBlock = $plan?->blocks[0] ?? null;
     $roundsText = $firstBlock !== null && $firstBlock['merged'] > 0
@@ -370,10 +378,10 @@
                         </div>
                         <div class="{{ $optionRow }}">
                             <label class="flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px] font-bold">
-                                <input type="checkbox" class="size-4 accent-btc" @checked($options->split) wire:click="option('split', {{ $options->split ? 'false' : 'true' }})">
+                                <input type="checkbox" class="size-4 accent-btc" @checked($options->split) wire:click="option('split', {{ $options->split ? 'false' : 'true' }})" data-test="split-toggle">
                                 {{ __('Lower seeds start in the lower bracket') }}
                             </label>
-                            <span class="{{ $help }}">{{ __('The bottom half of the seeds starts with one life. Shorter, but less fair.') }}</span>
+                            <span class="{{ $help }}" data-test="split-help">{{ __('The lowest seeds start in the lower bracket, with one life: here :seeds. Shorter, but less fair.', ['seeds' => $splitFrom === $n ? __('seed :seed', ['seed' => $n]) : __('seeds :from to :to', ['from' => $splitFrom, 'to' => $n])]) }}</span>
                         </div>
                     @endif
 

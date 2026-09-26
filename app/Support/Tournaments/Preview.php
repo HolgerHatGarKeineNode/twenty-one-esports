@@ -61,7 +61,9 @@ final class Preview
         $this->text(0, 10, 'Round 1');
         $this->text($tree['lastX'], 10, 'Final', 'end');
 
-        if ($options->thirdPlace && $tree['rounds'] >= 2) {
+        $third = collect(Elimination::single(self::slots($n), true))->contains(fn (BracketMatch $match): bool => $match->bracket === 'third-place');
+
+        if ($options->thirdPlace && $third) {
             $this->rect($tree['lastX'] - $tree['box'], $this->height - 18, $tree['box'], 12, $tree['rounds'] - 1);
             $this->text($tree['lastX'] - $tree['box'] - 6, $this->height - 8, '3rd place', 'end');
         }
@@ -80,7 +82,7 @@ final class Preview
 
         $lowerRounds = 2 * (Estimator::log2($n) - 1);
         $middle = $this->height * 0.5;
-        $this->tree($n, 0, $this->width * 0.56, 18, $middle - 6, 0);
+        $this->tree($n, 0, $this->width * 0.56, 18, $middle - 6, 0, $options->split);
         $this->text(0, 10, 'Upper bracket');
         $this->text(0, $middle + 12, 'Lower bracket');
         $column = ($this->width * 0.8 - $this->width * 0.06) / max(1, $lowerRounds);
@@ -187,7 +189,7 @@ final class Preview
      *
      * @return array{lastX: float, rounds: int, box: float}
      */
-    private function tree(int $n, float $x0, float $x1, float $y0, float $y1, float $step0): array
+    private function tree(int $n, float $x0, float $x1, float $y0, float $y1, float $step0, bool $noFirstRound = false): array
     {
         $rounds = Estimator::log2($n);
         $size = 1 << $rounds;
@@ -204,7 +206,7 @@ final class Preview
 
         $played = [];
 
-        foreach (Elimination::single(self::slots($n), false) as $match) {
+        foreach ($noFirstRound ? [] : Elimination::single(self::slots($n), false) as $match) {
             if ($match->round === 1) {
                 $played[$pairOf[(int) $match->slots[0]->entrant]] = true;
             }

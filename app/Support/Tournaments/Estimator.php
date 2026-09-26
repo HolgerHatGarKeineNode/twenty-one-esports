@@ -52,7 +52,9 @@ final class Estimator
 
         $r = self::log2($n);
         $p = 1 << $r;
-        $third = $thirdPlace && $r >= 2;
+        // A match for 3rd place needs two semifinal losers: with 3 entrants one semifinal is a bye.
+        $semifinals = $r === 2 ? $n - intdiv($p, 2) : 2;
+        $third = $thirdPlace && $r >= 2 && $semifinals === 2;
         $rounds = [];
 
         // The match for 3rd place runs next to the final.
@@ -66,8 +68,10 @@ final class Estimator
 
     /**
      * @param  'reset'|'single'|'skip'  $grandFinal
+     * @param  bool  $split  seeds beyond half the bracket start in the lower bracket:
+     *                       upper round 1 is not played, and those seeds may play only 1 match
      */
-    public function doubleElimination(int $n, string $grandFinal): Structure
+    public function doubleElimination(int $n, string $grandFinal, bool $split = false): Structure
     {
         if ($n < 3) {
             return $this->singleElimination($n, false);
@@ -97,7 +101,8 @@ final class Estimator
             $cut -= $taken;
         }
 
-        $steps = [$upper[0]];
+        $splitPairs = $split ? $upper[0] : 0;
+        $steps = [$upper[0] - $splitPairs];
 
         for ($i = 1; $i < $r; $i++) {
             $steps[] = $upper[$i] + $lower[$i - 1];
@@ -127,8 +132,10 @@ final class Estimator
 
         $reset = $grandFinal === 'reset' ? 1 : 0;
 
-        return new Structure($rounds, 2 * $n - 3 + $grandFinalMatches + $reset, 2,
-            1 + $lowerRounds + ($reset === 1 ? 2 : $grandFinalMatches), 2, byes: $p - $n);
+        $fewest = $splitPairs > 0 ? 1 : 2;
+
+        return new Structure($rounds, 2 * $n - 3 - $splitPairs + $grandFinalMatches + $reset, $fewest,
+            ($splitPairs > 0 ? 0 : 1) + $lowerRounds + ($reset === 1 ? 2 : $grandFinalMatches), $fewest, byes: $p - $n);
     }
 
     public static function roundRobinRounds(int $size): int
@@ -268,7 +275,7 @@ final class Estimator
     {
         return match ($format) {
             TournamentFormat::SingleElimination => $this->singleElimination($n, $options->thirdPlace),
-            TournamentFormat::DoubleElimination => $this->doubleElimination($n, $options->grandFinal),
+            TournamentFormat::DoubleElimination => $this->doubleElimination($n, $options->grandFinal, $options->split),
             TournamentFormat::RoundRobin => $this->roundRobin($n, $options->iterations),
             TournamentFormat::Swiss => $this->swiss($n, $options->swissRounds ?? self::swissDefault($n)),
             TournamentFormat::TwoStage => $this->twoStage($n, $options),

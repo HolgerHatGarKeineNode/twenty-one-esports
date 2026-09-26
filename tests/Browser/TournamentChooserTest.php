@@ -63,6 +63,7 @@ const CHOOSER_STATE = <<<'JS'
         return {
             recommended: chooser?.dataset.recommended ?? null,
             name: document.querySelector('[data-test=recommendation-name]')?.textContent.trim() ?? null,
+            why: document.querySelector('[data-test=recommendation-why]')?.textContent.trim() ?? null,
             ffaDisabled: ffa?.dataset.disabled === 'true' && ffa.tagName !== 'BUTTON',
             ffaReason: ffa?.querySelector('[data-test=row-reason]')?.textContent.trim() ?? null,
             ffaVisible: ffa ? ffa.getBoundingClientRect().height > 0 : false,
@@ -142,6 +143,7 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
 
         expect($blitz['name'])->toBe('Swiss, 6 rounds')
             ->and($rl['recommended'])->toBe('single-elimination')
+            ->and($rl['why'])->toStartWith('Ends with a final; every team plays at least 1 game')
             ->and($rl['name'])->toBe('Single Elimination')
             ->and($rl['ffaDisabled'])->toBeTrue()
             ->and($rl['ffaVisible'])->toBeTrue()
@@ -156,6 +158,27 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
             ->and($rl['overflow'])->toBeLessThanOrEqual(0)
             ->and($rl['errors'])->toBe([]);
     }
+
+    // Still at 1440: the split option says which seeds start in the lower bracket (12 teams: 9 to 12).
+    $page->locator('[data-test=row-double-elimination]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-chooser]")?.dataset.format === "double-elimination"', 8_000);
+    $page->locator('[data-test=split-toggle]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=guaranteed]")?.textContent.includes("only 1 match")', 8_000);
+
+    expect($page->evaluate('() => document.querySelector("[data-test=split-help]").textContent.trim()'))
+        ->toBe('The lowest seeds start in the lower bracket, with one life: here seeds 9 to 12. Shorter, but less fair.');
+
+    // Every width in between, without a reload: no horizontal overflow anywhere.
+    $overflow = [];
+
+    foreach ([320, 390, 768, 1024, 1280, 1920] as $width) {
+        $page->setViewportSize($width, 900);
+        $overflow[$width] = $page->evaluate('() => document.documentElement.scrollWidth - document.documentElement.clientWidth');
+    }
+
+    expect(array_filter($overflow))->toBe([]);
+    $measured['overflow by width'] = $overflow;
+    $page->setViewportSize(1440, 900);
 
     // Positive control: a request outside the islands (create without a name)
     // re-renders the component, and the probes see it — the marker goes, the

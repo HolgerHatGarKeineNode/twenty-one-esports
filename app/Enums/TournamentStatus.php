@@ -22,7 +22,7 @@ enum TournamentStatus: string
             self::Signup => __('Sign-up open'),
             self::Running => __('Running'),
             self::Finished => __('Finished'),
-            self::Cancelled => __('Cancelled'),
+            self::Cancelled => __('Called off'),
         };
     }
 }
