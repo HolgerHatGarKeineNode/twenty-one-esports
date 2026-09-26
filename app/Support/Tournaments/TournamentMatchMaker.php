@@ -1,0 +1,262 @@
+<?php
+
+namespace App\Support\Tournaments;
+
+use App\Enums\ChessGameStatus;
+use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
+use App\Models\Lineup;
+use App\Models\LineupSeat;
+use App\Models\MatchNumber;
+use App\Models\SeriesMatch;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
+use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessRuleViolation;
+use App\Support\SeasonChain\GatePin;
+use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\Series\Ladders;
+
+/**
+ * Tournament matches are played as normal matches (NIP: "Tournament matches
+ * are ordinary challenges"; plan: they count for Elo): a Rocket League
+ * series in the match room, or a chess game on the league's board, each
+ * carrying its tournament match (`tournament_match_id`).
+ *
+ * The league pairs the two sides, so the pairing is their accept, as in a
+ * queue pairing (NIP "Queue pairings"; sign-up is the consent). A pairing is
+ * rated while the ladder is open and the trust gate passes on rank: a
+ * league-made pairing skips the mutual opponent listing, not the rank (NIP
+ * "Trust", item 4). Otherwise it is casual and moves the casual Elo.
+ *
+ * Limits of this phase, stated in the report: a Rocket League series of a
+ * tournament where the players report results is always casual (its rated
+ * form needs the captains' signed 2150/2151, which the room does not ask for
+ * yet); a series with a roster side (a mix team, an RL 1v1 player) is
+ * unrated (NIP: mix teams are unrated). In director mode a series is rated
+ * when the gate passes: its result is the league's (resolution `admin`).
+ *
+ * Chess in director mode is played over the board: no game is started; the
+ * finished game record is written when the round closes (TournamentRunner).
+ */
+final class TournamentMatchMaker
+{
+    public function __construct(
+        private ChessGameService $chess,
+        private RatedTrustGate $gate,
+        private GameRegistry $games,
+    ) {}
+
+    /**
+     * Start the normal match of every tournament match that is ready and
+     * has none yet. A chess player still busy in another live game is left
+     * for the next run (the scheduler tries again every minute).
+     */
+    public function startReady(Tournament $tournament): void
+    {
+        if ($tournament->status !== TournamentStatus::Running) {
+            return;
+        }
+
+        $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
+            ->where('bracket', '!=', 'bye')->whereNull('result')
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
+        $current = TournamentRunner::currentRound($tournament);
+
+        foreach ($matches as $match) {
+            if ($tournament->isDirectorMode() && $match->tournament_round_id !== $current?->id) {
+                continue;
+            }
+
+            [$a, $b] = [$match->slots[0]->participant ?? null, $match->slots[1]->participant ?? null];
+
+            if ($a === null || $b === null) {
+                continue;
+            }
+
+            if ($tournament->profile()->isChess()) {
+                if (! $tournament->isDirectorMode() && self::needsGame($match)) {
+                    $this->startGame($tournament, $match, $a, $b);
+                }
+
+                continue;
+            }
+
+            if ($match->seriesMatch === null) {
+                $this->createSeries($tournament, $match, $a, $b);
+            }
+        }
+    }
+
+    /**
+     * A chess match needs a (new) game when it has none, or when its last
+     * game was drawn in a knockout, where a draw decides nothing: it is
+     * replayed with the colours swapped.
+     */
+    public static function needsGame(TournamentMatch $match): bool
+    {
+        $game = $match->chessGame;
+
+        return $game === null || ($game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match));
+    }
+
+    private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): void
+    {
+        $first = User::query()->find($a->memberIds()[0] ?? 0);
+        $second = User::query()->find($b->memberIds()[0] ?? 0);
+
+        if ($first === null || $second === null) {
+            return;
+        }
+
+        // Slot 0 has White; a knockout replay after a draw swaps the colours.
+        [$white, $black] = $match->chessGame !== null && $match->chessGame->white_id === $first->id ? [$second, $first] : [$first, $second];
+
+        try {
+            $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id);
+        } catch (ChessRuleViolation) {
+            // Busy in another live game: the next run tries again.
+        }
+    }
+
+    /**
+     * The gate of a rated tournament game: open ladder, trust ranks, both at
+     * or above the minimum. Null = casual.
+     */
+    public function chessPin(Tournament $tournament, User $white, User $black): ?GatePin
+    {
+        if (! Ladders::isOpen('chess', $tournament->mode) || ! $this->gate->isAvailable()) {
+            return null;
+        }
+
+        $pin = $this->gate->pin([$white->pubkey, $black->pubkey], [$white->pubkey, $black->pubkey]);
+
+        return $pin->isEligible($white->pubkey) && $pin->isEligible($black->pubkey) ? $pin : null;
+    }
+
+    public function createSeries(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): SeriesMatch
+    {
+        $lineups = [$this->lineup($a), $this->lineup($b)];
+        $mode = $this->games->mode($tournament->game, $tournament->mode);
+        $bestOf = $this->bestOf($tournament, $match, $mode === null ? [3, 5] : $mode->bestOf);
+        $numberOwner = $a->memberIds()[0] ?? $b->memberIds()[0] ?? null;
+        $pin = $tournament->isDirectorMode() ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : null;
+        $now = now();
+
+        $sides = [];
+
+        foreach (['challenger' => [$a, $lineups[0]], 'challenged' => [$b, $lineups[1]]] as $side => [$participant, $lineup]) {
+            if ($lineup === null) {
+                $sides[$side] = $participant->memberIds();
+            }
+        }
+
+        return SeriesMatch::query()->create([
+            'number' => MatchNumber::query()->create(['user_id' => $numberOwner, 'used_at' => $now])->id,
+            'game' => $tournament->game,
+            'mode' => $tournament->mode,
+            'best_of' => $bestOf,
+            'rated' => $pin !== null,
+            'challenger_lineup_id' => $lineups[0]?->id,
+            'challenged_lineup_id' => $lineups[1]?->id,
+            'challenger_name' => mb_substr($lineups[0]?->clan->name ?? $a->name, 0, 255),
+            'challenged_name' => mb_substr($lineups[1]?->clan->name ?? $b->name, 0, 255),
+            'challenger_tag' => $lineups[0]?->clan->clantag ?? self::tag($a),
+            'challenged_tag' => $lineups[1]?->clan->clantag ?? self::tag($b),
+            'challenger_lineup_address' => $lineups[0]?->address() ?? '',
+            'challenged_lineup_address' => $lineups[1]?->address() ?? '',
+            'ladder_address' => $pin !== null ? Ladders::address($tournament->game, $tournament->mode) : null,
+            'status' => SeriesStatus::Accepted,
+            'proposals' => [$now->getTimestamp()],
+            'respond_by' => $now,
+            'start_at' => $now,
+            'answered_at' => $now,
+            'clans_at_accept' => $pin === null ? null : $this->clans($lineups[0], $lineups[1]),
+            'gate_at_accept' => $pin?->toArray(),
+            'rated_subjects' => $pin === null ? null : ['challenger' => 'lineup:'.$lineups[0]?->id, 'challenged' => 'lineup:'.$lineups[1]?->id],
+            'tournament_match_id' => $match->id,
+            'sides' => $sides === [] ? null : $sides,
+        ]);
+    }
+
+    /**
+     * The gate of a rated director-mode series: open ladder, trust ranks,
+     * both lineups, the clan owners at or above the minimum and enough
+     * eligible players on each side. Null = casual.
+     */
+    private function seriesPin(Tournament $tournament, ?Lineup $a, ?Lineup $b): ?GatePin
+    {
+        if ($a === null || $b === null || ! Ladders::isOpen($tournament->game, $tournament->mode) || ! $this->gate->isAvailable()) {
+            return null;
+        }
+
+        $players = array_values(array_unique(array_map(fn (LineupSeat $seat): string => $seat->user->pubkey, [...$a->activeSeats(), ...$b->activeSeats()])));
+        $pin = $this->gate->pin($players, [$a->clan->owner_pubkey, $b->clan->owner_pubkey]);
+
+        foreach ($pin->gatekeepers as $gatekeeper) {
+            if (! $pin->isEligible($gatekeeper)) {
+                return null;
+            }
+        }
+
+        if (RatedTrustGate::sidesRefusal($pin, $a, $b) !== null) {
+            return null;
+        }
+
+        $entries = fn (Lineup $lineup): array => array_values(array_map(
+            fn (LineupSeat $seat): array => ['user_id' => $seat->user_id, 'pubkey' => $seat->user->pubkey, 'name' => $seat->user->displayName(), 'role' => $seat->role->value],
+            array_filter($lineup->activeSeats(), fn (LineupSeat $seat): bool => $pin->isEligible($seat->user->pubkey)),
+        ));
+
+        return $pin->withSides(['challenger' => $entries($a), 'challenged' => $entries($b)]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function clans(?Lineup $a, ?Lineup $b): array
+    {
+        $clans = [];
+
+        foreach ([$a, $b] as $lineup) {
+            foreach ($lineup === null ? [] : $lineup->activeSeats() as $seat) {
+                $clans[$seat->user->pubkey] = $lineup->clan->address();
+            }
+        }
+
+        return $clans;
+    }
+
+    private function lineup(TournamentParticipant $participant): ?Lineup
+    {
+        return $participant->lineup_id === null ? null : Lineup::query()->with(['clan', 'seats.user.clanMember'])->find($participant->lineup_id);
+    }
+
+    /**
+     * The best-of of this match: the final best-of for the last round of a
+     * knockout, the tournament's otherwise, kept to what the mode allows.
+     *
+     * @param  list<int>  $allowed
+     */
+    private function bestOf(Tournament $tournament, TournamentMatch $match, array $allowed): int
+    {
+        $options = $tournament->formatOptions();
+        $wanted = TournamentRunner::isFinal($match) ? $options->finalBestOf : $options->bestOf;
+
+        if (in_array($wanted, $allowed, true) || $allowed === []) {
+            return $wanted;
+        }
+
+        usort($allowed, fn (int $x, int $y): int => abs($x - $wanted) <=> abs($y - $wanted) ?: $x <=> $y);
+
+        return $allowed[0];
+    }
+
+    private static function tag(TournamentParticipant $participant): string
+    {
+        return $participant->isMixTeam() ? 'MIX' : mb_strtoupper(mb_substr(preg_replace('/[^A-Za-z0-9]/', '', $participant->name) ?: 'P', 0, 4));
+    }
+}

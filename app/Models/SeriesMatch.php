@@ -69,6 +69,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $finished_at
  * @property int|null $challenge_event_id
  * @property int|null $answer_event_id
+ * @property int|null $tournament_match_id the tournament match this series plays (P8b)
+ * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Lineup|null $challengerLineup
@@ -79,6 +81,7 @@ use Illuminate\Support\Carbon;
  * @property-read NostrEvent|null $challengeEvent
  * @property-read NostrEvent|null $answerEvent
  * @property-read SeriesReport|null $latestReport
+ * @property-read TournamentMatch|null $tournamentMatch
  */
 #[Fillable([
     'number', 'game', 'mode', 'best_of', 'rated',
@@ -88,7 +91,7 @@ use Illuminate\Support\Carbon;
     'lobby_name', 'lobby_password', 'lobby_region', 'lobby_updated_by_id',
     'live_games', 'rosters', 'noshow_side', 'noshow_reported_at', 'new_report_requested_at',
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
-    'challenge_event_id', 'answer_event_id',
+    'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'sides',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -131,6 +134,7 @@ class SeriesMatch extends Model
             'result_games' => 'array',
             'resolution' => SeriesResolution::class,
             'finished_at' => 'datetime',
+            'sides' => 'array',
         ];
     }
 
@@ -193,6 +197,14 @@ class SeriesMatch extends Model
     public function answerEvent(): BelongsTo
     {
         return $this->belongsTo(NostrEvent::class, 'answer_event_id');
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     /**
@@ -262,12 +274,30 @@ class SeriesMatch extends Model
         }
 
         foreach (self::SIDES as $side) {
-            if ($this->lineup($side)?->isActingCaptain($user) === true) {
+            if ($this->lineup($side)?->isActingCaptain($user) === true || $this->isRosterSideMember($side, $user)) {
                 return $side;
             }
         }
 
         return null;
+    }
+
+    /**
+     * A roster side (a tournament's mix team or RL 1v1 player, P8b) has no
+     * lineup and no captain: any of its players acts for it (NIP "Result
+     * Report": "any roster player of a roster side").
+     */
+    public function isRosterSideMember(string $side, User $user): bool
+    {
+        return in_array($user->id, $this->rosterSide($side), true);
+    }
+
+    /**
+     * @return list<int> the user ids of a roster side, empty for a lineup side
+     */
+    public function rosterSide(string $side): array
+    {
+        return array_map(intval(...), $this->sides[$side] ?? []);
     }
 
     /**

@@ -21,6 +21,7 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
 
@@ -59,12 +60,12 @@ final class ChessGameService
      *
      * @throws ChessRuleViolation when either player already plays a live game
      */
-    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null, ?GatePin $ratedGate = null): ChessGame
+    public function start(User $white, User $black, string $mode = 'blitz', ?ChessGame $rematchOf = null, ?GatePin $ratedGate = null, ?int $tournamentMatchId = null): ChessGame
     {
         [$initialMs, $incrementMs] = $this->timeControl($mode);
         $daily = $mode === ChessGame::CORRESPONDENCE;
 
-        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate): ChessGame {
+        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $tournamentMatchId): ChessGame {
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
@@ -90,6 +91,7 @@ final class ChessGameService
                 'turn_started_ms' => $now,
                 'deadline_ms' => $now + ($daily ? $initialMs : $this->firstMoveMs()),
                 'rematch_of_id' => $rematchOf?->id,
+                'tournament_match_id' => $tournamentMatchId,
             ]);
 
             // Freeze the PGN tag pairs now (names can change, signed notes cannot).
@@ -776,6 +778,12 @@ final class ChessGameService
         // rated game in a live season, its league attestation commit together.
         $this->ratings->applyChessGame($game);
         $this->chains->attestChessGame($game);
+
+        // A tournament game moves its bracket once the result is committed (P8b).
+        if ($game->tournament_match_id !== null) {
+            $id = $game->id;
+            DB::afterCommit(fn () => app(TournamentRunner::class)->chessGameFinished($id));
+        }
     }
 
     /**

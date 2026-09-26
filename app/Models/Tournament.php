@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -45,6 +47,13 @@ use Illuminate\Support\Carbon;
  * @property TournamentStatus $status
  * @property string|null $seed
  * @property int|null $created_by_id
+ * @property string|null $slug `d` of the tournament's NIP-52 calendar event (31923)
+ * @property Carbon|null $signup_closes_at
+ * @property Carbon|null $published_at
+ * @property int|null $event_id the league's 31923
+ * @property int|null $draw_height the Bitcoin block the draw committed to (NIP 2155 `draw`)
+ * @property string|null $draw_hash its hash once mined: the draw and bracket seed
+ * @property int|null $draw_event_id the league's 2155 (only with a solo pool)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -52,12 +61,25 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, TournamentParticipant> $participants
  * @property-read Collection<int, TournamentStage> $stages
  * @property-read Collection<int, TournamentMatch> $matches
+ * @property-read Collection<int, TournamentSignup> $signups
+ * @property-read NostrEvent|null $event
+ * @property-read NostrEvent|null $drawEvent
  */
-#[Fillable(['name', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id'])]
+#[Fillable(['name', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
+    'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */
     use HasFactory;
+
+    /** NIP-52 time-based calendar event: the tournament (NIP "Tournaments"). */
+    public const CALENDAR_EVENT = 31923;
+
+    /** NIP-52 calendar: the league's list of tournaments, `d` = `tournaments`. */
+    public const CALENDAR = 31924;
+
+    /** Substitutes a lineup may bring on top of the mode's size. */
+    public const SUBSTITUTES = 2;
 
     protected function casts(): array
     {
@@ -72,6 +94,9 @@ class Tournament extends Model
             'times' => 'array',
             'results_mode' => TournamentResultsMode::class,
             'status' => TournamentStatus::class,
+            'signup_closes_at' => 'datetime',
+            'published_at' => 'datetime',
+            'draw_height' => 'integer',
         ];
     }
 
@@ -115,6 +140,83 @@ class Tournament extends Model
     public function matches(): HasMany
     {
         return $this->hasMany(TournamentMatch::class);
+    }
+
+    /**
+     * @return HasMany<TournamentSignup, $this>
+     */
+    public function signups(): HasMany
+    {
+        return $this->hasMany(TournamentSignup::class)->orderBy('id');
+    }
+
+    /**
+     * The director log, newest first.
+     *
+     * @return HasMany<TournamentResultEntry, $this>
+     */
+    public function resultEntries(): HasMany
+    {
+        return $this->hasMany(TournamentResultEntry::class)->orderByDesc('id');
+    }
+
+    /**
+     * @return BelongsTo<NostrEvent, $this>
+     */
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(NostrEvent::class, 'event_id');
+    }
+
+    /**
+     * @return BelongsTo<NostrEvent, $this>
+     */
+    public function drawEvent(): BelongsTo
+    {
+        return $this->belongsTo(NostrEvent::class, 'draw_event_id');
+    }
+
+    /**
+     * NIP-01 address of the published calendar event, `31923:<league>:<slug>`;
+     * null for a draft.
+     */
+    public function address(): ?string
+    {
+        return $this->event === null || $this->slug === null ? null : self::CALENDAR_EVENT.':'.$this->event->pubkey.':'.$this->slug;
+    }
+
+    public function naddr(): ?string
+    {
+        return $this->event === null || $this->slug === null ? null : NostrKeys::naddr(self::CALENDAR_EVENT, $this->event->pubkey, $this->slug);
+    }
+
+    /**
+     * Players per team: the mode's team size (1 for chess and RL 1v1).
+     */
+    public function teamSize(): int
+    {
+        return $this->profile()->entersTeams() ? (int) app(GameRegistry::class)->mode($this->game, $this->mode)?->teamSize : 1;
+    }
+
+    /**
+     * A lineup fields the mode's size plus up to this many substitutes
+     * (open question 10, CEO default 2026-09-26).
+     */
+    public function maxLineupSize(): int
+    {
+        return $this->teamSize() + self::SUBSTITUTES;
+    }
+
+    public function isSignupOpen(): bool
+    {
+        return $this->status === TournamentStatus::Signup
+            && $this->signup_closes_at !== null
+            && $this->signup_closes_at->isFuture();
+    }
+
+    public function isDirectorMode(): bool
+    {
+        return $this->results_mode === TournamentResultsMode::Director;
     }
 
     /**

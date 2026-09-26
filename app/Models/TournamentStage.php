@@ -6,6 +6,7 @@ use App\Enums\TournamentFormat;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Collection<int, TournamentRound> $rounds
+ * @property-read Tournament $tournament
  */
 #[Fillable(['tournament_id', 'number', 'format', 'status'])]
 class TournamentStage extends Model
@@ -28,6 +30,14 @@ class TournamentStage extends Model
     protected function casts(): array
     {
         return ['number' => 'integer', 'format' => TournamentFormat::class];
+    }
+
+    /**
+     * @return BelongsTo<Tournament, $this>
+     */
+    public function tournament(): BelongsTo
+    {
+        return $this->belongsTo(Tournament::class);
     }
 
     /**

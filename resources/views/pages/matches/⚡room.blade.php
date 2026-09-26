@@ -314,6 +314,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             foreach ($match->lineup($side)?->activeSeats() ?? [] as $seat) {
                 $members[$seat->user->pubkey] = ['pubkey' => $seat->user->pubkey, 'name' => $seat->user->displayName(), 'side' => $side];
             }
+
+            // A tournament's roster side (mix team, RL 1v1 player) has no lineup (P8b).
+            foreach (\App\Models\User::query()->whereIn('id', $match->rosterSide($side))->get() as $player) {
+                $members[$player->pubkey] = ['pubkey' => $player->pubkey, 'name' => $player->displayName(), 'side' => $side];
+            }
         }
 
         return [
@@ -425,8 +430,10 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $wins = SeriesMatch::seriesScore($games);
     $chip = SeriesPresenter::chip($m);
     $elo = SeriesPresenter::ratingFacts($m);
-    $editable = $captainSide !== null && in_array($m->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true) && ! $m->start_at?->isFuture();
-    $toAnswer = $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
+    // A tournament whose directors enter the results: the players report and accept nothing (P8b).
+    $directorEntered = SeriesService::isDirectorEntered($m);
+    $editable = ! $directorEntered && $captainSide !== null && in_array($m->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true) && ! $m->start_at?->isFuture();
+    $toAnswer = ! $directorEntered && $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
     $playing = count(array_filter($this->sheet, fn ($g) => $g['winner'] !== null));
     $captainOf = fn (string $side) => $m->lineup($side)?->clan?->owner?->displayName() ?? '';
     $noshowFrom = $m->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
@@ -596,6 +603,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             </div>
         </div>
     </div>
+
+    @if ($directorEntered)
+        <p class="m-0 flex items-center gap-2 rounded-md bg-card px-4 py-3 text-[13px] text-ink-2" data-test="director-entered">
+            <x-icon name="shield-check" :size="16" />{{ __('Results are entered by the tournament directors.') }}
+        </p>
+    @endif
 
     {{-- Timeline + Proof --}}
     <section aria-labelledby="tl-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6">

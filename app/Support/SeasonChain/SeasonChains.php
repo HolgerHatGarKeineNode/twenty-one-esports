@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
 use App\Models\ChessGame;
@@ -10,6 +11,7 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonParameterChange;
 use App\Models\SeriesMatch;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Series\Ladders;
@@ -85,7 +87,8 @@ final class SeasonChains
         $league = LeagueKey::required();
         $match->loadMissing(['reports.event', 'reports.responseEvent', 'challengeEvent', 'answerEvent', 'latestReport']);
         $attestedAt = $this->nextAttestationTime($season);
-        $candidate = $this->seriesCandidate($match, $attestedAt);
+        // Tournament matches never mine (user, 2026-09-26: "die Chain gehört zur Season").
+        $candidate = $match->tournament_match_id === null ? $this->seriesCandidate($match, $attestedAt) : null;
 
         $row = [
             'season_id' => $season->id,
@@ -158,7 +161,8 @@ final class SeasonChains
         $league = LeagueKey::required();
         $game->loadMissing(['white', 'black', 'recordEvent']);
         $attestedAt = $this->nextAttestationTime($season);
-        $candidate = $this->chessCandidate($game, $attestedAt);
+        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season").
+        $candidate = $game->tournament_match_id === null ? $this->chessCandidate($game, $attestedAt) : null;
 
         $row = [
             'season_id' => $season->id,
@@ -192,7 +196,9 @@ final class SeasonChains
             $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
         }
 
-        $content = 'Played on the league server, which checked every move; no signed report or response.';
+        $content = $game->end_reason === ChessEndReason::Director
+            ? 'Entered by the tournament director; not played on the league server and not confirmed by the players.'
+            : 'Played on the league server, which checked every move; no signed report or response.';
         $event = $league->publish(self::ATTESTATION, $this->chessTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
 
         return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
@@ -289,6 +295,8 @@ final class SeasonChains
                 $tags[] = ['clan', $pubkey, $clan];
             }
         }
+
+        array_push($tags, ...$this->tournamentTags($game->tournament_match_id));
 
         if ($block !== null) {
             $tags[] = $block;
@@ -626,6 +634,8 @@ final class SeasonChains
             }
         }
 
+        array_push($tags, ...$this->tournamentTags($match->tournament_match_id));
+
         if ($block !== null) {
             $tags[] = $block;
         }
@@ -649,6 +659,40 @@ final class SeasonChains
             'challenger' => $pinned['challenger'] ?? 'lineup:'.$match->challenger_lineup_id,
             'challenged' => $pinned['challenged'] ?? 'lineup:'.$match->challenged_lineup_id,
         ];
+    }
+
+    /**
+     * The tournament `a` of an attestation whose match a tournament paired
+     * (NIP rev. 4), and for a result the tournament directors entered the
+     * `entered-by` tag with the director's pubkey (open question 11, proposal
+     * of the plan; for the nostr-specialist to confirm).
+     *
+     * @return list<list<string>>
+     */
+    private function tournamentTags(?int $tournamentMatchId): array
+    {
+        $match = $tournamentMatchId === null ? null : TournamentMatch::query()->with('tournament.event')->find($tournamentMatchId);
+
+        if ($match === null) {
+            return [];
+        }
+
+        $tags = [];
+        $address = $match->tournament->address();
+
+        if ($address !== null) {
+            $tags[] = ['a', $address, ''];
+        }
+
+        if ($match->isDirectorResult()) {
+            $pubkey = User::query()->whereKey((int) ($match->result['corrected']['user_id'] ?? $match->result['user_id'] ?? 0))->value('pubkey');
+
+            if (is_string($pubkey)) {
+                $tags[] = ['entered-by', $pubkey];
+            }
+        }
+
+        return $tags;
     }
 
     /** NIP: with `admin`, `forfeit` or `void` the content states the public reason. */

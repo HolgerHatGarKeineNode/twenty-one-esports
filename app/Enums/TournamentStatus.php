@@ -4,13 +4,15 @@ namespace App\Enums;
 
 /**
  * Life of a tournament: a draft only its organizer, its directors and admins
- * see, then sign-up (P8b), the running brackets and the end. Payouts from the
- * tournament's own pot follow the end (P9).
+ * see, then sign-up (P8b), the draw (sign-up closed, the league waits for the
+ * Bitcoin block its draw committed to), the running brackets and the end.
+ * Payouts from the tournament's own pot follow the end (P9).
  */
 enum TournamentStatus: string
 {
     case Draft = 'draft';
     case Signup = 'signup';
+    case Drawing = 'drawing';
     case Running = 'running';
     case Finished = 'finished';
     case Cancelled = 'cancelled';
@@ -20,6 +22,7 @@ enum TournamentStatus: string
         return match ($this) {
             self::Draft => __('Draft'),
             self::Signup => __('Sign-up open'),
+            self::Drawing => __('Draw pending'),
             self::Running => __('Running'),
             self::Finished => __('Finished'),
             self::Cancelled => __('Called off'),

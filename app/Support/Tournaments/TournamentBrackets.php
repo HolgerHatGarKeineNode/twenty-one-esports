@@ -4,13 +4,18 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentMatchSlot;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
 use App\Models\TournamentStage;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\Bracket;
 use App\Support\Tournaments\Engine\BracketBuilder;
+use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\Entrant;
+use App\Support\Tournaments\Engine\MatchResult;
+use App\Support\Tournaments\Engine\Slot;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -35,7 +40,7 @@ final class TournamentBrackets
         }
 
         $options = $tournament->formatOptions();
-        $entrants = array_values($participants->map(fn (TournamentParticipant $participant): Entrant => new Entrant($participant->id, $participant->rating))->all());
+        $entrants = array_values($participants->map(fn (TournamentParticipant $participant): Entrant => self::entrant($participant))->all());
         $bracket = BracketBuilder::build($tournament->format, $entrants, $options, $seed);
         $state = Advancement::resolve($bracket, [], $options);
 
@@ -90,6 +95,71 @@ final class TournamentBrackets
         });
 
         return $bracket;
+    }
+
+    /**
+     * Rated entrants by Elo, equal Elo by sign-up (participants are created
+     * in sign-up order); mix teams after them in draw order.
+     */
+    private static function entrant(TournamentParticipant $participant): Entrant
+    {
+        return $participant->isMixTeam()
+            ? new Entrant($participant->id, Entrant::UNRATED, (int) $participant->draw_position)
+            : new Entrant($participant->id, $participant->rating, $participant->id);
+    }
+
+    /**
+     * The stored bracket as the engine built it: seeds, groups and every
+     * match (Swiss rounds paired so far included), in creation order, which
+     * is the order Advancement::resolve() needs (sources before their users).
+     */
+    public function load(Tournament $tournament): Bracket
+    {
+        $participants = $tournament->participants()->whereNotNull('seed')->orderBy('seed')->get();
+        $groups = [];
+
+        foreach ($participants as $participant) {
+            if ($participant->group !== null) {
+                $groups[$participant->group][] = $participant->id;
+            }
+        }
+
+        ksort($groups);
+
+        $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)
+            ->with(['round.stage', 'slots'])->orderBy('id')->get()
+            ->map(fn (TournamentMatch $match): BracketMatch => new BracketMatch(
+                $match->key,
+                $match->round->stage->number,
+                $match->group,
+                $match->bracket,
+                $match->round->number,
+                $match->position,
+                array_values($match->slots->map(fn (TournamentMatchSlot $slot): Slot => $slot->sourceSlot())->all()),
+                $match->if_needed,
+            ))->all();
+
+        return new Bracket($tournament->format, array_values($participants->pluck('id')->all()), $groups, array_values($matches));
+    }
+
+    /**
+     * The results the engine reads, by match key.
+     *
+     * @return array<string, MatchResult>
+     */
+    public function results(Tournament $tournament): array
+    {
+        $results = [];
+
+        foreach (TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotNull('result')->get() as $match) {
+            $result = $match->matchResult();
+
+            if ($result !== null) {
+                $results[$match->key] = $result;
+            }
+        }
+
+        return $results;
     }
 
     private function stageFormat(TournamentFormat $format, int $stage, FormatOptions $options): TournamentFormat

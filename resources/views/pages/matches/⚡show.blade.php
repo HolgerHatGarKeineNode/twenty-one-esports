@@ -146,6 +146,18 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         <span class="inline-flex min-h-8 items-center rounded-md px-3.5 text-[13px] font-bold {{ $banner[1] }}" data-test="match-banner">{{ $banner[0] }}</span>
     </div>
 
+    @if ($match->tournamentMatch !== null)
+        {{-- A tournament match (P8b): its tournament, and the director marker on a director result. --}}
+        <div class="flex flex-wrap items-center gap-3 text-[13px]">
+            <a href="{{ route('tournaments.show', $match->tournamentMatch->tournament_id) }}" class="inline-flex items-center gap-1.5"><x-icon name="trophy" :size="14" />{{ $match->tournamentMatch->tournament?->name }}</a>
+            @if ($match->tournamentMatch->isDirectorResult())
+                @include('pages.tournaments.partials.marker', ['marker' => \App\Support\Tournaments\TournamentView::marker((array) $match->tournamentMatch->result)])
+            @elseif (\App\Support\Series\SeriesService::isDirectorEntered($match))
+                <span class="text-xs text-ink-2">{{ __('Results are entered by the tournament directors.') }}</span>
+            @endif
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
             @foreach ([

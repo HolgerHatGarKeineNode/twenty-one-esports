@@ -20,6 +20,7 @@ enum ChessEndReason: string
     case InsufficientMaterial = 'insufficient_material';
     case Aborted = 'aborted';
     case Abandoned = 'abandoned';
+    case Director = 'director';
 
     /**
      * English label; views translate it.
@@ -37,6 +38,7 @@ enum ChessEndReason: string
             self::InsufficientMaterial => 'Insufficient material',
             self::Aborted => 'Aborted',
             self::Abandoned => 'Opponent left',
+            self::Director => 'Entered by the tournament director',
         };
     }
 }

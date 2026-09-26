@@ -6,6 +6,7 @@ use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
+use App\Models\Tournament;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
@@ -65,8 +66,32 @@ final class EsportsEventRules
             SeriesEvents::RESPONSE => $this->response($event),
             SeasonRelease::LABEL => $this->releaseLabel($event),
             OpponentLists::KIND => $this->opponentList($event),
+            NostrLogin::KIND => $this->tournamentConsent($event),
             default => 'kind_not_allowed',
         };
+    }
+
+    /**
+     * A tournament sign-up or withdrawal (P8b). The NIP keeps registration
+     * off the relays ("Registration is deliberately not an event"), so the
+     * consent is a NIP-98-style event (27235) the league stores and never
+     * publishes: `u` the tournament page, `method` POST, one `a` to the
+     * tournament's `31923`, `action` signup or withdraw. Who may enter what is
+     * league state (App\Support\Tournaments\TournamentSignups).
+     */
+    private function tournamentConsent(SignedEvent $event): ?string
+    {
+        $addresses = $event->tagsNamed('a');
+
+        if (count($event->tagsNamed('u')) !== 1 || $event->tag('method') !== 'POST') {
+            return 'consent_request';
+        }
+
+        if (count($addresses) !== 1 || ! str_starts_with($addresses[0][0] ?? '', Tournament::CALENDAR_EVENT.':')) {
+            return 'consent_tournament';
+        }
+
+        return in_array($event->tag('action'), ['signup', 'withdraw'], true) ? null : 'consent_action';
     }
 
     /**

@@ -90,6 +90,7 @@ final class ChessPgn
         $headers['Termination'] = match ($reason) {
             ChessEndReason::Timeout => 'time forfeit',
             ChessEndReason::Aborted, ChessEndReason::Abandoned => 'abandoned',
+            ChessEndReason::Director => 'adjudication',
             null => 'unterminated',
             default => 'normal',
         };

@@ -14,6 +14,7 @@ use App\Support\Notifications\WebPush;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\SeriesService;
+use App\Support\Tournaments\TournamentDraws;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -187,6 +188,20 @@ Artisan::command('series:expire-challenges', function (SeriesService $series) {
 })->purpose('Expire series challenges nobody answered in time');
 
 Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping();
+
+/*
+ * Tournaments (P8b): close sign-ups whose deadline passed (the draw commits
+ * to the next Bitcoin block), draw once that block is mined, and start the
+ * normal matches of every ready tournament match that has none yet (a chess
+ * player who was busy in another game gets theirs on a later run).
+ */
+Artisan::command('tournaments:advance', function (TournamentDraws $draws) {
+    $done = $draws->advanceDue();
+
+    $this->info("Closed {$done['closed']} sign-up(s), drew {$done['drawn']} tournament(s).");
+})->purpose('Close tournament sign-ups, draw from the Bitcoin block, start ready matches');
+
+Schedule::command('tournaments:advance')->everyMinute()->withoutOverlapping();
 
 /*
  * The trust job (NIP "Trust", `anchored-trust-v1`): anchors from the

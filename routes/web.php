@@ -93,8 +93,19 @@ Route::livewire('mining', 'pages::mining')->name('mining');
 Route::livewire('matches', 'pages::matches.index')->name('matches.index');
 Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')->name('matches.show');
 
-// A tournament (P8a): the minimal page until P8b builds TournamentShow.dc.html.
+/*
+ * Tournaments (P8b): the list, one tournament with its bracket, the draw,
+ * sign-up (logged in), and the director desk (the tournament's directors:
+ * gate `direct-tournament`, checked again in every action).
+ */
+Route::livewire('tournaments', 'pages::tournaments.index')->name('tournaments.index');
 Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNumber('tournament')->name('tournaments.show');
+Route::livewire('tournaments/{tournament}/draw', 'pages::tournaments.draw')->whereNumber('tournament')->name('tournaments.draw');
+Route::middleware('auth')->group(function () {
+    Route::livewire('tournaments/{tournament}/signup', 'pages::tournaments.signup')->whereNumber('tournament')->name('tournaments.signup');
+    Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')
+        ->middleware('can:direct-tournament,tournament')->name('tournaments.director');
+});
 
 /*
  * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
@@ -103,7 +114,6 @@ Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNum
  */
 $placeholders = [
     ['games', 'games.index', 'Live games', 'chess'],
-    ['tournaments', 'tournaments.index', 'Tournaments', 'tournaments'],
     ['rules', 'rules', 'Rules', null],
     ['protocol', 'protocol', 'Open protocol', null],
 ];

@@ -30,6 +30,7 @@ use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -457,6 +458,7 @@ final class SeriesService
     public function saveLiveGame(SeriesMatch $match, User $user, int $index, ?int $challengerGoals, ?int $challengedGoals, ?string $winner): void
     {
         $match = $this->fresh($match);
+        $this->assertPlayersReport($match);
 
         if ($match->captainSideOf($user) === null) {
             throw new SeriesRuleViolation('not_captain', __('Only a captain can enter the score.'));
@@ -578,7 +580,7 @@ final class SeriesService
      */
     public function rosterChoices(SeriesMatch $match, string $side): array
     {
-        $seats = $match->lineup($side)?->activeSeats() ?? [];
+        $seats = $match->lineup($side)?->activeSeats() ?? self::rosterSideSeats($match, $side);
         $pinned = $match->rated ? (GatePin::fromArray($match->gate_at_accept)->sides[$side] ?? null) : null;
 
         if ($pinned === null) {
@@ -594,6 +596,29 @@ final class SeriesService
 
             return $seat;
         }, $pinned);
+    }
+
+    /**
+     * The players of a roster side as seats (they have no lineup).
+     *
+     * @return list<LineupSeat>
+     */
+    private static function rosterSideSeats(SeriesMatch $match, string $side): array
+    {
+        $users = User::query()->whereIn('id', $match->rosterSide($side))->get()->keyBy('id');
+
+        return array_values(array_filter(array_map(function (int $id) use ($users): ?LineupSeat {
+            $user = $users->get($id);
+
+            if ($user === null) {
+                return null;
+            }
+
+            $seat = new LineupSeat(['user_id' => $id, 'role' => LineupRole::Player]);
+            $seat->setRelation('user', $user);
+
+            return $seat;
+        }, $match->rosterSide($side))));
     }
 
     /**
@@ -624,6 +649,7 @@ final class SeriesService
     public function reportNoShow(SeriesMatch $match, User $user): void
     {
         $match = $this->fresh($match);
+        $this->assertPlayersReport($match);
         $side = $match->captainSideOf($user);
 
         if ($side === null) {
@@ -731,6 +757,7 @@ final class SeriesService
     private function reportPlan(SeriesMatch $match, User $user): array
     {
         $match = $this->fresh($match);
+        $this->assertPlayersReport($match);
         $side = $match->captainSideOf($user);
 
         if ($side === null) {
@@ -859,6 +886,7 @@ final class SeriesService
     private function responsePlan(SeriesMatch $match, User $user, string $status, string $reason): array
     {
         $match = $this->fresh($match);
+        $this->assertPlayersReport($match);
         $report = $match->latestReport;
 
         if ($match->status !== SeriesStatus::Reported || $report === null || $report->status !== ReportStatus::Open) {
@@ -1008,7 +1036,7 @@ final class SeriesService
             }
         }
 
-        $users = array_values(array_unique(array_map(intval(...), $users)));
+        $users = array_values(array_unique(array_map(intval(...), [...$users, ...$fresh->rosterSide('challenger'), ...$fresh->rosterSide('challenged')])));
 
         if ($users !== []) {
             Broadcasts::send(new SeriesMatchChanged($users, $fresh->number, $fresh->status->value));
@@ -1024,6 +1052,31 @@ final class SeriesService
     {
         $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));
         $this->chains->attestSeries(SeriesMatch::query()->findOrFail($match->id));
+
+        // A tournament series moves its bracket once the result is committed (P8b).
+        if ($match->tournament_match_id !== null) {
+            $id = $match->id;
+            DB::afterCommit(fn () => app(TournamentRunner::class)->seriesFinished($id));
+        }
+    }
+
+    /**
+     * In a tournament whose directors enter the results, the players report,
+     * confirm and score nothing themselves (TOURNAMENT-FORMATS.md, section 6).
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function assertPlayersReport(SeriesMatch $match): void
+    {
+        if (self::isDirectorEntered($match)) {
+            throw new SeriesRuleViolation('director_results', __('Results are entered by the tournament directors.'));
+        }
+    }
+
+    public static function isDirectorEntered(SeriesMatch $match): bool
+    {
+        return $match->tournament_match_id !== null
+            && ($match->tournamentMatch?->tournament?->isDirectorMode() ?? false);
     }
 
     public function requestNewReport(SeriesMatch $match, User $admin): void

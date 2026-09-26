@@ -53,6 +53,7 @@ use Illuminate\Support\Carbon;
  * @property array<string, string>|null $pgn_headers
  * @property int|null $record_event_id
  * @property int|null $reminded_ply
+ * @property int|null $tournament_match_id the tournament match this game plays (P8b)
  * @property int|null $white_gone_ms
  * @property int|null $black_gone_ms
  * @property 'dm'|'push'|'here'|null $white_notify
@@ -67,10 +68,11 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, ChessMove> $moves
  * @property-read ChessGame|null $rematch
  * @property-read NostrEvent|null $recordEvent
+ * @property-read TournamentMatch|null $tournamentMatch
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
-    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind'])]
+    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */
@@ -118,6 +120,14 @@ class ChessGame extends Model
             'white_remind' => 'boolean',
             'black_remind' => 'boolean',
         ];
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     /**
