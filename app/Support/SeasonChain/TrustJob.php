@@ -285,7 +285,9 @@ final class TrustJob
      * `created_at`, and a report that counted once keeps its place for the
      * season (trust_counted_reports), so neither backdated reports nor older
      * ones that become eligible later can push it out. A dismissal or an
-     * exclusion of its author stops it counting, not its place. A report
+     * exclusion of its author stops it counting and frees its place in the
+     * author's and the subtree's budget (P7d gate, Low B); the stored rows
+     * still load first, so a report that counts cannot be evicted. A report
      * against a key that was never ranked (no assertion yet) takes no place.
      *
      * @param  array<string, int>  $previousRanks
@@ -313,12 +315,16 @@ final class TrustJob
         foreach ($stored as $counted) {
             $seen[$counted->event_id] = true;
             $pairs[$counted->target][$counted->author] = true;
+
+            // A dismissed report, or one whose author is excluded, gives its slots back
+            // (P7d gate, Low B): else two accounts could burn a subtree's budget for the season.
+            if (isset($dismissed[$counted->event_id]) || isset($excluded[$counted->author])) {
+                continue;
+            }
+
+            $targets[$counted->target][$counted->author] = true;
             $perAuthor[$counted->author] = ($perAuthor[$counted->author] ?? 0) + 1;
             $perAnchor[$counted->subtree] = ($perAnchor[$counted->subtree] ?? 0) + 1;
-
-            if (! isset($dismissed[$counted->event_id]) && ! isset($excluded[$counted->author])) {
-                $targets[$counted->target][$counted->author] = true;
-            }
         }
 
         $reports = NostrEvent::query()->where('kind', self::REPORT)->where('signed_at', '>=', max($since, $seasonStart))

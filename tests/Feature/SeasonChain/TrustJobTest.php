@@ -574,6 +574,40 @@ test('round 4: a report against a key that was never ranked uses no budget', fun
         ->and(TrustCountedReport::query()->count())->toBe(1);
 });
 
+test('regression (P7d gate, Low B): dismissed reports, or reports of an excluded author, give their subtree slot back', function (string $decision) {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => []]); // reports_per_anchor 5, reports_per_author 3 (defaults)
+    $at = now()->subMinutes(30)->getTimestamp();
+    [$burner1, $burner2, $genuine] = array_map(fn () => (new TestSigner)->pubkey, range(1, 3));
+    $players = reportSubtree([$burner1, $burner2, $genuine], $at);
+
+    // Two accounts of one subtree burn its five report slots for the season.
+    foreach ([[$burner1, 0], [$burner1, 1], [$burner1, 2], [$burner2, 3], [$burner2, 4]] as [$burner, $i]) {
+        archivedReport($burner, $players[$i], $at + 10 + $i);
+    }
+    app(TrustJob::class)->run();
+    expect(TrustCountedReport::query()->count())->toBe(5);
+
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+
+    if ($decision === 'dismissed') {
+        foreach (NostrEvent::query()->where('kind', TrustJob::REPORT)->pluck('event_id') as $eventId) {
+            app(TrustAdmin::class)->dismiss($admin, $eventId, 'Burner reports.');
+        }
+    } else {
+        app(TrustAdmin::class)->exclude($admin, $burner1, 'Burner account.');
+        app(TrustAdmin::class)->exclude($admin, $burner2, 'Burner account.');
+    }
+
+    // The genuine report of the same subtree counts: X 75 -> 50.
+    archivedReport($genuine, $players[7], $at + 100);
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[7])->value('rank'))->toBe(50)
+        ->and(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 5)))->toBe([75, 75, 75, 75, 75]);
+})->with(['dismissed', 'excluded']);
+
 /** A signed league report by a test-bed player against any pubkey. */
 function leagueReport(string $author, string $target, int $at): array
 {
