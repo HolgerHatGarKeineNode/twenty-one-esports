@@ -154,11 +154,22 @@ final class MiniRelay
     {
         $this->clients[$key]['subscriptions'][$subscription] = $filters;
 
-        $matching = array_values(array_filter($this->events, fn (array $event) => $this->matchesAny($event, $filters)));
-        usort($matching, fn (array $a, array $b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
-        $limit = min(array_map(fn (array $filter) => (int) ($filter['limit'] ?? PHP_INT_MAX), $filters ?: [[]]));
+        // NIP-01: `limit` applies to each filter's own initial query; the answer is their union.
+        $matching = [];
 
-        foreach (array_slice($matching, 0, $limit) as $event) {
+        foreach ($filters ?: [[]] as $filter) {
+            $own = array_values(array_filter($this->events, fn (array $event) => $this->matchesAny($event, [$filter])));
+            usort($own, fn (array $a, array $b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
+
+            foreach (array_slice($own, 0, (int) ($filter['limit'] ?? PHP_INT_MAX)) as $event) {
+                $matching[(string) ($event['id'] ?? '')] = $event;
+            }
+        }
+
+        $matching = array_values($matching);
+        usort($matching, fn (array $a, array $b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
+
+        foreach ($matching as $event) {
             $this->send($key, ['EVENT', $subscription, $event]);
         }
 

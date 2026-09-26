@@ -14,6 +14,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // The season chain (P7c): status, estimator, Block 0 release, rule changes.
     Route::livewire('season', 'pages::admin.season')->name('season');
 
+    // Trust (P7d): the reports the trust job read, dismissals and exclusions.
+    Route::livewire('trust', 'pages::admin.trust')->name('trust');
+
     // Series disputes and no-shows (P6a); `{match}` is the league match number.
     Route::livewire('disputes', 'pages::admin.disputes')->name('disputes');
     Route::livewire('disputes/{match}', 'pages::admin.dispute')->name('disputes.show');

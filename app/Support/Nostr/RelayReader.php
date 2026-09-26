@@ -20,12 +20,15 @@ use WebSocket\Message\Text;
  */
 class RelayReader
 {
+    public const FILTERS_PER_REQ = 20;
+
     /**
      * @param  list<array<string, mixed>>  $filters  NIP-01 filters of one REQ; each needs `kinds`
      * @param  list<string>|null  $relays  null = config('esports.relays')
      * @param  array<string, true>  $known  ids the caller has already (checked and stored): skipped
      *                                      before the costly signature check
-     * @param  int  $max  most events taken from one relay; the rest of a flood is dropped unread
+     * @param  int  $max  most events one fetch takes and verifies in total, over every relay and REQ
+     *                    (about 0.1 s of signature checking each); the rest is dropped unread
      * @return list<SignedEvent> distinct by id, none of $known, each matching one of the filters
      */
     public function fetch(array $filters, ?array $relays = null, array $known = [], int $max = 5000): array
@@ -33,8 +36,15 @@ class RelayReader
         $events = [];
 
         foreach ($relays ?? config('esports.relays', []) as $relay) {
-            foreach ($this->read($relay, $filters, $known + $events, $max) as $event) {
-                $events[$event->id] ??= $event;
+            // Relays cap the filters of one REQ; one reporter per filter means many.
+            foreach (array_chunk($filters, self::FILTERS_PER_REQ) as $chunk) {
+                if (count($events) >= $max) {
+                    break 2;
+                }
+
+                foreach ($this->read($relay, $chunk, $known + $events, $max - count($events)) as $event) {
+                    $events[$event->id] ??= $event;
+                }
             }
         }
 

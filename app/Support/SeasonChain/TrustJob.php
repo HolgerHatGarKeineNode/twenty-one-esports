@@ -4,7 +4,9 @@ namespace App\Support\SeasonChain;
 
 use App\Models\Admin;
 use App\Models\NostrEvent;
+use App\Models\TrustExclusion;
 use App\Models\TrustRank;
+use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
 use App\Models\User;
 use App\Support\Board;
@@ -33,6 +35,13 @@ use Illuminate\Support\Facades\DB;
  * (`1984`), read from the league relays and archived in nostr_events, so a
  * relay outage leaves the archived lists in place instead of emptying the
  * graph. Admin dismissals and exclusions have no storage yet: none apply.
+ *
+ * Cost (security re-check, note 5): the league users are an open set, and
+ * every new list or report costs one signature check (about 0.1 s). Known
+ * ids skip the check, so a steady state is cheap, but a first run or a wave
+ * of sign-ups scales with them. `esports.trust.max_events` caps what one run
+ * reads and verifies per kind (lists, reports); what is left comes with the
+ * next run.
  *
  * Fail closed: without the trust key, the league key or a readable member
  * list for both years the job refuses ({@see TrustJobRefused}); the ranks of
@@ -84,11 +93,13 @@ final class TrustJob
 
         $lists->archive($this->reader->fetch($lists->filters($authors, $since), known: $lists->knownIds(), max: $max));
 
-        $reporters = TrustRank::query()->where('rank', '>=', self::REPORTER_MINIMUM)->pluck('pubkey')->all();
-        $reportFilters = array_map(fn (array $chunk): array => [
-            'kinds' => [self::REPORT], 'authors' => $chunk, '#L' => [self::LABEL_NAMESPACE],
-            'since' => now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp(), 'limit' => $max,
-        ], array_chunk($reporters, OpponentLists::AUTHORS_PER_FILTER));
+        $reporters = array_values(array_map(strval(...), TrustRank::query()->where('rank', '>=', self::REPORTER_MINIMUM)->pluck('pubkey')->all()));
+        // One filter per reporter with its own limit (security re-check): a burst by one
+        // account can only bury that account's own reports, never another reporter's.
+        $reportFilters = array_map(fn (string $reporter): array => [
+            'kinds' => [self::REPORT], 'authors' => [$reporter], '#L' => [self::LABEL_NAMESPACE],
+            'since' => now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp(), 'limit' => (int) config('esports.trust.reports_limit_per_author'),
+        ], $reporters);
         $knownReports = array_fill_keys(NostrEvent::query()->where('kind', self::REPORT)->pluck('event_id')->all(), true);
         $this->archiveReports($this->reader->fetch($reportFilters, known: $knownReports, max: $max));
 
@@ -102,7 +113,8 @@ final class TrustJob
     {
         $previous = TrustRank::query()->get()->keyBy('pubkey');
         $entries = $lists->newestEntries();
-        $result = AnchoredTrust::compute($anchors, $entries, $this->countedReports($previous->map(fn (TrustRank $row): int => $row->rank)->all()));
+        $excluded = array_values(array_map(strval(...), TrustExclusion::query()->pluck('pubkey')->all()));
+        $result = AnchoredTrust::compute($anchors, $entries, $this->countedReports($previous->map(fn (TrustRank $row): int => $row->rank)->all(), $excluded), $excluded);
         $now = now()->getTimestamp();
 
         $this->describe($trust, $now);
@@ -256,36 +268,50 @@ final class TrustJob
 
     /**
      * Reports that count this run (NIP "Reports"): the league namespace with
-     * one of its labels, an author with rank at least 50 in the previous run,
-     * at most 365 days old, one per author and target. The algorithm caps
-     * them at two.
+     * one of its labels, an author with rank at least 50 in the previous run
+     * and not excluded, at most 365 days old, not dismissed by an admin, one
+     * per author and target. The algorithm caps them at two per target.
+     *
+     * Mass reports (N1): one author counts at most `reports_per_author`
+     * reports per season (since Block 0 of the live season, else in the
+     * 365-day window), the earliest first, so a later burst can neither add
+     * targets nor displace the reports that counted already.
      *
      * @param  array<string, int>  $previousRanks
+     * @param  list<string>  $excluded
      * @return array<string, int> target => counted reports
      */
-    private function countedReports(array $previousRanks): array
+    private function countedReports(array $previousRanks, array $excluded): array
     {
         $since = now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp();
-        $authors = [];
+        $seasonStart = Seasons::live()?->genesis_at->getTimestamp() ?? $since;
+        $cap = max(0, (int) config('esports.trust.reports_per_author'));
+        $dismissed = array_fill_keys(TrustReportDismissal::query()->pluck('event_id')->all(), true);
+        $excluded = array_fill_keys($excluded, true);
+        $targets = [];
+        $perAuthor = [];
 
-        $reports = NostrEvent::query()->where('kind', self::REPORT)->where('signed_at', '>=', $since)->cursor();
+        $reports = NostrEvent::query()->where('kind', self::REPORT)->where('signed_at', '>=', max($since, $seasonStart))
+            ->orderBy('signed_at')->orderBy('event_id')->cursor();
 
         foreach ($reports as $report) {
-            if (($previousRanks[$report->pubkey] ?? 0) < self::REPORTER_MINIMUM) {
+            if (($previousRanks[$report->pubkey] ?? 0) < self::REPORTER_MINIMUM || isset($excluded[$report->pubkey]) || isset($dismissed[$report->event_id])) {
                 continue;
             }
 
             $event = SignedEvent::fromInput($report->payload());
             $target = $event?->tag('p');
 
-            if ($event === null || ! self::isLeagueReport($event) || ! NostrKeys::isHexPubkey($target) || $target === $event->pubkey) {
+            if ($event === null || ! self::isLeagueReport($event) || ! NostrKeys::isHexPubkey($target) || $target === $event->pubkey
+                || isset($targets[$target][$event->pubkey]) || ($perAuthor[$event->pubkey] ?? 0) >= $cap) {
                 continue;
             }
 
-            $authors[$target][$event->pubkey] = true;
+            $targets[$target][$event->pubkey] = true;
+            $perAuthor[$event->pubkey] = ($perAuthor[$event->pubkey] ?? 0) + 1;
         }
 
-        return array_map(count(...), $authors);
+        return array_map(count(...), $targets);
     }
 
     /**

@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
@@ -240,6 +241,73 @@ test('a counted report halves the target; a report by an unranked author does no
     // bob: raw 1/6 halved to 1/12 -> round(100 + 25 * log2(2/3)) = 85.
     expect(rankOf('bob'))->toBe(85)
         ->and(rankOf('dave'))->toBe(100);
+});
+
+/** A signed league report by a test-bed player against any pubkey. */
+function leagueReport(string $author, string $target, int $at): array
+{
+    return trustPeople()[$author]->sign(1984, [
+        ['p', $target, 'other'], ['L', TrustJob::LABEL_NAMESPACE], ['l', 'multi-account', TrustJob::LABEL_NAMESPACE], ['alt', 'Report'],
+    ], 'reason', $at);
+}
+
+test('regression (security re-check, F1 reports): a report burst by one trusted account buries only its own reports', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+
+    // carol's real report against bob, then 8 newer reports by alice against throwaway keys.
+    $burst = array_map(fn (int $i) => leagueReport('alice', (new TestSigner)->pubkey, $at + 60 + $i), range(1, 8));
+    config(['esports.trust.max_events' => 6, 'esports.trust.reports_limit_per_author' => 3]);
+    withRelay([...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30), ...$burst], fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('bob'))->toBe(85)
+        ->and(NostrEvent::query()->where('kind', 1984)->where('pubkey', pk('alice'))->count())->toBeLessThanOrEqual(3);
+});
+
+test('mass reports (N1): at most reports_per_author reports of one author count per season, the earliest first', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+
+    $reports = [];
+    foreach (['bob', 'dave', 'erin', 'frank'] as $i => $target) {
+        $reports[] = leagueReport('alice', pk($target), $at + 60 + $i);
+    }
+    config(['esports.trust.reports_per_author' => 3]);
+    withRelay([...seasonThreeEvents($at), ...$reports], fn () => app(TrustJob::class)->run());
+
+    // bob and dave (raw 1/6) drop to 85; frank follows bob to 21 (raw 1/72), but the fourth report, against frank, does not count (else 0).
+    expect(array_map(rankOf(...), ['bob', 'dave', 'erin', 'frank']))->toBe([85, 85, 100, 21]);
+});
+
+test('an admin dismissal stops a report counting, and an exclusion takes a pubkey out of the graph', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    $report = leagueReport('carol', pk('bob'), $at + 30);
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+    withRelay([...seasonThreeEvents($at), $report], fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('bob'))->toBe(85);
+
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    app(TrustAdmin::class)->dismiss($admin, $report['id'], 'Carol mixed up two accounts.');
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('bob'))->toBe(100);
+
+    // Excluding carol: raw 0, her own list vouches for nobody; dave keeps only bob's entry (layer 2).
+    app(TrustAdmin::class)->exclude($admin, pk('carol'), 'Sold her account.');
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('carol'))->toBe(0)
+        ->and(rankOf('dave'))->toBe(46);
+
+    app(TrustAdmin::class)->lift($admin, pk('carol'));
+    withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
+
+    expect(rankOf('carol'))->toBe(100);
 });
 
 test('the job refuses without the trust key, with the league key as trust key, or without the member list, and keeps the last ranks', function () {
