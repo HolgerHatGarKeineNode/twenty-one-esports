@@ -66,7 +66,8 @@ final class SceneRenderer
             return $this->lastPng;
         }
 
-        $result = Process::timeout(10)
+        // A render takes 0.07-0.2 s; a hanging one must not hold the supervisor loop.
+        $result = Process::timeout(max(1, (int) config('twentyone.stream.scene.render_timeout_seconds', 2)))
             ->env([...ChildEnvironment::withoutSecrets(), 'FONTCONFIG_FILE' => $this->fontconfig()])
             ->input($svg)
             ->run([$this->rsvgConvert, '--format', 'png']);

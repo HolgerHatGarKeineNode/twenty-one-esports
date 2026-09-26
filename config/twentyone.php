@@ -134,8 +134,10 @@ return [
             'url' => 'esports.einundzwanzig.space',
             'crf' => 35,
             'hysteresis_seconds' => 60,
-            // Renders failing this many seconds in a row send the stream back to the loop.
-            'render_failures_for_loop' => 10,
+            // One render may take this long (normally 0.07-0.2 s) before it counts as failed.
+            'render_timeout_seconds' => 2,
+            // Renders failing for this many wall-clock seconds in a row send the stream back to the loop.
+            'render_failure_seconds' => 10,
         ],
     ],
 

@@ -152,13 +152,13 @@ class TwentyOneStreamCommand extends Command
         );
 
         // An encoder that wrote no segment for three segment lengths is restarted;
-        // a scene that failed to render this many seconds in a row gives way to the loop.
+        // a scene whose renders have failed for this many wall-clock seconds gives way to the loop.
         $watchdogSeconds = (float) config('twentyone.stream.watchdog_seconds', 18);
-        $renderFailuresForLoop = (int) config('twentyone.stream.scene.render_failures_for_loop', 10);
+        $renderFailureSeconds = (float) config('twentyone.stream.scene.render_failure_seconds', 10);
         $nextStartAt = 0.0;
         $nextPollAt = 0.0;
         $pollFailures = 0;
-        $renderFailures = 0;
+        $renderFailingSince = null;
         $sceneGame = null;
         $scene = null;
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
@@ -221,17 +221,37 @@ class TwentyOneStreamCommand extends Command
                 $this->pending = $this->startEncoder($mode, $public, $hlsDir, $prepared);
             }
 
-            foreach ([$this->active, $this->pending] as $run) {
-                if ($run !== null && $run->mode === ModeMachine::SCENE && $scene !== null && $now - $run->lastFrameAt >= 1) {
-                    $renderFailures = $this->sendSceneFrame($run, $renderer, $scene, $now, $renderFailures === 0) ? 0 : $renderFailures + 1;
-                }
+            // FD2: a scene that cannot be rendered for a while goes back to the loop.
+            // Counted in wall-clock seconds from the start of the first failed
+            // render, not in attempts: a hanging renderer makes few attempts.
+            if ($renderFailingSince !== null && $now - $renderFailingSince >= $renderFailureSeconds && $modes->mode() === ModeMachine::SCENE) {
+                $this->log(sprintf('scene render failing for %.0f s, back to the loop for %d s', $now - $renderFailingSince, self::SCENE_BLOCK_SECONDS));
+                $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
+                $renderFailingSince = null;
             }
 
-            // FD2: a scene that cannot be rendered for a while goes back to the loop.
-            if ($renderFailures >= $renderFailuresForLoop && $modes->mode() === ModeMachine::SCENE) {
-                $this->log('scene render failed '.$renderFailures.' times in a row, back to the loop for '.self::SCENE_BLOCK_SECONDS.' s');
-                $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
-                $renderFailures = 0;
+            foreach ([$this->active, $this->pending] as $run) {
+                if ($run === null || $run->mode !== ModeMachine::SCENE || $scene === null || $now - $run->lastFrameAt < 1) {
+                    continue;
+                }
+
+                if ($modes->mode() !== ModeMachine::SCENE) {
+                    // Being replaced by the loop: keep it fed with the last frame, no render
+                    // that could hang the loop while the switch waits for the new encoder.
+                    $last = $renderer->lastPng();
+
+                    if ($last !== null) {
+                        $run->sendFrame($last, $now);
+                    } else {
+                        $run->lastFrameAt = $now;
+                    }
+
+                    continue;
+                }
+
+                $attemptAt = microtime(true);
+                $rendered = $this->sendSceneFrame($run, $renderer, $scene, $now, $renderFailingSince === null);
+                $renderFailingSince = $rendered ? null : ($renderFailingSince ?? $attemptAt);
             }
 
             if ($this->pending !== null) {

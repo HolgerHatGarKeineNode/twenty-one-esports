@@ -215,7 +215,7 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
         ->and($second[1])->toHaveCount(3)
         ->and(array_intersect($first[1], $second[1]))->toBe([])
         // Run 1 starts at the clock floor (no state yet); run 2 right after its 3 segments.
-        ->and((int) $firstSequence[1])->toBeGreaterThanOrEqual(intdiv(time() - 10, 6))
+        ->and((int) $firstSequence[1])->toBeGreaterThanOrEqual(intdiv(time() - 10, 2))
         ->and((int) $secondSequence[1])->toBe((int) $firstSequence[1] + 3)
         ->and($published[2])->toMatch('/^#EXT-X-MAP:URI="loop\/\w+-init\.mp4"$/m')
         ->and($published[2])->not->toContain(explode('-', basename($first[1][0]))[0]);
@@ -280,13 +280,31 @@ test('a scene that cannot be rendered gives way to the loop', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     fakeEncoder($this->dir);
     failingRenderer($this->dir);
-    config(['twentyone.stream.scene.render_failures_for_loop' => 2]);
+    config(['twentyone.stream.scene.render_failure_seconds' => 2]);
     ChessGame::factory()->create();
 
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5]);
     $output = Artisan::output();
 
-    expect($output)->toContain('ffmpeg started mode=scene', 'scene render failed 2 times in a row, back to the loop', 'ffmpeg started mode=loop');
+    expect($output)->toMatch('/scene render failing for \\d+ s, back to the loop/')
+        ->and($output)->toContain('ffmpeg started mode=scene', 'ffmpeg started mode=loop');
+});
+
+test('a hanging renderer is cut off after its timeout and the loop takes over by wall-clock time', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    File::put($this->dir.'/rsvg-convert', "#!/bin/sh\nexec sleep 30\n");
+    chmod($this->dir.'/rsvg-convert', 0755);
+    config([
+        'twentyone.stream.scene.rsvg_convert' => $this->dir.'/rsvg-convert',
+        'twentyone.stream.scene.render_timeout_seconds' => 1,
+        'twentyone.stream.scene.render_failure_seconds' => 3,
+    ]);
+    ChessGame::factory()->create();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 7]);
+
+    expect(Artisan::output())->toMatch('/scene render failing for [3-5] s, back to the loop/');
 });
 
 test('an encoder that stops writing segments is restarted by the watchdog', function () {

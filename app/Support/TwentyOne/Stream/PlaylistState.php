@@ -36,27 +36,43 @@ final readonly class PlaylistState
         ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }
 
+    /** 2026-01-01T00:00:00Z, the origin of the discontinuity floor. */
+    private const DISCONTINUITY_EPOCH = 1767225600;
+
+    /**
+     * hls.js 1.7.3 mistimes playback when DISCONTINUITY-SEQUENCE is large
+     * (security re-verification, 2026-09-26: 1.34e8 skipped 2.1 s every few
+     * seconds, 2.68e8 played at ~2x); up to 5e7 played clean.
+     */
+    public const DISCONTINUITY_LIMIT = 50_000_000;
+
     /**
      * The persisted state, or, when the file is missing or unreadable, a
-     * fresh one whose sequence numbers start at a clock floor: the number of
-     * 6 s segment slots since 1970. Normal operation publishes about one
-     * segment per slot, so a later loss of the state file still continues
-     * above what players saw before instead of falling back to 0.
+     * fresh one whose counters start at clock floors, so a lost state file
+     * still continues above what players saw before instead of at 0:
+     *
+     * - MEDIA-SEQUENCE: 2 s slots since 1970. Segments are 6 s, so even
+     *   make-before-break switches (short segments) do not outrun it.
+     * - DISCONTINUITY-SEQUENCE: minutes since 2026-01-01, well below
+     *   DISCONTINUITY_LIMIT for decades. It outruns the stream only with more
+     *   than one discontinuity per minute over the whole time without state.
      *
      * @return array{0: self, 1: 'missing'|'unreadable'|null}
      */
     public static function recover(?string $json, int $now): array
     {
-        $floor = intdiv($now, PlaylistWriter::TARGET_DURATION);
+        $mediaFloor = intdiv($now, 2);
+        $discontinuityFloor = min(self::DISCONTINUITY_LIMIT - 1, max(0, intdiv($now - self::DISCONTINUITY_EPOCH, 60)));
+        $floor = new self($mediaFloor, $discontinuityFloor);
 
         if ($json === null) {
-            return [new self($floor, $floor), 'missing'];
+            return [$floor, 'missing'];
         }
 
         $data = json_decode($json, true);
 
         if (! is_array($data) || ! is_int($data['mediaSequence'] ?? null) || ! is_int($data['discontinuitySequence'] ?? null)) {
-            return [new self($floor, $floor), 'unreadable'];
+            return [$floor, 'unreadable'];
         }
 
         return [self::fromJson($json), null];
