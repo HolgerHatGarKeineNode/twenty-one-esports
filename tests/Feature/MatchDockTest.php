@@ -15,7 +15,9 @@ use App\Models\SeriesReport;
 use App\Models\User;
 use App\Support\Dock\DockItem;
 use App\Support\Dock\OpenMatches;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /*
@@ -216,4 +218,34 @@ test('the dock reads the game and series of the current route', function () {
         ->and(OpenMatches::onScreen($request('/matches/402/room')))->toBe(['game' => null, 'series' => 402])
         ->and(OpenMatches::onScreen($request('/clans')))->toBe(['game' => null, 'series' => null])
         ->and(OpenMatches::onScreen(null))->toBe(['game' => null, 'series' => null]);
+});
+
+test('the dock reads a player\'s series without a query per series', function () {
+    $owner = User::factory()->create();
+    $mine = Lineup::factory()->ready()->create(['clan_id' => Clan::factory()->create(['owner_id' => $owner->id])->id]);
+    // A seated player who is not the captain: the lookup goes through the seat, its user and their clan.
+    $player = $mine->seats->first(fn ($seat) => $seat->user_id !== $owner->id)->user;
+
+    $queries = function () use ($player): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        Model::preventLazyLoading();
+
+        try {
+            app(OpenMatches::class)->for(User::query()->findOrFail($player->id));
+        } finally {
+            Model::preventLazyLoading(false);
+            DB::disableQueryLog();
+        }
+
+        return count(DB::getQueryLog());
+    };
+
+    dockSeries($mine, 'challenger', ['status' => SeriesStatus::Accepted, 'start_at' => now()->subMinutes(20)]);
+    $one = $queries();
+    dockSeries($mine, 'challenger', ['status' => SeriesStatus::Disputed]);
+    dockSeries($mine, 'challenged', ['status' => SeriesStatus::Accepted, 'start_at' => now()->subMinutes(5)]);
+
+    expect(dockKeys($player))->toHaveCount(3)
+        ->and($queries())->toBe($one);
 });

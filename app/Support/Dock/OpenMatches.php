@@ -448,6 +448,16 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
+        // participantSideOf() reads this player's seat, its user and their
+        // clan: those seats get the player loaded above (clanMember included)
+        // instead of two lazy queries per series. The other seats' users are
+        // never read here, so they are not loaded at all.
+        foreach ($matches as $match) {
+            foreach ([$match->challengerLineup, $match->challengedLineup] as $lineup) {
+                $lineup?->seats->where('user_id', $user->id)->each(fn (LineupSeat $seat) => $seat->setRelation('user', $user));
+            }
+        }
+
         return array_values($matches->map(fn (SeriesMatch $match) => $this->seriesItem($match, $user, $nowMs))->filter()->values()->all());
     }
 
