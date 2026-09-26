@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Support\Nostr\NostrKeys;
 use Database\Factories\ChessGameFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -30,8 +31,8 @@ use Illuminate\Support\Carbon;
  * @property bool $rated
  * @property array<string, mixed>|null $gate_at_accept the trust gate pinned when the league paired a rated game (App\Support\SeasonChain\GatePin)
  * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing of a rated game
- * @property int $white_id
- * @property int $black_id
+ * @property int|null $white_id null once the player deleted the account
+ * @property int|null $black_id null once the player deleted the account
  * @property ChessGameStatus $status
  * @property string|null $result
  * @property ChessEndReason|null $end_reason
@@ -124,7 +125,19 @@ class ChessGame extends Model
      */
     public function white(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'white_id');
+        return $this->belongsTo(User::class, 'white_id')->withDefault(fn (User $user) => self::deletedPlayer($user));
+    }
+
+    /**
+     * The side of a player whose account is gone (the game stays, security
+     * re-check item 4): an unsaved user named "Deleted player", with an
+     * all-zero key, so views and the PGN keep working; `exists` is false.
+     */
+    public static function deletedPlayer(User $user): User
+    {
+        $pubkey = str_repeat('0', 64);
+
+        return $user->forceFill(['name' => __('Deleted player'), 'pubkey' => $pubkey, 'npub' => NostrKeys::hexToNpub($pubkey)]);
     }
 
     /**
@@ -132,7 +145,7 @@ class ChessGame extends Model
      */
     public function black(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'black_id');
+        return $this->belongsTo(User::class, 'black_id')->withDefault(fn (User $user) => self::deletedPlayer($user));
     }
 
     /**

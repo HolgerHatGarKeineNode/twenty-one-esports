@@ -6,6 +6,8 @@ use App\Enums\ChessGameStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessRuleViolation;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -14,11 +16,14 @@ use Illuminate\Validation\ValidationException;
 
 class DeleteAccount
 {
+    public function __construct(private ChessGameService $games) {}
+
     /**
      * Delete everything this site stores about the user and log them out.
      *
      * Signed Nostr events (challenges, results) are not ours to delete: they
-     * live on relays under the user's key. The flash message says so.
+     * live on relays under the user's key. The flash message says so. Chess
+     * games and ratings stay too, with the player shown as "Deleted player".
      */
     public function __invoke(User $user): void
     {
@@ -30,6 +35,20 @@ class DeleteAccount
 
         if ($rated) {
             throw ValidationException::withMessages(['confirmDeletion' => __('Finish your rated game first: deleting your account now would take its result from your opponent.')]);
+        }
+
+        // Casual games still running end first (aborted before the clocks run, else
+        // resigned): the game rows stay with the side anonymised (security re-check item 4).
+        $running = ChessGame::query()->where('status', ChessGameStatus::Active)
+            ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
+            ->get();
+
+        foreach ($running as $game) {
+            try {
+                $game->clocksRunning() ? $this->games->resign($game, $user) : $this->games->abort($game, $user);
+            } catch (ChessRuleViolation) {
+                // ended in between
+            }
         }
 
         if ($user->avatar_path !== null) {

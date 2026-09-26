@@ -8,16 +8,19 @@
  * block. Nothing after the pairing undoes the gate.
  */
 
+use App\Enums\ChessGameStatus;
 use App\Livewire\Actions\DeleteAccount;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\NostrEvent;
 use App\Models\Rating;
+use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use Illuminate\Validation\ValidationException;
@@ -179,10 +182,47 @@ test('regression (security gate F3): an account cannot be deleted during a rated
 
     // Casual games do not hold an account back.
     $casual = User::factory()->create();
-    ChessGame::factory()->create(['white_id' => $casual->id]);
+    $running = ChessGame::factory()->create(['white_id' => $casual->id]);
     app(DeleteAccount::class)($casual);
 
-    expect(User::query()->whereKey($casual->id)->exists())->toBeFalse();
+    // The running casual game ends (aborted, no clock ran yet) and stays, its side anonymised.
+    expect(User::query()->whereKey($casual->id)->exists())->toBeFalse()
+        ->and($running->refresh()->only(['white_id', 'status']))->toBe(['white_id' => null, 'status' => ChessGameStatus::Aborted]);
+});
+
+test('regression (security re-check, item 4): deleting an account anonymises its finished games instead of deleting them', function () {
+    app()->instance(TrustFacts::class, chessFacts());
+    [$a, $b] = [clanPlayer(), clanPlayer()];
+    app(ChessQueue::class)->join($a, 'blitz', rated: true);
+    $game = playTwentyMoves(app(ChessQueue::class)->join($b, 'blitz', rated: true));
+    $black = $game->black;
+    app(ChessGameService::class)->resign($game->refresh(), $black);
+    $moves = $game->moves()->count();
+
+    app(DeleteAccount::class)($black);
+
+    $game = ChessGame::query()->find($game->id);
+
+    expect($game)->not->toBeNull()
+        ->and($game->black_id)->toBeNull()
+        ->and($game->moves()->count())->toBe($moves)
+        ->and(RatingChange::query()->where('source', RatingChange::CHESS)->where('source_id', $game->id)->count())->toBe(2)
+        ->and($game->black->exists)->toBeFalse()
+        ->and($game->black->displayName())->toBe('Deleted player');
+
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()->assertSee('Deleted player')
+        // A name without a link: there is no player page to open.
+        ->assertSee('data-test="deleted-player"', false)
+        ->assertDontSee(route('players.show', $game->black->npub), false);
+
+    // The loser's rating change is still shown on the anonymised side.
+    expect(Ratings::forChessGame($game)['b']['delta'])->toBe(-20);
+
+    // Every page that lists the game or the winner's history still renders.
+    foreach ([route('home'), route('matches.index'), route('matches.index', ['game' => 'chess']), route('chess.lobby'), route('ladder.show', ['chess', 'blitz']),
+        route('players.show', $game->white->npub), route('dashboard'), route('me.correspondence'), route('mining')] as $url) {
+        $this->get($url)->assertOk();
+    }
 });
 
 test('a rated draw moves the rated Elo and is attested, but is no block candidate', function () {

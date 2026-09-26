@@ -150,14 +150,22 @@ final class Ratings
     public static function forChessGame(ChessGame $game): array
     {
         $pool = self::pool((bool) $game->rated);
-        $now = self::forUsers([$game->white_id, $game->black_id], 'chess', $game->mode, $pool);
+        $now = self::forUsers(array_values(array_filter([$game->white_id, $game->black_id], fn (?int $id): bool => $id !== null)), 'chess', $game->mode, $pool);
         $changes = self::changesOf(RatingChange::CHESS, $game->id);
-        $side = fn (int $userId) => ($now[$userId] ?? self::summary(null, $pool)) + [
-            'before' => ($changes['user:'.$userId] ?? null)?->before,
-            'delta' => ($changes['user:'.$userId] ?? null)?->delta,
-        ];
 
-        return ['w' => $side($game->white_id), 'b' => $side($game->black_id)];
+        // A deleted player's side (id null) keeps its change: the one that is not the other player's.
+        $side = function (?int $userId, ?int $otherId) use ($now, $changes, $pool): array {
+            $change = $userId !== null
+                ? ($changes['user:'.$userId] ?? null)
+                : collect($changes)->first(fn (RatingChange $change, string $subject): bool => $subject !== 'user:'.$otherId);
+
+            return ($userId !== null && isset($now[$userId]) ? $now[$userId] : self::summary(null, $pool)) + [
+                'before' => $change?->before,
+                'delta' => $change?->delta,
+            ];
+        };
+
+        return ['w' => $side($game->white_id, $game->black_id), 'b' => $side($game->black_id, $game->white_id)];
     }
 
     /**
