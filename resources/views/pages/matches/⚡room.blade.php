@@ -284,7 +284,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
         foreach (SeriesMatch::SIDES as $side) {
             $chosen = array_map(fn (LineupSeat $seat) => $seat->user_id, $series->rosterSeats($match, $side));
-            $rosters[$side] = array_map(fn (LineupSeat $seat) => ['seat' => $seat, 'on' => in_array($seat->user_id, $chosen, true)], $match->lineup($side)?->activeSeats() ?? []);
+            // A rated match offers the players pinned at the accept (NIP condition 3), a casual one the active seats.
+            $rosters[$side] = array_map(fn (LineupSeat $seat) => ['seat' => $seat, 'on' => in_array($seat->user_id, $chosen, true)], $series->rosterChoices($match, $side));
         }
 
         return [

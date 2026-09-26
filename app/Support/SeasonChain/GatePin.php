@@ -20,6 +20,7 @@ final class GatePin
     /**
      * @param  array{0: string, 1: string}  $gatekeepers
      * @param  array<string, array{rank: int, assertion: ?string, list: ?string, anchor: array{0: string, 1: int}|null}>  $players  pubkey => facts, gatekeepers included
+     * @param  array<string, list<array{user_id: int, pubkey: string, name: string, role: string}>>  $sides  a series' eligible players per side at the accept: the only players its rated roster can name
      */
     public function __construct(
         public readonly string $trustKey,
@@ -27,7 +28,21 @@ final class GatePin
         public readonly array $gatekeepers,
         public readonly bool $connected,
         public readonly array $players,
+        public readonly array $sides = [],
     ) {}
+
+    /**
+     * The same pin with each side's eligible players (security re-check, F2):
+     * a rated side's roster is built from these, so a seat removed, a lineup
+     * saved without a player or an account deleted after the accept cannot
+     * shrink it.
+     *
+     * @param  array<string, list<array{user_id: int, pubkey: string, name: string, role: string}>>  $sides
+     */
+    public function withSides(array $sides): self
+    {
+        return new self($this->trustKey, $this->minimum, $this->gatekeepers, $this->connected, $this->players, $sides);
+    }
 
     /**
      * Pin the facts the trust job answers for these players and gatekeepers.
@@ -65,12 +80,12 @@ final class GatePin
             return null;
         }
 
-        /** @var array{trust_key: string, minimum: int, gatekeepers: array{0: string, 1: string}, connected: bool, players: array<string, array{rank: int, assertion: ?string, list: ?string, anchor: array{0: string, 1: int}|null}>} $stored */
-        return new self((string) $stored['trust_key'], (int) $stored['minimum'], $stored['gatekeepers'], (bool) $stored['connected'], $stored['players']);
+        /** @var array{trust_key: string, minimum: int, gatekeepers: array{0: string, 1: string}, connected: bool, players: array<string, array{rank: int, assertion: ?string, list: ?string, anchor: array{0: string, 1: int}|null}>, sides?: array<string, list<array{user_id: int, pubkey: string, name: string, role: string}>>} $stored */
+        return new self((string) $stored['trust_key'], (int) $stored['minimum'], $stored['gatekeepers'], (bool) $stored['connected'], $stored['players'], $stored['sides'] ?? []);
     }
 
     /**
-     * @return array{trust_key: string, minimum: int, gatekeepers: array{0: string, 1: string}, connected: bool, players: array<string, array{rank: int, assertion: ?string, list: ?string, anchor: array{0: string, 1: int}|null}>}
+     * @return array{trust_key: string, minimum: int, gatekeepers: array{0: string, 1: string}, connected: bool, players: array<string, array{rank: int, assertion: ?string, list: ?string, anchor: array{0: string, 1: int}|null}>, sides: array<string, list<array{user_id: int, pubkey: string, name: string, role: string}>>}
      */
     public function toArray(): array
     {
@@ -80,6 +95,7 @@ final class GatePin
             'gatekeepers' => $this->gatekeepers,
             'connected' => $this->connected,
             'players' => $this->players,
+            'sides' => $this->sides,
         ];
     }
 

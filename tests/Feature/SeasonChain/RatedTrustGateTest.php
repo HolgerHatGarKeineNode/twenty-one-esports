@@ -15,6 +15,7 @@ use App\Enums\ClanRole;
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -409,4 +410,60 @@ test('regression (security gate F3): the loser cannot dissolve his one-member cl
 
     expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
         ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'lineup:'.$b[0]->id)->value('rating'))->toBeLessThan(1000);
+});
+
+/*
+ * Security re-check round 2, F2 by other paths: after the accept the losing side loses a pinned
+ * player (removed by the owner, dropped from the lineup, or the account deleted). The rated roster
+ * comes from the pin, so the winner still reports, keeps his Elo and is paid; nothing gets stuck.
+ */
+dataset('losing side shrinks after the accept', [
+    'the owner removes the pinned teammate' => [fn (array $b, User $teammate) => app(ClanService::class)->remove(
+        $b[1], $b[0]->clan, $teammate, $b[2]->signTemplates(app(ClanService::class)->prepareRemove($b[1], $b[0]->clan, $teammate)),
+    )],
+    'the owner saves the lineup without that seat' => [function (array $b, User $teammate): void {
+        $seats = [$b[1]->id => LineupRole::Captain];
+        app(ClanService::class)->saveLineup($b[1], $b[0]->clan, 'rocket-league', '2v2', $seats,
+            $b[2]->signTemplates(app(ClanService::class)->prepareLineup($b[1], $b[0]->clan->refresh(), 'rocket-league', '2v2', $seats)));
+    }],
+    'the pinned teammate deletes the account' => [fn (array $b, User $teammate) => app(DeleteAccount::class)($teammate)],
+]);
+
+test('regression (security re-check, F2 paths): a rated side cannot shrink below the pin', function (Closure $shrink) {
+    [$a, $b] = [gateLineup('2v2'), gateLineup('2v2')];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+    $teammate = $b[0]->seats->firstWhere('role', LineupRole::Player)->user;
+
+    $shrink($b, $teammate);
+
+    // The room and the match page still show the pinned teammate on the losing side.
+    $this->actingAs($a[1])->get(route('matches.room', $match))->assertOk();
+    $this->get(route('matches.show', $match))->assertOk()->assertSee($teammate->displayName());
+
+    gateReport($match->refresh(), $a);
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'report', 'report' => $match->refresh()->latestReport->id], 'No answer.');
+
+    $attestation = SeasonAttestation::query()->sole();
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Resolved)
+        ->and(array_column($match->countedRoster(), 'pubkey'))->toContain($teammate->pubkey)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and($attestation->reward)->toBeGreaterThan(0);
+})->with('losing side shrinks after the accept');
+
+test('regression (security re-check, F2 paths): the 1v1 loser who deletes his account leaves a result the winner is paid for', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+
+    app(DeleteAccount::class)($b[1]);
+    gateReport($match->refresh(), $a);
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'report', 'report' => $match->refresh()->latestReport->id], 'Loser deleted his account.');
+
+    $attestation = SeasonAttestation::query()->sole();
+
+    expect(Rating::query()->where('pool', Rating::RATED)->where('lineup_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and($attestation->reward)->toBeGreaterThan(0)
+        ->and($attestation->candidate['losers'])->toBe([$b[1]->pubkey]);
 });

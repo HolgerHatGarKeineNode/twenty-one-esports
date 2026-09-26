@@ -19,6 +19,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesReport;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -313,11 +314,34 @@ final class SeriesService
                 ? RatedTrustGate::NOT_TRUSTED
                 : RatedTrustGate::sidesRefusal($pin, $fresh->challengerLineup, $fresh->challengedLineup));
 
-        if ($refusal !== null) {
+        if ($refusal !== null || $fresh->challengerLineup === null || $fresh->challengedLineup === null) {
+            $refusal ??= RatedTrustGate::NOT_TRUSTED;
+
             throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
         }
 
-        return $pin;
+        return $pin->withSides([
+            'challenger' => self::eligibleEntries($pin, $fresh->challengerLineup),
+            'challenged' => self::eligibleEntries($pin, $fresh->challengedLineup),
+        ]);
+    }
+
+    /**
+     * The lineup's active players eligible in the pin, as the pin stores them.
+     *
+     * @return list<array{user_id: int, pubkey: string, name: string, role: string}>
+     */
+    private static function eligibleEntries(GatePin $pin, Lineup $lineup): array
+    {
+        $entries = [];
+
+        foreach ($lineup->activeSeats() as $seat) {
+            if ($pin->isEligible($seat->user->pubkey)) {
+                $entries[] = ['user_id' => $seat->user_id, 'pubkey' => $seat->user->pubkey, 'name' => $seat->user->displayName(), 'role' => $seat->role->value];
+            }
+        }
+
+        return $entries;
     }
 
     /**
@@ -492,15 +516,13 @@ final class SeriesService
             throw new SeriesRuleViolation('sheet_closed', __('Who played cannot be changed right now.'));
         }
 
-        $seats = $match->lineup($side)?->activeSeats() ?? [];
-        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $seats);
         $ids = array_values(array_unique(array_map(intval(...), $userIds)));
 
-        if (array_diff($ids, $allowed) !== []) {
+        if (! $match->rated && array_diff($ids, array_map(fn (LineupSeat $seat) => $seat->user_id, $match->lineup($side)?->activeSeats() ?? [])) !== []) {
             throw new SeriesRuleViolation('roster_foreign', __('Only active players of your lineup can be on the list.'));
         }
 
-        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $this->eligibleSeats($match, $seats));
+        $allowed = array_map(fn (LineupSeat $seat) => $seat->user_id, $this->rosterChoices($match, $side));
 
         if (array_diff($ids, $allowed) !== []) {
             throw new SeriesRuleViolation('roster_not_eligible', __('Only players who were in the lineup and Trusted when the match was accepted can play this rated match.'));
@@ -520,17 +542,17 @@ final class SeriesService
 
     /**
      * Who played for a side: the captain's list, or the regulars (captain and
-     * player seats) until the captain changes it. In a rated match only
-     * players eligible at the accept ({@see eligibleSeats()}); a list that
-     * falls short of the team size (stored before the check, or a player left
-     * since) gives way to the eligible regulars, then to every eligible seat,
-     * so one captain cannot block the result (security gate F2).
+     * player seats) until the captain changes it, chosen from
+     * {@see rosterChoices()}. In a rated match a list that falls short of the
+     * team size (stored before the check) gives way to the pinned regulars,
+     * then to every pinned player, so one captain cannot block the result
+     * (security gate F2).
      *
      * @return list<LineupSeat>
      */
     public function rosterSeats(SeriesMatch $match, string $side): array
     {
-        $seats = $this->eligibleSeats($match, $match->lineup($side)?->activeSeats() ?? []);
+        $seats = $this->rosterChoices($match, $side);
         $chosen = $match->rosters[$side] ?? null;
         $regulars = array_values(array_filter($seats, fn (LineupSeat $seat) => $seat->role !== LineupRole::Substitute));
         $roster = $chosen === null ? $regulars : array_values(array_filter($seats, fn (LineupSeat $seat) => in_array($seat->user_id, $chosen, true)));
@@ -540,6 +562,38 @@ final class SeriesService
         }
 
         return count($regulars) >= $match->gameMode()->teamSize ? $regulars : $seats;
+    }
+
+    /**
+     * Who can be on a side's "Who played": the lineup's active seats in a
+     * casual match; in a rated match the side's eligible players as the accept
+     * pinned them (NIP condition 3), built from the pin and not from today's
+     * seats, so a seat removed, a lineup saved without a player or an account
+     * deleted after the accept cannot shrink the side (security re-check,
+     * F2). The seats are not stored; a deleted account keeps its pinned name.
+     * A rated match pinned before the sides were stored falls back to the
+     * eligible active seats.
+     *
+     * @return list<LineupSeat>
+     */
+    public function rosterChoices(SeriesMatch $match, string $side): array
+    {
+        $seats = $match->lineup($side)?->activeSeats() ?? [];
+        $pinned = $match->rated ? (GatePin::fromArray($match->gate_at_accept)->sides[$side] ?? null) : null;
+
+        if ($pinned === null) {
+            return $this->eligibleSeats($match, $seats);
+        }
+
+        $users = User::query()->whereIn('id', array_column($pinned, 'user_id'))->get()->keyBy('id');
+
+        return array_map(function (array $entry) use ($users): LineupSeat {
+            $seat = new LineupSeat(['user_id' => $entry['user_id'], 'role' => LineupRole::from($entry['role'])]);
+            $seat->setRelation('user', $users->get($entry['user_id'])
+                ?? (new User)->forceFill(['id' => $entry['user_id'], 'name' => $entry['name'], 'pubkey' => $entry['pubkey'], 'npub' => NostrKeys::hexToNpub($entry['pubkey'])]));
+
+            return $seat;
+        }, $pinned);
     }
 
     /**
