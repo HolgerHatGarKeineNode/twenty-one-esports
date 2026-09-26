@@ -139,6 +139,7 @@ test('look-alike dots, bare IPs and separators are caught', function (string $in
     'paragraph separator and bidi override' => ["a\u{2029}b\u{202E}c", 'a bc'],
     // Fail closed: a name shaped like a domain is cut like one.
     'a dotted user name is cut' => ['candido.hintz challenges you', 'challenges you'],
+    'a short LNURL' => ['pay lnurl1dp68gurn8ghj7etkd9kzuetcv9khqmr99acqpqqapp now', 'pay now'],
     'chess notation stays' => ['1.e4 e5 2.Nf3', '1.e4 e5 2.Nf3'],
     'a shortened npub stays' => ['npub1qy352eu…', 'npub1qy352eu…'],
     'an emoji ZWJ sequence stays' => ["\u{1F469}\u{200D}\u{1F4BB} gg", "\u{1F469}\u{200D}\u{1F4BB} gg"],

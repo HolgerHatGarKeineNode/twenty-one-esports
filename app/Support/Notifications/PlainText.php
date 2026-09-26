@@ -19,7 +19,8 @@ use Normalizer;
  *   joiners and emoji tag characters that emoji sequences need stay.
  * - Links of any form are cut out: `scheme://…`, the schemes used without
  *   slashes, bare Nostr and Lightning bech32 strings of full length (the
- *   shortened `npub1abcdefg…` a nameless player is shown as stays), `www.…`, bare domains
+ *   shortened `npub1abcdefg…` a nameless player is shown as stays), every
+ *   LNURL whatever its length (a short one still encodes a whole URL), `www.…`, bare domains
  *   (`name.tld`, the TLD not followed by a letter or digit, so `2.Nf3` stays)
  *   and bare IPv4 addresses with an optional port or path.
  */
@@ -27,7 +28,8 @@ final class PlainText
 {
     private const LINK = '~(?:\b[a-z][a-z0-9+.-]*://\S+'
         .'|\b(?:nostr|web\+nostr|mailto|lightning|bitcoin|magnet|tel|sms|data|javascript):\S+'
-        .'|\b(?:npub|nprofile|note|nevent|naddr|nsec|nrelay|lnbc|lntb|lnurl)1[02-9ac-hj-np-z]{50,}'
+        .'|\b(?:npub|nprofile|note|nevent|naddr|nsec|nrelay|lnbc|lntb)1[02-9ac-hj-np-z]{50,}'
+        .'|\blnurl1[02-9ac-hj-np-z]+'
         .'|\bwww\.\S+'
         .'|\b\d{1,3}(?:\.\d{1,3}){3}(?::\d{1,5})?(?:/\S*)?'
         .'|[\p{L}\p{N}_-]+(?:\.[\p{L}\p{N}_-]+)*\.\p{L}{2,}(?![\p{L}\p{N}_-])(?:[/:?#]\S*)?)~iu';
