@@ -28,6 +28,7 @@
         <span class="grow"></span>
         <a href="{{ route('rules') }}" class="inline-flex min-h-11 items-center">{{ __('Rules') }}</a>
         <a href="{{ route('protocol') }}" class="inline-flex min-h-11 items-center">{{ __('Open protocol') }}</a>
+        <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center" data-test="source-code">{{ __('Open source') }}</a>
         <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center" data-test="imprint">{{ __('Legal notice') }}</a>
         <x-shell.language-switch :locales="$locales" :current="$current" />
     </div>
@@ -35,6 +36,7 @@
     <div class="flex flex-wrap gap-x-5 px-4 pt-2 pb-4 lg:hidden">
         <a href="{{ route('rules') }}" class="inline-flex min-h-11 items-center text-ink-2">{{ __('Rules') }}</a>
         <a href="{{ route('protocol') }}" class="inline-flex min-h-11 items-center text-ink-2">{{ __('How results are verified') }}</a>
+        <a href="https://github.com/HolgerHatGarKeineNode/twenty-one-esports" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-ink-2">{{ __('Open source') }}</a>
         <a href="https://einundzwanzig.space/kontakt/" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center text-ink-2">{{ __('Legal notice') }}</a>
         <span class="inline-flex min-h-11 items-center">TWENTY ONE esports</span>
         <x-shell.language-switch :locales="$locales" :current="$current" />
