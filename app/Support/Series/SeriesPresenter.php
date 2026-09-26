@@ -43,10 +43,8 @@ final class SeriesPresenter
         $ratings = Ratings::forSeries($match);
         $casual = $ratings['pool'] === 'casual';
         $signed = fn (int $delta): string => $delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0');
-        $before = fn (string $side): int => $ratings[$side]['before'] ?? $ratings[$side]['rating'];
-        $line = function (string $side) use ($ratings, $casual): string {
-            $rating = $ratings[$side];
-
+        $before = fn (array $rating): int => $rating['before'] ?? $rating['rating'];
+        $line = function (array $rating) use ($casual): string {
             if ($rating['delta'] === null) {
                 return $casual ? __('casual Elo :elo', ['elo' => $rating['rating']]) : __('Elo :elo', ['elo' => $rating['rating']]);
             }
@@ -58,14 +56,14 @@ final class SeriesPresenter
 
         return [
             'casual' => $casual,
-            'before' => $match->challenger_tag.' '.$before('challenger').' · '.$match->challenged_tag.' '.$before('challenged'),
+            'before' => $match->challenger_tag.' '.$before($ratings['challenger']).' · '.$match->challenged_tag.' '.$before($ratings['challenged']),
             'stake' => match (true) {
                 $ratings['challenger']['delta'] !== null => $match->challenger_tag.' '.$signed($ratings['challenger']['delta']).' · '.$match->challenged_tag.' '.$signed($ratings['challenged']['delta']),
                 $ratings['win'] !== null => __(':tag :win if it wins, :loss if it loses', ['tag' => $match->challenger_tag, 'win' => $signed($ratings['win']), 'loss' => $signed($ratings['loss'])]),
                 default => __('no change'),
             },
             'expected' => __(':tag wins :pct %', ['tag' => $match->challenger_tag, 'pct' => (int) round($ratings['expected'] * 100)]),
-            'sides' => ['challenger' => $line('challenger'), 'challenged' => $line('challenged')],
+            'sides' => ['challenger' => $line($ratings['challenger']), 'challenged' => $line($ratings['challenged'])],
         ];
     }
 

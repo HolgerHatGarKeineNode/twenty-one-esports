@@ -674,13 +674,19 @@ final class SeriesService
 
             $wins = $report->score();
 
-            SeriesMatch::query()->whereKey($match->id)->update($status === 'confirmed' ? [
+            // Only while the match still waits for this answer: an admin who
+            // decided it in the meantime wins, and nothing here is written.
+            $updated = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Reported)->update($status === 'confirmed' ? [
                 'status' => SeriesStatus::Confirmed,
                 'result_games' => json_encode($report->games),
                 'winner' => $wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged',
                 'resolution' => SeriesResolution::Confirmed,
                 'finished_at' => now(),
             ] : ['status' => SeriesStatus::Disputed]);
+
+            if ($updated !== 1) {
+                throw new SeriesRuleViolation('already_decided', __('This match was decided in between. Please look again.'));
+            }
 
             if ($status === 'confirmed') {
                 $this->ratings->applySeries(SeriesMatch::query()->findOrFail($match->id));

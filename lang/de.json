@@ -2043,5 +2043,6 @@
     "Rated play and mining start at Block 0. Until then every series is casual: it moves only the casual Elo, never a rank, Block Height or Clan Hashrate, and it stays casual even if it ends later.": "Gewertetes Spiel und Mining starten mit Block 0. Bis dahin ist jede Serie casual: Sie bewegt nur die Casual-Elo, nie einen Rang, die Block Height oder die Clan-Hashrate, und sie bleibt casual, auch wenn sie später endet.",
     "casual Elo only before Block 0: every game is casual": "vor Block 0 nur Casual-Elo: Jede Partie ist casual",
     "Casual, only casual Elo at stake": "Casual, nur Casual-Elo im Spiel",
-    "Chess blitz": "Schach Blitz"
+    "Chess blitz": "Schach Blitz",
+    "This match was decided in between. Please look again.": "Dieses Match wurde zwischendurch entschieden. Bitte sieh noch einmal nach."
 }

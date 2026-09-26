@@ -72,16 +72,19 @@ final class Ratings
     public static function summary(?Rating $rating, string $pool): array
     {
         $key = $pool === Rating::CASUAL ? 'casual' : 'rating';
-        $value = $rating?->rating ?? (int) config("season.{$key}.start");
-        $results = $rating?->results ?? 0;
+
+        // No row yet: the start rating with no results.
+        [$value, $results, $wins, $draws, $losses] = $rating === null
+            ? [(int) config("season.{$key}.start"), 0, 0, 0, 0]
+            : [$rating->rating, $rating->results, $rating->wins, $rating->draws, $rating->losses];
         $provisional = $results < (int) config("season.{$key}.provisional");
 
         return [
             'rating' => $value,
             'results' => $results,
-            'wins' => $rating?->wins ?? 0,
-            'draws' => $rating?->draws ?? 0,
-            'losses' => $rating?->losses ?? 0,
+            'wins' => $wins,
+            'draws' => $draws,
+            'losses' => $losses,
             'provisional' => $provisional,
             'tier' => $pool === Rating::RATED ? RankTiers::fromConfig()->tierFor($value, $results) : null,
             'pool' => $pool,
@@ -142,7 +145,7 @@ final class Ratings
      * Both players of a chess game in the game's ladder, with this game's
      * change once it moved their rating (`delta` null otherwise).
      *
-     * @return array{w: array<string, mixed>, b: array<string, mixed>}
+     * @return array{w: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}, b: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}}
      */
     public static function forChessGame(ChessGame $game): array
     {
@@ -162,7 +165,7 @@ final class Ratings
      * result moved them. `win` / `loss` is what the challenger's lineup would
      * gain or lose with the ratings as they stand (null once decided).
      *
-     * @return array{pool: string, challenger: array<string, mixed>, challenged: array<string, mixed>, win: int|null, loss: int|null, expected: float}
+     * @return array{pool: string, challenger: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}, challenged: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}, win: int|null, loss: int|null, expected: float}
      */
     public static function forSeries(SeriesMatch $match): array
     {

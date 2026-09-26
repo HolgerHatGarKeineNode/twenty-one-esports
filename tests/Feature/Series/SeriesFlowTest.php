@@ -19,6 +19,7 @@ use App\Support\Rating\RatingService;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
@@ -319,6 +320,26 @@ test('an admin decision rates the series inside the decision; a void rates nothi
     $this->series->decide($void, $admin, ['type' => 'void'], 'Server crash, replay.');
 
     expect(lineupRatings($void, Rating::CASUAL))->toBe([]);
+});
+
+test('an admin decision that lands while the other captain accepts the result is not overwritten', function () {
+    [$match, [, $captainA], [, $captainB]] = acceptedSeries();
+    enterGames($match, $captainA, [[3, 1], [2, 1]]);
+    $this->series->report($match, $captainA, []);
+
+    // The admin's decision commits between the captain's check and write:
+    // right after the report is claimed, the match is resolved for the other side.
+    $decided = false;
+    DB::listen(function ($query) use ($match, &$decided): void {
+        if (! $decided && str_starts_with($query->sql, 'update "series_reports"')) {
+            $decided = true;
+            SeriesMatch::query()->whereKey($match->id)->update(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Forfeit, 'winner' => 'challenged']);
+        }
+    });
+
+    expect(fn () => $this->series->respond($match, $captainB, 'confirmed', '', []))->toThrow(SeriesRuleViolation::class, 'decided in between')
+        ->and($match->refresh()->resolution)->not->toBe(SeriesResolution::Confirmed)
+        ->and(RatingChange::query()->count())->toBe(0);
 });
 
 test('a confirmed rated series on an open ladder moves the rated Elo, never the casual one', function () {
