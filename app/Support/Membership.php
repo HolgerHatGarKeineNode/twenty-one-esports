@@ -100,11 +100,12 @@ final class Membership
 
     /**
      * The hex pubkeys that paid in the given year, as a set, or null when the
-     * list could not be read.
+     * list could not be read. Also the anchors of the trust job
+     * (App\Support\SeasonChain\TrustJob).
      *
      * @return array<string, true>|null
      */
-    private function paidPubkeys(int $year): ?array
+    public function paidPubkeys(int $year): ?array
     {
         $cacheKey = 'membership:paid:'.$year;
         $cached = $this->cache->get($cacheKey);

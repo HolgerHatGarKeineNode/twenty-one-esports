@@ -11,6 +11,8 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
+use App\Support\SeasonChain\TrustJob;
+use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\SeriesService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -185,6 +187,29 @@ Artisan::command('series:expire-challenges', function (SeriesService $series) {
 })->purpose('Expire series challenges nobody answered in time');
 
 Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping();
+
+/*
+ * The trust job (NIP "Trust", `anchored-trust-v1`): anchors from the
+ * association's member lists and the admins, opponent lists and reports from
+ * the league relays; publishes only the ranks that changed. Rated play opens
+ * once it has run in the live season, so it runs often enough that a fresh
+ * Block 0 or a newly added opponent does not wait long.
+ */
+Artisan::command('esports:trust-run', function (TrustJob $job) {
+    try {
+        $run = $job->run();
+    } catch (TrustJobRefused $refused) {
+        $this->warn($refused->getMessage());
+
+        return 1;
+    }
+
+    $this->info("Trust run {$run->id}: {$run->anchors} anchor(s), {$run->lists} list(s), {$run->ranked} ranked, {$run->published} assertion(s) published.");
+
+    return 0;
+})->purpose('Compute and publish the trust ranks (anchored-trust-v1)');
+
+Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlapping();
 
 /*
  * Horizon's metrics dashboard stays empty without regular snapshots.

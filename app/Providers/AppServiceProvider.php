@@ -6,7 +6,7 @@ use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\User;
 use App\Support\PageMeta;
-use App\Support\SeasonChain\NoTrustFacts;
+use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -31,8 +31,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->scoped(PageMeta::class);
 
-        // No trust job yet: rule 1 of the season chain fails closed (P7c).
-        $this->app->bind(TrustFacts::class, NoTrustFacts::class);
+        // The trust job's ranks (P7d); without a run in the live season rated play stays closed.
+        $this->app->bind(TrustFacts::class, AnchoredTrustFacts::class);
     }
 
     /**

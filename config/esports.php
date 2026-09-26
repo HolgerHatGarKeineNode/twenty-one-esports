@@ -221,6 +221,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trust key and trust job (P7d, NIP "Trust", `anchored-trust-v1`)
+    |--------------------------------------------------------------------------
+    |
+    | The trust key signs the trust job's own events: its description (0),
+    | the anchor list (30000) and one trust assertion (30382) per ranked
+    | player. Hex or nsec, in `.env` only, and never the league key (NIP-85:
+    | one key per algorithm). Without it, or without the league key, the job
+    | does not run, no ranks exist and rated play stays closed (fail closed).
+    |
+    | Anchors are the paid members of the association for the current and
+    | the previous year (`membership.api_url`, `GET /api/members/{year}`) and
+    | the league admins. Opponent lists and reports are read from `relays`.
+    |
+    */
+
+    'trust' => [
+        'nsec' => env('ESPORTS_TRUST_NSEC'),
+        'name' => 'TWENTY ONE Esports trust',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Relays the league publishes to
     |--------------------------------------------------------------------------
     |

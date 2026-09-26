@@ -27,7 +27,23 @@ final class LeagueKey
 
     public static function fromConfig(): ?self
     {
-        $hex = NostrKeys::secretToHex(is_string(config('esports.league.nsec')) ? config('esports.league.nsec') : null);
+        return self::fromSecret(config('esports.league.nsec'));
+    }
+
+    /**
+     * The trust key (`esports.trust.nsec`, NIP "Trust rank"): signs only the
+     * trust job's events, its description (`0`), the anchor list (`30000`)
+     * and the trust assertions (`30382`). NIP-85 wants a key per algorithm,
+     * so it is never the league key. Null without a valid secret.
+     */
+    public static function trust(): ?self
+    {
+        return self::fromSecret(config('esports.trust.nsec'));
+    }
+
+    private static function fromSecret(mixed $secret): ?self
+    {
+        $hex = NostrKeys::secretToHex(is_string($secret) ? $secret : null);
 
         if ($hex === null) {
             return null;
