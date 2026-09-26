@@ -59,6 +59,7 @@
                         <flux:menu.item :href="route('me.correspondence')" icon="calendar-days">{{ __('Your daily games') }}</flux:menu.item>
                         <flux:menu.item :href="route('chess.challenge')" icon="paper-airplane">{{ __('Challenge a player') }}</flux:menu.item>
                     @endauth
+                    <flux:menu.item :href="route('games.index')" icon="eye" data-test="games-menu-live">{{ __('Watch live games') }}</flux:menu.item>
                     <flux:menu.item :href="route('ladder.show', ['chess', 'blitz'])" icon="chart-bar">{{ __('Chess ladder') }}</flux:menu.item>
                     @auth
                         <flux:menu.item :href="route('settings.chess')" icon="cog-6-tooth">{{ __('Chess settings') }}</flux:menu.item>

@@ -5,6 +5,7 @@ use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
+use App\Support\Engagement\WeeklySlots;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
@@ -207,6 +208,17 @@ Artisan::command('tournaments:advance', function (TournamentDraws $draws) {
 })->purpose('Close tournament sign-ups, draw from the Bitcoin block, start ready matches');
 
 Schedule::command('tournaments:advance')->everyMinute()->withoutOverlapping();
+
+/*
+ * Weekly events (P10): every active weekly slot gets its dated events for the
+ * next week. Idempotent (unique slot + start), so running it every hour, or
+ * twice at once, makes each event once.
+ */
+Artisan::command('events:schedule-weekly', function (WeeklySlots $slots) {
+    $this->info('Scheduled '.$slots->schedule().' event(s).');
+})->purpose('Create the dated events of the weekly slots');
+
+Schedule::command('events:schedule-weekly')->hourly()->withoutOverlapping();
 
 /*
  * The trust job (NIP "Trust", `anchored-trust-v1`): anchors from the

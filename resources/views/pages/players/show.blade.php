@@ -12,6 +12,8 @@
     $name = $profile->name;
     $isMe = auth()->id() === $user->id;
     $chips = \App\Support\Rating\Ratings::chipsFor($user);
+    // P10: the frame both sides of an accepted invite link get.
+    $inviteFrame = app(\App\Support\Engagement\Cosmetics::class)->owns($user, \App\Support\Engagement\Cosmetics::INVITE_FRAME);
 
     $plays = $profile->games();
     $description = ($plays !== null
@@ -39,7 +41,7 @@
             {{-- Picture, name, address, challenge --}}
             <div class="-mt-11 flex flex-col gap-3 px-4 lg:-mt-16 lg:grid lg:grid-cols-[136px_minmax(0,1fr)_auto] lg:items-end lg:gap-x-6 lg:gap-y-0 lg:pr-0 lg:pl-8">
                 <div class="flex items-end gap-3">
-                    <x-avatar :user="$user" :size="128" class="size-[88px]! rounded-xl shadow-[0_0_0_4px_#0A0A0B] lg:size-32! lg:rounded-[14px]" />
+                    <x-avatar :user="$user" :size="128" :class="\Illuminate\Support\Arr::toCssClasses(['size-[88px]! rounded-xl lg:size-32! lg:rounded-[14px]', 'shadow-[0_0_0_4px_#0A0A0B]' => ! $inviteFrame, 'shadow-[0_0_0_4px_#0A0A0B,0_0_0_7px_var(--color-btc),0_0_24px_rgba(247,147,26,0.35)]' => $inviteFrame])" :data-test="$inviteFrame ? 'invite-frame' : null" />
                     @if ($profile->isMember())
                         <span class="pb-1.5 lg:hidden"><x-member-badge solid /></span>
                     @endif
@@ -49,6 +51,9 @@
                         <h1 id="ph-name" class="m-0 font-display text-[26px] leading-tight font-bold [overflow-wrap:anywhere] lg:text-4xl">{{ $name }}</h1>
                         @if ($profile->isMember())
                             <x-member-badge solid class="max-lg:hidden" />
+                        @endif
+                        @if ($inviteFrame)
+                            <span class="inline-flex h-6 items-center gap-1 rounded-sm border border-btc-ring bg-btc-chip px-2 text-[11px] font-bold whitespace-nowrap text-btc-hi" data-test="invite-frame-chip">{{ __('Brought a friend') }}</span>
                         @endif
                     </span>
                     @if ($profile->hasProfile)

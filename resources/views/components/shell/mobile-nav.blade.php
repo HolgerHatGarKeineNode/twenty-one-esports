@@ -33,6 +33,10 @@
         </nav>
 
         <div class="mt-2 flex flex-col gap-2 border-t border-hairline px-1 pt-3">
+            <a href="{{ route('games.index') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="mobile-live-games">
+                <x-icon name="eye" :size="18" class="text-ink-2" />
+                {{ __('Watch live games') }}
+            </a>
             @if ($user)
                 <a href="{{ route('dashboard') }}" class="flex min-h-11 items-center gap-2 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                     <x-avatar :user="$user" :size="26" />

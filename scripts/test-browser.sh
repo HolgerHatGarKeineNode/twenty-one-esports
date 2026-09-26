@@ -34,7 +34,7 @@
 #   1: RouteSweepTest                                (~29s)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest (~26s + clan logos)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest (~27s + P8b + ladder)
-#   4: NotificationsTest, SeasonChainTest, ClanEditTest (~25s)
+#   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10)
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
 # instead.
@@ -63,7 +63,7 @@ SHARD_FILES=(
     "tests/Browser/RouteSweepTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php"
-    "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php"
+    "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

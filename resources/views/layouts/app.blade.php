@@ -27,6 +27,9 @@
         {{-- The match dock (P5f): open matches at the bottom of every page of a logged-in player. --}}
         @auth
             <livewire:match-dock />
+
+            {{-- Placement reveal (P10): once, after the fifth rated result in a ladder. --}}
+            <x-placement-reveal />
         @endauth
 
         <x-toast-stack />

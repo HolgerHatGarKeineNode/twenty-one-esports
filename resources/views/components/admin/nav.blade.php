@@ -16,6 +16,7 @@
         ['tournaments', __('Tournaments'), route('admin.tournaments'), null],
         ['payouts', __('Payouts'), null, null],
         ['seasons', __('Seasons'), route('admin.season'), null],
+        ['events', __('Weekly events'), route('admin.events'), null],
         ['trust', __('Trust'), route('admin.trust'), null],
         ['settings', __('Settings'), null, null],
         ['admins', __('Admins'), route('admin.admins'), null],

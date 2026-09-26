@@ -20,6 +20,7 @@ use App\Support\Chess\ChessTransaction;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Clans\ClanJoinRequests;
 use App\Support\Clans\ClanRuleViolation;
+use App\Support\Engagement\Cosmetics;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
@@ -277,6 +278,9 @@ final class InviteLinks
                 $use->chess_game_id = $made instanceof ChessGame ? $made->id : null;
                 $use->series_match_id = $made instanceof SeriesMatch ? $made->id : null;
                 $use->save();
+
+                // "Invite a friend, a cosmetic for both" (P10), in the same transaction as the use.
+                app(Cosmetics::class)->creditInvite($use);
 
                 return $made;
             });

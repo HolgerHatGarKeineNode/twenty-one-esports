@@ -538,7 +538,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         {{-- Now playing + Online now --}}
         <div class="flex flex-col gap-4 lg:col-span-2 lg:gap-5">
             <section aria-labelledby="now-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="now-playing">
-                <span class="flex items-baseline justify-between gap-3"><h2 id="now-h" class="m-0 text-[15px] font-bold">{{ __('Now playing') }}</h2><span class="text-xs text-ink-2">{{ trans_choice(':count live blitz board|:count live blitz boards', $this->liveGames->count()) }}</span></span>
+                <span class="flex items-baseline justify-between gap-3"><h2 id="now-h" class="m-0 text-[15px] font-bold">{{ __('Now playing') }}</h2><span class="flex items-baseline gap-3 text-xs text-ink-2">{{ trans_choice(':count live blitz board|:count live blitz boards', $this->liveGames->count()) }}<a href="{{ route('games.index') }}" class="text-ink" data-test="all-live-games">{{ __('All live games') }}</a></span></span>
                 @if ($this->liveGames->isEmpty())
                     <p class="m-0 text-[13px] text-ink-2">{{ __('No live game right now. Find an opponent and yours shows up here.') }}</p>
                 @else
@@ -650,6 +650,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             <p class="m-0 text-[13px] leading-normal text-ink-2">{{ Ladders::isOpen('chess', 'blitz') ? __('Rank, Elo and results of every blitz player.') : __('Every casual blitz game counts here. The rated ladder starts at Block 0.') }}</p>
             <x-button variant="quiet" :href="route('ladder.show', ['chess', 'blitz'])" class="self-start" data-test="lobby-ladder-link">{{ __('Open the blitz ladder') }}</x-button>
         </section>
+
+        {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
+        <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:col-span-3 lg:px-6" />
 
         {{-- Later phases keep their places (ChessLobby row 2) --}}
         @foreach ([[__('Clan Hashrate'), __('Rated games of clan players count for their clan from Block 0.')]] as [$heading, $text])

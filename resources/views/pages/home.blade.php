@@ -13,6 +13,8 @@
     use App\Enums\ChessGameStatus;
     use App\Models\ChessGame;
     use App\Models\Clan;
+    use App\Support\Engagement\Quests;
+    use App\Support\Engagement\WeeklySlots;
     use App\Support\PreSeason;
 
     $user = auth()->user();
@@ -35,6 +37,10 @@
         'm' => [__('minutes'), 60],
         's' => [__('seconds'), 60],
     ];
+
+    // P10: the next weekly events, and this week's quests of a logged-in player.
+    $weekly = app(WeeklySlots::class)->upcoming(4);
+    $quests = $user ? app(Quests::class)->progress($user) : null;
 
     $clanCount = Clan::query()->count();
     $clans = Clan::query()->withCount('members')->latest('created_at')->latest('id')->limit(5)->get();
@@ -235,6 +241,15 @@
             <p class="pl-note">{{ __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }} <a href="{{ route('mining') }}" data-test="mining-link">{{ __('The chain on the mining page') }}</a></p>
         </section>
 
+        @if ($weekly->isNotEmpty() || $quests !== null)
+            <div class="grid grid-cols-1 gap-4 lg:col-span-12 lg:grid-cols-2 lg:gap-5">
+                <x-weekly-events :events="$weekly" class="pl-card" />
+                @if ($quests !== null)
+                    <x-quests :progress="$quests" class="pl-card" />
+                @endif
+            </div>
+        @endif
+
         <section aria-labelledby="open-h" class="flex flex-col gap-3 lg:col-span-12 lg:mt-3">
             <h2 id="open-h" class="m-0 mt-2 font-display text-lg font-bold lg:mt-0 lg:text-xl">{{ __('Already open before Block 0') }}</h2>
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
@@ -246,6 +261,7 @@
                                 <span class="inline-block size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>
                             @endif
                             {{ __(':played played, :live live', ['played' => $casualPlayed, 'live' => $casualLive]) }}
+                            <a href="{{ route('games.index') }}" class="text-ink" data-test="home-live-games">{{ __('Watch') }}</a>
                         </span>
                     </span>
                     @if ($casualGames->isEmpty())

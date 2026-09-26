@@ -65,6 +65,8 @@ Route::livewire('games/rocket-league', 'pages::games.rocket-league')->name('game
 
 // Live chess (P5a): the blitz lobby and one game, live or finished.
 Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');
+// Every live chess game, for guests too (P10, spectating).
+Route::livewire('games', 'pages::games.index')->name('games.index');
 Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
 
 // Daily chess (P5b): challenge a player, your daily games.
@@ -113,7 +115,6 @@ Route::middleware('auth')->group(function () {
  * `page` is a translation key, `section` marks the active main-navigation item.
  */
 $placeholders = [
-    ['games', 'games.index', 'Live games', 'chess'],
     ['rules', 'rules', 'Rules', null],
     ['protocol', 'protocol', 'Open protocol', null],
 ];

@@ -9,6 +9,7 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Engagement\ResultEngagement;
 use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
@@ -258,8 +259,11 @@ final class RatingService
 
             $rated = $engine->rate($c->rating, $d->rating, $score, $c->results, $d->results);
 
-            $this->record($c, $d, $score, $rated['challenger'], $rated['challenger_delta'], $source, $sourceId, $number);
-            $this->record($d, $c, 1.0 - $score, $rated['challenged'], $rated['challenged_delta'], $source, $sourceId, $number);
+            $challengerChange = $this->record($c, $d, $score, $rated['challenger'], $rated['challenger_delta'], $source, $sourceId, $number);
+            $challengedChange = $this->record($d, $c, 1.0 - $score, $rated['challenged'], $rated['challenged_delta'], $source, $sourceId, $number);
+
+            // Placement reveal and quests (P10), once the result is committed; never part of it.
+            DB::afterCommit(fn () => app(ResultEngagement::class)->handle($challengerChange, $challengedChange));
 
             return true;
         });
@@ -307,9 +311,9 @@ final class RatingService
         return $today >= (int) $limit;
     }
 
-    private function record(Rating $rating, Rating $opponent, float $score, int $after, int $delta, string $source, int $sourceId, ?int $number): void
+    private function record(Rating $rating, Rating $opponent, float $score, int $after, int $delta, string $source, int $sourceId, ?int $number): RatingChange
     {
-        RatingChange::query()->create([
+        $change = RatingChange::query()->create([
             'rating_id' => $rating->id,
             'opponent_rating_id' => $opponent->id,
             'source' => $source,
@@ -329,5 +333,7 @@ final class RatingService
             'draws' => $rating->draws + ($score === 0.5 ? 1 : 0),
             'losses' => $rating->losses + ($score === 0.0 ? 1 : 0),
         ])->save();
+
+        return $change;
     }
 }

@@ -3,7 +3,9 @@
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Support\Clans\ClanStatsPreview;
+use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
+use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
@@ -25,6 +27,18 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
+
+    /**
+     * Meetup against meetup (P10): the live season's clan hashrate per meetup
+     * city, from the league's own records (ClanHashrate). Empty before Block 0.
+     *
+     * @return list<array{city: string, hashrate: int, clans: int}>
+     */
+    #[Computed]
+    public function cities(): array
+    {
+        return app(ClanHashrate::class)->cities(Ladders::season());
+    }
 
     /** Hashrate window: `s` season, `w` last 7 days (design default). */
     public string $window = 'w';
@@ -267,6 +281,37 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __('Pre-Season: :n points.', ['n' => $hash['total']]) }}
                 {{ __('Win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}
             </p>
+        </section>
+
+        {{-- Meetup against meetup (P10): the live season's clan hashrate per meetup city. --}}
+        @php($cities = $this->cities)
+        @php($topCity = max(1, $cities[0]['hashrate'] ?? 0))
+        <section aria-labelledby="cities-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:col-span-2 lg:px-6 lg:py-5" data-test="city-ranking">
+            <span class="flex flex-col gap-0.5 pb-3">
+                <h2 id="cities-h" class="m-0 text-[15px] font-bold">{{ __('Meetup against meetup') }}</h2>
+                <span class="text-xs text-ink-3">{{ __('the Hashrate of all clans of a meetup city, this season') }}</span>
+            </span>
+            @if (Ladders::season() === null)
+                <p class="m-0 border-t border-hairline py-6 text-center text-[13px] text-ink-2">{{ __('The city ranking starts at Block 0, with the first rated games.') }}</p>
+            @else
+                <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,2fr)_64px]">
+                    <span>#</span><span>{{ __('City') }}</span><span>{{ __('Hashrate') }}</span><span class="hidden text-right lg:block">{{ __('Clans') }}</span>
+                </div>
+                @forelse ($cities as $row)
+                    <div wire:key="city-{{ $loop->index }}" class="grid h-[52px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 px-2 text-[13px] lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,2fr)_64px]" data-test="city-row">
+                        <span class="text-ink-3">{{ $loop->iteration }}</span>
+                        <span class="truncate">{{ $row['city'] }}</span>
+                        <span class="grid grid-cols-[minmax(0,1fr)_40px] items-center gap-2">
+                            <span class="block h-2 rounded-r bg-raised"><span class="block h-2 animate-fill rounded-r bg-btc" style="width: {{ intdiv(100 * $row['hashrate'], $topCity) }}%"></span></span>
+                            <b class="text-right">{{ $row['hashrate'] }}</b>
+                        </span>
+                        <span class="hidden text-right text-ink-2 lg:block">{{ $row['clans'] }}</span>
+                    </div>
+                @empty
+                    <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan is linked to a meetup yet.') }}</p>
+                @endforelse
+            @endif
+            <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('A clan counts for the city of the portal meetup it is linked to.') }}</p>
         </section>
     </div>
 </div>

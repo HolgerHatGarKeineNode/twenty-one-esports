@@ -1535,6 +1535,59 @@ select:focus[data-flux-control] {
     animation: tf-pv 0.4s ease-out both;
 }
 
+/*
+ * Placement reveal (P10, components/placement-reveal): the rank badge's cube,
+ * dashed "provisional" first, then filled with the tier colour (--tier) with
+ * a pop and the block glow; name and rating rise in after it.
+ */
+.pr-cube svg {
+    display: block;
+    animation: pr-pop 0.7s var(--ease-pop) 0.5s both, pr-glow 2.4s ease-in-out 1.2s infinite;
+}
+
+.pr-shell {
+    fill: transparent;
+    stroke: var(--color-rank-provisional);
+    stroke-width: 0.6;
+    stroke-dasharray: 1 0.75;
+    animation: pr-fill 0.5s ease-out 0.6s forwards;
+}
+
+.pr-name,
+.pr-rating {
+    animation: pr-rise 0.4s ease-out 1s both;
+}
+
+.pr-rating {
+    animation-delay: 1.2s;
+}
+
+@keyframes pr-pop {
+    0% { transform: scale(0.8) rotate(-8deg); }
+    60% { transform: scale(1.12) rotate(2deg); }
+    100% { transform: none; }
+}
+
+@keyframes pr-rise {
+    from { transform: translateY(10px); opacity: 0; }
+}
+
+@keyframes pr-fill {
+    to { fill: var(--tier); stroke: transparent; }
+}
+
+@keyframes pr-glow {
+    0%, 100% { filter: drop-shadow(0 0 0 transparent); }
+    50% { filter: drop-shadow(0 0 14px var(--tier)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pr-shell {
+        fill: var(--tier);
+        stroke: transparent;
+    }
+}
+
 /* Motion is decoration here, never information: switch it all off on request. */
 @media (prefers-reduced-motion: reduce) {
     *,

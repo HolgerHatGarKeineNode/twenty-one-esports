@@ -14,6 +14,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // The season chain (P7c): status, estimator, Block 0 release, rule changes.
     Route::livewire('season', 'pages::admin.season')->name('season');
 
+    // Weekly events (P10): recurring slots; the scheduler dates them (events:schedule-weekly).
+    Route::livewire('events', 'pages::admin.events')->name('events');
+
     // Trust (P7d): the reports the trust job read, dismissals and exclusions.
     Route::livewire('trust', 'pages::admin.trust')->name('trust');
 
