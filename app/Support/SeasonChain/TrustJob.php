@@ -6,11 +6,13 @@ use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
+use App\Models\User;
 use App\Support\Board;
 use App\Support\Membership;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -73,9 +75,22 @@ final class TrustJob
         $lists = new OpponentLists($league->pubkey());
 
         // Network first, outside the transaction; the archive keeps every version read.
-        $lists->archive($this->reader->fetch($lists->filter(), known: $lists->knownIds()));
+        // Only lists by league players and anchors, and only reports by authors whose
+        // rank lets them count (security gate F1: a flood by anyone else is never read).
+        $since = TrustRun::query()->latest('id')->value('computed_at');
+        $since = $since === null ? null : CarbonImmutable::parse((string) $since)->subDay()->getTimestamp();
+        $authors = array_values(array_unique([...User::query()->pluck('pubkey')->all(), ...$anchors]));
+        $max = (int) config('esports.trust.max_events');
+
+        $lists->archive($this->reader->fetch($lists->filters($authors, $since), known: $lists->knownIds(), max: $max));
+
+        $reporters = TrustRank::query()->where('rank', '>=', self::REPORTER_MINIMUM)->pluck('pubkey')->all();
+        $reportFilters = array_map(fn (array $chunk): array => [
+            'kinds' => [self::REPORT], 'authors' => $chunk, '#L' => [self::LABEL_NAMESPACE],
+            'since' => now()->subDays(self::REPORT_MAX_AGE_DAYS)->getTimestamp(), 'limit' => $max,
+        ], array_chunk($reporters, OpponentLists::AUTHORS_PER_FILTER));
         $knownReports = array_fill_keys(NostrEvent::query()->where('kind', self::REPORT)->pluck('event_id')->all(), true);
-        $this->archiveReports($this->reader->fetch(['kinds' => [self::REPORT], '#L' => [self::LABEL_NAMESPACE]], known: $knownReports));
+        $this->archiveReports($this->reader->fetch($reportFilters, known: $knownReports, max: $max));
 
         return DB::transaction(fn (): TrustRun => $this->compute($trust, $league, $anchors, $lists));
     }

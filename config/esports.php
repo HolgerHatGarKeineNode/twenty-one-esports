@@ -245,6 +245,8 @@ return [
 
     'trust' => [
         'nsec' => env('ESPORTS_TRUST_NSEC'),
+        // Most events one run takes from one relay per kind (a flood beyond it is dropped unread).
+        'max_events' => 5000,
         'name' => 'TWENTY ONE Esports trust',
     ],
 

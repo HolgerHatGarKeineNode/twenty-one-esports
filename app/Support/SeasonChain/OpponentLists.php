@@ -37,19 +37,44 @@ final class OpponentLists
         return 'esports/'.$this->leaguePubkey;
     }
 
+    /** Authors per filter, so one REQ stays within what relays accept. */
+    public const AUTHORS_PER_FILTER = 250;
+
     /**
-     * The relay filter for every player's list of this league.
+     * The relay filters for the lists of these authors only (league players
+     * and anchors: a list by anyone else feeds no rank, and reading it would
+     * let a flood of throwaway keys crowd out the real ones). Authors whose
+     * list is archived already ask only for versions since $since.
      *
-     * @return array{kinds: list<int>, '#d': list<string>}
+     * @param  list<string>  $authors
+     * @return list<array<string, mixed>>
      */
-    public function filter(): array
+    public function filters(array $authors, ?int $since): array
     {
-        return ['kinds' => [self::KIND], '#d' => [$this->d()]];
+        $archived = array_fill_keys($this->query()->distinct()->pluck('pubkey')->all(), true);
+        $filters = [];
+
+        foreach ([true, false] as $known) {
+            $group = array_values(array_filter($authors, fn (string $author): bool => isset($archived[$author]) === $known));
+
+            foreach (array_chunk($group, self::AUTHORS_PER_FILTER) as $chunk) {
+                $filter = ['kinds' => [self::KIND], 'authors' => $chunk, '#d' => [$this->d()], 'limit' => count($chunk)];
+
+                if ($known && $since !== null) {
+                    $filter['since'] = $since;
+                }
+
+                $filters[] = $filter;
+            }
+        }
+
+        return $filters;
     }
 
     /**
-     * Store the versions not archived yet. Events of another kind or league
-     * are skipped; signatures were checked by the reader.
+     * Store the versions newer than the author's newest archived one; older
+     * ones and events of another kind or league are skipped, so a run adds at
+     * most one version per author. Signatures were checked by the reader.
      *
      * @param  list<SignedEvent>  $events
      * @return int versions newly archived
@@ -57,13 +82,16 @@ final class OpponentLists
     public function archive(array $events): int
     {
         $stored = 0;
+        usort($events, fn (SignedEvent $a, SignedEvent $b): int => [$b->createdAt, $a->id] <=> [$a->createdAt, $b->id]);
 
         foreach ($events as $event) {
             if ($event->kind !== self::KIND || $event->tag('d') !== $this->d()) {
                 continue;
             }
 
-            if (NostrEvent::query()->where('event_id', $event->id)->doesntExist()) {
+            $newest = $this->newest($event->pubkey);
+
+            if ($newest === null || $event->createdAt > $newest->signed_at) {
                 NostrEvent::fromSigned($event);
                 $stored++;
             }

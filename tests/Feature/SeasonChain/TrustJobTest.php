@@ -14,6 +14,7 @@ use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
+use App\Models\User;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -129,6 +130,30 @@ beforeEach(function () {
     $this->trustKey = new TestSigner;
     config(['esports.trust.nsec' => $this->trustKey->secret, 'esports.board' => []]);
     app()->bind(TrustFacts::class, AnchoredTrustFacts::class);
+
+    // Every player of the test bed has an account here; the job reads only league users' lists.
+    foreach (trustPeople() as $signer) {
+        User::factory()->withPubkey($signer->pubkey)->create();
+    }
+});
+
+test('regression (security gate F1): a flood of newer lists from throwaway keys neither hides the players\' real lists nor gets stored', function () {
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(5)->getTimestamp();
+    $league = LeagueKey::fromConfig()->pubkey();
+    $flood = [];
+
+    // Newer than the real lists, so a relay sends them first; each names alice to look relevant.
+    foreach (range(1, 30) as $i) {
+        $flood[] = (new TestSigner)->sign(30000, [['d', 'esports/'.$league], ['p', pk('alice')]], '', $at + 60 + $i);
+    }
+
+    config(['esports.relay_timeout_seconds' => 1]);
+    $run = withRelay([...seasonThreeEvents($at), ...$flood], fn () => app(TrustJob::class)->run());
+
+    expect(array_map(rankOf(...), ['bob', 'dave', 'erin', 'frank']))->toBe([100, 100, 100, 46])
+        ->and($run->lists)->toBe(9)
+        ->and(NostrEvent::query()->where('kind', 30000)->where('d', 'esports/'.$league)->count())->toBe(9);
 });
 
 test('trust run 1 of the season-3 test bed: anchors and their entries 100, frank 46, the sybils get no assertion; the gate opens and pins them', function () {

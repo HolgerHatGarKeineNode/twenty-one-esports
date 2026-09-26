@@ -21,18 +21,19 @@ use WebSocket\Message\Text;
 class RelayReader
 {
     /**
-     * @param  array<string, mixed>  $filter  one NIP-01 filter; `kinds` is required
+     * @param  list<array<string, mixed>>  $filters  NIP-01 filters of one REQ; each needs `kinds`
      * @param  list<string>|null  $relays  null = config('esports.relays')
      * @param  array<string, true>  $known  ids the caller has already (checked and stored): skipped
      *                                      before the costly signature check
-     * @return list<SignedEvent> distinct by id, none of $known
+     * @param  int  $max  most events taken from one relay; the rest of a flood is dropped unread
+     * @return list<SignedEvent> distinct by id, none of $known, each matching one of the filters
      */
-    public function fetch(array $filter, ?array $relays = null, array $known = []): array
+    public function fetch(array $filters, ?array $relays = null, array $known = [], int $max = 5000): array
     {
         $events = [];
 
         foreach ($relays ?? config('esports.relays', []) as $relay) {
-            foreach ($this->read($relay, $filter, $known + $events) as $event) {
+            foreach ($this->read($relay, $filters, $known + $events, $max) as $event) {
                 $events[$event->id] ??= $event;
             }
         }
@@ -41,29 +42,34 @@ class RelayReader
     }
 
     /**
-     * @param  array<string, mixed>  $filter
+     * Collect until EOSE (or the deadline, or $max events), then check: the
+     * signature check (about 0.1 s each) runs after the connection closed, so
+     * a flood of junk cannot use up the time the real events need, and an
+     * event is kept only if it matches a filter the league sent (a relay may
+     * ignore `authors` or `since`).
+     *
+     * @param  list<array<string, mixed>>  $filters
      * @param  array<string, mixed>  $skip  ids not to return
      * @return list<SignedEvent>
      */
-    private function read(string $relay, array $filter, array $skip): array
+    private function read(string $relay, array $filters, array $skip, int $max): array
     {
-        if (preg_match('#^wss?://#', $relay) !== 1) {
+        if (preg_match('#^wss?://#', $relay) !== 1 || $filters === []) {
             return [];
         }
 
-        $kinds = array_map(intval(...), (array) ($filter['kinds'] ?? []));
         $timeout = (float) config('esports.relay_timeout_seconds', 5);
         $deadline = microtime(true) + $timeout;
         $subscription = 'read-'.bin2hex(random_bytes(4));
-        $events = [];
+        $received = [];
         $client = null;
 
         try {
             $client = new Client($relay);
             $client->setTimeout($timeout);
-            $client->text((string) json_encode(['REQ', $subscription, $filter], JSON_UNESCAPED_SLASHES));
+            $client->text((string) json_encode(['REQ', $subscription, ...$filters], JSON_UNESCAPED_SLASHES));
 
-            while (microtime(true) < $deadline) {
+            while (microtime(true) < $deadline && count($received) < $max) {
                 $frame = $client->receive();
 
                 if (! $frame instanceof Text) {
@@ -82,9 +88,8 @@ class RelayReader
 
                 $event = ($message[0] ?? null) === 'EVENT' ? SignedEvent::fromInput($message[2] ?? null) : null;
 
-                if ($event !== null && ! isset($skip[$event->id]) && in_array($event->kind, $kinds, true) && $event->hasValidSignature()) {
-                    $events[] = $event;
-                    $skip[$event->id] = true;
+                if ($event !== null && ! isset($skip[$event->id]) && self::matchesAny($event, $filters)) {
+                    $received[$event->id] = $event;
                 }
             }
 
@@ -99,6 +104,52 @@ class RelayReader
             }
         }
 
-        return $events;
+        return array_values(array_filter($received, fn (SignedEvent $event): bool => $event->hasValidSignature()));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $filters
+     */
+    private static function matchesAny(SignedEvent $event, array $filters): bool
+    {
+        foreach ($filters as $filter) {
+            if (self::matches($event, $filter)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * kinds, authors, since, until and single-letter tag filters (#d, #L, ...).
+     *
+     * @param  array<string, mixed>  $filter
+     */
+    private static function matches(SignedEvent $event, array $filter): bool
+    {
+        if (! in_array($event->kind, array_map(intval(...), (array) ($filter['kinds'] ?? [])), true)) {
+            return false;
+        }
+
+        if (isset($filter['authors']) && ! in_array($event->pubkey, (array) $filter['authors'], true)) {
+            return false;
+        }
+
+        if ((isset($filter['since']) && $event->createdAt < (int) $filter['since']) || (isset($filter['until']) && $event->createdAt > (int) $filter['until'])) {
+            return false;
+        }
+
+        foreach ($filter as $key => $values) {
+            if (preg_match('/^#([a-zA-Z])$/', $key, $letter) === 1) {
+                $tagValues = array_map(fn (array $tag): ?string => $tag[0] ?? null, $event->tagsNamed($letter[1]));
+
+                if (array_intersect((array) $values, $tagValues) === []) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 }
