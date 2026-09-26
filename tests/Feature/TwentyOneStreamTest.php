@@ -46,7 +46,7 @@ beforeEach(function () {
 afterEach(function () {
     File::deleteDirectory($this->dir);
 
-    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
+    foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_DELAY', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
         putenv($name);
         unset($_SERVER[$name]);
     }
@@ -82,6 +82,19 @@ function fakeFfmpeg(string $dir, string $body): string
 function fakeEncoder(string $dir): string
 {
     return fakeFfmpeg($dir, 'exec '.escapeshellarg(PHP_BINARY).' '.escapeshellarg(base_path('tests/Support/fake-encoder.php')).' "$@"');
+}
+
+/**
+ * The files a public playlist references (segments and init files), as
+ * paths under hls_dir.
+ *
+ * @return list<string>
+ */
+function referencedFiles(string $playlist): array
+{
+    preg_match_all('/^(?:#EXT-X-MAP:URI="([^"]+)"|([^#\s]\S*))$/m', $playlist, $matches);
+
+    return array_values(array_unique(array_filter([...$matches[1], ...$matches[2]])));
 }
 
 test('the live event puts one m3u8 streaming tag and a four-element host p tag in order', function () {
@@ -159,7 +172,7 @@ test('ffmpeg does not inherit the nsec or other secrets from the environment', f
         ->and(preg_match('/^(TWENTYONE_NOSTR_NSEC|TWENTYONE_TEST_API_TOKEN|APP_KEY)=/m', $environment))->toBe(0);
 });
 
-test('on stop the stream publishes ended first, in parallel, then stops ffmpeg and removes the playlist', function () {
+test('on stop the stream publishes ended first, in parallel, then stops ffmpeg and keeps the playlist', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     $hlsDir = config('twentyone.stream.hls_dir');
     // Three relays that accept the connection and never answer.
@@ -189,7 +202,8 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
         ->and($ended)->not->toBe([])
         ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
         ->and(strpos($output, 'status=ended'))->toBeLessThan(strpos($output, 'ffmpeg stopped'))
-        ->and(File::glob($hlsDir.'/{*,loop/*,scene/*}', GLOB_BRACE))->toBe([$hlsDir.'/loop', $hlsDir.'/scene', $hlsDir.'/stream.m3u8.state.json'])
+        ->and(File::exists($hlsDir.'/stream.m3u8'))->toBeTrue()
+        ->and(array_filter(referencedFiles((string) file_get_contents($hlsDir.'/stream.m3u8')), fn (string $uri): bool => ! is_file($hlsDir.'/'.$uri)))->toBe([])
         ->and($output)->not->toContain($this->nsec)
         ->and($output)->not->toContain($this->key->secret)
         ->and(substr_count($output, 'ffmpeg started'))->toBe(1);
@@ -212,13 +226,15 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
     preg_match('/MEDIA-SEQUENCE:(\d+)/', $published[2], $secondSequence);
 
     expect($first[1])->toHaveCount(3)
-        ->and($second[1])->toHaveCount(3)
-        ->and(array_intersect($first[1], $second[1]))->toBe([])
-        // Run 1 starts at the clock floor (no state yet); run 2 right after its 3 segments.
+        // Run 2 appends to the window run 1 left: its 3 segments, then 3 new names.
+        ->and(array_slice($second[1], 0, 3))->toBe($first[1])
+        ->and(array_slice($second[1], 3))->toHaveCount(3)
+        ->and(array_intersect($first[1], array_slice($second[1], 3)))->toBe([])
+        // Run 1 starts at the clock floor (no state yet); run 2 continues it.
         ->and((int) $firstSequence[1])->toBeGreaterThanOrEqual(intdiv(time() - 10, 2))
-        ->and((int) $secondSequence[1])->toBe((int) $firstSequence[1] + 3)
-        ->and($published[2])->toMatch('/^#EXT-X-MAP:URI="loop\/\w+-init\.mp4"$/m')
-        ->and($published[2])->not->toContain(explode('-', basename($first[1][0]))[0]);
+        ->and((int) $secondSequence[1])->toBe((int) $firstSequence[1])
+        ->and(substr_count($published[2], '#EXT-X-DISCONTINUITY'."\n"))->toBe(1)
+        ->and(substr_count($published[2], '#EXT-X-MAP:URI="loop/'))->toBe(2);
 });
 
 /**
@@ -265,15 +281,70 @@ test('a failing database poll counts as no live game instead of stopping the str
         ->and($output)->toContain('ffmpeg started mode=loop', 'stopped');
 });
 
-test('an exception in the supervisor still removes the public playlist', function () {
+test('an exception in the supervisor stops cleanly and keeps the playlist of the last run', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
-    File::ensureDirectoryExists(config('twentyone.stream.hls_dir'));
-    // A playlist a crashed run left behind, still looking live.
-    File::put(config('twentyone.stream.hls_dir').'/stream.m3u8', "#EXTM3U\n");
+    $hlsDir = config('twentyone.stream.hls_dir');
+    fakeEncoder($this->dir);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+    $kept = (string) file_get_contents($hlsDir.'/stream.m3u8');
     Process::fake(fn () => throw new RuntimeException('cannot start ffmpeg'));
 
     expect(fn () => Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]))->toThrow(RuntimeException::class, 'cannot start ffmpeg')
-        ->and(File::exists(config('twentyone.stream.hls_dir').'/stream.m3u8'))->toBeFalse();
+        ->and((string) file_get_contents($hlsDir.'/stream.m3u8'))->toBe($kept)
+        ->and(array_filter(referencedFiles($kept), fn (string $uri): bool => ! is_file($hlsDir.'/'.$uri)))->toBe([]);
+});
+
+test('a restart serves the kept playlist, with all its files, until the new encoder has a segment', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    $hlsDir = config('twentyone.stream.hls_dir');
+    fakeEncoder($this->dir);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+    $kept = (string) file_get_contents($hlsDir.'/stream.m3u8');
+
+    // The next encoder needs longer for its first segment than this run lasts.
+    setChildEnv('FAKE_ENCODER_DELAY', '5');
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1.5]);
+
+    expect(referencedFiles($kept))->toHaveCount(4)
+        ->and((string) file_get_contents($hlsDir.'/stream.m3u8'))->toBe($kept)
+        ->and(array_filter(referencedFiles($kept), fn (string $uri): bool => ! is_file($hlsDir.'/'.$uri)))->toBe([]);
+});
+
+test('a kept playlist does not count as live before this run has written it', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    $silent = stream_socket_server('tcp://127.0.0.1:0');
+    config(['twentyone.nostr.publish_timeout_seconds' => 1, 'twentyone.stream.shutdown_publish_seconds' => 1]);
+    fakeEncoder($this->dir);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+
+    // Restarted within FRESH_SECONDS, with an encoder that never gets a segment out.
+    setChildEnv('FAKE_ENCODER_DELAY', '5');
+    Artisan::call('twentyone:stream', ['--relays' => 'ws://'.stream_socket_get_name($silent, false), '--stop-after' => 1.5]);
+
+    expect(Artisan::output())->not->toContain('status=live');
+});
+
+test('--clear starts from an empty window, a lost state drops the kept playlist', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    $hlsDir = config('twentyone.stream.hls_dir');
+    fakeEncoder($this->dir);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+    setChildEnv('FAKE_ENCODER_DELAY', '5');
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1, '--clear' => true]);
+
+    expect(Artisan::output())->toContain('--clear: removed the public playlist and all segments')
+        ->and(File::exists($hlsDir.'/stream.m3u8'))->toBeFalse()
+        ->and(File::glob($hlsDir.'/loop/*.m4s'))->toBe([])
+        ->and(File::exists($hlsDir.'/stream.m3u8.state.json'))->toBeTrue();
+
+    // A playlist without its state: nothing says which files it needs.
+    File::put($hlsDir.'/stream.m3u8', "#EXTM3U\n");
+    File::delete($hlsDir.'/stream.m3u8.state.json');
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 1]);
+
+    expect(Artisan::output())->toContain('removed a public playlist that has no readable state')
+        ->and(File::exists($hlsDir.'/stream.m3u8'))->toBeFalse();
 });
 
 test('a scene that cannot be rendered gives way to the loop', function () {

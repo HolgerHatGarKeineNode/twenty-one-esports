@@ -20,6 +20,8 @@ final class PublicPlaylist
     /** Why the state was rebuilt on start ('missing' or 'unreadable'), null when it was read. */
     public readonly ?string $recoveredFrom;
 
+    private bool $writtenThisRun = false;
+
     public function __construct(
         private string $hlsDir,
         private string $playlistName = 'stream.m3u8',
@@ -70,6 +72,7 @@ final class PublicPlaylist
             File::delete($this->path());
         } else {
             PlaylistWriter::writeAtomically($this->path(), $this->writer->render($next));
+            $this->writtenThisRun = true;
         }
 
         PlaylistWriter::writeAtomically($this->statePath(), $next->toJson());
@@ -102,8 +105,17 @@ final class PublicPlaylist
     }
 
     /**
-     * The stream is over: remove the public playlist and the media, keep the
-     * state so the next start continues the sequence numbers.
+     * Whether this instance has written the public playlist, as opposed to
+     * one kept from a previous run.
+     */
+    public function writtenThisRun(): bool
+    {
+        return $this->writtenThisRun;
+    }
+
+    /**
+     * Start from nothing: remove the public playlist and the media, keep the
+     * state so the sequence numbers still only go up.
      */
     public function remove(string ...$encoderDirs): void
     {

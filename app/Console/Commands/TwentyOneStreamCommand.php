@@ -48,11 +48,17 @@ use Throwable;
  * playlist is fresh (so a dead encoder ages out in clients by itself), with
  * the game in title and summary while the scene shows one, and `ended` on
  * SIGTERM/SIGINT.
+ *
+ * A stop keeps the public playlist and the segments its window references:
+ * players that are still open keep a valid playlist across a daemon restart,
+ * and the next start appends to it (DISCONTINUITY + MAP) once its encoder has
+ * a segment. `ended` is the offline signal; `--clear` starts from nothing.
  */
 #[Signature('twentyone:stream
     {--relays= : Comma-separated relay URLs, instead of twentyone.relays.public}
     {--no-publish : Run the HLS loop without any Nostr event}
-    {--stop-after= : Stop after this many seconds, exactly as on SIGTERM (local checks)}')]
+    {--stop-after= : Stop after this many seconds, exactly as on SIGTERM (local checks)}
+    {--clear : Remove the public playlist and all segments before starting, instead of continuing them}')]
 #[Description('Run the TWENTY ONE 24/7 HLS loop and announce it as a NIP-53 live event')]
 class TwentyOneStreamCommand extends Command
 {
@@ -127,10 +133,20 @@ class TwentyOneStreamCommand extends Command
             $this->log('no playlist state yet; MEDIA-SEQUENCE starts at the clock floor '.$public->state()->mediaSequence);
         }
 
+        if ($this->option('clear')) {
+            $public->remove(ModeMachine::LOOP, ModeMachine::SCENE);
+            $this->log('--clear: removed the public playlist and all segments');
+        } elseif ($public->recoveredFrom !== null && is_file($public->path())) {
+            // Without the persisted window nothing says which files the old
+            // playlist needs, and the first prune would pull them from under it.
+            $public->remove(ModeMachine::LOOP, ModeMachine::SCENE);
+            $this->log('removed a public playlist that has no readable state');
+        }
+
         try {
             $this->supervise($builder, $publisher, $source, $public, $hlsDir, $prepared);
         } finally {
-            // Also after an exception: nothing may keep looking live.
+            // Also after an exception: `ended` goes out, the encoders stop.
             $this->shutdown($builder, $publisher, $public);
         }
 
@@ -314,7 +330,9 @@ class TwentyOneStreamCommand extends Command
 
             $texts = StreamTexts::for($this->active?->mode === ModeMachine::SCENE ? $sceneGame : null);
 
-            if ($this->signer !== null && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
+            // A playlist kept from before this start is fresh after a quick
+            // restart, but says nothing about whether this run's encoder works.
+            if ($this->signer !== null && $public->writtenThisRun() && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
                 $this->startedAt ??= time();
                 // A SIGTERM during this publish aborts it; `ended` follows below.
                 $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping);
@@ -327,8 +345,9 @@ class TwentyOneStreamCommand extends Command
 
     /**
      * `ended` first (a supervisor that kills us after its grace period must
-     * not find it unsent behind a slow ffmpeg stop), then the encoders, then
-     * the public files. Best effort: runs on every exit, exceptions included.
+     * not find it unsent behind a slow ffmpeg stop), then the encoders. The
+     * public playlist and its segments stay for the next start. Best effort:
+     * runs on every exit, exceptions included.
      */
     private function shutdown(EventBuilder $builder, RelayPublisher $publisher, PublicPlaylist $public): void
     {
@@ -351,10 +370,7 @@ class TwentyOneStreamCommand extends Command
         }
 
         $this->pending = $this->active = null;
-        // Nothing is running any more: do not let the web server keep serving
-        // a playlist that looks live. The sequence state stays.
-        $public->remove(ModeMachine::LOOP, ModeMachine::SCENE);
-        $this->log('stopped');
+        $this->log('stopped, keeping '.count($public->state()->window).' segments in the public playlist');
     }
 
     /**
