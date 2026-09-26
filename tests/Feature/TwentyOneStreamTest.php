@@ -127,7 +127,7 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
     // Three relays that accept the connection and never answer.
     $silent = array_map(fn () => stream_socket_server('tcp://127.0.0.1:0'), range(1, 3));
     $relays = implode(',', array_map(fn ($server): string => 'ws://'.stream_socket_get_name($server, false), $silent));
-    config(['twentyone.nostr.publish_timeout_seconds' => 1, 'twentyone.stream.shutdown_publish_seconds' => 1]);
+    config(['twentyone.nostr.publish_timeout_seconds' => 0.3, 'twentyone.stream.shutdown_publish_seconds' => 0.3]);
     // The stand-in writes a fresh playlist and a segment, then runs until SIGTERM.
     File::ensureDirectoryExists($hlsDir);
     fakeFfmpeg($this->dir, "echo '#EXTM3U' > '{$hlsDir}/stream.m3u8'; echo x > '{$hlsDir}/seg-000000000.m4s'; exec sleep 30");
@@ -141,8 +141,13 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
     preg_match('/status=ended id=\w+ created_at=(\d+) to 0\/3 relays/', $output, $ended);
 
     expect($exitCode)->toBe(0)
-        // live (1 s budget) + stop-after + ended (1 s budget), not 3 × per relay.
-        ->and($elapsed)->toBeLessThan(3.5)
+        // live (0.3 s budget) + stop-after (1 s) + ended (0.3 s budget), not 3 × per
+        // relay. Publish timeouts are kept short (0.3 s, not 1 s) precisely so this
+        // budget has real headroom over the deterministic sum (~1.6 s): measured
+        // 1.85 s idle / up to 2.14 s under 2× CPU oversubscription (24 and 48 busy
+        // `yes` processes on a 24-core box), so 3.0 s still leaves ~40 % margin
+        // instead of the ~0 % margin the old 1 s timeouts left against 3.5 s.
+        ->and($elapsed)->toBeLessThan(3.0)
         ->and($live)->not->toBe([])
         ->and($ended)->not->toBe([])
         ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
