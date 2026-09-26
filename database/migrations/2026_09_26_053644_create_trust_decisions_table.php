@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -24,8 +25,18 @@ return new class extends Migration
         });
     }
 
+    /**
+     * An append-only log must not vanish in a rollback. This runs before the
+     * earlier migrations roll back, so their own refusals would come too late.
+     */
     public function down(): void
     {
+        $decisions = Schema::hasTable('trust_decisions') ? DB::table('trust_decisions')->count() : 0;
+
+        if ($decisions > 0) {
+            throw new RuntimeException("Cannot roll back: the append-only log holds {$decisions} trust decision(s). Export or archive them first; a rollback would drop them for good.");
+        }
+
         Schema::dropIfExists('trust_decisions');
     }
 };

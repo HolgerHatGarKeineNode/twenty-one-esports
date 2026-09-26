@@ -20,6 +20,8 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustJob;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
@@ -121,4 +123,18 @@ test('round 3: excluding a key is for the board; dismissing a single report stay
     $trust->exclude($this->admin, $this->reporter->pubkey, 'Mass reporting.');
 
     expect(TrustExclusion::query()->count())->toBe(1);
+});
+
+test('round 4: rolling back the decision log refuses while it holds decisions, so a later refused rollback cannot have dropped it', function () {
+    $migration = require database_path('migrations/2026_09_26_053644_create_trust_decisions_table.php');
+    app(TrustAdmin::class)->dismiss($this->admin, $this->report->event_id, 'Same household.');
+
+    expect(fn () => $migration->down())->toThrow(RuntimeException::class, '1 trust decision(s)')
+        ->and(Schema::hasTable('trust_decisions'))->toBeTrue()
+        ->and(TrustDecision::query()->count())->toBe(1);
+
+    DB::table('trust_decisions')->delete();
+    $migration->down();
+    expect(Schema::hasTable('trust_decisions'))->toBeFalse();
+    $migration->up();
 });
