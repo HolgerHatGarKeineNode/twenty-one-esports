@@ -15,6 +15,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\NoTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Tournaments\TournamentDraws;
@@ -225,7 +226,7 @@ test('the draw copies the tournament\'s frozen ladder (none here) and is publish
 test('director results on a rated tournament: chess pinned at the pairing with clans, a no-show attested as forfeit without Elo, a series with its roster', function () {
     openSeason();
     app()->bind(TrustFacts::class, TrustedFacts::class);
-    $chess = runningChess(TournamentFormat::SingleElimination, 4, clans: true);
+    $chess = calendared(runningChess(TournamentFormat::SingleElimination, 4, clans: true));
     [$played, $noShow] = TournamentMatch::query()->where('tournament_id', $chess->id)->where('status', 'ready')->orderBy('id')->get()->all();
 
     expect($played->pairing['gate'])->not->toBeNull()
@@ -244,7 +245,7 @@ test('director results on a rated tournament: chess pinned at the pairing with c
 
     expect($playedGame->rated)->toBeTrue()
         ->and($playedGame->clans_at_accept)->toHaveCount(2)
-        ->and($tags($played->id))->toContain(['resolution', 'admin'], ['entered-by', $chess->creator->pubkey])
+        ->and($tags($played->id))->toContain(['resolution', 'admin'], ['entered-by', $chess->creator->pubkey], ['a', $chess->address(), ''])
         ->and(collect($tags($played->id))->where(0, 'clan')->count())->toBe(2)
         ->and(collect($tags($played->id))->where(0, 'elo')->count())->toBe(2)
         ->and($tags($noShow->id))->toContain(['resolution', 'forfeit'])
@@ -253,6 +254,7 @@ test('director results on a rated tournament: chess pinned at the pairing with c
 
     app()->bind(TrustFacts::class, TrustedFacts::class);
     [$rl] = directedSeries();
+    calendared($rl);
     $runner->enterResult(TournamentMatch::query()->where('tournament_id', $rl->id)->sole(), $rl->creator, ['games' => [[3, 1], [2, 0], [1, 0]]]);
     $runner->closeRound(TournamentRunner::currentRound($rl), $rl->creator);
     $series = SeriesMatch::query()->whereHas('tournamentMatch', fn ($q) => $q->where('tournament_id', $rl->id))->sole();
@@ -262,6 +264,15 @@ test('director results on a rated tournament: chess pinned at the pairing with c
         ->and($series->resolved_roster)->toHaveCount(6)
         ->and(collect($seriesTags)->filter(fn ($tag) => $tag[0] === 'p' && isset($tag[3]))->count())->toBe(6)
         ->and(collect($seriesTags)->where(0, 'clan')->count())->toBe(6)
-        ->and($seriesTags)->toContain(['resolution', 'admin'], ['entered-by', $rl->creator->pubkey])
+        ->and($seriesTags)->toContain(['resolution', 'admin'], ['entered-by', $rl->creator->pubkey], ['a', $rl->refresh()->address(), ''])
         ->and(RatingChange::query()->where('source', 'series')->count())->toBe(2);
 });
+
+/** Give a test tournament its calendar event (as publishing would), so attestations can name it. */
+function calendared(Tournament $tournament): Tournament
+{
+    $event = NostrEvent::fromSigned(SignedEvent::fromInput((new TestSigner)->sign(31923, [['d', (string) $tournament->slug], ['alt', 'Tournament']])));
+    $tournament->forceFill(['event_id' => $event->id])->save();
+
+    return $tournament->refresh();
+}

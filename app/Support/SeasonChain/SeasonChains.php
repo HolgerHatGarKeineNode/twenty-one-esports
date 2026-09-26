@@ -682,10 +682,13 @@ final class SeasonChains
         $tags = [];
         $address = $match->tournament->address();
 
-        if ($address !== null) {
-            $tags[] = ['a', $address, ''];
+        if ($address === null) {
+            return [];
         }
 
+        $tags[] = ['a', $address, ''];
+
+        // NIP rev. 7: `entered-by` only next to the tournament `a`.
         if ($match->isDirectorResult()) {
             $pubkey = User::query()->whereKey((int) ($match->result['corrected']['user_id'] ?? $match->result['user_id'] ?? 0))->value('pubkey');
 
