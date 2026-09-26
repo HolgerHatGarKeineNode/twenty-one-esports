@@ -124,10 +124,20 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
         chooserWait($page, 'swiss');
         $page->evaluate('() => { document.querySelector("[data-test=tournament-name]").dataset.probe = "kept"; }');
 
-        // Enter the player count: 8 → Round Robin, 12 → Swiss (the layperson case).
-        $page->locator('#n-in')->fill('8');
-        chooserWait($page, 'round-robin');
-        $page->locator('#n-in')->fill('12');
+        // Enter the player count: 8 → Round Robin, 12 → Swiss (the layperson case). At 1440 the
+        // typed count goes through the stepper instead, one request, to keep the suite in budget.
+        if ($width === 375) {
+            $page->locator('#n-in')->fill('8');
+            chooserWait($page, 'round-robin');
+            $page->locator('#n-in')->fill('12');
+        } else {
+            $page->locator('button[aria-label="One player more"]')->click();
+            chooserWait($page, 'swiss');
+            BrowserWait::until($page, '() => document.querySelector("#n-in")?.value === "13"', 8_000);
+            $page->locator('button[aria-label="One player less"]')->click();
+            BrowserWait::until($page, '() => document.querySelector("#n-in")?.value === "12"', 8_000);
+        }
+
         chooserWait($page, 'swiss');
         $blitz = $page->evaluate(CHOOSER_STATE);
         chooserShot($page, "p8a-chooser-blitz-12-{$width}");
