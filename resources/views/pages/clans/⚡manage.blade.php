@@ -630,11 +630,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @php($active = $lineup?->activeCount() ?? 0)
                 <div wire:key="lu-{{ $rowMode }}" class="tr grid min-h-[60px] grid-cols-[104px_minmax(0,1fr)] items-center gap-3 rounded-sm border-b border-hairline p-2 lg:grid-cols-[110px_minmax(0,1fr)_190px_100px_auto]">
                     <span class="flex flex-col gap-0.5"><b class="text-[15px]">{{ $rowMode }}</b>@if ($lineup)<x-rank-badge :tier="$stats['tier']" :level="$stats['level']" class="font-normal" />@endif</span>
-                    <span class="flex flex-wrap gap-2">
+                    <span class="flex min-w-0 flex-wrap gap-2">
                         @foreach ($lineup?->activeSeats() ?? [] as $seat)
-                            <span class="flex h-[34px] items-center gap-1.5 rounded-md border border-line bg-well px-2.5 text-xs">
-                                {{ $seat->user->displayName() }}
-                                @if ($seat->role !== LineupRole::Player)<span class="text-ink-3">{{ $seat->role->label() }}</span>@endif
+                            {{-- min-w-0 + truncate: a long display name (a real Nostr name, not
+                                just a factory fixture) must not push this chip past the column's
+                                width and eat into the 16px side gutter (RouteSweepTest). --}}
+                            <span class="flex h-[34px] max-w-full min-w-0 items-center gap-1.5 rounded-md border border-line bg-well px-2.5 text-xs">
+                                <span class="min-w-0 truncate">{{ $seat->user->displayName() }}</span>
+                                @if ($seat->role !== LineupRole::Player)<span class="shrink-0 text-ink-3">{{ $seat->role->label() }}</span>@endif
                             </span>
                         @endforeach
                         @for ($open = $lineup?->activeCount() ?? 0; $open < $needed; $open++)
