@@ -28,9 +28,8 @@ use Throwable;
  * In the app (P5c): every notification the player has switched on is also
  * stored for the bell and pushed to their open pages (UserNotified), once the
  * surrounding transaction commits. `remote: false` keeps an event in the app
- * only: live events of players at the board (invite accepted, a blitz game
- * over) mean nothing an hour later in an inbox. Opponent found and blitz
- * invite do go out: they reach a player who is away. Storing and pushing fail open: a broken notification never
+ * only: live events (opponent found, blitz invite) mean nothing an hour later
+ * in an inbox. Storing and pushing fail open: a broken notification never
  * undoes the game that caused it.
  *
  * Nostr DM (ChessSettings::dmFor): on by default for the kinds an offline

@@ -6,6 +6,7 @@ use App\Models\ChatMute;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\ChessSettings;
 use App\Support\Chess\DailyChallenges;
@@ -15,8 +16,8 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 /*
- * Nostr DMs by default for what needs an offline player (challenge, invite,
- * your move, reminder, clan join request, opponent found), the signed
+ * Nostr DMs by default for what needs an offline player (challenge,
+ * daily move, reminder, clan join request), the signed
  * opt-out at the end of every DM, and the brakes on the challenger's side.
  */
 
@@ -73,7 +74,7 @@ test('the default covers only the kinds that need the player, an explicit on cov
     $on = User::factory()->create(['chess_settings' => ['dm' => true]]);
 
     expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())
-        ->toBe(['match_found', 'invite', 'challenge', 'your_move', 'reminder', 'clan_join_request'])
+        ->toBe(['invite', 'challenge', 'your_move', 'reminder', 'clan_join_request'])
         ->and(collect(ChessSettings::triggers())->every(fn (string $trigger) => $on->chessSettings()->dmFor($trigger)))->toBeTrue();
 
     // A daily game over is remote, but not in the default set.
@@ -188,6 +189,17 @@ test('a blitz "your move" never becomes a DM, whatever the player chose', functi
     $games->move($daily, $anna, 'e2e4');
 
     expect(dmsTo($bert))->toHaveCount(1);
+});
+
+test('a blitz pairing and a blitz invite stay in the app: no DM, even with DMs switched on', function () {
+    $anna = User::factory()->create(['chess_settings' => ['dm' => true]]);
+    $bert = User::factory()->create(['chess_settings' => ['dm' => true]]);
+
+    app(ChessInvites::class)->invite($anna, $bert);
+    app(ChessNotifications::class)->matchFound(app(ChessGameService::class)->start($anna, $bert));
+
+    expect(dmsTo($anna))->toBe([])
+        ->and(dmsTo($bert))->toBe([]);
 });
 
 test('a challenger may send only so many challenges a day, per player and in total', function () {

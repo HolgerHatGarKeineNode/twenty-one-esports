@@ -19,9 +19,7 @@ use Illuminate\Support\Carbon;
  * - reminder: a daily move is due soon (ChessSettings "Remind me when")
  * - challenge: someone challenged you to daily chess
  * - game_started: your daily challenge was accepted (P5c)
- * - match_found, invite: live blitz; also remote, so a player who is away
- *   hears about it (Nostr DM by default, NotificationKind::dmByDefault())
- * - invite_accepted: live blitz, in the app only (P5c)
+ * - match_found, invite, invite_accepted: live blitz, in the app only (P5c)
  * - opponent_resigned / game_over: a game ended; the resigning player gets
  *   game_over, the other one opponent_resigned (P5c: blitz too, in the app)
  */
@@ -164,7 +162,7 @@ final class ChessNotifications
                 route('games.show', $game),
                 $game->id,
                 __('Play now', [], $locale),
-            ), $game);
+            ), $game, remote: false);
         }
     }
 
@@ -179,7 +177,7 @@ final class ChessNotifications
             route('chess.lobby'),
             null,
             __('Answer', [], $locale),
-        ), sender: $invite->inviter);
+        ), remote: false);
     }
 
     public function inviteAccepted(ChessInvite $invite, ChessGame $game): void

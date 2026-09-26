@@ -22,7 +22,7 @@
                 <p role="status" class="m-0 flex items-start gap-2 rounded-lg bg-win-tint px-4 py-3 text-[13px] text-win" data-test="dm-off-done"><x-icon name="check" :size="16" class="mt-0.5 shrink-0" />{{ __('Done. Challenges no longer notify you.') }}</p>
             @endif
 
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('The league sends these DMs from its own notification key, not from other players. They are on by default for challenges, invites, your daily moves and deadline reminders, clan join requests and found opponents.') }}</p>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('The league sends these DMs from its own notification key, not from other players. They are on by default for challenges, your daily moves and deadline reminders, and clan join requests.') }}</p>
 
             <p class="m-0 text-[13px] leading-normal" data-test="dm-off-state">
                 @if ($dmOff)
