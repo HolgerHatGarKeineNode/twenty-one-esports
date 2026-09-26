@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Vite;
 use Tests\TestCase;
 
 /*
@@ -32,6 +33,17 @@ pest()->extend(TestCase::class)
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    // Browser tests run their pages through this same in-process app
+    // (Pest\Browser\Drivers\LaravelHttpServer), reading public/build/*
+    // directly (scripts/test-browser.sh runs `npm run build` first). If a
+    // developer's `composer dev` happens to be running elsewhere and its
+    // public/hot file exists, @vite() would otherwise point every browser
+    // test's page at the (unrelated, maybe-not-running-here) Vite dev
+    // server instead of the built manifest — the page loads with a
+    // "failed to connect to websocket" console error and stale/missing
+    // assets. Point at a path that never exists instead of touching or
+    // deleting the developer's real public/hot.
+    ->beforeEach(fn () => Vite::useHotFile(storage_path('framework/testing/vite-hot-disabled-for-browser-tests')))
     ->group('browser')
     ->in('Browser');
 
