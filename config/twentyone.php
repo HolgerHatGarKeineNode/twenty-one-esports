@@ -39,7 +39,7 @@ return [
         'banner' => 'https://blossom.einundzwanzig.space/3651c44d9e469ec1ceb7cde8581694c86fce248fb5d5eb16ec2cc008b1a3545e.png',
         'website' => 'https://esports.einundzwanzig.space',
         'nip05' => 'esports@esports.einundzwanzig.space',
-        'lud16' => null,
+        'lud16' => 'theben@getalby.com',
     ],
 
     /*
