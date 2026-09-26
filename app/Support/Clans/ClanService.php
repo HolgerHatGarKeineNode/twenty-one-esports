@@ -659,29 +659,32 @@ final class ClanService
 
     /**
      * Drop the player's membership and seats; a clan without members ends.
+     * Every leaver gets a departure row, the last one too, and the rows
+     * outlive the clan (P7d gate, Low A: the trust admin's own-clan guard).
      */
     private function leaveCurrentClan(User $player, string $reason): void
     {
-        $membership = $player->clanMember()->first();
+        $membership = $player->clanMember()->with('clan')->first();
 
         if ($membership === null) {
             return;
         }
 
-        $clanId = $membership->clan_id;
+        $clan = $membership->clan;
         $membership->delete();
 
         LineupSeat::query()->where('user_id', $player->id)
-            ->whereIn('lineup_id', Lineup::query()->where('clan_id', $clanId)->select('id'))
+            ->whereIn('lineup_id', Lineup::query()->where('clan_id', $clan->id)->select('id'))
             ->delete();
 
-        if (! ClanMember::query()->where('clan_id', $clanId)->exists()) {
-            Clan::query()->whereKey($clanId)->delete();
+        ClanDeparture::query()->create([
+            'clan_id' => $clan->id, 'clan_address' => $clan->address(), 'clan_name' => $clan->name,
+            'user_id' => $player->id, 'reason' => $reason, 'left_at' => now(),
+        ]);
 
-            return;
+        if (! ClanMember::query()->where('clan_id', $clan->id)->exists()) {
+            $clan->delete();
         }
-
-        ClanDeparture::query()->create(['clan_id' => $clanId, 'user_id' => $player->id, 'reason' => $reason, 'left_at' => now()]);
     }
 
     /* ---------- Templates ----------------------------------------------------------------------------------------- */

@@ -17,12 +17,15 @@ use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
 use App\Models\TrustReportDismissal;
 use App\Models\User;
+use App\Support\Clans\ClanDraft;
+use App\Support\Clans\ClanService;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\TrustAdmin;
 use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustJob;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -162,6 +165,36 @@ test('regression (security re-check round 4): leaving the clan does not lift the
     $trust->dismiss($this->admin, $this->report->event_id, 'Not him.');
 
     expect(TrustReportDismissal::query()->count())->toBe(1);
+});
+
+test('regression (P7d gate, Low A): a clan that ends keeps its departures, so the last member cannot shed the own-clan guard', function () {
+    Queue::fake();
+    openSeason(); // Block 0 an hour ago
+    config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
+    $clans = app(ClanService::class);
+    $trust = app(TrustAdmin::class);
+
+    // The board member founds a clan, a mate joins.
+    $draft = new ClanDraft('Laser Eyes', 'LSR', 'Rocket League clan of the Kempten meetup.');
+    $clan = $clans->create($this->admin, $draft, $this->adminSigner->signTemplates($clans->prepareCreate($this->admin, $draft)));
+    $mateSigner = new TestSigner;
+    $mate = User::factory()->withPubkey($mateSigner->pubkey)->create();
+    $invite = $clans->invite($this->admin, $clan, $mate, $this->adminSigner->signTemplates($clans->prepareInvite($this->admin, $clan, $mate)));
+    $clans->accept($invite, $mate, $mateSigner->signTemplates($clans->prepareAccept($invite, $mate)));
+
+    // The mate leaves, then the owner leaves last: the clan ends.
+    $clans->leave($mate, $mateSigner->signTemplates($clans->prepareLeave($mate)));
+    $clans->leave($this->admin, $this->adminSigner->signTemplates($clans->prepareLeave($this->admin)));
+
+    expect(Clan::query()->whereKey($clan->id)->exists())->toBeFalse()
+        ->and(ClanDeparture::query()->where('clan_id', $clan->id)->orderBy('id')->get()->map(fn (ClanDeparture $row) => [$row->user_id, $row->reason, $row->clan_address, $row->clan_name])->all())
+        ->toBe([
+            [$mate->id, 'left', $clan->address(), 'Laser Eyes'],
+            [$this->admin->id, 'left', $clan->address(), 'Laser Eyes'],
+        ]);
+
+    expect(fn () => $trust->exclude($this->admin, $mate->pubkey, 'Mass reporting.'))->toThrow(TrustAdminRefused::class, 'your own clan')
+        ->and(TrustExclusion::query()->count())->toBe(0);
 });
 
 test('round 4: the page shows which reports count now, and a dismissal takes the mark away', function () {
