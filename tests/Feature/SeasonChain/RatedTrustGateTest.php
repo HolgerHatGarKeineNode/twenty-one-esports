@@ -561,3 +561,17 @@ test('NIP 7.1: a tournament 1v1 of a clan lineup against a solo entry is rated f
         ->and(collect($tags)->where(0, 'elo')->pluck(1)->sort()->values()->all())->toBe(collect([$a[1]->pubkey, $solo->pubkey])->sort()->values()->all())
         ->and(collect($tags)->filter(fn ($tag) => $tag[0] === 'a' && isset($tag[3]))->values()->all())->toBe([['a', $a[0]->address(), '', $lineupSide]]);
 });
+
+test('regression (R1): a 1v1 no-show loser who deletes his account before the forfeit is still rated, by the pinned sides', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    $match = gateAccepted($a, $b);
+    app(SeriesService::class)->reportNoShow($match, $a[1]);
+
+    app(DeleteAccount::class)($b[1]);
+    app(SeriesService::class)->decide($match->refresh(), gateAdmin(), ['type' => 'forfeit', 'winner' => 'challenger'], 'Opponent did not show.');
+
+    expect(RatingChange::query()->where('source', RatingChange::SERIES)->where('source_id', $match->id)->count())->toBe(2)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[1]->id)->value('rating'))->toBeGreaterThan(1000)
+        ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'user:'.$b[1]->id)->value('rating'))->toBeLessThan(1000);
+});

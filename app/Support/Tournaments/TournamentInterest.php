@@ -9,6 +9,7 @@ use App\Models\Lineup;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\SeasonChain\Seasons;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -21,8 +22,9 @@ use Illuminate\Support\Facades\DB;
  * - who belongs to a clan in it: the clan of an entered lineup, or the clan
  *   of any player of either entry, as member, captain or owner, whether or
  *   not they were entered. Leaving does not end it: a clan the player or the
- *   director left since sign-up closed still counts (clan_departures, read
- *   by user and pubkey like the trust admin's own-clan guard);
+ *   director left since the live season started, or since the tournament was
+ *   published if that is earlier, still counts (clan_departures, read by user
+ *   and pubkey like the trust admin's own-clan guard);
  * - who was named as director by someone with such an interest, along the
  *   whole chain of appointments. An organizer who plays taints every
  *   director he named, so an alt account cannot enter his win. A named
@@ -36,7 +38,7 @@ final class TournamentInterest
 {
     public static function of(Tournament $tournament, TournamentMatch $match, User $user, bool $followAppointers = true): bool
     {
-        $since = $tournament->signup_closes_at ?? $tournament->created_at;
+        $since = self::since($tournament);
         [$players, $clans] = self::stakes($match, $since);
 
         if (self::holds($user->id, $players, $clans, $since)) {
@@ -125,7 +127,19 @@ final class TournamentInterest
     }
 
     /**
-     * Clan departures since sign-up closed (all of them without a date: fail closed).
+     * From when a departure still counts: the start of the live season or the
+     * tournament's publication (its creation for an unpublished one),
+     * whichever is earlier, as the P7d own-clan guard reads the season.
+     */
+    private static function since(Tournament $tournament): ?\DateTimeInterface
+    {
+        $dates = array_filter([Seasons::live()?->genesis_at, $tournament->published_at ?? $tournament->created_at]);
+
+        return $dates === [] ? null : min($dates);
+    }
+
+    /**
+     * Clan departures since then (all of them without a date: fail closed).
      *
      * @return Builder<ClanDeparture>
      */

@@ -131,8 +131,9 @@ final class RatingService
 
     /**
      * The one player of each 1v1 side: who the counted roster names for it,
-     * else the pinned subject, else the player of a roster side, else the
-     * lineup's one regular (captain or player) seat. Null when a side has none
+     * else the pinned subject, else the player of a roster side, else the one
+     * regular player the accept pinned for the side, else the lineup's one
+     * regular (captain or player) seat now. Null when a side has none
      * or more than one (fail closed: unrated). A deleted account keeps its
      * subject, so the winner is still rated (security re-check F2).
      *
@@ -146,12 +147,16 @@ final class RatingService
         foreach (SeriesMatch::SIDES as $side) {
             $played = array_values(array_unique(array_column(array_filter($roster, fn (array $entry): bool => $entry['side'] === $side), 'user_id')));
             $pinned = $match->rated_subjects[$side] ?? null;
+            // The side as a rated accept pinned it (security gate F3 class): a deleted account or an
+            // emptied lineup after the accept cannot take a forfeit's result away.
+            $pinnedRegulars = array_values(array_filter(GatePin::fromArray($match->gate_at_accept)?->sides[$side] ?? [], fn (array $entry): bool => $entry['role'] !== LineupRole::Substitute->value));
             $regulars = array_values(array_filter($match->lineup($side)?->activeSeats() ?? [], fn ($seat): bool => $seat->role !== LineupRole::Substitute));
 
             $userId = match (true) {
                 $roster !== [] => count($played) === 1 ? (int) $played[0] : null,
                 is_string($pinned) && str_starts_with($pinned, 'user:') => (int) substr($pinned, 5),
                 count($match->rosterSide($side)) === 1 => $match->rosterSide($side)[0],
+                count($pinnedRegulars) === 1 => (int) $pinnedRegulars[0]['user_id'],
                 count($regulars) === 1 => $regulars[0]->user_id,
                 default => null,
             };
