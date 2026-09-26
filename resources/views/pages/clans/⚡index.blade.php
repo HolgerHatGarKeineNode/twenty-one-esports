@@ -263,13 +263,16 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                     <h2 id="hs-h" class="m-0 text-[15px] font-bold">{{ __('Most active clans · Hashrate') }}</h2>
                     <span class="text-xs text-ink-3">{{ __('points from every game, chess and Rocket League') }}</span>
                 </span>
-                <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge">
-                    @foreach (['s' => __('Pre-Season'), 'w' => __('7 days')] as $key => $label)
+                {{-- The window switch names the live season; before Block 0 there is nothing to switch. --}}
+                @if ($this->stats->seasonLive())
+                <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge" data-test="hashrate-window">
+                    @foreach (['s' => $this->stats->seasonName(), 'w' => __('7 days')] as $key => $label)
                         <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
                                 @class(['h-[42px] cursor-pointer px-3 text-[13px] lg:px-3.5', 'border-l border-edge' => $key === 'w',
                                     'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
                     @endforeach
                 </div>
+                @endif
             </span>
             <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
                 <span>#</span><span>{{ __('Clan') }}</span><span>{{ __('Hashrate') }}</span><span class="hidden text-right lg:block">{{ __('Team wins') }}</span><span class="hidden text-right lg:block">{{ __('Share') }}</span>
@@ -298,7 +301,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             @endforelse
             @endif
             <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">
-                {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __('Pre-Season: :n points.', ['n' => $hash['total']]) }}
+                {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __(':season: :n points.', ['season' => $this->stats->seasonName() ?? __('Pre-Season'), 'n' => $hash['total']]) }}
                 {{ __('Win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}
             </p>
         </section>

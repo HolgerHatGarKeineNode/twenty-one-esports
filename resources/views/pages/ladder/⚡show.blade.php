@@ -254,7 +254,10 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                 </a>
             @empty
                 <x-empty-state class="px-2 py-6" :heading="$rated ? __('No rated results yet') : __('No casual results yet')"
-                               :text="__('The first finished game opens the table. Every new entry starts at :elo Elo.', ['elo' => (int) config($rated ? 'season.rating.start' : 'season.casual.start')])" />
+                               :text="__('The first finished game opens the table. Every new entry starts at :elo Elo.', ['elo' => (int) config($rated ? 'season.rating.start' : 'season.casual.start')])">
+                    {{-- An empty table invites the first game (P16): the page where this game is played. --}}
+                    <a href="{{ $game === 'chess' ? route('chess.lobby') : route('games.rocket-league') }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="ladder-empty-play">{{ $rated ? __('Play a rated game') : __('Play a casual game') }}</a>
+                </x-empty-state>
             @endforelse
 
             @if (! $rated && config('season.casual.daily_pair_limit') !== null)

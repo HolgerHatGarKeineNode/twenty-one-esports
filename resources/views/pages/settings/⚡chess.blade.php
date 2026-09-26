@@ -277,7 +277,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
                     @php([$label, $hint] = $kind->setting())
                     @include('pages.settings.partials.switch', ['label' => __($label), 'hint' => __($hint, ['hours' => $settings->remindHours]), 'on' => $settings->wants($kind->value), 'action' => "toggleTrigger('{$kind->value}')", 'test' => 'trigger-'.$kind->value])
                 @endforeach
-                <span class="pt-3 text-xs leading-normal text-ink-3">{{ __('Each shows in the bell and on the page you are on. Daily-chess and clan notifications also go out by browser push and Nostr DM, as switched on above.') }}</span>
+                <span class="pt-3 text-xs leading-normal text-ink-3" data-test="channels-explained">{{ __('Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.') }}</span>
                 <span class="pt-2 text-xs leading-normal text-ink-3" data-test="dm-explained">{{ __('Nostr DMs come from the league\'s own notification key, never from another player. They are on by default for what needs you while you are away. Turn them off with the switch above, or with the link at the end of every DM, no login needed.') }}</span>
             </section>
         </div>

@@ -86,7 +86,7 @@ test('the account menu shows name and short npub, never an email', function () {
         ->assertDontSee('email');
 });
 
-test('the account menu links to the admin area only for admins', function (bool $isAdmin) {
+test('the account menu links to the admin area (its disputes, P16) only for admins', function (bool $isAdmin) {
     $user = User::factory()->create();
 
     if ($isAdmin) {
@@ -96,8 +96,8 @@ test('the account menu links to the admin area only for admins', function (bool 
     $response = $this->actingAs($user)->get('/')->assertOk();
 
     $isAdmin
-        ? $response->assertSee('href="'.route('admin.admins').'"', false)
-        : $response->assertDontSee(route('admin.admins'), false);
+        ? $response->assertSee('href="'.route('admin.disputes').'"', false)
+        : $response->assertDontSee(route('admin.disputes'), false);
 })->with(['admin' => true, 'player' => false]);
 
 test('the games menu and the account menus link every chess page, so none is found only by chance', function () {

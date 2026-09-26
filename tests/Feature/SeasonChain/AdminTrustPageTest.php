@@ -289,3 +289,18 @@ test('round 4: rolling back the decision log refuses while it holds decisions, s
     expect(Schema::hasTable('trust_decisions'))->toBeFalse();
     $migration->up();
 });
+
+test('the exclusion field is the player picker: a picked key is excluded, nothing picked asks for a pick (P16)', function () {
+    config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
+    $this->actingAs($this->admin)->get(route('admin.trust'))->assertOk()
+        ->assertSee('data-picker-id="trust-key"', false)
+        ->assertDontSee('data-test="trust-key"', false);
+
+    Livewire::actingAs($this->admin)->test('pages::admin.trust')
+        ->set('reason', 'Mass reporting.')->call('exclude')
+        ->assertHasErrors(['key' => 'required'])
+        ->set('key', $this->reporter->pubkey)->call('exclude')->assertHasNoErrors()
+        ->assertSet('key', null);
+
+    expect(TrustExclusion::query()->sole()->pubkey)->toBe($this->reporter->pubkey);
+});

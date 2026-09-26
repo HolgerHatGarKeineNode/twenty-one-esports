@@ -10,6 +10,8 @@
         'tournaments' => '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"></path><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"></path>',
         'ladder' => '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path>',
         'clans' => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>',
+        // Three blocks in a row: the season chain on the mining page.
+        'mining' => '<rect x="2" y="8" width="6" height="8" rx="1"></rect><rect x="9" y="8" width="6" height="8" rx="1"></rect><rect x="16" y="8" width="6" height="8" rx="1"></rect>',
         'admin' => '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle>',
         'search' => '<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path>',
         'menu' => '<path d="M4 7h16M4 12h16M4 17h16"></path>',

@@ -15,16 +15,20 @@
     use App\Enums\ChessGameStatus;
     use App\Models\ChessGame;
     use App\Models\Clan;
+    use App\Support\Badges\BadgeCopy;
     use App\Support\Engagement\Quests;
     use App\Support\Engagement\WeeklySlots;
     use App\Support\PreSeason;
     use App\Support\SeasonChain\SeasonChains;
+    use App\Support\SeasonChain\SeasonRelease;
     use App\Support\SeasonChain\Seasons;
 
     $user = auth()->user();
 
     // A live season replaces the Pre-Season countdown with the live head.
     $liveSeason = Seasons::live();
+    // The rules card names the season it explains: the Pre-Season before and during it, a later season by its name.
+    $laterSeason = $liveSeason !== null && $liveSeason->slug !== SeasonRelease::SLUG;
     if ($liveSeason !== null) {
         $chains = app(SeasonChains::class);
         $tip = $chains->tip($liveSeason);
@@ -103,7 +107,7 @@
     <section aria-labelledby="live-h1" class="flex flex-col gap-6 px-4 pt-7 lg:gap-8 lg:px-10 lg:pt-12" data-test="season-live">
         <div class="flex flex-col gap-3 lg:px-2">
             <span class="flex items-center gap-2 text-xs font-bold tracking-[0.12em] text-win uppercase"><span class="size-2 animate-live rounded-full bg-win" aria-hidden="true"></span>{{ __('Live now') }}</span>
-            <h1 id="live-h1" class="m-0 font-display text-3xl leading-[1.15] font-extrabold tracking-[-0.01em] lg:text-5xl lg:leading-[1.1]">{{ __(':season is live', ['season' => \Illuminate\Support\Str::headline($liveSeason->slug)]) }}</h1>
+            <h1 id="live-h1" class="m-0 font-display text-3xl leading-[1.15] font-extrabold tracking-[-0.01em] lg:text-5xl lg:leading-[1.1]">{{ __(':season is live', ['season' => BadgeCopy::season($liveSeason->slug)]) }}</h1>
             <p class="m-0 max-w-[60ch] text-sm leading-[1.6] text-ink-2">{{ __('Every fair rated win mines a block. Play rated chess or a Rocket League series and climb the ladder.') }}</p>
         </div>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:gap-5">
@@ -263,7 +267,7 @@
         @endif
 
         <section aria-labelledby="how-h" @class(['pl-card', 'lg:col-span-7' => $pot && $liveSeason === null, 'lg:col-span-12' => ! $pot || $liveSeason !== null])>
-            <h2 id="how-h" class="pl-h2">{{ __('How the Pre-Season works') }}</h2>
+            <h2 id="how-h" class="pl-h2" data-test="how-season">{{ $laterSeason ? __('How :season works', ['season' => BadgeCopy::season($liveSeason->slug)]) : __('How the Pre-Season works') }}</h2>
             <p class="m-0 max-w-[75ch] text-[13px] leading-[1.6] text-ink-2">{{ __('From Block 0 on, every fair rated win mines a block. Mined blocks earn sats from the pot. Rewards are paid once, after the season review.') }}</p>
             <h3 class="m-0 mt-2 text-[13px] font-bold">{{ __('A rated win mines a block when') }}</h3>
             <ul @class(['m-0 grid list-none grid-cols-1 gap-x-6 gap-y-2 p-0 md:grid-cols-2', 'xl:grid-cols-3' => ! $pot])>
@@ -280,7 +284,7 @@
                     <li class="grid grid-cols-[16px_minmax(0,1fr)] gap-2 text-xs leading-[1.5] text-ink-2 lg:grid-cols-[20px_minmax(0,1fr)]"><span class="text-ink-3">{{ $number }}</span><span>{{ $rule }}</span></li>
                 @endforeach
             </ul>
-            <p class="pl-note">{{ __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }} <a href="{{ route('mining') }}" data-test="mining-link">{{ __('The chain on the mining page') }}</a></p>
+            <p class="pl-note">{{ $laterSeason ? __('Draws mine nothing. Admins can tune these limits during the season; a change only counts for blocks after it.') : __('Draws mine nothing. Admins can tune these limits during the Pre-Season; a change only counts for blocks after it.') }} <a href="{{ route('mining') }}" data-test="mining-link">{{ __('The chain on the mining page') }}</a></p>
         </section>
 
         @if ($weekly->isNotEmpty() || $quests !== null)

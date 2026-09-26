@@ -22,3 +22,13 @@ test('before Block 0 home shows the Pre-Season countdown', function () {
         ->assertSee('data-test="countdown"', false)
         ->assertDontSee('data-test="season-live"', false);
 });
+
+test('the rules card names the live season, and the Pre-Season only before and during it (P16)', function (string $slug, string $heading) {
+    openSeason(['slug' => $slug]);
+
+    $this->get(route('home'))->assertOk()
+        ->assertSee('data-test="how-season">'.e($heading).'</h2>', false);
+})->with([
+    'a later season' => ['season-2', 'How Season 2 works'],
+    'the Pre-Season' => ['pre-season', 'How the Pre-Season works'],
+]);

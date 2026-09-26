@@ -10,6 +10,7 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\Rating\ClanRating;
 use App\Support\Rating\Ratings;
@@ -47,6 +48,12 @@ final class ClanStats
     public function seasonLive(): bool
     {
         return $this->season !== null;
+    }
+
+    /** The live season's display name (the Pre-Season, or the slug in words), null before Block 0. */
+    public function seasonName(): ?string
+    {
+        return $this->season === null ? null : BadgeCopy::season($this->season);
     }
 
     /**

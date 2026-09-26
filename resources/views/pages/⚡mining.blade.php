@@ -21,7 +21,7 @@ use Livewire\Component;
  * Not built here (later phases): the supply chart over time, fees and zaps,
  * the league reserve, payouts and the season review (P9, P10).
  */
-new #[Layout('layouts::app', ['section' => null])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Mining'));

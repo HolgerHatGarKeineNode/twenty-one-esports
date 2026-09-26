@@ -31,7 +31,8 @@ use Livewire\Component;
 new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     public string $reason = '';
 
-    public string $key = '';
+    /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
+    public ?string $key = null;
 
     public function mount(): void
     {
@@ -85,6 +86,18 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
     public function exclusions(): Collection
     {
         return TrustExclusion::query()->latest()->get();
+    }
+
+    /**
+     * Players the picker does not suggest: the admin (no decision on one's own
+     * key) and the keys excluded already.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function excludedUserIds(): array
+    {
+        return array_values(User::query()->whereIn('pubkey', $this->exclusions->pluck('pubkey'))->pluck('id')->push(auth()->id())->filter()->map(fn (mixed $id): int => (int) $id)->all());
     }
 
     /**
@@ -163,7 +176,10 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
 
     public function exclude(): void
     {
-        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->exclude($admin, $this->key, $this->reason), resetKey: true);
+        $this->resetErrorBag();
+        $this->validate(['key' => ['required', 'string', 'max:100']], ['key.required' => __('Pick a player from the suggestions or paste a full npub.')]);
+
+        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->exclude($admin, (string) $this->key, $this->reason), resetKey: true);
     }
 
     public function lift(string $pubkey): void
@@ -187,7 +203,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
         }
 
         $this->reset($resetKey ? ['reason', 'key'] : ['reason']);
-        unset($this->dismissals, $this->counting, $this->exclusions, $this->decisions, $this->names);
+        unset($this->dismissals, $this->counting, $this->exclusions, $this->excludedUserIds, $this->decisions, $this->names);
     }
 }; ?>
 
@@ -239,9 +255,10 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
             <h2 id="exclusions-h" class="m-0 text-[15px] font-bold">{{ __('Excluded keys') }}</h2>
             @if ($board)
                 <form wire:submit="exclude" class="flex flex-col gap-2 sm:flex-row sm:items-end">
-                    <label class="flex min-w-0 flex-1 flex-col gap-1 text-xs text-ink-2">{{ __('npub or hex public key') }}<input type="text" wire:model="key" class="{{ $input }}" data-test="trust-key"></label>
+                    <x-player-picker id="trust-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="$this->excludedUserIds" class="flex-1" />
                     <button type="submit" class="h-11 cursor-pointer rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="trust-exclude">{{ __('Exclude') }}</button>
                 </form>
+                @error('key')<p class="m-0 text-[13px] text-loss" role="alert" data-test="trust-key-error">{{ $message }}</p>@enderror
             @else
                 <p class="m-0 text-[13px] text-ink-2">{{ __('Only the board excludes keys or lifts an exclusion.') }}</p>
             @endif

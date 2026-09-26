@@ -174,3 +174,29 @@ test('the invite page speaks of the roster, and only the invitee and the clan ca
 
     $this->actingAs(User::factory()->create())->get(route('invites.show', $invite))->assertForbidden();
 });
+
+test('the hashrate window switch names the live season and is gone before Block 0 (P16)', function () {
+    $clan = Lineup::factory()->ready()->create()->clan;
+
+    foreach ([route('clans.index'), route('clans.show', $clan)] as $url) {
+        $this->get($url)->assertOk()->assertDontSee('data-test="hashrate-window"', false);
+    }
+
+    openSeason(['slug' => 'season-2']);
+
+    foreach ([route('clans.index'), route('clans.show', $clan)] as $url) {
+        $this->get($url)->assertOk()->assertSeeInOrder(['data-test="hashrate-window"', 'Season 2', '7 days'], false);
+    }
+});
+
+test('another clan\'s page offers the challenge with both lineups picked, its own members get none (P16)', function () {
+    $mine = Lineup::factory()->ready()->create();
+    $theirs = Lineup::factory()->ready()->create();
+
+    $this->actingAs($mine->clan->owner)->get(route('clans.show', $theirs->clan))->assertOk()
+        ->assertSee('href="'.e(route('challenges.create', ['lineup' => $mine->id, 'to' => $theirs->id])).'"', false)
+        ->assertSee('href="'.e(route('matches.index', ['clan' => $theirs->clan->slug])).'"', false);
+
+    $this->actingAs($theirs->clan->owner)->get(route('clans.show', $theirs->clan))->assertOk()
+        ->assertDontSee('data-test="challenge-clan"', false);
+});

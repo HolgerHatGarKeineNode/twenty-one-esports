@@ -121,6 +121,30 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return $rows;
     }
 
+    /**
+     * "Challenge" on another clan's page (P16): the challenge form with this
+     * clan's lineup picked, in the mode of a lineup the viewer captains when
+     * both have one. Null for its own members and for a clan without a
+     * lineup. A guest gets the link too; the form asks them to log in.
+     */
+    public function challengeUrl(): ?string
+    {
+        $user = auth()->user();
+        $theirs = collect($this->lineups);
+
+        if ($theirs->isEmpty() || ($user instanceof User && $this->clan->memberOf($user) !== null)) {
+            return null;
+        }
+
+        $mine = $user instanceof User && $user->clanMember !== null
+            ? Lineup::query()->where('clan_id', $user->clanMember->clan_id)->where('game', 'rocket-league')->whereIn('mode', $theirs->keys())->get()
+                ->first(fn (Lineup $lineup): bool => $lineup->isActingCaptain($user))
+            : null;
+        $target = $mine !== null ? $theirs[$mine->mode] : $theirs->first();
+
+        return route('challenges.create', array_filter(['lineup' => $mine?->id, 'to' => $target->id]));
+    }
+
     public function canManage(): bool
     {
         $user = auth()->user();
@@ -136,6 +160,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $lead = $lineups['3v3'] ?? reset($lineups) ?: null;
     $stats = $this->stats;
     $live = $stats->seasonLive();
+    $seasonName = $stats->seasonName() ?? __('Pre-Season');
     $leadStats = $lead ? $stats->lineup($lead) : null;
     $rating = $stats->clanRating($clan);
     $ranks = $stats->ranks($clan);
@@ -182,6 +207,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         <span class="hidden grow lg:block"></span>
         @if ($this->canManage())
             <a href="{{ route('clans.manage', $clan) }}" class="btn-p inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Manage clan') }}</a>
+        @elseif ($challengeUrl = $this->challengeUrl())
+            <a href="{{ $challengeUrl }}" class="btn-p inline-flex h-11 min-w-0 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="challenge-clan">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg><span class="truncate">{{ __('Challenge :clan', ['clan' => $clan->name]) }}</span>
+            </a>
         @endif
     </div>
 
@@ -266,18 +295,21 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         <section aria-labelledby="hc-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex flex-wrap items-center justify-between gap-3">
                 <span class="flex flex-col gap-0.5"><h2 id="hc-h" class="m-0 text-[15px] font-bold">{{ __('Clan Hashrate') }}</h2><span class="text-xs text-ink-3">{{ __('points from every rated game, chess and Rocket League') }}</span></span>
-                <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge">
-                    @foreach (['s' => __('Pre-Season'), 'w' => __('7 days')] as $key => $label)
+                {{-- The window switch names the live season; before Block 0 there is nothing to switch. --}}
+                @if ($live)
+                <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge" data-test="hashrate-window">
+                    @foreach (['s' => $seasonName, 'w' => __('7 days')] as $key => $label)
                         <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
                                 @class(['h-[42px] cursor-pointer px-3.5 text-[13px]', 'border-l border-edge' => $key === 'w', 'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
                     @endforeach
                 </div>
+                @endif
             </span>
             @if (! $live)
                 <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="hashrate-empty">{{ __('Hashrate starts at Block 0: rated games earn points for their clan.') }}</p>
             @else
             <div class="grid grid-cols-2 gap-3">
-                @foreach ([['s', __('Pre-Season'), $hash['season'], $ranks['season']], ['w', __('last 7 days'), $hash['week'], $ranks['week']]] as [$key, $label, $points, $rank])
+                @foreach ([['s', $seasonName, $hash['season'], $ranks['season']], ['w', __('last 7 days'), $hash['week'], $ranks['week']]] as [$key, $label, $points, $rank])
                     <span @class(['flex flex-col gap-1 rounded-md bg-ground px-4 py-3', 'shadow-[inset_0_0_0_1px_#F7931A]' => $window === $key, 'shadow-ring' => $window !== $key])>
                         <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-2xl" data-test="hashrate-{{ $key }}">{{ $points }}</b>
                         <span class="text-xs text-ink-3">{{ $rank ? __('#:rank of :of clans', ['rank' => $rank, 'of' => $ranks['clans']]) : __('no points yet') }}</span>
@@ -285,7 +317,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @endforeach
             </div>
             <div class="flex flex-col">
-                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? __('Pre-Season') : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Share') }}</span></div>
+                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? $seasonName : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Share') }}</span></div>
                 @foreach ($contrib as $row)
                     <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]" title="{{ $row['name'] }}: {{ $row['points'] }}">
                         <span @class(['truncate', 'text-ink-2' => $row['bonus']])>{{ $row['name'] }}</span>
@@ -326,7 +358,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     {{-- Matches (P6) --}}
     <section aria-labelledby="mt-h" class="flex flex-col rounded-lg bg-card px-4 pt-2 pb-4 lg:px-6">
-        <div class="flex h-[52px] items-center justify-between gap-3"><h2 id="mt-h" class="m-0 text-[15px] font-bold">{{ __('Matches') }}</h2><a href="{{ route('matches.index') }}" class="flex h-11 items-center truncate text-[13px]">{{ __('All :clan matches', ['clan' => $clan->name]) }}</a></div>
+        <div class="flex h-[52px] items-center justify-between gap-3"><h2 id="mt-h" class="m-0 text-[15px] font-bold">{{ __('Matches') }}</h2><a href="{{ route('matches.index', ['clan' => $clan->slug]) }}" class="flex h-11 items-center truncate text-[13px]" data-test="clan-matches">{{ __('All :clan matches', ['clan' => $clan->name]) }}</a></div>
         @if ($record)
             <div class="grid h-10 grid-cols-[48px_minmax(0,1fr)_52px_64px] items-center gap-3 border-b border-hairline px-2 text-[13px] font-bold text-ink-2 lg:grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_88px_120px] lg:gap-4">
                 <span>{{ __('Match') }}</span><span>{{ __('Opponent') }}</span><span>{{ __('Score') }}</span><span class="hidden lg:block">{{ __('Format') }}</span><span>{{ __('Result') }}</span><span class="hidden text-right lg:block">Elo</span><span class="hidden text-right lg:block">{{ __('When') }}</span>

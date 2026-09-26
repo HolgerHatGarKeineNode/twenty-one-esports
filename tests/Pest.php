@@ -25,6 +25,7 @@ pest()->tia()->defaultBranch('master');
 
 require_once __DIR__.'/Support/tournaments.php';
 require_once __DIR__.'/Support/shares.php';
+require_once __DIR__.'/Support/navigation.php';
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
