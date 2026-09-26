@@ -654,7 +654,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                                 <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span>{{ __('casual games do not count') }}</span></div>
                                             </div>
                                             <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
-                                            <x-button :href="route('chess.lobby', ['search' => 1])" class="w-full">{{ __('Find next opponent') }}</x-button>
+                                            <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
                                             <template x-if="color">
                                                 <div class="grid grid-cols-2 gap-2">
                                                     <template x-if="!state.rematchOffer">
@@ -676,7 +676,7 @@ new #[Title('Game')] #[Layout('layouts::app', ['section' => 'chess', 'realtime' 
                                             <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
                                             <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
                                             <span class="grid grid-cols-2 gap-2">
-                                                <x-button :href="route('chess.lobby', ['search' => 1])">{{ __('Search again') }}</x-button>
+                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
                                                 <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
                                             </span>
                                         </div>

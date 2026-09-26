@@ -57,6 +57,13 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
     public string $error = '';
 
     /**
+     * Why a rated "Find next opponent" searches casual instead (P7e): set
+     * once, when the page opens with `?search=1&rated=1` and rated is closed
+     * for this player by now.
+     */
+    public string $notice = '';
+
+    /**
      * Whom this player's open invite goes to, and until when (ms): the online
      * list shows "Invited · Withdraw" on that row. Set on every render.
      */
@@ -67,13 +74,24 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
     public int $invitedUntilMs = 0;
 
     /**
-     * "Find next opponent" / "Search again" land here with `?search=1`.
+     * "Find next opponent" / "Search again" land here with `?search=1`, and
+     * after a rated game with `&rated=1` (P7e): rated again if rated is still
+     * open for this player, else casual with the reason shown.
      */
     public function mount(): void
     {
-        if (request()->boolean('search') && auth()->check()) {
-            $this->findOpponent();
+        if (! request()->boolean('search') || ! auth()->check()) {
+            return;
         }
+
+        $rated = request()->boolean('rated');
+
+        if ($rated && $this->ratedRefusal !== null) {
+            $this->notice = __('Rated is closed for you right now, so this search is casual. :reason', ['reason' => $this->ratedRefusal]);
+            $rated = false;
+        }
+
+        $this->findOpponent($rated);
     }
 
     public function findOpponent(bool $rated = false): void
@@ -379,6 +397,10 @@ new #[Title('Chess')] #[Layout('layouts::app', ['section' => 'chess', 'realtime'
 
         @if ($error)
             <p role="alert" class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss lg:col-span-3">{{ $error }}</p>
+        @endif
+
+        @if ($notice)
+            <p role="status" class="m-0 rounded-lg bg-card px-4 py-3 text-[13px] leading-normal text-ink-2 shadow-ring lg:col-span-3" data-test="lobby-notice">{{ $notice }}</p>
         @endif
 
         @if ($active)

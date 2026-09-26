@@ -15,6 +15,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Chess\ChessQueue;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\NoTrustFacts;
@@ -153,4 +154,33 @@ test('open: two Trusted players who list each other search Rated and get a rated
         ->and($game->gate_at_accept['players'][$anna->pubkey]['assertion'])->toBe(TrustRank::query()->where('pubkey', $anna->pubkey)->value('event_id'))
         ->and($game->gate_at_accept['players'][$anna->pubkey]['list'])->toBe(OpponentLists::forLeague()->newest($anna->pubkey)->event_id)
         ->and($lists->listEachOther($anna, $bert))->toBeTrue();
+});
+
+test('"Find next opponent" after a rated game searches rated again while rated is open, and casual with the reason once it is not', function () {
+    openSeason();
+    [$anna, $annaSigner] = lobbyPlayer('anna');
+    [$bert, $bertSigner] = lobbyPlayer('bert');
+    trustRunWith([$anna->pubkey => 100, $bert->pubkey => 100]);
+    listOpponent($anna, $annaSigner, $bert);
+    listOpponent($bert, $bertSigner, $anna);
+
+    // The game page's end-of-game links carry the choice: rated only for a rated game.
+    $rated = ChessGame::factory()->rated()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
+    $casual = ChessGame::factory()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
+    $this->actingAs($anna)->get(route('games.show', $rated))->assertOk()->assertSee(route('chess.lobby', ['search' => 1, 'rated' => 1]));
+    $this->actingAs($anna)->get(route('games.show', $casual))->assertOk()->assertSee(e(route('chess.lobby', ['search' => 1])).'"', false)->assertDontSee(route('chess.lobby', ['search' => 1, 'rated' => 1]));
+    ChessGame::query()->delete();
+
+    // Rated still open: the search is rated.
+    Livewire::withQueryParams(['search' => 1, 'rated' => 1])->actingAs($anna)->test('pages::chess.lobby')->assertSet('notice', '')->assertSee('Blitz · rated');
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeTrue();
+    app(ChessQueue::class)->leave($anna);
+
+    // bert took anna off his list: rated is closed for her, the search is casual and says why.
+    app(Opponents::class)->remove($bert, $anna->pubkey, $bertSigner->signTemplates(app(Opponents::class)->prepareRemove($bert, $anna->pubkey)));
+    Livewire::withQueryParams(['search' => 1, 'rated' => 1])->actingAs($anna)->test('pages::chess.lobby')
+        ->assertSet('error', '')
+        ->assertSet('notice', 'Rated is closed for you right now, so this search is casual. Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
+        ->assertSee('Blitz · casual');
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeFalse();
 });
