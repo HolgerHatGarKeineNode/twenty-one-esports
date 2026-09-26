@@ -47,6 +47,17 @@ final class ProfileBadges
     public function __construct(private SignedEventGate $gate) {}
 
     /**
+     * The relays the browser reads the player's lists from and falls back to
+     * for publishing: the profile relays and the league's own relays.
+     *
+     * @return list<string>
+     */
+    public static function browserRelays(): array
+    {
+        return array_values(array_unique([...(array) config('esports.profile_relays', []), ...(array) config('esports.relays', [])]));
+    }
+
+    /**
      * @param  list<mixed>  $found  signed events the browser read from relays
      * @return array{template: array{kind: int, tags: list<list<string>>, content: string, created_at: int}, kept: int}
      *

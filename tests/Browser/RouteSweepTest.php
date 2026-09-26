@@ -10,7 +10,9 @@ use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\DisputeEvidence;
 use App\Models\Lineup;
+use App\Models\RankBadge;
 use App\Models\Rating;
+use App\Models\Season;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
@@ -193,6 +195,19 @@ function sweepFixtures(): array
 
         // The swept user's own DM opt-out page (signed, no login needed).
         'user' => fn (?User $user, array $made): Model => $user ?? User::factory()->create(),
+        // Share cards (P11) of the `npub` player, in an ENDED season, so no ladder opens for the other
+        // pages of the sweep: a mined block, a rank-up version of a badge, a won tournament.
+        'season' => fn (?User $user, array $made): Model => Season::factory()->ended()->create(['slug' => 'sweep-season']),
+        'block' => fn (?User $user, array $made): Model => shareBlock($made['season'], 1, $made['npub'], User::factory()->create()),
+        'version' => function (?User $user, array $made): Model {
+            $badge = RankBadge::query()->create([
+                'user_id' => $made['npub']->getKey(), 'pubkey' => $made['npub']->getAttribute('pubkey'), 'game' => 'chess', 'mode' => 'blitz',
+                'd' => 'rank/chess/blitz/'.$made['npub']->getAttribute('pubkey'), 'badge_pubkey' => str_repeat('b', 64), 'tier' => 'gold-2', 'season' => 'sweep-season',
+            ]);
+
+            return $badge->versions()->create(['tier' => 'gold-2', 'previous_tier' => 'gold-1', 'season' => 'sweep-season', 'rating' => 1061, 'signed_at' => now()->getTimestamp()]);
+        },
+        'finished' => fn (?User $user, array $made): Model => shareTournament($made['npub'], User::factory()->create()),
 
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {
@@ -273,6 +288,7 @@ function buildSweepFixtures(?User $user): array
         $keys[$name] = match ($name) {
             'npub' => (string) $model->getAttribute('npub'),
             'pubkey' => (string) $model->getAttribute('pubkey'),
+            'season' => (string) $model->getAttribute('slug'),
             default => (string) $model->getRouteKey(),
         };
     }
@@ -287,7 +303,12 @@ function buildSweepFixtures(?User $user): array
  *
  * @var array<string, array<string, string>>
  */
-const SWEEP_ROUTE_PARAMETERS = ['ladder.show' => ['game' => 'chess', 'mode' => 'blitz']];
+const SWEEP_ROUTE_PARAMETERS = [
+    'ladder.show' => ['game' => 'chess', 'mode' => 'blitz'],
+    // Rank badge artwork (P11): a game slug and a tier, not the chess game fixture.
+    'badges.rank' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1'],
+    'badges.rank.thumb' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1', 'size' => '256'],
+];
 
 /**
  * Bound parameters take their fixture's route key; `locale` and the invite
@@ -463,7 +484,8 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1024 => 16, 1440 => 16];
 const SWEEP_FLUSH_PATHS = ['/'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment). */
-const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card'];
+const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
+    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.wrapped'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {

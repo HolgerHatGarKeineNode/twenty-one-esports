@@ -178,6 +178,23 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <span class="inline-flex h-8 items-center gap-2 self-start rounded-sm bg-btc-chip px-3 text-xs font-bold text-btc-hi lg:self-auto" data-test="tournament-status"><span class="size-1.5 rounded-full bg-btc"></span>{{ $tournament->status->label() }}</span>
     </div>
 
+    @php($champion = $tournament->status === TournamentStatus::Finished ? app(\App\Support\Tournaments\TournamentChampion::class)->of($tournament) : null)
+    @if ($champion)
+        {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
+        <section aria-labelledby="tw-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-center lg:px-6" data-test="tournament-winner">
+            @php($winnerCard = \App\Support\Cards\ShareCard::tournament($tournament, $champion))
+            <img src="{{ $winnerCard->path('wide') }}" alt="{{ __(':tournament winners', ['tournament' => $tournament->name]) }}" width="1200" height="630" loading="lazy"
+                 class="aspect-[1200/630] h-auto w-full shrink-0 rounded-md shadow-ring sm:w-[280px]">
+            <div class="flex min-w-0 flex-col gap-2">
+                <span class="flex items-center gap-1.5 text-xs font-bold text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Winner') }}</span>
+                <h2 id="tw-h" class="m-0 font-display text-2xl font-bold [overflow-wrap:anywhere]">{{ $champion->name }}</h2>
+                @if (auth()->check() && in_array(auth()->id(), $champion->memberIds(), true))
+                    <livewire:share-button type="tournament" :moment="(string) $tournament->id" />
+                @endif
+            </div>
+        </section>
+    @endif
+
     @if ($tournament->status === TournamentStatus::Draft && $this->canManage)
         <form wire:submit="publish" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:px-6" data-test="publish-form">
             <h2 class="m-0 text-[15px] font-bold">{{ __('Publish and open sign-up') }}</h2>

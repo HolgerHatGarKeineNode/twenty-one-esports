@@ -13,6 +13,7 @@ import { dropFailedBunker } from './millAuth.js';
 import matchDock from './matchDock.js';
 import playerPicker from './playerPicker.js';
 import './nostrSign.js';
+import './badgeShare.js';
 import './captured.js';
 import './sanNotation.js';
 

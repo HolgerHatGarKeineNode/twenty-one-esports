@@ -122,6 +122,11 @@
             </div>
         </section>
 
+        {{-- Rank badges (P11): the NIP-58 badges of this player; on the own page "Show on my Nostr profile" and the way to the share cards. --}}
+        <div class="mx-4 lg:mx-0">
+            <livewire:rank-badges :player="$user" />
+        </div>
+
         <div class="mx-4 rounded-lg shadow-ring-hairline lg:mx-0">
             <x-empty-state class="px-5 py-8 lg:px-10 lg:py-10"
                            :heading="__('Coming soon')"

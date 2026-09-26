@@ -94,11 +94,7 @@ new #[Title('Opponents')] class extends Component {
     <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
         <span class="grow"></span>
-        <nav aria-label="{{ __('Settings sections') }}" class="flex border-b border-hairline">
-            <a href="{{ route('gaming.edit') }}" class="flex h-11 items-center px-4 text-[13px] text-ink-2 hover:text-ink">{{ __('General') }}</a>
-            <a href="{{ route('settings.chess') }}" class="flex h-11 items-center px-4 text-[13px] text-ink-2 hover:text-ink">{{ __('Chess') }}</a>
-            <a href="{{ route('settings.opponents') }}" aria-current="page" class="flex h-11 items-center px-4 text-[13px] font-bold text-ink shadow-[inset_0_-2px_0_#F7931A] hover:text-ink">{{ __('Opponents') }}</a>
-        </nav>
+        @include('pages.settings.partials.nav', ['current' => 'opponents'])
     </div>
 
     @error('opponents')<p class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror

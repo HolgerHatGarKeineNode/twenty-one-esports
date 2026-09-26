@@ -63,6 +63,10 @@
                     <x-icon name="bell" :size="18" class="text-ink-2" />
                     {{ __('Notifications') }}
                 </a>
+                <a href="{{ route('settings.badges') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink" data-test="mobile-badges">
+                    <x-icon name="award" :size="18" class="text-ink-2" />
+                    {{ __('Badges and sharing') }}
+                </a>
                 @if ($isAdmin || $isOrganizer)
                     <a href="{{ route('admin.tournaments') }}" class="flex min-h-11 items-center gap-3 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
                         <x-icon name="trophy" :size="18" class="text-ink-2" />

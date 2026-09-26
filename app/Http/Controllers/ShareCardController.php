@@ -38,9 +38,9 @@ class ShareCardController extends Controller
         return $this->png($locale, fn (): ShareCard => ShareCard::block($block, $miner), $format);
     }
 
-    public function tournament(string $locale, int $tournament, string $format, TournamentChampion $champions): Response
+    public function tournament(string $locale, int $finished, string $format, TournamentChampion $champions): Response
     {
-        $tournament = Tournament::query()->findOrFail($tournament);
+        $tournament = Tournament::query()->findOrFail($finished);
         $winner = $tournament->isVisibleTo(null) ? $champions->of($tournament) : null;
         abort_if($winner === null, 404);
 

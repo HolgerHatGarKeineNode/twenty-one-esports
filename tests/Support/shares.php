@@ -47,13 +47,21 @@ function shareMoments(User $user, Season $season): array
     shareBlock($season, 1, $user, $opponent);
     $block = shareBlock($season, 2, $user, $opponent);
 
+    $tournament = shareTournament($user, $opponent);
+
+    return ['versions' => $versions, 'block' => $block, 'tournament' => $tournament, 'opponent' => $opponent];
+}
+
+/** A finished two-player single elimination ("Testnet Cup") that `$winner` won. */
+function shareTournament(User $winner, User $loser): Tournament
+{
     $tournament = Tournament::factory()->create([
         'name' => 'Testnet Cup', 'format' => TournamentFormat::SingleElimination, 'capacity' => 2,
         'status' => TournamentStatus::Finished, 'slug' => 'testnet-cup-'.fake()->unique()->numberBetween(1, 1_000_000), 'starts_at' => now()->subMinutes(30),
     ]);
     $entries = [];
 
-    foreach ([$user, $opponent] as $index => $player) {
+    foreach ([$winner, $loser] as $index => $player) {
         $entries[] = TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $player->displayName(), 'rating' => 1100 - $index, 'members' => [$player->id]]);
     }
 
@@ -62,7 +70,7 @@ function shareMoments(User $user, Season $season): array
     $winnerSlot = $final->slots->search(fn ($slot) => $slot->tournament_participant_id === $entries[0]->id);
     $final->forceFill(['status' => 'done', 'result' => ['winner' => $winnerSlot, 'games_won' => $winnerSlot === 0 ? [1, 0] : [0, 1], 'points' => []]])->save();
 
-    return ['versions' => $versions, 'block' => $block, 'tournament' => $tournament->refresh(), 'opponent' => $opponent];
+    return $tournament->refresh();
 }
 
 /** A mined chess block with `$winner` as the miner, as SeasonChains stores it. */

@@ -83,7 +83,7 @@ test('only moments that happened are drawn', function () {
     $this->get('/cards/fr/wrapped/pre-season/'.$this->user->npub.'-wide.png')->assertNotFound();
 
     $this->moments['tournament']->forceFill(['status' => TournamentStatus::Running])->save();
-    $this->get(route('cards.tournament', ['locale' => 'en', 'tournament' => $this->moments['tournament']->id, 'format' => 'wide'], false))->assertNotFound();
+    $this->get(route('cards.tournament', ['locale' => 'en', 'finished' => $this->moments['tournament']->id, 'format' => 'wide'], false))->assertNotFound();
 });
 
 test('the champion of a finished tournament is its best seed when the better seed always wins', function (TournamentFormat $format, int $players) {

@@ -150,6 +150,12 @@ final class RankBadges
         return rtrim((string) config('app.url'), '/').'/badges/rank/'.$game.'/'.$tier.'-v'.(int) config('esports.badges.artwork').($thumb ? '-256' : '').'.png';
     }
 
+    /** The artwork's path on this site, for the page's own images. */
+    public static function imagePath(string $game, string $tier, bool $thumb = false): string
+    {
+        return substr(self::imageUrl($game, $tier, $thumb), strlen(rtrim((string) config('app.url'), '/')));
+    }
+
     /**
      * @return list<list<string>>
      */

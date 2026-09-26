@@ -114,6 +114,12 @@ final class ShareCard
         return rtrim((string) config('app.url'), '/').'/cards/'.App::getLocale().'/'.$path.'-'.$format.'.png?v='.$this->fingerprint($format);
     }
 
+    /** The card's path on this site, for the page's own previews and downloads. */
+    public function path(string $format): string
+    {
+        return substr($this->url($format), strlen(rtrim((string) config('app.url'), '/')));
+    }
+
     public function render(string $format): string
     {
         [$width, $height] = self::FORMATS[$format] ?? throw new InvalidArgumentException("Unknown share card format {$format}.");
@@ -151,7 +157,7 @@ final class ShareCard
         $size = $this->c->fitSize($label, 'display', [104, 88, 76, 64], 700);
         $this->c->text($label, 'display', $size, $x, 270, $colour);
         $this->previousAndRating($x, 336, 30);
-        $this->c->paragraph($this->rankUpNote(), 'mono', 24, $x, 400, 700, 2, Canvas::INK_2);
+        $this->c->paragraph($this->rankUpNote(), 'mono', 24, $x, 400, 700, 3, Canvas::INK_2);
     }
 
     private function rankUpStory(): void
@@ -250,8 +256,8 @@ final class ShareCard
         $this->c->text($this->c->fit(__(':tournament winners', ['tournament' => $f['tournament']]), 'mono-bold', 28, 740), 'mono-bold', 28, $x, 130, Canvas::ORANGE);
         $size = $this->c->fitSize((string) $f['winner'], 'display', [80, 68, 56, 48], 740);
         $this->c->text($this->c->fit((string) $f['winner'], 'display', $size, 740), 'display', $size, $x, 130 + $size + 24, Canvas::INK);
-        $this->c->text($this->c->fit((string) $f['detail'], 'mono', 26, 740), 'mono', 26, $x, 300, Canvas::INK_2);
-        $this->members($x, 340, 40, 26, 740, 2);
+        $after = $this->c->paragraph((string) $f['detail'], 'mono', 26, $x, 300, 740, 2, Canvas::INK_2);
+        $this->members($x, (int) $after + 8, 40, 26, 740, 2);
     }
 
     private function tournamentStory(): void
@@ -293,7 +299,9 @@ final class ShareCard
     {
         $f = $this->facts;
         $this->kicker($this->wrappedKicker(), 64, 84, 24);
-        $this->c->text($this->c->fit(__(':name, you mined', ['name' => $f['name']]), 'display', 40, 560), 'display', 40, 64, 150, Canvas::INK);
+        $title = __(':name, you mined', ['name' => $f['name']]);
+        $titleSize = $this->c->fitSize($title, 'display', [40, 34, 29], 560);
+        $this->c->text($this->c->fit($title, 'display', $titleSize, 560), 'display', $titleSize, 64, 150, Canvas::INK);
         $blocks = (string) $f['blocks'];
         $this->c->text($blocks, 'display', 150, 60, 318, Canvas::ORANGE);
         $this->c->text(__('Block Height'), 'mono', 28, 72 + $this->c->width($blocks, 'display', 150), 318, Canvas::INK_2);

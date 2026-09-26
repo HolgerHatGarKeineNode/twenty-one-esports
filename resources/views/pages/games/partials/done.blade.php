@@ -55,6 +55,10 @@
         @unless ($aborted)
             <span class="flex h-[34px] items-center gap-2 rounded-md bg-[#122016] px-3 text-[13px] font-bold text-win" data-test="saved-badge"><x-icon name="check" :size="16" />{{ $record ? __('Saved & verified') : __('Saved') }}</span>
         @endunless
+        {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
+        @if ($game->rated && ! $aborted && ($color ?? null) !== null)
+            <a href="{{ route('settings.badges') }}#share" class="flex h-[34px] items-center gap-1.5 rounded-md bg-well px-3 text-[13px] text-ink hover:text-ink" data-test="game-done-share"><x-icon name="send" :size="14" />{{ ($mining['status'] ?? null) === 'block' && $winner === $color ? __('Share your block') : __('Badges and share cards') }}</a>
+        @endif
     </div>
 
     {{-- Result banner --}}

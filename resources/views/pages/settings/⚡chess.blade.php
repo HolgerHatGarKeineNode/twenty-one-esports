@@ -155,11 +155,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
         <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data x-show="$wire.saved" x-cloak data-test="settings-saved"><x-icon name="check" :size="16" />{{ __('Saved, applies from your next move') }}</span>
         <span class="grow"></span>
-        <nav aria-label="{{ __('Settings sections') }}" class="flex border-b border-hairline">
-            <a href="{{ route('gaming.edit') }}" class="flex h-11 items-center px-4 text-[13px] text-ink-2 hover:text-ink">{{ __('General') }}</a>
-            <a href="{{ route('settings.chess') }}" aria-current="page" class="flex h-11 items-center px-4 text-[13px] font-bold text-ink shadow-[inset_0_-2px_0_#F7931A] hover:text-ink">{{ __('Chess') }}</a>
-            <a href="{{ route('settings.opponents') }}" class="flex h-11 items-center px-4 text-[13px] text-ink-2 hover:text-ink" data-test="settings-opponents-tab">{{ __('Opponents') }}</a>
-        </nav>
+        @include('pages.settings.partials.nav', ['current' => 'chess'])
     </div>
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[400px_452px_minmax(0,1fr)]">

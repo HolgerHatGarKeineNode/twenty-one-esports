@@ -253,6 +253,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <a href="{{ route('matches.room', $match) }}#check" class="btn-p inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc hover:text-on-btc"><x-icon name="shield-check" :size="18" />{{ __('Accept result') }}</a>
                 @elseif ($match->participantSideOf($viewer) !== null && $match->status->isRunning())
                     <x-button :href="route('matches.room', $match)" icon="matches">{{ __('Open the match room') }}</x-button>
+                @elseif ($match->rated && $match->status->hasResult() && $match->participantSideOf($viewer) !== null)
+                    {{-- P11: a rated series can be a rank up or a mined block; the share cards live on one page. --}}
+                    <x-button variant="quiet" :href="route('settings.badges').'#share'" icon="send" data-test="match-share">{{ __('Badges and share cards') }}</x-button>
                 @endif
             </div>
             @if ($match->resolution_reason)

@@ -685,6 +685,10 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                             </div>
                                             <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
                                             <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                            {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
+                                            <template x-if="color && state.rating?.[color]?.pool === 'rated'">
+                                                <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
+                                            </template>
                                             <template x-if="color">
                                                 <div class="grid grid-cols-2 gap-2">
                                                     <template x-if="!state.rematchOffer">

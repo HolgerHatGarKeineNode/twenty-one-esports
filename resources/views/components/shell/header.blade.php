@@ -126,6 +126,7 @@
                     <flux:menu.item :href="route('gaming.edit')" icon="cog-6-tooth">{{ __('Settings') }}</flux:menu.item>
                     <flux:menu.item :href="route('settings.chess').'#notifications'" icon="bell" data-test="account-menu-notifications">{{ __('Notifications') }}</flux:menu.item>
                     <flux:menu.item :href="route('settings.chess')" icon="adjustments-horizontal">{{ __('Chess settings') }}</flux:menu.item>
+                    <flux:menu.item :href="route('settings.badges')" icon="trophy" data-test="account-badges">{{ __('Badges and sharing') }}</flux:menu.item>
                     @if ($isAdmin)
                         <flux:menu.item :href="route('admin.tournaments')" icon="trophy">{{ __('Your tournaments') }}</flux:menu.item>
                         <flux:menu.item :href="route('admin.admins')" icon="shield-check">{{ __('Admin') }}</flux:menu.item>
