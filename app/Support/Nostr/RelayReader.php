@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 use WebSocket\Client;
+use WebSocket\Exception\ConnectionTimeoutException;
 use WebSocket\Message\Text;
 
 /**
@@ -136,6 +137,7 @@ class RelayReader
         $received = [];
         $perPubkey = [];
         $client = null;
+        $deadline = null;
 
         try {
             $client = new Client($relay);
@@ -188,6 +190,12 @@ class RelayReader
                 $client->text((string) json_encode(['CLOSE', $subscription]));
             }
         } catch (Throwable $exception) {
+            // The socket timeout is the wait for $deadline running out: classify it by that
+            // deadline, not by the clock read afterwards, which can still be a hair before it.
+            if ($exception instanceof ConnectionTimeoutException && $deadline !== null) {
+                return self::timedOut($relay, $deadline >= $budget, count($filters));
+            }
+
             if (microtime(true) >= $budget) {
                 return self::timedOut($relay, true, count($filters));
             }

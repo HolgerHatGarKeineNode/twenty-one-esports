@@ -375,15 +375,17 @@ test('regression (security re-check round 4): a relay answering just inside the 
     [$filters, $events] = twelveReportFilters();
     config(['esports.relay_timeout_seconds' => 5, 'esports.relay_fetch_budget_seconds' => 2]);
 
-    // Three REQs of 1.2 s each: every one inside the 5 s deadline, together over the 2 s budget.
+    // Three REQs of 1.5 s each: every one inside the 5 s deadline, together 4.5 s, over the 2 s budget.
     [$read, $seconds] = withRelay($events, function () use ($filters) {
         $start = microtime(true);
 
         return [app(RelayReader::class)->fetch($filters), microtime(true) - $start];
-    }, ['max_filters' => 5, 'eose_delay_ms' => 1200]);
+    }, ['max_filters' => 5, 'eose_delay_ms' => 1500]);
 
     expect($read)->toBe([])
-        ->and($seconds)->toBeLessThan(2.6);
+        // Cut at the budget (2 s), far from the 4.5 s the three REQs take unbudgeted. Measured
+        // 2.06 s idle and 2.16-2.26 s with 48 busy processes on 24 cores, so 3.0 s leaves room.
+        ->and($seconds)->toBeLessThan(3.0);
     Log::shouldHaveReceived('warning')->withArgs(fn (string $message) => $message === 'Relay read over its time budget');
 });
 
