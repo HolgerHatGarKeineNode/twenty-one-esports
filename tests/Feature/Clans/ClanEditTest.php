@@ -14,7 +14,11 @@ use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -272,6 +276,69 @@ test('a refused signature leaves the clan and the disk as they were', function (
     expect($clan->refresh()->name)->toBe('Laser Eyes')
         ->and($clan->picture)->toBeNull()
         ->and(Storage::disk('public')->files(ClanLogos::DIRECTORY))->toBe([]);
+});
+
+test('no logo file exists while the signature is being checked, and none after it is refused', function () {
+    ['clan' => $clan, 'owner' => $owner, 'signer' => $signer] = editableClan();
+
+    // A forged sig from the right author gets past the tag checks, so the
+    // gate looks the event id up in nostr_events before Schnorr refuses it:
+    // that lookup is inside edit(), before it throws.
+    $filesDuringCheck = null;
+    DB::listen(function (QueryExecuted $query) use (&$filesDuringCheck): void {
+        if ($filesDuringCheck === null && str_contains($query->sql, 'nostr_events') && str_contains($query->sql, 'event_id')) {
+            $filesDuringCheck = Storage::disk('public')->files(ClanLogos::DIRECTORY);
+        }
+    });
+
+    $page = Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('openEdit')
+        ->set('logo', colourLogo('logo.png', 300, 300, 40));
+    $templates = null;
+    $page->call('prepareEdit')->assertReturned(function (mixed $returned) use (&$templates): bool {
+        $templates = $returned;
+
+        return true;
+    });
+    $forged = array_map(fn (array $event) => array_replace($event, ['sig' => str_repeat('ab', 64)]), $signer->signTemplates($templates));
+
+    $page->call('saveEdit', json_encode($forged))
+        ->assertHasErrors(['edit' => 'The confirmation did not match. Please try again.']);
+
+    expect($filesDuringCheck)->toBe([])
+        ->and(Storage::disk('public')->files(ClanLogos::DIRECTORY))->toBe([])
+        ->and($clan->refresh()->picture)->toBeNull();
+});
+
+test('a logo that cannot be written after the edit is reported and shown as an error', function () {
+    ['clan' => $clan, 'owner' => $owner, 'signer' => $signer] = editableClan();
+    $root = Storage::disk('public')->path('');
+    File::put($root.ClanLogos::DIRECTORY, 'a file where the directory should be');
+    Exceptions::fake();
+
+    signEdit(Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('openEdit')
+        ->set('logo', colourLogo('logo.png', 300, 300, 80)), $signer)
+        ->assertHasErrors(['logo' => 'The clan was saved, but the logo could not be stored. Please upload it again.']);
+
+    Exceptions::assertReported(RuntimeException::class);
+    expect($clan->refresh()->picture)->toStartWith('http')
+        ->and(Storage::disk('public')->exists(ClanLogos::DIRECTORY.'/'.basename($clan->picture)))->toBeFalse();
+
+    // Uploading the same logo again writes the file the signed event names; nothing new is signed.
+    File::delete($root.ClanLogos::DIRECTORY);
+    $events = NostrEvent::query()->count();
+
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->call('openEdit')
+        ->set('logo', colourLogo('logo.png', 300, 300, 80))
+        ->call('prepareEdit')
+        ->assertReturned(null)
+        ->assertHasNoErrors()
+        ->assertSet('editingClan', false);
+
+    expect(Storage::disk('public')->exists(ClanLogos::DIRECTORY.'/'.basename($clan->picture)))->toBeTrue()
+        ->and(NostrEvent::query()->count())->toBe($events);
 });
 
 test('the manage page survives a Livewire roundtrip with the edit card open and a logo picked', function () {

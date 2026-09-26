@@ -7,6 +7,8 @@ use Closure;
 use GdImage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
+use Throwable;
 
 /**
  * Clan logos uploaded on the manage page. An upload is redrawn with GD into a
@@ -100,14 +102,25 @@ final class ClanLogos
         return $this->absoluteUrl($this->pathFor($png));
     }
 
-    public function store(string $png): void
+    /**
+     * Write a rendered logo; false (and reported) when the disk refuses.
+     */
+    public function store(string $png): bool
     {
         $disk = Storage::disk('public');
         $path = $this->pathFor($png);
 
-        if (! $disk->exists($path)) {
-            $disk->put($path, $png);
+        try {
+            if ($disk->exists($path) || $disk->put($path, $png)) {
+                return true;
+            }
+
+            report(new RuntimeException("Clan logo could not be written to {$path}."));
+        } catch (Throwable $failed) {
+            report(new RuntimeException("Clan logo could not be written to {$path}.", previous: $failed));
         }
+
+        return false;
     }
 
     /**

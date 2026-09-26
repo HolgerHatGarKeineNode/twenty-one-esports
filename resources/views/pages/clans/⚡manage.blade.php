@@ -293,6 +293,20 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             return null;
         }
 
+        // The upload is the logo the stored, signed clan event already names
+        // (its file could not be written last time): write it, sign nothing.
+        if ($edit['png'] !== null && $edit['draft']->picture === $this->clan->picture && $this->clan->event_id !== null
+            && $edit['draft'] == $this->storedDraft()) {
+            if ($logos->store($edit['png'])) {
+                $this->cancelEdit();
+                unset($this->clan);
+            } else {
+                $this->addError('logo', __('The clan was saved, but the logo could not be stored. Please upload it again.'));
+            }
+
+            return null;
+        }
+
         $templates = $this->attempt(fn () => $clans->prepareEdit($this->user(), $this->clan, $edit['draft']), 'edit');
 
         return is_array($templates) ? $templates : null;
@@ -313,13 +327,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
         $draft = $edit['draft'];
         $previous = $this->clan->picture;
 
-        if ($edit['png'] !== null) {
-            $logos->store($edit['png']);
-        }
-
+        // The URL in the event was computed from the PNG without writing it.
         if ($this->attempt(fn () => $clans->edit($this->user(), $this->clan, $draft, $this->signed($signed)), 'edit') === false) {
-            $logos->deleteIfUnused($draft->picture);
-
             return;
         }
 
@@ -327,8 +336,17 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             $logos->deleteIfUnused($previous);
         }
 
-        $this->cancelEdit();
         unset($this->clan);
+
+        if ($edit['png'] !== null && ! $logos->store($edit['png'])) {
+            $this->logo = null;
+            $this->editPicture = null;
+            $this->addError('logo', __('The clan was saved, but the logo could not be stored. Please upload it again.'));
+
+            return;
+        }
+
+        $this->cancelEdit();
     }
 
     /**
@@ -385,6 +403,26 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
             $this->editMeetupLatitude,
             $this->editMeetupLongitude,
         )];
+    }
+
+    /**
+     * The clan as it is stored, as a draft (to tell "nothing changed" apart).
+     */
+    private function storedDraft(): ClanDraft
+    {
+        $clan = $this->clan;
+
+        return new ClanDraft(
+            $clan->name,
+            $clan->clantag,
+            $clan->description,
+            $clan->picture,
+            $clan->meetup_name,
+            $clan->meetup_city,
+            $clan->meetup_url,
+            $clan->meetup_latitude === null ? null : (float) $clan->meetup_latitude,
+            $clan->meetup_longitude === null ? null : (float) $clan->meetup_longitude,
+        );
     }
 
     /**

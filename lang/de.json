@@ -2235,5 +2235,6 @@
     "Nothing to save: nothing was changed.": "Nichts zu speichern: Es wurde nichts geändert.",
     "name": "Name",
     "tag": "Kürzel",
-    "description": "Beschreibung"
+    "description": "Beschreibung",
+    "The clan was saved, but the logo could not be stored. Please upload it again.": "Der Clan wurde gespeichert, aber das Logo konnte nicht abgelegt werden. Bitte lade es noch einmal hoch."
 }
