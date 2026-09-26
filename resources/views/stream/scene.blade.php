@@ -1,19 +1,34 @@
 @php
     /**
-     * Stream scene: ONE chess game (blitz or daily/correspondence) as a 1280x720 still (SVG -> rsvg-convert -> PNG).
+     * Stream scene: the live chess games as a 1280x720 still (SVG -> rsvg-convert -> PNG).
      * No animation; the supervisor re-renders it once per second while a clock runs.
      *
-     * Data contract (all keys required unless marked optional):
+     * One game: the big layout (board left, two player cards, call to action). Two or more: a gallery
+     * inside a fixed frame (header with "N GAMES LIVE", bottom bar with call to action, URL and stats):
+     * 2 games side by side, 3-4 as 2x2, 5-6 as 3x2. At most 6 cards; the rest is counted in "+N more live".
      *
-     * @var array{name: string, clockMs: int, toMove: bool} $white  public profile name, remaining ms (<= 0 renders 0:00, >= 1 h h:mm:ss)
-     * @var array{name: string, clockMs: int, toMove: bool} $black
-     * @var string $fen                                  any FEN; only the placement field is read
-     * @var array{from: string, to: string}|null $lastMove  squares like "e2"/"e4"; null before the first move
-     * @var string $mode                                 e.g. "LIVE · CHESS BLITZ 5+3 · CASUAL" (never "rated"/Elo)
-     * @var string $stats                                ONE line of real stats, e.g. "14 games played · 1 game live · 3 clans"
-     * @var string $url                                  e.g. "esports.einundzwanzig.space"
-     * @var string|null $result                          optional; set after the game ends (scene stays 60 s),
-     *                                                   e.g. "0-1 · White ran out of time"; replaces $mode in the header
+     * Data contract. A game (all keys required unless marked optional):
+     *
+     *   array{
+     *     white: array{name: string, clockMs: int, toMove: bool},  public profile name, remaining ms
+     *                                                               (<= 0 renders 0:00; >= 1 h renders h:mm, no seconds)
+     *     black: array{name: string, clockMs: int, toMove: bool},
+     *     fen: string,                                             only the placement field is read
+     *     lastMove: array{from: string, to: string}|null,          "e2"/"e4"; null before the first move
+     *     mode: string,                                            "LIVE · CHESS BLITZ 5+3 · CASUAL" (never "rated"/Elo);
+     *                                                               a card drops a leading "LIVE · CHESS "
+     *     result?: string|null,                                    set after the game ended; replaces mode
+     *   }
+     *
+     * Either (single game, as before):
+     * @var array $white, $black, string $fen, array|null $lastMove, string $mode, string|null $result  (one game, flat)
+     * or (gallery):
+     * @var list<array> $games   the games in display order: the caller puts blitz first, then the most recently
+     *                           moved; a list of one renders the single layout
+     * @var int $more            optional; live games not in $games (added to the count and "+N more live")
+     * and always:
+     * @var string $stats        ONE line of real stats, e.g. "14 games played · 2 live · 3 clans"
+     * @var string $url          e.g. "esports.einundzwanzig.space"
      *
      * Fonts: "Unbounded" (800) and "JetBrains Mono" (700, latin + latin-ext files) through a private FONTCONFIG_FILE;
      * nothing else is installed. Variable strings are filtered to the code points the mono files cover ($covered);
@@ -21,8 +36,13 @@
      *
      * Truncation without font metrics: every user-visible string of variable length is set in JetBrains Mono,
      * whose advance is exactly 0.6 em for every glyph it has. Width = chars x 0.6 x size, so a char budget is
-     * a pixel budget: names 25 chars at 28 px (<= 420 px), mode 40 at 18 px (<= 432 px), stats 48 at 18 px
-     * (<= 518 px). Longer strings keep budget-1 chars plus "…". Counted in code points (mb_*), not graphemes.
+     * a pixel budget. Single layout: names 25 chars at 28 px (<= 420 px), mode 40 at 18 px (<= 432 px), stats 48 at
+     * 18 px (<= 518 px). Gallery: the budget is floor(free px / (0.6 x size)), computed per card from the space
+     * the clock leaves. Longer strings keep budget-1 chars plus "…". Counted in code points (mb_*), not graphemes.
+     *
+     * Clocks: Unbounded digits in fixed cells (0.9375 em a digit, 0.375 em a colon), so a clock does not jitter
+     * between renders; the size is set by the widest clock (four digits and a colon), not the time shown. From 1 h up (a daily game's day per
+     * move) a clock shows h:mm without seconds, up to 24:00; below 1 h m:ss.
      *
      * Chess pieces: "cburnett" set by Colin M.L. Burnett (Wikimedia Commons, File:Chess_{k,q,r,b,n,p}{l,d}t45.svg),
      * used under its BSD 3-clause option (the files are multi-licensed GFDL 1.2+ / CC BY-SA 3.0 / BSD / GPL 2+).
@@ -46,71 +66,222 @@
     $clock = static function (int $ms): string {
         $s = intdiv(max(0, $ms), 1000);
 
+        // From 1 h up the seconds are noise (a daily game's clock): h:mm, minutes rounded down.
         return $s >= 3600
-            ? sprintf('%d:%02d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60), $s % 60)
+            ? sprintf('%d:%02d', intdiv($s, 3600), intdiv($s % 3600, 60))
             : sprintf('%d:%02d', intdiv($s, 60), $s % 60);
     };
 
-    // Board: 8 x 78 px squares inside an 8 px frame, x/y 40..680.
-    $sq = 78;
-    $bx = 48;
-    $by = 48;
-    $last = $lastMove ? [strtolower($lastMove['from']), strtolower($lastMove['to'])] : [];
-    $squares = [];
-    $pieces = [];
-    foreach (explode('/', explode(' ', trim($fen))[0]) as $r => $row) {
-        $f = 0;
-        foreach (str_split($row) as $ch) {
-            if (ctype_digit($ch)) {
-                $f += (int) $ch;
-                continue;
-            }
-            if ($f < 8 && $r < 8 && stripos('kqrbnp', $ch) !== false) {
-                $pieces[] = ['id' => (ctype_upper($ch) ? 'w' : 'b').strtolower($ch), 'x' => $bx + $f * $sq, 'y' => $by + $r * $sq];
-            }
-            $f++;
-        }
+    // A list of one is the single layout; its game fills the flat variables the single layout reads.
+    $gameList = array_values($games ?? []);
+    $more = max(0, (int) ($more ?? 0)) + max(0, count($gameList) - 6);
+    $gameList = array_slice($gameList, 0, 6);
+    if (count($gameList) === 1) {
+        ['white' => $white, 'black' => $black, 'fen' => $fen, 'lastMove' => $lastMove, 'mode' => $mode] = $gameList[0];
+        $result = $gameList[0]['result'] ?? null;
     }
-    for ($r = 0; $r < 8; $r++) {
-        for ($f = 0; $f < 8; $f++) {
-            $name = 'abcdefgh'[$f].(8 - $r);
-            $light = ($r + $f) % 2 === 0;
-            $squares[] = [
-                'x' => $bx + $f * $sq, 'y' => $by + $r * $sq,
-                'fill' => in_array($name, $last, true) ? ($light ? '#F4C47F' : '#B8741F') : ($light ? '#CFCFD4' : '#62626C'),
-            ];
-        }
-    }
+    $grid = count($gameList) >= 2;
 
-    // Player cards: black on top, white below (the board shows white at the bottom).
-    $cards = [];
-    foreach ([['p' => $black, 'king' => 'bk', 'y' => 136, 'fallback' => 'Black player'], ['p' => $white, 'king' => 'wk', 'y' => 312, 'fallback' => 'White player']] as $c) {
-        $ms = (int) $c['p']['clockMs'];
-        $active = (bool) $c['p']['toMove'];
-        $low = $ms < 10000;
+    /** Squares and pieces of one board; white at the bottom. */
+    $board = static function (string $fen, ?array $lastMove, float $x, float $y, float $sq): array {
+        $last = $lastMove ? [strtolower($lastMove['from']), strtolower($lastMove['to'])] : [];
+        $squares = [];
+        $pieces = [];
+        foreach (explode('/', explode(' ', trim($fen))[0]) as $r => $row) {
+            $f = 0;
+            foreach (str_split($row) as $ch) {
+                if (ctype_digit($ch)) {
+                    $f += (int) $ch;
+                    continue;
+                }
+                if ($f < 8 && $r < 8 && stripos('kqrbnp', $ch) !== false) {
+                    $pieces[] = ['id' => (ctype_upper($ch) ? 'w' : 'b').strtolower($ch), 'x' => $x + $f * $sq, 'y' => $y + $r * $sq];
+                }
+                $f++;
+            }
+        }
+        for ($r = 0; $r < 8; $r++) {
+            for ($f = 0; $f < 8; $f++) {
+                $light = ($r + $f) % 2 === 0;
+                $squares[] = [
+                    'x' => $x + $f * $sq, 'y' => $y + $r * $sq,
+                    'fill' => in_array('abcdefgh'[$f].(8 - $r), $last, true) ? ($light ? '#F4C47F' : '#B8741F') : ($light ? '#CFCFD4' : '#62626C'),
+                ];
+            }
+        }
+
+        return ['squares' => $squares, 'pieces' => $pieces, 'sq' => $sq];
+    };
+
+    /**
+     * A clock in fixed digit cells, laid out from $x0 (start) or ending at $x0 (end). The size
+     * is the largest <= $maxSize at which the widest clock there is (four digits and a colon,
+     * "59:59" or "24:00": 4.125 em) fits $maxWidth, so it does not change with the time shown.
+     */
+    $clockCells = static function (int $ms, float $x0, float $maxSize, float $maxWidth, bool $alignEnd = false) use ($clock): array {
         $text = $clock($ms);
-        // m:ss fits at 80 px; h:mm:ss (a daily game's day per move) is scaled
-        // down to the 480 px between the card's inner edges (740..1220).
-        $widths = array_map(fn (string $ch): int => $ch === ':' ? 30 : 75, str_split($text));
-        $scale = min(1, 480 / array_sum($widths));
+        $em = array_sum(array_map(fn (string $ch): float => $ch === ':' ? 0.375 : 0.9375, str_split($text)));
+        $size = floor(min($maxSize, $maxWidth / 4.125));
+        $width = $em * $size;
+        $cx = $alignEnd ? $x0 - $width : $x0;
         $digits = [];
-        $cx = 740;
-        foreach (str_split($text) as $i => $ch) {
-            $w = $widths[$i] * $scale;
+        foreach (str_split($text) as $ch) {
+            $w = ($ch === ':' ? 0.375 : 0.9375) * $size;
             $digits[] = ['ch' => $ch, 'x' => round($cx + $w / 2, 1)];
             $cx += $w;
         }
-        $cards[] = [
-            'y' => $c['y'], 'king' => $c['king'], 'name' => $fit((string) $c['p']['name'], 25) ?: $c['fallback'],
-            'digits' => $digits,
-            'clockSize' => round(80 * $scale, 1),
-            'fill' => $active ? ($low ? '#F87171' : '#F7931A') : '#121215',
-            'stroke' => $active ? 'none' : '#2A2A30',
-            'ink' => $active ? '#17120A' : '#FFFFFF',
-            'clockInk' => $active ? '#17120A' : ($low ? '#F87171' : '#FFFFFF'),
-        ];
+
+        return ['digits' => $digits, 'size' => $size, 'width' => $width];
+    };
+
+    // Gallery geometry: grid area x 40..1240, y 96..624; 24 px gaps.
+    $cardsOut = [];
+    if ($grid) {
+        $n = count($gameList);
+        [$cols, $rows] = match (true) { $n === 2 => [2, 1], $n <= 4 => [2, 2], default => [3, 2] };
+        $gap = 24;
+        $cw = (1200 - ($cols - 1) * $gap) / $cols;
+        $cellH = (528 - ($rows - 1) * $gap) / $rows;
+        foreach ($gameList as $i => $g) {
+            $x = 40 + ($i % $cols) * ($cw + $gap);
+            $y = 96 + intdiv($i, $cols) * ($cellH + $gap);
+            $label = ($g['result'] ?? null) ?: preg_replace('/^LIVE · (CHESS )?/u', '', (string) $g['mode']);
+            // Mode strip across the card top: mono 14 (8.4 px a char), 14 px padding each side.
+            $card = [
+                'x' => $x, 'y' => $y, 'w' => $cw, 'h' => $cellH,
+                'label' => $fit((string) $label, (int) floor(($cw - 28) / 8.4)),
+                'labelInk' => ($g['result'] ?? null) ? '#F7931A' : '#ADADB0',
+                'players' => [],
+            ];
+            $stack = $rows === 1;
+            if ($stack) {
+                // Two cards side by side: player bars above and below a centred board.
+                $bar = 64;
+                $sq = floor(($cellH - 40 - 2 * $bar - 3 * 12) / 8);
+                $card['board'] = $board((string) $g['fen'], $g['lastMove'] ?? null, $x + ($cw - 8 * $sq) / 2, $y + 40 + $bar + 12, $sq);
+                $slots = [['p' => $g['black'], 'y' => $y + 40], ['p' => $g['white'], 'y' => $y + $cellH - 12 - $bar]];
+                $nameSize = 22;
+                $clockMax = 44;
+            } else {
+                // Grid cells: board left, the two players stacked on the right.
+                $sq = floor(($cellH - 40 - 12) / 8);
+                $card['board'] = $board((string) $g['fen'], $g['lastMove'] ?? null, $x + 12, $y + 40, $sq);
+                $half = (8 * $sq - 8) / 2;
+                $slots = [['p' => $g['black'], 'y' => $y + 40], ['p' => $g['white'], 'y' => $y + 40 + $half + 8]];
+                $nameSize = $cols === 3 ? 16 : 20;
+                $clockMax = $cols === 3 ? 40 : 56;
+            }
+            // Both clocks of a card share one size (the same for any time shown).
+            $clockW = $stack ? ($cw - 24) / 2 - 12 : ($x + $cw - 12 - ($x + 12 + 8 * $sq + 12)) - 20;
+            $clockMax = min(array_map(fn (array $slot): float => $clockCells((int) $slot['p']['clockMs'], 0, $clockMax, $clockW)['size'], $slots));
+            foreach ($slots as $k => $slot) {
+                $p = $slot['p'];
+                $ms = (int) $p['clockMs'];
+                $active = (bool) $p['toMove'];
+                $low = $ms < 10000;
+                $tile = $nameSize + 6;
+                if ($stack) {
+                    // Bar: [tile][name ........][clock], clock right-aligned.
+                    $bx = $x + 12;
+                    $bw = $cw - 24;
+                    $c = $clockCells($ms, $bx + $bw - 12, $clockMax, $bw / 2 - 12, true);
+                    $nameX = $bx + 12 + $tile + 8;
+                    $nameFree = $bx + $bw - 12 - $c['width'] - 16 - $nameX;
+                    $slotH = $bar;
+                    $nameY = $slot['y'] + $bar / 2 + $nameSize * 0.36;
+                    $tileY = $slot['y'] + ($bar - $tile) / 2;
+                    $clockY = $slot['y'] + $bar / 2 + $c['size'] * 0.375;
+                } else {
+                    // Block: name line on top, clock below.
+                    $bx = $x + 12 + 8 * $sq + 12;
+                    $bw = $x + $cw - 12 - $bx;
+                    $slotH = $half;
+                    $c = $clockCells($ms, $bx + 10, $clockMax, $bw - 20);
+                    $nameX = $bx + 10 + $tile + 6;
+                    $nameFree = $bx + $bw - 10 - $nameX;
+                    $tileY = $slot['y'] + 8;
+                    $nameY = $tileY + $tile / 2 + $nameSize * 0.36;
+                    $clockY = $slot['y'] + $half - 12;
+                }
+                $card['players'][] = [
+                    'x' => $bx, 'y' => $slot['y'], 'w' => $bw, 'h' => $slotH,
+                    'fill' => $active ? ($low ? '#F87171' : '#F7931A') : null,
+                    'ink' => $active ? '#17120A' : '#FFFFFF',
+                    'clockInk' => $active ? '#17120A' : ($low ? '#F87171' : '#FFFFFF'),
+                    'king' => $k === 0 ? 'bk' : 'wk', 'tile' => $tile, 'tileX' => $bx + ($stack ? 12 : 10), 'tileY' => $tileY,
+                    'name' => $fit((string) $p['name'], (int) floor($nameFree / (0.6 * $nameSize))) ?: ($k === 0 ? 'Black player' : 'White player'),
+                    'nameX' => $nameX, 'nameY' => round($nameY, 1), 'nameSize' => $nameSize,
+                    'digits' => $c['digits'], 'clockSize' => $c['size'], 'clockY' => round($clockY, 1),
+                ];
+            }
+            $cardsOut[] = $card;
+        }
+        // A card with a result is a game that just ended, not a live one.
+        $liveCount = count(array_filter($gameList, fn (array $g): bool => ($g['result'] ?? null) === null)) + $more;
     }
-    $headline = $fit(($result ?? null) ?: $mode, 40);
+
+    if (! $grid) {
+        // Board: 8 x 78 px squares inside an 8 px frame, x/y 40..680.
+        $sq = 78;
+        $bx = 48;
+        $by = 48;
+        $last = $lastMove ? [strtolower($lastMove['from']), strtolower($lastMove['to'])] : [];
+        $squares = [];
+        $pieces = [];
+        foreach (explode('/', explode(' ', trim($fen))[0]) as $r => $row) {
+            $f = 0;
+            foreach (str_split($row) as $ch) {
+                if (ctype_digit($ch)) {
+                    $f += (int) $ch;
+                    continue;
+                }
+                if ($f < 8 && $r < 8 && stripos('kqrbnp', $ch) !== false) {
+                    $pieces[] = ['id' => (ctype_upper($ch) ? 'w' : 'b').strtolower($ch), 'x' => $bx + $f * $sq, 'y' => $by + $r * $sq];
+                }
+                $f++;
+            }
+        }
+        for ($r = 0; $r < 8; $r++) {
+            for ($f = 0; $f < 8; $f++) {
+                $name = 'abcdefgh'[$f].(8 - $r);
+                $light = ($r + $f) % 2 === 0;
+                $squares[] = [
+                    'x' => $bx + $f * $sq, 'y' => $by + $r * $sq,
+                    'fill' => in_array($name, $last, true) ? ($light ? '#F4C47F' : '#B8741F') : ($light ? '#CFCFD4' : '#62626C'),
+                ];
+            }
+        }
+
+        // Player cards: black on top, white below (the board shows white at the bottom).
+        $cards = [];
+        foreach ([['p' => $black, 'king' => 'bk', 'y' => 136, 'fallback' => 'Black player'], ['p' => $white, 'king' => 'wk', 'y' => 312, 'fallback' => 'White player']] as $c) {
+            $ms = (int) $c['p']['clockMs'];
+            $active = (bool) $c['p']['toMove'];
+            $low = $ms < 10000;
+            $text = $clock($ms);
+            // m:ss and h:mm (up to 24:00, 330 px) fit at 80 px; anything wider is
+            // scaled down to the 480 px between the card's inner edges (740..1220).
+            $widths = array_map(fn (string $ch): int => $ch === ':' ? 30 : 75, str_split($text));
+            $scale = min(1, 480 / array_sum($widths));
+            $digits = [];
+            $cx = 740;
+            foreach (str_split($text) as $i => $ch) {
+                $w = $widths[$i] * $scale;
+                $digits[] = ['ch' => $ch, 'x' => round($cx + $w / 2, 1)];
+                $cx += $w;
+            }
+            $cards[] = [
+                'y' => $c['y'], 'king' => $c['king'], 'name' => $fit((string) $c['p']['name'], 25) ?: $c['fallback'],
+                'digits' => $digits,
+                'clockSize' => round(80 * $scale, 1),
+                'fill' => $active ? ($low ? '#F87171' : '#F7931A') : '#121215',
+                'stroke' => $active ? 'none' : '#2A2A30',
+                'ink' => $active ? '#17120A' : '#FFFFFF',
+                'clockInk' => $active ? '#17120A' : ($low ? '#F87171' : '#FFFFFF'),
+            ];
+        }
+        $headline = $fit(($result ?? null) ?: $mode, 40);
+    }
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 <defs>
@@ -129,6 +300,7 @@
 <symbol id="p-bp" viewBox="0 0 45 45"><path d="m 22.5,9 c -2.21,0 -4,1.79 -4,4 0,0.89 0.29,1.71 0.78,2.38 C 17.33,16.5 16,18.59 16,21 c 0,2.03 0.94,3.84 2.41,5.03 C 15.41,27.09 11,31.58 11,39.5 H 34 C 34,31.58 29.59,27.09 26.59,26.03 28.06,24.84 29,23.03 29,21 29,18.59 27.67,16.5 25.72,15.38 26.21,14.71 26.5,13.89 26.5,13 c 0,-2.21 -1.79,-4 -4,-4 z" style="opacity:1; fill:#000000; fill-opacity:1; fill-rule:nonzero; stroke:#000000; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:miter; stroke-miterlimit:4; stroke-dasharray:none; stroke-opacity:1;"/></symbol>
 </defs>
 <rect width="1280" height="720" fill="#0A0A0B"/>
+@if (! $grid)
 
 {{-- Board --}}
 <rect x="40" y="40" width="640" height="640" fill="#3A2C14"/>
@@ -160,4 +332,38 @@
 <text x="720" y="562" font-family="Unbounded" font-weight="800" font-size="24" fill="#FFFFFF">Play the next game</text>
 <text x="720" y="608" font-family="JetBrains Mono" font-weight="700" font-size="30" fill="#F7931A">{{ $fit($url, 28) }}</text>
 <text x="720" y="672" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $fit($stats, 48) }}</text>
+@else
+{{-- Gallery frame: header --}}
+<use xlink:href="#mark" href="#mark" x="40" y="20" width="52" height="52"/>
+<text x="112" y="56" font-family="Unbounded" font-weight="800" font-size="24" fill="#FFFFFF">TWENTY ONE ESPORTS</text>
+<text x="1240" y="{{ $more > 0 ? 44 : 56 }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A" text-anchor="end">{{ $liveCount }} {{ $liveCount === 1 ? 'GAME' : 'GAMES' }} LIVE</text>
+@if ($more > 0)<text x="1240" y="70" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">+{{ $more }} more live</text>@endif
+
+{{-- Game cards --}}
+@foreach ($cardsOut as $card)
+{{-- 2 px stroke inset by 1 px so the card keeps to its cell. --}}
+<rect x="{{ $card['x'] + 1 }}" y="{{ $card['y'] + 1 }}" width="{{ $card['w'] - 2 }}" height="{{ $card['h'] - 2 }}" rx="7" fill="#121215" stroke="#2A2A30" stroke-width="2"/>
+<text x="{{ $card['x'] + 14 }}" y="{{ $card['y'] + 27 }}" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="{{ $card['labelInk'] }}">{{ $card['label'] }}</text>
+@php($b = $card['board'])
+<rect x="{{ $b['squares'][0]['x'] - 3 }}" y="{{ $b['squares'][0]['y'] - 3 }}" width="{{ 8 * $b['sq'] + 6 }}" height="{{ 8 * $b['sq'] + 6 }}" fill="#3A2C14"/>
+@foreach ($b['squares'] as $s)<rect x="{{ $s['x'] }}" y="{{ $s['y'] }}" width="{{ $b['sq'] }}" height="{{ $b['sq'] }}" fill="{{ $s['fill'] }}"/>@endforeach
+
+@foreach ($b['pieces'] as $p)<use xlink:href="#p-{{ $p['id'] }}" href="#p-{{ $p['id'] }}" x="{{ $p['x'] }}" y="{{ $p['y'] }}" width="{{ $b['sq'] }}" height="{{ $b['sq'] }}"/>@endforeach
+
+@foreach ($card['players'] as $pl)
+@if ($pl['fill'])<rect x="{{ $pl['x'] }}" y="{{ $pl['y'] }}" width="{{ $pl['w'] }}" height="{{ $pl['h'] }}" rx="6" fill="{{ $pl['fill'] }}"/>@endif
+<rect x="{{ $pl['tileX'] }}" y="{{ $pl['tileY'] }}" width="{{ $pl['tile'] }}" height="{{ $pl['tile'] }}" rx="4" fill="#CFCFD4"/>
+<use xlink:href="#p-{{ $pl['king'] }}" href="#p-{{ $pl['king'] }}" x="{{ $pl['tileX'] }}" y="{{ $pl['tileY'] }}" width="{{ $pl['tile'] }}" height="{{ $pl['tile'] }}"/>
+<text x="{{ $pl['nameX'] }}" y="{{ $pl['nameY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $pl['nameSize'] }}" fill="{{ $pl['ink'] }}">{{ $pl['name'] }}</text>
+@foreach ($pl['digits'] as $d)<text x="{{ $d['x'] }}" y="{{ $pl['clockY'] }}" font-family="Unbounded" font-weight="800" font-size="{{ $pl['clockSize'] }}" fill="{{ $pl['clockInk'] }}" text-anchor="middle">{{ $d['ch'] }}</text>@endforeach
+
+@endforeach
+@endforeach
+
+{{-- Gallery frame: bottom bar --}}
+<rect x="40" y="640" width="1200" height="2" fill="#2A2A30"/>
+<text x="40" y="686" font-family="Unbounded" font-weight="800" font-size="20" fill="#FFFFFF">Play the next game</text>
+<text x="304" y="686" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#F7931A">{{ $fit($url, 28) }}</text>
+<text x="1240" y="686" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">{{ $fit($stats, 52) }}</text>
+@endif
 </svg>

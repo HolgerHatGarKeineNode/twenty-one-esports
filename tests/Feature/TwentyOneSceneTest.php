@@ -81,8 +81,8 @@ test('a daily game renders as correspondence with the time left for the move', f
         ->and(mb_strlen($scene['mode']))->toBeLessThanOrEqual(40)
         ->and($scene['white'])->toMatchArray(['clockMs' => 86_399_000, 'toMove' => true])
         ->and($scene['black'])->toMatchArray(['clockMs' => 3_000, 'toMove' => false])
-        // One <text> per clock character, black's card first; h:mm:ss scaled into the card.
-        ->and(implode('', $digits[3]))->toBe('0:03'.'23:59:59')
+        // One <text> per clock character, black's card first; from 1 h up h:mm, no seconds.
+        ->and(implode('', $digits[3]))->toBe('0:03'.'23:59')
         // Right edge of the last digit (75 px advance at 80 px) inside the card's inner edge.
         ->and((float) end($digits[1]) + 37.5 * (float) end($digits[2]) / 80)->toBeLessThanOrEqual(1220.5)
         ->and(StreamTexts::for($game)['title'])->toEndWith(' · Chess Correspondence');
@@ -94,4 +94,76 @@ test('a daily game that just ended shows its result', function () {
 
     expect($source->liveGame())->toBeNull()
         ->and($source->scene($source->endedGame(60), (int) now()->getTimestampMs())['result'])->toBe('1-0 · Black resigned');
+});
+
+test('the gallery takes every live game, blitz first, and counts what does not fit', function () {
+    $nowMs = (int) now()->getTimestampMs();
+    $daily = collect([3, 1, 2])->map(fn (int $minutesAgo) => ChessGame::factory()->daily()->create(['turn_started_ms' => $nowMs - $minutesAgo * 60_000]));
+    $blitz = ChessGame::factory()->count(5)->create();
+    $source = app(SceneSource::class);
+
+    $selection = $source->sceneGames(60);
+
+    // 5 blitz by age, then the daily game with the most recent move; two daily games left over.
+    expect(array_map(fn (ChessGame $game): int => $game->id, $selection['games']))->toBe([...$blitz->pluck('id')->all(), $daily[1]->id])
+        ->and($selection['more'])->toBe(2);
+});
+
+test('a game that just ended keeps its card while others run, and gives way first', function () {
+    $ended = ChessGame::factory()->finished('0-1', ChessEndReason::Timeout)->create();
+    $live = ChessGame::factory()->create();
+    $source = app(SceneSource::class);
+
+    $scene = $source->gallery(...[...array_values($source->sceneGames(60)), (int) now()->getTimestampMs()]);
+
+    expect(array_column($scene['games'], 'result'))->toBe(['0-1 · White ran out of time', null])
+        ->and($scene['more'])->toBe(0)
+        ->and($scene)->toHaveKeys(['stats', 'url'])
+        ->and(SceneRenderer::fromConfig()->svg($scene))->toContain('>1 GAME LIVE<');
+
+    ChessGame::factory()->count(5)->create();
+
+    expect(collect($source->sceneGames(60)['games'])->contains(fn (ChessGame $game): bool => $game->is($ended)))->toBeFalse()
+        ->and(collect($source->sceneGames(60)['games'])->contains(fn (ChessGame $game): bool => $game->is($live)))->toBeTrue();
+});
+
+test('the gallery renders 2, 4 and 6 games on the 1280x720 still, names escaped', function (int $count) {
+    ChessGame::factory()->count($count - 1)->create();
+    ChessGame::factory()->create(['white_id' => User::factory()->create(['name' => 'Pleb <script>alert(1)</script>'])]);
+    $source = app(SceneSource::class);
+    ['games' => $games, 'more' => $more] = $source->sceneGames(60);
+
+    $svg = SceneRenderer::fromConfig()->svg($source->gallery($games, $more, (int) now()->getTimestampMs()));
+
+    expect($svg)->toContain('width="1280" height="720" viewBox="0 0 1280 720"')
+        ->and($svg)->toContain($count.' GAMES LIVE')
+        ->and($svg)->not->toContain('<script>')
+        ->and($svg)->toContain('>Pleb &lt;')
+        ->and(substr_count($svg, 'href="#p-wk"'))->toBe($count * 4);
+})->with([2, 4, 6]);
+
+test('the 30311 texts name one game, or count several and list three pairings', function () {
+    $games = collect(['Alice', 'Carol', 'Erin', 'Grace'])->map(fn (string $name) => ChessGame::factory()->create([
+        'white_id' => User::factory()->create(['name' => $name]),
+        'black_id' => User::factory()->create(['name' => $name."\u{202E}x"]),
+    ]));
+
+    $one = StreamTexts::forGames([$games[0]]);
+    $four = StreamTexts::forGames($games->all(), 2);
+
+    expect($one['title'])->toBe('Live now: Alice vs Alice x · Chess Blitz')
+        ->and($four['title'])->toBe('Live now: 6 chess games')
+        ->and($four['summary'])->toStartWith('Alice vs Alice x, Carol vs Carol x, Erin vs Erin x and 3 more: live chess on TWENTY ONE Esports');
+});
+
+test('a clock shows m:ss below one hour and h:mm from one hour up', function () {
+    $game = fn (int $ms): array => ['name' => 'P', 'clockMs' => $ms, 'toMove' => false];
+    $svg = SceneRenderer::fromConfig()->svg([
+        'white' => $game(3_599_999), 'black' => $game(3_600_000 + 59_000), 'fen' => ChessGame::START_FEN, 'lastMove' => null,
+        'mode' => 'LIVE · CHESS BLITZ 5+3 · CASUAL', 'result' => null, 'stats' => 's', 'url' => 'u',
+    ]);
+    preg_match_all('/font-family="Unbounded" font-weight="800" font-size="[\d.]+" fill="#\w+" text-anchor="middle">([\d:])</', $svg, $digits);
+
+    // Black's card first: 1 h 0 min 59 s, then White's 59:59.
+    expect(implode('', $digits[1]))->toBe('1:00'.'59:59');
 });

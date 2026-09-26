@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ChessGame;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
@@ -180,7 +181,9 @@ class TwentyOneStreamCommand extends Command
         $nextPollAt = 0.0;
         $pollFailures = 0;
         $renderFailingSince = null;
-        $sceneGame = null;
+        /** @var list<ChessGame> $sceneGames */
+        $sceneGames = [];
+        $sceneMore = 0;
         $scene = null;
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
 
@@ -205,8 +208,11 @@ class TwentyOneStreamCommand extends Command
                     $mode = $modes->tick($live !== null, (int) $now);
 
                     if ($mode === ModeMachine::SCENE) {
-                        $sceneGame = $live ?? $source->endedGame($hysteresis) ?? $sceneGame?->fresh(['white', 'black']);
-                        $scene = $sceneGame === null ? $scene : $source->scene($sceneGame, (int) ($now * 1000));
+                        // Every live game (a gallery from two on) and those that just ended;
+                        // when none is left inside the window, the last picture stays.
+                        ['games' => $games, 'more' => $sceneMore] = $source->sceneGames($hysteresis);
+                        $sceneGames = $games !== [] ? $games : array_values(array_filter(array_map(fn (ChessGame $game): ?ChessGame => $game->fresh(['white', 'black']), $sceneGames)));
+                        $scene = $sceneGames === [] ? $scene : $source->gallery($sceneGames, $sceneMore, (int) ($now * 1000));
                     }
 
                     if ($pollFailures > 0) {
@@ -333,7 +339,7 @@ class TwentyOneStreamCommand extends Command
                 }
             }
 
-            $texts = StreamTexts::for($this->active?->mode === ModeMachine::SCENE ? $sceneGame : null);
+            $texts = $this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : StreamTexts::for(null);
 
             // A playlist kept from before this start is fresh after a quick
             // restart (and rewritten when trimmed), but says nothing about

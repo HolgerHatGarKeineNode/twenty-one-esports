@@ -456,6 +456,24 @@ test('player names reach the 30311 without control or bidi characters', function
         ->and(preg_match('/\p{C}/u', $title.collect($event['tags'])->firstWhere(0, 'summary')[1]))->toBe(0);
 });
 
+test('with two live games the supervisor announces the gallery', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    failingRenderer($this->dir);
+    config(['twentyone.stream.shutdown_publish_seconds' => 1]);
+    ChessGame::factory()->create();
+    ChessGame::factory()->daily()->create();
+    $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $this->dir.'/event.json'], [1 => ['pipe', 'w']], $pipes);
+    $port = (int) fgets($pipes[1]);
+
+    Artisan::call('twentyone:stream', ['--relays' => 'ws://127.0.0.1:'.$port, '--stop-after' => 3]);
+    proc_terminate($relay);
+    proc_close($relay);
+    $event = json_decode((string) file_get_contents($this->dir.'/event.json'), true)[1];
+
+    expect(collect($event['tags'])->firstWhere(0, 'title')[1])->toBe('Live now: 2 chess games');
+});
+
 test('the work dir may not lie inside the served HLS directory', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     config(['twentyone.stream.scene.work_dir' => config('twentyone.stream.hls_dir').'/work']);

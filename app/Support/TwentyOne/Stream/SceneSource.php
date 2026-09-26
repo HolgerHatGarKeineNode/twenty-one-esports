@@ -11,16 +11,20 @@ use App\Models\Clan;
 use App\Support\Chess\ChessGameService;
 
 /**
- * What the stream scene shows, read from the database: any active chess
- * game (a blitz game first, the oldest when several run; otherwise the daily
- * game with the most recent move), or the one that ended in the last minute,
- * turned into the data contract of resources/views/stream/scene.blade.php.
+ * What the stream scene shows, read from the database: every active chess
+ * game (blitz games first, oldest first; then daily games, most recent move
+ * first), up to MAX_GAMES of them as a gallery, plus games that ended in the
+ * last minute with their result, turned into the data contract of
+ * resources/views/stream/scene.blade.php. One game renders the single layout.
  *
  * Names are the public profile names the lobby shows (User::displayName()).
  * Stats are real counts only; nothing here is a placeholder or a rating.
  */
 class SceneSource
 {
+    /** Cards the gallery shows; further live games are counted as "+N more live". */
+    public const MAX_GAMES = 6;
+
     public function __construct(
         private ChessGameService $chess,
         private GameRegistry $games,
@@ -40,6 +44,56 @@ class SceneSource
     }
 
     /**
+     * The games the scene shows, in display order: active ones and those that
+     * ended within `$endedSeconds` (they keep their place, with the result),
+     * at most MAX_GAMES. Ended cards give way first when there are more;
+     * `more` counts the active games left out.
+     *
+     * @return array{games: list<ChessGame>, more: int}
+     */
+    public function sceneGames(int $endedSeconds): array
+    {
+        $games = ChessGame::query()->with(['white', 'black'])
+            ->where(fn ($query) => $query->where('status', ChessGameStatus::Active)
+                ->orWhere(fn ($query) => $query->whereIn('status', [ChessGameStatus::Finished, ChessGameStatus::Aborted])
+                    ->where('ended_at', '>=', now()->subSeconds($endedSeconds))))
+            ->get()
+            ->sort(fn (ChessGame $a, ChessGame $b): int => [$a->isCorrespondence(), $a->isCorrespondence() ? -$a->turn_started_ms : $a->id, $a->id]
+                <=> [$b->isCorrespondence(), $b->isCorrespondence() ? -$b->turn_started_ms : $b->id, $b->id])
+            ->values();
+
+        // Over the cap: the ended cards go first (the latest in the order first).
+        while ($games->count() > self::MAX_GAMES && ($ended = $games->reverse()->first(fn (ChessGame $game): bool => ! $game->isActive())) !== null) {
+            $games = $games->reject(fn (ChessGame $game): bool => $game->is($ended))->values();
+        }
+
+        $shown = $games->take(self::MAX_GAMES);
+
+        return ['games' => array_values($shown->all()), 'more' => $games->count() - $shown->count()];
+    }
+
+    /**
+     * The scene for the games `sceneGames()` chose: the single layout's flat
+     * data for one game, the gallery's `games` list and `more` for several.
+     *
+     * @param  list<ChessGame>  $games
+     * @return array<string, mixed>
+     */
+    public function gallery(array $games, int $more, int $nowMs): array
+    {
+        if (count($games) === 1 && $more === 0) {
+            return $this->scene($games[0], $nowMs);
+        }
+
+        return [
+            'games' => array_map(fn (ChessGame $game): array => $this->card($game, $nowMs), $games),
+            'more' => $more,
+            'stats' => $this->stats(),
+            'url' => (string) config('twentyone.stream.scene.url'),
+        ];
+    }
+
+    /**
      * The game (blitz or daily) that ended most recently, if within `$seconds`.
      */
     public function endedGame(int $seconds): ?ChessGame
@@ -53,6 +107,20 @@ class SceneSource
      * @return array{white: array{name: string, clockMs: int, toMove: bool}, black: array{name: string, clockMs: int, toMove: bool}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, stats: string, url: string, result: string|null}
      */
     public function scene(ChessGame $game, int $nowMs): array
+    {
+        return [
+            ...$this->card($game, $nowMs),
+            'stats' => $this->stats(),
+            'url' => (string) config('twentyone.stream.scene.url'),
+        ];
+    }
+
+    /**
+     * One game as the view's data contract describes it.
+     *
+     * @return array{white: array{name: string, clockMs: int, toMove: bool}, black: array{name: string, clockMs: int, toMove: bool}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, result: string|null}
+     */
+    private function card(ChessGame $game, int $nowMs): array
     {
         $clocks = $this->chess->clocks($game, $nowMs);
         // A daily game's clock is the deadline for the move, running from the start.
@@ -68,8 +136,6 @@ class SceneSource
             'fen' => $game->fen,
             'lastMove' => $last === null ? null : ['from' => substr($last->uci, 0, 2), 'to' => substr($last->uci, 2, 2)],
             'mode' => 'LIVE · CHESS '.mb_strtoupper($label).($game->rated ? '' : ' · CASUAL'),
-            'stats' => $this->stats(),
-            'url' => (string) config('twentyone.stream.scene.url'),
             'result' => $game->isActive() ? null : $this->result($game),
         ];
     }
