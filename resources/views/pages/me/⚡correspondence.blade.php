@@ -179,11 +179,11 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
         <p role="alert" class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss">{{ $error }}</p>
     @endif
 
-    {{-- Numbers and notifications --}}
-    <section aria-label="{{ __('Overview') }}" class="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-card px-4 py-4 lg:flex lg:items-center lg:gap-6 lg:px-6 lg:py-5">
-        <span class="flex flex-col gap-1 lg:min-w-[180px]"><span class="text-xs text-ink-2">{{ __('In progress') }}</span><b class="font-display text-[22px]" data-test="count-running">{{ $cards->count() }}</b></span>
-        <span class="flex flex-col gap-1 lg:min-w-[180px]"><span class="text-xs text-ink-2">{{ __('Your move') }}</span><b class="font-display text-[22px] text-btc" data-test="count-mine">{{ $mine->count() }}</b></span>
-        <span class="flex flex-col gap-1 lg:min-w-[180px]">
+    {{-- Numbers and notifications: one row from 1440 px (the design width; the row needs ~1420 px), below that four numbers over the notification block (at 1024 px the row ran 163 px past the edge). --}}
+    <section aria-label="{{ __('Overview') }}" class="grid grid-cols-2 gap-x-6 gap-y-4 rounded-lg bg-card px-4 py-4 lg:grid-cols-4 lg:px-6 lg:py-5 min-[90rem]:flex min-[90rem]:items-center min-[90rem]:gap-6">
+        <span class="flex flex-col gap-1 min-[90rem]:min-w-[180px]"><span class="text-xs text-ink-2">{{ __('In progress') }}</span><b class="font-display text-[22px]" data-test="count-running">{{ $cards->count() }}</b></span>
+        <span class="flex flex-col gap-1 min-[90rem]:min-w-[180px]"><span class="text-xs text-ink-2">{{ __('Your move') }}</span><b class="font-display text-[22px] text-btc" data-test="count-mine">{{ $mine->count() }}</b></span>
+        <span class="flex flex-col gap-1 min-[90rem]:min-w-[180px]">
             <span class="text-xs text-ink-2">{{ __('Next deadline') }}</span>
             @if ($next)
                 @php($leftMin = intdiv(max(0, (int) $next['game']->deadline_ms - (int) now()->getTimestampMs()), 60_000))
@@ -194,12 +194,12 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                 <span class="text-xs text-ink-2">{{ __('nothing due') }}</span>
             @endif
         </span>
-        <span class="flex flex-col gap-1 lg:min-w-[180px]">
+        <span class="flex flex-col gap-1 min-[90rem]:min-w-[180px]">
             <span class="text-xs text-ink-2">{{ __('Finished') }}</span>
             <b class="font-display text-[22px]">{{ $finished->count() }}</b>
             <span class="text-xs text-ink-2">{{ __(':wins won · :draws drawn · :losses lost', ['wins' => $outcomes->filter(fn ($o) => $o === 'win')->count(), 'draws' => $outcomes->filter(fn ($o) => $o === 'draw')->count(), 'losses' => $outcomes->filter(fn ($o) => $o === 'loss')->count()]) }}</span>
         </span>
-        <span class="col-span-2 flex items-center gap-3.5 border-t border-hairline pt-4 lg:ml-auto lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
+        <span class="col-span-2 flex items-center gap-3.5 border-t border-hairline pt-4 lg:col-span-4 min-[90rem]:ml-auto min-[90rem]:border-t-0 min-[90rem]:border-l min-[90rem]:pt-0 min-[90rem]:pl-6">
             <span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-proof-fill text-proof"><x-icon name="bell" :size="16" /></span>
             <span class="flex min-w-0 grow flex-col gap-0.5 text-[13px] lg:max-w-[280px]">
                 @if ($notificationsOn)

@@ -131,10 +131,10 @@
         </section>
     @endif
 
-    {{-- Replay --}}
+    {{-- Replay: board, moves and the record side by side from xl; below xl the record runs under both (a third column at 1024 px was 76 px wide and overflowed the page) --}}
     <h2 class="m-0 font-display text-xl font-bold">{{ __('Replay') }}</h2>
     <div x-on:keydown.window="hotkey($event)" x-data="chessReplay(@js([...$replay, 'flipped' => $color === 'b', 'pgn' => $pgn, 'filename' => 'twentyone-game-'.$game->id.'.pgn', 'labels' => ['start' => __('Start position'), 'after' => __('Position after :move')]]))"
-         class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,496px)_300px_minmax(0,1fr)] lg:gap-7">
+         class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,496px)_300px] xl:grid-cols-[minmax(0,496px)_300px_minmax(0,1fr)] lg:gap-7">
         <div class="flex flex-col gap-4">
             <x-chess.board frame="#F7931A" class="lg:mt-4 lg:max-w-[480px]" />
             {{-- Captured pieces at the replayed position --}}
@@ -174,7 +174,7 @@
             </ol>
         </div>
 
-        <div class="flex min-w-0 flex-col gap-4">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-span-2 xl:col-span-1">
             <div class="flex flex-col gap-3 rounded-lg bg-card px-5 py-4">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <b class="text-[15px]">{{ __('Game file') }}</b>
