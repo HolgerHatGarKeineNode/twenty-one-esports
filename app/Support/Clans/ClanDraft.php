@@ -3,8 +3,9 @@
 namespace App\Support\Clans;
 
 /**
- * The fields of a new clan, validated by the create form. The meetup fields
- * come from the portal import and are all optional.
+ * The fields of a clan, validated by the create form or the edit card on the
+ * manage page. The meetup fields come from the portal import and are all
+ * optional.
  */
 final readonly class ClanDraft
 {

@@ -14,20 +14,26 @@ use App\Models\InviteLink;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\User;
+use App\Support\Clans\ClanDraft;
 use App\Support\Clans\ClanJoinRequests;
+use App\Support\Clans\ClanLogos;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
 use App\Support\Clans\ClanStatsPreview;
+use App\Support\Clans\PortalMeetups;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 /*
  * Manage a clan, from ClanManage.dc.html. Captains see it; only the founder
@@ -38,8 +44,14 @@ use Livewire\Component;
  * built here from the active members; a member's clan membership is their
  * consent, so no player confirms anything for a lineup (NIP rev. 6).
  * Elo, tiers, Clan Rating and Hashrate are ClanStatsPreview until P6/P7.
+ *
+ * "Edit clan": the owner changes name, tag, description, logo and meetup
+ * link with a new version of the clan event (same `d`, roster unchanged).
  */
-new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component
+{
+    use WithFileUploads;
+
     /** Rocket League modes in display order. */
     private const array MODES = ['3v3', '2v2', '1v1'];
 
@@ -68,6 +80,43 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     public int $joinLinkHours = 168;
 
+    /** "Edit clan" (owner only): the card is open and holds these fields. */
+    #[Locked]
+    public bool $editingClan = false;
+
+    public string $editName = '';
+
+    public string $editClantag = '';
+
+    public string $editDescription = '';
+
+    /** The logo to keep: the current one, a portal meetup logo, or null. An upload replaces it. */
+    #[Locked]
+    public ?string $editPicture = null;
+
+    public ?TemporaryUploadedFile $logo = null;
+
+    public string $meetupQuery = '';
+
+    #[Locked]
+    public ?string $editMeetupName = null;
+
+    #[Locked]
+    public ?string $editMeetupCity = null;
+
+    #[Locked]
+    public ?string $editMeetupUrl = null;
+
+    #[Locked]
+    public ?float $editMeetupLatitude = null;
+
+    #[Locked]
+    public ?float $editMeetupLongitude = null;
+
+    /** The linked meetup's portal logo, once known (picked now, or looked up). */
+    #[Locked]
+    public ?string $editMeetupLogo = null;
+
     public function mount(Clan $clan): void
     {
         abort_unless($clan->isCaptain($this->user()), 403);
@@ -95,6 +144,260 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     public function pickTab(string $tab): void
     {
         $this->tab = in_array($tab, ['active', 'invited', 'former'], true) ? $tab : 'active';
+    }
+
+    /* ---------- Edit the clan (owner only) ---------- */
+
+    public function openEdit(): void
+    {
+        abort_unless($this->isOwner, 403);
+
+        $clan = $this->clan;
+        $this->editName = $clan->name;
+        $this->editClantag = $clan->clantag;
+        $this->editDescription = $clan->description ?? '';
+        $this->editPicture = $clan->picture;
+        $this->editMeetupName = $clan->meetup_name;
+        $this->editMeetupCity = $clan->meetup_city;
+        $this->editMeetupUrl = $clan->meetup_url;
+        $this->editMeetupLatitude = $clan->meetup_latitude === null ? null : (float) $clan->meetup_latitude;
+        $this->editMeetupLongitude = $clan->meetup_longitude === null ? null : (float) $clan->meetup_longitude;
+        $this->reset('logo', 'meetupQuery', 'editMeetupLogo');
+        $this->resetErrorBag();
+        $this->editingClan = true;
+    }
+
+    public function cancelEdit(): void
+    {
+        $this->reset('editingClan', 'logo', 'meetupQuery', 'editMeetupLogo');
+        $this->resetErrorBag();
+    }
+
+    public function updatedEditClantag(): void
+    {
+        $this->editClantag = strtoupper(trim($this->editClantag));
+    }
+
+    /**
+     * Checked as soon as the file arrives, so a wrong file never shows as a
+     * preview and the error sits under the logo right away.
+     */
+    public function updatedLogo(): void
+    {
+        try {
+            $this->validate(['logo' => ClanLogos::rules()], $this->logoMessages());
+        } catch (ValidationException $invalid) {
+            $this->logo = null;
+
+            throw $invalid;
+        }
+    }
+
+    public function removeLogo(): void
+    {
+        abort_unless($this->isOwner, 403);
+
+        $this->logo = null;
+        $this->editPicture = null;
+        $this->resetErrorBag('logo');
+    }
+
+    public function useMeetupLogo(PortalMeetups $portal): void
+    {
+        abort_unless($this->isOwner, 403);
+
+        $logo = $this->editMeetupLogo ?? ($this->editMeetupUrl === null ? null : ($portal->findByUrl($this->editMeetupUrl)['logo'] ?? null));
+
+        if ($logo === null) {
+            $this->addError('logo', __('The portal has no logo for this meetup right now.'));
+
+            return;
+        }
+
+        $this->logo = null;
+        $this->editPicture = $logo;
+        $this->editMeetupLogo = $logo;
+        $this->resetErrorBag('logo');
+    }
+
+    /**
+     * Portal matches while the card is open; null when the portal is unreachable.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    #[Computed]
+    public function meetups(): ?array
+    {
+        return $this->editingClan ? app(PortalMeetups::class)->search($this->meetupQuery) : [];
+    }
+
+    /**
+     * Link a meetup. Name, text and logo stay as they are; the meetup's logo
+     * is one click away ("Use meetup logo").
+     */
+    public function pickMeetup(int $id, PortalMeetups $portal): void
+    {
+        abort_unless($this->isOwner, 403);
+
+        $meetup = $portal->find($id);
+
+        if ($meetup === null) {
+            return;
+        }
+
+        $this->editMeetupName = $meetup['name'];
+        $this->editMeetupCity = $meetup['city'];
+        $this->editMeetupUrl = $meetup['url'] !== '' ? $meetup['url'] : null;
+        $this->editMeetupLatitude = $meetup['latitude'];
+        $this->editMeetupLongitude = $meetup['longitude'];
+        $this->editMeetupLogo = $meetup['logo'];
+        $this->meetupQuery = '';
+    }
+
+    public function forgetMeetup(): void
+    {
+        abort_unless($this->isOwner, 403);
+
+        $this->reset('editMeetupName', 'editMeetupCity', 'editMeetupUrl', 'editMeetupLatitude', 'editMeetupLongitude', 'editMeetupLogo');
+    }
+
+    /**
+     * `free`, `taken`, `invalid` or `own` for the hint under the tag field.
+     */
+    #[Computed]
+    public function editTagStatus(): ?string
+    {
+        if (! $this->editingClan || $this->editClantag === '') {
+            return null;
+        }
+
+        if (preg_match(Clan::TAG_PATTERN, $this->editClantag) !== 1) {
+            return 'invalid';
+        }
+
+        if ($this->editClantag === $this->clan->clantag) {
+            return 'own';
+        }
+
+        return Clan::query()->where('clantag', $this->editClantag)->exists() ? 'taken' : 'free';
+    }
+
+    /**
+     * @return list<array<string, mixed>>|null
+     */
+    public function prepareEdit(ClanService $clans, ClanLogos $logos): ?array
+    {
+        $edit = $this->editDraft($logos);
+
+        if ($edit === null) {
+            return null;
+        }
+
+        $templates = $this->attempt(fn () => $clans->prepareEdit($this->user(), $this->clan, $edit['draft']), 'edit');
+
+        return is_array($templates) ? $templates : null;
+    }
+
+    /**
+     * The logo file is written only now, once the signed event is accepted
+     * it points at it; the replaced upload is deleted when no clan uses it.
+     */
+    public function saveEdit(string $signed, ClanService $clans, ClanLogos $logos): void
+    {
+        $edit = $this->editDraft($logos);
+
+        if ($edit === null) {
+            return;
+        }
+
+        $draft = $edit['draft'];
+        $previous = $this->clan->picture;
+
+        if ($edit['png'] !== null) {
+            $logos->store($edit['png']);
+        }
+
+        if ($this->attempt(fn () => $clans->edit($this->user(), $this->clan, $draft, $this->signed($signed)), 'edit') === false) {
+            $logos->deleteIfUnused($draft->picture);
+
+            return;
+        }
+
+        if ($previous !== $draft->picture) {
+            $logos->deleteIfUnused($previous);
+        }
+
+        $this->cancelEdit();
+        unset($this->clan);
+    }
+
+    /**
+     * The edited fields as a draft, with an uploaded logo rendered (its URL
+     * in the draft, its PNG to store), or null with the errors on the card.
+     *
+     * @return array{draft: ClanDraft, png: string|null}|null
+     */
+    private function editDraft(ClanLogos $logos): ?array
+    {
+        abort_unless($this->isOwner && $this->editingClan, 403);
+
+        $this->editClantag = strtoupper(trim($this->editClantag));
+
+        $this->validate([
+            'editName' => ['required', 'string', 'max:64'],
+            'editClantag' => ['required', 'regex:'.Clan::TAG_PATTERN, Rule::unique('clans', 'clantag')->ignore($this->clanId)],
+            'editDescription' => ['nullable', 'string', 'max:1000'],
+            'logo' => ['nullable', ...ClanLogos::rules()],
+        ], [
+            'editClantag.regex' => __('2 to 4 capital letters or digits.'),
+            'editClantag.unique' => __('The tag :tag is taken.', ['tag' => $this->editClantag]),
+            ...$this->logoMessages(),
+        ], [
+            'editName' => __('name'),
+            'editClantag' => __('tag'),
+            'editDescription' => __('description'),
+        ]);
+
+        $png = null;
+        $picture = $this->editPicture;
+
+        if ($this->logo !== null) {
+            try {
+                $png = $logos->render($this->logo);
+            } catch (ClanRuleViolation $unreadable) {
+                $this->logo = null;
+                $this->addError('logo', $unreadable->getMessage());
+
+                return null;
+            }
+
+            $picture = $logos->urlFor($png);
+        }
+
+        return ['png' => $png, 'draft' => new ClanDraft(
+            trim($this->editName),
+            $this->editClantag,
+            trim($this->editDescription) === '' ? null : trim($this->editDescription),
+            $picture,
+            $this->editMeetupName,
+            $this->editMeetupCity,
+            $this->editMeetupUrl,
+            $this->editMeetupLatitude,
+            $this->editMeetupLongitude,
+        )];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function logoMessages(): array
+    {
+        return [
+            'logo.image' => __('Use a PNG, JPG or WebP image. SVG is not supported.'),
+            'logo.mimes' => __('Use a PNG, JPG or WebP image. SVG is not supported.'),
+            'logo.max' => __('The logo can be at most 2 MB.'),
+            'logo.dimensions' => __('The logo needs at least 64 × 64 and at most :max × :max pixels.', ['max' => ClanLogos::MAX_SIDE]),
+        ];
     }
 
     /* ---------- Invite (into the roster) ---------- */
@@ -482,6 +785,125 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     @error('clan')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
     <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>
+
+    {{-- Edit clan: a new version of the clan event, same d, same roster (layout of ClanCreate.dc.html) --}}
+    <section id="edit-clan" aria-labelledby="edit-h" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="edit-clan"
+             x-data="{ uploading: false }" x-on:livewire-upload-start="uploading = true" x-on:livewire-upload-finish="uploading = false"
+             x-on:livewire-upload-error="uploading = false" x-on:livewire-upload-cancel="uploading = false">
+        <span class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <span class="flex flex-wrap items-baseline gap-x-4 gap-y-1"><h2 id="edit-h" class="m-0 text-[15px] font-bold">{{ __('Edit clan') }}</h2><span class="text-xs text-ink-3">{{ __('Name, tag, description, logo and meetup link') }}</span></span>
+            @if ($isOwner && ! $editingClan)
+                <button type="button" wire:click="openEdit" data-test="open-edit" class="btn-w inline-flex h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Edit clan') }}</button>
+            @endif
+        </span>
+        @if (! $isOwner)
+            <p class="m-0 text-[13px] text-ink-2">{{ __('Only the founder of :clan can edit it: the clan record is confirmed with their key.', ['clan' => $clan->name]) }}</p>
+        @elseif ($editingClan)
+            @php($editMeetups = $this->meetups)
+            <div class="grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <div class="flex min-w-0 flex-col gap-[18px]">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_200px]">
+                        <label class="flex min-w-0 flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Name') }}</span>
+                            <input wire:model.blur="editName" required maxlength="64" data-test="edit-name" class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink">
+                            @error('editName')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                        </label>
+                        <label class="flex min-w-0 flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Tag, 2 to 4 characters') }}</span>
+                            <input wire:model.live.debounce.300ms="editClantag" required maxlength="4" aria-describedby="edit-tag-hint" data-test="edit-clantag" class="h-11 w-full rounded-lg border border-edge bg-ground px-3.5 text-[13px] font-bold text-ink uppercase">
+                        </label>
+                    </div>
+                    <div id="edit-tag-hint" class="-mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 text-xs">
+                        <span class="text-ink-2">{{ __('Your tag shows on ladders, rankings and match cards.') }}</span>
+                        @switch($this->editTagStatus)
+                            @case('free')<span class="flex items-center gap-1.5 text-win"><x-icon name="check" :size="14" />{{ __(':tag is free', ['tag' => $editClantag]) }}</span>@break
+                            @case('taken')<span class="flex items-center gap-1.5 text-loss">{{ __(':tag is taken', ['tag' => $editClantag]) }}</span>@break
+                            @case('invalid')<span class="text-loss">{{ __('2 to 4 capital letters or digits.') }}</span>@break
+                            @default<span></span>
+                        @endswitch
+                        @if ($editClantag !== $clan->clantag)
+                            <span class="col-span-full text-ink-3">{{ __('The clan address stays the same. Links that use the old tag :tag stop working.', ['tag' => $clan->clantag]) }}</span>
+                        @endif
+                        @error('editClantag')<span class="col-span-full text-loss" role="alert">{{ $message }}</span>@enderror
+                    </div>
+                    <label class="flex flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Description, public') }}</span>
+                        <textarea wire:model.blur="editDescription" rows="3" maxlength="1000" data-test="edit-description" class="h-24 w-full resize-y rounded-lg border border-edge bg-ground px-3.5 py-3 text-[13px] leading-normal text-ink"></textarea>
+                        @error('editDescription')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                    </label>
+
+                    {{-- Meetup link: re-pick from the portal, or unlink --}}
+                    <div class="flex flex-col gap-2.5 rounded-md bg-ground p-4 shadow-ring">
+                        <label for="edit-meetup" class="flex flex-wrap justify-between gap-x-4 gap-y-1 text-[13px]"><b>{{ __('Meetup') }}</b><span class="text-ink-3">{{ __('optional, links the clan to a meetup of the EINUNDZWANZIG portal') }}</span></label>
+                        @if ($editMeetupName)
+                            <span class="flex flex-wrap items-center justify-between gap-x-3 text-[13px]" data-test="edit-meetup-linked">
+                                <span class="min-w-0 truncate">{{ $editMeetupName }}@if ($editMeetupCity)<span class="text-ink-3">, {{ $editMeetupCity }}</span>@endif</span>
+                                <button type="button" wire:click="forgetMeetup" class="min-h-11 cursor-pointer text-xs text-ink-2 hover:text-ink">{{ __('Remove link') }}</button>
+                            </span>
+                        @endif
+                        <span class="relative block">
+                            <x-icon name="search" :size="16" class="pointer-events-none absolute top-3.5 left-3.5 text-ink-3" />
+                            <input id="edit-meetup" type="search" wire:model.live.debounce.400ms="meetupQuery" placeholder="{{ __('Search meetup or city') }}" autocomplete="off"
+                                   class="h-11 w-full rounded-lg border border-edge bg-card pr-3.5 pl-10 text-[13px] text-ink placeholder:text-ink-3">
+                        </span>
+                        @if ($editMeetups === null)
+                            <span class="text-xs text-loss" role="status">{{ __('The portal does not answer right now.') }}</span>
+                        @elseif (mb_strlen(trim($meetupQuery)) >= 2)
+                            <span class="text-xs text-ink-3">{{ trans_choice(':count match in the portal|:count matches in the portal', count($editMeetups)) }}</span>
+                            <ul class="m-0 flex list-none flex-col p-0">
+                                @foreach ($editMeetups as $meetup)
+                                    <li wire:key="edit-mu-{{ $meetup['id'] }}">
+                                        <button type="button" wire:click="pickMeetup({{ $meetup['id'] }})" @class(['tr flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded-sm px-2 text-left text-[13px]', 'text-btc' => $editMeetupUrl !== null && $editMeetupUrl === $meetup['url']])>
+                                            <span class="truncate">{{ $meetup['name'] }}</span><span class="shrink-0 text-xs text-ink-3">{{ $meetup['city'] }}</span>
+                                        </button>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                    </div>
+                </div>
+
+                {{-- Logo: live preview of the upload, square like the stored file --}}
+                <div class="flex flex-col gap-2">
+                    <span class="text-xs text-ink-2">{{ __('logo') }}</span>
+                    <span class="relative flex size-[132px] items-center justify-center overflow-hidden rounded-lg bg-[repeating-linear-gradient(135deg,#2A2016_0_8px,#1E1A12_8px_16px)] text-xs text-btc-hi" data-test="logo-preview">
+                        @if ($logo)
+                            <img src="{{ $logo->temporaryUrl() }}" alt="{{ __('Preview of the new logo') }}" class="size-full object-cover" data-test="logo-preview-upload">
+                        @elseif ($editPicture)
+                            <img src="{{ $editPicture }}" alt="{{ __('Current logo') }}" class="size-full object-cover" loading="lazy">
+                        @else
+                            {{ __('no logo yet') }}
+                        @endif
+                        <span wire:loading.flex wire:target="logo" class="absolute inset-0 items-center justify-center bg-ground/80 text-xs text-ink">{{ __('Uploading…') }}</span>
+                    </span>
+                    <span class="text-xs leading-normal text-ink-3">{{ __('PNG, JPG or WebP, up to 2 MB. Cropped to a square.') }}</span>
+                    @error('logo')<span class="text-xs text-loss" role="alert" data-test="logo-error">{{ $message }}</span>@enderror
+                    <div class="mt-1 flex flex-col gap-2">
+                        <label class="btn-w flex h-11 cursor-pointer items-center justify-center rounded-lg border border-edge bg-well px-3.5 text-[13px] text-ink focus-within:outline-2 focus-within:outline-btc">
+                            <input type="file" wire:model="logo" accept="image/png,image/jpeg,image/webp" class="sr-only" data-test="logo-input">
+                            {{ $logo || $editPicture ? __('Replace image') : __('Upload image') }}
+                        </label>
+                        @if ($editMeetupUrl)
+                            <button type="button" wire:click="useMeetupLogo" class="btn-w flex h-11 cursor-pointer items-center justify-center rounded-lg border border-edge bg-well px-3.5 text-[13px] text-ink">{{ __('Use meetup logo') }}</button>
+                        @endif
+                        @if ($logo || $editPicture)
+                            <button type="button" wire:click="removeLogo" data-test="remove-logo" class="min-h-11 cursor-pointer text-xs text-ink-2 hover:text-ink">{{ __('Remove logo') }}</button>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            @error('edit')<p class="m-0 text-[13px] text-loss" role="alert" data-test="edit-error">{{ $message }}</p>@enderror
+
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+                <button type="button" x-on:click="run('prepareEdit', 'saveEdit')" x-bind:disabled="busy || uploading" data-test="save-edit"
+                        class="btn-p inline-flex h-11 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-[22px] text-sm font-bold whitespace-nowrap text-on-btc disabled:cursor-wait disabled:opacity-70">
+                    <x-icon name="shield-check" :size="18" />
+                    <span x-show="! busy">{{ __('Save changes') }}</span>
+                    <span x-show="busy" x-cloak>{{ __('Confirm in your signer…') }}</span>
+                </button>
+                <button type="button" wire:click="cancelEdit" x-bind:disabled="busy" class="min-h-11 cursor-pointer text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
+                <span class="basis-full text-xs leading-normal text-ink-2 sm:basis-auto">{{ __('You confirm a new clan record with your key. Members and lineups stay as they are.') }}</span>
+            </div>
+        @endif
+    </section>
 
     {{-- Invite a player: into the roster only --}}
     <section id="invite" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6">

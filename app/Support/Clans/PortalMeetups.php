@@ -61,6 +61,22 @@ final class PortalMeetups
     }
 
     /**
+     * The meetup a clan links to (clans store the portal link, not the id).
+     *
+     * @return array{id: int, name: string, city: string, country: string, url: string, logo: string|null, intro: string|null, latitude: float|null, longitude: float|null}|null
+     */
+    public function findByUrl(string $url): ?array
+    {
+        foreach ($this->all() ?? [] as $meetup) {
+            if ($meetup['url'] !== '' && $meetup['url'] === $url) {
+                return $meetup;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return list<array{id: int, name: string, city: string, country: string, url: string, logo: string|null, intro: string|null, latitude: float|null, longitude: float|null}>|null
      */
     private function all(): ?array

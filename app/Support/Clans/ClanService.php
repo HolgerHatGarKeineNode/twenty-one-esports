@@ -130,6 +130,80 @@ final class ClanService
         ]];
     }
 
+    /* ---------- Edit (owner only) ----------------------------------------------------------------------------- */
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function prepareEdit(User $owner, Clan $clan, ClanDraft $draft): array
+    {
+        return $this->editPlan($owner, $clan, $draft);
+    }
+
+    /**
+     * Change name, tag, description, logo or meetup link: a new version of the
+     * clan event with the same `d` (the slug never changes, so the address and
+     * every lineup reference stay valid) and the roster listed as it is.
+     *
+     * @param  list<mixed>  $signed
+     *
+     * @throws RejectedEvent|ClanRuleViolation
+     */
+    public function edit(User $owner, Clan $clan, ClanDraft $draft, array $signed): Clan
+    {
+        $events = $this->verify($signed, $this->editPlan($owner, $clan, $draft), $owner);
+
+        return $this->persist($events, function () use ($clan, $draft, $events): Clan {
+            $clan->update([...$this->editableAttributes($draft), 'event_id' => $events[0]->id]);
+
+            return $clan;
+        });
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function editPlan(User $owner, Clan $clan, ClanDraft $draft): array
+    {
+        $this->assertOwner($owner, $clan);
+
+        if (Clan::query()->where('clantag', $draft->clantag)->whereKeyNot($clan->id)->exists()) {
+            throw new ClanRuleViolation(__('The tag :tag is taken.', ['tag' => $draft->clantag]));
+        }
+
+        // A copy with the new fields, never saved: clanTemplate() reads the
+        // tags from it, clanListing() the roster from the stored clan.
+        $listing = $this->clanListing($clan);
+        $template = $this->clanTemplate((clone $clan)->fill($this->editableAttributes($draft)), $listing);
+        $current = $this->clanTemplate($clan, $listing);
+
+        // Judged on what gets signed: a version with the same tags and text
+        // would only be noise on the relays.
+        if ($template['tags'] === $current['tags'] && $template['content'] === $current['content']) {
+            throw new ClanRuleViolation(__('Nothing to save: nothing was changed.'));
+        }
+
+        return [$template];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function editableAttributes(ClanDraft $draft): array
+    {
+        return [
+            'name' => $draft->name,
+            'clantag' => $draft->clantag,
+            'description' => $draft->description,
+            'picture' => $draft->picture,
+            'meetup_name' => $draft->meetupName,
+            'meetup_city' => $draft->meetupCity,
+            'meetup_url' => $draft->meetupUrl,
+            'meetup_latitude' => $draft->meetupLatitude,
+            'meetup_longitude' => $draft->meetupLongitude,
+        ];
+    }
+
     /* ---------- Invite (into the roster) ----------------------------------------------------------------------- */
 
     /**
