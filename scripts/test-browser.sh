@@ -33,7 +33,7 @@
 # is heavier than any other file, so it gets its own shard):
 #   1: RouteSweepTest                                (~29s)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest        (~26s)
-#   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest (~27s)
+#   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest (~27s + P8b)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest (~25s)
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
@@ -62,7 +62,7 @@ npm run build
 SHARD_FILES=(
     "tests/Browser/RouteSweepTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php"
-    "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php"
+    "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php"
 )
 

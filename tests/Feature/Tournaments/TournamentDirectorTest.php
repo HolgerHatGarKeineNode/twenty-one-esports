@@ -112,8 +112,10 @@ test('a named director enters, the creator corrects, both are logged and marked,
 
     expect($entries)->toHaveCount(3)
         ->and($entries[0]->user_id)->toBe($director->id)
-        ->and($entries[0]->previous)->toBeNull()
-        ->and($entries[1]->previous['label'])->toBe('1–0')
+        ->and($entries[0]->replaced)->toBeNull()
+        ->and($entries[0]->isCorrection())->toBeFalse()
+        ->and($entries[1]->isCorrection())->toBeTrue()
+        ->and($entries[1]->replaced['label'])->toBe('1–0')
         ->and($entries[1]->result['label'])->toBe('0–1')
         ->and($first->result['name'])->toBe($director->displayName())
         ->and($first->result['corrected']['name'])->toBe($tournament->creator->displayName())
@@ -123,7 +125,9 @@ test('a named director enters, the creator corrects, both are logged and marked,
     $this->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSee('Entered by the tournament director, corrected')
         ->assertSee('Corrected by '.$tournament->creator->displayName())
-        ->assertSee('Not confirmed by the players.');
+        ->assertSee('Not confirmed by the players.')
+        ->assertSeeTextInOrder(['M1-2 0–1 by', 'M1-1 0–1 by', 'correction, was 1–0', 'M1-1 1–0 by'])
+        ->assertDontSee('correction, was </span>', false);
 
     $runner->closeRound($round, $director);
     $final = TournamentMatch::query()->where('tournament_id', $tournament->id)->orderByDesc('id')->with('slots')->first();

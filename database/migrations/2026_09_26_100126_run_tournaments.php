@@ -25,7 +25,7 @@ return new class extends Migration
      * has no lineup.
      *
      * tournament_result_entries: every result a tournament director entered or
-     * corrected, append-only (who, when, new and old result).
+     * corrected, append-only (who, when, new and replaced result).
      */
     public function up(): void
     {
@@ -75,7 +75,7 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->string('user_name', 80);
             $table->json('result');
-            $table->json('previous')->nullable();
+            $table->json('replaced')->nullable();
             $table->timestamp('created_at');
             $table->index(['tournament_id', 'id']);
         });

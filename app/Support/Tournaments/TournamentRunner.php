@@ -422,7 +422,7 @@ final class TournamentRunner
                 'user_id' => $director->id,
                 'user_name' => mb_substr($director->displayName(), 0, 80),
                 'result' => $result,
-                'previous' => $previous,
+                'replaced' => $previous,
                 'created_at' => $now,
             ]);
 

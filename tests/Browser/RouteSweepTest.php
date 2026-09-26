@@ -174,7 +174,9 @@ function sweepFixtures(): array
         'code' => fn (?User $user, array $made): Model => $made['link'],
 
         // A Rocket League tournament with sign-up open (P8a): public, so the guest sweep sees it too.
-        'tournament' => fn (?User $user, array $made): Model => Tournament::factory()->rocketLeague(TournamentFormat::DoubleElimination)->signup()->create(),
+        // Created by the member, who directs it: its director desk (P8b) is theirs to open.
+        'tournament' => fn (?User $user, array $made): Model => Tournament::factory()->rocketLeague(TournamentFormat::DoubleElimination)->signup()
+            ->create($user === null ? [] : ['created_by_id' => $user->id]),
 
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {

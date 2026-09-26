@@ -137,11 +137,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         [__('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online')],
         [__('Results'), $tournament->results_mode->label()],
     ];
-    $rules = [
+    $drawn = in_array($tournament->status, [TournamentStatus::Running, TournamentStatus::Finished], true);
+    $rules = $drawn ? [
+        [__('Entries'), $teams ? trans_choice(':count team|:count teams', $tournament->participants()->count()) : trans_choice(':count player|:count players', $tournament->participants()->count())],
+    ] : [
         [__('Sign-up closes'), $tournament->signup_closes_at === null ? __('when it is published') : $tournament->signup_closes_at->copy()->timezone($zone)->format('Y-m-d H:i')],
         [__('Entries'), $teams
             ? __(':lineups lineups and :solos solo players, :taken of :places places', ['lineups' => $places['lineups'], 'solos' => $places['solos'], 'taken' => $places['taken'], 'places' => $places['places']])
             : __(':taken of :places players', ['taken' => $places['taken'], 'places' => $places['places']])],
+    ];
+    $rules = [
+        ...$rules,
         [__('Seeding'), $teams
             ? __('by Elo at sign-up close, equal Elo by earlier sign-up; mix teams after the lineups, in draw order')
             : __('by Elo at sign-up close, equal Elo by earlier sign-up')],
@@ -241,6 +247,24 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @endif
         </div>
         @include('pages.tournaments.partials.stages', ['stages' => $this->stages, 'tournament' => $tournament])
+
+        @if ($tournament->isDirectorMode())
+            {{-- The director log is public (TOURNAMENT-FORMATS.md, section 6). --}}
+            <section aria-labelledby="log-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="public-log">
+                <span class="flex items-baseline justify-between gap-3">
+                    <h2 id="log-h" class="m-0 text-[15px] font-bold">{{ __('Director log') }}</h2>
+                    <span class="text-xs text-ink-3">{{ __('public, newest first') }}</span>
+                </span>
+                @forelse ($tournament->resultEntries()->with('match')->limit(20)->get() as $entry)
+                    <p class="m-0 flex gap-3 border-t border-hairline pt-2 text-xs leading-normal">
+                        <span class="shrink-0 text-ink-3">{{ $entry->created_at->copy()->timezone($zone)->format('H:i') }}</span>
+                        <span><b>{{ strtoupper($entry->match->key) }} {{ $entry->result['label'] ?? '' }}</b> {{ __('by :name', ['name' => $entry->user_name]) }}@if ($entry->isCorrection()), <span class="text-btc">{{ __('correction, was :old', ['old' => $entry->replaced['label'] ?? '']) }}</span>@endif</span>
+                    </p>
+                @empty
+                    <p class="m-0 text-xs text-ink-2">{{ __('No result entered yet.') }}</p>
+                @endforelse
+            </section>
+        @endif
     @endif
 
     @if (in_array($tournament->status, [TournamentStatus::Signup, TournamentStatus::Drawing], true))

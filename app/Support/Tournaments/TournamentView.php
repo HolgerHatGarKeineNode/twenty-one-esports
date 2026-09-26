@@ -62,7 +62,7 @@ final class TournamentView
      */
     private function part(TournamentStage $stage, int $group, Collection $matches): array
     {
-        $title = $group > 0 ? __('Group :group', ['group' => chr(64 + $group)]) : null;
+        $title = $group > 0 ? __('Group :group', ['group' => self::letter($group)]) : null;
 
         if ($stage->format === TournamentFormat::Swiss || $stage->format === TournamentFormat::RoundRobin) {
             return [
@@ -219,7 +219,7 @@ final class TournamentView
             'status' => $match->status,
             'sides' => $sides,
             'label' => $result['label'] ?? null,
-            'number' => $match->seriesMatch?->number ?? $match->chessGame?->number,
+            'number' => $match->seriesMatch !== null ? $match->seriesMatch->number : $match->chessGame?->number,
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)
                 : ($match->chessGame !== null ? route('games.show', $match->chessGame) : null),
@@ -258,10 +258,16 @@ final class TournamentView
         return match ($source['take'] ?? null) {
             'winner' => __('Winner of :match', ['match' => self::matchName((string) ($source['match'] ?? ''))]),
             'loser' => __('Loser of :match', ['match' => self::matchName((string) ($source['match'] ?? ''))]),
-            'group-rank' => __(':place. of group :group', ['place' => (int) ($source['rank'] ?? 1), 'group' => chr(64 + (int) ($source['group'] ?? 1))]),
+            'group-rank' => __(':place. of group :group', ['place' => (int) ($source['rank'] ?? 1), 'group' => self::letter((int) ($source['group'] ?? 1))]),
             'rank' => __(':place. of :match', ['place' => (int) ($source['rank'] ?? 1), 'match' => self::matchName((string) ($source['match'] ?? ''))]),
             default => __('open'),
         };
+    }
+
+    /** Group 1 is A, group 2 B (26 groups at most). */
+    private static function letter(int $group): string
+    {
+        return chr(64 + max(1, min(26, $group)));
     }
 
     private static function matchName(string $key): string

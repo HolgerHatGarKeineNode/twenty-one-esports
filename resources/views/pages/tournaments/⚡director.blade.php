@@ -302,7 +302,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         <span class="shrink-0 text-ink-3">{{ $entry->created_at->copy()->timezone($zone)->format('H:i') }}</span>
                         <span>
                             <b>{{ strtoupper($entry->match->key) }} {{ $entry->result['label'] ?? '' }}</b>
-                            {{ __('by :name', ['name' => $entry->user_name]) }}@if ($entry->isCorrection()), <span class="text-btc">{{ __('correction, was :old', ['old' => $entry->previous['label'] ?? '']) }}</span>@endif
+                            {{ __('by :name', ['name' => $entry->user_name]) }}@if ($entry->isCorrection()), <span class="text-btc">{{ __('correction, was :old', ['old' => $entry->replaced['label'] ?? '']) }}</span>@endif
                         </span>
                     </p>
                 @empty
