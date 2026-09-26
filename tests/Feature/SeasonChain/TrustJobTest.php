@@ -15,6 +15,7 @@ use App\Models\NostrEvent;
 use App\Models\TrustRank;
 use App\Models\TrustRun;
 use App\Models\User;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\LeagueKey;
@@ -391,8 +392,9 @@ test('an admin dismissal stops a report counting, and an exclusion takes a pubke
 
     expect(rankOf('bob'))->toBe(85);
 
+    // A board member: excluding a key is the board's decision.
     $admin = User::factory()->create();
-    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
     app(TrustAdmin::class)->dismiss($admin, $report['id'], 'Carol mixed up two accounts.');
     withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
 
@@ -405,7 +407,7 @@ test('an admin dismissal stops a report counting, and an exclusion takes a pubke
     expect(rankOf('carol'))->toBe(0)
         ->and(rankOf('dave'))->toBe(46);
 
-    app(TrustAdmin::class)->lift($admin, pk('carol'));
+    app(TrustAdmin::class)->lift($admin, pk('carol'), 'She got her account back.');
     withRelay(seasonThreeEvents($at), fn () => app(TrustJob::class)->run());
 
     expect(rankOf('carol'))->toBe(100);

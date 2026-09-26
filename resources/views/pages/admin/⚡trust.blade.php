@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\NostrEvent;
+use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
 use App\Models\TrustRank;
 use App\Models\TrustReportDismissal;
@@ -21,8 +22,9 @@ use Livewire\Component;
  * Trust (P7d, NIP "Reports"): the league-labelled reports the trust job has
  * read, and the admin decisions on them: dismiss a report (it stops
  * counting) or exclude a pubkey from the trust graph (raw 0, its list
- * vouches for nobody). Every decision takes a reason; the next trust run
- * applies it, and its effect is public in the assertions.
+ * vouches for nobody). Every decision and undo takes a reason and goes into
+ * the append-only decision log shown here; excluding is the board's. The
+ * next trust run applies it, and its effect is public in the assertions.
  */
 new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     public string $reason = '';
@@ -61,11 +63,22 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
         return TrustExclusion::query()->latest()->get();
     }
 
+    /**
+     * The newest entries of the append-only decision log (round 3).
+     *
+     * @return Collection<int, TrustDecision>
+     */
+    #[Computed]
+    public function decisions(): Collection
+    {
+        return TrustDecision::query()->orderByDesc('id')->limit(50)->get();
+    }
+
     /** @return array<string, string> pubkey => name or short npub, for the reports and exclusions shown */
     #[Computed]
     public function names(): array
     {
-        $pubkeys = [...$this->reports->pluck('pubkey')->all(), ...$this->reports->map(fn (NostrEvent $report): string => (string) $this->target($report))->all(), ...$this->exclusions->pluck('pubkey')->all()];
+        $pubkeys = [...$this->reports->pluck('pubkey')->all(), ...$this->reports->map(fn (NostrEvent $report): string => (string) $this->target($report))->all(), ...$this->exclusions->pluck('pubkey')->all(), ...$this->decisions->pluck('actor_pubkey')->all()];
         $users = User::query()->whereIn('pubkey', array_unique($pubkeys))->get()->keyBy('pubkey');
         $names = [];
 
@@ -112,7 +125,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
 
     public function restore(string $eventId): void
     {
-        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->restore($admin, $eventId));
+        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->restore($admin, $eventId, $this->reason));
     }
 
     public function excludeAuthor(string $eventId): void
@@ -131,7 +144,7 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
 
     public function lift(string $pubkey): void
     {
-        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->lift($admin, $pubkey));
+        $this->decide(fn (TrustAdmin $trust, User $admin) => $trust->lift($admin, $pubkey, $this->reason));
     }
 
     private function decide(Closure $action, bool $resetKey = false): void
@@ -150,12 +163,15 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
         }
 
         $this->reset($resetKey ? ['reason', 'key'] : ['reason']);
-        unset($this->dismissals, $this->exclusions, $this->names);
+        unset($this->dismissals, $this->exclusions, $this->decisions, $this->names);
     }
 }; ?>
 
 @php
     $input = 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-sm text-ink';
+    // Excluding a key (and lifting it) is the board's; dismissing a report is every admin's.
+    $board = TrustAdmin::canExclude(auth()->user() instanceof User ? auth()->user() : null);
+    $actions = ['dismiss' => __('dismissed report'), 'restore' => __('counted report again'), 'exclude' => __('excluded key'), 'lift' => __('lifted exclusion')];
 @endphp
 
 <div class="flex grow flex-col" data-test="admin-trust">
@@ -185,7 +201,9 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
                         @else
                             <button type="button" wire:click="dismiss('{{ $report->event_id }}')" class="h-11 cursor-pointer rounded-md border border-edge bg-transparent px-3 text-xs text-ink" data-test="trust-dismiss">{{ __('Dismiss') }}</button>
                         @endif
-                        <button type="button" wire:click="excludeAuthor('{{ $report->event_id }}')" class="h-11 cursor-pointer rounded-md border border-[#5A2A2E] bg-transparent px-3 text-xs text-loss" data-test="trust-exclude-author">{{ __('Exclude reporter') }}</button>
+                        @if ($board)
+                            <button type="button" wire:click="excludeAuthor('{{ $report->event_id }}')" class="h-11 cursor-pointer rounded-md border border-[#5A2A2E] bg-transparent px-3 text-xs text-loss" data-test="trust-exclude-author">{{ __('Exclude reporter') }}</button>
+                        @endif
                     </span>
                 </div>
             @empty
@@ -195,17 +213,35 @@ new #[Title('Trust')] #[Layout('layouts::app', ['section' => 'admin'])] class ex
 
         <section aria-labelledby="exclusions-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6">
             <h2 id="exclusions-h" class="m-0 text-[15px] font-bold">{{ __('Excluded keys') }}</h2>
-            <form wire:submit="exclude" class="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <label class="flex min-w-0 flex-1 flex-col gap-1 text-xs text-ink-2">{{ __('npub or hex public key') }}<input type="text" wire:model="key" class="{{ $input }}" data-test="trust-key"></label>
-                <button type="submit" class="h-11 cursor-pointer rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="trust-exclude">{{ __('Exclude') }}</button>
-            </form>
+            @if ($board)
+                <form wire:submit="exclude" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <label class="flex min-w-0 flex-1 flex-col gap-1 text-xs text-ink-2">{{ __('npub or hex public key') }}<input type="text" wire:model="key" class="{{ $input }}" data-test="trust-key"></label>
+                    <button type="submit" class="h-11 cursor-pointer rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="trust-exclude">{{ __('Exclude') }}</button>
+                </form>
+            @else
+                <p class="m-0 text-[13px] text-ink-2">{{ __('Only the board excludes keys or lifts an exclusion.') }}</p>
+            @endif
             @forelse ($this->exclusions as $exclusion)
                 <div wire:key="x-{{ $exclusion->pubkey }}" class="flex flex-wrap items-center justify-between gap-2 border-t border-hairline py-3 text-[13px]" data-test="trust-exclusion">
                     <span class="flex min-w-0 flex-col gap-0.5"><b class="truncate">{{ $this->names[$exclusion->pubkey] ?? '–' }}</b><span class="text-xs break-words text-ink-2">{{ $exclusion->reason }}</span></span>
-                    <button type="button" wire:click="lift('{{ $exclusion->pubkey }}')" class="h-11 cursor-pointer rounded-md border border-edge bg-transparent px-3 text-xs text-ink" data-test="trust-lift">{{ __('Lift') }}</button>
+                    @if ($board)
+                        <button type="button" wire:click="lift('{{ $exclusion->pubkey }}')" class="h-11 cursor-pointer rounded-md border border-edge bg-transparent px-3 text-xs text-ink" data-test="trust-lift">{{ __('Lift') }}</button>
+                    @endif
                 </div>
             @empty
                 <p class="m-0 text-[13px] text-ink-2">{{ __('No key is excluded.') }}</p>
+            @endforelse
+        </section>
+
+        <section aria-labelledby="log-h" class="flex flex-col gap-1 rounded-lg bg-card px-4 py-4 lg:px-6" data-test="trust-log">
+            <h2 id="log-h" class="m-0 pb-2 text-[15px] font-bold">{{ __('Decision log') }} <span class="text-xs font-normal text-ink-3">{{ __('every decision and every undo, never changed') }}</span></h2>
+            @forelse ($this->decisions as $decision)
+                <div wire:key="d-{{ $decision->id }}" class="flex flex-col gap-0.5 border-t border-hairline py-2 text-[13px] sm:flex-row sm:gap-4" data-test="trust-decision">
+                    <span class="shrink-0 text-xs text-ink-2 sm:w-[140px]">{{ $decision->created_at?->diffForHumans() }}</span>
+                    <span class="min-w-0 break-words"><b>{{ $this->names[$decision->actor_pubkey] ?? '–' }}</b> {{ $actions[$decision->action] ?? $decision->action }} <span class="font-mono text-xs text-ink-2">{{ Str::limit($decision->target, 16, '…') }}</span>: {{ $decision->reason }}</span>
+                </div>
+            @empty
+                <p class="m-0 text-[13px] text-ink-2">{{ __('No decisions yet.') }}</p>
             @endforelse
         </section>
     </div>
