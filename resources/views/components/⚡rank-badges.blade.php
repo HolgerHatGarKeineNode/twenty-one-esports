@@ -82,7 +82,14 @@ new class extends Component {
      */
     private function events(string $found): array
     {
-        return array_values(array_slice((array) json_decode(substr($found, 0, 65_536), true), 0, ProfileBadges::MAX_FOUND));
+        // Never cut a list: a truncated read would look empty and the new list would drop every other badge.
+        $events = strlen($found) > 524_288 ? null : json_decode($found, true);
+
+        if (! is_array($events)) {
+            throw new ProfileBadgesRefused(__('Your badge list could not be read. Nothing was changed.'));
+        }
+
+        return array_values(array_slice($events, 0, ProfileBadges::MAX_FOUND));
     }
 
     private function badge(int $id): RankBadge

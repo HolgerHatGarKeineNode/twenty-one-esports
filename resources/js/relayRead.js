@@ -132,7 +132,9 @@ export function writeRelaysOf(relayList) {
  *    and the configured relays; the write relays (or, without a relay list,
  *    the configured relays) are the ones that must answer.
  *
- * `read` is true only when at least one of those relays delivered EOSE.
+ * `read` is true only when every one of those relays delivered EOSE: a relay
+ * that is down may hold the newest list, and writing without it would drop
+ * the badges only it knows about.
  *
  * @returns {Promise<{ read: boolean, found: object[], answered: number, asked: number, writeRelays: string[] }>}
  */
@@ -155,7 +157,7 @@ export async function readProfileBadges(pubkey, configured, options = {}) {
     const events = results.flatMap((result) => result.events);
 
     return {
-        read: answered > 0,
+        read: mustAnswer.length > 0 && answered === mustAnswer.length,
         found: [newest(events, pubkey, 10008), newest(events, pubkey, 30008, 'profile_badges')].filter(Boolean),
         answered,
         asked: mustAnswer.length,

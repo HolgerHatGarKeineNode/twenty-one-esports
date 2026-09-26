@@ -13,5 +13,5 @@ test('the relay reader counts EOSE only, verifies before it deduplicates, and ta
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/relayRead.test.mjs']);
 
     expect($run->exitCode())->toBe(0, $run->output().$run->errorOutput())
-        ->and($run->output())->toContain('pass 6')->toContain('fail 0');
+        ->and($run->output())->toContain('pass 7')->toContain('fail 0');
 });

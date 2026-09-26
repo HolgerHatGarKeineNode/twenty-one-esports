@@ -57,7 +57,7 @@ adopts revision 8.
   `a` and `p`; a new badge key is a new definition address and gets one award of its own.
 - **Badge artwork URL**: `<site>/badges/rank/<game>/<tier>-v<artwork>.png` (`image`, 1024 × 1024) and
   `…-v<artwork>-256.png` (`thumb`, 256 × 256), a function of game, tier and artwork version only.
-- **Profile badge list** ([Profile](#rank-badges-rev-5)): read only after a write relay's `EOSE`,
+- **Profile badge list** ([Profile](#rank-badges-rev-5)): read only after every write relay's `EOSE`,
   events verified before they are compared, the newest valid list wins, a `30008` merged only when
   it is the newer list, relays first and the league second; new validation rule 36.
 - **Share posts** (new section [Share posts (rev. 8)](#share-posts-rev-8)): a kind `1` note the player
@@ -1905,9 +1905,10 @@ is no `10008` or the `30008` is the newer list: a pair the player removed in a n
 comes back from an older `30008`.
 
 - **Read before writing** (rev. 8). A relay counts as read only after its `EOSE`; a relay that is
-  down, closes the subscription or times out is not read, whatever it sent before. At least one of
+  down, closes the subscription or times out is not read, whatever it sent before. Every one of
   the player's NIP-65 write relays (the relays the app reads from, when the player has no relay
-  list) MUST have been read, or the app MUST NOT write; it never falls back to a copy it archived
+  list) MUST have been read, or the app MUST NOT write (a relay that is down may hold the newest
+  list); it never falls back to a copy it archived
   earlier. When the read returns no list although the app knows one, it MUST NOT write either.
 - **Verify before choosing.** Every event is signature-checked before it counts, and ids are not
   deduplicated before that check: a relay that serves a forged copy of the right id first must not
@@ -2221,7 +2222,7 @@ Per kind:
     one `8` per definition address and `p`, with `p` the definition's `p`.
 36. **10008** (profile badges written by the app, rev. 8): signed by the player; at least one `a`/`e`
     pair; every `a` a `30009` address, every `e` an event id; every pair of the newest valid list the
-    league knew is kept, in order, and its `content` is unchanged; written only after a write relay of
+    league knew is kept, in order, and its `content` is unchanged; written only after every write relay of
     the player delivered `EOSE` (see [Rank badges](#rank-badges-rev-5), Profile).
 37. **1** (share post, rev. 8): signed by the player; exactly one `imeta` whose `url` is a share card on
     the league's site (`<site>/cards/…`) and appears in `content`; no `e`, `p`, `q` or `a`.

@@ -105,6 +105,17 @@ test('the write relays of the relay list must answer; a read relay alone is not 
     assert.equal(result.asked, 1);
 });
 
+test('every write relay must answer: one of two down is not a read, even if the other one answered empty', async () => {
+    const relayList = sign(10002, [['r', 'ws://write-up'], ['r', 'ws://write-down']], 1_700_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://configured': { events: [relayList], eose: true }, 'ws://write-up': { events: [], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://configured'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.answered, 1);
+    assert.equal(result.asked, 2);
+});
+
 test('nothing is read when no configured relay answers the relay list', async () => {
     const result = await readProfileBadges(pubkey, ['ws://down'], { WebSocketImpl: fakeSockets({}), timeoutMs: 200 });
 

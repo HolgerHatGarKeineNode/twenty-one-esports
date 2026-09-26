@@ -2973,5 +2973,6 @@
     "One badge change at a time. Try again.": "Immer nur eine Abzeichen-Änderung auf einmal. Versuch es noch einmal.",
     "None of your relays took the new list. Nothing was changed.": "Keines deiner Relays hat die neue Liste angenommen. Nichts wurde geändert.",
     ":answered of :asked of your relays answered.": ":answered von :asked deiner Relays haben geantwortet.",
-    "None of your relays took the post. Try again later.": "Keines deiner Relays hat den Beitrag angenommen. Versuch es später noch einmal."
+    "None of your relays took the post. Try again later.": "Keines deiner Relays hat den Beitrag angenommen. Versuch es später noch einmal.",
+    "Your badge list could not be read. Nothing was changed.": "Deine Badge-Liste konnte nicht gelesen werden. Es wurde nichts geändert."
 }

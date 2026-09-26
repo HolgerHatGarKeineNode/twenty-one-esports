@@ -208,3 +208,14 @@ test('one badge call per Livewire request: a batch of calls gets one answer', fu
     // The next request may call again.
     expect($component->call('prepareProfile', $this->badge->id, '[]', true)->effects['returns'][0]['kept'])->toBe(0);
 });
+
+test('a list that is too large or unreadable is refused, never cut into an empty read', function (string $found) {
+    $component = Livewire::actingAs($this->user)->test('rank-badges', ['player' => $this->user])
+        ->call('prepareProfile', $this->badge->id, $found, true);
+
+    expect($component->effects['returns'][0] ?? null)->toBeNull()
+        ->and($component->errors()->get('badges'))->toBe(['Your badge list could not be read. Nothing was changed.']);
+})->with([
+    'over the size limit' => fn () => '['.str_repeat(' ', 600_000).']',
+    'broken JSON' => fn () => '[{"kind":10008',
+]);
