@@ -92,15 +92,16 @@ final readonly class PlayerProfile
      */
     public function games(): ?string
     {
+        $text = fn (string $key, array $replace = []): string => is_string($line = __($key, $replace)) ? $line : $key;
         $games = array_values(array_filter([
-            $this->chessGames > 0 ? __('chess') : null,
-            $this->playsRocketLeague ? __('Rocket League') : null,
+            $this->chessGames > 0 ? $text('chess') : null,
+            $this->playsRocketLeague ? $text('Rocket League') : null,
         ]));
 
         return match (count($games)) {
             0 => null,
             1 => $games[0],
-            default => __(':a and :b', ['a' => $games[0], 'b' => $games[1]]),
+            default => $text(':a and :b', ['a' => $games[0], 'b' => $games[1]]),
         };
     }
 

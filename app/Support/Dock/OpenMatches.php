@@ -141,6 +141,48 @@ final class OpenMatches
     }
 
     /**
+     * @param  'live'|'need'|'wait'  $group
+     * @param  'accept'|'answer'|'dispute'|'invite'|'live'|'starts'|'their_move'|'waiting'|'your_move'  $phase
+     * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
+     */
+    private function seriesDockItem(SeriesMatch $match, string $other, string $group, string $phase, bool $needsYou, string $state, string $trailing, string $line, ?string $action, ?int $deadline, ?array $tick = null): DockItem
+    {
+        return new DockItem(
+            key: 'series-'.$match->number,
+            kind: 'series',
+            group: $group,
+            phase: $phase,
+            needsYou: $needsYou,
+            name: $match->sideName($other),
+            face: null,
+            tag: $match->sideTag($other),
+            number: $match->label(),
+            href: route('matches.room', $match),
+            title: $match->ladder_address !== null ? self::text('Ladder series') : self::text('Series'),
+            state: $state,
+            trailing: $trailing,
+            line: $line,
+            sentence: self::text('Series :number against :name, :state', ['number' => $match->label(), 'name' => $match->sideName($other), 'state' => mb_strtolower($state)]),
+            action: $action,
+            deadlineMs: $deadline,
+            tick: $tick,
+            model: $match,
+        );
+    }
+
+    /**
+     * A translated line as a string (a translation file could map a key to an array).
+     *
+     * @param  array<string, string|int>  $replace
+     */
+    private static function text(string $key, array $replace = []): string
+    {
+        $text = __($key, $replace);
+
+        return is_string($text) ? $text : $key;
+    }
+
+    /**
      * @return list<DockItem>
      */
     private function games(User $user, ?int $exclude, int $nowMs): array
@@ -154,7 +196,7 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
-        return $games->map(fn (ChessGame $game) => $game->isCorrespondence() ? $this->daily($game, $user, $nowMs) : $this->blitz($game, $user, $nowMs))->all();
+        return array_values($games->map(fn (ChessGame $game) => $game->isCorrespondence() ? $this->daily($game, $user, $nowMs) : $this->blitz($game, $user, $nowMs))->all());
     }
 
     private function blitz(ChessGame $game, User $user, int $nowMs): DockItem
@@ -190,7 +232,7 @@ final class OpenMatches
             trailing: self::format($left, 'clock'),
             line: __('Blitz :number, :state', ['number' => $game->number(), 'state' => mb_strtolower($state)]),
             sentence: __('Blitz :number against :name, :state, :left on your clock', ['number' => $game->number(), 'name' => $name, 'state' => mb_strtolower($state), 'left' => self::format($left, 'clock')]),
-            action: $mine ? __('Play') : null,
+            action: $mine ? self::text('Play') : null,
             deadlineMs: $endsAt ?? $nowMs + $myMs,
             tick: $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $game->initial_ms), 'redUnder' => self::BLITZ_RED_MS],
             model: $game,
@@ -271,7 +313,7 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
-        return $invites->map(function (ChessInvite $invite) {
+        return array_values($invites->map(function (ChessInvite $invite) {
             $endsAt = (int) $invite->expires_at->getTimestampMs();
             $name = $invite->inviter->displayName();
             $total = (int) config('esports.chess.invite_seconds', 120) * 1000;
@@ -297,7 +339,7 @@ final class OpenMatches
                 tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $total), 'redUnder' => self::BLITZ_RED_MS],
                 model: $invite,
             );
-        })->all();
+        })->all());
     }
 
     /**
@@ -314,7 +356,7 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
-        return $challenges->map(function (ChessChallenge $challenge) {
+        return array_values($challenges->map(function (ChessChallenge $challenge) {
             $endsAt = (int) $challenge->expires_at->getTimestampMs();
             $name = $challenge->challenger->displayName();
             $left = self::format($endsAt - (int) now()->getTimestampMs(), 'hm');
@@ -340,7 +382,7 @@ final class OpenMatches
                 tick: ['endsAt' => $endsAt, 'format' => 'hm', 'total' => max(1, (int) config('esports.chess.challenge_hours', 48) * 3_600_000), 'redUnder' => self::DAILY_RED_MS],
                 model: $challenge,
             );
-        })->all();
+        })->all());
     }
 
     /**
@@ -356,7 +398,7 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
-        return $invites->map(fn (ClanInvite $invite) => new DockItem(
+        return array_values($invites->map(fn (ClanInvite $invite) => new DockItem(
             key: 'clan-invite-'.$invite->id,
             kind: 'clan_invite',
             group: 'need',
@@ -376,7 +418,7 @@ final class OpenMatches
             deadlineMs: null,
             tick: null,
             model: $invite,
-        ))->all();
+        ))->all());
     }
 
     /**
@@ -406,7 +448,7 @@ final class OpenMatches
             ->limit(self::KIND_LIMIT)
             ->get();
 
-        return $matches->map(fn (SeriesMatch $match) => $this->seriesItem($match, $user, $nowMs))->filter()->values()->all();
+        return array_values($matches->map(fn (SeriesMatch $match) => $this->seriesItem($match, $user, $nowMs))->filter()->values()->all());
     }
 
     private function seriesItem(SeriesMatch $match, User $user, int $nowMs): ?DockItem
@@ -423,51 +465,29 @@ final class OpenMatches
         $scoreText = $score[$side].' : '.$score[$other];
         $report = $match->latestReport;
 
-        $item = fn (string $group, string $phase, bool $needsYou, string $state, string $trailing, string $line, ?string $action, ?int $deadline, ?array $tick = null) => new DockItem(
-            key: 'series-'.$match->number,
-            kind: 'series',
-            group: $group,
-            phase: $phase,
-            needsYou: $needsYou,
-            name: $match->sideName($other),
-            face: null,
-            tag: $match->sideTag($other),
-            number: $match->label(),
-            href: route('matches.room', $match),
-            title: $match->ladder_address !== null ? __('Ladder series') : __('Series'),
-            state: $state,
-            trailing: $trailing,
-            line: $line,
-            sentence: __('Series :number against :name, :state', ['number' => $match->label(), 'name' => $match->sideName($other), 'state' => mb_strtolower($state)]),
-            action: $action,
-            deadlineMs: $deadline,
-            tick: $tick,
-            model: $match,
-        );
-
         return match ($match->status) {
             SeriesStatus::Open => $captainSide === 'challenged'
-                ? $item('need', 'answer', true, __('Answer'), self::format((int) $match->respond_by->getTimestampMs() - $nowMs, 'hm'),
+                ? $this->seriesDockItem($match, $other, 'need', 'answer', true, __('Answer'), self::format((int) $match->respond_by->getTimestampMs() - $nowMs, 'hm'),
                     __('Challenge :number, :format', ['number' => $match->label(), 'format' => SeriesPresenter::format($match)]), __('Answer'),
                     (int) $match->respond_by->getTimestampMs(),
                     ['endsAt' => (int) $match->respond_by->getTimestampMs(), 'format' => 'hm', 'total' => max(1, (int) $match->respond_by->getTimestampMs() - (int) ($match->created_at ?? now())->getTimestampMs()), 'redUnder' => self::DAILY_RED_MS])
                 : null,
             SeriesStatus::Accepted => $match->start_at !== null && $match->start_at->isFuture()
-                ? $item('need', 'starts', true, __('Starts'), SeriesPresenter::time($match->start_at, $user, 'H:i'),
+                ? $this->seriesDockItem($match, $other, 'need', 'starts', true, __('Starts'), SeriesPresenter::time($match->start_at, $user, 'H:i'),
                     __('Series :number starts at :time', ['number' => $match->label(), 'time' => SeriesPresenter::time($match->start_at, $user, 'H:i')]), __('View'),
                     (int) $match->start_at->getTimestampMs())
-                : $item('live', 'live', true, __('Live'), $scoreText,
+                : $this->seriesDockItem($match, $other, 'live', 'live', true, __('Live'), $scoreText,
                     __('Series :number, live :score', ['number' => $match->label(), 'score' => $scoreText]), __('View'),
                     (int) ($match->start_at ?? $match->created_at ?? now())->getTimestampMs()),
             SeriesStatus::Reported => $report !== null && $report->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side
-                ? $item('need', 'accept', true, __('Accept result'), $scoreText,
+                ? $this->seriesDockItem($match, $other, 'need', 'accept', true, __('Accept result'), $scoreText,
                     // A result has no answer-by time: after everything that has one.
                     __('Series :number, they sent :score', ['number' => $match->label(), 'score' => $scoreText]), __('Accept'),
                     null)
-                : $item('wait', 'waiting', false, __('Waiting'), $scoreText,
+                : $this->seriesDockItem($match, $other, 'wait', 'waiting', false, __('Waiting'), $scoreText,
                     __('Series :number, :score waiting for them to accept', ['number' => $match->label(), 'score' => $scoreText]), null,
-                    (int) ($report?->created_at ?? $match->updated_at ?? now())->getTimestampMs()),
-            SeriesStatus::Disputed => $item('wait', 'dispute', false, __('Admin decides'), $scoreText,
+                    (int) ($report->created_at ?? $match->updated_at ?? now())->getTimestampMs()),
+            SeriesStatus::Disputed => $this->seriesDockItem($match, $other, 'wait', 'dispute', false, __('Admin decides'), $scoreText,
                 __('Series :number, an admin decides', ['number' => $match->label()]), null,
                 (int) ($match->updated_at ?? now())->getTimestampMs()),
             default => null,

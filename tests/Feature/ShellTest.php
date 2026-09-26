@@ -101,7 +101,7 @@ test('the account menu links to the admin area only for admins', function (bool 
 })->with(['admin' => true, 'player' => false]);
 
 test('the games menu and the account menus link every chess page, so none is found only by chance', function () {
-    $user = \App\Models\User::factory()->create();
+    $user = User::factory()->create();
 
     $html = $this->actingAs($user)->get(route('clans.index'))->assertOk()->getContent();
 
