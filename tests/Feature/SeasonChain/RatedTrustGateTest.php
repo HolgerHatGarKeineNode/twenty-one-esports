@@ -412,6 +412,17 @@ test('regression (security gate F3): the loser cannot dissolve his one-member cl
         ->and(Rating::query()->where('pool', Rating::RATED)->where('subject', 'lineup:'.$b[0]->id)->value('rating'))->toBeLessThan(1000);
 });
 
+test('P7e: a one-member clan whose player deletes the account during a rated match keeps its lineup until the match is decided', function () {
+    [$a, $b] = [gateLineup(), gateLineup()];
+    app()->instance(TrustFacts::class, gateFacts());
+    gateAccepted($a, $b);
+
+    app(DeleteAccount::class)($b[1]);
+
+    expect(Lineup::query()->whereKey($b[0]->id)->exists())->toBeTrue()
+        ->and(ClanMember::query()->where('clan_id', $b[0]->clan_id)->exists())->toBeFalse();
+});
+
 /*
  * Security re-check round 2, F2 by other paths: after the accept the losing side loses a pinned
  * player (removed by the owner, dropped from the lineup, or the account deleted). The rated roster

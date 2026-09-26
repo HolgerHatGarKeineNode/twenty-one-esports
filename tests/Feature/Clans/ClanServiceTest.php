@@ -4,7 +4,9 @@ use App\Enums\ClanRole;
 use App\Enums\InviteStatus;
 use App\Enums\LineupRole;
 use App\Jobs\PublishNostrEvent;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\Clan;
+use App\Models\ClanDeparture;
 use App\Models\ClanInvite;
 use App\Models\ClanMember;
 use App\Models\Lineup;
@@ -293,4 +295,26 @@ test('the owner hands over before leaving, and the last member leaving ends the 
 
     $this->clans->leave($queen, $queenSigner->signTemplates($this->clans->prepareLeave($queen)));
     expect(Clan::query()->count())->toBe(0);
+});
+
+test('P7e: a clan whose last member deletes the account ends as if they had left; with members left it stays', function () {
+    [$owner, $ownerSigner] = player();
+    [$queen, $queenSigner] = player();
+    $clan = foundClan($owner, $ownerSigner);
+    joinClan($clan, $owner, $ownerSigner, $queen, $queenSigner);
+    saveLineup($clan, $owner, $ownerSigner, '2v2', [$owner->id => LineupRole::Captain, $queen->id => LineupRole::Player]);
+
+    // A member deletes the account: the clan goes on with the owner.
+    app(DeleteAccount::class)($queen);
+
+    expect(Clan::query()->whereKey($clan->id)->exists())->toBeTrue()
+        ->and(ClanMember::query()->where('clan_id', $clan->id)->pluck('user_id')->all())->toBe([$owner->id]);
+
+    // The last member deletes the account: the clan and its lineups end, the departures stay.
+    app(DeleteAccount::class)($owner);
+
+    expect(Clan::query()->whereKey($clan->id)->exists())->toBeFalse()
+        ->and(Lineup::query()->where('clan_id', $clan->id)->exists())->toBeFalse()
+        ->and(ClanDeparture::query()->where('clan_id', $clan->id)->orderBy('id')->get()->map(fn (ClanDeparture $row) => [$row->user_id, $row->pubkey, $row->reason, $row->clan_name])->all())
+        ->toBe([[null, $queenSigner->pubkey, 'deleted', 'Laser Eyes'], [null, $ownerSigner->pubkey, 'deleted', 'Laser Eyes']]);
 });

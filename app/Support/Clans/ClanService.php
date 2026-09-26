@@ -21,6 +21,7 @@ use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -640,20 +641,45 @@ final class ClanService
      */
     private function assertNoRunningRatedMatch(User $player, Clan $clan): void
     {
+        $last = $clan->members->reject(fn (ClanMember $member) => $member->user_id === $player->id)->isEmpty();
+
+        foreach ($this->runningRatedMatches($clan) as $match) {
+            if ($last || isset(($match->gate_at_accept['players'] ?? [])[$player->pubkey])) {
+                throw new ClanRuleViolation(__('You cannot leave :clan while its rated match :number is running. Leave once it is decided.', ['clan' => $clan->name, 'number' => $match->label()]));
+            }
+        }
+    }
+
+    /**
+     * The rated series of the clan that are accepted and not yet decided.
+     *
+     * @return Collection<int, SeriesMatch>
+     */
+    private function runningRatedMatches(Clan $clan): Collection
+    {
         $lineups = Lineup::query()->where('clan_id', $clan->id)->pluck('id')->all();
 
-        $running = SeriesMatch::query()
+        return SeriesMatch::query()
             ->where('rated', true)
             ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
             ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups))
             ->get();
+    }
 
-        $last = $clan->members->reject(fn (ClanMember $member) => $member->user_id === $player->id)->isEmpty();
+    /**
+     * An account is deleted (P7e): its player leaves the clan like anyone
+     * else, with a departure row (reason `deleted`), and a clan left without
+     * members ends as on leave(). Deleting is not refused during a rated
+     * series (its result comes from the pin), but the clan then stays until
+     * the series is decided, so its lineup is not cascaded away (security
+     * gate F3). No membership event: the player can no longer sign.
+     */
+    public function leaveForDeletedAccount(User $player): void
+    {
+        $clan = $player->clanMember()->with('clan')->first()?->clan;
 
-        foreach ($running as $match) {
-            if ($last || isset(($match->gate_at_accept['players'] ?? [])[$player->pubkey])) {
-                throw new ClanRuleViolation(__('You cannot leave :clan while its rated match :number is running. Leave once it is decided.', ['clan' => $clan->name, 'number' => $match->label()]));
-            }
+        if ($clan !== null) {
+            $this->leaveCurrentClan($player, 'deleted', endIfEmpty: $this->runningRatedMatches($clan)->isEmpty());
         }
     }
 
@@ -662,7 +688,7 @@ final class ClanService
      * Every leaver gets a departure row, the last one too, and the rows
      * outlive the clan (P7d gate, Low A: the trust admin's own-clan guard).
      */
-    private function leaveCurrentClan(User $player, string $reason): void
+    private function leaveCurrentClan(User $player, string $reason, bool $endIfEmpty = true): void
     {
         $membership = $player->clanMember()->with('clan')->first();
 
@@ -682,7 +708,7 @@ final class ClanService
             'user_id' => $player->id, 'pubkey' => $player->pubkey, 'reason' => $reason, 'left_at' => now(),
         ]);
 
-        if (! ClanMember::query()->where('clan_id', $clan->id)->exists()) {
+        if ($endIfEmpty && ! ClanMember::query()->where('clan_id', $clan->id)->exists()) {
             $clan->delete();
         }
     }

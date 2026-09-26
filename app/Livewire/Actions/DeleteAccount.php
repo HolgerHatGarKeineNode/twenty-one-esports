@@ -5,10 +5,10 @@ namespace App\Livewire\Actions;
 use App\Enums\ChessGameStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
-use App\Models\ClanDeparture;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
+use App\Support\Clans\ClanService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -17,7 +17,7 @@ use Illuminate\Validation\ValidationException;
 
 class DeleteAccount
 {
-    public function __construct(private ChessGameService $games) {}
+    public function __construct(private ChessGameService $games, private ClanService $clans) {}
 
     /**
      * Delete everything this site stores about the user and log them out.
@@ -59,16 +59,9 @@ class DeleteAccount
         DB::transaction(function () use ($user): void {
             Admin::query()->where('pubkey', $user->pubkey)->delete();
 
-            // The clan membership goes with the account; its departure stays with the pubkey,
-            // so the trust admin's own-clan guard still sees this key (P7e).
-            $membership = $user->clanMember()->with('clan')->first();
-
-            if ($membership !== null) {
-                ClanDeparture::query()->create([
-                    'clan_id' => $membership->clan_id, 'clan_address' => $membership->clan->address(), 'clan_name' => $membership->clan->name,
-                    'user_id' => $user->id, 'pubkey' => $user->pubkey, 'reason' => 'deleted', 'left_at' => now(),
-                ]);
-            }
+            // The player leaves the clan like anyone else (a departure row with the pubkey, so the
+            // trust admin's own-clan guard still sees this key), and a clan left empty ends (P7e).
+            $this->clans->leaveForDeletedAccount($user);
 
             if (config('session.driver') === 'database') {
                 DB::table((string) config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
