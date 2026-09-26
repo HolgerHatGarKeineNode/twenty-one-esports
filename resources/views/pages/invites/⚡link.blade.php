@@ -344,7 +344,7 @@ new #[Layout('layouts::app')] class extends Component {
     $shareText = $copy->cardQuestion().' '.$copy->cardSubline();
 @endphp
 
-<div class="mx-auto flex w-full max-w-[1248px] grow flex-col gap-6 px-4 pb-10 lg:px-0 lg:pb-16" data-test="invite-landing" data-state="{{ $state }}">
+<div class="mx-auto flex w-full max-w-[1280px] grow flex-col gap-6 px-4 pb-10 lg:pb-16" data-test="invite-landing" data-state="{{ $state }}">
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_440px] lg:grid-rows-[auto_1fr] lg:gap-x-12">
         {{-- Main column: who, what, the stage (details below the panel on small screens, as MobileInviteLanding) --}}
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:gap-6">

@@ -351,7 +351,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $steps = [__('Lineup'), __('Opponent'), __('Rated or casual'), __('Times'), __('Send')];
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pt-8 lg:pb-10" data-test="challenge-create" x-data="{ step: 1 }">
+<div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="challenge-create" x-data="{ step: 1 }">
     <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Challenge a clan') }}</span><span class="max-lg:hidden">{{ __('New challenge') }}</span></h1>
         <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __('Rocket League ladder, Pre-Season') }}</span>

@@ -93,15 +93,16 @@
 
         <label for="site-search" class="sr-only max-lg:hidden">{{ __('Search') }}</label>
         <input id="site-search" type="search" placeholder="{{ __('Search players, clans or match #') }}"
-               class="hidden h-10 w-[420px] min-w-40 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3 lg:block">
+               class="hidden h-10 w-[420px] min-w-32 shrink rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3 lg:block">
 
         @if ($user)
             <livewire:notification-bell />
 
+            {{-- Between lg and xl the bar has no room for the name (1024 px overflowed by up to 145 px): the chip shows the avatar, the name stays for screen readers. --}}
             <flux:dropdown position="bottom" align="end" class="hidden lg:block">
-                <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well pr-3 pl-2 text-[13px] text-ink" data-test="account-chip">
+                <button type="button" class="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-line bg-well px-2 text-[13px] text-ink xl:pr-3" data-test="account-chip">
                     <x-avatar :user="$user" :size="26" />
-                    <span class="flex min-w-0 flex-col items-start leading-tight">
+                    <span class="flex min-w-0 flex-col items-start leading-tight max-xl:sr-only">
                         <span class="max-w-40 truncate">{{ $user->displayName() }}</span>
                         <span class="text-[11px] text-ink-3">{{ $user->shortNpub() }}</span>
                     </span>

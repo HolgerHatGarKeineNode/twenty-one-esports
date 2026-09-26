@@ -409,10 +409,10 @@ function recordOverflowViolation(array $data, string $label, array &$violations)
 |
 */
 
-const SWEEP_PAGE_TOP = [375 => 20, 1440 => 32];
+const SWEEP_PAGE_TOP = [375 => 20, 1024 => 32, 1440 => 32];
 
 /** Minimum distance of any non-full-bleed element from the viewport edges (px-4 on phones). */
-const SWEEP_PAGE_SIDE = [375 => 16, 1440 => 16];
+const SWEEP_PAGE_SIDE = [375 => 16, 1024 => 16, 1440 => 16];
 
 /**
  * Pages whose design starts flush under the header on purpose, by the path
@@ -567,7 +567,7 @@ function recordGapViolation(Page $page, string $routeName, string $label, int $w
 |
 | One context per (auth state), reused across every route: the collector is
 | registered once, each goto() re-arms it fresh (Context::addInitScript runs
-| on every subsequent document). Overflow is also checked at 1440px without
+| on every subsequent document). Overflow is also checked at 1024/1440px without
 | an extra navigation, by resizing in place.
 |
 */
@@ -599,10 +599,13 @@ test('every route renders without console errors, page errors, bad responses or 
         recordOverflowViolation($mobile, "{$label} at 375px", $violations);
         recordGapViolation($page, $route['name'], $label, 375, $violations);
 
-        $page->setViewportSize(1440, 900);
-        $desktop = $page->evaluate(SWEEP_READ_SCRIPT);
-        recordOverflowViolation($desktop, "{$label} at 1440px", $violations);
-        recordGapViolation($page, $route['name'], $label, 1440, $violations);
+        // 1024 is the first desktop width (lg): the header is at its tightest there.
+        foreach ([1024, 1440] as $width) {
+            $page->setViewportSize($width, 900);
+            $desktop = $page->evaluate(SWEEP_READ_SCRIPT);
+            recordOverflowViolation($desktop, "{$label} at {$width}px", $violations);
+            recordGapViolation($page, $route['name'], $label, $width, $violations);
+        }
         $page->setViewportSize(375, 800);
     }
 

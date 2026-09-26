@@ -151,7 +151,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pb-10" data-test="chess-challenge">
+<div class="flex grow flex-col gap-5 px-4 pb-8 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pb-10" data-test="chess-challenge">
     <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Challenge') }}</h1>
         <span class="text-[13px] text-ink-2">{{ __('Daily chess, or a friend who is online') }}</span>

@@ -441,7 +441,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     ];
 @endphp
 
-<div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pt-8 lg:pb-10" data-test="match-room"
+<div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="match-room"
      x-data="{ submit: false }"
      x-init="setInterval(() => { if (! document.activeElement?.matches('input, textarea, select') && ! submit) $wire.sync() }, 8000)">
 

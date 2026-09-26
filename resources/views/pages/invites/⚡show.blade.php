@@ -122,7 +122,7 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
     $membershipTags = [['kind', '12150 '.__('clan membership')], ['a', $clan->address()], ['p', __('confirmed by :name', ['name' => $invitee->displayName()])]];
 @endphp
 
-<div class="mx-auto flex w-full max-w-[1200px] grow flex-col gap-5 px-4 pb-6 lg:px-0"
+<div class="mx-auto flex w-full max-w-[1232px] grow flex-col gap-5 px-4 pb-6"
      x-data="nostrAction({ pubkey: @js(auth()->user()->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clan invite') }}</h1>

@@ -104,7 +104,7 @@ new #[Title('Match')] #[Layout('layouts::app', ['section' => 'matches'])] class 
     $height = max(1, count($games)) * 95;
 @endphp
 
-<div class="flex grow flex-col gap-6 px-4 pt-6 pb-10 lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-0 lg:pt-10" data-test="match-detail">
+<div class="flex grow flex-col gap-6 px-4 pt-6 pb-10 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-10" data-test="match-detail">
     <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Series :number', ['number' => $match->label()]) }}</h1>
         <span class="text-[13px] text-ink-2">Rocket League · {{ $match->challenger_name }} vs {{ $match->challenged_name }}</span>
