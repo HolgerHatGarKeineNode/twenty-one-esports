@@ -5,6 +5,7 @@ namespace App\Support\SeasonChain;
 use App\Models\ClanDeparture;
 use App\Models\ClanMember;
 use App\Models\NostrEvent;
+use App\Models\TrustCountedReport;
 use App\Models\TrustDecision;
 use App\Models\TrustExclusion;
 use App\Models\TrustReportDismissal;
@@ -33,6 +34,9 @@ final class TrustAdmin
 {
     public const REASON_MAX = 280;
 
+    /** The reason of the dismissals a lifted exclusion writes for the key's counted reports. */
+    public const LIFTED = 'exclusion lifted';
+
     /** @throws TrustAdminRefused */
     public function dismiss(User $admin, string $eventId, string $reason): TrustReportDismissal
     {
@@ -53,6 +57,7 @@ final class TrustAdmin
         $this->assertAdmin($admin);
         $reason = $this->reason($reason);
         $this->assertNotOwn($admin, $this->reportParties($eventId));
+        $this->assertBudgetAllowsRestore($eventId);
 
         DB::transaction(function () use ($admin, $eventId, $reason): void {
             $this->log($admin, 'restore', $eventId, $reason);
@@ -75,7 +80,16 @@ final class TrustAdmin
         });
     }
 
-    /** @throws TrustAdminRefused */
+    /**
+     * Lift an exclusion: the key gets its place in the graph back, not its
+     * reports (P7e). Its reports that counted this season gave their budget
+     * places back when it was excluded (P7d gate, Low B), and later reports
+     * may hold them now; they are dismissed here, logged, with the reason
+     * {@see self::LIFTED}. A single one can come back through restore(),
+     * which checks the budget.
+     *
+     * @throws TrustAdminRefused
+     */
     public function lift(User $admin, string $pubkey, string $reason): void
     {
         $this->assertBoard($admin);
@@ -85,6 +99,15 @@ final class TrustAdmin
         DB::transaction(function () use ($admin, $pubkey, $reason): void {
             $this->log($admin, 'lift', $pubkey, $reason);
             TrustExclusion::query()->where('pubkey', $pubkey)->delete();
+
+            $season = Seasons::live();
+            $counted = $season === null ? [] : TrustCountedReport::query()->where('season_id', $season->id)->where('author', $pubkey)
+                ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))->orderBy('id')->pluck('event_id')->all();
+
+            foreach ($counted as $eventId) {
+                $this->log($admin, 'dismiss', $eventId, self::LIFTED);
+                TrustReportDismissal::query()->create(['event_id' => $eventId, 'dismissed_by_id' => $admin->id, 'reason' => self::LIFTED]);
+            }
         });
     }
 
@@ -152,6 +175,37 @@ final class TrustAdmin
 
         if (array_intersect($pubkeys, $own) !== []) {
             throw new TrustAdminRefused(__('You cannot decide about yourself or your own clan. Another admin has to.'));
+        }
+    }
+
+    /**
+     * A dismissed report that counted this season gave its place in its
+     * author's and its subtree's budget back (P7d gate, Low B), and a later
+     * report may have taken it. Restoring it would count it again on top, so
+     * the restore is refused while either budget is full (P7e); a report that
+     * never counted takes its chances with the caps in the next run.
+     *
+     * @throws TrustAdminRefused
+     */
+    private function assertBudgetAllowsRestore(string $eventId): void
+    {
+        $season = Seasons::live();
+        $counted = $season === null ? null : TrustCountedReport::query()->where('season_id', $season->id)->where('event_id', $eventId)->first();
+
+        if ($counted === null || TrustExclusion::query()->where('pubkey', $counted->author)->exists()) {
+            return; // not counted this season, or its author stays excluded: nothing comes back
+        }
+
+        $active = fn () => TrustCountedReport::query()->where('season_id', $counted->season_id)->where('event_id', '!=', $eventId)
+            ->whereNotIn('event_id', TrustReportDismissal::query()->select('event_id'))
+            ->whereNotIn('author', TrustExclusion::query()->select('pubkey'));
+        $authorFull = $active()->where('author', $counted->author)->count() >= max(0, (int) config('esports.trust.reports_per_author'));
+        $subtreeFull = $active()->where('subtree', $counted->subtree)->count() >= max(0, (int) config('esports.trust.reports_per_anchor'));
+
+        if ($authorFull || $subtreeFull) {
+            throw new TrustAdminRefused($subtreeFull
+                ? __('This report cannot count again: its anchor subtree used its report budget for this season after the dismissal. It stays dismissed.')
+                : __('This report cannot count again: its author used their report budget for this season after the dismissal. It stays dismissed.'));
         }
     }
 

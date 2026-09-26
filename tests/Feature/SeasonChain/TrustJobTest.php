@@ -13,7 +13,9 @@
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\TrustCountedReport;
+use App\Models\TrustDecision;
 use App\Models\TrustRank;
+use App\Models\TrustReportDismissal;
 use App\Models\TrustRun;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
@@ -22,6 +24,7 @@ use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\TrustAdmin;
+use App\Support\SeasonChain\TrustAdminRefused;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
@@ -607,6 +610,75 @@ test('regression (P7d gate, Low B): dismissed reports, or reports of an excluded
     expect(TrustRank::query()->where('pubkey', $players[7])->value('rank'))->toBe(50)
         ->and(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 5)))->toBe([75, 75, 75, 75, 75]);
 })->with(['dismissed', 'excluded']);
+
+test('P7e: restoring a dismissed report is refused while its subtree\'s budget is full, so a restore never pushes it over the cap', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    [$burner, $genuine] = array_map(fn () => (new TestSigner)->pubkey, range(1, 2));
+    $players = reportSubtree([$burner, $genuine], $at);
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    $trust = app(TrustAdmin::class);
+    $eventOf = fn (string $author) => NostrEvent::query()->where('kind', TrustJob::REPORT)->where('pubkey', $author)->value('event_id');
+
+    // The burner's report takes the subtree's one slot; dismissed, it gives it back and the genuine one takes it.
+    archivedReport($burner, $players[0], $at + 10);
+    app(TrustJob::class)->run();
+    $trust->dismiss($admin, $eventOf($burner), 'Burner.');
+    archivedReport($genuine, $players[1], $at + 20);
+    app(TrustJob::class)->run();
+
+    expect(TrustRank::query()->where('pubkey', $players[1])->value('rank'))->toBe(50);
+
+    // Restoring the burner's report now would count two reports in a subtree of one.
+    expect(fn () => $trust->restore($admin, $eventOf($burner), 'Second look.'))->toThrow(TrustAdminRefused::class, 'report budget')
+        ->and(TrustReportDismissal::query()->where('event_id', $eventOf($burner))->exists())->toBeTrue()
+        ->and(TrustDecision::query()->where('action', 'restore')->count())->toBe(0);
+
+    // Once the slot is free again, the restore goes through, and the subtree stays at its cap.
+    $trust->dismiss($admin, $eventOf($genuine), 'Mixed up.');
+    $trust->restore($admin, $eventOf($burner), 'Second look.');
+    app(TrustJob::class)->run();
+
+    expect(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 2)))->toBe([50, 75]);
+});
+
+test('P7e: lifting an exclusion gives the key its place in the graph back, not its reports: they stay dismissed and the subtree stays at its cap', function () {
+    payMembers(['alice', 'carol']);
+    config(['esports.relays' => [], 'esports.trust.reports_per_anchor' => 1]);
+    $at = now()->subMinutes(30)->getTimestamp();
+    [$burner, $genuine] = array_map(fn () => (new TestSigner)->pubkey, range(1, 2));
+    $players = reportSubtree([$burner, $genuine], $at);
+    $admin = User::factory()->create();
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
+    $trust = app(TrustAdmin::class);
+    $burnerReport = fn () => NostrEvent::query()->where('kind', TrustJob::REPORT)->where('pubkey', $burner)->value('event_id');
+
+    // The burner's report counts; excluding the burner frees the slot and the genuine report takes it.
+    archivedReport($burner, $players[0], $at + 10);
+    app(TrustJob::class)->run();
+    $trust->exclude($admin, $burner, 'Burner.');
+    archivedReport($genuine, $players[1], $at + 20);
+    app(TrustJob::class)->run();
+
+    // The lift: the burner is back in the graph, its counted report is dismissed and logged.
+    $trust->lift($admin, $burner, 'Appeal granted.');
+    app(TrustJob::class)->run();
+    app(TrustJob::class)->run();
+
+    expect(array_map(fn (string $p) => TrustRank::query()->where('pubkey', $p)->value('rank'), array_slice($players, 0, 2)))->toBe([75, 50])
+        ->and(TrustRank::query()->where('pubkey', $burner)->value('rank'))->toBeGreaterThanOrEqual(50)
+        ->and(TrustReportDismissal::query()->where('event_id', $burnerReport())->value('reason'))->toBe('exclusion lifted')
+        ->and(TrustDecision::query()->orderBy('id')->get()->map(fn (TrustDecision $d) => [$d->action, $d->target, $d->reason])->all())->toBe([
+            ['exclude', $burner, 'Burner.'],
+            ['lift', $burner, 'Appeal granted.'],
+            ['dismiss', $burnerReport(), 'exclusion lifted'],
+        ]);
+
+    // Restoring that report goes through the budget check: refused while the subtree is full.
+    expect(fn () => $trust->restore($admin, $burnerReport(), 'It was right.'))->toThrow(TrustAdminRefused::class, 'report budget');
+});
 
 /** A signed league report by a test-bed player against any pubkey. */
 function leagueReport(string $author, string $target, int $at): array

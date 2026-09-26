@@ -2312,5 +2312,7 @@
     "not open for you yet": "für dich noch nicht offen",
     "on your list, not listing you yet": "auf deiner Liste, führt dich noch nicht",
     "you list each other": "ihr führt euch gegenseitig",
-    "deleted their account": "hat das Konto gelöscht"
+    "deleted their account": "hat das Konto gelöscht",
+    "This report cannot count again: its anchor subtree used its report budget for this season after the dismissal. It stays dismissed.": "Diese Meldung kann nicht wieder zählen: Ihr Anker-Teilbaum hat sein Meldungsbudget dieser Season nach dem Verwerfen aufgebraucht. Sie bleibt verworfen.",
+    "This report cannot count again: its author used their report budget for this season after the dismissal. It stays dismissed.": "Diese Meldung kann nicht wieder zählen: Ihr Absender hat sein Meldungsbudget dieser Season nach dem Verwerfen aufgebraucht. Sie bleibt verworfen."
 }
