@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\InviteLink;
 use App\Models\User;
 use App\Support\Membership;
 use App\Support\Nostr\LoginChallenges;
@@ -26,6 +27,8 @@ class NostrLoginController extends Controller
 {
     public function challenge(Request $request, LoginChallenges $challenges): JsonResponse
     {
+        $this->rememberInvite($request);
+
         return response()->json([
             'challenge' => $challenges->issue($request->session()),
             'url' => route('auth.nostr.login'),
@@ -72,5 +75,31 @@ class NostrLoginController extends Controller
         return response()->json([
             'redirect' => $request->session()->pull('url.intended', route('home')),
         ]);
+    }
+
+    /**
+     * Login from an invite landing (P6b): the page asks for its challenge
+     * with `?invite={code}`, so the player lands back on the invite and it is
+     * taken right away. Set here, in the POST the login button sends, and
+     * not when the page is viewed: only a player who pressed login on that
+     * invite is taken into it. `seen_at` tells a new account (the referral)
+     * from an old one.
+     */
+    private function rememberInvite(Request $request): void
+    {
+        $code = $request->query('invite');
+
+        if (! is_string($code) || preg_match('/^'.InviteLink::CODE_PATTERN.'$/', $code) !== 1) {
+            return;
+        }
+
+        $link = InviteLink::query()->where('code', $code)->first();
+
+        if ($link === null) {
+            return;
+        }
+
+        $request->session()->put('url.intended', $link->url());
+        $request->session()->put('invite.intent', ['code' => $link->code, 'seen_at' => now()->getTimestamp()]);
     }
 }

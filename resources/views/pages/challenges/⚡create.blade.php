@@ -1,9 +1,12 @@
 <?php
 
+use App\Enums\InviteLinkType;
 use App\Enums\SeriesStatus;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Invites\InviteLinkRefused;
+use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\PreSeason;
 use App\Support\Series\ChallengeDraft;
@@ -151,12 +154,69 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             return null;
         }
 
+        $schedule = $this->schedule();
+
+        return $schedule === null ? null : new ChallengeDraft($this->lineupId, $this->opponentId, $this->bestOf, $this->rated, $schedule[0], $schedule[1]);
+    }
+
+    /**
+     * Invite by link (P6b): the same challenge without an opponent. Whoever
+     * opens the link and captains a ready lineup of this mode takes it; the
+     * match number is reserved then, not now. Casual only: a rated challenge
+     * names the other captains in its signed event.
+     */
+    public function createLink(InviteLinks $links): void
+    {
+        $this->error = '';
+
+        if ($this->lineupId === null) {
+            $this->error = __('Pick your lineup first.');
+
+            return;
+        }
+
+        if ($this->rated) {
+            $this->error = __('Invite links are for casual matches. Switch to casual to make one.');
+
+            return;
+        }
+
+        $schedule = $this->schedule();
+
+        if ($schedule === null) {
+            return;
+        }
+
+        try {
+            $link = $links->create($this->user(), InviteLinkType::Series, [
+                'lineup_id' => $this->lineupId,
+                'best_of' => $this->bestOf,
+                'proposals' => $schedule[0],
+                'respond_by' => $schedule[1],
+                'uses' => 'once',
+            ]);
+        } catch (InviteLinkRefused $refused) {
+            $this->error = $refused->getMessage();
+
+            return;
+        }
+
+        $this->redirectRoute('invites.link', $link);
+    }
+
+    /**
+     * The suggested starts and the reply deadline, as unix seconds.
+     *
+     * @return array{0: list<int>, 1: int}|null
+     */
+    private function schedule(): ?array
+    {
         $zone = $this->zone();
 
         if ($this->now) {
             $start = now()->addMinutes((int) config('esports.series.now_minutes', 10))->startOfMinute()->getTimestamp();
 
-            return new ChallengeDraft($this->lineupId, $this->opponentId, $this->bestOf, $this->rated, [$start], $start);
+            return [[$start], $start];
         }
 
         $proposals = [];
@@ -181,7 +241,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             return null;
         }
 
-        return new ChallengeDraft($this->lineupId, $this->opponentId, $this->bestOf, $this->rated, $proposals, $reply);
+        return [$proposals, $reply];
     }
 
     private function parse(string $date, string $time, string $zone): ?int
@@ -489,6 +549,14 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 @if ($error)<p class="m-0 text-[13px] text-loss" role="alert" data-test="challenge-error">{{ $error }}</p>@endif
                 <p x-show="error" x-text="error" class="m-0 text-[13px] text-loss" role="alert"></p>
                 <span class="text-xs leading-normal text-ink-2">{{ __(':clan\'s captains see it right away. You can withdraw it while it\'s open.', ['clan' => $picked['lineup']->clan->name ?? __('The other clan')]) }}</span>
+                <div class="flex flex-col gap-2.5 border-t border-hairline pt-4" data-test="series-invite-link">
+                    <b class="text-[13px]">{{ __('No opponent here yet?') }}</b>
+                    <span class="text-xs leading-normal text-ink-2">{{ __('Invite by link: the first captain of a ready :mode lineup who opens it and accepts plays you, at one of your times.', ['mode' => $lineup?->mode ?? '']) }}</span>
+                    <button type="button" wire:click="createLink" wire:loading.attr="disabled" data-test="create-series-link"
+                            class="btn-w inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] text-ink">
+                        <x-icon name="link" :size="16" />{{ __('Invite by link') }}
+                    </button>
+                </div>
                 <x-proof :rows="$rated ? [[__('Record'), __('challenge, kind 2150')], [__('Sent as'), $me->shortNpub().' ('.$me->displayName().')']] : [[__('Record'), __('a casual challenge stays with the league (no kind 2150)')], [__('Match number'), __('reserved when you send')], [__('Sent as'), $me->shortNpub().' ('.$me->displayName().')']]" />
             </aside>
         </div>

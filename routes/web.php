@@ -1,12 +1,14 @@
 <?php
 
 use App\Http\Controllers\GeneratedAvatarController;
+use App\Http\Controllers\InviteCardController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Livewire\Actions\Logout;
+use App\Models\InviteLink;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'pages.home')->name('home');
@@ -38,6 +40,21 @@ Route::middleware('auth')->group(function () {
     Route::livewire('clans/{clan}/manage', 'pages::clans.manage')->name('clans.manage');
     Route::livewire('invites/{invite}', 'pages::invites.show')->name('invites.show');
 });
+
+/*
+ * Invite deep links (P6b): `/i/{code}` for anyone, guests included, so a link
+ * shared on Signal lands on a page that works before login. The preview
+ * image carries no session (a crawler fetches it) and never sets a cookie.
+ */
+Route::livewire('i/{link}', 'pages::invites.link')
+    ->where('link', InviteLink::CODE_PATTERN)
+    ->middleware('throttle:invites')
+    ->name('invites.link');
+Route::get('i/{code}/card-{format}.png', InviteCardController::class)
+    ->where(['code' => InviteLink::CODE_PATTERN, 'format' => 'wide|square'])
+    ->withoutMiddleware('web')
+    ->middleware('throttle:invites')
+    ->name('invites.card');
 
 Route::livewire('clans', 'pages::clans.index')->name('clans.index');
 Route::livewire('clans/{clan}', 'pages::clans.show')->name('clans.show');

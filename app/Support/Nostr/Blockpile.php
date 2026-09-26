@@ -70,6 +70,51 @@ final class Blockpile
     }
 
     /**
+     * The same drawing as {@see svg()} as absolute polygons in the 96 × 96
+     * box, for raster output (the invite preview cards, P6b). The first entry
+     * is the ground.
+     *
+     * @return list<array{points: list<int>, fill: string}>
+     */
+    public static function polygons(string $pubkey): array
+    {
+        [$palette, $mask, $swap] = self::parameters($pubkey);
+        [, $ground, $ghost, $light, $mid, $dark] = $palette;
+        [$left, $right] = $swap ? [$dark, $mid] : [$mid, $dark];
+
+        $shapes = [['points' => self::points(0, 0, 96, 0, 96, 96, 0, 96), 'fill' => $ground]];
+
+        for ($r = 0; $r < 6; $r++) {
+            for ($c = 0; $c <= $r; $c++) {
+                $k = self::ROW_OFFSET[$r] + min($c, $r - $c);
+                $x = 48 + (2 * $c - $r) * 7;
+                $y = 18 + 12 * $r;
+
+                if (($mask >> $k) & 1) {
+                    $shapes[] = ['points' => self::points($x, $y - 8, $x + 7, $y - 4, $x, $y, $x - 7, $y - 4), 'fill' => $light];
+                    $shapes[] = ['points' => self::points($x - 7, $y - 4, $x, $y, $x, $y + 8, $x - 7, $y + 4), 'fill' => $left];
+                    $shapes[] = ['points' => self::points($x, $y, $x + 7, $y - 4, $x + 7, $y + 4, $x, $y + 8), 'fill' => $right];
+                } else {
+                    $shapes[] = ['points' => self::points($x, $y - 8, $x + 7, $y - 4, $x + 7, $y + 4, $x, $y + 8, $x - 7, $y + 4, $x - 7, $y - 4), 'fill' => $ghost];
+                }
+            }
+        }
+
+        return $shapes;
+    }
+
+    /**
+     * x, y pairs of one polygon.
+     *
+     * @return list<int>
+     */
+    private static function points(int ...$coordinates): array
+    {
+        // array_values: a variadic also takes named arguments, which would be string keys.
+        return array_values($coordinates);
+    }
+
+    /**
      * Palette name, 12-bit mask and light direction, for tests and the spec table.
      *
      * @return array{palette: string, mask: int, swap: bool}

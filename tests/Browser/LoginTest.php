@@ -1,6 +1,9 @@
 <?php
 
+use App\Enums\InviteLinkType;
+use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Invites\InviteLinks;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserWait;
@@ -95,4 +98,35 @@ test('nostr login: the button lands on home, the chip shows the name and short n
     BrowserWait::until($page, '() => document.querySelector("[data-test=account-chip]") === null', 10_000);
 
     expect($page->evaluate('() => document.querySelector("[data-test=account-chip]")'))->toBeNull();
+});
+
+test('a guest opens a daily-chess invite link, logs in on it and lands in the game', function () {
+    $anna = User::factory()->create(['name' => 'satsjäger']);
+    $link = app(InviteLinks::class)->create($anna, InviteLinkType::Daily);
+
+    $page = visit($link->url())->page();
+    $page->context()->addInitScript(stubNostrExtension());
+    // Page errors and >= 400 answers on every document from here on.
+    $page->context()->addInitScript(<<<'JS'
+        window.__errors = [];
+        window.addEventListener('error', (e) => window.__errors.push('error: ' + e.message));
+        window.addEventListener('unhandledrejection', (e) => window.__errors.push('unhandledrejection: ' + String(e.reason)));
+        const originalError = console.error;
+        console.error = function (...args) { window.__errors.push('console.error: ' + args.map(String).join(' ')); originalError.apply(console, args); };
+        JS);
+    $page->goto(ComputeUrl::from(parse_url($link->url(), PHP_URL_PATH)));
+
+    // The login on the landing itself, not the /login page: the code rides
+    // along with the challenge, and the player comes back into the game.
+    $page->locator('[data-test="invite-landing"] [data-test="login-nostr"]')->click();
+    BrowserWait::until($page, '() => location.pathname.startsWith("/games/")', 10_000);
+
+    $game = ChessGame::query()->sole();
+    $newcomer = User::query()->whereKeyNot($anna->id)->sole();
+
+    expect($page->evaluate('() => location.pathname'))->toBe(parse_url(route('games.show', $game), PHP_URL_PATH))
+        ->and($game->mode)->toBe(ChessGame::CORRESPONDENCE)
+        ->and([$game->white_id, $game->black_id])->toEqualCanonicalizing([$anna->id, $newcomer->id])
+        ->and($page->evaluate('() => performance.getEntriesByType("navigation")[0].responseStatus'))->toBe(200)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });

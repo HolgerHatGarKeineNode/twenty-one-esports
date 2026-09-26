@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\User;
+use App\Support\PageMeta;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\DevCommands;
@@ -25,6 +26,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry(
             array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
         ));
+
+        $this->app->scoped(PageMeta::class);
     }
 
     /**
@@ -37,6 +40,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
 
         // Profile hand-ins (P10a): one batch per page load is the normal case.
+        // Invite links (P6b): the codes are unguessable anyway; this keeps a
+        // scanner from hammering the landing and the preview renderer.
+        RateLimiter::for('invites', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
+
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 

@@ -1,18 +1,25 @@
 <?php
 
 use App\Enums\ClanRole;
+use App\Enums\InviteLinkType;
 use App\Enums\InviteStatus;
+use App\Enums\JoinRequestStatus;
 use App\Enums\LineupRole;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\ClanJoinRequest;
 use App\Models\ClanMember;
+use App\Models\InviteLink;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\User;
+use App\Support\Clans\ClanJoinRequests;
 use App\Support\Clans\ClanRuleViolation;
 use App\Support\Clans\ClanService;
 use App\Support\Clans\ClanStatsPreview;
+use App\Support\Invites\InviteLinkRefused;
+use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use Illuminate\Support\Facades\Auth;
@@ -55,6 +62,11 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     #[Locked]
     public ?string $inviteLink = null;
+
+    /** Join link (P6b): who may use it and how long it works. */
+    public string $joinLinkUses = 'several';
+
+    public int $joinLinkHours = 168;
 
     public function mount(Clan $clan): void
     {
@@ -116,6 +128,79 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             $this->player = '';
             unset($this->clan);
         }
+    }
+
+    /* ---------- Join link and join requests (P6b, NIP decision (a)) ---------- */
+
+    public function createJoinLink(InviteLinks $links): void
+    {
+        try {
+            $link = $links->create($this->user(), InviteLinkType::Clan, ['clan' => $this->clan, 'uses' => $this->joinLinkUses, 'hours' => $this->joinLinkHours]);
+        } catch (InviteLinkRefused $refused) {
+            $this->addError('joinLink', $refused->getMessage());
+
+            return;
+        }
+
+        $this->redirectRoute('invites.link', $link);
+    }
+
+    /**
+     * Requests still waiting for the clan, oldest first.
+     *
+     * @return \Illuminate\Support\Collection<int, ClanJoinRequest>
+     */
+    #[Computed]
+    public function joinRequests(): \Illuminate\Support\Collection
+    {
+        return app(ClanJoinRequests::class)->openRequests($this->clan);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, InviteLink>
+     */
+    #[Computed]
+    public function joinLinks(): \Illuminate\Support\Collection
+    {
+        return InviteLink::query()->where('clan_id', $this->clanId)->where('type', InviteLinkType::Clan)
+            ->whereNull('revoked_at')->where('expires_at', '>', now())->with('inviter')->latest('id')->get();
+    }
+
+    /** A captain who is not the owner says yes; the owner lists the player next. */
+    public function approveRequest(int $requestId, ClanJoinRequests $requests): void
+    {
+        $this->attempt(fn () => $requests->approve($this->joinRequest($requestId), $this->user()), 'joinRequests');
+        unset($this->joinRequests);
+    }
+
+    public function declineRequest(int $requestId, ClanJoinRequests $requests): void
+    {
+        $this->attempt(fn () => $requests->decline($this->joinRequest($requestId), $this->user()), 'joinRequests');
+        unset($this->joinRequests);
+    }
+
+    /**
+     * The owner approves by listing the player in the clan event, signed
+     * with their key (the named invite of ClanService).
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function prepareListRequest(int $requestId, ClanJoinRequests $requests): ?array
+    {
+        $templates = $this->attempt(fn () => $requests->prepareList($this->joinRequest($requestId), $this->user()), 'joinRequests');
+
+        return is_array($templates) ? $templates : null;
+    }
+
+    public function listRequest(int $requestId, string $signed, ClanJoinRequests $requests): void
+    {
+        $this->attempt(fn () => $requests->list($this->joinRequest($requestId), $this->user(), $this->signed($signed)), 'joinRequests');
+        unset($this->joinRequests, $this->clan);
+    }
+
+    private function joinRequest(int $requestId): ClanJoinRequest
+    {
+        return ClanJoinRequest::query()->where('clan_id', $this->clanId)->findOrFail($requestId);
     }
 
     /* ---------- Lineups (from the roster) ---------- */
@@ -423,6 +508,80 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         @else
             <p class="m-0 text-[13px] text-ink-2">{{ __('Only the founder of :clan can add or remove players: the clan record is confirmed with their key.', ['clan' => $clan->name]) }}</p>
         @endif
+    </section>
+
+    {{-- Join requests and the join link (P6b, States.dc.html "Join request, captain side") --}}
+    @php($requests = $this->joinRequests)
+    <section id="join-requests" aria-labelledby="jr-h" class="flex flex-col gap-3.5 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="join-requests">
+        <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 id="jr-h" class="m-0 text-[15px] font-bold">{{ __('Join requests') }}</h2><span class="text-xs text-ink-3">{{ __(':clan, seen by captains only', ['clan' => $clan->name]) }}</span></span>
+        @error('joinRequests')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
+        @forelse ($requests as $request)
+            @php($applicant = $request->user)
+            <div wire:key="jr-{{ $request->id }}" class="grid grid-cols-1 items-center gap-3 rounded-md px-3 py-3 shadow-ring lg:grid-cols-[minmax(0,1fr)_auto]" data-test="join-request">
+                <span class="flex min-w-0 items-center gap-3">
+                    <x-avatar :user="$applicant" :size="40" class="rounded-md" />
+                    <span class="flex min-w-0 flex-col gap-0.5">
+                        <x-player-link :user="$applicant" class="inline-flex min-h-11 max-w-full items-center text-[15px] font-bold"><span class="truncate">{{ $applicant->displayName() }}</span></x-player-link>
+                        <span class="text-xs leading-normal text-ink-2">
+                            {{ trans_choice('Joined :count day ago|Joined :count days ago', (int) $applicant->created_at?->diffInDays(now())) }},
+                            {{ trans_choice(':count game played|:count games played', $applicant->whiteGames()->count() + $applicant->blackGames()->count()) }}.
+                            {{ __('Asked :time.', ['time' => $request->created_at?->diffForHumans()]) }}
+                        </span>
+                        @if ($request->status === JoinRequestStatus::Approved)
+                            <span class="text-xs text-btc-hi" data-test="join-request-approved">{{ __('Approved by :name. Waiting for the founder to add them to the clan record.', ['name' => $request->decidedBy?->displayName() ?? '']) }}</span>
+                        @endif
+                    </span>
+                </span>
+                <span class="flex flex-wrap gap-2 lg:justify-end">
+                    @if ($isOwner)
+                        <button type="button" x-on:click="run('prepareListRequest', 'listRequest', {{ $request->id }})" x-bind:disabled="busy" data-test="approve-request"
+                                class="btn-p inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc disabled:cursor-wait disabled:opacity-70">
+                            <x-icon name="shield-check" :size="16" />{{ __('Approve') }}
+                        </button>
+                    @elseif ($request->status === JoinRequestStatus::Pending)
+                        <button type="button" wire:click="approveRequest({{ $request->id }})" data-test="approve-request"
+                                class="btn-p inline-flex h-11 cursor-pointer items-center justify-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc">{{ __('Approve') }}</button>
+                    @endif
+                    <button type="button" wire:click="declineRequest({{ $request->id }})" data-test="decline-request"
+                            class="btn-w inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well px-4 text-[13px] text-ink">{{ __('Decline') }}</button>
+                </span>
+            </div>
+        @empty
+            <p class="m-0 text-[13px] text-ink-2">{{ __('No open requests. Share a join link and new players can ask to join.') }}</p>
+        @endforelse
+        <span class="text-xs leading-normal text-ink-3">{{ $isOwner
+            ? __('Approving adds the player to the clan record with your key; they join once they confirm their membership. Declining tells them plainly and closes the request.')
+            : __('Your yes goes to the founder, whose key adds the player to the clan record. Declining tells them plainly and closes the request.') }}</span>
+
+        <div class="flex flex-col gap-3 border-t border-hairline pt-4" data-test="join-link">
+            <span class="flex flex-col gap-1"><b class="text-[13px]">{{ __('Invite by link') }}</b><span class="text-xs leading-normal text-ink-2">{{ __('A join link for the roster. Everyone who uses it sends a request; a captain confirms each one. Lineups are set later, here.') }}</span></span>
+            <div class="grid grid-cols-1 items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <label class="flex flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Who can use it') }}</span>
+                    <select wire:model="joinLinkUses" class="h-11 w-full rounded-lg border border-edge bg-ground px-3 text-[13px] text-ink">
+                        <option value="several">{{ __('Several players, one request each') }}</option>
+                        <option value="once">{{ __('One player') }}</option>
+                    </select>
+                </label>
+                <label class="flex flex-col gap-2"><span class="text-xs text-ink-2">{{ __('Link works for') }}</span>
+                    <select wire:model.number="joinLinkHours" class="h-11 w-full rounded-lg border border-edge bg-ground px-3 text-[13px] text-ink">
+                        @foreach (InviteLinkType::Clan->expiryChoices() as $hours)
+                            <option value="{{ $hours }}">{{ trans_choice(':count day|:count days', intdiv($hours, 24)) }}</option>
+                        @endforeach
+                    </select>
+                </label>
+                <button type="button" wire:click="createJoinLink" data-test="create-join-link"
+                        class="btn-p inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc">
+                    <x-icon name="link" :size="16" />{{ __('Create join link') }}
+                </button>
+            </div>
+            @error('joinLink')<p class="m-0 text-xs text-loss" role="alert">{{ $message }}</p>@enderror
+            @foreach ($this->joinLinks as $joinLink)
+                <a wire:key="jl-{{ $joinLink->id }}" href="{{ $joinLink->url() }}" class="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-hairline text-xs text-ink hover:text-ink">
+                    <span class="flex items-center gap-2"><x-icon name="link" :size="14" class="text-btc" />{{ __('Join link by :name', ['name' => $joinLink->inviter->displayName()]) }}</span>
+                    <span class="text-ink-2">{{ trans_choice('{0} not used yet|{1} used once|[2,*] used :count times', $joinLink->uses) }}, {{ __('open until :time', ['time' => $joinLink->expires_at->translatedFormat('M j, H:i')]) }}</span>
+                </a>
+            @endforeach
+        </div>
     </section>
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">

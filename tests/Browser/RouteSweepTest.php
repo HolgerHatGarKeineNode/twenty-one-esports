@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ChessEndReason;
+use App\Enums\InviteLinkType;
 use App\Enums\InviteStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
@@ -11,6 +12,7 @@ use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
+use App\Support\Invites\InviteLinks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Http;
@@ -150,6 +152,12 @@ function sweepFixtures(): array
         // The generated avatar of that player's key.
         'pubkey' => fn (?User $user, array $made): Model => $made['npub'],
 
+        // An open daily-chess invite link of another player (P6b): the guest
+        // sweep gets the landing with the login, the member sweep "Ready to
+        // play?". The same code fills the preview image route.
+        'link' => fn (?User $user, array $made): Model => app(InviteLinks::class)->create(User::factory()->create(['name' => 'satsjäger']), InviteLinkType::Daily),
+        'code' => fn (?User $user, array $made): Model => $made['link'],
+
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {
             Storage::disk('local')->put('dispute-evidence/sweep.png', (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
@@ -208,8 +216,8 @@ function buildSweepFixtures(?User $user): array
 }
 
 /**
- * Bound parameters take their fixture's route key; `locale` must satisfy its
- * `->whereIn()` constraint; every other parameter belongs to a route that
+ * Bound parameters take their fixture's route key; `locale` and the invite
+ * card's `format` must satisfy their constraints; every other parameter belongs to a route that
  * does not read it (placeholders, redirects), so any value is enough.
  *
  * @param  array<string, string>  $bound
@@ -218,6 +226,7 @@ function fillRouteParameters(RoutingRoute $route, array $bound = []): string
 {
     $values = [
         'locale' => config('app.supported_locales')[0] ?? 'en',
+        'format' => 'wide',
         ...$bound,
     ];
 
@@ -378,7 +387,7 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1440 => 16];
 const SWEEP_FLUSH_PATHS = ['/'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment). */
-const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated'];
+const SWEEP_NO_HEADER_ROUTES = ['nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {

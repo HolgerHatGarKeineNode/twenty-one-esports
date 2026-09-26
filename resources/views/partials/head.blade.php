@@ -4,6 +4,36 @@
 <meta name="theme-color" content="#111114" />
 
 <title>{{ filled($title ?? null) ? $title.' – TWENTY ONE esports' : 'TWENTY ONE esports' }}</title>
+{{-- Link previews and robots (P6b, App\Support\PageMeta): plain tags in the first response, no JavaScript needed. --}}
+@php($pageMeta = app(App\Support\PageMeta::class))
+@unless ($pageMeta->isEmpty())
+    @if ($pageMeta->noindex)
+        <meta name="robots" content="noindex, nofollow">
+    @endif
+    @if ($pageMeta->description !== null)
+        <meta name="description" content="{{ $pageMeta->description }}">
+        <meta property="og:site_name" content="TWENTY ONE esports">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="{{ $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports') }}">
+        <meta property="og:description" content="{{ $pageMeta->description }}">
+        @if ($pageMeta->url !== null)
+            <meta property="og:url" content="{{ $pageMeta->url }}">
+        @endif
+        @foreach ($pageMeta->images as [$imageUrl, $imageWidth, $imageHeight, $imageAlt])
+            <meta property="og:image" content="{{ $imageUrl }}">
+            <meta property="og:image:type" content="image/png">
+            <meta property="og:image:width" content="{{ $imageWidth }}">
+            <meta property="og:image:height" content="{{ $imageHeight }}">
+            <meta property="og:image:alt" content="{{ $imageAlt }}">
+        @endforeach
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="{{ $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports') }}">
+        <meta name="twitter:description" content="{{ $pageMeta->description }}">
+        @if ($pageMeta->images !== [])
+            <meta name="twitter:image" content="{{ $pageMeta->images[0][0] }}">
+        @endif
+    @endif
+@endunless
 
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">

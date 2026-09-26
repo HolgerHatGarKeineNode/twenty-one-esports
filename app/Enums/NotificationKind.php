@@ -23,6 +23,8 @@ enum NotificationKind: string
     case OpponentResigned = 'opponent_resigned';
     case GameOver = 'game_over';
     case ClanJoinRequest = 'clan_join_request';
+    case ClanJoinAnswer = 'clan_join_answer';
+    case InviteLinkTaken = 'invite_link_taken';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -40,7 +42,8 @@ enum NotificationKind: string
     public function tone(): string
     {
         return match ($this) {
-            self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest => 'challenge',
+            self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken => 'challenge',
+            self::ClanJoinAnswer => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -79,6 +82,8 @@ enum NotificationKind: string
             self::OpponentResigned => ['Opponent resigned', 'your opponent gave up the game'],
             self::GameOver => ['Game over', 'a game of yours ended'],
             self::ClanJoinRequest => ['Clan join request', 'a player asks to join your clan'],
+            self::ClanJoinAnswer => ['Clan join answer', 'a clan answered your join request'],
+            self::InviteLinkTaken => ['Invite link taken', 'someone took the invite link you shared'],
         };
     }
 

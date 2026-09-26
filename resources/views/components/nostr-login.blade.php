@@ -4,10 +4,13 @@
     With a slot, this is only the Alpine scope: the page brings its own markup
     and calls loginWithGoogle() / loginWithNostr(), reading `busy` and `error`
     (see pages/auth/login.blade.php). Without a slot it renders plain buttons.
+    `invite`: the code of the invite landing the login starts from (P6b), so
+    the player lands back on that invite (NostrLoginController::challenge).
 --}}
+@props(['invite' => null])
 <div
     x-data="nostrLogin({
-        challengeUrl: @js(route('auth.nostr.challenge')),
+        challengeUrl: @js(route('auth.nostr.challenge', array_filter(['invite' => $invite]))),
         messages: @js([
             'failed' => __('Login failed. Please try again.'),
             'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
