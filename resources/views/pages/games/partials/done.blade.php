@@ -51,7 +51,7 @@
         <button type="button" aria-label="{{ __('Copy game link') }}" x-data x-on:click="navigator.clipboard?.writeText(window.location.href)"
                 class="flex size-8 cursor-pointer items-center justify-center rounded-md bg-well text-ink-2"><x-icon name="copy" :size="14" /></button>
         <span class="grow"></span>
-        <span class="text-[13px] text-btc">{{ $daily ? __('Casual · Daily chess') : __('Casual · Blitz 5+3') }}</span>
+        <span class="text-[13px] text-btc">{{ $game->rated ? ($daily ? __('Rated · Daily chess') : __('Rated · Blitz 5+3')) : ($daily ? __('Casual · Daily chess') : __('Casual · Blitz 5+3')) }}</span>
         @unless ($aborted)
             <span class="flex h-[34px] items-center gap-2 rounded-md bg-[#122016] px-3 text-[13px] font-bold text-win" data-test="saved-badge"><x-icon name="check" :size="16" />{{ $record ? __('Saved & verified') : __('Saved') }}</span>
         @endunless

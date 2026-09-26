@@ -294,7 +294,8 @@ test('P7e DoD gate: the finished game page, opened later, says what a rated game
     $this->actingAs($long->white)->get(route('games.show', $long))->assertOk()
         ->assertSee('mined block 1,')
         ->assertDontSee('casual games do not count');
-    $this->get(route('games.show', $long))->assertOk()->assertSee('mined block 1,')->assertDontSee('casual games do not count');
+    $this->get(route('games.show', $long))->assertOk()->assertSee('mined block 1,')->assertDontSee('casual games do not count')
+        ->assertSee('Rated · Blitz 5+3')->assertDontSee('Casual · Blitz 5+3');
 
     // No block: resigned after one move (rule 2).
     [$c, $d] = [clanPlayer(), clanPlayer()];
@@ -312,5 +313,5 @@ test('P7e DoD gate: the finished game page, opened later, says what a rated game
         ->assertSee('pending: the league attests the result')
         ->assertDontSee('casual games do not count');
     $this->get(route('games.show', ChessGame::factory()->finished()->create()))->assertOk()
-        ->assertSee('casual games do not count');
+        ->assertSee('casual games do not count')->assertSee('Casual · Blitz 5+3');
 });
