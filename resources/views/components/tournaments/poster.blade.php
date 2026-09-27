@@ -44,6 +44,9 @@
             <span class="inline-flex h-7 items-center gap-1.5 rounded-tag bg-btc-chip px-2.5 text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Next tournament') }}</span>
             <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ GameNames::mode($tournament->game, $tournament->mode) }}</span>
             <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ $tournament->format->label() }}</span>
+            @if ($tournament->isCasualCup())
+                <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2" data-test="casual-marker">{{ __('Casual') }}</span>
+            @endif
         </p>
     </div>
 

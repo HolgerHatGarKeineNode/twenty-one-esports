@@ -1,4 +1,4 @@
-@props(['tournament', 'except' => []])
+@props(['tournament', 'except' => [], 'compact' => false])
 
 {{--
     The management actions of one tournament, the same set wherever it is
@@ -13,6 +13,7 @@
       wallet (the payouts page lists only those).
 
     `except`: the actions a page leaves out, e.g. ['edit'] on the edit page.
+    `compact`: 36 px buttons on a phone (the tournament page's bar above the hero).
     Renders nothing when no action is left for this viewer.
 --}}
 @php
@@ -34,7 +35,7 @@
 @if ($manageActions !== [])
     <div {{ $attributes->class('flex flex-wrap gap-2') }} data-test="manage-actions">
         @foreach ($manageActions as [$manageKey, $manageHref, $manageLabel, $manageIcon, $manageVariant])
-            <x-button :variant="$manageVariant" :href="$manageHref" :icon="$manageIcon" class="whitespace-nowrap" data-test="manage-{{ $manageKey }}">{{ $manageLabel }}</x-button>
+            <x-button :variant="$manageVariant" :href="$manageHref" :icon="$manageIcon" :class="$compact ? 'whitespace-nowrap max-sm:h-9 max-sm:px-3' : 'whitespace-nowrap'" data-test="manage-{{ $manageKey }}">{{ $manageLabel }}</x-button>
         @endforeach
     </div>
 @endif

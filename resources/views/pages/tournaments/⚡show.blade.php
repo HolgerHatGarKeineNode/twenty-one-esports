@@ -397,10 +397,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
     --}}
     @if ($this->canManage)
-        <div class="-mb-6 flex flex-col gap-2 px-4 pt-4 sm:flex-row sm:items-center sm:gap-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
+        {{-- On a phone one compact row without the label, so the pot's number stays in the first screen for organizers too. --}}
+        <div class="-mb-10 flex flex-col gap-2 px-4 pt-2 sm:-mb-6 sm:flex-row sm:items-center sm:gap-4 sm:pt-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
             <span class="text-[13px] text-ink-2 max-sm:sr-only">{{ __('You manage this tournament.') }}</span>
-            <x-tournaments.manage-actions :tournament="$tournament" />
+            <x-tournaments.manage-actions :tournament="$tournament" compact />
         </div>
+    @endif
+
+    {{-- A running casual cup: the viewer's own match first, above the hero (P25, the player it concerns). --}}
+    @if ($this->cupMatch)
+        @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
     @endif
 
     {{--
@@ -411,7 +417,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         phone's first screen.
     --}}
     <section aria-labelledby="t-name" class="tl-hero relative isolate" data-test="tournament-hero">
-        <div class="grid gap-6 px-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
+        <div class="grid gap-4 px-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
             <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
                 @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'tl-poster-in w-full lg:max-w-[440px] lg:justify-self-end'])
             </div>
@@ -550,10 +556,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </div>
         @endif
     </section>
-
-    @if ($this->cupMatch)
-        @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
-    @endif
 
     @if ($champion)
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}

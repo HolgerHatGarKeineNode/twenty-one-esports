@@ -146,3 +146,13 @@ test('the prize pot heads the tournament page: the pot, the podium and the paid 
         ->assertDontSee('Pledge Only')
         ->assertDontSeeHtml('data-test="pool-no-sponsor"');
 });
+
+test('the poster marks a casual cup casual, and only a cup', function () {
+    $cup = openFor('chess', 'blitz', ['name' => 'Chess Casual Cup #1', 'cup_series' => 'chess', 'cup_number' => 1]);
+
+    $poster = str($this->get('/chess')->assertOk()->getContent())->after('data-test="next-tournament" data-tournament="'.$cup->id.'"')->before('</section>')->toString();
+    expect($poster)->toContain('data-test="casual-marker"');
+
+    $cup->forceFill(['cup_series' => null, 'cup_number' => null])->save();
+    $this->get('/chess')->assertOk()->assertDontSeeHtml('data-test="casual-marker"');
+});
