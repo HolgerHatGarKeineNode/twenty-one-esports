@@ -56,11 +56,12 @@ final class TournamentDeadlines
     }
 
     /**
-     * Online and a minute game: played on one day, on the round clock.
+     * Online and a minute game: played on one day, on the round clock. A
+     * casual cup is not (P25): it runs over days of round windows.
      */
     public static function isSingleDay(Tournament $tournament): bool
     {
-        return ! $tournament->on_site && ! $tournament->profile()->isDaily();
+        return ! $tournament->on_site && ! $tournament->profile()->isDaily() && ! $tournament->isCasualCup();
     }
 
     /**

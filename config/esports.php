@@ -342,6 +342,53 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Automatic casual cups (P25, App\Support\Tournaments\CasualCups)
+    |--------------------------------------------------------------------------
+    |
+    | enabled: the games whose cup series runs (comma-separated
+    | `ESPORTS_CASUAL_CUP_GAMES`); per game at most one cup is open at a
+    | time. Chess runs from deploy; Rocket League and EA Sports FC switch on
+    | once their casual match flow (P23 S2-S4) is live. games: the mode each
+    | series plays, its name, and the series lengths (finals = grand final).
+    |
+    | capacity: sign-up places; the cup starts at once when they are taken.
+    | min_players: fewer at the close extends sign-up once by
+    | extension_hours, then the cup is called off. More than 8 players play a
+    | 16-slot bracket; the top seeds get the byes. gap_hours: the next cup of
+    | a game opens this long after the previous final or call-off.
+    |
+    | Rounds: window_hours (large_window_hours with more than 8 players) from
+    | the moment a round opens, which is as soon as the round before it is
+    | done; max_days after the start every open match is decided at once.
+    | auto_slot: a chess match nobody started is started by the league at
+    | this time (timezone) on the window's last evening. invite_minutes: how
+    | long a "Play your cup match" invite stays open.
+    |
+    */
+
+    'casual_cups' => [
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess'))))),
+        'games' => [
+            'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
+            'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3],
+            'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
+            'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
+        ],
+        'capacity' => 16,
+        'min_players' => 6,
+        'signup_hours' => 72,
+        'extension_hours' => 48,
+        'gap_hours' => 24,
+        'window_hours' => 48,
+        'large_window_hours' => 36,
+        'max_days' => 14,
+        'auto_slot' => '20:00',
+        'timezone' => 'Europe/Berlin',
+        'invite_minutes' => 10,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | League key (season chain, P7c)
     |--------------------------------------------------------------------------
     |

@@ -19,18 +19,19 @@ use Illuminate\Support\Carbon;
  * @property string $status open|closed
  * @property Carbon|null $closed_at when it closed: its last result came in (players mode) or a director closed it
  * @property Carbon|null $started_at when its first match started (P18, the measurement); null = not yet, or before P18
+ * @property Carbon|null $window_ends_at a casual cup round's deadline, set when the round opens (P25, CasualCups)
  * @property int $restarts how often an organizer or admin restarted the round (P18): the guard against restarting it twice
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentStage $stage
  * @property-read Collection<int, TournamentMatch> $matches
  */
-#[Fillable(['tournament_stage_id', 'number', 'status', 'closed_at', 'started_at', 'restarts'])]
+#[Fillable(['tournament_stage_id', 'number', 'status', 'closed_at', 'started_at', 'restarts', 'window_ends_at'])]
 class TournamentRound extends Model
 {
     protected function casts(): array
     {
-        return ['number' => 'integer', 'closed_at' => 'datetime', 'started_at' => 'datetime', 'restarts' => 'integer'];
+        return ['number' => 'integer', 'closed_at' => 'datetime', 'started_at' => 'datetime', 'restarts' => 'integer', 'window_ends_at' => 'datetime'];
     }
 
     /**

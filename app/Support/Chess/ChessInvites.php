@@ -3,15 +3,19 @@
 namespace App\Support\Chess;
 
 use App\Enums\ChessInviteStatus;
+use App\Enums\TournamentStatus;
 use App\Events\ChessInviteChanged;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\ChessQueueEntry;
 use App\Models\SeriesQueueEntry;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
+use App\Support\Tournaments\CasualCupNotices;
+use App\Support\Tournaments\TournamentMatchMaker;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -36,10 +40,110 @@ use Illuminate\Support\Facades\DB;
  * once (they asked for any opponent, the inviter chose them), and a player
  * who searches while holding an open invite is paired with its inviter
  * (ChessQueue::join). Both are announced as a found match.
+ *
+ * A casual cup's match (P25) is played through the same invites: "Play your
+ * cup match" invites only the opponent of that match, needs no "Looking to
+ * play", and accepting it starts the match's tournament game instead of a
+ * casual one (TournamentMatchMaker::startInvited). Two players who invite
+ * each other are paired at once.
  */
 final class ChessInvites
 {
-    public function __construct(private ChessGameService $games, private ChessNotifications $notifications, private CasualInvites $casualInvites) {}
+    public function __construct(
+        private ChessGameService $games,
+        private ChessNotifications $notifications,
+        private CasualInvites $casualInvites,
+        private TournamentMatchMaker $maker,
+        private CasualCupNotices $cupNotices,
+    ) {}
+
+    /**
+     * "Play your cup match": invite the opponent of a casual cup's chess
+     * match whose round is open and that nobody started yet. When the
+     * opponent has invited this player for it already, that invite is
+     * accepted instead and the game starts (its `chess_game_id` is set).
+     *
+     * @throws ChessRuleViolation
+     */
+    public function inviteToCupMatch(User $inviter, TournamentMatch $match): ChessInvite
+    {
+        $opponent = $this->cupOpponent($inviter, $match);
+
+        if ($this->games->activeGameOf($inviter) !== null) {
+            throw new ChessRuleViolation('already_playing');
+        }
+
+        // One live game at a time across games (P23): the cup match waits until the casual 1v1 is over.
+        if (CasualMatches::runningMatchOf($inviter) !== null) {
+            throw ChessGameService::casualPlaying();
+        }
+
+        $waiting = ChessInvite::query()->where('tournament_match_id', $match->id)->where('inviter_id', $opponent->id)
+            ->where('invitee_id', $inviter->id)->where('status', ChessInviteStatus::Pending)->where('expires_at', '>', now())->latest('id')->first();
+
+        if ($waiting !== null) {
+            $this->accept($waiting, $inviter);
+
+            return $waiting->refresh();
+        }
+
+        $previous = $this->outgoing($inviter);
+
+        $invite = DB::transaction(function () use ($inviter, $opponent, $match, $previous): ChessInvite {
+            $previous?->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
+            ChessQueueEntry::query()->where('user_id', $inviter->id)->delete();
+            SeriesQueueEntry::query()->where('user_id', $inviter->id)->delete();
+
+            return ChessInvite::query()->create([
+                'inviter_id' => $inviter->id,
+                'invitee_id' => $opponent->id,
+                'mode' => $match->tournament->mode,
+                'status' => ChessInviteStatus::Pending,
+                'expires_at' => now()->addMinutes(max(1, (int) config('esports.casual_cups.invite_minutes', 10))),
+                'tournament_match_id' => $match->id,
+            ]);
+        });
+
+        if ($previous !== null) {
+            $this->announce($previous);
+        }
+
+        // One intent at a time (P23): the cup invite withdraws the casual 1v1 invite sent.
+        $this->casualInvites->withdrawOutgoing($inviter);
+
+        $this->announce($invite);
+        $this->cupNotices->invited($match->tournament, $invite);
+
+        return $invite;
+    }
+
+    /**
+     * The other player of a cup match this player may start now.
+     *
+     * @throws ChessRuleViolation
+     */
+    private function cupOpponent(User $user, TournamentMatch $match): User
+    {
+        $match->loadMissing(['tournament', 'round', 'slots.participant', 'chessGame']);
+        $tournament = $match->tournament;
+        $ids = $match->slots->map(fn ($slot): ?int => $slot->participant?->memberIds()[0] ?? null)->all();
+        $mine = array_search($user->id, $ids, true);
+
+        $open = $tournament->isCasualCup() && $tournament->profile()->isChess() && $tournament->status === TournamentStatus::Running && ! $tournament->isPaused()
+            && $match->status === 'ready' && $match->result === null && $match->held === null
+            // Only a match nobody started: a replay or restart follows its game at once.
+            && $match->round->window_ends_at?->isFuture() === true && $match->chessGame === null;
+
+        if ($mine === false || count($ids) !== 2) {
+            throw new ChessRuleViolation('not_your_match');
+        }
+
+        if (! $open) {
+            throw new ChessRuleViolation('match_not_open');
+        }
+
+        return User::query()->find($ids[1 - $mine]) ?? throw new ChessRuleViolation('match_not_open');
+    }
 
     /**
      * Returns the invite; its `chess_game_id` is set when the invitee was
@@ -179,6 +283,17 @@ final class ChessInvites
             // Accepted before the game starts, so the start's withdrawal of
             // both players' open invites leaves this one alone.
             $invite->forceFill(['status' => ChessInviteStatus::Accepted])->save();
+
+            if ($invite->tournament_match_id !== null) {
+                // A cup match (P25): its own game, colours as the bracket has them. Refused = nothing changes.
+                $game = $this->maker->startInvited(TournamentMatch::query()->findOrFail($invite->tournament_match_id))
+                    ?? throw new ChessRuleViolation('match_not_open');
+
+                $invite->forceFill(['chess_game_id' => $game->id])->save();
+                $this->announce($invite);
+
+                return $game;
+            }
 
             [$white, $black] = random_int(0, 1) === 0 ? [$invite->inviter, $invitee] : [$invitee, $invite->inviter];
             $game = $this->games->start($white, $black, $invite->mode);

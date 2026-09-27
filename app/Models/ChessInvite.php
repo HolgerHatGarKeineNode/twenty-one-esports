@@ -19,13 +19,15 @@ use Illuminate\Support\Carbon;
  * @property ChessInviteStatus $status
  * @property int|null $chess_game_id
  * @property Carbon $expires_at
+ * @property int|null $tournament_match_id a "Play your cup match" invite (P25): accepting it starts that match's game
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $inviter
  * @property-read User $invitee
  * @property-read ChessGame|null $game
+ * @property-read TournamentMatch|null $tournamentMatch
  */
-#[Fillable(['inviter_id', 'invitee_id', 'mode', 'status', 'chess_game_id', 'expires_at'])]
+#[Fillable(['inviter_id', 'invitee_id', 'mode', 'status', 'chess_game_id', 'expires_at', 'tournament_match_id'])]
 class ChessInvite extends Model
 {
     protected function casts(): array
@@ -60,6 +62,14 @@ class ChessInvite extends Model
     public function game(): BelongsTo
     {
         return $this->belongsTo(ChessGame::class, 'chess_game_id');
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     public function isOpen(): bool

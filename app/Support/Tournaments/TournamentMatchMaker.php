@@ -61,6 +61,10 @@ use Illuminate\Support\Facades\DB;
  *
  * Chess in director mode is played over the board: no game is started; the
  * finished game record is written when the round closes (TournamentRunner).
+ *
+ * A casual cup's match (P25, CasualCups) waits for its round's window and
+ * then for its players ("Play your cup match", startInvited()) or the auto
+ * slot on the window's last evening; a replay or restart follows at once.
  */
 final class TournamentMatchMaker
 {
@@ -68,6 +72,7 @@ final class TournamentMatchMaker
         private ChessGameService $chess,
         private RatedTrustGate $gate,
         private GameRegistry $games,
+        private CasualCupNotices $cupNotices,
     ) {}
 
     /**
@@ -121,13 +126,38 @@ final class TournamentMatchMaker
     }
 
     /**
+     * A casual cup's chess match whose players agreed to play now (an
+     * accepted "Play your cup match" invite, ChessInvites): its game starts
+     * inside the caller's transaction. Null when it cannot start (the round
+     * is not open, the match is decided or under way, a player is busy).
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function startInvited(TournamentMatch $match): ?ChessGame
+    {
+        $tournament = $match->tournament()->firstOrFail();
+
+        if (! $tournament->isCasualCup() || ! $tournament->profile()->isChess() || $match->chessGame !== null) {
+            return null;
+        }
+
+        $match = TournamentMatch::query()->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->findOrFail($match->id);
+
+        if ($this->startLocked($tournament, $match, invited: true) !== true) {
+            return null;
+        }
+
+        return ChessGame::query()->where('tournament_match_id', $match->id)->latest('id')->first();
+    }
+
+    /**
      * Start one match inside startReady()'s transaction. Null when the
      * tournament is paused or no longer running, false when the match
      * cannot start now, true when it started.
      *
      * @throws TournamentRuleViolation
      */
-    private function startLocked(Tournament $tournament, TournamentMatch $match): ?bool
+    private function startLocked(Tournament $tournament, TournamentMatch $match, bool $invited = false): ?bool
     {
         $locked = Tournament::query()->lockForUpdate()->find($tournament->id);
 
@@ -147,13 +177,18 @@ final class TournamentMatchMaker
             return false;
         }
 
+        // A casual cup (P25): only in its round's window, when its players agreed or at the auto slot.
+        if ($locked->isCasualCup() && ! CasualCups::mayStart($match, $invited)) {
+            return false;
+        }
+
         TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
 
         if ($tournament->profile()->isChess()) {
             if ($tournament->isDirectorMode()) {
                 $this->pinPairing($tournament, $match, $a, $b);
             } elseif (self::needsGame($match)) {
-                $this->startGame($tournament, $match, $a, $b);
+                return $this->startGame($tournament, $match, $a, $b) !== null;
             }
 
             return true;
@@ -206,7 +241,7 @@ final class TournamentMatchMaker
             // None yet, or the last one was voided or superseded by the league (P18).
             $game === null, $match->isReplaced($game->id) => true,
             $game->status === ChessGameStatus::Aborted => TournamentRunner::abortedGames($match) <= TournamentRunner::firstMoveRestarts(),
-            $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays(),
+            $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
     }
@@ -237,13 +272,13 @@ final class TournamentMatchMaker
         $match->forceFill(['pairing' => ['gate' => $pin?->toArray(), 'clans' => $clans, 'ladder' => $pin === null ? null : $tournament->openLadder()]])->save();
     }
 
-    private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): void
+    private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): ?ChessGame
     {
         $first = User::query()->find($a->memberIds()[0] ?? 0);
         $second = User::query()->find($b->memberIds()[0] ?? 0);
 
         if ($first === null || $second === null) {
-            return;
+            return null;
         }
 
         // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart after both
@@ -253,11 +288,19 @@ final class TournamentMatchMaker
         [$white, $black] = $swap ? [$second, $first] : [$first, $second];
 
         try {
-            $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id,
+            $game = $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id,
                 ChessGame::query()->where('tournament_match_id', $match->id)->count() + 1);
         } catch (ChessRuleViolation) {
             // Busy in another live game: the next run tries again.
+            return null;
         }
+
+        // A cup game may start while its players are away (the auto slot): they are told on every channel.
+        if ($tournament->isCasualCup()) {
+            $this->cupNotices->gameStarted($tournament, $game);
+        }
+
+        return $game;
     }
 
     /**

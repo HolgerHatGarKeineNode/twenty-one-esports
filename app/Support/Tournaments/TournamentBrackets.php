@@ -40,7 +40,10 @@ final class TournamentBrackets
         }
 
         $options = $tournament->formatOptions();
-        $entrants = array_values($participants->map(fn (TournamentParticipant $participant): Entrant => self::entrant($participant))->all());
+        $entrants = array_values($participants->map(fn (TournamentParticipant $participant): Entrant => $tournament->isCasualCup()
+            // A casual cup seeds at random (P25): one rating and no order leave it to the hash of the seed.
+            ? new Entrant($participant->id)
+            : self::entrant($participant))->all());
         $bracket = BracketBuilder::build($tournament->format, $entrants, $options, $seed);
         $state = Advancement::resolve($bracket, [], $options);
 

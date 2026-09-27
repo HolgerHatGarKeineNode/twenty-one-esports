@@ -373,6 +373,28 @@ final class TournamentRunner
 
         $whiteSlot = in_array((int) $game->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
 
+        if ($game->result === '1/2-1/2' && ! self::allowsDraw($match) && $match->tournament->isCasualCup()) {
+            // A casual cup (P25): the colours swapped, then Armageddon, where a draw advances Black.
+            if (self::drawnGames($match) > CasualCups::ARMAGEDDON_AFTER_DRAWS) {
+                $winner = 1 - $whiteSlot;
+
+                $this->store($match, [
+                    'winner' => $winner,
+                    'games_won' => $winner === 0 ? [1.0, 0.0] : [0.0, 1.0],
+                    'points' => [],
+                    'forfeit' => false,
+                    'decided' => 'armageddon',
+                    'label' => __('½–½ Armageddon, Black advances'),
+                    'by' => 'players',
+                    'number' => $game->number,
+                ]);
+            }
+
+            $this->sync($match->tournament);
+
+            return;
+        }
+
         if ($game->result === '1/2-1/2' && ! self::allowsDraw($match)) {
             // A knockout needs a winner: the game is replayed (TournamentMatchMaker::needsGame()), and
             // after the last allowed replay the higher seed advances (P18; Armageddon is slice 2).
@@ -441,9 +463,13 @@ final class TournamentRunner
             ->where('status', ChessGameStatus::Aborted)->count();
     }
 
-    public static function drawnReplays(): int
+    /**
+     * Replays of a drawn knockout game; a casual cup always has two (the
+     * colours swapped, then Armageddon, P25).
+     */
+    public static function drawnReplays(?Tournament $tournament = null): int
     {
-        return max(0, (int) config('esports.tournaments.drawn_replays', 2));
+        return $tournament?->isCasualCup() ? CasualCups::ARMAGEDDON_AFTER_DRAWS : max(0, (int) config('esports.tournaments.drawn_replays', 2));
     }
 
     public static function firstMoveRestarts(): int
@@ -561,6 +587,11 @@ final class TournamentRunner
      */
     private function doubleNoShow(TournamentMatch $match): array
     {
+        // A casual cup decides as at its deadlines (P25): who tried to play, else a draw of lots.
+        if ($match->tournament->isCasualCup()) {
+            return CasualCups::decision($match->tournament, $match);
+        }
+
         if (! self::allowsDraw($match)) {
             return $this->seedDecision($match, 'noshow');
         }

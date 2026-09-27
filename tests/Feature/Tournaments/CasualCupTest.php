@@ -1,0 +1,348 @@
+<?php
+
+use App\Enums\ChessGameStatus;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Enums\TournamentStatus;
+use App\Models\ChessGame;
+use App\Models\NostrEvent;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
+use App\Models\TournamentRound;
+use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessInvites;
+use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Engine\BracketBuilder;
+use App\Support\Tournaments\Engine\Entrant;
+use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
+use App\Support\Tournaments\TournamentScheduler;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Tests\Support\TestSigner;
+
+/*
+|--------------------------------------------------------------------------
+| Automatic casual cups (P25, CasualCups)
+|--------------------------------------------------------------------------
+|
+| One open cup per enabled game, opened by the tournament clock and numbered
+| without gaps; sign-up starts it when full, at the close with enough
+| players, else extends once and then calls it off. A double elimination
+| bracket played in round windows; the league decides what is left at a
+| deadline; chess draws go to a second game and then Armageddon.
+|
+*/
+
+beforeEach(function () {
+    Queue::fake();
+    config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess']]);
+    $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
+});
+
+/** The open cup of chess, if any. */
+function openCup(): ?Tournament
+{
+    return Tournament::query()->where('cup_open_series', 'chess')->first();
+}
+
+/** `$n` keyed players signed up solo to the cup. */
+function cupSignups(Tournament $cup, int $n): void
+{
+    foreach (range(1, $n) as $ignored) {
+        [$player, $signer] = keyedPlayer();
+        soloSignup($cup->refresh(), $player, $signer);
+    }
+}
+
+/** A running chess cup of `$n` players, bracket stored; no round open yet. */
+function runningCup(int $n): Tournament
+{
+    $cup = Tournament::factory()->create([
+        'name' => 'Chess Casual Cup #1', 'format' => TournamentFormat::DoubleElimination,
+        'options' => FormatOptions::fromArray(['grandFinal' => 'single'], GameProfile::for('chess', 'blitz'))->toArray(),
+        'capacity' => 16, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
+        'slug' => 'chess-casual-cup-1-'.fake()->unique()->numberBetween(1, 1_000_000), 'starts_at' => now(), 'created_by_id' => null,
+        'cup_series' => 'chess', 'cup_number' => 1, 'cup_open_series' => 'chess',
+    ]);
+
+    foreach (range(1, $n) as $index) {
+        $user = User::factory()->create();
+        TournamentParticipant::query()->create(['tournament_id' => $cup->id, 'user_id' => $user->id, 'name' => "Player {$index}", 'rating' => 1000 + 10 * $index, 'members' => [$user->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($cup, str_repeat('cd', 32));
+    app(TournamentRunner::class)->sync($cup);
+
+    return $cup->refresh();
+}
+
+function cupTick(): array
+{
+    return app(TournamentScheduler::class)->tick();
+}
+
+/** The ready matches of the cup's open round, with slots and games. */
+function openCupMatches(Tournament $cup)
+{
+    return TournamentMatch::query()->where('tournament_id', $cup->id)->where('status', 'ready')->where('bracket', '!=', 'bye')
+        ->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))->with(['slots.participant', 'round.stage', 'chessGame'])->orderBy('id')->get();
+}
+
+/* ---------- Opening and numbering --------------------------------------------------------------------------- */
+
+test('two ticks open exactly one chess cup, published by the league like an admin tournament', function () {
+    cupTick();
+    cupTick();
+
+    $cup = Tournament::query()->sole();
+
+    expect($cup->name)->toBe('Chess Casual Cup #1')
+        ->and($cup->status)->toBe(TournamentStatus::Signup)
+        ->and($cup->format)->toBe(TournamentFormat::DoubleElimination)
+        ->and($cup->formatOptions()->grandFinal)->toBe('single')
+        ->and($cup->capacity)->toBe(16)
+        ->and($cup->ladder_address)->toBeNull()
+        ->and($cup->signup_closes_at->equalTo(now()->addHours(72)))->toBeTrue()
+        ->and(NostrEvent::query()->findOrFail($cup->event_id)->kind)->toBe(Tournament::CALENDAR_EVENT);
+});
+
+test('a concurrent run that opened the cup first leaves one cup, not two', function () {
+    // The rival commits its cup after this run checked for an open cup and read the next number,
+    // before this run inserts (outside its transaction, so the rival stays): only the unique indexes stop it.
+    $rival = null;
+    DB::listen(function ($query) use (&$rival) {
+        if ($rival === null && str_contains($query->sql, 'max("cup_number")')) {
+            $rival = Tournament::factory()->create([
+                'name' => 'Chess Casual Cup #1', 'created_by_id' => null, 'status' => TournamentStatus::Signup,
+                'cup_series' => 'chess', 'cup_number' => 1, 'cup_open_series' => 'chess',
+            ]);
+        }
+    });
+
+    expect(app(CasualCups::class)->ensure('chess'))->toBeNull()
+        ->and($rival)->not->toBeNull()
+        ->and(Tournament::query()->where('cup_series', 'chess')->pluck('id')->all())->toBe([$rival->id]);
+});
+
+test('the next cup opens a day after the last final, and a called-off cup gives its number back', function () {
+    cupTick();
+    openCup()->forceFill(['status' => TournamentStatus::Finished])->save();
+
+    cupTick();
+    expect(openCup())->toBeNull();
+
+    $this->travel(23)->hours();
+    cupTick();
+    expect(openCup())->toBeNull();
+
+    $this->travel(1)->hours();
+    cupTick();
+    $second = openCup();
+    expect($second->name)->toBe('Chess Casual Cup #2');
+
+    // #2 gets nobody: extended once, then called off; its number is free again.
+    $this->travel(72)->hours();
+    cupTick();
+    $this->travel(48)->hours();
+    cupTick();
+
+    expect($second->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and($second->cup_number)->toBeNull();
+
+    $this->travel(24)->hours();
+    cupTick();
+
+    expect(openCup()->name)->toBe('Chess Casual Cup #2')
+        ->and(Tournament::query()->where('cup_series', 'chess')->count())->toBe(3);
+});
+
+/* ---------- Sign-up ----------------------------------------------------------------------------------------- */
+
+test('a full cup closes sign-up at once and commits its draw', function () {
+    config(['esports.casual_cups.capacity' => 8]);
+    Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
+    cupTick();
+    $cup = openCup();
+    cupSignups($cup, 8);
+
+    cupTick();
+
+    expect($cup->refresh()->status)->toBe(TournamentStatus::Drawing)
+        ->and($cup->draw_height)->toBe(900001)
+        ->and($cup->signup_closes_at->lessThanOrEqualTo(now()))->toBeTrue();
+});
+
+test('at the close six players start the cup, five extend sign-up once and are then called off with a notice', function () {
+    Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
+    cupTick();
+    $six = openCup();
+    cupSignups($six, 6);
+    $six->forceFill(['cup_open_series' => null])->save();
+    cupTick();
+    $five = openCup();
+    cupSignups($five, 5);
+
+    $this->travel(72)->hours();
+    cupTick();
+
+    expect($six->refresh()->status)->toBe(TournamentStatus::Drawing)
+        ->and($five->refresh()->status)->toBe(TournamentStatus::Signup)
+        ->and($five->cup_extended_at)->not->toBeNull()
+        ->and($five->signup_closes_at->equalTo(now()->addHours(48)))->toBeTrue();
+
+    $this->travel(48)->hours();
+    cupTick();
+
+    $player = User::query()->findOrFail($five->signups()->firstOrFail()->members[0]);
+
+    expect($five->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and($five->cup_open_series)->toBeNull()
+        ->and(NostrEvent::query()->findOrFail($five->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ')
+        ->and($player->notifications()->count())->toBe(1);
+});
+
+/* ---------- The bracket ------------------------------------------------------------------------------------- */
+
+test('six players fill an 8-slot double elimination with byes for the top seeds, twelve a 16-slot one; seeding ignores Elo', function (int $n, int $byes, int $upperFirst) {
+    $entrants = array_map(fn (int $id) => new Entrant($id), range(1, $n));
+    $options = FormatOptions::fromArray(['grandFinal' => 'single'], GameProfile::for('chess', 'blitz'));
+    $bracket = BracketBuilder::build(TournamentFormat::DoubleElimination, $entrants, $options, str_repeat('ab', 32));
+    $keys = array_map(fn ($match) => $match->key, $bracket->matches);
+    $firstRound = array_values(array_filter($bracket->matches, fn ($match) => $match->bracket === 'upper' && str_starts_with($match->key, 'u1-')));
+    $playing = array_merge(...array_map(fn ($match) => array_map(fn ($slot) => $slot->entrant, $match->slots), $firstRound));
+    $lowerFirst = collect($bracket->matches)->first(fn ($match) => $match->bracket === 'lower');
+
+    expect($firstRound)->toHaveCount($upperFirst)
+        // The byes: the top seeds play no first-round match.
+        ->and(array_values(array_intersect(array_slice($bracket->seeds, 0, $byes), $playing)))->toBe([])
+        ->and($keys)->toContain('gf')
+        ->and($keys)->not->toContain('gf2')
+        // The lower bracket starts from upper-bracket losers.
+        ->and($lowerFirst->slots[0]->take)->toBe('loser');
+})->with([
+    '6 players' => [6, 2, 2],
+    '12 players' => [12, 4, 4],
+]);
+
+test('a cup seeds at random, not by rating', function () {
+    $cup = runningCup(8);
+    $bySeed = TournamentParticipant::query()->where('tournament_id', $cup->id)->orderBy('seed')->pluck('rating')->all();
+
+    expect($bySeed)->not->toBe(collect($bySeed)->sortDesc()->values()->all());
+});
+
+/* ---------- Round windows ----------------------------------------------------------------------------------- */
+
+test('round 1 opens with a 48 h window; nothing starts before the auto slot, the league starts it at 20:00 Berlin on the last evening', function () {
+    $cup = runningCup(4);
+    cupTick();
+
+    $round = TournamentRound::query()->whereNotNull('window_ends_at')->sole();
+    $slot = CasualCups::autoSlot($round->window_ends_at);
+
+    expect($round->window_ends_at->equalTo(now()->addHours(48)))->toBeTrue()
+        ->and($slot->setTimezone('Europe/Berlin')->format('Y-m-d H:i'))->toBe('2026-10-06 20:00')
+        ->and($cup->refresh()->starts_at->equalTo(now()))->toBeTrue()
+        ->and(ChessGame::query()->count())->toBe(0);
+
+    $this->travelTo($slot->subMinute());
+    cupTick();
+    expect(ChessGame::query()->count())->toBe(0);
+
+    $this->travelTo($slot);
+    cupTick();
+    expect(ChessGame::query()->whereNotNull('tournament_match_id')->count())->toBe(2);
+});
+
+test('"Play your cup match": the opponent accepts and the match game starts with the bracket colours', function () {
+    $cup = runningCup(4);
+    cupTick();
+    $match = openCupMatches($cup)->first();
+    [$white, $black] = matchPlayers($match);
+    $invites = app(ChessInvites::class);
+
+    $invite = $invites->inviteToCupMatch($black, $match);
+    $game = $invites->accept($invite, $white);
+
+    expect($game->tournament_match_id)->toBe($match->id)
+        ->and($game->white_id)->toBe($white->id)
+        ->and($invite->refresh()->chess_game_id)->toBe($game->id)
+        ->and($game->status)->toBe(ChessGameStatus::Active);
+});
+
+test('at the deadline the one who tried to play advances, else a draw of lots decides', function () {
+    $cup = runningCup(4);
+    cupTick();
+    [$first, $second] = openCupMatches($cup)->all();
+    [, $keen] = matchPlayers($first);
+    app(ChessInvites::class)->inviteToCupMatch($keen, $first);
+    // Nobody plays by the deadline (it comes before the auto slot here).
+    TournamentRound::query()->whereNotNull('window_ends_at')->update(['window_ends_at' => now()->subMinute()]);
+
+    cupTick();
+
+    $first->refresh();
+    $second->refresh();
+
+    expect($first->result['winner'])->toBe(1)
+        ->and($first->result['decided'])->toBe('acted')
+        ->and($first->result['by'])->toBe('league')
+        ->and($second->result['decided'])->toBe('lot')
+        ->and($second->result['label'])->toBe('advanced by draw')
+        ->and(ChessGame::query()->count())->toBe(0);
+});
+
+test('a round opened near the hard cap ends at the cap, 14 days after the start', function () {
+    $cup = runningCup(4);
+    cupTick();
+    $cup->refresh()->forceFill(['starts_at' => now()->subDays(13)])->save();
+
+    foreach (openCupMatches($cup) as $match) {
+        app(TournamentRunner::class)->store($match, ['winner' => 0, 'games_won' => [1.0, 0.0], 'points' => [], 'forfeit' => false, 'label' => '1–0', 'by' => 'players']);
+    }
+
+    app(TournamentRunner::class)->sync($cup->refresh());
+    cupTick();
+
+    $second = TournamentRound::query()->whereNotNull('window_ends_at')->orderByDesc('id')->firstOrFail();
+
+    expect($second->number)->toBe(2)
+        ->and($second->window_ends_at->equalTo(now()->addDay()))->toBeTrue();
+});
+
+/* ---------- Chess draws ------------------------------------------------------------------------------------- */
+
+test('a drawn cup game is played again with the colours swapped, then Armageddon, where a draw advances Black', function () {
+    $cup = runningCup(2);
+    cupTick();
+    $match = openCupMatches($cup)->sole();
+    [$slotZero] = matchPlayers($match);
+    $service = app(ChessGameService::class);
+    $invite = app(ChessInvites::class)->inviteToCupMatch($slotZero, $match);
+    app(ChessInvites::class)->accept($invite, matchPlayers($match)[1]);
+    $whites = [];
+
+    foreach (range(1, 3) as $number) {
+        $game = ChessGame::query()->where('tournament_match_id', $match->id)->latest('id')->firstOrFail();
+        expect($game->status)->toBe(ChessGameStatus::Active);
+        $whites[] = $game->white_id;
+        $service->offerDraw($game, $game->white);
+        $service->acceptDraw($game->refresh(), $game->black);
+    }
+
+    $match->refresh();
+    $armageddon = ChessGame::query()->where('tournament_match_id', $match->id)->latest('id')->firstOrFail();
+
+    expect(ChessGame::query()->count())->toBe(3)
+        ->and($whites[1])->not->toBe($whites[0])
+        ->and($match->result['decided'])->toBe('armageddon')
+        ->and($match->slots[$match->result['winner']]->participant->user_id)->toBe($armageddon->black_id)
+        ->and($cup->refresh()->status)->toBe(TournamentStatus::Finished);
+});

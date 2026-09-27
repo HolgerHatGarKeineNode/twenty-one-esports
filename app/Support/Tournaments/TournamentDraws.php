@@ -111,6 +111,11 @@ final class TournamentDraws
             $solos = $signups->whereNull('lineup_id');
             $entries = $signups->whereNotNull('lineup_id')->count() + intdiv($solos->count(), $size);
 
+            // A casual cup short of players stays in sign-up: CasualCups extends it once or calls it off (P25).
+            if ($locked->isCasualCup() && $entries < CasualCups::minPlayers()) {
+                return false;
+            }
+
             if ($entries < 2) {
                 $locked->forceFill(['status' => TournamentStatus::Cancelled])->save();
 

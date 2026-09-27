@@ -56,6 +56,18 @@ final class TournamentPublisher
             throw new TournamentRuleViolation('deadline', __('Sign-up has to close in the future, at the latest when the tournament starts.'));
         }
 
+        return $this->openSignup($tournament, $signupClosesAt);
+    }
+
+    /**
+     * Publish without an organizer: the league's own automatic casual cups
+     * (P25, CasualCups), which the user approved for public posting. Same
+     * events and rules as publish(), in the caller's transaction if any.
+     *
+     * @throws TournamentRuleViolation without the league key
+     */
+    public function openSignup(Tournament $tournament, CarbonImmutable $signupClosesAt): Tournament
+    {
         $league = LeagueKey::fromConfig()
             ?? throw new TournamentRuleViolation('no_league_key', __('The league key is not set up, so nothing can be published yet.'));
 
@@ -80,7 +92,8 @@ final class TournamentPublisher
                 'status' => TournamentStatus::Signup,
                 'published_at' => now(),
                 // Frozen with the first version (NIP rev. 7): no open ladder now = unrated for the whole run.
-                'ladder_address' => $locked->event_id === null ? Ladders::address($locked->game, $locked->mode) : $locked->ladder_address,
+                // A casual cup never freezes one (P25: casual only, no rated Elo).
+                'ladder_address' => $locked->isCasualCup() ? null : ($locked->event_id === null ? Ladders::address($locked->game, $locked->mode) : $locked->ladder_address),
             ]);
 
             $event = $league->publish(Tournament::CALENDAR_EVENT, $this->tags($locked, $league->pubkey()), $this->content($locked), $eventAt);
@@ -206,8 +219,11 @@ final class TournamentPublisher
     {
         $start = $tournament->starts_at->getTimestamp();
         $profile = $tournament->profile();
+        // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap.
         $end = $tournament->pool_closed_at?->getTimestamp()
-            ?? $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60));
+            ?? ($tournament->isCasualCup()
+                ? $start + CasualCups::maxDays() * 86400
+                : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
         $page = route('tournaments.show', $tournament);
         // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
         $calledOff = $tournament->status === TournamentStatus::Cancelled;
@@ -272,9 +288,11 @@ final class TournamentPublisher
     {
         $profile = $tournament->profile();
         $lines = [$this->summary($tournament)];
-        $lines[] = $profile->entersTeams()
+        $lines[] = $tournament->isCasualCup()
+            ? 'A casual cup the league opens on its own: players are seeded at random from the draw\'s block hash, and each round is played within its window; what is not played by the deadline the league decides (whoever tried to play advances, else a visible draw of lots).'
+            : ($profile->entersTeams()
             ? 'Clan lineups are seeded by their rating at registration close; the mix teams of the solo draw follow in draw order.'
-            : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.';
+            : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.');
         $lines[] = $tournament->isDirectorMode()
             ? 'Results are entered by the tournament directors.'
             : 'Players report results and the other side accepts them.';

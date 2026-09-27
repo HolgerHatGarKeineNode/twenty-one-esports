@@ -18,6 +18,9 @@ use Throwable;
  * (`tournaments:tick`, routes/console.php) that moves every tournament on
  * and applies the deadlines that are due.
  *
+ * 0. The league's casual cups (P25, CasualCups): open the next cup of each
+ *    enabled game, settle cup sign-ups, open cup rounds and decide what is
+ *    past a round's deadline.
  * 1. Sign-ups, draws and brackets: TournamentDraws::advanceDue() (closes
  *    sign-ups, draws from the Bitcoin block, syncs running tournaments and
  *    starts their ready matches). `tournaments:advance` runs only this step.
@@ -46,14 +49,15 @@ final class TournamentScheduler
 
     public const STALE_AFTER_SECONDS = 300;
 
-    public function __construct(private TournamentDraws $draws, private SeriesService $series) {}
+    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups) {}
 
     /**
-     * @return array{closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int}
+     * @return array{cups: array{opened: int, extended: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int}
      */
     public function tick(): array
     {
-        $done = $this->draws->advanceDue();
+        $cups = $this->cups->tick();
+        $done = ['cups' => $cups, ...$this->draws->advanceDue()];
 
         $done['forfeited'] = $this->each($this->timed()->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'),
             fn (SeriesMatch $match): bool => $this->series->forfeitNoShow($match));
