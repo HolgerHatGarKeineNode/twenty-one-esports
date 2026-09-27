@@ -54,9 +54,111 @@
 # phpunit.xml's non-forced <env> entries, which is how
 # BROADCAST_CONNECTION=reverb reaches the tests.
 #
+# LOCKING. Concurrent sessions in this fleet serialise browser runs with
+#   flock /tmp/claude-<uid>/esports-browser.lock bash scripts/test-browser.sh [args]
+# because two Reverb/Playwright/LaravelHttpServer stacks racing for the same
+# build output would flake. That convention has a sharp edge: plain
+# `flock FILE cmd` (no -o) leaves the lock's file descriptor OPEN in `cmd`
+# and everything `cmd` forks — including, several layers down, the
+# `playwright run-server` node process Pest spawns per run. flock(2) locks
+# belong to the *open file description*, not the process that first opened
+# it, so if the supervising chain (flock -> this script -> php artisan pest)
+# is killed or times out while that grandchild is still alive, the
+# grandchild survives as an orphan (reparented to the user's systemd
+# instance, per `ps`), keeps that inherited fd open, and the lock never
+# releases — every later `flock` call queues behind a lock nobody is still
+# using. Measured 2026-09-27 in this file's own worktree: SIGTERM to the
+# `flock ... bash scripts/test-browser.sh <file>` top process while its
+# `playwright run-server` grandchild was live left that grandchild running
+# with `/proc/<pid>/fd/3 -> .../esports-browser.lock` still open, and the
+# very next `flock -n` on that file failed immediately afterwards, even
+# though every process in the original supervising chain was already gone.
+#
+# Fix, in three parts:
+#   1. This script takes its OWN lock with `flock -o` (close-on-exec before
+#      running the wrapped command), so the lock fd never propagates past
+#      this script's own top-level process — no matter what a grandchild
+#      does or how it dies, it never held a copy to leak. Callers can now
+#      just run `scripts/test-browser.sh` directly, no external flock
+#      needed. Callers who still wrap it in the old
+#      `flock LOCKFILE bash scripts/test-browser.sh` form keep working
+#      without a double-lock deadlock: this script detects an
+#      already-inherited fd on the same lock file (by device:inode, via
+#      /proc/$$/fd) and skips taking its own lock when it finds one.
+#   2. Both run_single and run_shard start their `pest` invocation with
+#      `setsid`, giving it (and everything it forks, including the
+#      playwright run-server several layers down) its own process group,
+#      and trap EXIT/INT/TERM to kill that whole group. A kill or timeout of
+#      this script now takes any playwright run-server (and Reverb) it
+#      started down with it, instead of leaving a fresh orphan behind.
+#   3. A stale-orphan sweep at the top additionally clears out orphans left
+#      by runs that predate this fix, or that were killed with -9 (no trap
+#      catches that): any `playwright run-server` whose cwd is this
+#      worktree, whose parent is not a live process (reparented to
+#      systemd/init), and that has no established connection right now is
+#      killed before a fresh run starts.
+#
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# --- 1. lock wrapper -----------------------------------------------------
+LOCKFILE="${ESPORTS_BROWSER_LOCK:-${TMPDIR:-/tmp}/claude-$(id -u)/esports-browser.lock}"
+
+# True if an ancestor already holds a lock on this exact file — the old
+# `flock LOCKFILE bash scripts/test-browser.sh` convention, which does not
+# close its fd before exec, so a copy of it is inherited here. Matched by
+# device:inode, not by path, so a symlink or a different literal path to
+# the same file is still recognised; a nonexistent lock file (nobody has
+# ever locked it yet) correctly reports "not held".
+esports_browser_lock_already_held() {
+    local target fd cand
+    target=$(stat -c '%d:%i' "$LOCKFILE" 2>/dev/null) || return 1
+    for fd in /proc/$$/fd/*; do
+        [ -e "$fd" ] || continue
+        cand=$(stat -L -c '%d:%i' "$fd" 2>/dev/null) || continue
+        [ "$cand" = "$target" ] && return 0
+    done
+    return 1
+}
+
+if [ -z "${ESPORTS_BROWSER_LOCK_TAKEN:-}" ] && ! esports_browser_lock_already_held; then
+    mkdir -p "$(dirname "$LOCKFILE")"
+    export ESPORTS_BROWSER_LOCK_TAKEN=1
+    exec flock -o "$LOCKFILE" "$0" "$@"
+fi
+# From here on the lock is held either by an ancestor (old-style caller) or
+# by the `flock -o` above wrapping this exact process (self-wrapped) — and
+# in the self-wrapped case, without a copy of its fd for anything below
+# this process to leak.
+
+# --- 3. stale-orphan sweep ------------------------------------------------
+# Clears `playwright run-server` processes left behind by a run of THIS
+# worktree that ended before the trap in run_single/run_shard existed, or
+# that was killed with -9 (no trap can catch that). Scoped to this
+# worktree's cwd, and only touches a process that is (a) reparented — its
+# parent is not a live test-runner process, it shows up under systemd/init —
+# and (b) has no established TCP connection right now.
+esports_sweep_stale_playwright_servers() {
+    local here pid ppid pcomm
+    here=$(pwd -P)
+    for pid in $(pgrep -f 'playwright run-server' 2>/dev/null || true); do
+        [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null)" = "$here" ] || continue
+        ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+        [ -n "$ppid" ] || continue
+        pcomm=$(ps -o comm= -p "$ppid" 2>/dev/null)
+        case "$pcomm" in
+            systemd | init) : ;;
+            *) continue ;; # has a live, recognisable parent -- not an orphan
+        esac
+        if ss -tnp 2>/dev/null | grep -q "pid=$pid,"; then
+            continue # still has a live connection, leave it alone
+        fi
+        echo "test-browser: sweeping orphaned playwright run-server pid=$pid (parent reparented to $pcomm, no live connection)" >&2
+        kill -TERM "$pid" 2>/dev/null || true
+    done
+}
+esports_sweep_stale_playwright_servers
 
 ./scripts/link-host-chromium.sh
 
@@ -110,7 +212,31 @@ run_single() {
     php -r 'exit(@fsockopen("127.0.0.1", (int) $argv[1]) ? 0 : 1);' "$REVERB_PORT" \
         || { echo "test-browser: Reverb did not start on port $REVERB_PORT" >&2; exit 1; }
 
-    vendor/bin/pest --group=browser --no-tia "$@"
+    # setsid makes the pest process its own process group leader (its PID
+    # becomes the group's PID too), so everything it forks -- including the
+    # playwright run-server several layers down -- lives in that group.
+    # Killing the group, not just this one pid, is what keeps a kill or
+    # timeout of this script from leaving that grandchild behind as an
+    # orphan. Not `local`: the trap below runs when this function's process
+    # actually exits (normal completion or a caught signal), which is after
+    # the function would otherwise return, so a `local` would already be
+    # out of scope by then -- see the identical note on `reverb_pid` in
+    # run_shard.
+    setsid vendor/bin/pest --group=browser --no-tia "$@" &
+    pest_pid=$!
+
+    cleanup() {
+        local ec=$?
+        trap - EXIT INT TERM
+        kill -TERM -- -"$pest_pid" 2>/dev/null || true
+        kill "$REVERB_PID" 2>/dev/null || true
+        exit "$ec"
+    }
+    trap cleanup EXIT INT TERM
+
+    status=0
+    wait "$pest_pid" || status=$?
+    return "$status"
 }
 
 run_shard() {
@@ -149,7 +275,26 @@ run_shard() {
     php -r 'exit(@fsockopen("127.0.0.1", (int) $argv[1]) ? 0 : 1);' "$port" \
         || { echo "test-browser: shard $idx: Reverb did not start on port $port" >&2; exit 1; }
 
-    vendor/bin/pest --group=browser --no-tia "${files[@]}"
+    # Same reasoning as run_single: setsid puts pest (and everything it
+    # forks, including a playwright run-server) in its own process group,
+    # so this shard's cleanup trap can kill that whole group instead of
+    # leaving a grandchild behind as an orphan if this shard is killed or
+    # times out. Not `local`, for the same reason as `reverb_pid` above.
+    setsid vendor/bin/pest --group=browser --no-tia "${files[@]}" &
+    pest_pid=$!
+
+    cleanup() {
+        local ec=$?
+        trap - EXIT INT TERM
+        kill -TERM -- -"$pest_pid" 2>/dev/null || true
+        kill "$reverb_pid" 2>/dev/null || true
+        exit "$ec"
+    }
+    trap cleanup EXIT INT TERM
+
+    status=0
+    wait "$pest_pid" || status=$?
+    return "$status"
 }
 
 if [ "$#" -gt 0 ]; then
