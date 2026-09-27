@@ -9,6 +9,7 @@ use App\Support\LeagueTime;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -24,7 +25,7 @@ use Tests\Support\TestSigner;
 | page and every card in Berlin time with MEZ or MESZ, whichever the date
 | has. An unchanged edit saves back the stored instant. A time in the spring
 | gap or the autumn hour is refused. The browser twin of the preview runs
-| under Node. The calendar file is UTC.
+| under Node. The calendar file is UTC; the suspects command only reads.
 |
 */
 
@@ -216,4 +217,24 @@ test('cards and lists name the zone: the index, the game page and the admin list
     Admin::query()->create(['pubkey' => $admin->pubkey]);
     $this->actingAs($admin)->get(route('admin.tournaments').'?lang=en')->assertOk()->assertSee('Sat, 3 Oct 2026, 8:00 PM CEST');
     expect($tournament->status)->toBe(TournamentStatus::Signup);
+});
+
+test('the suspects command lists starts that may have been read as UTC and changes nothing', function () {
+    $before = CarbonImmutable::parse('2026-09-20 10:00', 'UTC');
+    $suspect = Tournament::factory()->create(['name' => 'Early Cup', 'created_by_id' => organizer()->id, 'created_at' => $before, 'starts_at' => CarbonImmutable::parse('2026-10-03 19:00', 'UTC')]);
+    $resaved = Tournament::factory()->create(['name' => 'Fixed Cup', 'created_by_id' => organizer()->id, 'created_at' => $before]);
+    TournamentModerationEntry::query()->create(['tournament_id' => $resaved->id, 'user_name' => 'x', 'action' => 'edited', 'details' => ['starts_at' => ['a', 'b']]]);
+    Tournament::factory()->create(['name' => 'Late Cup', 'created_by_id' => organizer()->id]);
+    $snapshot = Tournament::query()->orderBy('id')->get()->map->only(['id', 'starts_at', 'updated_at'])->toJson();
+
+    $this->artisan('tournaments:zone-suspects')->assertSuccessful()
+        ->expectsOutputToContain('Read-only')
+        ->expectsOutputToContain('1 suspect(s)');
+
+    Artisan::call('tournaments:zone-suspects');
+    $output = Artisan::output();
+
+    expect($output)->toContain('Early Cup')->toContain('2026-10-03 19:00 UTC')->toContain('2026-10-03 17:00 UTC')
+        ->not->toContain('Fixed Cup')->not->toContain('Late Cup')
+        ->and(Tournament::query()->orderBy('id')->get()->map->only(['id', 'starts_at', 'updated_at'])->toJson())->toBe($snapshot);
 });
