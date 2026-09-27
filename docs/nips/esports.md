@@ -2704,6 +2704,22 @@ The league notifies players by Nostr DM from a dedicated **notification key**, b
 - **Why its own key.** It signs on the server, automatically, all the time. A leak lets someone send
   fake notifications, not fake results.
 
+### Casual 1v1 queue
+
+Rocket League and EA Sports FC 26/27 have an instant casual 1v1 without a clan: a queue per game,
+direct invites to players looking for that game, a ready check, a host drawn at random, and league
+deadlines for the lobby, joining, no-shows, the report and its answer. Casual games never produce
+match-flow events ("Game registry"), so none of this is on Nostr except the notifications, which are
+ordinary notification DMs as above:
+
+- **Opponent found** (ready check), **1v1 invite**, **lobby shared**, **no-show claimed against
+  you**, **result to confirm** and **result**, each its own opt-in type.
+- By default only **no-show claimed** and **result to confirm** go out as a DM: both run on a
+  deadline an offline player has to act on (five and thirty minutes by default).
+- **Never the lobby.** The DM says that the lobby was shared, never its name, password or an EA ID;
+  the players exchange those end-to-end encrypted in the match chat, and the league refuses to store
+  them for a casual 1v1: it keeps only the fact that the lobby was shared and that the guest joined.
+
 ## Prize pool funding
 
 **Revision 9.1: a tournament's pot is always its own wallet.** Every prize pot is a wallet of the
