@@ -124,3 +124,12 @@ test('Tournaments in row 1 and the tab bar counts the tournaments open for sign-
         ->toContain('data-test="tab-tournaments-dot"')
         ->and(ShellNavigation::current()->tournaments()['open'])->toBe(2);
 });
+
+test('the active game holds the first tab, so narrow widths that hide the last tabs still show it', function () {
+    $html = $this->get(route('games.series', 'ea-sports-fc-26'))->assertOk()->getContent();
+
+    preg_match_all('/data-test="game-tab-([a-z0-9-]+)"/', $html, $tabs);
+
+    expect($tabs[1][0] ?? null)->toBe('ea-sports-fc-26')
+        ->and(array_unique($tabs[1]))->toHaveCount(count($tabs[1]));
+});

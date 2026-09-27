@@ -98,21 +98,19 @@ final class ShellNavigation
     }
 
     /**
-     * The game tabs of row 1: the first TABS games, and the active game in
-     * the last slot when it is not among them.
+     * The game tabs of row 1: the active game first, then the next games in
+     * their usual order, TABS in all. Narrower widths hide tabs from the end
+     * (the gtab-N tiers), so the active game has to hold the first slot to
+     * stay visible at every width.
      *
      * @return list<NavGame>
      */
     public function tabs(): array
     {
-        $tabs = array_slice($this->games(), 0, self::TABS);
         $active = $this->activeGame();
+        $others = array_values(array_filter($this->games(), fn (array $game): bool => $game['slug'] !== $active['slug']));
 
-        if (! in_array($active['slug'], array_column($tabs, 'slug'), true)) {
-            $tabs[count($tabs) - 1] = $active;
-        }
-
-        return $tabs;
+        return [$active, ...array_slice($others, 0, self::TABS - 1)];
     }
 
     /** @return NavGame */
