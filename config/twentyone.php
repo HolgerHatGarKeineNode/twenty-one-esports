@@ -189,11 +189,13 @@ return [
         | request for the playlist to a unix datagram socket the daemon binds,
         | `<dir>/viewers.sock`,
         |
-        |   log_format twentyone_hls escape=json '$remote_addr|$http_user_agent|$status';
-        |   access_log syslog:server=unix:<dir>/viewers.sock,nohostname,tag=hls twentyone_hls;
+        |   access_log syslog:server=unix:<dir>/viewers.sock,nohostname,tag=hls combined;
         |
-        | (log_format at http level, access_log only in the location serving
-        | /live/*.m3u8). `dir` is private: owned by the daemon's user, no
+        | inside the location that serves only /live/*.m3u8 (prod: the nested
+        | `location ~ \.m3u8$` of /live/). The built-in `combined` format is used
+        | because Forge edits only the server block, where log_format is not
+        | allowed; a custom `$remote_addr|$http_user_agent|$status` format at
+        | http level is read as well. `dir` is private: owned by the daemon's user, no
         | access for others, search access for `nginx_user` by ACL (setfacl;
         | '' = none, when nginx runs as the daemon's user). A viewer is a
         | distinct IP + user agent with a 200/206/304 within `window_seconds`;

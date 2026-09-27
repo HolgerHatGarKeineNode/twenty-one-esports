@@ -159,3 +159,15 @@ test('a changed viewer count is republished at most once a minute', function () 
 
     expect([$schedule->due($three, 59), $schedule->due($four, 59), $schedule->due($four, 60)])->toBe([false, false, true]);
 });
+
+test("nginx's built-in combined format counts too, for a server block that cannot define a log format", function () {
+    $counter = new ViewerCounter(20);
+    $combined = fn (string $address, string $agent, string $status = '200'): string => "<190>Sep 27 12:00:00 hls: {$address} - - [27/Sep/2026:12:00:00 +0000] \"GET /live/stream.m3u8 HTTP/2.0\" {$status} 1432 \"https://zap.stream/\" \"{$agent}\"";
+
+    expect($counter->record($combined('203.0.113.7', 'Mozilla/5.0 (X11; Linux x86_64) Firefox/131.0'), 100))->toBeTrue()
+        ->and($counter->record($combined('2001:db8::1', 'Mozilla/5.0 \x22quoted\x22 Safari/605.1'), 100))->toBeTrue()
+        ->and($counter->record($combined('203.0.113.8', 'Mozilla/5.0 Firefox/131.0', '404'), 100))->toBeFalse()
+        ->and($counter->record($combined('203.0.113.9', 'curl/8.9.1'), 100))->toBeFalse()
+        ->and($counter->record($combined('not-an-ip', 'Mozilla/5.0 Firefox/131.0'), 100))->toBeFalse()
+        ->and($counter->count(100))->toBe(2);
+});

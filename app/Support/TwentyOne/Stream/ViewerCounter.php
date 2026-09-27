@@ -28,6 +28,14 @@ final class ViewerCounter
      */
     private const SYSLOG_FRAME = '/^<\d{1,3}>[A-Z][a-z]{2} [ \d]\d \d{2}:\d{2}:\d{2} (?:\S+ )?[^\s:]+: (.*)$/s';
 
+    /**
+     * nginx's built-in `combined` format, for a site whose config cannot define a
+     * log_format (Forge edits only the server block): `$remote_addr - $remote_user
+     * [$time_local] "$request" $status $body_bytes_sent "$http_referer"
+     * "$http_user_agent"`. nginx escapes a quote inside a value as \x22.
+     */
+    private const COMBINED = '/^(\S+) - \S+ \[[^\]]*\] "[^"]*" (\d{3}) \S+ "[^"]*" "([^"]*)"$/';
+
     /** @var array<string, int> sha1(ip|ua) => last seen, oldest first */
     private array $lastSeen = [];
 
@@ -49,8 +57,9 @@ final class ViewerCounter
     }
 
     /**
-     * One datagram from the socket: a syslog frame around
-     * `$remote_addr|$http_user_agent|$status`. Anything else is ignored.
+     * One datagram from the socket: a syslog frame around either
+     * `$remote_addr|$http_user_agent|$status` or nginx's `combined` line.
+     * Anything else is ignored.
      *
      * @return bool whether it counted as a viewer
      */
@@ -61,17 +70,22 @@ final class ViewerCounter
         }
 
         $message = $frame[1];
-        $first = strpos($message, '|');
-        $last = strrpos($message, '|');
 
-        // The user agent may contain "|" itself: the address is before the first, the status after the last.
-        if ($first === false || $first === $last) {
-            return false;
+        if (preg_match(self::COMBINED, $message, $combined) === 1) {
+            [, $address, $status, $agent] = $combined;
+        } else {
+            $first = strpos($message, '|');
+            $last = strrpos($message, '|');
+
+            // The user agent may contain "|" itself: the address is before the first, the status after the last.
+            if ($first === false || $first === $last) {
+                return false;
+            }
+
+            $address = substr($message, 0, $first);
+            $agent = substr($message, $first + 1, $last - $first - 1);
+            $status = substr($message, $last + 1);
         }
-
-        $address = substr($message, 0, $first);
-        $agent = substr($message, $first + 1, $last - $first - 1);
-        $status = substr($message, $last + 1);
 
         if (filter_var($address, FILTER_VALIDATE_IP) === false || ! in_array($status, self::COUNTED_STATUSES, true)) {
             return false;
