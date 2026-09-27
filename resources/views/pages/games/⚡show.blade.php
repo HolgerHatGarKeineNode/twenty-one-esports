@@ -411,7 +411,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             'outcome' => ['win' => __('Win'), 'loss' => __('Loss'), 'draw' => __('Draw'), 'aborted' => __('Game aborted'), 'wins' => __(':name wins')],
             'reasons' => ['checkmate' => __('Checkmate'), 'resignation' => __('Resignation'), 'timeout' => __('Out of time'), 'agreement' => __('Draw by agreement'),
                 'stalemate' => __('Stalemate'), 'threefold_repetition' => __('Threefold repetition'), 'fifty_move_rule' => __('50-move rule'),
-                'insufficient_material' => __('Insufficient material'), 'aborted' => __('Aborted')],
+                'insufficient_material' => __('Insufficient material'), 'aborted' => __('Aborted'), 'abandoned' => __('Opponent left'),
+                'director' => __('Entered by the tournament director'), 'forfeit' => __('won by forfeit: opponent did not start')],
             'errors' => ['illegal_move' => __('That move is not legal here.'), 'not_your_turn' => __('It is not your turn.'),
                 'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                 'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
@@ -490,6 +491,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $viewer = auth()->user();
     $color = $game->colorOf($viewer);
     $live = $game->status === ChessGameStatus::Active;
+    // A tournament game cannot be aborted: a missed first move is a forfeit (P18).
+    $abortable = $game->tournament_match_id === null;
     $players = ['w' => $this->player($game->white), 'b' => $this->player($game->black)];
     $opponent = $color === null ? null : $players[$color === 'w' ? 'b' : 'w'];
 @endphp
@@ -767,10 +770,12 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 {{-- Actions --}}
                 <div class="order-5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_44px] gap-2 lg:order-none lg:col-start-2 lg:row-start-4">
                     @if ($color)
-                        <template x-if="state.status === 'active' && state.ply < 2">
-                            <button type="button" x-on:click="confirm = 'abort'" data-test="abort" class="col-span-2 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Abort game') }}</button>
-                        </template>
-                        <template x-if="state.status !== 'active' || state.ply >= 2">
+                        @if ($abortable)
+                            <template x-if="state.status === 'active' && state.ply < 2">
+                                <button type="button" x-on:click="confirm = 'abort'" data-test="abort" class="col-span-2 inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Abort game') }}</button>
+                            </template>
+                        @endif
+                        <template x-if="{{ $abortable ? "state.status !== 'active' || state.ply >= 2" : 'true' }}">
                             <div class="col-span-2 grid grid-cols-2 gap-2">
                                 <x-button variant="quiet" icon="draw" class="px-3 whitespace-nowrap disabled:opacity-50" x-on:click="call('offerDraw')" x-bind:disabled="state.status !== 'active' || state.drawOffer === color" data-test="offer-draw">
                                     <span x-text="state.drawOffer === color ? t.drawOffered : t.offerDraw"></span>

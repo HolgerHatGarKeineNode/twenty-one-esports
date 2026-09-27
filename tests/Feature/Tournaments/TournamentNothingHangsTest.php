@@ -147,6 +147,17 @@ test('blitz: a side that misses its first move loses the tournament match by for
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
 });
 
+test('the board of a tournament game offers no abort before the first moves; a normal game still does', function () {
+    $game = p18Game(runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players));
+    [$white, $black] = [User::factory()->create(), User::factory()->create()];
+    $casual = app(ChessGameService::class)->start($white, $black);
+
+    $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
+        ->assertDontSee('data-test="abort"', false)->assertSee('data-test="resign"', false);
+    $this->actingAs($white)->get(route('games.show', $casual))->assertOk()
+        ->assertSee('data-test="abort"', false);
+});
+
 test('daily: White who never moves within the day loses by forfeit to a Black who opened the board', function () {
     $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players, chessMode: 'correspondence');
     $game = p18Game($tournament);

@@ -1,12 +1,16 @@
 <?php
 
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentResultsMode;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\TournamentMatch;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
 use App\Support\Tournaments\TournamentRunner;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -181,4 +185,56 @@ test('sign-up signs in the browser, and the tournament page shows the bracket wi
     expect(implode(' | ', $page->evaluate(TOURNAMENT_STATE)['errors']))->toContain('probe');
 
     fwrite(STDERR, "\n[p8b-tournaments] ".json_encode($measured)."\n");
+});
+
+test('a tournament game offers no abort, and a missed first move ends it on the game-over card with the forfeit reason, at 375 and 1440 px', function () {
+    $measured = [];
+    $page = null;
+
+    foreach ([[375, 812], [1440, 900]] as [$width, $height]) {
+        $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players);
+        $game = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->sole();
+        $white = $game->white;
+        $white->forceFill(['locale' => 'en'])->save();
+
+        $page = tournamentPage($white);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('games.show', $game)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=resign]") !== null', 8_000);
+        $actions = $page->evaluate('() => ({ abort: document.querySelector("[data-test=abort]") !== null, resign: document.querySelector("[data-test=resign]") !== null })');
+
+        // White opens, Black never moves: the first-move window passes and Black forfeits.
+        $game = app(ChessGameService::class)->move($game, $white, 'e2e4');
+        $this->travelTo(CarbonImmutable::createFromTimestampMs((int) $game->deadline_ms)->addSecond());
+        app(ChessGameService::class)->checkClock($game);
+        $page->evaluate('() => Alpine.$data(document.querySelector("[data-test=chess-game]")).resync()');
+        BrowserWait::until($page, '() => document.querySelector("[data-test=outcome]")?.innerText === "Win"', 8_000);
+        tournamentShot($page, "p18-forfeit-{$width}");
+
+        $card = $page->evaluate('() => {
+            const dialog = document.querySelector("[data-test=game-over] [role=dialog]").getBoundingClientRect();
+            const reason = document.querySelector("[data-test=outcome] + span");
+
+            return { left: dialog.left, right: dialog.right, width: dialog.width, height: dialog.height, reason: reason.innerText, clipped: reason.scrollWidth - reason.clientWidth };
+        }');
+        $state = $page->evaluate(TOURNAMENT_STATE);
+        $measured[$width] = $actions + $card + ['overflow' => $state['overflow']];
+
+        expect($actions)->toBe(['abort' => false, 'resign' => true])
+            ->and($card['reason'])->toBe('won by forfeit: opponent did not start')
+            ->and($card['clipped'])->toBeLessThanOrEqual(0)
+            ->and($card['left'])->toBeGreaterThanOrEqual(0)
+            ->and($card['right'])->toBeLessThanOrEqual($width)
+            ->and($state['overflow'])->toBeLessThanOrEqual(0)
+            ->and($state['errors'])->toBe([]);
+
+        $this->travelBack();
+    }
+
+    // Positive control: an error thrown on the page reaches the collector.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("probe"); }, 0); }');
+    BrowserWait::until($page, '() => window.__errors.length > 0', 5_000);
+    expect(implode(' | ', $page->evaluate(TOURNAMENT_STATE)['errors']))->toContain('probe');
+
+    fwrite(STDERR, "\n[p18-forfeit] ".json_encode($measured)."\n");
 });
