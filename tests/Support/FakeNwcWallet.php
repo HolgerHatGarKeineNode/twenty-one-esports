@@ -58,6 +58,9 @@ final class FakeNwcWallet
 
     public bool $ignoreNextRequest = false;
 
+    /** When set, invoices carry this expiry (seconds) whatever the league asked for. */
+    public ?int $invoiceExpiry = null;
+
     /** Runs when a valid request arrives, before it is answered (to change the world mid-request). */
     public ?\Closure $onRequest = null;
 
@@ -237,6 +240,7 @@ final class FakeNwcWallet
      */
     private function makeInvoice(int $amountMsats, ?string $descriptionHash, int $expiry): array
     {
+        $expiry = $this->invoiceExpiry ?? $expiry;
         $fixture = Bolt11Fixture::make($amountMsats, $descriptionHash ?? hash('sha256', ''), $expiry);
         $this->invoices[$fixture['payment_hash']] = ['invoice' => $fixture['invoice'], 'amount_msats' => $amountMsats, 'preimage' => $fixture['preimage'], 'settled_at' => null, 'description_hash' => $descriptionHash];
 

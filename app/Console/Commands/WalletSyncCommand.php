@@ -12,10 +12,11 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * The wallet's routine (P9, scheduled every minute): open invoices into the
- * pots are looked up and settled or expired, and payouts whose attempt did
- * not finish (a timeout, a crashed worker) are continued once their lease
- * has run out. Continuing never starts a new payment: PayoutRunner looks the
+ * The wallet's routine (P9, scheduled every minute): payouts whose attempt
+ * did not finish (a timeout, a crashed worker) are continued once their
+ * lease has run out, then open invoices into the reserve and the
+ * tournaments' pots are looked up and settled or expired; a wallet that
+ * times out is skipped for the rest of the run. Continuing never starts a new payment: PayoutRunner looks the
  * stored invoice up first. Does nothing without the wallet connections.
  */
 #[Signature('wallet:sync')]
@@ -24,9 +25,8 @@ class WalletSyncCommand extends Command
 {
     public function handle(IncomingPayments $payments, PotTopUps $topUps, PayoutRunner $runner): int
     {
-        // The league reserve on the league wallet; each tournament pot on its own wallet.
-        $settled = $payments->checkAll() + $topUps->checkAll();
-
+        // Payouts first, then the league reserve, then the tournaments' own wallets: a slow tournament
+        // wallet's top-up lookups never hold up a payout or the reserve (gate F-B).
         $unfinished = TournamentPayout::query()->where('status', PayoutStatus::Paying)
             ->where(fn ($query) => $query->whereNull('lease_until')->orWhere('lease_until', '<', now()))
             ->where(fn ($query) => $query->whereNull('last_attempt_at')->orWhere('last_attempt_at', '<', now()->subMinute()))
@@ -35,6 +35,9 @@ class WalletSyncCommand extends Command
         foreach ($unfinished as $payout) {
             $runner->run($payout, false);
         }
+
+        $settled = $payments->checkAll();
+        $settled += $topUps->checkAll();
 
         $this->info("{$settled} invoice(s) settled, {$unfinished->count()} unfinished payout(s) checked.");
 

@@ -34,15 +34,23 @@ final class IncomingPayments
      */
     public function check(IncomingPayment $payment, int $minSeconds = 3): IncomingPayment
     {
+        return $this->lookUp($payment, $minSeconds)[0];
+    }
+
+    /**
+     * @return array{0: IncomingPayment, 1: bool} the payment, fresh, and whether the wallet timed out
+     */
+    private function lookUp(IncomingPayment $payment, int $minSeconds): array
+    {
         if ($payment->pot !== IncomingPayment::RESERVE || $payment->status !== IncomingPaymentStatus::Pending
             || ($payment->checked_at !== null && $payment->checked_at->getTimestamp() > now()->getTimestamp() - $minSeconds)) {
-            return $payment;
+            return [$payment, false];
         }
 
         $wallet = ReceivingWallet::fromConfig();
 
         if ($wallet === null) {
-            return $payment;
+            return [$payment, false];
         }
 
         $payment->forceFill(['checked_at' => now()])->save();
@@ -52,7 +60,7 @@ final class IncomingPayments
         } catch (NwcError $error) {
             Log::info('Pool invoice lookup failed', ['payment' => $payment->id, 'code' => $error->errorCode]);
 
-            return $payment;
+            return [$payment, $error->isTimeout()];
         }
 
         if ($transaction !== null && $transaction->isSettled()) {
@@ -61,7 +69,7 @@ final class IncomingPayments
             IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)->update(['status' => IncomingPaymentStatus::Expired]);
         }
 
-        return $payment->refresh();
+        return [$payment->refresh(), false];
     }
 
     /**
@@ -70,12 +78,17 @@ final class IncomingPayments
     public function checkAll(): int
     {
         $settled = 0;
+        $slow = false;
 
         IncomingPayment::query()->where('pot', IncomingPayment::RESERVE)->where('status', IncomingPaymentStatus::Pending)
             ->where('created_at', '>', now()->subDay())
             ->orderBy('id')
-            ->each(function (IncomingPayment $payment) use (&$settled): void {
-                $settled += $this->check($payment, 20)->status === IncomingPaymentStatus::Settled ? 1 : 0;
+            ->each(function (IncomingPayment $payment) use (&$settled, &$slow): bool {
+                [$fresh, $slow] = $this->lookUp($payment, 20);
+                $settled += $fresh->status === IncomingPaymentStatus::Settled ? 1 : 0;
+
+                // A wallet that timed out is not asked again in this run (gate F-B).
+                return ! $slow;
             });
 
         return $settled;

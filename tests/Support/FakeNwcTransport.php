@@ -24,6 +24,9 @@ final class FakeNwcTransport implements NwcTransport
     /** Round trips and fetches asked of this transport (a refused relay must never get here). */
     public int $calls = 0;
 
+    /** @var list<string|null> the wallet pubkey of every request round trip, in order (offline wallets too) */
+    public array $requestsTo = [];
+
     public function __construct(public FakeNwcWallet $wallet) {}
 
     public function add(FakeNwcWallet $wallet): FakeNwcWallet
@@ -48,6 +51,8 @@ final class FakeNwcTransport implements NwcTransport
                 $to = $tag[1] ?? null;
             }
         }
+
+        $this->requestsTo[] = $to;
 
         if (isset($this->offline[$to])) {
             return null;

@@ -3,6 +3,7 @@
 namespace App\Support\Prizes;
 
 use App\Enums\IncomingPaymentStatus;
+use App\Enums\TournamentStatus;
 use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\TournamentSponsor;
@@ -12,6 +13,7 @@ use App\Support\Wallet\ReceivingWallet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Sats into a tournament's pot from anyone (P9, user 2026-09-27: every
@@ -27,7 +29,8 @@ use Illuminate\Support\Facades\Log;
  * otherwise the page says top-ups are not enabled. The limits of security
  * gate F2 hold here too ({@see InvoiceCaps}; the page limits invoices per
  * minute), and the wallet is reached only through the relay guard of F1.
- * Sponsor invoices are the same, from the organizer's page.
+ * Sponsor invoices are the same, from the organizer's page, with caps of
+ * their own. A cancelled tournament takes no invoices (its pot closed).
  */
 final class PotTopUps
 {
@@ -35,7 +38,8 @@ final class PotTopUps
 
     public static function enabled(Tournament $tournament): bool
     {
-        return $tournament->hasOwnWallet() && $tournament->isPoolOpen() && $tournament->pot_can_receive === true;
+        return $tournament->hasOwnWallet() && $tournament->isPoolOpen() && $tournament->pot_can_receive === true
+            && $tournament->status !== TournamentStatus::Cancelled;
     }
 
     /**
@@ -57,6 +61,22 @@ final class PotTopUps
             throw new PoolRefusal(__('Only the organizer of this tournament or an admin can change its prize pool.'));
         }
 
+        // Their own caps (security gate F-B), outside the top-up caps: a few unpaid per tournament, and per organizer and hour.
+        $open = IncomingPayment::query()->where('tournament_id', $sponsor->tournament_id)->where('source', 'sponsor')
+            ->where('status', IncomingPaymentStatus::Pending)->where('expires_at', '>', now())->count();
+
+        if ($open >= (int) config('esports.wallet.sponsor_invoices_open_per_tournament', 3)) {
+            throw new PoolRefusal(__('This tournament has too many unpaid sponsor invoices. Wait until one is paid or expires.'));
+        }
+
+        $key = 'pot-sponsor-invoice:'.$user->id;
+
+        if (RateLimiter::tooManyAttempts($key, (int) config('esports.wallet.sponsor_invoices_per_hour', 10))) {
+            throw new PoolRefusal(__('Too many sponsor invoices this hour. Try again in :minutes min.', ['minutes' => (int) ceil(RateLimiter::availableIn($key) / 60)]));
+        }
+
+        RateLimiter::hit($key, 3600);
+
         return $this->make($sponsor->tournament, $sponsor->pledged_sats, 'sponsor', 'Sponsor: '.$sponsor->name.' – '.$sponsor->tournament->name, $sponsor);
     }
 
@@ -67,17 +87,25 @@ final class PotTopUps
      */
     public function check(IncomingPayment $payment, int $minSeconds = 3): IncomingPayment
     {
+        return $this->lookUp($payment, $minSeconds)[0];
+    }
+
+    /**
+     * @return array{0: IncomingPayment, 1: bool} the payment, fresh, and whether its wallet timed out
+     */
+    private function lookUp(IncomingPayment $payment, int $minSeconds): array
+    {
         $tournament = $payment->tournament_id === null ? null : Tournament::query()->find($payment->tournament_id);
 
         if ($tournament === null || $payment->pot !== IncomingPayment::tournamentPot($tournament->id) || $payment->status !== IncomingPaymentStatus::Pending
             || ($payment->checked_at !== null && $payment->checked_at->getTimestamp() > now()->getTimestamp() - $minSeconds)) {
-            return $payment;
+            return [$payment, false];
         }
 
         $wallet = $tournament->hasOwnWallet() ? ReceivingWallet::fromUri($tournament->pot_nwc_uri) : null;
 
         if ($wallet === null) {
-            return $payment;
+            return [$payment, false];
         }
 
         $payment->forceFill(['checked_at' => now()])->save();
@@ -87,7 +115,7 @@ final class PotTopUps
         } catch (NwcError $error) {
             Log::info('Pot invoice lookup failed', ['payment' => $payment->id, 'code' => $error->errorCode]);
 
-            return $payment;
+            return [$payment, $error->isTimeout()];
         }
 
         if ($transaction !== null && $transaction->isSettled()) {
@@ -105,7 +133,7 @@ final class PotTopUps
             IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)->update(['status' => IncomingPaymentStatus::Expired]);
         }
 
-        return $payment->refresh();
+        return [$payment->refresh(), false];
     }
 
     /**
@@ -115,11 +143,26 @@ final class PotTopUps
     {
         $settled = 0;
 
+        $slow = [];
+
         IncomingPayment::query()->where('pot', 'like', 'tournament:%')->where('status', IncomingPaymentStatus::Pending)
             ->where('created_at', '>', now()->subDay())
             ->orderBy('id')
-            ->each(function (IncomingPayment $payment) use (&$settled): void {
-                $settled += $this->check($payment, 20)->status === IncomingPaymentStatus::Settled ? 1 : 0;
+            ->each(function (IncomingPayment $payment) use (&$settled, &$slow): void {
+                // A wallet that timed out once is not asked again in this run: one slow wallet costs one timeout (gate F-B).
+                $wallet = Tournament::query()->whereKey($payment->tournament_id)->value('pot_wallet_hash') ?? 'tournament:'.$payment->tournament_id;
+
+                if (isset($slow[$wallet])) {
+                    return;
+                }
+
+                [$fresh, $timedOut] = $this->lookUp($payment, 20);
+
+                if ($timedOut) {
+                    $slow[$wallet] = true;
+                }
+
+                $settled += $fresh->status === IncomingPaymentStatus::Settled ? 1 : 0;
             });
 
         return $settled;
@@ -161,7 +204,7 @@ final class PotTopUps
             'bolt11' => $invoice->invoice,
             'amount_sats' => $amountSats,
             'status' => IncomingPaymentStatus::Pending,
-            'expires_at' => now()->setTimestamp($invoice->expiresAt()),
+            'expires_at' => PoolInvoices::expiry($invoice),
         ]));
     }
 }

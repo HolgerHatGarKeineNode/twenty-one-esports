@@ -63,7 +63,8 @@
                 <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                     {{ __('Connection string (nostr+walletconnect://…)') }}
                     <input type="password" wire:model="potUri" autocomplete="off" spellcheck="false" class="h-11 rounded-md border border-line bg-well px-3 font-mono text-[13px] text-ink" data-test="pot-uri">
-                    <span class="text-ink-3">{{ __('Create a connection in your wallet (for example Alby Hub) that may read the balance and pay invoices, and make invoices if anyone should be able to add sats; set a budget as high as the pot. It is stored encrypted and never shown again.') }}</span>
+                    <span class="text-ink-3">{{ __('Create a connection in your wallet (for example Alby Hub) that may read the balance and pay invoices, and make invoices if anyone should be able to add sats. It is stored encrypted and never shown again.') }}</span>
+                    <span class="font-bold text-ink-2" data-test="pot-own-wallet-hint">{{ __('Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.') }}</span>
                 </label>
                 <div><x-button variant="quiet" wire:click="checkPotConnection" wire:loading.attr="disabled" data-test="pot-check">{{ __('Check connection') }}</x-button></div>
             @endif

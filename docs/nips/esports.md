@@ -80,6 +80,9 @@ endpoint are the season chain's only. Checked against a fake NIP-47 wallet on a 
   a fresh balance that covers their sum plus the fee reserve (1 %, at least 10 sats); tied places share
   the sum of their amounts equally, rounded down; what is left stays in the wallet. Frozen at sign-up
   close like the percentages.
+- **One wallet, one pot** (security review): a wallet that backs an open pot, or one with an unpaid
+  prize, cannot back another; the pot cannot be switched on or off after sign-up closed (only its
+  wallet can be replaced); a cancelled tournament's pot closes.
 - **Rest of a split**: in both modes the rounding rest and the prizes of unheld places stay in the
   tournament's wallet (revision 9 sent a league pot's rest to the reserve).
 
@@ -2712,7 +2715,11 @@ was signed.
 
 **The wallet.** An organizer or admin connects a NIP-47 connection string that may read the balance
 (`get_balance`) and pay (`pay_invoice`); the league checks both with `get_info` before it accepts the
-connection, refuses the league's own wallet, and never publishes the string. Its relay has to be a
+connection, refuses the league's own wallet, and never publishes the string. **One wallet backs one
+pot**: the pot is the wallet's whole balance, so the league refuses a wallet that another
+tournament's pot uses while that pot is open or a prize from it is unpaid (it compares a keyed
+fingerprint of the wallet's pubkey, never the string); organizers use a separate wallet or
+sub-wallet per tournament. A spending budget on the connection is not a separate balance. Its relay has to be a
 `wss://` address on a public host name: the league does not connect to a relay on a private or
 loopback address. If the connection may also `make_invoice` and `lookup_invoice`, anyone can add
 sats (top-ups, below); if not, the tournament page says "Top-ups not enabled for this pot".
@@ -2730,7 +2737,11 @@ pot is open: the tournament's wallet makes the invoice (`make_invoice`, descript
 as text, and the league learns that it was paid with `lookup_invoice` on the same wallet. A sponsor's
 invoice comes from that wallet the same way (description `Sponsor: <name> – <tournament name>`); when
 it is paid, the logo appears. Invoices are limited per user, per network address (kept only as a
-keyed hash) and per minute. A top-up paid after the pot closed is marked late and changes no prize.
+keyed hash) and per minute; sponsor invoices have caps of their own (a few unpaid per tournament, a
+few per organizer and hour) and do not count against the organizer's top-ups. The league counts an
+invoice as open no longer than the expiry it asked for, whatever the wallet wrote. A top-up paid
+after the pot closed is marked late and changes no prize. A cancelled tournament's pot closes with
+it and takes no further invoices.
 
 **No zap receipts for top-ups (rev. 9.1).** A top-up is a plain invoice, not a NIP-57 zap, and gets no
 `9735`. A receipt is signed by the `nostrPubkey` of the LNURL server that made the invoice (NIP-57

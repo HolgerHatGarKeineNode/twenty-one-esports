@@ -42,7 +42,8 @@ final class InvoiceCaps
      */
     public static function check(array $requester): void
     {
-        $open = fn () => IncomingPayment::query()->where('status', IncomingPaymentStatus::Pending)->where('expires_at', '>', now());
+        // Sponsor invoices have caps of their own (PotTopUps::sponsorInvoice) and never use up the organizer's.
+        $open = fn () => IncomingPayment::query()->where('status', IncomingPaymentStatus::Pending)->where('expires_at', '>', now())->where('source', '!=', 'sponsor');
 
         if ($requester['requester_user_id'] !== null && $open()->where('requester_user_id', $requester['requester_user_id'])->count() >= (int) config('esports.wallet.open_invoices_per_user', 5)) {
             throw new PoolRefusal(__('You have too many unpaid invoices open. Pay one or let it expire first.'));

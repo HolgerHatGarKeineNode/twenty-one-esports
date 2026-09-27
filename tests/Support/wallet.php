@@ -11,6 +11,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\HostResolver;
 use App\Support\Prizes\PotTopUps;
+use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Wallet\NwcTransport;
 use Carbon\CarbonImmutable;
@@ -146,7 +147,7 @@ function publishForPool(Tournament $tournament, ?FakeNwcWallet $pot = null): Tou
     Admin::query()->create(['pubkey' => $admin->pubkey]);
 
     $tournament->forceFill(['status' => TournamentStatus::Draft, 'starts_at' => now()->addHours(2), 'pot_source' => Tournament::POT_WALLET,
-        'pot_nwc_uri' => $pot->uri('pay'), 'pot_can_receive' => true, 'pot_balance_sats' => intdiv($pot->balanceMsats, 1000), 'pot_balance_at' => now()])->save();
+        'pot_nwc_uri' => $pot->uri('pay'), 'pot_wallet_hash' => PrizePool::walletFingerprint($pot->pubkey), 'pot_can_receive' => true, 'pot_balance_sats' => intdiv($pot->balanceMsats, 1000), 'pot_balance_at' => now()])->save();
     $published = app(TournamentPublisher::class)->publish($tournament, $admin, CarbonImmutable::now()->addHour());
     $published->forceFill(['status' => $status, 'pool_opened_at' => $published->pool_opened_at ?? now()])->save();
 

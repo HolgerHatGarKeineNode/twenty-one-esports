@@ -289,6 +289,8 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
     $walletSecret = $own->clients['pay']['secret'];
     $walletPot = openTournament(['name' => 'Stacker Open', 'capacity' => 8], rocketLeague: true);
     app(PrizePool::class)->configurePot($walletPot, $walletPot->creator, true, $own->uri('pay', 'pot@wallet.example'), null, Tournament::PRIZES_FIXED, [], [60_000, 30_000, 10_000]);
+    // The create page connects a wallet of its own: one wallet backs one open pot (security gate F-A).
+    $fresh = ownPotWallet(150_000);
 
     expect([$open->refresh()->pool_opened_at, $closedPot->refresh()->pool_opened_at, $walletPot->refresh()->pool_opened_at])->each->not->toBeNull()
         ->and($closedPot->pot_can_receive)->toBeFalse()->and($open->pot_can_receive)->toBeTrue();
@@ -379,7 +381,7 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-enabled]") !== null', 8_000);
         $desk->locator('[data-test=pot-enabled]')->click();
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-uri]") !== null', 8_000);
-        $desk->locator('[data-test=pot-uri]')->fill($own->uri('pay', 'pot@wallet.example'));
+        $desk->locator('[data-test=pot-uri]')->fill($fresh->uri('pay'));
         $desk->locator('[data-test=pot-check]')->click();
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-notice]") !== null', 10_000);
         $desk->locator('[data-test=pot-preset-top-4]')->click();
@@ -388,7 +390,8 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $create = $desk->evaluate(TOURNAMENT_STATE);
         $create['wide'] = $desk->evaluate(POOL_WIDE);
         // Positive control of the secret probe below: before saving, the typed string is in the page's Livewire snapshot.
-        $create['secret'] = $desk->evaluate('(secret) => document.documentElement.outerHTML.includes(secret)', substr($own->clients['pay']['secret'], 0, 12));
+        $create['secret'] = $desk->evaluate('(secret) => document.documentElement.outerHTML.includes(secret)', substr($fresh->clients['pay']['secret'], 0, 12));
+        $create['hint'] = $desk->evaluate('() => document.querySelector("[data-test=pot-own-wallet-hint]")?.innerText ?? null');
         $create['league'] = $desk->evaluate('() => document.querySelector("[data-test=prize-pot]").innerText.includes("League pot")');
         tournamentShot($desk, "p9-pot-create-{$width}");
 
@@ -431,7 +434,7 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
 
         expect($adminState['errors'])->toBe([])->and($settings['errors'])->toBe([])
             ->and($adminState['overflow'])->toBeLessThanOrEqual(0)->and($settings['overflow'])->toBeLessThanOrEqual(0)
-            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()->and($create['league'])->toBeFalse()
+            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()->and($create['league'])->toBeFalse()->and($create['hint'])->toContain('whole balance is the pot')
             ->and($fixed['errors'])->toBe([])->and($fixed['overflow'])->toBeLessThanOrEqual(0)->and($fixed['inputs'])->toHaveCount(4)
             ->and(collect($fixed['inputs'])->every(fn (array $box): bool => $box[0] >= 0 && $box[1] <= $width && $box[2] >= 44))->toBeTrue()
             ->and($edit['funding'])->toContain('left over')

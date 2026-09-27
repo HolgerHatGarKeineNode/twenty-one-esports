@@ -159,7 +159,7 @@ trait EditsPrizePot
         }
 
         try {
-            $check = $pool->checkWallet($this->potUri);
+            $check = $pool->checkWallet($this->potUri, $this->potTournament()->id ?? 0);
         } catch (TournamentRuleViolation $violation) {
             $this->potError = $violation->getMessage();
 

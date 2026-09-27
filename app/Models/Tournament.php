@@ -76,6 +76,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $prize_mode `percent` (null) or `fixed`
  * @property list<int>|null $prize_fixed sats per place in `fixed` mode
  * @property bool|null $pot_can_receive the pot's connection may `make_invoice` (top-ups); null = unknown
+ * @property string|null $pot_wallet_hash keyed fingerprint of the pot wallet's pubkey (one wallet backs one open pot)
  * @property string|null $pot_nwc_uri the tournament's own NWC connection (encrypted at rest, never shown)
  * @property string|null $pot_lud16 the Lightning address of that wallet, if its connection string names one
  * @property int|null $pot_balance_sats last balance read from the own wallet
@@ -101,8 +102,8 @@ use Illuminate\Support\Carbon;
     'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes',
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
     'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at',
-    'prize_mode', 'prize_fixed', 'pot_can_receive'])]
-#[Hidden(['pot_nwc_uri'])]
+    'prize_mode', 'prize_fixed', 'pot_can_receive', 'pot_wallet_hash'])]
+#[Hidden(['pot_nwc_uri', 'pot_wallet_hash'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */
@@ -119,6 +120,21 @@ class Tournament extends Model
 
     /** Percent of the pool per place when the organizer sets no split (open question 10). */
     public const DEFAULT_SPLIT = [50, 30, 20];
+
+    /**
+     * A cancelled tournament's pot closes with it (security gate on 55ef30e):
+     * no top-up or sponsor invoice is made for it any more. One place for
+     * every way a tournament is cancelled (the admin's abort, the draw's
+     * automatic cancel), so a new one cannot forget it.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Tournament $tournament): void {
+            if ($tournament->status === TournamentStatus::Cancelled && $tournament->pool_opened_at !== null && $tournament->pool_closed_at === null) {
+                $tournament->setAttribute('pool_closed_at', now());
+            }
+        });
+    }
 
     protected function casts(): array
     {

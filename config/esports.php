@@ -454,6 +454,10 @@ return [
         'fixed_prize_max_sats' => 10_000_000,
         'fixed_prizes_max_total_sats' => 50_000_000,
         'open_invoices_per_ip' => 20,
+        // Sponsor invoices (organizer's page): unpaid ones per tournament, and per organizer and hour.
+        // They are outside the top-up caps above, so a sponsor never uses up the organizer's own top-ups.
+        'sponsor_invoices_open_per_tournament' => 3,
+        'sponsor_invoices_per_hour' => 10,
     ],
 
     /*

@@ -4,11 +4,13 @@ namespace App\Support\Prizes;
 
 use App\Enums\IncomingPaymentStatus;
 use App\Models\IncomingPayment;
+use App\Support\Lightning\Bolt11;
 use App\Support\Nostr\SignedEvent;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Wallet\NwcError;
 use App\Support\Wallet\ReceivingWallet;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Log;
 
 use function BitWasp\Bech32\convertBits;
@@ -142,7 +144,17 @@ final class PoolInvoices
             'bolt11' => $invoice->invoice,
             'amount_sats' => $amountSats,
             'status' => IncomingPaymentStatus::Pending,
-            'expires_at' => now()->setTimestamp($invoice->expiresAt()),
+            'expires_at' => self::expiry($invoice),
         ]);
+    }
+
+    /**
+     * When the league stops counting an invoice as open: the invoice's own
+     * expiry, but never later than the league asked for (security gate
+     * F-B), so a wallet that writes a long expiry cannot hold the caps.
+     */
+    public static function expiry(Bolt11 $invoice): CarbonInterface
+    {
+        return now()->setTimestamp(min($invoice->expiresAt(), now()->getTimestamp() + (int) config('esports.wallet.invoice_expiry_seconds', 900)));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Support\Prizes;
 
+use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentSponsor;
@@ -16,6 +17,7 @@ use App\Support\Wallet\NwcError;
 use App\Support\Wallet\ReceivingWallet;
 use App\Support\Wallet\RelayGuard;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -279,14 +281,15 @@ final class PrizePool
      * the wallet answers `get_balance`, and it does not deny `pay_invoice`
      * (the winners are paid from it). Whether it may `make_invoice` decides
      * whether anyone can add sats through the tournament page. The league's
-     * own wallet is refused: it belongs to the Season-Chain. The string is
-     * never part of a message.
+     * own wallet is refused: it belongs to the Season-Chain, and so is a
+     * wallet that another tournament's open pot uses (its whole balance is
+     * that pot). The string is never part of a message.
      *
      * @return array{balance: int, lud16: string|null, can_receive: bool}
      *
      * @throws TournamentRuleViolation
      */
-    public function checkWallet(#[\SensitiveParameter] string $uri): array
+    public function checkWallet(#[\SensitiveParameter] string $uri, int $forTournamentId = 0): array
     {
         $connection = NwcConnection::fromUri($uri);
         $wallet = ReceivingWallet::fromUri($uri);
@@ -306,6 +309,11 @@ final class PrizePool
             if (NwcConnection::fromUri($league)?->walletPubkey === $connection->walletPubkey) {
                 throw new TournamentRuleViolation('pot_league_wallet', __('This is the league’s own wallet. A tournament pot needs a wallet of its own.'));
             }
+        }
+
+        // Early word for the form; the binding check that counts runs again under the lock of configurePot().
+        if (self::walletInUse(self::walletFingerprint($connection->walletPubkey), $forTournamentId)) {
+            throw new TournamentRuleViolation('pot_shared_wallet', __('This wallet already holds the pot of another tournament. Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.'));
         }
 
         try {
@@ -365,6 +373,8 @@ final class PrizePool
             throw new TournamentRuleViolation('split_frozen', __('The prizes are part of the rules players signed up under; they cannot change after sign-up closed.'));
         }
 
+        $this->refuseFrozenToggle($tournament, $enabled);
+
         if ($prizesChanged && ($error = $mode === Tournament::PRIZES_FIXED ? self::fixedError($fixed) : self::splitError($split)) !== null) {
             throw new TournamentRuleViolation('split', $error);
         }
@@ -375,13 +385,20 @@ final class PrizePool
             throw new TournamentRuleViolation('pot_uri', __('Paste the connection string of the pot’s wallet.'));
         }
 
-        $check = $enabled && $uri !== null ? $this->checkWallet($uri) : null;
+        $check = $enabled && $uri !== null ? $this->checkWallet($uri, $tournament->id) : null;
+        $fingerprint = $check === null ? null : self::walletFingerprint((string) NwcConnection::fromUri((string) $uri)?->walletPubkey);
 
-        return DB::transaction(function () use ($tournament, $enabled, $uri, $targetSats, $mode, $split, $fixed, $prizesChanged, $check): Tournament {
+        $save = fn (): Tournament => DB::transaction(function () use ($tournament, $enabled, $uri, $targetSats, $mode, $split, $fixed, $prizesChanged, $check, $fingerprint): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
             // The checks above read a row that may have moved during the live wallet check: again, under the lock.
             $this->refuseWhenEnded($locked);
+            $this->refuseFrozenToggle($locked, $enabled);
+
+            // A pot is the whole balance of its wallet: a wallet another open pot uses would be paid out twice (gate F-A).
+            if ($fingerprint !== null && self::walletInUse($fingerprint, $locked->id)) {
+                throw new TournamentRuleViolation('pot_shared_wallet', __('This wallet already holds the pot of another tournament. Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.'));
+            }
 
             if ($prizesChanged && $this->prizesDiffer($locked, $mode, $split, $fixed) && ! $this->canChangeSplit($locked)) {
                 throw new TournamentRuleViolation('split_frozen', __('The prizes are part of the rules players signed up under; they cannot change after sign-up closed.'));
@@ -401,12 +418,12 @@ final class PrizePool
             ] : [
                 'pot_source' => null, 'prize_mode' => null, 'prize_fixed' => null, 'prize_split' => null, 'prize_target_sats' => null,
                 'pot_nwc_uri' => null, 'pot_lud16' => null, 'pot_balance_sats' => null, 'pot_balance_at' => null, 'pot_balance_error' => null,
-                'pot_can_receive' => null, 'pool_opened_at' => null,
+                'pot_can_receive' => null, 'pot_wallet_hash' => null, 'pool_opened_at' => null,
             ];
 
             if ($check !== null) {
                 $fill += ['pot_nwc_uri' => $uri, 'pot_lud16' => $check['lud16'], 'pot_balance_sats' => $check['balance'], 'pot_balance_at' => now(),
-                    'pot_balance_error' => null, 'pot_can_receive' => $check['can_receive']];
+                    'pot_balance_error' => null, 'pot_can_receive' => $check['can_receive'], 'pot_wallet_hash' => $fingerprint];
             }
 
             if ($enabled && $published && ! $wasOpen && self::canOpen()) {
@@ -422,6 +439,46 @@ final class PrizePool
 
             return $locked;
         });
+
+        // Two pages saving the same wallet for two tournaments at once: one check at a time per wallet.
+        return $fingerprint === null ? $save() : Cache::lock('pot-wallet:'.$fingerprint, 30)->block(10, $save);
+    }
+
+    /**
+     * The keyed fingerprint of a pot wallet's pubkey (HMAC-SHA256 under
+     * app.key): comparable across tournaments, never the connection string.
+     */
+    public static function walletFingerprint(string $walletPubkey): string
+    {
+        return hash_hmac('sha256', 'pot-wallet:'.strtolower($walletPubkey), (string) config('app.key'));
+    }
+
+    /**
+     * Whether another tournament's pot still uses this wallet: its pot is
+     * open, or a payout from it is not paid yet (the wallet still holds
+     * that prize). A finished pot whose prizes are all paid frees it.
+     */
+    public static function walletInUse(string $fingerprint, int $exceptTournamentId): bool
+    {
+        return Tournament::query()->where('pot_wallet_hash', $fingerprint)->whereKeyNot($exceptTournamentId)
+            ->where('pot_source', Tournament::POT_WALLET)
+            ->where(fn ($query) => $query->whereNull('pool_closed_at')
+                ->orWhereHas('payouts', fn ($payouts) => $payouts->where('status', '!=', PayoutStatus::Paid)))
+            ->exists();
+    }
+
+    /**
+     * After sign-up closed the pot is part of the rules players signed up
+     * under: it can be neither switched off (and on again with other
+     * prizes) nor added. Its wallet can still be replaced.
+     *
+     * @throws TournamentRuleViolation
+     */
+    private function refuseFrozenToggle(Tournament $tournament, bool $enabled): void
+    {
+        if ($enabled !== $tournament->hasOwnWallet() && ! $this->canChangeSplit($tournament)) {
+            throw new TournamentRuleViolation('pot_frozen', __('The prize pot is part of the rules players signed up under; it cannot be switched on or off after sign-up closed.'));
+        }
     }
 
     /**
