@@ -22,18 +22,32 @@ function sign(kind, tags, createdAt) {
  *   { events: [...], eose: false } answers with events and then stays silent
  *   { down: true }                 fails to connect
  *   { ok: true|false }             answers an EVENT with OK
+ *
+ * Delivery runs on the microtask queue (`queueMicrotask`), not on real
+ * timers. `readRelay()` races this delivery against its own `setTimeout`
+ * deadline (`timeoutMs`); under host CPU load, `setTimeout` callbacks queued
+ * relative to "now" (open, then each reply, then EOSE) get pushed further
+ * out every time the process is starved between them, while the outer
+ * deadline was fixed at call time — so a busy host can make the deadline
+ * fire before a relay that legitimately answered ever gets to. Microtasks
+ * have no such relative delay: once fakeSockets() is scheduled at all, the
+ * whole open→send→reply→EOSE chain drains in one burst, before the event
+ * loop is allowed to move on to any pending timer, however overdue. That
+ * keeps `readRelay()`'s timeoutMs a bound on genuinely slow/silent relays
+ * (which it is meant to test), not a race with the fixture's own plumbing.
+ * See tests/Feature/Badges/RelayReadTest.php for the regression this fixes.
  */
 function fakeSockets(relays) {
     return class FakeSocket {
         constructor(url) {
             this.url = url;
             this.behaviour = relays[url] ?? { down: true };
-            setTimeout(() => (this.behaviour.down ? this.onerror?.({}) : this.onopen?.()), 1);
+            queueMicrotask(() => (this.behaviour.down ? this.onerror?.({}) : this.onopen?.()));
         }
 
         send(text) {
             const frame = JSON.parse(text);
-            const reply = (data) => setTimeout(() => this.onmessage?.({ data: JSON.stringify(data) }), 1);
+            const reply = (data) => queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(data) }));
 
             if (frame[0] === 'REQ') {
                 const kinds = frame.slice(2).flatMap((filter) => filter.kinds ?? []);
@@ -43,7 +57,9 @@ function fakeSockets(relays) {
                     }
                 }
                 if (this.behaviour.eose) {
-                    setTimeout(() => this.onmessage?.({ data: JSON.stringify(['EOSE', frame[1]]) }), 5);
+                    // Queued after the event replies above: microtasks drain
+                    // FIFO, so EOSE still arrives after the events it follows.
+                    reply(['EOSE', frame[1]]);
                 }
             } else if (frame[0] === 'EVENT') {
                 reply(['OK', frame[1].id, this.behaviour.ok === true, '']);
