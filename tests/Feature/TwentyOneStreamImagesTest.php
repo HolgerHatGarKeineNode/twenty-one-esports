@@ -20,6 +20,7 @@ use App\Support\TwentyOne\Stream\TournamentSlides;
 use GuzzleHttp\Promise\PromiseInterface;
 use GuzzleHttp\Psr7\PumpStream;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -518,4 +519,132 @@ test('a flat logo keeps its soft alpha in full colour', function () {
     expect(imageistruecolor($logo))->toBeTrue()
         ->and(imagecolorsforindex($logo, imagecolorat($logo, 2, 2))['alpha'])->toBe(127)
         ->and(imagecolorsforindex($logo, imagecolorat($logo, 64, 64)))->toBe(['red' => 247, 'green' => 147, 'blue' => 26, 'alpha' => 60]);
+});
+
+/**
+ * The real fetcher against a local HTTPS server: loopback allowed only here, the
+ * server's port, its self-signed certificate; `$pin` false drops CURLOPT_RESOLVE (control).
+ */
+function localImageFetcher(int $port, string $caFile, bool $pin = true): ImageFetcher
+{
+    return new class(app(Factory::class), app(HostResolver::class), $port, $caFile, $pin) extends ImageFetcher
+    {
+        public function __construct(Factory $http, HostResolver $resolver, private int $testPort, private string $caFile, private bool $pin)
+        {
+            parent::__construct($http, $resolver);
+        }
+
+        protected function port(): int
+        {
+            return $this->testPort;
+        }
+
+        protected function isAllowedAddress(string $address): bool
+        {
+            return in_array($address, ['127.0.0.1', '127.0.0.2'], true);
+        }
+
+        protected function curlOptions(string $host, string $address, int $seconds, int $maxBytes): array
+        {
+            $options = parent::curlOptions($host, $address, $seconds, $maxBytes);
+
+            if (! $this->pin) {
+                unset($options[CURLOPT_RESOLVE]);
+            }
+
+            return $options + [CURLOPT_CAINFO => $this->caFile];
+        }
+    };
+}
+
+/**
+ * tests/Support/fake-https-image.php for `$host`: [process, port, dir].
+ *
+ * @return array{0: resource, 1: int, 2: string}
+ */
+function httpsImageServer(string $mode, string $host): array
+{
+    $dir = storage_path('framework/testing/https-image-'.bin2hex(random_bytes(4)));
+    File::ensureDirectoryExists($dir);
+    $process = proc_open([PHP_BINARY, base_path('tests/Support/fake-https-image.php'), $mode, $host, $dir], [1 => ['pipe', 'w']], $pipes);
+
+    return [$process, (int) fgets($pipes[1]), $dir];
+}
+
+/**
+ * @param  resource  $process
+ */
+function stopHttpsImageServer($process, string $dir): bool
+{
+    $connected = is_file($dir.'/connections');
+    proc_terminate($process);
+    proc_close($process);
+    File::deleteDirectory($dir);
+
+    return $connected;
+}
+
+test('the fetch connects to the pinned address over curl, even with allow_url_fopen on; without the pin it cannot', function () {
+    Http::preventStrayRequests(false);
+    // A name no DNS knows: only the pin can take the connection to the server.
+    streamImageHosts(['pinned.invalid' => ['127.0.0.1']]);
+
+    [$server, $port, $dir] = httpsImageServer('image', 'pinned.invalid');
+    $bytes = localImageFetcher($port, $dir.'/ca.pem')->fetch("https://pinned.invalid:{$port}/me.png");
+    $connected = stopHttpsImageServer($server, $dir);
+
+    [$control, $controlPort, $controlDir] = httpsImageServer('image', 'pinned.invalid');
+    $unpinned = fn () => localImageFetcher($controlPort, $controlDir.'/ca.pem', pin: false)->fetch("https://pinned.invalid:{$controlPort}/me.png");
+
+    expect(ini_get('allow_url_fopen'))->toBe('1')
+        ->and(getimagesizefromstring($bytes)[0])->toBe(1)
+        ->and($connected)->toBeTrue()
+        ->and($unpinned)->toThrow(StreamImageFailed::class, 'request failed')
+        ->and(stopHttpsImageServer($control, $controlDir))->toBeFalse();
+});
+
+test('the connection goes where the guard looked, never where DNS points now', function () {
+    Http::preventStrayRequests(false);
+    // The guard is told 127.0.0.2; the system resolver would answer 127.0.0.1, where the server listens.
+    streamImageHosts(['localhost' => ['127.0.0.2']]);
+    [$server, $port, $dir] = httpsImageServer('image', 'localhost');
+
+    $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://localhost:{$port}/me.png");
+
+    expect($fetch)->toThrow(StreamImageFailed::class, 'request failed')
+        ->and(stopHttpsImageServer($server, $dir))->toBeFalse();
+});
+
+test('a server that trickles its body is cut off at the total deadline', function () {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['slow.invalid' => ['127.0.0.1']]);
+    [$server, $port, $dir] = httpsImageServer('trickle', 'slow.invalid');
+    $started = microtime(true);
+
+    try {
+        localImageFetcher($port, $dir.'/ca.pem')->fetch("https://slow.invalid:{$port}/me.png");
+        $failed = false;
+    } catch (StreamImageFailed) {
+        $failed = true;
+    }
+
+    $elapsed = microtime(true) - $started;
+    $connected = stopHttpsImageServer($server, $dir);
+
+    expect($failed)->toBeTrue()
+        ->and($connected)->toBeTrue()
+        ->and($elapsed)->toBeGreaterThan(4.5)
+        ->and($elapsed)->toBeLessThan(7.0);
+});
+
+test('curl itself stops a body past 2 MB that announces no length', function () {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['big.invalid' => ['127.0.0.1']]);
+    [$server, $port, $dir] = httpsImageServer('big', 'big.invalid');
+
+    $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://big.invalid:{$port}/me.png");
+
+    // Aborted in transfer by the progress callback, not only refused after reading it all.
+    expect($fetch)->toThrow(StreamImageFailed::class, 'Callback aborted');
+    stopHttpsImageServer($server, $dir);
 });

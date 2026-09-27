@@ -4,6 +4,7 @@ namespace App\Support\TwentyOne\Stream;
 
 use App\Support\Nostr\HostResolver;
 use App\Support\Nostr\Nip05Verifier;
+use GuzzleHttp\Handler\CurlHandler;
 use Illuminate\Http\Client\Factory;
 use Throwable;
 
@@ -16,9 +17,15 @@ use Throwable;
  *   - an IP literal must be public; a name must resolve, and EVERY address
  *     it resolves to must be public ({@see Nip05Verifier::isPublicAddress()});
  *   - the connection is pinned to the address that was checked
- *     (CURLOPT_RESOLVE), so a second DNS answer cannot swap in 127.0.0.1;
- *   - redirects are not followed (a 3xx is a failure), one timeout for the
- *     whole request, the body is streamed and cut off past `max_bytes`;
+ *     (CURLOPT_RESOLVE), so a second DNS answer cannot swap in 127.0.0.1.
+ *     The curl handler is forced: with `allow_url_fopen` on, Guzzle would
+ *     hand a `stream` request to its StreamHandler, which ignores every
+ *     curl option, the pin included (security audit 2026-09-27: the guard
+ *     saw 8.8.8.8, the connection went to 127.0.0.1);
+ *   - redirects are not followed (a 3xx is a failure); `fetch_seconds` is a
+ *     hard total for the whole transfer (CURLOPT_TIMEOUT_MS), so a server
+ *     that trickles bytes cannot hold the run; curl aborts past `max_bytes`
+ *     (progress callback) and the body is checked again after;
  *   - the answer must be a 200 with an `image/*` content type.
  *
  * Every refusal throws StreamImageFailed with a reason that names the host,
@@ -41,28 +48,23 @@ class ImageFetcher
             throw new StreamImageFailed('not an https URL');
         }
 
-        if (isset($parts['user']) || isset($parts['pass']) || (isset($parts['port']) && $parts['port'] !== 443)) {
-            throw new StreamImageFailed('user info or a port other than 443');
+        if (isset($parts['user']) || isset($parts['pass']) || (isset($parts['port']) && $parts['port'] !== $this->port())) {
+            throw new StreamImageFailed('user info or a port other than '.$this->port());
         }
 
         $host = strtolower($parts['host']);
         $address = $this->publicAddress($host);
         $maxBytes = max(1, (int) config('twentyone.stream.images.max_bytes', 2 * 1024 * 1024));
         $seconds = max(1, (int) config('twentyone.stream.images.fetch_seconds', 5));
-        // An IP literal is its own pin; a name is pinned to the address just checked.
-        $curl = [CURLOPT_PROTOCOLS => CURLPROTO_HTTPS];
-
-        if ($address !== trim($host, '[]')) {
-            $curl[CURLOPT_RESOLVE] = [$host.':443:'.(str_contains($address, ':') ? '['.$address.']' : $address)];
-        }
 
         try {
             $response = $this->http
+                ->setHandler(new CurlHandler)
                 ->withHeaders(['Accept' => 'image/*'])
                 ->connectTimeout(min(3, $seconds))
                 ->timeout($seconds)
                 ->withoutRedirecting()
-                ->withOptions(['stream' => true, 'curl' => $curl])
+                ->withOptions(['curl' => $this->curlOptions($host, $address, $seconds, $maxBytes)])
                 ->get($url);
         } catch (Throwable $e) {
             throw new StreamImageFailed('request failed ('.self::withoutQuery($e->getMessage()).')', previous: $e);
@@ -105,6 +107,46 @@ class ImageFetcher
     }
 
     /**
+     * The curl options of one fetch: https only, the pin (an IP literal is its
+     * own pin), a hard total deadline, and an abort past `$maxBytes`.
+     *
+     * @return array<int, mixed>
+     */
+    protected function curlOptions(string $host, string $address, int $seconds, int $maxBytes): array
+    {
+        $curl = [
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+            CURLOPT_TIMEOUT_MS => $seconds * 1000,
+            CURLOPT_CONNECTTIMEOUT_MS => min(3, $seconds) * 1000,
+            CURLOPT_NOPROGRESS => false,
+            // Non-zero aborts the transfer: the body is past the cap.
+            CURLOPT_PROGRESSFUNCTION => fn ($handle, $downloadTotal, $downloaded): int => $downloaded > $maxBytes || $downloadTotal > $maxBytes ? 1 : 0,
+        ];
+
+        if ($address !== trim($host, '[]')) {
+            $curl[CURLOPT_RESOLVE] = [$host.':'.$this->port().':'.(str_contains($address, ':') ? '['.$address.']' : $address)];
+        }
+
+        return $curl;
+    }
+
+    /**
+     * The only port a picture may come from.
+     */
+    protected function port(): int
+    {
+        return 443;
+    }
+
+    /**
+     * Whether an address may be connected to at all.
+     */
+    protected function isAllowedAddress(string $address): bool
+    {
+        return Nip05Verifier::isPublicAddress($address);
+    }
+
+    /**
      * A URL for a log line: scheme, host and path, no query, no fragment,
      * no user info.
      */
@@ -130,7 +172,7 @@ class ImageFetcher
         $literal = trim($host, '[]');
 
         if (filter_var($literal, FILTER_VALIDATE_IP) !== false) {
-            if (! Nip05Verifier::isPublicAddress($literal)) {
+            if (! $this->isAllowedAddress($literal)) {
                 throw new StreamImageFailed('address '.$literal.' is not public');
             }
 
@@ -144,7 +186,7 @@ class ImageFetcher
         }
 
         foreach ($addresses as $address) {
-            if (! Nip05Verifier::isPublicAddress($address)) {
+            if (! $this->isAllowedAddress($address)) {
                 throw new StreamImageFailed($host.' resolves to '.$address.', which is not public');
             }
         }
