@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Support\Wallet\NwcTransport;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Carries NIP-47 events straight to a {@see FakeNwcWallet} in the same
@@ -27,6 +28,9 @@ final class FakeNwcTransport implements NwcTransport
     /** @var list<string|null> the wallet pubkey of every request round trip, in order (offline wallets too) */
     public array $requestsTo = [];
 
+    /** @var list<int> DB::transactionLevel() at every round trip and fetch: a wallet call inside a transaction holds SQLite's write lock (re-gate O1) */
+    public array $transactionLevels = [];
+
     public function __construct(public FakeNwcWallet $wallet) {}
 
     public function add(FakeNwcWallet $wallet): FakeNwcWallet
@@ -37,6 +41,7 @@ final class FakeNwcTransport implements NwcTransport
     public function roundTrip(string $relay, array $request, array $filter, float $timeout, callable $accept): ?array
     {
         $this->calls++;
+        $this->transactionLevels[] = DB::transactionLevel();
 
         foreach ($this->forged as $event) {
             if ($accept($event)) {
@@ -66,6 +71,7 @@ final class FakeNwcTransport implements NwcTransport
     public function fetch(string $relay, array $filter, float $timeout): ?array
     {
         $this->calls++;
+        $this->transactionLevels[] = DB::transactionLevel();
         $author = ((array) ($filter['authors'] ?? []))[0] ?? null;
 
         return in_array(13194, (array) ($filter['kinds'] ?? []), true) ? ($this->others[$author] ?? $this->wallet)->infoEvent() : null;

@@ -76,13 +76,15 @@ endpoint are the season chain's only. Checked against a fake NIP-47 wallet on a 
   made an invoice can sign its `9735` (NIP-57 appendix E), and that is never the league's for a
   tournament's invoice. The sponsor desk key is retired: a sponsor pays an invoice from the
   tournament's wallet.
-- **Fixed prizes**: besides percent of the pot, the prizes can be whole sats per place. Approval needs
-  a fresh balance that covers their sum plus the fee reserve (1 %, at least 10 sats); tied places share
-  the sum of their amounts equally, rounded down; what is left stays in the wallet. Frozen at sign-up
-  close like the percentages.
-- **One wallet, one pot** (security review): a wallet that backs an open pot, or one with an unpaid
-  prize, cannot back another; the pot cannot be switched on or off after sign-up closed (only its
-  wallet can be replaced); a cancelled tournament's pot closes.
+- **Fixed prizes**: besides percent of the pot, the prizes can be whole sats per place. The pot form
+  and the approval show the balance next to their sum plus the fee reserve (1 %, at least 10 sats) and
+  warn when it is short; nothing is refused for it, the admin is responsible, and a payment the wallet
+  cannot make fails and can be retried. Tied places share the sum of their amounts equally, rounded
+  down; what is left stays in the wallet. Frozen at sign-up close like the percentages.
+- **Shared wallets**: several tournaments may use one wallet; the organizer sets each connection's
+  budget in the wallet to the pot size, or uses a sub-wallet with its own balance (Alby Hub). The pot
+  cannot be switched on or off after sign-up closed (only its wallet can be replaced); a cancelled
+  tournament's pot closes.
 - **Rest of a split**: in both modes the rounding rest and the prizes of unheld places stay in the
   tournament's wallet (revision 9 sent a league pot's rest to the reserve).
 
@@ -2715,11 +2717,10 @@ was signed.
 
 **The wallet.** An organizer or admin connects a NIP-47 connection string that may read the balance
 (`get_balance`) and pay (`pay_invoice`); the league checks both with `get_info` before it accepts the
-connection, refuses the league's own wallet, and never publishes the string. **One wallet backs one
-pot**: the pot is the wallet's whole balance, so the league refuses a wallet that another
-tournament's pot uses while that pot is open or a prize from it is unpaid (it compares a keyed
-fingerprint of the wallet's pubkey, never the string); organizers use a separate wallet or
-sub-wallet per tournament. A spending budget on the connection is not a separate balance. Its relay has to be a
+connection, refuses the league's own wallet, and never publishes the string. Several tournaments may
+use the same wallet; the league does not compare them. The organizer sets the connection's budget in
+the wallet to the pot size, or uses a sub-wallet with its own balance (Alby Hub); the balance is a
+visual check, not a rule. Its relay has to be a
 `wss://` address on a public host name: the league does not connect to a relay on a private or
 loopback address. If the connection may also `make_invoice` and `lookup_invoice`, anyone can add
 sats (top-ups, below); if not, the tournament page says "Top-ups not enabled for this pot".
@@ -2739,7 +2740,8 @@ invoice comes from that wallet the same way (description `Sponsor: <name> – <t
 it is paid, the logo appears. Invoices are limited per user, per network address (kept only as a
 keyed hash) and per minute; sponsor invoices have caps of their own (a few unpaid per tournament, a
 few per organizer and hour) and do not count against the organizer's top-ups. The league counts an
-invoice as open no longer than the expiry it asked for, whatever the wallet wrote. A top-up paid
+invoice as open no longer than the expiry it asked for, whatever the wallet wrote, and marks it
+expired itself ten minutes after that expiry, whatever the wallet answers or if it never answers. A top-up paid
 after the pot closed is marked late and changes no prize. A cancelled tournament's pot closes with
 it and takes no further invoices.
 
@@ -2765,9 +2767,10 @@ never after sign-up closed: players sign up under them.
   "Prize split: place 1 50 %, … of the pot, held in the tournament's own wallet and paid from it after
   1 % (at least 10 sats) is held back for routing fees; …".
 - **Fixed amounts**: whole sats per place (1 to 8 places, each at least 1 sat and at most the league's
-  limit per place, the sum at most its limit in total). A place wins exactly its amount. The admin can
-  approve the payouts only when a balance read at that moment covers the sum plus the fee reserve on
-  the sum (1 %, at least 10 sats); otherwise the approval is refused. What the wallet holds beyond the
+  limit per place, the sum at most its limit in total). A place wins exactly its amount. The approval
+  reads the balance and shows it next to the sum plus the fee reserve on the sum (1 %, at least 10
+  sats), with a warning when it is short; the approval is not refused for it (the admin is
+  responsible), and a payment the wallet cannot make fails and can be retried. What the wallet holds beyond the
   prizes stays in it and is shown to the organizer as left over after prizes. `content`: "Prizes:
   place 1 60000 sats, …, fixed, paid from the tournament's own wallet once it holds their sum and 1 %
   (at least 10 sats) for routing fees; …".

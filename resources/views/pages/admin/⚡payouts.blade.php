@@ -40,8 +40,10 @@ use Livewire\Component;
  * panel shows that wallet's state (connected or not, never its URI) and its
  * last balance, with "Read balance now". The league wallet is the
  * Season-Chain's and is not shown here. Fail closed: without the pot's
- * connection nothing can be approved or paid, and fixed prizes are approved
- * only when the balance covers them; the page says so.
+ * connection nothing can be approved or paid. A balance short of the fixed
+ * prizes is a warning next to them, not a block (user, 2026-09-27: the
+ * admin is responsible); a payment the wallet cannot make fails and can be
+ * retried.
  */
 new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     #[Url(as: 'tournament')]
@@ -201,6 +203,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $approval = app(PayoutApproval::class);
     $fixedMode = $tournament?->prizeMode() === Tournament::PRIZES_FIXED;
     $pool = $tournament ? PrizePool::payable($tournament, (int) $tournament->pot_balance_sats) : null;
+    $shortfall = $tournament ? PrizePool::shortfall($tournament, (int) $tournament->pot_balance_sats) : 0;
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -263,8 +266,11 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
                     @else
                         @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool))
-                        @if ($pool === null)
-                            <p class="m-0 text-[13px] text-loss" data-test="payouts-underfunded">{{ __('The pot holds :have sats; the fixed prizes need :need sats with the fee reserve. Add sats to the wallet, read its balance again, then approve.', ['have' => $sats((int) $tournament->pot_balance_sats), 'need' => $sats((int) PrizePool::requiredSats($tournament))]) }}</p>
+                        @if ($shortfall > 0)
+                            <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-underfunded">
+                                <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
+                                <span>{{ __('Warning: the pot holds :have sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still approve; a payment the wallet cannot make fails and can be retried after a top-up.', ['have' => $sats((int) $tournament->pot_balance_sats), 'missing' => $sats($shortfall), 'need' => $sats((int) PrizePool::requiredSats($tournament))]) }}</span>
+                            </p>
                         @endif
                         @if ($preview)
                             <ul class="m-0 flex list-none flex-col p-0 text-[13px]" data-test="payouts-preview">

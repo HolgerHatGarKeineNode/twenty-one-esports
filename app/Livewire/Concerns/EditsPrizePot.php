@@ -53,6 +53,14 @@ trait EditsPrizePot
 
     public string $potError = '';
 
+    /**
+     * The live check of the pasted string, run by {@see checkNewPotWallet()}
+     * before a transaction; used by the next {@see savePot()} of this request.
+     *
+     * @var array{uri: string, check: array{balance: int, lud16: string|null, can_receive: bool}}|null
+     */
+    private ?array $potWalletChecked = null;
+
     /** The tournament whose pot this is; null on the create page. */
     abstract protected function potTournament(): ?Tournament;
 
@@ -159,7 +167,7 @@ trait EditsPrizePot
         }
 
         try {
-            $check = $pool->checkWallet($this->potUri, $this->potTournament()->id ?? 0);
+            $check = $pool->checkWallet($this->potUri);
         } catch (TournamentRuleViolation $violation) {
             $this->potError = $violation->getMessage();
 
@@ -233,6 +241,39 @@ trait EditsPrizePot
     }
 
     /**
+     * Check a newly pasted connection string live now, before the caller
+     * opens a transaction for the save (the create page, re-gate O1: the
+     * wallet calls take up to a minute and must not hold SQLite's write
+     * lock). False with `$potError` set when it was refused; true when
+     * there is nothing to check or it passed.
+     */
+    protected function checkNewPotWallet(): bool
+    {
+        $this->potError = $this->potNotice = '';
+        $this->potWalletChecked = null;
+        $uri = trim($this->potUri);
+
+        if (! $this->potEnabled || $uri === '') {
+            return true;
+        }
+
+        // The same budget as the check button, counted before (F1).
+        if (! $this->mayCheckWallet($this->potUser())) {
+            return false;
+        }
+
+        try {
+            $this->potWalletChecked = ['uri' => $uri, 'check' => app(PrizePool::class)->checkWallet($uri)];
+        } catch (TournamentRuleViolation $violation) {
+            $this->potError = $violation->getMessage();
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Save the pot of `$tournament` as the form says; false with `$potError`
      * set when it was refused (the pasted string stays for a correction).
      */
@@ -240,9 +281,11 @@ trait EditsPrizePot
     {
         $this->potError = $this->potNotice = '';
         $target = trim($this->potTarget);
+        $checked = $this->potWalletChecked !== null && $this->potWalletChecked['uri'] === trim($this->potUri) ? $this->potWalletChecked['check'] : null;
+        $this->potWalletChecked = null;
 
-        // A new connection string is checked live on save: the same budget as the check button, counted before (F1).
-        if ($this->potEnabled && trim($this->potUri) !== '' && ! $this->mayCheckWallet($this->potUser())) {
+        // A new connection string is checked live on save, unless it was just now: the same budget as the check button, counted before (F1).
+        if ($this->potEnabled && trim($this->potUri) !== '' && $checked === null && ! $this->mayCheckWallet($this->potUser())) {
             return false;
         }
 
@@ -262,6 +305,7 @@ trait EditsPrizePot
                 $this->potMode,
                 $this->potSplit,
                 $this->potFixed,
+                $checked,
             );
         } catch (TournamentRuleViolation $violation) {
             $this->potError = $violation->getMessage();

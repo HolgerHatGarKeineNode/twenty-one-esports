@@ -241,7 +241,10 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
     config(['esports.wallet.fixed_prizes_max_total_sats' => 80_000]);
     $page->set('potFixed', [60_000, 25_000])->call('savePotSettings')->assertNotSet('potError', '');
     config(['esports.wallet.fixed_prizes_max_total_sats' => 50_000_000]);
-    $page->call('savePotSettings')->assertSet('potError', '');
+    // Saved although the wallet holds less than the prizes need: a warning, never a block (user, 2026-09-27).
+    $page->call('savePotSettings')->assertSet('potError', '')
+        ->assertSeeHtml('data-test="pot-fixed-funding"')->assertSee(__('You can still save; top up the wallet before the payouts.'), false)
+        ->assertSee(PreSeason::formatSats(35_850))->assertSee(PreSeason::formatSats(85_850));
 
     $tournament->refresh();
     expect($tournament->prizeMode())->toBe(Tournament::PRIZES_FIXED)

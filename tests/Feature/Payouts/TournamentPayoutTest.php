@@ -4,7 +4,6 @@ use App\Enums\PayoutStatus;
 use App\Jobs\PayTournamentPayout;
 use App\Models\LedgerTransfer;
 use App\Models\NostrEvent;
-use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Payouts\PayoutApproval;
@@ -12,14 +11,13 @@ use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\PayoutRunner;
 use App\Support\PreSeason;
 use App\Support\Tournaments\TournamentRuleViolation;
-use Illuminate\Database\Events\TransactionBeginning;
-use Illuminate\Support\Facades\Event;
+use Livewire\Livewire;
 
 /*
 | P9 DoD: a payout from the pot's own fake NWC wallet pays exactly once,
 | also on a double click and on a retry; a missing Lightning address keeps
 | it open. Percent prizes split the balance less the fee reserve; fixed
-| prizes are paid exactly, and only when the balance covers them.
+| prizes are paid exactly, and a balance short of them is only a warning.
 */
 
 test('the pool is split by place, ties share, and every winner is paid once with a published payout', function () {
@@ -198,30 +196,45 @@ test('only an admin approves payouts, and approving twice changes nothing', func
         ->and($tournament->payouts()->count())->toBe(2);
 });
 
-test('fixed prizes: approval is refused while the pot does not cover them, and pays exactly those amounts once it does', function () {
+test('fixed prizes: a short balance is a warning next to them, the approval still writes them, and a failed payment pays on retry after a top-up', function () {
     fakeWallet();
     $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
-    // 50 000 + 30 000 need 80 800 sats with the 1 % fee reserve; the pot holds 80 000.
-    $tournament = finishedPoolTournament($wallet, 80_000, 2, fixed: [50_000, 30_000]);
+    // 50 000 + 30 000 need 80 800 sats with the 1 % fee reserve; the pot holds 60 000 (user, 2026-09-27: a warning, never a block).
+    $tournament = finishedPoolTournament($wallet, 60_000, 2, fixed: [50_000, 30_000]);
+    $admin = anAdmin();
 
-    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, PreSeason::formatSats(80_800))
-        ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
-        ->and($tournament->payouts()->count())->toBe(0);
+    Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
+        ->assertSeeHtml('data-test="payouts-underfunded"')
+        ->assertSee(PreSeason::formatSats(20_800))->assertSee(PreSeason::formatSats(80_800))
+        ->assertSeeHtml('data-test="approve-payouts"')
+        ->call('approve')->assertHasNoErrors();
 
-    // Someone adds sats; the approval reads the balance again.
-    $wallet->balanceMsats += 5_000_000;
-    app(PayoutApproval::class)->approve($tournament, anAdmin());
+    expect($tournament->refresh()->payouts_approved_at)->not->toBeNull()
+        ->and($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
 
-    expect($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
-
-    foreach ($tournament->payouts()->get() as $payout) {
+    foreach ($tournament->payouts()->orderBy('place')->get() as $payout) {
         app(PayoutRunner::class)->run($payout, true);
     }
 
-    // What the pot held beyond the prizes and their fees stays in it.
-    expect($tournament->payouts()->where('status', 'paid')->count())->toBe(2)
-        ->and(intdiv($wallet->balanceMsats, 1000))->toBe(85_000 - 80_000 - 2);
+    // The first prize fits, the second does not: it fails as the wallet said, nothing is invented.
+    $second = $tournament->payouts()->where('place', 2)->sole();
+    expect($tournament->payouts()->where('place', 1)->sole()->status)->toBe(PayoutStatus::Paid)
+        ->and($second->status)->toBe(PayoutStatus::Failed);
+
+    $wallet->balanceMsats += 30_000_000;
+    app(PayoutRunner::class)->run($second->refresh(), true);
+    expect($second->refresh()->status)->toBe(PayoutStatus::Paid);
+});
+
+test('fixed prizes: a covered balance shows no warning', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    $tournament = finishedPoolTournament($wallet, 85_000, 2, fixed: [50_000, 30_000]);
+
+    Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
+        ->assertDontSeeHtml('data-test="payouts-underfunded"')->assertSeeHtml('data-test="approve-payouts"');
 });
 
 test('fixed prizes: tied places share the sum of their amounts, rounded down, the rest stays in the wallet', function () {
@@ -235,25 +248,4 @@ test('fixed prizes: tied places share the sum of their amounts, rounded down, th
     expect($tournament->payouts()->orderBy('place')->orderBy('id')->get()->map(fn (TournamentPayout $p) => [$p->place, $p->amount_sats])->all())
         ->toBe([[1, 50_000], [2, 30_000], [3, 10_000], [3, 10_000]])
         ->and(app(PayoutPlan::class)->compute($tournament, 100_001)['remainder'])->toBe(1);
-});
-
-test('fixed prizes: a balance that drops between the check and the lock still refuses the approval', function () {
-    fakeWallet();
-    $wallet = ownPotWallet(0);
-    fakeLightningAddresses($wallet);
-    $tournament = finishedPoolTournament($wallet, 100_000, 2, fixed: [50_000, 30_000]);
-
-    // A balance read of another process lands after the first check, before the row is locked.
-    $dropped = false;
-    Event::listen(TransactionBeginning::class, function () use ($tournament, &$dropped): void {
-        if (! $dropped) {
-            $dropped = true;
-            Tournament::query()->whereKey($tournament->id)->update(['pot_balance_sats' => 1_000]);
-        }
-    });
-
-    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'no longer covers')
-        ->and($dropped)->toBeTrue()
-        ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
-        ->and($tournament->payouts()->count())->toBe(0);
 });

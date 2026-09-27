@@ -65,6 +65,15 @@ const TOURNAMENT_COLLECTOR = <<<'JS'
     };
     JS;
 
+/** Box of one warning: its edges, whether its text overflows it, and the text. */
+const WARNING_BOX = <<<'JS'
+    (selector) => {
+        const el = document.querySelector(selector);
+        const r = el.getBoundingClientRect();
+        return { left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), height: Math.round(r.height), scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, text: el.innerText };
+    }
+    JS;
+
 const TOURNAMENT_STATE = <<<'JS'
     () => ({
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -289,7 +298,7 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
     $walletSecret = $own->clients['pay']['secret'];
     $walletPot = openTournament(['name' => 'Stacker Open', 'capacity' => 8], rocketLeague: true);
     app(PrizePool::class)->configurePot($walletPot, $walletPot->creator, true, $own->uri('pay', 'pot@wallet.example'), null, Tournament::PRIZES_FIXED, [], [60_000, 30_000, 10_000]);
-    // The create page connects a wallet of its own: one wallet backs one open pot (security gate F-A).
+    // The create page connects a wallet of its own here (sharing one is allowed too).
     $fresh = ownPotWallet(150_000);
 
     expect([$open->refresh()->pool_opened_at, $closedPot->refresh()->pool_opened_at, $walletPot->refresh()->pool_opened_at])->each->not->toBeNull()
@@ -309,6 +318,12 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
     IncomingPayment::query()->latest('id')->firstOrFail()->forceFill(['sponsor_id' => $sponsor->id, 'source' => 'sponsor'])->save();
 
     app(PayoutApproval::class)->approve($finished->refresh(), $admin);
+
+    // Fixed prizes of 80 000 sats in a wallet holding 60 000, not approved yet: a warning, the approval stays (user, 2026-09-27).
+    $shortPot = ownPotWallet(0);
+    fakeLightningAddresses($shortPot);
+    $short = finishedPoolTournament($shortPot, 60_000, 2, fixed: [50_000, 30_000]);
+    $short->forceFill(['name' => 'Short Stack Cup'])->save();
 
     foreach ($finished->payouts()->get() as $payout) {
         app(PayoutRunner::class)->run($payout, true);
@@ -370,6 +385,13 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $adminState = $desk->evaluate(TOURNAMENT_STATE);
         $adminState['wide'] = $desk->evaluate(POOL_WIDE);
         tournamentShot($desk, "p9-admin-payouts-{$width}");
+        $desk->goto(ComputeUrl::from(route('admin.payouts', ['tournament' => $short->id])));
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=payouts-underfunded]") !== null', 8_000);
+        $desk->evaluate('() => document.querySelector("[data-test=payouts-underfunded]").scrollIntoView({block: "center"})');
+        $shortState = $desk->evaluate(TOURNAMENT_STATE);
+        $shortState['box'] = $desk->evaluate(WARNING_BOX, '[data-test=payouts-underfunded]');
+        $shortState['approve'] = $desk->evaluate('() => document.querySelector("[data-test=approve-payouts]") !== null');
+        tournamentShot($desk, "p9-admin-payouts-short-{$width}");
         $desk->goto(ComputeUrl::from(route('tournaments.pool', $open)));
         BrowserWait::until($desk, '() => document.querySelector("[data-test=prize-pot]") !== null', 8_000);
         $settings = $desk->evaluate(TOURNAMENT_STATE);
@@ -409,6 +431,14 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $fixed['sum'] = $desk->evaluate('() => document.querySelector("[data-test=pot-fixed-sum]").innerText');
         tournamentShot($desk, "p9-pot-create-fixed-{$width}");
 
+        // More in prizes than the checked wallet holds: a warning next to them, saving stays possible.
+        $desk->locator('[data-test=pot-fixed-1]')->fill('95000');
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-fixed-funding][role=status]") !== null', 8_000);
+        $desk->evaluate('() => document.querySelector("[data-test=pot-fixed-funding]").scrollIntoView({block: "center"})');
+        $shortForm = $desk->evaluate(TOURNAMENT_STATE);
+        $shortForm['box'] = $desk->evaluate(WARNING_BOX, '[data-test=pot-fixed-funding]');
+        tournamentShot($desk, "p9-pot-create-short-{$width}");
+
         // The edit page of a pot with fixed amounts in its own wallet: "connected", never the string, and what is left over.
         $desk->goto(ComputeUrl::from(route('admin.tournaments.edit', $walletPot)));
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-connected]") !== null', 8_000);
@@ -430,11 +460,21 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $walletShow = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-pot-show-{$width}");
 
-        fwrite(STDERR, "\n[p9-pool] {$width}: ".json_encode(['admin' => $adminState, 'settings' => $settings, 'create' => $create, 'fixed' => $fixed, 'edit' => $edit])."\n");
+        fwrite(STDERR, "\n[p9-pool] {$width}: ".json_encode(['admin' => $adminState, 'settings' => $settings, 'create' => $create, 'fixed' => $fixed, 'edit' => $edit, 'shortForm' => $shortForm, 'shortPayouts' => $shortState])."\n");
+
+        foreach ([$shortForm, $shortState] as $warned) {
+            expect($warned['errors'])->toBe([])->and($warned['overflow'])->toBeLessThanOrEqual(0)
+                ->and($warned['box']['left'])->toBeGreaterThanOrEqual(0)->and($warned['box']['right'])->toBeLessThanOrEqual($width)
+                ->and($warned['box']['scrollWidth'])->toBeLessThanOrEqual($warned['box']['clientWidth'])
+                ->and($warned['box']['text'])->toContain('Warning:');
+        }
+
+        expect($shortForm['box']['text'])->toContain('You can still save')->and($shortState['box']['text'])->toContain('You can still approve')
+            ->and($shortState['approve'])->toBeTrue();
 
         expect($adminState['errors'])->toBe([])->and($settings['errors'])->toBe([])
             ->and($adminState['overflow'])->toBeLessThanOrEqual(0)->and($settings['overflow'])->toBeLessThanOrEqual(0)
-            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()->and($create['league'])->toBeFalse()->and($create['hint'])->toContain('whole balance is the pot')
+            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()->and($create['league'])->toBeFalse()->and($create['hint'])->toContain('sub-wallet with its own balance')
             ->and($fixed['errors'])->toBe([])->and($fixed['overflow'])->toBeLessThanOrEqual(0)->and($fixed['inputs'])->toHaveCount(4)
             ->and(collect($fixed['inputs'])->every(fn (array $box): bool => $box[0] >= 0 && $box[1] <= $width && $box[2] >= 44))->toBeTrue()
             ->and($edit['funding'])->toContain('left over')
@@ -442,7 +482,7 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
             ->and($index['errors'])->toBe([])->and($index['overflow'])->toBeLessThanOrEqual(0)
             ->and($walletShow['errors'])->toBe([])->and($walletShow['overflow'])->toBeLessThanOrEqual(0);
 
-        $measured[$width] = ['invoice' => $invoice, 'received' => $received, 'off' => $off, 'payouts' => $payouts, 'fixed' => $fixed, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
+        $measured[$width] = ['shortForm' => $shortForm, 'shortPayouts' => $shortState, 'invoice' => $invoice, 'received' => $received, 'off' => $off, 'payouts' => $payouts, 'fixed' => $fixed, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
     }
 
     expect($finished->payouts()->pluck('status')->map->value->sort()->values()->all())->toBe(['open', 'paid', 'paid', 'paid'])

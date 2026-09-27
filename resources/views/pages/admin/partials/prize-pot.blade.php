@@ -64,7 +64,7 @@
                     {{ __('Connection string (nostr+walletconnect://…)') }}
                     <input type="password" wire:model="potUri" autocomplete="off" spellcheck="false" class="h-11 rounded-md border border-line bg-well px-3 font-mono text-[13px] text-ink" data-test="pot-uri">
                     <span class="text-ink-3">{{ __('Create a connection in your wallet (for example Alby Hub) that may read the balance and pay invoices, and make invoices if anyone should be able to add sats. It is stored encrypted and never shown again.') }}</span>
-                    <span class="font-bold text-ink-2" data-test="pot-own-wallet-hint">{{ __('Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.') }}</span>
+                    <span class="text-ink-2" data-test="pot-own-wallet-hint">{{ __('Set this connection’s budget in the wallet to the pot size, or use an Alby Hub sub-wallet with its own balance.') }}</span>
                 </label>
                 <div><x-button variant="quiet" wire:click="checkPotConnection" wire:loading.attr="disabled" data-test="pot-check">{{ __('Check connection') }}</x-button></div>
             @endif
@@ -134,13 +134,14 @@
                     @endforeach
                 </ol>
                 @if ($potBalance !== null)
-                    <span @class(['text-xs', 'text-win' => $potBalance >= $potFixedNeed, 'text-loss' => $potBalance < $potFixedNeed]) data-test="pot-fixed-funding">
-                        @if ($potBalance >= $potFixedNeed)
-                            {{ __('The wallet holds :balance sats: the prizes are covered, :left sats are left over after prizes.', ['balance' => $potFormat($potBalance), 'left' => $potFormat($potBalance - $potFixedNeed)]) }}
-                        @else
-                            {{ __('The wallet holds :balance sats: :missing sats are still missing.', ['balance' => $potFormat($potBalance), 'missing' => $potFormat($potFixedNeed - $potBalance)]) }}
-                        @endif
-                    </span>
+                    @if ($potBalance >= $potFixedNeed)
+                        <span class="text-xs text-win" data-test="pot-fixed-funding">{{ __('The wallet holds :balance sats: the prizes are covered, :left sats are left over after prizes.', ['balance' => $potFormat($potBalance), 'left' => $potFormat($potBalance - $potFixedNeed)]) }}</span>
+                    @else
+                        <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="status" data-test="pot-fixed-funding">
+                            <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
+                            <span>{{ __('Warning: the wallet holds :balance sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still save; top up the wallet before the payouts.', ['balance' => $potFormat($potBalance), 'missing' => $potFormat($potFixedNeed - $potBalance), 'need' => $potFormat($potFixedNeed)]) }}</span>
+                        </p>
+                    @endif
                 @endif
                 <span class="text-xs text-ink-3">{{ __('Tied places share the sum of their amounts; a team’s share is split equally among its roster. What the wallet holds beyond the prizes stays in it.') }}</span>
             @else

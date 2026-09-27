@@ -34,6 +34,14 @@ use Illuminate\Support\Facades\RateLimiter;
  */
 final class PotTopUps
 {
+    /**
+     * How long past its expiry an invoice is still looked up. After that it
+     * is expired here, whatever its wallet answers or if it never answers
+     * (re-gate F-B): a wallet that says `pending` forever must not keep it
+     * in every wallet:sync run.
+     */
+    public const EXPIRY_GRACE_SECONDS = 600;
+
     public function __construct(private PotBalances $balances) {}
 
     public static function enabled(Tournament $tournament): bool
@@ -95,9 +103,19 @@ final class PotTopUps
      */
     private function lookUp(IncomingPayment $payment, int $minSeconds): array
     {
+        if ($payment->status !== IncomingPaymentStatus::Pending) {
+            return [$payment, false];
+        }
+
+        if (self::overdue($payment)) {
+            IncomingPayment::query()->whereKey($payment->id)->where('status', IncomingPaymentStatus::Pending)->update(['status' => IncomingPaymentStatus::Expired]);
+
+            return [$payment->refresh(), false];
+        }
+
         $tournament = $payment->tournament_id === null ? null : Tournament::query()->find($payment->tournament_id);
 
-        if ($tournament === null || $payment->pot !== IncomingPayment::tournamentPot($tournament->id) || $payment->status !== IncomingPaymentStatus::Pending
+        if ($tournament === null || $payment->pot !== IncomingPayment::tournamentPot($tournament->id)
             || ($payment->checked_at !== null && $payment->checked_at->getTimestamp() > now()->getTimestamp() - $minSeconds)) {
             return [$payment, false];
         }
@@ -149,10 +167,11 @@ final class PotTopUps
             ->where('created_at', '>', now()->subDay())
             ->orderBy('id')
             ->each(function (IncomingPayment $payment) use (&$settled, &$slow): void {
-                // A wallet that timed out once is not asked again in this run: one slow wallet costs one timeout (gate F-B).
-                $wallet = Tournament::query()->whereKey($payment->tournament_id)->value('pot_wallet_hash') ?? 'tournament:'.$payment->tournament_id;
+                // A pot wallet that timed out once is not asked again in this run: one slow wallet costs one timeout (gate F-B).
+                // An overdue invoice is still expired: that needs no wallet.
+                $wallet = 'tournament:'.$payment->tournament_id;
 
-                if (isset($slow[$wallet])) {
+                if (isset($slow[$wallet]) && ! self::overdue($payment)) {
                     return;
                 }
 
@@ -166,6 +185,11 @@ final class PotTopUps
             });
 
         return $settled;
+    }
+
+    private static function overdue(IncomingPayment $payment): bool
+    {
+        return $payment->expires_at->getTimestamp() + self::EXPIRY_GRACE_SECONDS < now()->getTimestamp();
     }
 
     /**

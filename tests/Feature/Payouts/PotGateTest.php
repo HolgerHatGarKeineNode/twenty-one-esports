@@ -15,103 +15,39 @@ use App\Support\Prizes\PotTopUps;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRuleViolation;
-use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 use Tests\Support\FakeNwcTransport;
 
 /*
-| Security gate on 55ef30e. F-A: one wallet backs one open pot (a pot is its
-| wallet's whole balance). F-B: sponsor invoices have caps of their own, an
-| invoice counts as open no longer than the league asked, and wallet:sync
-| pays first and asks a wallet that timed out only once per run. Notes: the
-| pot cannot be switched off or on after sign-up closed, and a cancelled
-| tournament closes its pot.
+| Security gate on 55ef30e and its re-gate. One wallet may back several pots
+| (user, 2026-09-27: the organizer caps each connection's budget or uses a
+| sub-wallet; the balance is a visual check only). F-B: sponsor invoices
+| have caps of their own, an invoice counts as open no longer than the
+| league asked and is expired locally once its expiry and a grace passed,
+| and wallet:sync pays first and asks a wallet that timed out only once per
+| run. O1: the create page checks the wallet before its transaction. Notes:
+| the pot cannot be switched off or on after sign-up closed, and a
+| cancelled tournament closes its pot.
 */
 
-const SHARED_WALLET = 'This wallet already holds the pot of another tournament. Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.';
-
-test('F-A: a wallet that backs one open pot cannot back a second one, and only its keyed fingerprint is stored', function () {
+test('one wallet may back the pots of several tournaments: nothing is refused', function () {
     fakeWallet();
     $shared = ownPotWallet(100_000);
     $first = openTournament();
     $second = openTournament();
     app(PrizePool::class)->configurePot($first, $first->creator, true, $shared->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]);
+    app(PrizePool::class)->configurePot($second, $second->creator, true, $shared->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]);
 
-    expect(fn () => app(PrizePool::class)->configurePot($second, $second->creator, true, $shared->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]))
-        ->toThrow(TournamentRuleViolation::class, __(SHARED_WALLET))
-        ->and($second->refresh()->hasOwnWallet())->toBeFalse();
+    expect($first->refresh()->hasOwnWallet())->toBeTrue()->and($second->refresh()->hasOwnWallet())->toBeTrue();
 
-    // The form says so at the live check already, next to the rule it states.
+    // The form's live check says the balance, with the hint on budgets and sub-wallets.
     Livewire::actingAs($second->creator)->test('pages::admin.tournament-edit', ['tournament' => $second])
-        ->set('potEnabled', true)->set('potUri', $shared->uri('pay'))->call('checkPotConnection')
-        ->assertSet('potError', __(SHARED_WALLET))
-        ->assertSeeHtml('data-test="pot-own-wallet-hint"');
-
-    // HMAC under app.key, never the pubkey or the connection string in clear.
-    $row = (array) DB::table('tournaments')->where('id', $first->id)->first();
-    expect($row['pot_wallet_hash'])->toBe(hash_hmac('sha256', 'pot-wallet:'.$shared->pubkey, (string) config('app.key')));
-
-    foreach ($row as $value) {
-        expect((string) $value)->not->toContain($shared->pubkey)->not->toContain($shared->clients['pay']['secret']);
-    }
-});
-
-test('F-A: the wallet is bound until its pot closed and every prize from it is paid', function () {
-    fakeWallet();
-    $shared = ownPotWallet(0);
-    fakeLightningAddresses($shared);
-    $finished = finishedPoolTournament($shared, 10_000, 2);
-    $next = openTournament();
-    $connect = fn () => app(PrizePool::class)->configurePot($next->refresh(), $next->creator, true, $shared->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]);
-
-    // Open pot.
-    expect($connect)->toThrow(TournamentRuleViolation::class, __(SHARED_WALLET));
-
-    // Closed, prizes approved but not paid: the wallet still holds them.
-    app(PayoutApproval::class)->approve($finished, anAdmin());
-    expect($connect)->toThrow(TournamentRuleViolation::class, __(SHARED_WALLET));
-
-    foreach ($finished->payouts()->get() as $payout) {
-        app(PayoutRunner::class)->run($payout, true);
-    }
-
-    expect($finished->payouts()->pluck('status')->unique()->all())->toBe([PayoutStatus::Paid]);
-    expect($connect()->hasOwnWallet())->toBeTrue();
-});
-
-test('F-A: a pot bound to the wallet between the live check and the lock is still refused', function () {
-    fakeWallet();
-    $shared = ownPotWallet(100_000);
-    $first = openTournament();
-    $second = openTournament();
-
-    // Another page saves the same wallet for the first tournament while the second one's check runs.
-    $bound = false;
-    Event::listen(TransactionBeginning::class, function () use ($first, $shared, &$bound): void {
-        if (! $bound) {
-            $bound = true;
-            Tournament::query()->whereKey($first->id)->update(['pot_source' => Tournament::POT_WALLET, 'pot_wallet_hash' => PrizePool::walletFingerprint($shared->pubkey)]);
-        }
-    });
-
-    expect(fn () => app(PrizePool::class)->configurePot($second, $second->creator, true, $shared->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]))
-        ->toThrow(TournamentRuleViolation::class, __(SHARED_WALLET))
-        ->and($bound)->toBeTrue()
-        ->and($second->refresh()->hasOwnWallet())->toBeFalse();
-});
-
-test('F-A: the migration fingerprints the wallets of existing pots', function () {
-    fakeWallet();
-    $pot = ownPotWallet(0);
-    $tournament = publishForPool(openTournament(), $pot);
-    $migration = require database_path('migrations/2026_09_27_190622_add_pot_wallet_hash_to_tournaments.php');
-    $migration->down();
-    $migration->up();
-
-    expect(DB::table('tournaments')->where('id', $tournament->id)->value('pot_wallet_hash'))->toBe(PrizePool::walletFingerprint($pot->pubkey));
+        ->set('potEnabled', true)->call('replacePotWallet')->set('potUri', $shared->uri('pay'))->call('checkPotConnection')
+        ->assertSet('potError', '')->assertSet('potCheckedSats', 100_000)
+        ->assertSeeHtml('data-test="pot-own-wallet-hint"')
+        ->assertSee(__('Set this connection’s budget in the wallet to the pot size, or use an Alby Hub sub-wallet with its own balance.'));
 });
 
 test('F-B: sponsor invoices have caps of their own and never use up the organizer’s top-ups', function () {
@@ -199,6 +135,31 @@ test('F-B: wallet:sync continues payouts first, asks a wallet that timed out onc
         ->and($late->refresh()->status)->toBe(IncomingPaymentStatus::Settled);
 });
 
+test('F-B: an invoice whose wallet says pending forever or never answers is expired locally once its expiry and the grace passed', function () {
+    fakeWallet();
+    config(['esports.wallet.open_invoices_per_user' => 100]);
+    $transport = app(FakeNwcTransport::class);
+    $pending = ownPotWallet(0);
+    $silent = ownPotWallet(0);
+    $stuck = app(PotTopUps::class)->invoice(publishForPool(openTournament(), $pending), 2_100);
+    $lost = app(PotTopUps::class)->invoice(publishForPool(openTournament(), $silent), 2_100);
+    $transport->offline[$silent->pubkey] = true;
+
+    // Past its expiry, inside the grace: still asked, still open (a late settle can land).
+    $this->travelTo($stuck->expires_at->copy()->addSeconds(PotTopUps::EXPIRY_GRACE_SECONDS - 60));
+    Artisan::call('wallet:sync');
+    expect($stuck->refresh()->status)->toBe(IncomingPaymentStatus::Pending)
+        ->and($lost->refresh()->status)->toBe(IncomingPaymentStatus::Pending);
+
+    // Past the grace: expired here, and the wallets are not asked about them any more.
+    $this->travelTo($stuck->expires_at->copy()->addSeconds(PotTopUps::EXPIRY_GRACE_SECONDS + 60));
+    $transport->requestsTo = [];
+    Artisan::call('wallet:sync');
+    expect($stuck->refresh()->status)->toBe(IncomingPaymentStatus::Expired)
+        ->and($lost->refresh()->status)->toBe(IncomingPaymentStatus::Expired)
+        ->and(array_intersect(array_filter($transport->requestsTo), [$pending->pubkey, $silent->pubkey]))->toBe([]);
+});
+
 test('after sign-up closed the pot can be neither switched off nor switched on, but its wallet can be replaced', function () {
     fakeWallet();
     $pot = ownPotWallet(10_000);
@@ -218,7 +179,7 @@ test('after sign-up closed the pot can be neither switched off nor switched on, 
 
     $replacement = ownPotWallet(5_000);
     $configure($tournament, true, $replacement->uri('pay'), [70, 30]);
-    expect($tournament->refresh()->pot_wallet_hash)->toBe(PrizePool::walletFingerprint($replacement->pubkey))
+    expect($tournament->refresh()->pot_nwc_uri)->toBe($replacement->uri('pay'))
         ->and($tournament->prizeSplit())->toBe([70, 30]);
 });
 
@@ -243,4 +204,32 @@ test('a cancelled tournament closes its pot: no top-up and no sponsor invoice an
     // And a cancelled row that somehow kept an open pot still takes nothing.
     DB::table('tournaments')->where('id', $drawn->id)->update(['pool_closed_at' => null]);
     expect(PotTopUps::enabled($drawn->refresh()))->toBeFalse();
+});
+
+test('O1: the create page asks the wallet before its transaction, never while holding the write lock', function () {
+    fakeWallet();
+    $transport = app(FakeNwcTransport::class);
+    $own = ownPotWallet(50_000);
+    $base = DB::transactionLevel();
+    $transport->transactionLevels = [];
+
+    Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('name', 'Lock Cup')
+        ->set('potEnabled', true)->set('potUri', $own->uri('pay'))
+        ->call('create')->assertSet('potError', '')->assertHasNoErrors();
+
+    $tournament = Tournament::query()->where('name', 'Lock Cup')->sole();
+    expect($tournament->hasOwnWallet())->toBeTrue()->and($tournament->pot_balance_sats)->toBe(50_000)
+        ->and($transport->transactionLevels)->not->toBeEmpty()
+        ->and(array_values(array_unique($transport->transactionLevels)))->toBe([$base]);
+});
+
+test('O1: a wallet refused before the transaction creates nothing', function () {
+    fakeWallet();
+    $own = ownPotWallet(50_000);
+
+    Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('name', 'Refused Cup')
+        ->set('potEnabled', true)->set('potUri', $own->uri('receive'))
+        ->call('create')->assertNotSet('potError', '');
+
+    expect(Tournament::query()->where('name', 'Refused Cup')->exists())->toBeFalse();
 });

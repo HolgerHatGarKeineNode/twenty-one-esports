@@ -8,7 +8,6 @@ use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Lightning\LightningAddress;
-use App\Support\PreSeason;
 use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
@@ -31,8 +30,9 @@ use Illuminate\Support\Facades\Gate;
  * Fail closed: without the pot's wallet connection or the league key
  * nothing closes, and the pot is what its wallet holds at this moment
  * (read now, never assumed). Percent prizes split that balance less the
- * fee reserve ({@see PrizePool::payable()}); fixed prizes are approved only
- * when the balance covers their sum and its reserve. What is left stays in
+ * fee reserve ({@see PrizePool::payable()}); fixed prizes are approved as
+ * set, and a balance short of them is only a warning on the page (user,
+ * 2026-09-27: the admin is responsible). What is left stays in
  * the pot's wallet; the league wallet and ledger are never touched.
  * Approving twice changes nothing: the tournament row is locked and
  * approved only once, and the idempotency keys are unique.
@@ -114,13 +114,6 @@ final class PayoutApproval
             throw new TournamentRuleViolation('pot_unread', __('The pot’s wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
         }
 
-        // Fixed prizes are paid in full or not at all: the balance has to cover them and their fee reserve.
-        if (PrizePool::payable($tournament, (int) $tournament->pot_balance_sats) === null) {
-            throw new TournamentRuleViolation('pot_underfunded', __('The pot holds :have sats; the fixed prizes need :need sats with the fee reserve. Add sats to the wallet, read its balance again, then approve.', [
-                'have' => PreSeason::formatSats((int) $tournament->pot_balance_sats), 'need' => PreSeason::formatSats((int) PrizePool::requiredSats($tournament)),
-            ]));
-        }
-
         return DB::transaction(function () use ($tournament, $admin): Tournament {
             $locked = Tournament::query()->whereKey($tournament->id)->lockForUpdate()->firstOrFail();
 
@@ -131,8 +124,7 @@ final class PayoutApproval
             $locked->forceFill(['pool_closed_at' => now(), 'payouts_approved_at' => now(), 'payouts_approved_by_id' => $admin->id])->save();
             $this->publisher->republish($locked);
 
-            $pool = PrizePool::payable($locked, (int) $locked->pot_balance_sats)
-                ?? throw new TournamentRuleViolation('pot_underfunded', __('The pot no longer covers the fixed prizes.'));
+            $pool = PrizePool::payable($locked, (int) $locked->pot_balance_sats);
             $plan = $this->plan->compute($locked, $pool) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
 
             foreach ($plan['rows'] as $row) {

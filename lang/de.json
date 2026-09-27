@@ -3661,8 +3661,6 @@
     "Anyone can add sats to it from the tournament page.": "Jeder kann auf der Turnierseite Sats hinzufügen.",
     "It may not make invoices, so top-ups from the tournament page are off.": "Sie darf keine Rechnungen erstellen, deshalb sind Aufstockungen über die Turnierseite aus.",
     "1st place wins :sats sats": "Platz 1 gewinnt :sats Sats",
-    "The pot holds :have sats; the fixed prizes need :need sats with the fee reserve. Add sats to the wallet, read its balance again, then approve.": "Der Topf hält :have Sats; die festen Preise brauchen mit der Gebührenreserve :need Sats. Füge der Wallet Sats hinzu, lies den Stand neu und gib dann frei.",
-    "The pot no longer covers the fixed prizes.": "Der Topf deckt die festen Preise nicht mehr.",
     "Top-ups are not enabled for this pot.": "Aufstockungen sind für diesen Topf nicht aktiviert.",
     "The pot’s wallet did not answer. Please try again in a moment.": "Die Wallet des Topfs hat nicht geantwortet. Bitte versuch es gleich noch einmal.",
     "Fixed prizes name between 1 and :max places.": "Feste Preise gelten für 1 bis :max Plätze.",
@@ -3693,7 +3691,6 @@
     ":place. place, sats": ":place. Platz, Sats",
     "Total: :sats sats; the pot needs :need sats with the fee reserve.": "Summe: :sats Sats; mit der Gebührenreserve braucht der Topf :need Sats.",
     "The wallet holds :balance sats: the prizes are covered, :left sats are left over after prizes.": "Die Wallet hält :balance Sats: Die Preise sind gedeckt, nach den Preisen bleiben :left Sats übrig.",
-    "The wallet holds :balance sats: :missing sats are still missing.": "Die Wallet hält :balance Sats: Es fehlen noch :missing Sats.",
     "Tied places share the sum of their amounts; a team’s share is split equally among its roster. What the wallet holds beyond the prizes stays in it.": "Gleichplatzierte teilen sich die Summe ihrer Beträge; der Anteil eines Teams wird gleichmäßig auf seinen Kader verteilt. Was die Wallet über die Preise hinaus hält, bleibt darin.",
     "The league key is not set up (ESPORTS_LEAGUE_NSEC), so no payout can be published.": "Der Ligaschlüssel ist nicht eingerichtet (ESPORTS_LEAGUE_NSEC), deshalb kann keine Auszahlung veröffentlicht werden.",
     "No tournament has a prize pot yet. Organizers connect one on their tournament’s prize pool page.": "Noch kein Turnier hat einen Preistopf. Veranstalter verbinden ihn auf der Preispool-Seite ihres Turniers.",
@@ -3712,8 +3709,9 @@
     "Top-ups not enabled for this pot: its connection may not make invoices, so sponsors pay the wallet directly and show without a paid mark.": "Aufstockungen sind für diesen Topf nicht aktiviert: Seine Verbindung darf keine Rechnungen erstellen, deshalb zahlen Sponsoren direkt an die Wallet und erscheinen ohne Bezahlt-Vermerk.",
     "This tournament has too many unpaid sponsor invoices. Wait until one is paid or expires.": "Dieses Turnier hat zu viele unbezahlte Sponsorenrechnungen. Warte, bis eine bezahlt ist oder abläuft.",
     "Too many sponsor invoices this hour. Try again in :minutes min.": "Zu viele Sponsorenrechnungen in dieser Stunde. Versuch es in :minutes Min. wieder.",
-    "This wallet already holds the pot of another tournament. Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.": "Diese Wallet hält bereits den Topf eines anderen Turniers. Nutze für jedes Turnier eine eigene Wallet oder Sub-Wallet. Ihr gesamter Stand ist der Topf.",
     "The prize pot is part of the rules players signed up under; it cannot be switched on or off after sign-up closed.": "Der Preistopf gehört zu den Regeln, unter denen sich die Spieler angemeldet haben; nach Anmeldeschluss lässt er sich weder ein- noch ausschalten.",
     "Create a connection in your wallet (for example Alby Hub) that may read the balance and pay invoices, and make invoices if anyone should be able to add sats. It is stored encrypted and never shown again.": "Lege in deiner Wallet (zum Beispiel Alby Hub) eine Verbindung an, die den Stand lesen und Rechnungen bezahlen darf, und Rechnungen erstellen, wenn jeder Sats hinzufügen können soll. Sie wird verschlüsselt gespeichert und nie wieder angezeigt.",
-    "Use a separate wallet or sub-wallet for each tournament. Its whole balance is the pot.": "Nutze für jedes Turnier eine eigene Wallet oder Sub-Wallet. Ihr gesamter Stand ist der Topf."
+    "Set this connection’s budget in the wallet to the pot size, or use an Alby Hub sub-wallet with its own balance.": "Stell das Budget dieser Verbindung in der Wallet auf die Größe des Topfs ein oder nutze eine Sub-Wallet in Alby Hub mit eigenem Guthaben.",
+    "Warning: the wallet holds :balance sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still save; top up the wallet before the payouts.": "Warnung: Die Wallet hält :balance Sats, :missing Sats weniger, als die festen Preise mit der Gebührenreserve brauchen (:need Sats). Speichern geht trotzdem; lade die Wallet vor den Auszahlungen auf.",
+    "Warning: the pot holds :have sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still approve; a payment the wallet cannot make fails and can be retried after a top-up.": "Warnung: Der Topf hält :have Sats, :missing Sats weniger, als die festen Preise mit der Gebührenreserve brauchen (:need Sats). Freigeben geht trotzdem; eine Zahlung, die die Wallet nicht leisten kann, schlägt fehl und kann nach dem Aufladen wiederholt werden."
 }

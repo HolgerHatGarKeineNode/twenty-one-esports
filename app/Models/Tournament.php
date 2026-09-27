@@ -76,7 +76,6 @@ use Illuminate\Support\Carbon;
  * @property string|null $prize_mode `percent` (null) or `fixed`
  * @property list<int>|null $prize_fixed sats per place in `fixed` mode
  * @property bool|null $pot_can_receive the pot's connection may `make_invoice` (top-ups); null = unknown
- * @property string|null $pot_wallet_hash keyed fingerprint of the pot wallet's pubkey (one wallet backs one open pot)
  * @property string|null $pot_nwc_uri the tournament's own NWC connection (encrypted at rest, never shown)
  * @property string|null $pot_lud16 the Lightning address of that wallet, if its connection string names one
  * @property int|null $pot_balance_sats last balance read from the own wallet
@@ -102,8 +101,8 @@ use Illuminate\Support\Carbon;
     'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes',
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
     'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at',
-    'prize_mode', 'prize_fixed', 'pot_can_receive', 'pot_wallet_hash'])]
-#[Hidden(['pot_nwc_uri', 'pot_wallet_hash'])]
+    'prize_mode', 'prize_fixed', 'pot_can_receive'])]
+#[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */

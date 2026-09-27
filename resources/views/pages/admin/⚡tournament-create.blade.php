@@ -29,8 +29,9 @@ use Livewire\Attributes\Title;
  *
  * The prize pot is optional and off by default (P9 scope addition,
  * App\Livewire\Concerns\EditsPrizePot): a draft with a pot is created
- * only when the pot is valid too (a wallet connection is checked live), and
- * it opens when the tournament is published.
+ * only when the pot is valid too (a wallet connection is checked live,
+ * before the transaction that writes the draft), and it opens when the
+ * tournament is published.
  */
 new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFormatChooser {
     use EditsPrizePot;
@@ -95,6 +96,11 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         }
 
         $profile = $this->profile();
+
+        // The wallet is asked before the transaction: its calls take up to a minute and must not hold SQLite's write lock (re-gate O1).
+        if (! $this->checkNewPotWallet()) {
+            return;
+        }
 
         // The draft and its pot are one step: a refused pot creates nothing.
         try {
