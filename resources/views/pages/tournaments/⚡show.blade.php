@@ -392,6 +392,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 @endphp
 
 <div class="flex flex-col gap-12 pb-16 lg:gap-16" data-test="tournament-show" data-cta="{{ $cta }}" @if ($poll) wire:poll.15s.visible @endif>
+    {{--
+        The organizer's and admin's bar (user, 2026-09-28: the prize pool was too hard to reach): prize pool,
+        edit and payouts, each behind its own gate (<x-tournaments.manage-actions>), at the top of the page.
+    --}}
+    @if ($this->canManage)
+        <div class="-mb-6 flex flex-col gap-2 px-4 pt-4 sm:flex-row sm:items-center sm:gap-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
+            <span class="text-[13px] text-ink-2">{{ __('You manage this tournament.') }}</span>
+            <x-tournaments.manage-actions :tournament="$tournament" />
+        </div>
+    @endif
+
     {{-- Hero: cover, name, the call to action with the countdown, the places --}}
     <section aria-labelledby="t-name" class="tl-hero relative isolate" data-test="tournament-hero">
         <div class="grid gap-6 px-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:items-center lg:gap-12 lg:px-12">
@@ -409,9 +420,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->on_site ? __('On site') : __('Online') }}</span>
                     @if ($tournament->isCasualCup())
                         <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2" data-test="casual-marker">{{ __('Casual') }}</span>
-                    @endif
-                    @if ($this->canManage)
-                        <a href="{{ route('admin.tournaments.edit', $tournament) }}" class="inline-flex h-8 items-center rounded-sm border border-edge px-3 text-ink hover:text-ink" data-test="to-edit">{{ __('Edit') }}</a>
                     @endif
                 </div>
 

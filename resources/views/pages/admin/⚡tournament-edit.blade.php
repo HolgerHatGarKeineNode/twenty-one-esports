@@ -434,6 +434,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
             <h1 class="m-0 min-w-0 font-display text-2xl font-bold [overflow-wrap:anywhere] lg:text-[28px]">{{ __('Edit :name', ['name' => $tournament->name]) }}</h1>
             <span class="inline-flex h-7 items-center self-start rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi lg:self-auto" data-test="edit-status">{{ $tournament->status->label() }}</span>
+            <x-tournaments.manage-actions :tournament="$tournament" :except="['edit']" class="lg:ml-auto lg:shrink-0" />
         </div>
 
         @if ($notice !== '')

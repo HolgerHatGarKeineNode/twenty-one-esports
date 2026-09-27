@@ -17,8 +17,8 @@ use Livewire\Component;
  * AdminTournaments (AdminTournaments.dc.html, P8a): the tournaments, newest
  * first — all of them for an admin, their own for an organizer — and, for
  * admins, the organizers who may create tournaments. Each row links its
- * edit page (gate `manage-tournament`). The prize pool of each
- * row is linked too (P9).
+ * management actions under its name (<x-tournaments.manage-actions>:
+ * prize pool, edit, payouts, each behind its own gate).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
@@ -161,8 +161,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                 <th class="py-2 pr-3 font-normal">{{ __('Game, mode') }}</th>
                                 <th class="py-2 pr-3 font-normal">{{ __('Starts') }}</th>
                                 <th class="py-2 pr-3 font-normal">{{ __('Format') }}</th>
-                                <th class="py-2 pr-3 text-right font-normal">{{ __('Entries') }}</th>
-                                <th class="relative py-2 font-normal"><span class="sr-only">{{ __('Edit') }}</span></th>
+                                <th class="py-2 text-right font-normal">{{ __('Entries') }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -172,21 +171,15 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                     <td class="py-2.5 pr-3">
                                         <a href="{{ route('tournaments.show', $tournament) }}" class="font-bold">{{ $tournament->name }}</a>
                                         <span class="block text-xs text-ink-3">{{ __('by :name', ['name' => $tournament->creator?->displayName() ?? __('a former player')]) }}</span>
-                                        @unless (in_array($tournament->status, [\App\Enums\TournamentStatus::Draft, \App\Enums\TournamentStatus::Cancelled], true))
-                                            <a href="{{ route('tournaments.pool', $tournament) }}" class="text-xs" data-test="row-pool">{{ $tournament->pool_opened_at ? __('Prize pool') : __('Set up the prize pool') }}</a>
-                                        @endunless
+                                        {{-- Prize pool, Edit and Payouts as buttons in the name column, reachable on a phone without scrolling the table sideways. --}}
+                                        <x-tournaments.manage-actions :tournament="$tournament" class="pt-2" />
                                     </td>
                                     <td class="py-2.5 pr-3">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}</td>
                                     <td class="py-2.5 pr-3 whitespace-nowrap"><x-league-time :at="$tournament->starts_at" /></td>
                                     <td class="py-2.5 pr-3">{{ $tournament->format->label() }}
                                         <span class="block text-xs text-ink-3">{{ __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $tournament->profile())]) }}</span>
                                     </td>
-                                    <td class="py-2.5 pr-3 text-right">{{ $tournament->capacity }}</td>
-                                    <td class="py-2.5 text-right">
-                                        @can('manage-tournament', $tournament)
-                                            <a href="{{ route('admin.tournaments.edit', $tournament) }}" class="inline-flex min-h-11 items-center px-2 text-[13px]" data-test="edit-tournament">{{ __('Edit') }}</a>
-                                        @endcan
-                                    </td>
+                                    <td class="py-2.5 text-right">{{ $tournament->capacity }}</td>
                                 </tr>
                             @endforeach
                         </tbody>
