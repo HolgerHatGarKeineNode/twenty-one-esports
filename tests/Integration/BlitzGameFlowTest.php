@@ -142,15 +142,8 @@ test('two Trusted players are paired for rated blitz, play, and White resigns; t
         ->and($pTagOf($record, 'white'))->toBe($game->white->pubkey)
         ->and($pTagOf($record, 'black'))->toBe($game->black->pubkey);
 
-    // NOT checked here, deliberately: docs/nips/esports.md ("Game Record")
-    // reads "the other player answers it with a Result Response (2153)" for
-    // chess, but kind 2153 is defined and published only in
-    // App\Support\Series\{SeriesEvents,SeriesService,SeriesPresenter} (Rocket
-    // League); App\Support\Chess\GameRecords::submitFinal() refuses the
-    // second player's own submission with `already_recorded` and publishes
-    // nothing in its place — measured 2026-09-27 by grepping every
-    // app/Support/**.php for "2153" and reading submitFinal(). Reported as a
-    // finding (NIP text ahead of the chess implementation), not fixed here:
-    // outside a test's mandate, and P15 asks this suite to check what the
-    // app actually publishes.
+    // No Result Response (2153) follows the record: docs/nips/esports.md
+    // ("Game Record", revision note of 2026-09-27) dropped it for chess, which
+    // the league attests from its own record when the game ends; kind 2153
+    // stays a series event (App\Support\Series\SeriesEvents::RESPONSE).
 });

@@ -806,10 +806,26 @@ of the challenge. For a roster side, a roster player of that side responds. With
 ### Game Record (`64`, reused from NIP-64)
 
 Chess results are not reported by captains. Each game is a NIP-64 note (kind `64`, `content` = PGN
-in export format) signed by **one of its two players**, and the other player answers it with a
-Result Response (`2153`). The two signatures together carry the same weight as report and
-confirmation in a series game. The PGN comes from the league server, which validated every move;
-the player signs that text, so a doctored record is visible to the opponent before they confirm.
+in export format) signed by **one of its two players**. The PGN comes from the league server, which
+validated every move; the player signs that text, so a doctored record is refused by the league and
+visible to anyone who replays the PGN.
+
+**Revision note (2026-09-27): no Result Response for a chess game.** Earlier revisions had the other
+player answer the game record with a Result Response (`2153`). The league never asked for it, and it
+carries nothing: a chess result is not a score one side claims, but the end of a game the league
+server played move by move (mate, a draw by rule, a flag, a resignation, an abandoned game or a draw
+both players agreed to on the server), or a [director result](#director-results-rev-7). For correspondence the losing player has already signed every one of their own moves
+in the chain, and for blitz both played every move through the server. A `disputed` could not change
+the result, and waiting for a `2153` would only let the losing player delay the attestation by
+silence. The league therefore attests a chess game when it ends, from its own record, with
+`resolution` `admin` (`forfeit` for a director's no-show) and the counted game record as `e` if it
+already exists; the game record is the players' signature over that text, not a report that needs
+confirming. A player who thinks the server erred reports it to an admin like any other complaint.
+This note supersedes the chess cases of `2153` elsewhere in this document: the chess row of the kind
+table, the `reported (game)` rows of the state machine, the chess sentence of validation rule 14,
+step 5 of [Queue pairings](#queue-pairings) and "with its response" and "confirmed game record" in
+the chess paragraph of [League Attestation](#league-attestation-2154). A `2153` for a series is
+unchanged.
 
 Tags added to the NIP-64 note (NIP-64 allows additional tags): `e` challenge, the `a` references of
 the challenge (both lineups and the ladder in a team match, the ladder in a solo game), `p` White
