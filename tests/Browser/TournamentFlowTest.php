@@ -221,7 +221,7 @@ test('a tournament game offers no abort, and a missed first move ends it on the 
         $measured[$width] = $actions + $card + ['overflow' => $state['overflow']];
 
         expect($actions)->toBe(['abort' => false, 'resign' => true])
-            ->and($card['reason'])->toBe('won by forfeit: opponent did not start')
+            ->and($card['reason'])->toBe('decided by forfeit')
             ->and($card['clipped'])->toBeLessThanOrEqual(0)
             ->and($card['left'])->toBeGreaterThanOrEqual(0)
             ->and($card['right'])->toBeLessThanOrEqual($width)

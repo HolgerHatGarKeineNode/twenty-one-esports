@@ -412,7 +412,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             'reasons' => ['checkmate' => __('Checkmate'), 'resignation' => __('Resignation'), 'timeout' => __('Out of time'), 'agreement' => __('Draw by agreement'),
                 'stalemate' => __('Stalemate'), 'threefold_repetition' => __('Threefold repetition'), 'fifty_move_rule' => __('50-move rule'),
                 'insufficient_material' => __('Insufficient material'), 'aborted' => __('Aborted'), 'abandoned' => __('Opponent left'),
-                'director' => __('Entered by the tournament director'), 'forfeit' => __('won by forfeit: opponent did not start')],
+                'director' => __('Entered by the tournament director'), 'forfeit' => __('decided by forfeit')],
             'errors' => ['illegal_move' => __('That move is not legal here.'), 'not_your_turn' => __('It is not your turn.'),
                 'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                 'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
