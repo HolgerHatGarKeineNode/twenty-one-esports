@@ -26,6 +26,7 @@ use App\Support\Series\ChallengeDraft;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonImmutable;
 use Tests\Support\TestSigner;
+use Tests\Support\TimeAnchors;
 use Tests\Support\TrustedFacts;
 
 /** @return array{0: Lineup, 1: User, 2: TestSigner} */
@@ -110,28 +111,80 @@ test('a valid rated win is block 1: reward = subsidy x weight x winners, signed 
         ->and($event->tagsNamed('e'))->toHaveCount(4);
 });
 
-test('an invalid win is attested with the rule that rejected it and names the tip; the next valid block links to block 1', function () {
+/*
+ * Regression (2026-09-27): failed deterministically on origin/master since
+ * ~20:30 UTC ("Failed asserting that 2 is null"), while it passed earlier
+ * the same day — time-of-day dependent, same class of bug as
+ * RatedTrustGateTest's daily_pair_limit flake (see that file's comment).
+ *
+ * Root cause is this test's own clock, not ChainState::pairingBlocksOn()/
+ * Candidate::utcDay() (app/Support/SeasonChain/ChainState.php:43-46,
+ * Candidate.php:110-113): those compute `$attestedAt->utc()->format('Y-m-d')`,
+ * a correct UTC-day boundary. chainSeries() (line ~47 above) travels the
+ * clock forward ~1h40m every call (the same `now()->addHour()->startOfMinute()`
+ * plus a 40-minute travel as gateAccepted() in RatedTrustGateTest); called
+ * twice for the same pairing here, the second call's attested_at can land on
+ * a different UTC day than the first depending on the real time the suite
+ * happened to run. Rule 4 (PairingPerDay) scopes to one UTC day, so a
+ * genuine day-crossing here is not a bug in the rule — it is this test
+ * assuming the two series always land on the same day when the real clock
+ * decides that.
+ *
+ * Pinned to the same five anchors as RatedTrustGateTest; 21:30 UTC
+ * deterministically reproduces the reported failure (confirmed against the
+ * exact message before fixing this), because starting there the 1h40m
+ * drift between the first and second series here always crosses UTC
+ * midnight. Both branches below assert the behaviour Rule 4 actually
+ * defines, rather than assuming same-day.
+ */
+test('an invalid win is attested with the rule that rejected it and names the tip; the next valid block links to block 1', function (CarbonImmutable $anchor) {
+    test()->travelTo($anchor);
     app()->bind(TrustFacts::class, TrustedFacts::class);
     [$a, $b, $c] = [chainLineup(), chainLineup(), chainLineup()];
 
     chainSeries($a, $b);
+    $firstDay = now()->utc()->toDateString();
     $second = chainSeries($a, $b);
+    $secondDay = now()->utc()->toDateString();
     chainSeries($c, $b);
 
-    [$first, $rejected, $third] = SeasonAttestation::query()->orderBy('id')->get()->all();
+    [$firstBlock, $secondBlock, $thirdBlock] = SeasonAttestation::query()->orderBy('id')->get()->all();
 
-    expect($rejected->source_id)->toBe($second->id)
-        ->and($rejected->height)->toBeNull()
-        ->and($rejected->rule)->toBe(ConsensusRule::PairingPerDay->value)
-        ->and($rejected->reason)->toBe('pairing-daily-limit')
-        ->and($rejected->reward)->toBe(0)
-        ->and(attestationTags($rejected))->toContain(['block', '', $first->event_id])
-        ->and($third->height)->toBe(2)
-        ->and(attestationTags($third))->toContain(['block', '2', $first->event_id])
-        // `prev` chains the attestations of one ladder, mined or not.
-        ->and(attestationTags($rejected))->toContain(['prev', $first->event_id])
-        ->and(attestationTags($third))->toContain(['prev', $rejected->event_id]);
-});
+    expect($secondBlock->source_id)->toBe($second->id);
+
+    if ($firstDay === $secondDay) {
+        // The pairing repeats on the same UTC day: rule 4 (PairingPerDay)
+        // rejects the second series, names the still-unmoved tip (block 1),
+        // and the third series (a different pairing) becomes block 2.
+        expect($secondBlock->height)->toBeNull()
+            ->and($secondBlock->rule)->toBe(ConsensusRule::PairingPerDay->value)
+            ->and($secondBlock->reason)->toBe('pairing-daily-limit')
+            ->and($secondBlock->reward)->toBe(0)
+            ->and(attestationTags($secondBlock))->toContain(['block', '', $firstBlock->event_id])
+            ->and($thirdBlock->height)->toBe(2)
+            ->and(attestationTags($thirdBlock))->toContain(['block', '2', $firstBlock->event_id]);
+    } else {
+        // The drift crossed UTC midnight between the first and second
+        // series: rule 4 is scoped to one UTC day, so the second series is
+        // a fresh pairing on its own day and mines block 2; the third
+        // series then becomes block 3.
+        expect($secondBlock->height)->toBe(2)
+            ->and($secondBlock->rule)->toBeNull()
+            ->and(attestationTags($secondBlock))->toContain(['block', '2', $firstBlock->event_id])
+            ->and($thirdBlock->height)->toBe(3)
+            ->and(attestationTags($thirdBlock))->toContain(['block', '3', $secondBlock->event_id]);
+    }
+
+    // `prev` chains the attestations of one ladder, mined or not, in both branches above.
+    expect(attestationTags($secondBlock))->toContain(['prev', $firstBlock->event_id])
+        ->and(attestationTags($thirdBlock))->toContain(['prev', $secondBlock->event_id]);
+})->with([
+    '00:30 UTC' => [TimeAnchors::nextUtcTime(0, 30)],
+    '12:00 UTC' => [TimeAnchors::nextUtcTime(12, 0)],
+    '21:30 UTC' => [TimeAnchors::nextUtcTime(21, 30)],
+    '23:30 UTC' => [TimeAnchors::nextUtcTime(23, 30)],
+    'a Europe/Berlin DST transition' => [TimeAnchors::nextBerlinDstTransition()],
+]);
 
 test('a win without a gate pinned at the accept fails closed at rule 1 and mines nothing', function () {
     // Trusted through challenge and accept, then the pinned gate is gone (a series accepted

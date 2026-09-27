@@ -50,6 +50,7 @@ use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
+use Tests\Support\TimeAnchors;
 use Tests\Support\TrustedFacts;
 
 /** Trust facts with fixed answers: `$untrusted` players rank 0, the rest 100. */
@@ -128,38 +129,6 @@ function gateFinish(SeriesMatch $match, array $a, array $b, ?Closure $beforeConf
     $service->respond($match, $b[1], 'confirmed', '', $b[2]->signTemplates($service->prepareResponse($match, $b[1], 'confirmed')));
 
     return $match->refresh();
-}
-
-/**
- * The next UTC instant at $hour:$minute strictly after "now" (never today's
- * already-past occurrence) — always after the season's genesis_at, which
- * openSeason() (called from this file's beforeEach, at the real current
- * moment) pins to "now minus one hour" before any of this ever runs.
- */
-function nextUtcTime(int $hour, int $minute): CarbonImmutable
-{
-    $today = CarbonImmutable::now('UTC')->setTime($hour, $minute, 0);
-
-    return $today->isFuture() ? $today : $today->addDay();
-}
-
-/**
- * The next Europe/Berlin DST transition (spring forward or fall back), as
- * its UTC instant — a defensive case: this file's day-cap logic is pure
- * UTC and must not care about Berlin's clock at all, DST or not.
- */
-function nextBerlinDstTransition(): CarbonImmutable
-{
-    $from = CarbonImmutable::now('UTC');
-    $transitions = (new DateTimeZone('Europe/Berlin'))->getTransitions($from->getTimestamp(), $from->addYears(2)->getTimestamp());
-
-    foreach ($transitions as $transition) {
-        if ($transition['ts'] > CarbonImmutable::now('UTC')->getTimestamp()) {
-            return CarbonImmutable::createFromTimestamp($transition['ts'], 'UTC');
-        }
-    }
-
-    throw new RuntimeException('No upcoming Europe/Berlin DST transition found in the next two years.');
 }
 
 function gateRefusal(Closure $action): ?string
@@ -305,11 +274,11 @@ test('a rated pairing moves the rated Elo at most daily_pair_limit times a UTC d
     expect(SeriesMatch::query()->where('status', SeriesStatus::Confirmed)->count())->toBe(3)
         ->and($moved)->toBe($expectedMoved);
 })->with([
-    '00:30 UTC' => [nextUtcTime(0, 30)],
-    '12:00 UTC' => [nextUtcTime(12, 0)],
-    '21:30 UTC (the reported failure: the third match lands on the next UTC day)' => [nextUtcTime(21, 30)],
-    '23:30 UTC' => [nextUtcTime(23, 30)],
-    'a Europe/Berlin DST transition (UTC math must not care)' => [nextBerlinDstTransition()],
+    '00:30 UTC' => [TimeAnchors::nextUtcTime(0, 30)],
+    '12:00 UTC' => [TimeAnchors::nextUtcTime(12, 0)],
+    '21:30 UTC (the reported failure: the third match lands on the next UTC day)' => [TimeAnchors::nextUtcTime(21, 30)],
+    '23:30 UTC' => [TimeAnchors::nextUtcTime(23, 30)],
+    'a Europe/Berlin DST transition (UTC math must not care)' => [TimeAnchors::nextBerlinDstTransition()],
 ]);
 
 test('regression (audit F1): two sock-puppet lineups cannot farm rated Elo after Block 0', function () {
