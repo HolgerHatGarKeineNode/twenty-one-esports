@@ -138,6 +138,13 @@ class ImageFetcher
      */
     private function target(string $url): array
     {
+        // The HTTP client expands `{…}` as a URI template after this check, and backslashes,
+        // whitespace and control bytes are read differently by parse_url and curl: any of
+        // them could move the host past what the guard saw, so such a URL is never requested.
+        if (preg_match('/[{}\\\\\s\x00-\x1f\x7f]/', $url) === 1) {
+            throw new StreamImageFailed('URL contains a brace, backslash, whitespace or control byte');
+        }
+
         $parts = parse_url($url);
 
         if (! is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || ! isset($parts['host']) || $parts['host'] === '') {

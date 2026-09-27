@@ -158,6 +158,12 @@ test('a picture pointing inside the network is refused before any request', func
     'an IDN name' => ['https://bücher.example/me.png', ['bücher.example' => ['93.184.215.14']]],
     'a percent-escaped name' => ['https://cdn%2eexample/me.png', ['cdn%2eexample' => ['93.184.215.14']]],
     'a trailing dot' => ['https://cdn.example./me.png', ['cdn.example.' => ['93.184.215.14']]],
+    // The HTTP client drops `{…}` after the guard looked, which moves the host.
+    // parse_url sees cdn.example:443; with `{/x}` expanded away the host is 10.0.0.5.
+    'a URI template that moves the host' => ['https://cdn.example:443{/x}@10.0.0.5/me.png'],
+    'a brace anywhere' => ['https://cdn.example/{x}.png'],
+    'a backslash' => ['https://cdn.example\\@10.0.0.5/me.png'],
+    'whitespace' => ['https://cdn.example /me.png'],
 ]);
 
 test('a redirect to a private address is refused before it is requested', function () {
