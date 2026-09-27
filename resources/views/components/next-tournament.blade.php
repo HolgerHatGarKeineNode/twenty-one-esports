@@ -12,7 +12,7 @@
     use App\Support\GameNames;
     use App\Support\PreSeason;
 
-    $next = Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+    $next = Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
         ->when($game !== null, fn ($query) => $query->where('game', $game))
         ->orderBy('signup_closes_at')->first();
     $zone = PreSeason::timezoneFor(auth()->user());

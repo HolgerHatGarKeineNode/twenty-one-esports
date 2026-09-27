@@ -147,12 +147,36 @@ test('the prize pot heads the tournament page: the pot, the podium and the paid 
         ->assertDontSeeHtml('data-test="pool-no-sponsor"');
 });
 
-test('the poster marks a casual cup casual, and only a cup', function () {
-    $cup = openFor('chess', 'blitz', ['name' => 'Chess Casual Cup #1', 'cup_series' => 'chess', 'cup_number' => 1]);
+test('a special tournament heads every page even when a casual cup starts sooner; the cup is only a side mention', function () {
+    $cup = openFor('chess', 'blitz', ['name' => 'Chess Casual Cup #1', 'cup_series' => 'chess', 'cup_number' => 1,
+        'signup_closes_at' => now()->addHours(2), 'starts_at' => now()->addHours(3), 'published_at' => now()]);
+    $special = openFor('chess', 'blitz', ['name' => 'Friday Blitz Special', 'published_at' => now()]);
+    $rlCup = openFor('rocket-league', '3v3', ['name' => 'Rocket League Casual Cup #1', 'cup_series' => 'rocket-league', 'cup_number' => 1, 'published_at' => now()]);
 
-    $poster = str($this->get('/chess')->assertOk()->getContent())->after('data-test="next-tournament" data-tournament="'.$cup->id.'"')->before('</section>')->toString();
-    expect($poster)->toContain('data-test="casual-marker"');
+    $pages = [
+        '/chess' => 'data-test="next-tournament" data-tournament="',
+        route('tournaments.index') => 'data-test="next-tournament" data-tournament="',
+        route('home') => 'data-test="home-hero" data-tournament="',
+    ];
 
-    $cup->forceFill(['cup_series' => null, 'cup_number' => null])->save();
-    $this->get('/chess')->assertOk()->assertDontSeeHtml('data-test="casual-marker"');
+    foreach ($pages as $url => $hero) {
+        $html = $this->get($url)->assertOk()->getContent();
+
+        expect(str($html)->after($hero)->before('"')->toString())->toBe((string) $special->id, $url)
+            ->and($html)->toContain('data-test="cup-mention"')
+            ->and(strpos($html, 'Chess Casual Cup #1'))->toBeGreaterThan(strpos($html, $hero), $url);
+    }
+
+    // A game with only a cup: the empty state and the cup's row, never a cup poster.
+    $this->get('/games/rocket-league')->assertOk()
+        ->assertSeeHtml('data-test="next-tournament-empty"')
+        ->assertDontSeeHtml('data-test="next-tournament"')
+        ->assertSeeHtml('data-test="cup-mention"')
+        ->assertSeeHtml('href="'.route('tournaments.show', $rlCup).'"');
+
+    // Only cups open anywhere: no hero at all on home, and none on the index.
+    $special->forceFill(['status' => TournamentStatus::Draft])->save();
+    $this->get(route('home'))->assertOk()->assertDontSeeHtml('data-test="home-hero"')->assertSeeHtml('data-test="cup-mention"');
+    $this->get(route('tournaments.index'))->assertOk()->assertDontSeeHtml('data-test="next-tournament"');
+    expect($cup->refresh()->isCasualCup())->toBeTrue();
 });

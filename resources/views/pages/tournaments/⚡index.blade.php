@@ -40,7 +40,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     #[Computed]
     public function next(): ?Tournament
     {
-        return Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+        return Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
             ->orderBy('signup_closes_at')->first();
     }
 }; ?>
@@ -84,6 +84,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     @if ($next !== null)
         <x-tournaments.next-card :tournament="$next" />
     @endif
+    <x-tournaments.cup-mentions />
 
     <section aria-labelledby="all-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
         <h2 id="all-h" class="m-0 text-[15px] font-bold">{{ __('All tournaments') }}</h2>

@@ -72,6 +72,9 @@
             @include('pages.home.games', ['games' => $games, 'live' => $live, 'stage' => true])
         @endif
 
+        {{-- The casual cups: a side mention, never the hero (user, 2026-09-28). --}}
+        <x-tournaments.cup-mentions class="px-4 lg:px-12" />
+
         @if ($season !== null)
             @include('pages.home.season', ['season' => $season])
         @else

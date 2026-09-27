@@ -17,6 +17,8 @@ use Carbon\CarbonImmutable;
 use Database\Factories\TournamentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -433,6 +435,28 @@ class Tournament extends Model
     public function isCasualCup(): bool
     {
         return $this->cup_series !== null;
+    }
+
+    /**
+     * The special tournaments: every one but the casual cups. Only they head
+     * a page as its "next tournament" (user, 2026-09-28: casual cups stay a
+     * side mention, the special tournaments matter more).
+     *
+     * @param  Builder<Tournament>  $query
+     */
+    #[Scope]
+    protected function special(Builder $query): void
+    {
+        $query->whereNull('cup_series');
+    }
+
+    /**
+     * @param  Builder<Tournament>  $query
+     */
+    #[Scope]
+    protected function casualCup(Builder $query): void
+    {
+        $query->whereNotNull('cup_series');
     }
 
     public function isDirectorMode(): bool

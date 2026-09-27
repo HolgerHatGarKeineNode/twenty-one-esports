@@ -45,7 +45,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     #[Computed]
     public function nextTournament(): ?Tournament
     {
-        return Tournament::query()->where('game', $this->slug)->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+        return Tournament::query()->special()->where('game', $this->slug)->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
             ->orderBy('signup_closes_at')->first();
     }
 
@@ -172,6 +172,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         @else
             <x-tournaments.next-empty :game="$slug" heading-id="game-next-h" />
         @endif
+        <x-tournaments.cup-mentions :game="$slug" class="mt-2" />
     </div>
 
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-2 lg:gap-5 lg:px-12 lg:pb-10">

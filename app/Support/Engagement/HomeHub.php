@@ -60,8 +60,9 @@ final class HomeHub
     public function __construct(private readonly ?User $viewer) {}
 
     /**
-     * The tournaments open for sign-up, the soonest start first: published,
-     * sign-up still open. Each with the viewer's call to action, the places,
+     * The special tournaments open for sign-up, the soonest start first:
+     * published, sign-up still open. Never a casual cup: those are a side
+     * mention (<x-tournaments.cup-mentions>, user 2026-09-28). Each with the viewer's call to action, the places,
      * the seats as faces in sign-up order and the pot when the league has one.
      *
      * @return list<Cup>
@@ -72,7 +73,7 @@ final class HomeHub
             return $this->cups;
         }
 
-        $tournaments = Tournament::query()
+        $tournaments = Tournament::query()->special()
             ->where('status', TournamentStatus::Signup)
             ->whereNotNull('published_at')
             ->where('signup_closes_at', '>', now())

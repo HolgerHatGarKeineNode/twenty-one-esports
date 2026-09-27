@@ -344,7 +344,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     #[Computed]
     public function nextTournament(): ?Tournament
     {
-        return Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+        return Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
             ->where('game', 'chess')->orderBy('signup_closes_at')->first();
     }
 
@@ -519,6 +519,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         @else
             <x-tournaments.next-empty game="chess" heading-id="lobby-next-h" />
         @endif
+        <x-tournaments.cup-mentions game="chess" class="-mt-4 lg:-mt-6" />
 
         {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
