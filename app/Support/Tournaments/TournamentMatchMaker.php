@@ -150,7 +150,8 @@ final class TournamentMatchMaker
             $clans = $pin === null ? [] : RatedChess::clans($white, $black);
         }
 
-        $match->forceFill(['pairing' => ['gate' => $pin?->toArray(), 'clans' => $clans]])->save();
+        // The ladder is pinned with the gate: the game counts only while it is still open (NIP rule 16).
+        $match->forceFill(['pairing' => ['gate' => $pin?->toArray(), 'clans' => $clans, 'ladder' => $pin === null ? null : $tournament->openLadder()]])->save();
     }
 
     private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): void

@@ -7,6 +7,7 @@ use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\SeasonChain\GatePin;
+use App\Support\Series\Ladders;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -65,7 +66,11 @@ class ChessGameFactory extends Factory
      */
     public function rated(int $rank = 100): static
     {
-        return $this->state(['rated' => true])->afterCreating(function (ChessGame $game) use ($rank): void {
+        // Pinned to the ladder open at creation, as ChessGameService::start pins it.
+        return $this->state(fn (array $attributes): array => [
+            'rated' => true,
+            'ladder_address' => Ladders::address('chess', (string) ($attributes['mode'] ?? 'blitz')),
+        ])->afterCreating(function (ChessGame $game) use ($rank): void {
             $players = [$game->white->pubkey, $game->black->pubkey];
             $facts = ['trust' => array_fill_keys($players, $rank), 'anchors' => [], 'connected' => true];
 

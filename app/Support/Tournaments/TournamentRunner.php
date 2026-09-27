@@ -490,6 +490,8 @@ final class TournamentRunner
         $game = ChessGame::query()->create([
             'mode' => $tournament->mode,
             'rated' => $gate !== null,
+            // Pinned at the pairing with the gate; a pairing without one is never rated (fail closed).
+            'ladder_address' => $gate === null ? null : ($match->pairing['ladder'] ?? null),
             'gate_at_accept' => $gate,
             'clans_at_accept' => $gate === null ? null : ($match->pairing['clans'] ?? []),
             'white_id' => $white->id,

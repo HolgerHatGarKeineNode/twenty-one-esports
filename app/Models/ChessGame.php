@@ -30,6 +30,7 @@ use Illuminate\Support\Carbon;
  * @property string $mode
  * @property bool $rated
  * @property array<string, mixed>|null $gate_at_accept the trust gate pinned when the league paired a rated game (App\Support\SeasonChain\GatePin)
+ * @property string|null $ladder_address the ladder a rated game was paired on (pinned at the start); null is never rated
  * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing of a rated game
  * @property int|null $white_id null once the player deleted the account
  * @property int|null $black_id null once the player deleted the account
@@ -73,7 +74,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
-    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game'])]
+    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */

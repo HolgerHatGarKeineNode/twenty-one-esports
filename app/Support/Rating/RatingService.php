@@ -66,6 +66,12 @@ final class RatingService
             return false;
         }
 
+        // Only on the ladder pinned at the start, while it is still the open one; a game without a
+        // pinned ladder is never rated (fail closed), a game finished after its season closed neither.
+        if ($game->rated && $game->ladder_address !== Ladders::address('chess', $game->mode)) {
+            return false;
+        }
+
         return $this->apply(
             (bool) $game->rated, 'chess', $game->mode,
             ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],

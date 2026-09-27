@@ -91,8 +91,9 @@ Rocket League series of a tournament whose players report were casual, and they 
   player side and every tournament report with its tournament `a`; an attestation named a deleted
   account's `elo` entity with an empty pubkey instead of the pubkey pinned at the pairing; the proof
   view of a tournament series waited for a `2151` that never comes; a ladder series challenged in one
-  season and confirmed after the next season opened was rated and attested on the new season's ladder.
-  All four are fixed in the app.
+  season and confirmed after the next season opened was rated and attested on the new season's ladder,
+  and a rated chess game (a correspondence game spans days) likewise on whatever ladder was open when it
+  ended; the app now pins the ladder when a rated game starts. All five are fixed in the app.
 
 ### Changelog of revision 8 (2026-09-26)
 
@@ -2204,9 +2205,11 @@ Per kind:
     [Game Record](#game-record-64-reused-from-nip-64).
 16. **2154**: signed by the key in the ladder address; the ladder `a` is the one the challenge names
     (rev. 8.1, stated here although rule 11 and [Rest](#rest-before-block-0-and-between-seasons)
-    already imply it), and that ladder is open at the attestation's `created_at`: a result reached
-    after the ladder closed is never attested and moves no rating, also once a later season's ladder
-    is open; `prev` equals the id of the latest
+    already imply it; for a chess game the league paired and started without a challenge event, the
+    ladder of its mode that was open when the game started; for a tournament match, the tournament's),
+    and that ladder is open at the attestation's `created_at`: a result reached after the ladder closed,
+    for example a correspondence game that outlived its season, is never attested and moves no rating,
+    also once a later season's ladder is open; `prev` equals the id of the latest
     attestation of this ladder; the `elo` entities match the ladder's `rates` (lineup addresses or
     pubkeys); each `elo` "before" value equals the entity's "after" value in its previous
     attestation of this ladder that has an `elo` row for it (rev. 7.1: attestations without one, such

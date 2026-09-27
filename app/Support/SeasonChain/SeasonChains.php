@@ -150,7 +150,8 @@ final class SeasonChains
         $live = Seasons::live();
         $ladder = Ladders::address('chess', $game->mode);
 
-        if ($live === null || $ladder === null) {
+        // Only on the ladder pinned when the game started, while it is still open (NIP rule 16).
+        if ($live === null || $ladder === null || $game->ladder_address !== $ladder) {
             return null;
         }
 

@@ -34,7 +34,7 @@ use Illuminate\Support\Carbon;
  * @property bool $if_needed
  * @property string $status waiting|ready|done|skipped
  * @property array<string, mixed>|null $result
- * @property array{gate?: array<string, mixed>|null, clans?: array<string, string>}|null $pairing what the league read at the pairing of a director chess match
+ * @property array{gate?: array<string, mixed>|null, clans?: array<string, string>, ladder?: string|null}|null $pairing what the league read at the pairing of a director chess match (the ladder since P8c)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentRound $round

@@ -16,11 +16,13 @@ use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
 use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -64,8 +66,13 @@ final class ChessGameService
     {
         [$initialMs, $incrementMs] = $this->timeControl($mode);
         $daily = $mode === ChessGame::CORRESPONDENCE;
+        // A rated game is pinned to the ladder open when it starts (a tournament's frozen ladder),
+        // and counts only while that ladder is still open (NIP rule 16): never on a later season's.
+        $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
+            ? Ladders::address('chess', $mode)
+            : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
 
-        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $tournamentMatchId, $tournamentGame): ChessGame {
+        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $ladder, $tournamentMatchId, $tournamentGame): ChessGame {
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
@@ -77,6 +84,7 @@ final class ChessGameService
             $game = ChessGame::query()->create([
                 'mode' => $mode,
                 'rated' => $ratedGate !== null,
+                'ladder_address' => $ladder,
                 'gate_at_accept' => $ratedGate?->toArray(),
                 'clans_at_accept' => $ratedGate === null ? null : RatedChess::clans($white, $black),
                 'white_id' => $white->id,
