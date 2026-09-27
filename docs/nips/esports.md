@@ -1301,6 +1301,24 @@ be checked; the tie-break is league policy (see [Open points](#open-points)). In
 (rev. 7) the seeding ratings are the league's casual ratings, which are not on Nostr: that seeding
 cannot be checked from relays.
 
+**Casual cups.** The league opens its own series of casual cups, one per game ("Chess Casual Cup
+#n"), with no organizer and at most one open cup per game. Each cup is an ordinary tournament
+`31923` as above; what differs is only what it says:
+
+- it is **always unrated**: the first version carries no ladder `a`, whatever ladder is open, so the
+  cup produces no match-flow event and no attestation, and its `content` says it is a casual cup;
+- `start` is first the sign-up close; an extended sign-up (once, when too few signed up) and the
+  real start (its first round opens) are new versions. `end` is `start` plus the cup's hard cap
+  (14 days), the latest the league lets it run; the league decides whatever is open then;
+- **seeding is random**: every entry has the same rating and no sign-up order, so the seed is the
+  hash of the draw's seed (the committed block hash) and the entry, not a rating. With too few
+  players the cup is called off like any tournament: a new version with "Called off" in `title`
+  and `summary`; its number is taken by the next cup, so the numbers have no gaps;
+- a match not played by its round's deadline is decided by the league without a game: the one side
+  that tried to play advances, otherwise a random draw of lots ("advanced by draw"). The lot is
+  drawn by the league at the deadline and is not reproducible from relays; it is league data, like
+  every result of an unrated tournament.
+
 **Everything of a tournament** references its address: `{"#a":["31923:<league>:<slug>"]}` returns the
 challenges, answers, reports, responses, attestations, the draw and the zap receipts.
 
