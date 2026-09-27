@@ -15,6 +15,7 @@ use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentSignups;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -337,3 +338,32 @@ test('a game correction re-derives no ladder when none was open at the first pub
         ->and($tournament->address())->toBe($address)
         ->and(collect(latestTags($tournament))->filter(fn (array $tag) => $tag[0] === 'a' && str_starts_with($tag[1], '32152:'))->all())->toBe([]);
 });
+
+test('start times are typed and shown in the display zone and stored as UTC, across the DST change, and survive an unchanged edit', function (string $date, string $utc) {
+    // Before the dates below, so the create page accepts them as future starts.
+    $this->travelTo(CarbonImmutable::parse('2026-10-01 12:00', 'UTC'));
+    config(['esports.preseason.display_timezone' => 'Europe/Berlin']);
+    $organizer = organizer();
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
+        ->set('name', 'Zone Cup')->set('date', $date)->set('time', '19:00')
+        ->call('create')->assertHasNoErrors();
+
+    $tournament = Tournament::query()->where('name', 'Zone Cup')->sole();
+
+    expect($tournament->starts_at->utc()->format('Y-m-d H:i'))->toBe($utc);
+
+    $this->actingAs($organizer)->get(route('tournaments.show', $tournament))->assertSee("{$date} 19:00");
+
+    Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertSet('date', $date)->assertSet('time', '19:00')
+        ->call('save')
+        ->assertSet('error', '')
+        ->assertSet('notice', __('Nothing changed.'));
+
+    expect($tournament->refresh()->starts_at->utc()->format('Y-m-d H:i'))->toBe($utc)
+        ->and(TournamentModerationEntry::query()->count())->toBe(0);
+})->with([
+    'summer time, the day before the change' => ['2026-10-24', '2026-10-24 17:00'],
+    'winter time, the day of the change' => ['2026-10-25', '2026-10-25 18:00'],
+]);

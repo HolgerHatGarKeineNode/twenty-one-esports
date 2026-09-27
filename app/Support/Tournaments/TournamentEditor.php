@@ -180,7 +180,10 @@ final class TournamentEditor
                 sort($value);
             }
 
-            if ($this->plain($current) !== $this->plain($value)) {
+            [$current, $value] = [$this->plain($current), $this->plain($value)];
+
+            // Stored JSON gives an option back as 1 where the chooser sends 1.0: keyed lists compare by value.
+            if (is_array($current) && is_array($value) ? $current != $value : $current !== $value) {
                 $diff[$field] = true;
             }
         }

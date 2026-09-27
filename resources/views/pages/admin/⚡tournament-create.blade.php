@@ -37,8 +37,16 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
     {
         Gate::authorize('create-tournaments');
 
-        $this->date = now()->addWeek()->format('Y-m-d');
+        $this->date = now()->addWeek()->timezone($this->zone())->format('Y-m-d');
         $this->options = FormatOptions::defaults($this->profile())->toArray();
+    }
+
+    /**
+     * The zone date and time are entered in: the one the tournament pages show them in.
+     */
+    private function zone(): string
+    {
+        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     }
 
     public function chooserCreator(): ?User
@@ -62,7 +70,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'break' => ['nullable', 'numeric', 'between:0,1000'],
         ]);
 
-        $startsAt = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}");
+        // Typed in the zone the show and edit pages display (the player's, else the league's); stored as UTC.
+        $startsAt = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $this->zone())?->utc();
 
         if ($startsAt === null || $startsAt->isPast()) {
             $this->addError('date', __('Pick a start in the future.'));
@@ -144,6 +153,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                 <input type="time" wire:model="time" class="h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink [color-scheme:dark]">
                 @error('time')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
             </label>
+            <span class="col-span-2 text-xs text-ink-3 lg:col-span-3">{{ __('Times in :zone.', ['zone' => (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'))]) }}</span>
             <label class="col-span-2 flex flex-col gap-1.5 text-xs text-ink-2 lg:col-span-3">
                 {{ __('Description (optional)') }}
                 <textarea wire:model="description" maxlength="1000" rows="3" data-test="tournament-description"
