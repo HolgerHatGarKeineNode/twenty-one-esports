@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\TournamentFormat;
 use App\Models\Admin;
+use App\Models\Tournament;
 use App\Models\User;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -21,7 +23,9 @@ pest()->group('browser');
 | format with a final and shows Free for All disabled with its reason. Every
 | change travels as an island request: the page outside the island is never
 | morphed (a marker on the name field survives) and every Livewire response
-| carries island fragments, never the whole component.
+| carries island fragments, never the whole component. At the end the
+| create button runs twice: without a name (validation error), then with one
+| (the draft is created and its row is listed on /admin/tournaments).
 |
 | Collected: console.error/warn, uncaught errors, rejected promises, fetch
 | and XHR >= 400, and horizontal overflow. P8A_SHOTS=<dir> writes the
@@ -200,6 +204,28 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
     expect($control['marker'])->toBeNull()
         ->and(collect($control['livewire'])->where('html', true)->count())->toBe(1)
         ->and($control['errors'])->toBe([]);
+
+    // With a name the same button creates the draft and lands on the list, with its row.
+    $page->locator('[data-test=tournament-name]')->fill('Rocket Night Munich');
+    $page->locator('[data-test=tournament-create-button]')->click();
+    BrowserWait::until($page, '() => location.pathname === "/admin/tournaments" && document.querySelector("[data-test=tournament-row]") !== null', 8_000);
+    $listed = $page->evaluate('() => ({
+        rows: [...document.querySelectorAll("[data-test=tournament-row]")].map((row) => row.textContent.replace(/\s+/g, " ").trim()),
+        notice: document.querySelector("[data-test=tournaments-notice]")?.textContent.trim() ?? null,
+        errors: window.__errors,
+    })');
+
+    expect($listed['rows'])->toHaveCount(1)
+        ->and($listed['rows'][0])->toContain('Draft')
+        ->and($listed['rows'][0])->toContain('Rocket Night Munich')
+        ->and($listed['rows'][0])->toContain('Rocket League 3v3')
+        ->and($listed['rows'][0])->toContain('Double Elimination')
+        ->and($listed['notice'])->toBe('Rocket Night Munich was created as a draft.')
+        ->and($listed['errors'])->toBe([])
+        ->and(Tournament::query()->where('name', 'Rocket Night Munich')->sole())
+        ->format->toBe(TournamentFormat::DoubleElimination)
+        ->capacity->toBe(12)
+        ->created_by_id->toBe($admin->id);
 
     fwrite(STDERR, "\n[p8a-chooser] ".json_encode($measured)."\n");
 });
