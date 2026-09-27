@@ -135,3 +135,22 @@ test('a record a relay has not taken yet is sent again, to that relay only', fun
     expect($attempts[$took]->toDateTimeString())->toBe(now()->subMinutes(2)->toDateTimeString())
         ->and($attempts[$missed]->toDateTimeString())->toBe(now()->toDateTimeString());
 });
+
+test('the current version of an addressable event of any age reaches a relay that never took it; older versions stay home', function () {
+    [$old, $new] = ['ws://127.0.0.1:9', 'ws://127.0.0.1:19'];
+    $signer = new TestSigner;
+    $first = NostrEvent::fromSigned(SignedEvent::fromInput($signer->sign(31923, [['d', 'cup-1']], 'v1')));
+    $first->forceFill(['queued_at' => now()])->save();
+    $this->travel(1)->seconds();
+    $latest = NostrEvent::fromSigned(SignedEvent::fromInput($signer->sign(31923, [['d', 'cup-1']], 'v2')));
+    $latest->forceFill(['queued_at' => now()])->save();
+    $latest->deliveries()->create(['relay' => $old, 'accepted' => true, 'message' => '', 'attempted_at' => now()]);
+
+    // Signed while the relay list was thin; a week later a second relay is configured.
+    $this->travel(7)->days();
+    config(['esports.relays' => [$old, $new]]);
+    $this->artisan('nostr:republish')->expectsOutput('Republished 1 event(s).')->assertSuccessful();
+
+    expect($latest->deliveries()->where('relay', $new)->exists())->toBeTrue()
+        ->and($first->deliveries()->count())->toBe(0);
+});

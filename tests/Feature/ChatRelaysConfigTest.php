@@ -47,30 +47,33 @@ function esportsConfigUnder(array $env): array
     }
 }
 
-// relay.damus.io is left out on purpose: it takes gift wraps but serves them to no one (P5d relay smoke).
-const PUBLIC_CHAT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net'];
+// relay.damus.io is left out of the chat on purpose: it takes gift wraps but serves them to no one (P5d relay smoke).
+const PUBLIC_CHAT_RELAYS = ['wss://nos.lol', 'wss://relay.primal.net', 'wss://nostr.mom'];
+const PUBLIC_LEAGUE_RELAYS = ['wss://relay.primal.net', 'wss://nostr.mom', 'wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.bitcoiner.social', 'wss://nostr.oxtr.dev'];
 const NDAK_TEST_BED = ['ws://127.0.0.1:7777', 'ws://127.0.0.1:7780', 'ws://127.0.0.1:7782'];
 
-test('without ESPORTS_CHAT_RELAYS the chat relays depend on the environment, and league publishing never falls back to them', function (string $environment, array $chat, array $league) {
-    $config = esportsConfigUnder(['APP_ENV' => $environment, 'ESPORTS_CHAT_RELAYS' => null, 'ESPORTS_RELAYS' => null]);
+test('an unset or empty relay key takes the environment default: public sets in production, the test bed locally, nothing in testing', function (string $environment, ?string $value, array $chat, array $league) {
+    $config = esportsConfigUnder(['APP_ENV' => $environment, 'ESPORTS_CHAT_RELAYS' => $value, 'ESPORTS_RELAYS' => $value]);
 
     expect($config['chat']['relays'])->toBe($chat)
         ->and($config['relays'])->toBe($league);
 })->with([
-    'production' => ['production', PUBLIC_CHAT_RELAYS, []],
-    'staging' => ['staging', PUBLIC_CHAT_RELAYS, []],
-    'local' => ['local', NDAK_TEST_BED, NDAK_TEST_BED],
-    'testing' => ['testing', [], []],
+    // 2026-09-28: ESPORTS_RELAYS left empty on prod sent no calendar event to any relay.
+    'production, unset' => ['production', null, PUBLIC_CHAT_RELAYS, PUBLIC_LEAGUE_RELAYS],
+    'production, empty' => ['production', '', PUBLIC_CHAT_RELAYS, PUBLIC_LEAGUE_RELAYS],
+    'staging, empty' => ['staging', '', PUBLIC_CHAT_RELAYS, PUBLIC_LEAGUE_RELAYS],
+    'local, unset' => ['local', null, NDAK_TEST_BED, NDAK_TEST_BED],
+    'testing, empty' => ['testing', '', [], []],
 ]);
 
-test('in production the chat keeps the public relays when league relays are configured, and ESPORTS_CHAT_RELAYS wins over both', function () {
+test('a set relay key wins over the defaults, and ESPORTS_CHAT_RELAYS=off switches the chat off', function () {
     $league = esportsConfigUnder(['APP_ENV' => 'production', 'ESPORTS_CHAT_RELAYS' => null, 'ESPORTS_RELAYS' => 'wss://relay.league.example']);
     $own = esportsConfigUnder(['APP_ENV' => 'production', 'ESPORTS_CHAT_RELAYS' => ' wss://chat.example , wss://two.example', 'ESPORTS_RELAYS' => null]);
-    $off = esportsConfigUnder(['APP_ENV' => 'production', 'ESPORTS_CHAT_RELAYS' => '', 'ESPORTS_RELAYS' => null]);
+    $off = esportsConfigUnder(['APP_ENV' => 'production', 'ESPORTS_CHAT_RELAYS' => 'off', 'ESPORTS_RELAYS' => null]);
 
     expect($league['chat']['relays'])->toBe(PUBLIC_CHAT_RELAYS)
         ->and($league['relays'])->toBe(['wss://relay.league.example'])
         ->and($own['chat']['relays'])->toBe(['wss://chat.example', 'wss://two.example'])
-        ->and($own['relays'])->toBe([])
+        ->and($own['relays'])->toBe(PUBLIC_LEAGUE_RELAYS)
         ->and($off['chat']['relays'])->toBe([]);
 });

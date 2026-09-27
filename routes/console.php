@@ -150,7 +150,8 @@ Artisan::command('esports:notification-profile', function (RelayPublisher $publi
  * Retries the public copy (ChessStates "Public record delayed": "we retry on
  * our own"): signed events of the last day that were queued for the relays
  * and that some configured relay has not accepted yet are sent again to
- * exactly those relays. Gift wraps are
+ * exactly those relays, and so is the current version of every replaceable
+ * and addressable event of any age (tournaments, profile, ladders). Gift wraps are
  * left alone; a late notification is worth less than none.
  */
 Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
@@ -172,7 +173,25 @@ Artisan::command('nostr:republish', function (RelayPublisher $publisher) {
         ->limit(100)
         ->get();
 
-    foreach ($events as $event) {
+    // The current version of every replaceable (0, 3, 10000–19999) and addressable
+    // (30000–39999) event, whatever its age: a relay added later, or a list that was
+    // empty when the event was signed (2026-09-28: no calendar event reached any
+    // relay), still gets the tournament, the profile and the ladders. Older versions
+    // are superseded and never sent.
+    $current = NostrEvent::query()
+        ->whereNotNull('queued_at')
+        ->where(fn ($query) => $query->whereIn('kind', [0, 3])->orWhereBetween('kind', [10000, 19999])->orWhereBetween('kind', [30000, 39999]))
+        ->whereNotIn('kind', [1059, TournamentSignups::CONSENT])
+        ->where('created_at', '<', now()->subMinute())
+        ->whereNotIn('id', $events->pluck('id'))
+        ->with('deliveries')
+        ->orderByDesc('id')
+        ->get()
+        ->unique(fn (NostrEvent $event): string => $event->kind.':'.$event->pubkey.':'.($event->kind >= 30000 ? (string) $event->d : ''))
+        ->reverse()
+        ->take(100);
+
+    foreach ($events->concat($current) as $event) {
         $missing = array_values(array_filter($relays, fn (string $relay) => $event->deliveries->firstWhere('relay', $relay)?->accepted !== true));
 
         if ($missing !== []) {

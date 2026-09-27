@@ -67,10 +67,9 @@ return [
     |
     */
 
-    'profile_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
-        'ESPORTS_PROFILE_RELAYS',
-        'wss://purplepag.es,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net',
-    ))))),
+    'profile_relays' => array_values(array_filter(array_map('trim', explode(',', env('APP_ENV') === 'testing'
+        ? (string) env('ESPORTS_PROFILE_RELAYS', '')
+        : ((string) env('ESPORTS_PROFILE_RELAYS') ?: 'wss://purplepag.es,wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net,wss://nostr.mom,wss://relay.snort.social'))))),
 
     /*
     |--------------------------------------------------------------------------
@@ -566,17 +565,22 @@ return [
     |--------------------------------------------------------------------------
     |
     | Comma-separated websocket URLs. Locally the ndak test bed (rnostr 7777,
-    | strfry 7780, khatru 7782); empty in testing (phpunit.xml) and empty by
-    | default everywhere else. Never list a public relay here before the user
-    | has approved publishing (plan: "publishing to public relays: never" in V1
-    | development).
+    | strfry 7780, khatru 7782); empty in testing (phpunit.xml). In production
+    | an unset or EMPTY `ESPORTS_RELAYS` falls back to the public set below
+    | (user, 2026-09-28: „Du musst die default Relay Sets erweitern, wenn die
+    | zu dünn sind, ich habe das im env nämlich leer gelassen“ — with the old
+    | empty default no calendar event reached any relay). It covers the
+    | account's own NIP-65 list (primal, nostr.mom; damus and nos.lol too,
+    | although damus answered 403 and nos.lol was unreachable from the prod
+    | server on 2026-09-26) plus the relays the stream uses from prod.
     |
     */
 
-    'relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
-        'ESPORTS_RELAYS',
-        env('APP_ENV') === 'local' ? 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782' : '',
-    ))))),
+    'relays' => array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
+        'local' => (string) (env('ESPORTS_RELAYS') ?: 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782'),
+        'testing' => (string) env('ESPORTS_RELAYS', ''),
+        default => (string) (env('ESPORTS_RELAYS') ?: 'wss://relay.primal.net,wss://nostr.mom,wss://relay.damus.io,wss://nos.lol,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev'),
+    })))),
 
     'relay_timeout_seconds' => 5,
 
@@ -594,8 +598,9 @@ return [
     | the ndak test bed locally, nothing in testing, and everywhere else
     | nos.lol and Primal, approved for the chat on 2026-09-25 (P5d). Damus was
     | approved too and dropped: it accepts gift wraps but serves them to no
-    | one (its NIP-42 AUTH fails, measured 2026-09-26). An empty
-    | `ESPORTS_CHAT_RELAYS=` switches the chat off.
+    | one (its NIP-42 AUTH fails, measured 2026-09-26). An unset or empty
+    | `ESPORTS_CHAT_RELAYS=` takes the default set (2026-09-28);
+    | `ESPORTS_CHAT_RELAYS=off` switches the chat off.
     |
     | Deliberately independent of `relays` above: approving public relays for
     | encrypted chat does not approve publishing league events there.
@@ -603,14 +608,11 @@ return [
     */
 
     'chat' => [
-        'relays' => array_values(array_filter(array_map('trim', explode(',', (string) env(
-            'ESPORTS_CHAT_RELAYS',
-            match (env('APP_ENV')) {
-                'local' => 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782',
-                'testing' => '',
-                default => 'wss://nos.lol,wss://relay.primal.net',
-            },
-        ))))),
+        'relays' => env('ESPORTS_CHAT_RELAYS') === 'off' ? [] : array_values(array_filter(array_map('trim', explode(',', match (env('APP_ENV')) {
+            'local' => (string) (env('ESPORTS_CHAT_RELAYS') ?: 'ws://127.0.0.1:7777,ws://127.0.0.1:7780,ws://127.0.0.1:7782'),
+            'testing' => (string) env('ESPORTS_CHAT_RELAYS', ''),
+            default => (string) (env('ESPORTS_CHAT_RELAYS') ?: 'wss://nos.lol,wss://relay.primal.net,wss://nostr.mom'),
+        })))),
     ],
 
     /*
