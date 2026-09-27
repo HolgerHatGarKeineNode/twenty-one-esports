@@ -3,14 +3,16 @@
     No Lightning address as text, no zap counts. Without a QR code the text moves left and names only the bolt.
 
     Data contract:
-      $qrSvg  string: the LNURL QR as SVG (trusted file content, resources/stream/qr/lnurl.svg as `qrencode -t SVG
-              -m 0` writes it, or inner markup + $qrModules); empty = no code shown
+      $qrSvg     string: the LNURL QR as SVG (trusted file content, resources/stream/qr/lnurl.svg as `qrencode -t SVG
+                 -m 0` writes it, or inner markup + $qrModules); empty = no code shown
+      $backdrop  ?string, optional: the brand backdrop, as in a1-match
 --}}
 @php($hasQr = trim((string) ($qrSvg ?? '')) !== '')
 @php($tx = $hasQr ? 464 : 40)
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
+@include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null])
 @if ($hasQr)
 @include('stream.rotation.partials.qr', ['qr' => $qrSvg, 'modules' => $qrModules ?? null, 'x' => 40, 'y' => 180, 'size' => 360])
 @else

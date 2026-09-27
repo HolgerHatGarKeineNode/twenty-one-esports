@@ -10,9 +10,11 @@
      * Data contract. A game (all keys required unless marked optional):
      *
      *   array{
-     *     white: array{name: string, clockMs: int, toMove: bool},  public profile name, remaining ms
+     *     white: array{name: string, clockMs: int, toMove: bool, avatar?: ?string},  public profile name, remaining ms,
+     *                                                               the face as an inline data URI (RotationKit::avatarUri;
+     *                                                               anything else draws a neutral face)
      *                                                               (<= 0 renders 0:00; >= 1 h renders h:mm, no seconds)
-     *     black: array{name: string, clockMs: int, toMove: bool},
+     *     black: array{name: string, clockMs: int, toMove: bool, avatar?: ?string},
      *     fen: string,                                             only the placement field is read
      *     lastMove: array{from: string, to: string}|null,          "e2"/"e4"; null before the first move
      *     mode: string,                                            "LIVE · CHESS BLITZ 5+3 · CASUAL" (never "rated"/Elo);
@@ -29,6 +31,7 @@
      * and always:
      * @var string $stats        ONE line of real stats, e.g. "14 games played · 2 live · 3 clans"
      * @var string $url          e.g. "esports.einundzwanzig.space"
+     * @var string|null $backdrop optional; the blurred backdrop behind everything (RotationKit::backdropUri), null = none
      * @var int|null $viewers     optional; live viewers of the stream. Null (or absent) = unknown: no badge, the output is
      *                           exactly as without it. Single layout: "<eye> N watching" right-aligned on the call to
      *                           action line; gallery: in the header, ending at x 1024 or 32 px left of "N GAMES LIVE".
@@ -126,7 +129,8 @@
                 $ms = (int) $p['clockMs'];
                 $active = (bool) $p['toMove'];
                 $low = $ms < 10000;
-                $tile = $nameSize + 6;
+                // The face takes the old king tile's slot (in a bar 10 px bigger), the side's king on its corner.
+                $tile = $nameSize + ($stack ? 16 : 6);
                 if ($stack) {
                     // Bar: [tile][name ........][clock], clock right-aligned.
                     $bx = $x + 12;
@@ -156,6 +160,7 @@
                     'ink' => $active ? '#17120A' : '#FFFFFF',
                     'clockInk' => $active ? '#17120A' : ($low ? '#F87171' : '#FFFFFF'),
                     'king' => $k === 0 ? 'bk' : 'wk', 'tile' => $tile, 'tileX' => $bx + ($stack ? 12 : 10), 'tileY' => $tileY,
+                    'avatar' => $p['avatar'] ?? null, 'active' => $active,
                     'name' => $fit((string) $p['name'], (int) floor($nameFree / (0.6 * $nameSize))) ?: ($k === 0 ? 'Black player' : 'White player'),
                     'nameX' => $nameX, 'nameY' => round($nameY, 1), 'nameSize' => $nameSize,
                     'digits' => $c['digits'], 'clockSize' => $c['size'], 'clockY' => round($clockY, 1),
@@ -219,6 +224,7 @@
             }
             $cards[] = [
                 'y' => $c['y'], 'king' => $c['king'], 'name' => $fit((string) $c['p']['name'], 25) ?: $c['fallback'],
+                'avatar' => $c['p']['avatar'] ?? null, 'active' => $active,
                 'digits' => $digits,
                 'clockSize' => round(80 * $scale, 1),
                 'fill' => $active ? ($low ? '#F87171' : '#F7931A') : '#121215',
@@ -247,6 +253,7 @@
 <symbol id="p-bp" viewBox="0 0 45 45"><path d="m 22.5,9 c -2.21,0 -4,1.79 -4,4 0,0.89 0.29,1.71 0.78,2.38 C 17.33,16.5 16,18.59 16,21 c 0,2.03 0.94,3.84 2.41,5.03 C 15.41,27.09 11,31.58 11,39.5 H 34 C 34,31.58 29.59,27.09 26.59,26.03 28.06,24.84 29,23.03 29,21 29,18.59 27.67,16.5 25.72,15.38 26.21,14.71 26.5,13.89 26.5,13 c 0,-2.21 -1.79,-4 -4,-4 z" style="opacity:1; fill:#000000; fill-opacity:1; fill-rule:nonzero; stroke:#000000; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:miter; stroke-miterlimit:4; stroke-dasharray:none; stroke-opacity:1;"/></symbol>
 </defs>
 <rect width="1280" height="720" fill="#0A0A0B"/>
+@include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null])
 @if (! $grid)
 
 {{-- Board --}}
@@ -267,8 +274,8 @@
 @foreach ($cards as $c)
 {{-- The 2 px stroke is inset by 1 px so the card keeps to the 720..1240 column exactly. --}}
 <rect x="721" y="{{ $c['y'] + 1 }}" width="518" height="158" rx="7" fill="{{ $c['fill'] }}" @if ($c['stroke'] !== 'none') stroke="{{ $c['stroke'] }}" stroke-width="2" @endif/>
-<rect x="740" y="{{ $c['y'] + 18 }}" width="40" height="40" rx="4" fill="#CFCFD4"/>
-<use xlink:href="#p-{{ $c['king'] }}" href="#p-{{ $c['king'] }}" x="740" y="{{ $c['y'] + 18 }}" width="40" height="40"/>
+@include('stream.rotation.partials.face', ['face' => ['uri' => $c['avatar'], 'tag' => null], 'x' => 732, 'y' => $c['y'] + 10, 'd' => 56, 'id' => 's'.$loop->index,
+    'fRing' => $c['active'] ? '#17120A' : '#F7931A', 'fKing' => $c['king'], 'fKingRim' => $c['active'] ? '#17120A' : '#121215'])
 <text x="796" y="{{ $c['y'] + 48 }}" font-family="JetBrains Mono" font-weight="700" font-size="28" fill="{{ $c['ink'] }}">{{ $c['name'] }}</text>
 @foreach ($c['digits'] as $d)<text x="{{ $d['x'] }}" y="{{ $c['y'] + 140 }}" font-family="Unbounded" font-weight="800" font-size="{{ $c['clockSize'] }}" fill="{{ $c['clockInk'] }}" text-anchor="middle">{{ $d['ch'] }}</text>@endforeach
 
@@ -293,7 +300,7 @@
 {{-- Game cards --}}
 @foreach ($cardsOut as $card)
 {{-- 2 px stroke inset by 1 px so the card keeps to its cell. --}}
-<rect x="{{ $card['x'] + 1 }}" y="{{ $card['y'] + 1 }}" width="{{ $card['w'] - 2 }}" height="{{ $card['h'] - 2 }}" rx="7" fill="#121215" stroke="#2A2A30" stroke-width="2"/>
+<rect x="{{ $card['x'] + 1 }}" y="{{ $card['y'] + 1 }}" width="{{ $card['w'] - 2 }}" height="{{ $card['h'] - 2 }}" rx="7" fill="#121215" fill-opacity="0.92" stroke="#2A2A30" stroke-width="2"/>
 <text x="{{ $card['x'] + 14 }}" y="{{ $card['y'] + 27 }}" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="{{ $card['labelInk'] }}">{{ $card['label'] }}</text>
 @php($b = $card['board'])
 <rect x="{{ $b['squares'][0]['x'] - 3 }}" y="{{ $b['squares'][0]['y'] - 3 }}" width="{{ 8 * $b['sq'] + 6 }}" height="{{ 8 * $b['sq'] + 6 }}" fill="#3A2C14"/>
@@ -303,8 +310,8 @@
 
 @foreach ($card['players'] as $pl)
 @if ($pl['fill'])<rect x="{{ $pl['x'] }}" y="{{ $pl['y'] }}" width="{{ $pl['w'] }}" height="{{ $pl['h'] }}" rx="6" fill="{{ $pl['fill'] }}"/>@endif
-<rect x="{{ $pl['tileX'] }}" y="{{ $pl['tileY'] }}" width="{{ $pl['tile'] }}" height="{{ $pl['tile'] }}" rx="4" fill="#CFCFD4"/>
-<use xlink:href="#p-{{ $pl['king'] }}" href="#p-{{ $pl['king'] }}" x="{{ $pl['tileX'] }}" y="{{ $pl['tileY'] }}" width="{{ $pl['tile'] }}" height="{{ $pl['tile'] }}"/>
+@include('stream.rotation.partials.face', ['face' => ['uri' => $pl['avatar'], 'tag' => null], 'x' => $pl['tileX'], 'y' => $pl['tileY'], 'd' => $pl['tile'], 'id' => 'g'.$loop->parent->index.'-'.$loop->index,
+    'fRing' => $pl['active'] ? '#17120A' : '#F7931A', 'fKing' => $pl['king'], 'fKingRim' => $pl['active'] ? '#17120A' : '#121215'])
 <text x="{{ $pl['nameX'] }}" y="{{ $pl['nameY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $pl['nameSize'] }}" fill="{{ $pl['ink'] }}">{{ $pl['name'] }}</text>
 @foreach ($pl['digits'] as $d)<text x="{{ $d['x'] }}" y="{{ $pl['clockY'] }}" font-family="Unbounded" font-weight="800" font-size="{{ $pl['clockSize'] }}" fill="{{ $pl['clockInk'] }}" text-anchor="middle">{{ $d['ch'] }}</text>@endforeach
 

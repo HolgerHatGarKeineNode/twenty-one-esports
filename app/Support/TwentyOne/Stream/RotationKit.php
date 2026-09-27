@@ -919,4 +919,177 @@ final class RotationKit
             'x0' => floor($eyeX), 'y' => $y, 'countFont' => $countFont, 'countSize' => $countSize, 'wordSize' => $wordSize,
         ];
     }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Faces and backdrops (docs/plans/2026-09-27T1811-stream-avatars-imagery.md): every person carries 'avatar', a clan
+    // entry 'logo', every scene 'backdrop', each an inline data URI or null. Only what the readers below accept reaches
+    // an <image>; rsvg-convert never gets a URL or a path it could follow.
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** Longest avatar or clan logo data URI accepted (bytes); a 128x128 JPEG is 5 to 10 kB as base64. */
+    private const AVATAR_MAX = 96_000;
+
+    /**
+     * An avatar or clan logo as an inline JPEG, PNG or SVG data URI, or null (the view then draws a neutral circle).
+     * An SVG must be self-contained: no reference but "#fragment", no DTD, no script, no stylesheet import.
+     */
+    public static function avatarUri(mixed $uri): ?string
+    {
+        if (! is_string($uri) || strlen($uri) > self::AVATAR_MAX
+            || preg_match('#^data:image/(jpeg|png|svg\+xml);base64,([A-Za-z0-9+/]+={0,2})$#', $uri, $m) !== 1) {
+            return null;
+        }
+        if ($m[1] !== 'svg+xml') {
+            return $uri;
+        }
+        $svg = base64_decode($m[2], true);
+
+        return $svg === false || preg_match('/<!DOCTYPE|<!ENTITY|<script|<foreignObject|<\?xml-stylesheet|@import|(?:href|src)\s*=\s*["\']\s*(?!#)|url\(\s*["\']?\s*(?!#)/i', $svg) === 1
+            ? null : $uri;
+    }
+
+    /** The scene's backdrop (already blurred and darkened) as an inline JPEG/PNG data URI, or null: as coverUri(). */
+    public static function backdropUri(mixed $uri): ?string
+    {
+        return self::coverUri($uri);
+    }
+
+    /**
+     * The avatar of each row ladder() keeps, in the same order (null where there is none).
+     *
+     * @param  array<string, mixed>  $stats
+     * @return list<?string>
+     */
+    public static function ladderAvatars(array $stats, string $key, int $limit): array
+    {
+        $out = [];
+        foreach (array_slice((array) ($stats['ladders'][$key] ?? []), 0, $limit) as $row) {
+            if (! is_array($row) || ! is_int($row['elo'] ?? null) || self::clean($row['name'] ?? '') === '') {
+                continue;
+            }
+            $out[] = self::avatarUri($row['avatar'] ?? null);
+        }
+
+        return $out;
+    }
+
+    /**
+     * What stands next to a name: the seat's avatar (a player), else its logo (a clan lineup), else, in a team
+     * tournament ($clan), a tile with the clan's tag for a named seat. All null: a neutral placeholder. A seat carries
+     * both keys: a player has avatar set and logo null, a lineup avatar null and logo set or null.
+     *
+     * A logo is drawn whole ('fit' meet: a crest with alpha must not lose its corners), a face fills its circle.
+     *
+     * @return array{uri: ?string, tag: ?string, fit: string}
+     */
+    public static function face(mixed $seat, bool $clan = false): array
+    {
+        if (! is_array($seat)) {
+            return ['uri' => null, 'tag' => null, 'fit' => 'slice'];
+        }
+        $avatar = self::avatarUri($seat['avatar'] ?? null);
+        $uri = $avatar ?? self::avatarUri($seat['logo'] ?? null);
+        $name = is_string($seat['name'] ?? null) ? $seat['name'] : '';
+
+        return [
+            'uri' => $uri,
+            'tag' => $uri === null && $clan && self::clean($name) !== '' ? self::clanTag(is_string($seat['tag'] ?? null) ? $seat['tag'] : '', $name) : null,
+            'fit' => $avatar === null && $uri !== null ? 'meet' : 'slice',
+        ];
+    }
+
+    /** A clan tile's text: its tag (at most 4 characters, also from a "[TAG] Name"), else the name's first letter. */
+    public static function clanTag(string $tag, string $name): string
+    {
+        $tag = mb_strtoupper(self::clean($tag));
+        if ($tag === '' && preg_match('/^\[([^\]]{1,4})\]/u', self::clean($name), $m) === 1) {
+            $tag = mb_strtoupper($m[1]);
+        }
+
+        return $tag !== '' && mb_strlen($tag) <= 4 ? $tag : mb_strtoupper(mb_substr(self::clean($name), 0, 1));
+    }
+
+    /**
+     * face() of every row roster() keeps (all of them, before its limit), in the same order; whoPlays()' player rows are
+     * the first of these. A team tournament (teamSize > 1) seats clans.
+     *
+     * @param  array<string, mixed>  $t
+     * @return list<array{uri: ?string, tag: ?string, fit: string}>
+     */
+    public static function rosterFaces(array $t): array
+    {
+        $clan = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
+        $out = [];
+        foreach (array_values(is_array($t['roster'] ?? null) ? $t['roster'] : []) as $row) {
+            if (! is_array($row) || ! is_string($row['name'] ?? null) || self::clean($row['name']) === '') {
+                continue;
+            }
+            $out[] = self::face($row, $clan);
+        }
+
+        return $out;
+    }
+
+    /**
+     * face() of every seat of previewBoxes(), per box and row in the same order (boxes that previewBoxes() drops for
+     * room are at the end, so the indexes match).
+     *
+     * @param  array<string, mixed>|null  $preview
+     * @return list<list<array{uri: ?string, tag: ?string, fit: string}>>
+     */
+    public static function previewFaces(?array $preview, bool $clan = false): array
+    {
+        $lists = [];
+        if (($preview['kind'] ?? null) === 'groups') {
+            foreach ((is_array($preview['groups'] ?? null) ? $preview['groups'] : []) as $members) {
+                $lists[] = is_array($members) ? $members : [];
+            }
+        } elseif (($preview['kind'] ?? null) === 'bracket') {
+            foreach ((is_array($preview['matches'] ?? null) ? $preview['matches'] : []) as $match) {
+                $lists[] = is_array($match) && is_array($match['sides'] ?? null) ? array_slice($match['sides'], 0, 2) : [];
+            }
+        }
+        $out = [];
+        foreach ($lists as $seats) {
+            $faces = [];
+            foreach ($seats as $seat) {
+                if (is_array($seat)) {
+                    $faces[] = self::face($seat, $clan);
+                }
+            }
+            if ($faces !== []) {
+                $out[] = $faces;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The spots as a seat map: one circle per place, at most $perRow in a row, the taken ones first and filled, the
+     * first of those with the roster's faces. Null for more than $max places (the caller keeps the proportional bar).
+     *
+     * @param  array<string, mixed>  $t
+     * @return array{d: float, h: float, seats: list<array{x: float, y: float, filled: bool, face: array{uri: ?string, tag: ?string, fit: string}|null}>}|null
+     */
+    public static function seats(array $t, float $x, float $y, float $w, float $maxD, int $perRow = 16, int $max = 32, float $gap = 6): ?array
+    {
+        $spots = self::spots($t);
+        if ($spots['places'] > $max) {
+            return null;
+        }
+        $faces = self::rosterFaces($t);
+        $cols = min($spots['places'], max(1, $perRow));
+        $d = floor(min($maxD, ($w - $gap * ($cols - 1)) / $cols));
+        $seats = [];
+        for ($i = 0; $i < $spots['places']; $i++) {
+            $filled = $i < $spots['taken'];
+            $seats[] = [
+                'x' => round($x + ($i % $cols) * ($d + $gap), 1), 'y' => round($y + intdiv($i, $cols) * ($d + $gap), 1),
+                'filled' => $filled, 'face' => $filled ? ($faces[$i] ?? null) : null,
+            ];
+        }
+
+        return ['d' => $d, 'h' => ceil($spots['places'] / $cols) * ($d + $gap) - $gap, 'seats' => $seats];
+    }
 }

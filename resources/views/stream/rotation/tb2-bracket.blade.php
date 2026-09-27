@@ -1,25 +1,35 @@
 {{--
-    TB2 · Broadcast desk · upcoming tournament, bracket preview. Channel frame. Left: the name, the projected groups (or
-    first-round pairings) as desk panels with seeds and "Open spot", the stage note and the line that this is a
-    preview. Right: a "Who plays" panel as on the site (seeds with Elo, "Your spot?", open seats, "+N more open
+    TB2 · Broadcast desk · upcoming tournament, bracket preview. Channel frame over the game's blurred cover. Left: the
+    sharp cover beside the name and the stage note, the projected groups (or first-round pairings) four across as
+    desk panels, every seat a face and a name, an open seat an empty one, and the line that this is a preview. Right:
+    a "Who plays" panel as on the site (seed, face, name, Elo; "Your spot?", open seats as empty faces, "+N more open
     spots"). Across the bottom, above the ticker, an orange lower third: the call to sign up, the address and a small
     countdown in fixed digit cells; a full tournament shows "Watch it live" and the start instead.
 
-    Data contract: $tournament as in docs/plans/2026-09-27T1456-stream-tournament-slides.md (name, status, preview,
-    roster, openSpots, taken, places, spotsLeft, countdown, countdownLabel, startsAt, url); $stats for the ticker.
+    Data contract: $tournament as in docs/plans/2026-09-27T1456-stream-tournament-slides.md (name, status, cover, game,
+    preview, roster, openSpots, taken, places, spotsLeft, countdown, countdownLabel, startsAt, url) plus 'avatar' per
+    roster row and preview seat ('logo' for a clan) and the backdrop ($backdrop, else $tournament['backdrop']) per
+    docs/plans/2026-09-27T1811-stream-avatars-imagery.md; $stats for the ticker.
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php
     $t = is_array($tournament ?? null) ? $tournament : [];
     $countdown = is_string($t['countdown'] ?? null) ? $t['countdown'] : '';
     $spots = K::spots($t);
-    $title = K::name(K::text($t, 'name'), 'Tournament', 28, 776);
-    $p = K::previewBoxes(is_array($t['preview'] ?? null) ? $t['preview'] : null, 40, 168, 776, 348, 2, 16, 30, 34, 26, 10);
-    $sub = K::fit(K::previewHeading($p), K::MONO, 18, 776);
+    $cover = K::coverUri($t['cover'] ?? null);
+    $clanSeats = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
+    $title = K::name(K::text($t, 'name'), 'Tournament', 28, 584);
+    $pv = is_array($t['preview'] ?? null) ? $t['preview'] : null;
+    $p = K::previewBoxes($pv, 40, 212, 776, 312, 4, 16, 30, 40, 26, 10);
+    $faces = K::previewFaces($pv, $clanSeats);
+    $sub = K::fit(K::previewHeading($p), K::MONO, 18, 584);
+    $game = K::wrap(K::text($t, 'game', 'Tournament'), K::MONO, 14, 156, 2);
+    $roster = K::rosterFaces($t);
     $foot = K::fit(K::previewFoot($p), K::MONO, 16, 776);
     $rows = [];
     foreach (K::whoPlays($t, 9) as $i => $r) {
-        $rows[] = $r + ['y' => 200 + $i * 40, 'label' => $r['kind'] === 'player' ? K::name($r['name'], 'Player', 20, $r['rating'] === null ? 304 : 214, false) : null];
+        $rows[] = $r + ['y' => 200 + $i * 40, 'face' => $r['kind'] === 'player' ? ($roster[$i] ?? null) : null,
+            'label' => $r['kind'] === 'player' ? K::name($r['name'], 'Player', 20, $r['rating'] === null ? 268 : 178, false) : null];
     }
     $cd = K::countdownParts($t['countdown'] ?? null);
     $cells = $cd ? K::digitCells($cd['hms'], 1216, 28, true) : null;
@@ -41,34 +51,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
+@include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? ($t['backdrop'] ?? null)])
 @include('stream.rotation.partials.b-chrome', ['stats' => $stats ?? [], 'bugNote' => K::fit(K::text($t, 'status', 'Sign-up open'), K::MONO, 18, 400)])
 
-<text data-unit="title" data-box="39 96 817 134" x="40" y="126" font-family="{{ $title['font'] }}" font-weight="800" font-size="28" fill="#FFFFFF">{{ $title['text'] }}</text>
-<text data-unit="sub" x="40" y="154" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $sub }}</text>
-@if ($p['boxes'] === [])
-<text data-unit="no-preview" x="40" y="220" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">The bracket takes shape as players sign up.</text>
+<g data-unit="cover" data-box="40 96 206 190">
+<rect x="45" y="101" width="160" height="90" fill="#F7931A"/>
+<rect x="40" y="96" width="160" height="90" fill="#121215"/>
+@if ($cover)
+{{-- The cover once, as xlink:href (SVG 1.1, read by every librsvg): a second href would double the 43 kB data URI. --}}
+<image x="40" y="96" width="160" height="90" preserveAspectRatio="xMidYMid slice" xlink:href="{{ $cover }}"/>
 @else
-@include('stream.rotation.partials.t-preview', ['p' => $p, 'panel' => '#121215', 'rule' => '#2A2A30', 'titleFill' => '#F7931A', 'seedFill' => '#8B8B90', 'nameFill' => '#FFFFFF', 'openFill' => '#8B8B90'])
+@foreach ($game as $i => $line)
+<text x="120" y="{{ 146 - (count($game) - 1) * 9 + $i * 18 }}" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#ADADB0" text-anchor="middle">{{ $line }}</text>
+@endforeach
+@endif
+</g>
+<text data-unit="title" data-box="223 106 817 144" x="224" y="136" font-family="{{ $title['font'] }}" font-weight="800" font-size="28" fill="#FFFFFF">{{ $title['text'] }}</text>
+<text data-unit="sub" x="224" y="170" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $sub }}</text>
+@if ($p['boxes'] === [])
+<text data-unit="no-preview" x="40" y="250" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">The bracket takes shape as players sign up.</text>
+@else
+@include('stream.rotation.partials.t-preview', ['p' => $p, 'faces' => $faces, 'panel' => '#121215', 'rule' => '#2A2A30', 'titleFill' => '#F7931A', 'nameFill' => '#FFFFFF', 'openFill' => '#8B8B90', 'ring' => '#F7931A', 'pvId' => 'g'])
 @endif
 @if ($foot !== '')<text data-unit="foot" data-box="39 526 817 548" x="40" y="542" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0">{{ $foot }}</text>@endif
 <text data-unit="preview-1" x="40" y="566" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#FFFFFF">A preview, not the draw.</text>
-<text data-unit="preview-2" x="282" y="566" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0">Seeds are fixed when sign-up closes.</text>
 
-<rect x="848" y="112" width="392" height="456" fill="#121215"/>
+<rect x="848" y="112" width="392" height="456" fill="#121215" fill-opacity="0.92"/>
 <text data-unit="who" x="872" y="156" font-family="Unbounded" font-weight="800" font-size="28" fill="#FFFFFF">Who plays</text>
 @foreach ($rows as $i => $r)
 @if ($r['kind'] === 'invite')<rect x="865" y="{{ $r['y'] - 27 }}" width="358" height="38" fill="none" stroke="#F7931A" stroke-width="2"/>@endif
 @if ($r['seed'] !== null)<text data-unit="seed-{{ $i }}" x="900" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="{{ $r['kind'] === 'open' ? '#8B8B90' : '#F7931A' }}" text-anchor="end">{{ $r['seed'] }}</text>@endif
+@if ($r['kind'] !== 'more')
+@include('stream.rotation.partials.face', ['face' => $r['face'], 'x' => 910, 'y' => $r['y'] - 23, 'd' => 30, 'id' => 'who-'.$i, 'fUnit' => 'who-face-'.$i,
+    'fOpen' => $r['kind'] === 'player' ? null : ($r['kind'] === 'invite' ? 'invite' : 'open'), 'fOpenInk' => $r['kind'] === 'invite' ? '#F7931A' : '#6B6B72', 'fRing' => '#F7931A'])
+@endif
 @if ($r['kind'] === 'player')
-<text data-unit="player-{{ $i }}" data-box="911 {{ $r['y'] - 22 }} {{ $r['rating'] === null ? 1217 : 1127 }} {{ $r['y'] + 6 }}" x="912" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ $r['label']['text'] }}</text>
+<text data-unit="player-{{ $i }}" data-box="947 {{ $r['y'] - 22 }} {{ $r['rating'] === null ? 1217 : 1127 }} {{ $r['y'] + 6 }}" x="948" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ $r['label']['text'] }}</text>
 @if ($r['rating'] !== null)<text data-unit="elo-{{ $i }}" x="1216" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">{{ $r['rating'] }} Elo</text>@endif
 @elseif ($r['kind'] === 'invite')
-<text data-unit="invite" x="912" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A">Your spot?</text>
-@if ($r['more'] > 0)<text data-unit="invite-more" x="1208" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#ADADB0" text-anchor="end">{{ K::moreOpen($r['more']) }}</text>@endif
-@elseif ($r['kind'] === 'open')
-<text data-unit="open-{{ $i }}" x="912" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#8B8B90">Open spot</text>
-@else
-<text data-unit="more" x="912" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#8B8B90">{{ K::moreOpen($r['more']) }}</text>
+<text data-unit="invite" x="948" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $r['more'] > 0 ? 18 : 20 }}" fill="#F7931A">Your spot?</text>
+@if ($r['more'] > 0)<text data-unit="invite-more" x="1214" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="12" fill="#ADADB0" text-anchor="end">{{ K::moreOpen($r['more']) }}</text>@endif
+@elseif ($r['kind'] === 'more')
+<text data-unit="more" x="948" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#8B8B90">{{ K::moreOpen($r['more']) }}</text>
 @endif
 @endforeach
 

@@ -1,9 +1,11 @@
 {{--
     A4 · Arena · join in three steps. Full orange frame, three numbered steps (a real sequence), the real counts
-    in the footer. The footer sentence drops what is missing and disappears when nothing is known.
+    in the footer. The footer sentence drops what is missing and disappears when nothing is known. The brand backdrop
+    shows faintly through the orange.
 
     Data contract:
-      $stats  array{players?: int, clans?: int, …}
+      $stats     array{players?: int, clans?: int, …}
+      $backdrop  ?string, optional: as in a1-match
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php
@@ -13,14 +15,16 @@
     $one = count($parts) === 1 && (($players ?? $clans) === 1);
     $already = $parts === [] ? null : implode(' and ', $parts).(count($parts) > 1 || ! $one ? ' are' : ' is').' already in.';
     $steps = [
-        ['1', 'Open the site', ['esports.einundzwanzig.space,', 'on your phone or your laptop.']],
-        ['2', 'Log in', ['Google or Nostr: a browser', 'extension or a remote signer.', 'No password to remember.']],
-        ['3', 'Play', ['Blitz 5+3: Find opponent.', 'Daily: challenge a player,', 'one move a day. All casual.']],
+        ['1', 'Open the site', ['On your phone or laptop.']],
+        ['2', 'Log in', ['Google or Nostr.', 'No password to remember.']],
+        ['3', 'Play', ['Blitz: Find opponent.', 'Daily: challenge a player.']],
     ];
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
-<rect width="1280" height="720" fill="#F7931A"/>
+<rect width="1280" height="720" fill="#0A0A0B"/>
+@include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null, 'bdDim' => 0.2])
+<rect width="1280" height="720" fill="#F7931A" fill-opacity="{{ K::backdropUri($backdrop ?? null) ? 0.94 : 1 }}"/>
 <use href="#mark-dark" xlink:href="#mark-dark" x="40" y="48" width="64" height="64"/>
 <text x="124" y="92" font-family="Unbounded" font-weight="800" font-size="32" fill="#17120A">Join in three steps</text>
 {{-- COPY-CHECK: step 2 per copy-check.md (c): Google or Nostr (extension or remote signer), "No password to remember." (login.blade.php:26). --}}

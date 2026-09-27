@@ -1,11 +1,13 @@
 {{--
     A2 · Arena · gallery. The live games as one line-up of boards on the dark floor (2 to 6 in a row), names and
-    clocks under each board, the side to move in orange (red below 10 s). Orange call-to-action band at the bottom.
-    Top right stays empty for the client's LIVE badge.
+    clocks under each board, each name with the player's face, the side to move in orange (red below 10 s). The
+    scene's backdrop full-bleed behind; orange call-to-action band at the bottom. Top right stays empty for the
+    client's LIVE badge.
 
     Data contract:
-      $games  list<Game> (2..6 shown; more are cut and counted), Game as in a1-match
-      $more   int, optional: live games not in $games
+      $games     list<Game> (2..6 shown; more are cut and counted), Game as in a1-match (with avatar per player)
+      $more      int, optional: live games not in $games
+      $backdrop  ?string, optional: as in a1-match
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php
@@ -18,7 +20,8 @@
     $nameSize = match (true) { $n <= 2 => 22, $n === 3 => 20, $n === 4 => 18, default => 16 };
     $clockMax = $stacked ? ($n >= 5 ? 22 : 26) : $nameSize;
     $labelSize = $cw >= 300 ? 16 : 14;
-    $rowH = $stacked ? $nameSize * 1.25 + 4 + $clockMax * 1.1 : $nameSize * 1.4;
+    $fd = round($nameSize * ($stacked ? 1.5 : 1.9));
+    $rowH = $stacked ? $fd + 6 + $clockMax * 1.1 : $fd + 4;
     $textH = $labelSize + 14 + 2 * ($rowH + 10);
     $bs = floor(min($cw, 496 - $textH - 16) / 8) * 8;
     $blockH = $bs + 16 + $textH;
@@ -36,18 +39,17 @@
             $ms = (int) ($p['clockMs'] ?? 0);
             $active = (bool) ($p['toMove'] ?? false);
             $ink = $active ? ($ms < 10000 ? '#F87171' : '#F7931A') : '#FFFFFF';
+            $nameY = round($ry + $fd / 2 + $nameSize * 0.36, 1);
             if ($stacked) {
                 $clock = K::clock($ms, $x, $clockMax, $cw);
-                $name = K::name($p['name'] ?? '', $fallback, $nameSize, $cw);
-                $nameY = $ry + $nameSize;
-                $clockY = $nameY + 4 + $clockMax * 1.05;
+                $name = K::name($p['name'] ?? '', $fallback, $nameSize, $cw - $fd - 8);
+                $clockY = $ry + $fd + 6 + $clockMax * 0.8;
             } else {
                 $clock = K::clock($ms, $x + $cw, $clockMax, $cw / 2, true);
-                $name = K::name($p['name'] ?? '', $fallback, $nameSize, $cw - ($clock['x1'] - $clock['x0']) - 16);
-                $nameY = $ry + $nameSize;
+                $name = K::name($p['name'] ?? '', $fallback, $nameSize, $cw - $fd - 8 - ($clock['x1'] - $clock['x0']) - 16);
                 $clockY = $nameY;
             }
-            $rows[] = ['name' => $name, 'nameY' => $nameY, 'clock' => $clock, 'clockY' => $clockY, 'ink' => $ink, 'nameMax' => $stacked ? $x + $cw : $clock['x0'] - 8];
+            $rows[] = ['name' => $name, 'faceY' => $ry, 'avatar' => $p['avatar'] ?? null, 'active' => $active, 'nameY' => $nameY, 'clock' => $clock, 'clockY' => $clockY, 'ink' => $ink, 'nameMax' => $stacked ? $x + $cw : $clock['x0'] - 8];
             $ry += $rowH + 10;
         }
         $cards[] = [
@@ -60,6 +62,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
+@include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null])
 <text x="40" y="72" font-family="Unbounded" font-weight="800" font-size="36" fill="#FFFFFF">Live now</text>
 <text data-unit="count" data-box="266 50 1000 80" x="267" y="72" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A">{{ $count }}</text>
 
@@ -67,7 +70,9 @@
 @include('stream.rotation.partials.board', ['b' => $card['b'], 'frame' => 6])
 <text data-unit="label-{{ $ci }}" data-box="{{ $card['x'] - 1 }} {{ $card['labelY'] - 16 }} {{ $card['x'] + $cw + 1 }} {{ $card['labelY'] + 4 }}" x="{{ $card['x'] }}" y="{{ $card['labelY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $labelSize }}" fill="#ADADB0">{{ $card['label'] }}</text>
 @foreach ($card['rows'] as $ri => $r)
-<text data-unit="name-{{ $ci }}-{{ $ri }}" data-box="{{ $card['x'] - 1 }} {{ $r['nameY'] - $nameSize }} {{ $r['nameMax'] }} {{ $r['nameY'] + $nameSize * 0.3 }}" x="{{ $card['x'] }}" y="{{ $r['nameY'] }}" font-family="{{ $r['name']['font'] }}" font-weight="800" font-size="{{ $nameSize }}" fill="{{ $r['ink'] }}">{{ $r['name']['text'] }}</text>
+@include('stream.rotation.partials.face', ['face' => ['uri' => $r['avatar'], 'tag' => null], 'x' => $card['x'], 'y' => $r['faceY'], 'd' => $fd, 'id' => $ci.'-'.$ri,
+    'fUnit' => 'face-'.$ci.'-'.$ri, 'fRing' => $r['active'] ? $r['ink'] : '#F7931A'])
+<text data-unit="name-{{ $ci }}-{{ $ri }}" data-box="{{ $card['x'] + $fd + 7 }} {{ $r['nameY'] - $nameSize }} {{ $r['nameMax'] }} {{ $r['nameY'] + $nameSize * 0.3 }}" x="{{ $card['x'] + $fd + 8 }}" y="{{ $r['nameY'] }}" font-family="{{ $r['name']['font'] }}" font-weight="800" font-size="{{ $nameSize }}" fill="{{ $r['ink'] }}">{{ $r['name']['text'] }}</text>
 @include('stream.rotation.partials.clock', ['c' => $r['clock'], 'y' => $r['clockY'], 'fill' => $r['ink']])
 @endforeach
 @endforeach
