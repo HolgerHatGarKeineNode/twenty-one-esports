@@ -181,6 +181,7 @@ test('sign-up signs in the browser, and the tournament page shows the bracket wi
     expect(TournamentSignup::query()->where('tournament_id', $open->id)->active()->pluck('lineup_id')->all())->toBe([null, $lineup->id]);
 
     // The director desk and the list, for the screenshots and the console.
+    TestSigner::forBrowser($director);
     $page = tournamentPage($director);
 
     foreach ([[375, 812], [1440, 900]] as [$width, $height]) {
@@ -215,6 +216,7 @@ test('a tournament game offers no abort, and a missed first move ends it on the 
         $game = ChessGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->sole();
         $white = $game->white;
         $white->forceFill(['locale' => 'en'])->save();
+        TestSigner::forBrowser($white);
 
         $page = tournamentPage($white);
         $page->setViewportSize($width, $height);
