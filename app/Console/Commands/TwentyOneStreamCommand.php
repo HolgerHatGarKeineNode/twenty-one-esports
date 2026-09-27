@@ -21,8 +21,7 @@ use App\Support\TwentyOne\Stream\StreamSession;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
-use App\Support\TwentyOne\Stream\ViewerCounter;
-use App\Support\TwentyOne\Stream\ViewerSocket;
+use App\Support\TwentyOne\Stream\ViewerFeed;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
 use Illuminate\Console\Attributes\Description;
@@ -65,8 +64,8 @@ use Throwable;
  * datagrams to a unix socket this process binds (ViewerSocket, config
  * twentyone.stream.viewers; the nginx lines are there). The count reaches
  * every scene as `viewers` and the `live` 30311 as `current_participants`;
- * it is null, and the stream runs on without it, when the socket cannot be
- * bound or read.
+ * it is null, and the stream runs on without it, while the socket cannot be
+ * bound or read; ViewerFeed binds it again after a backoff.
  *
  * A stop keeps the public playlist and the segments its window references:
  * players that are still open keep a valid playlist across a daemon restart,
@@ -147,8 +146,8 @@ class TwentyOneStreamCommand extends Command
 
     private float $announcementCachedAt = 0.0;
 
-    /** The socket nginx logs playlist requests to; null while the count is off. */
-    private ?ViewerSocket $viewerSocket = null;
+    /** The viewer count from the socket nginx logs playlist requests to; null outside a run. */
+    private ?ViewerFeed $viewers = null;
 
     /** @var list<string> run ids of the encoders this process started */
     private array $runIds = [];
@@ -203,7 +202,7 @@ class TwentyOneStreamCommand extends Command
         $this->announceCacheFailing = false;
         $this->cachedAnnouncement = null;
         $this->announcementCachedAt = 0.0;
-        $this->viewerSocket = null;
+        $this->viewers = null;
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -266,7 +265,7 @@ class TwentyOneStreamCommand extends Command
         $slotKey = null;
         /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
         $frame = null;
-        $viewerCounter = $this->openViewerCount();
+        $this->viewers = ViewerFeed::fromConfig($this->log(...));
         $viewerLimit = max(1, (int) config('twentyone.stream.viewers.max_datagrams_per_tick', 2000));
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
 
@@ -279,7 +278,7 @@ class TwentyOneStreamCommand extends Command
                 break;
             }
 
-            $viewerCount = $viewerCounter === null ? null : $this->countViewers($viewerCounter, (int) $now, $viewerLimit);
+            $viewerCount = $this->viewers->count((int) $now, $viewerLimit);
 
             // Once a second: which games are on show (live ones, daily included,
             // and those that just ended), which rotation slot runs, and its data.
@@ -484,8 +483,8 @@ class TwentyOneStreamCommand extends Command
         }
 
         $this->pending = $this->active = null;
-        $this->viewerSocket?->close();
-        $this->viewerSocket = null;
+        $this->viewers?->close();
+        $this->viewers = null;
         $this->log('stopped, keeping '.count($public->state()->window).' segments in the public playlist');
     }
 
@@ -682,49 +681,6 @@ class TwentyOneStreamCommand extends Command
             }
 
             return [];
-        }
-    }
-
-    /**
-     * Bind the viewer socket; on failure (path too long, a directory that
-     * is not private, setfacl failing, a file in the way) the count stays
-     * off for this run, logged once, and the stream goes on without it.
-     */
-    private function openViewerCount(): ?ViewerCounter
-    {
-        try {
-            $this->viewerSocket = ViewerSocket::bind((string) config('twentyone.stream.viewers.dir'), (string) config('twentyone.stream.viewers.nginx_user'));
-            $this->log('viewer count on '.$this->viewerSocket->path);
-
-            return ViewerCounter::fromConfig();
-        } catch (Throwable $e) {
-            $this->viewerSocket = null;
-            $this->log('viewer count off: '.$this->describe($e));
-
-            return null;
-        }
-    }
-
-    /**
-     * Read the pending playlist requests (at most `$limit`) and count the
-     * viewers; null, and the count off for the rest of the run, when reading fails.
-     */
-    private function countViewers(ViewerCounter $counter, int $now, int $limit): ?int
-    {
-        if ($this->viewerSocket === null) {
-            return null;
-        }
-
-        try {
-            $this->viewerSocket->drain($counter, $now, $limit);
-
-            return $counter->count($now);
-        } catch (Throwable $e) {
-            $this->log('viewer count off: '.$this->describe($e));
-            $this->viewerSocket->close();
-            $this->viewerSocket = null;
-
-            return null;
         }
     }
 

@@ -211,7 +211,9 @@ return [
         | `exclude_agents` never counts. The scenes get it as `viewers`, the
         | 30311 as `current_participants`. The socket path must stay within
         | 107 bytes; a directory that is not private or a socket that cannot
-        | be bound leaves the count off (null) and the stream running.
+        | be bound or read leaves the count off (null) and the stream running,
+        | and the daemon binds it again after `rebind_initial_seconds`,
+        | doubling up to `rebind_max_seconds` (ViewerFeed).
         */
         'viewers' => [
             'dir' => env('TWENTYONE_STREAM_VIEWERS_DIR') ?: storage_path('app/stream/viewers'),
@@ -222,6 +224,8 @@ return [
             'max_keys' => 10000,
             // Datagrams read per loop turn (4 per second); the rest waits for the next turn.
             'max_datagrams_per_tick' => 2000,
+            'rebind_initial_seconds' => 30,
+            'rebind_max_seconds' => 600,
         ],
 
         /*

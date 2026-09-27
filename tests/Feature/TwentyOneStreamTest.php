@@ -8,12 +8,14 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
+use App\Support\TwentyOne\Stream\Backoff;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\Stream\ViewerCounter;
+use App\Support\TwentyOne\Stream\ViewerFeed;
 use App\Support\TwentyOne\Stream\ViewerSocket;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Illuminate\Contracts\Cache\Store;
@@ -830,6 +832,54 @@ test('a socket directory that is not private leaves the count off and the stream
         symlink($dir.'-target', $dir);
     }, 'socket directory is a symlink, refused'],
 ]);
+
+test('a viewer socket that fails to read is bound again after a doubling backoff, and the count resumes', function () {
+    $dir = config('twentyone.stream.viewers.dir');
+    $path = $dir.'/viewers.sock';
+    $sockets = [];
+    $binds = [];
+    $refuse = false;
+    $logged = [];
+    $bind = function () use ($dir, &$sockets, &$binds, &$refuse): ViewerSocket {
+        $binds[] = true;
+
+        return $refuse ? throw new RuntimeException('bind refused') : $sockets[] = ViewerSocket::bind($dir);
+    };
+    $feed = new ViewerFeed($bind, new ViewerCounter(3), new Backoff(2, 3), function (string $line) use (&$logged): void {
+        $logged[] = $line;
+    });
+    $send = function (string $address) use ($path): void {
+        $client = stream_socket_client('udg://'.$path);
+        fwrite($client, "<190>Sep 27 12:00:00 hls: {$address}|Mozilla/5.0 Firefox/131.0|200");
+        fclose($client);
+    };
+    $counts = [];
+
+    $counts[100] = $feed->count(100, 100);
+    $send('203.0.113.1');
+    $counts[101] = $feed->count(101, 100);
+    // The read fails: its stream is gone. The count goes off, the next bind is due in 2 s.
+    $sockets[0]->close();
+    $counts[102] = $feed->count(102, 100);
+    // The retry at 104 fails as well (not logged); the next one waits 3 s (doubled, capped at the max).
+    $refuse = true;
+    $counts[103] = $feed->count(103, 100);
+    $counts[104] = $feed->count(104, 100);
+    $refuse = false;
+    $counts[106] = $feed->count(106, 100);
+    $counts[107] = $feed->count(107, 100);
+    $send('203.0.113.2');
+    $counts[108] = $feed->count(108, 100);
+    $feed->close();
+
+    expect($counts)->toBe([100 => 0, 101 => 1, 102 => null, 103 => null, 104 => null, 106 => null, 107 => 0, 108 => 1])
+        ->and(count($binds))->toBe(3)
+        ->and($logged)->toHaveCount(3)
+        ->and($logged[0])->toBe('viewer count on '.$path)
+        ->and($logged[1])->toBe('viewer count off: TypeError: stream_socket_recvfrom(): Argument #1 ($socket) must be an open stream resource; binding again in 2 s')
+        ->and($logged[2])->toBe('viewer count back on '.$path)
+        ->and(file_exists($path))->toBeFalse();
+});
 
 /**
  * A fake relay that accepts one event and keeps it in `$file`; [process, ws URL].
