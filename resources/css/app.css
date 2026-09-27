@@ -1744,9 +1744,12 @@ select:focus[data-flux-control] {
 /*
  * Shell navigation, header concept B "game tabs" (components/shell/). Row 1
  * carries up to three game tabs, fewer at narrower widths so 1024 px never
- * overflows: none at lg (row 2 names the game), two with short labels from
- * xl, three with full names from 90rem. The active game's tab and its tab
- * bar marker take the game's colour (--game, set per element).
+ * overflows: none at lg (row 2 names the game), one from xl, two from 90rem,
+ * three from 100rem, all with short labels. Tournaments (with its sign-up
+ * count) and a LIVE badge beside Season share the row since 2026-09-27: the
+ * hub says "All 4" and Season drops its tag below 80rem, links are 8 px
+ * narrower below 100rem, the word mark waits for 120rem. The active game's
+ * tab and its tab bar marker take the game's colour (--game, set per element).
  */
 :root {
     --tabbar-h: calc(4rem + env(safe-area-inset-bottom));
@@ -1839,9 +1842,12 @@ select:focus[data-flux-control] {
         display: none;
     }
 
+    /*
+     * Short game names only: with Tournaments in row 1 the full names ("Rocket League", "EA Sports FC 27",
+     * 184 px more for two tabs) no longer fit beside the word mark at 1680 px. The full name stays the tab's title.
+     */
     @media (width >= 80rem) {
-        .gtab-0,
-        .gtab-1 {
+        .gtab-0 {
             display: flex;
         }
 
@@ -1855,19 +1861,14 @@ select:focus[data-flux-control] {
     }
 
     @media (width >= 90rem) {
-        .gtab-2 {
+        .gtab-1 {
             display: flex;
         }
     }
 
-    /* Full game names only where the word mark fits too: at 1440 px "Rocket League" and "EA Sports FC 27" pushed Season under the search field. */
-    @media (width >= 105rem) {
-        .gtab-full {
-            display: inline;
-        }
-
-        .gtab-short {
-            display: none;
+    @media (width >= 100rem) {
+        .gtab-2 {
+            display: flex;
         }
     }
 
@@ -1882,6 +1883,12 @@ select:focus[data-flux-control] {
         font-size: 14px;
         font-weight: 500;
         white-space: nowrap;
+    }
+
+    @media (width < 100rem) {
+        .nav-link {
+            padding: 0 8px;
+        }
     }
 
     .nav-link:hover,
@@ -2128,6 +2135,19 @@ select:focus[data-flux-control] {
         height: 3px;
         border-radius: 0 0 2px 2px;
         background: var(--game, var(--color-btc));
+    }
+
+    /* Something waits behind this tab (a tournament open for sign-up): the accent dot on the icon's corner, ringed off the bar. */
+    .tab-dot {
+        position: absolute;
+        /* Inside the icon's box sideways: a dot past its edge would make the tab label's span scroll (the squeeze probe). */
+        top: -2px;
+        right: 0;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--color-btc);
+        box-shadow: 0 0 0 2px var(--color-bar);
     }
 
     .tab[aria-expanded="true"] {

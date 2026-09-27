@@ -4,8 +4,10 @@ use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Navigation\ShellNavigation;
+use Illuminate\Support\Facades\Cache;
 use Tests\Support\FakeGame;
 
 /*
@@ -101,4 +103,24 @@ test('a test-only registry of 12 games renders a hub tile for each, and the real
 
     expect(substr_count($html, 'data-test="hub-game-'))->toBe(12)
         ->and(array_filter(array_keys(app(GameRegistry::class)->all()), fn (string $slug) => str_starts_with($slug, 'fake-')))->toBe([]);
+});
+
+test('Tournaments in row 1 and the tab bar counts the tournaments open for sign-up, and shows no badge when none is', function () {
+    // Not open: a draft, and a sign-up whose deadline has passed.
+    Tournament::factory()->create();
+    Tournament::factory()->signup()->create(['signup_closes_at' => now()->subHour()]);
+
+    $this->get('/rules')->assertOk()
+        ->assertSee('data-test="nav-tournaments"', false)
+        ->assertDontSee('data-test="tournaments-open"', false)
+        ->assertDontSee('data-test="tab-tournaments-dot"', false);
+
+    Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDay()]);
+    Cache::forget(ShellNavigation::OPEN_TOURNAMENTS_KEY);
+
+    $html = $this->get('/rules')->assertOk()->getContent();
+    expect($html)->toMatch('/data-test="tournaments-open"><span class="sr-only">, <\/span>2<span class="sr-only"> open for sign-up<\/span>/')
+        ->toContain('aria-label="Tournaments, 2 open for sign-up"')
+        ->toContain('data-test="tab-tournaments-dot"')
+        ->and(ShellNavigation::current()->tournaments()['open'])->toBe(2);
 });

@@ -16,6 +16,7 @@
     $active = $nav->activeGame();
     $onGamePage = $nav->onGamePage();
     $community = $nav->community();
+    $tournaments = $nav->tournaments();
     $seasonTag = $nav->seasonTag();
     $admin = $nav->admin();
     $account = $nav->account();
@@ -42,7 +43,7 @@
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
             {{-- The word mark gives its room to the game tabs on desktop until the widest tier. --}}
-            <span class="flex items-baseline gap-1.5 whitespace-nowrap max-md:sr-only lg:max-[105rem]:sr-only">
+            <span class="flex items-baseline gap-1.5 whitespace-nowrap max-md:sr-only lg:max-[120rem]:sr-only">
                 <span class="font-display text-sm font-extrabold tracking-[0.02em] lg:text-base">TWENTY ONE</span>
                 <span class="text-xs text-ink-2 max-sm:hidden">esports</span>
             </span>
@@ -80,17 +81,26 @@
                 </a>
             @endforeach
             <button type="button" class="gtab gtab-hub" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog"
-                    x-on:click="toggleHub($el)" data-test="games-menu">
+                    x-on:click="toggleHub($el)" aria-label="{{ $allGames }}" data-test="games-menu">
                 <x-icon name="grid" :size="18" />
-                <span>{{ $allGames }}</span>
+                {{-- "All 4" below 100rem, where Tournaments needs the room: the button keeps "All 4 games" as its name. --}}
+                <span aria-hidden="true" class="max-[100rem]:hidden">{{ $allGames }}</span><span aria-hidden="true" class="min-[100rem]:hidden">{{ __('All :count', ['count' => count($games)]) }}</span>
                 <x-icon name="chevron-down" :size="16" class="gtab-chevron" />
             </button>
             <span class="grow"></span>
+            {{-- Tournaments, cross-game like Clans and Season, with how many are open for sign-up now. --}}
+            <a href="{{ $tournaments['href'] }}" @if ($section === 'tournaments') aria-current="page" @endif class="nav-link self-center" data-test="nav-tournaments">
+                {{ $tournaments['label'] }}
+                @if ($tournaments['open'] > 0)
+                    <span class="nav-count" data-test="tournaments-open"><span class="sr-only">, </span>{{ $tournaments['open'] }}<span class="sr-only"> {{ trans_choice('open for sign-up|open for sign-up', $tournaments['open']) }}</span></span>
+                @endif
+            </a>
             @foreach ($community as $link)
                 <a href="{{ $link['href'] }}" @if ($section === $link['key']) aria-current="page" @endif class="nav-link self-center" data-test="nav-{{ $link['key'] }}">
                     {{ $link['label'] }}
                     @if ($link['key'] === 'mining' && $seasonTag)
-                        <span class="nav-tag" data-test="season-tag">{{ $seasonTag }}</span>
+                        {{-- Below 80rem the tag gives its room to Tournaments; the Season page says the same. --}}
+                        <span class="nav-tag max-[80rem]:hidden" data-test="season-tag">{{ $seasonTag }}</span>
                     @endif
                 </a>
             @endforeach
@@ -178,10 +188,6 @@
                 <span class="min-[90rem]:hidden">{{ $link['short'] }}</span><span class="max-[90rem]:hidden">{{ $link['label'] }}</span>
             </a>
         @endforeach
-        <span class="mx-2 h-5 w-px bg-line" aria-hidden="true"></span>
-        <a href="{{ route('tournaments.index') }}" @if ($section === 'tournaments') aria-current="page" @endif class="ctx-link" data-test="ctx-tournaments">
-            <x-icon name="tournaments" :size="16" class="max-[90rem]:hidden" />{{ __('Tournaments') }}
-        </a>
     </nav>
 
     <div id="mobile-search" class="border-b border-hairline px-4 py-3 lg:hidden" x-show="search" x-cloak
@@ -202,4 +208,4 @@
     <x-shell.game-hub :played="$played" :unplayed="$unplayed" :count="count($games)" />
 </header>
 
-<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :season-tag="$seasonTag" :admin="$admin" :account="$account" :section="$section" :user="$user" />
+<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :tournaments="$tournaments":season-tag="$seasonTag" :admin="$admin" :account="$account" :section="$section" :user="$user" />

@@ -1,4 +1,4 @@
-@props(['active', 'games' => [], 'community' => [], 'seasonTag' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null])
+@props(['active', 'games' => [], 'community' => [], 'tournaments' => null,'seasonTag' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null])
 
 {{--
     Phones and tablets (below lg, header concept B): the tab bar of the active
@@ -20,7 +20,10 @@
             }
         }
     }
-    $tabs[] = ['href' => route('tournaments.index'), 'label' => __('Tournaments'), 'icon' => 'tournaments', 'test' => 'tab-tournaments'];
+    // Tournaments carries a dot while any is open for sign-up; its accessible name says how many (the visible label stays one word).
+    $open = (int) ($tournaments['open'] ?? 0);
+    $tabs[] = ['href' => route('tournaments.index'), 'label' => __('Tournaments'), 'icon' => 'tournaments', 'test' => 'tab-tournaments',
+        'dot' => $open > 0, 'name' => $open > 0 ? __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) : null];
     $profile = $account[0] ?? null;
     $accountLinks = array_slice($account, 1);
     $everywhere = [
@@ -133,8 +136,12 @@
         <ul class="m-0 flex list-none p-0">
             @foreach ($tabs as $tab)
                 <li class="flex-auto">
-                    <a href="{{ $tab['href'] }}" class="tab" @if ($tab['href'] === $current) aria-current="page" @endif data-test="{{ $tab['test'] }}">
-                        <x-icon :name="$tab['icon']" :size="22" />
+                    <a href="{{ $tab['href'] }}" class="tab" @if ($tab['href'] === $current) aria-current="page" @endif @if ($tab['name'] ?? null) aria-label="{{ $tab['name'] }}" @endif data-test="{{ $tab['test'] }}">
+                        @if ($tab['dot'] ?? false)
+                            <span class="relative flex"><x-icon :name="$tab['icon']" :size="22" /><span class="tab-dot" aria-hidden="true" data-test="tab-tournaments-dot"></span></span>
+                        @else
+                            <x-icon :name="$tab['icon']" :size="22" />
+                        @endif
                         <span>{{ $tab['label'] }}</span>
                     </a>
                 </li>

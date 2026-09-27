@@ -3,6 +3,7 @@
 namespace App\Support\Navigation;
 
 use App\Enums\InviteStatus;
+use App\Enums\TournamentStatus;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Support\GameNames;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,6 +40,9 @@ final class ShellNavigation
 
     /** Game tabs in row 1 at the widest tier; fewer at narrower widths (app.css `.gtab`). */
     public const TABS = 3;
+
+    /** Cache key of the open-for-sign-up count behind the Tournaments badge. */
+    public const OPEN_TOURNAMENTS_KEY = 'shell:tournaments-open';
 
     public readonly bool $isAdmin;
 
@@ -183,6 +188,23 @@ final class ShellNavigation
             ['key' => 'clans', 'href' => route('clans.index'), 'label' => __('Clans')],
             ['key' => 'mining', 'href' => route('mining'), 'label' => __('Season')],
         ];
+    }
+
+    /**
+     * Tournaments, a top-level entry of row 1 and the tab bar, with the
+     * number of tournaments open for sign-up right now (0: no badge). One
+     * count query, cached for a minute: it runs on every page.
+     *
+     * @return array{href: string, label: string, open: int}
+     */
+    public function tournaments(): array
+    {
+        $open = (int) Cache::remember(self::OPEN_TOURNAMENTS_KEY, 60, fn (): int => Tournament::query()
+            ->where('status', TournamentStatus::Signup)
+            ->where('signup_closes_at', '>', now())
+            ->count());
+
+        return ['href' => route('tournaments.index'), 'label' => __('Tournaments'), 'open' => $open];
     }
 
     /** "Block 0 soon" before the first season, "Live now" while one runs, nothing between seasons. */

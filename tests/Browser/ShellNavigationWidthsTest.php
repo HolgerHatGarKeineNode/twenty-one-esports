@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Tournament;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Support\ComputeUrl;
 
@@ -74,6 +75,39 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
             ->and($m['squeezed'])->toBe([]);
     }
 
+    expect($failures)->toBe([])->and($problems)->toBe([]);
+});
+
+test('row 1 fits Tournaments with its sign-up count and room for a 90 px LIVE badge at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
+    Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDays(2)]);
+    $admin = shellAdmin();
+    $problems = [];
+    $failures = [];
+    $sizes = [];
+    // P20 puts a LIVE badge next to Season: a stand-in of its size, so this row keeps room for it.
+    $placeholder = '() => { const season = document.querySelector("[data-test=nav-mining]"); const live = Object.assign(document.createElement("span"), { textContent: "LIVE" }); live.style.cssText = "flex: none; width: 90px; height: 28px; align-self: center"; live.dataset.test = "live-placeholder"; season.after(live); }';
+
+    foreach (['en', 'de'] as $locale) {
+        foreach ([1024 => 768, 1280 => 800, 1440 => 900, 1680 => 1050, 1920 => 1080] as $width => $height) {
+            $page = shellPage($admin, $width, $height);
+            if ($locale === 'de') {
+                $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+            }
+            shellOpen($page, '/rules', $problems);
+            $page->evaluate($placeholder);
+            $m = $page->evaluate(SHELL_MEASURE);
+            $badge = $page->evaluate('() => { const el = document.querySelector("[data-test=tournaments-open]"); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("")]; }');
+            $sizes["{$locale}@{$width}"] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge];
+            if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $badge === null || $badge[2] !== '2') {
+                $failures[] = "{$locale} @{$width}: ".json_encode($sizes["{$locale}@{$width}"]);
+            }
+            if ($locale === 'en' && in_array($width, [1024, 1440], true)) {
+                shellShot($page, "shell-admin-{$width}-tournaments");
+            }
+        }
+    }
+
+    fwrite(STDERR, "\n[shell-tournaments] ".json_encode($sizes));
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 

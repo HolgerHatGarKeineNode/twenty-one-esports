@@ -151,7 +151,7 @@ test('row 2 follows the game of the page, and a page of every game keeps the gam
     shellOpen($page, route('games.rocket-league', absolute: false), $problems);
     $rl = $page->evaluate($state);
     expect($rl)->toMatchArray(['game' => 'rocket-league', 'current' => 'game-tab-rocket-league', 'how' => 'page'])
-        ->and($rl['links'])->toBe(['ctx-play', 'ctx-matches', 'ctx-challenge', 'ctx-ladder', 'ctx-tournaments']);
+        ->and($rl['links'])->toBe(['ctx-play', 'ctx-matches', 'ctx-challenge', 'ctx-ladder']);
     shellShot($page, 'shell-player-1280-rocket-league');
 
     shellOpen($page, '/clans', $problems);
@@ -160,7 +160,7 @@ test('row 2 follows the game of the page, and a page of every game keeps the gam
     shellOpen($page, route('ladder.show', ['chess', 'blitz'], false), $problems);
     $chess = $page->evaluate($state);
     expect($chess)->toMatchArray(['game' => 'chess', 'how' => 'page'])
-        ->and($chess['links'])->toBe(['ctx-play', 'ctx-daily', 'ctx-challenge', 'ctx-watch', 'ctx-matches', 'ctx-ladder', 'ctx-settings', 'ctx-tournaments']);
+        ->and($chess['links'])->toBe(['ctx-play', 'ctx-daily', 'ctx-challenge', 'ctx-watch', 'ctx-matches', 'ctx-ladder', 'ctx-settings']);
 
     expect($problems)->toBe([]);
 });
