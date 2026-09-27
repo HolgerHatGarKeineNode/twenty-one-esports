@@ -6,7 +6,6 @@ use App\Models\Tournament;
 use App\Support\PageMeta;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\FormatCopy;
-use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -54,7 +53,6 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         [__('Finished'), $this->tournaments->where('status', TournamentStatus::Finished)->count()],
     ];
     $next = $this->next;
-    $places = $next === null ? null : app(TournamentSignups::class)->places($next);
     $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
 @endphp
 
@@ -84,25 +82,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     </div>
 
     @if ($next !== null)
-        <section aria-labelledby="next-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:flex-row lg:gap-8 lg:px-6" data-test="next-tournament">
-            <x-game-cover :game="$next->game" size="card" class="w-full rounded-md sm:w-[280px] lg:self-center" data-test="next-tournament-cover" />
-            <div class="flex min-w-0 grow flex-col gap-2">
-                <span class="text-xs text-ink-2">{{ __('Next tournament') }}</span>
-                <h2 id="next-h" class="m-0 font-display text-[26px] font-bold break-words"><a href="{{ route('tournaments.show', $next) }}" class="text-ink hover:text-ink">{{ $next->name }}</a></h2>
-                <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · <x-league-time :at="$next->starts_at" data-test="next-tournament-start" />@if (($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($next, (string) config('esports.preseason.display_timezone'))) !== null) · <span data-test="open-end">{{ $openEnd }}</span>@endif</p>
-                <x-prize-chip :tournament="$next" class="h-7 text-[13px]" />
-                <div class="flex flex-col gap-1.5 pt-2">
-                    <span class="text-[13px]">{{ __(':taken of :places places taken', ['taken' => $places['taken'], 'places' => $places['places']]) }}</span>
-                    <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $places['places'] > 0 ? min(100, (int) round(100 * $places['taken'] / $places['places'])) : 0 }}%"></span></span>
-                </div>
-            </div>
-            <div class="flex shrink-0 flex-col gap-3 lg:w-[320px]">
-                <span class="text-xs text-ink-2">{{ __('Registration closes') }}</span>
-                <x-league-time :at="$next->signup_closes_at" class="font-display text-xl font-bold" />
-                <span class="text-xs text-ink-3">{{ $next->signup_closes_at->diffForHumans() }}</span>
-                <x-button :href="auth()->check() ? route('tournaments.signup', $next) : route('login')" data-test="register">{{ __('Register') }}</x-button>
-            </div>
-        </section>
+        <x-tournaments.next-card :tournament="$next" />
     @endif
 
     <section aria-labelledby="all-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">

@@ -154,6 +154,19 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups) --}}
     <div class="px-4 pb-4 lg:px-12 lg:pb-5"><livewire:invite-link :game="$slug" place="game" /></div>
 
+    {{--
+        The game's next tournament open for sign-up, the tournaments index's card (user, 2026-09-28: every
+        game page lacked a view of the next tournament; it sat as the eighth card of the grid, under the fold).
+        Under the invite, which keeps its place in the phone's first screen (InvitePlacementTest).
+    --}}
+    <div class="px-4 pb-4 lg:px-12 lg:pb-5" data-test="game-next-tournament">
+        @if ($next)
+            <x-tournaments.next-card :tournament="$next" heading-id="game-next-h" :cover="false">{{ __('Captains enter a lineup, solo players get drawn into mix teams. Clan lineup matches count for Elo; mix teams play without Elo.') }}</x-tournaments.next-card>
+        @else
+            <x-tournaments.next-empty :game="$slug" heading-id="game-next-h" />
+        @endif
+    </div>
+
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-2 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Clan Hashrate, last 7 days (P7) --}}
         <section aria-labelledby="rl-hr" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
@@ -209,19 +222,6 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <p class="m-0 text-xs text-ink-3">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
         </section>
 
-        {{-- Next tournament of this game open for sign-up (P8) --}}
-        <section aria-labelledby="rl-cup" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="flex items-baseline justify-between"><h2 id="rl-cup" class="m-0 text-[15px] font-bold">{{ __('Next tournament') }}</h2><a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All tournaments') }}</a></span>
-            @if ($next)
-                <a href="{{ route('tournaments.show', $next) }}" class="flex flex-wrap items-baseline justify-between gap-2 text-ink hover:text-ink" data-test="game-next-tournament"><b class="font-display text-lg">{{ $next->name }}</b><span class="text-xs text-ink-2">{{ GameNames::mode($next->game, $next->mode) }} · {{ $next->format->label() }}</span></a>
-                <x-league-time :at="$next->starts_at" class="text-[13px] text-ink" data-test="game-next-tournament-start" />
-                <x-prize-chip :tournament="$next" />
-            @else
-                <p class="m-0 text-[13px] text-ink-2">{{ __('No :game tournament is open for sign-up right now.', ['game' => $gameName]) }}</p>
-            @endif
-            <p class="m-0 text-xs leading-[1.6] text-ink-2">{{ __('Captains enter a lineup, solo players get drawn into mix teams. Clan lineup matches count for Elo; mix teams play without Elo.') }}</p>
-        </section>
-
         {{-- Series per week (P6) --}}
         <section aria-labelledby="rl-weeks" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex items-baseline justify-between"><h2 id="rl-weeks" class="m-0 text-[15px] font-bold">{{ __('Series per week') }}</h2><span class="text-xs text-ink-3">{{ __('all series, last 12 weeks') }}</span></span>
@@ -266,7 +266,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         </section>
 
         {{-- Open challenges and next series (P6) --}}
-        <section aria-labelledby="rl-open" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
+        <section aria-labelledby="rl-open" class="flex flex-col rounded-lg lg:col-span-2 bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex items-baseline justify-between pb-2"><h2 id="rl-open" class="m-0 text-[15px] font-bold">{{ __('Open challenges and next series') }}</h2><a href="{{ route('challenges.create') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('Challenge a clan') }}</a></span>
             <div class="grid h-8 grid-cols-[minmax(0,1fr)_80px_64px] items-center gap-3 px-2 text-xs text-ink-2 lg:grid-cols-[minmax(0,1fr)_100px_64px_100px]"><span>{{ __('Clan') }}</span><span>{{ __('Format') }}</span><span>{{ __('Match kind') }}</span><span class="hidden text-right lg:block">{{ __('When') }}</span></div>
             @forelse ($series['open'] as $match)

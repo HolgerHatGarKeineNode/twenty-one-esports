@@ -513,6 +513,13 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         @include('pages.chess.partials.lobby-play', ['user' => $user, 'entry' => $entry, 'outgoing' => $outgoing])
 
+        {{-- The next chess tournament open for sign-up, as on every game page (user, 2026-09-28). --}}
+        @if ($this->nextTournament)
+            <x-tournaments.next-card :tournament="$this->nextTournament" heading-id="lobby-next-h" />
+        @else
+            <x-tournaments.next-empty game="chess" heading-id="lobby-next-h" />
+        @endif
+
         {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
             @include('pages.chess.partials.lobby-games', ['user' => $user, 'active' => $active])
