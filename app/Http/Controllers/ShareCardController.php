@@ -48,6 +48,18 @@ class ShareCardController extends Controller
         return $this->png($locale, fn (): ShareCard => ShareCard::tournament($tournament, $winner), $format);
     }
 
+    /**
+     * A published tournament's own card (its link preview and invite image);
+     * a draft has none, as it has no public page.
+     */
+    public function tournamentInvite(string $locale, int $tournament, string $format): Response
+    {
+        $invited = Tournament::query()->findOrFail($tournament);
+        abort_unless($invited->isVisibleTo(null), 404);
+
+        return $this->png($locale, fn (): ShareCard => ShareCard::tournamentInvite($invited), $format);
+    }
+
     public function wrapped(string $locale, string $season, string $npub, string $format): Response
     {
         $season = Season::query()->where('slug', $season)->firstOrFail();

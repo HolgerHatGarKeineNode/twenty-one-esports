@@ -2,6 +2,8 @@
 
 namespace App\Support\Cards;
 
+use App\Enums\TournamentFormat;
+use App\Games\GameRegistry;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -31,7 +33,7 @@ final class ShareCard
 {
     public const FORMATS = ['wide' => [1200, 630], 'story' => [1080, 1920]];
 
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite'];
 
     /** Bump when a layout changes: every card gets a new file and URL. */
     private const LAYOUT = 1;
@@ -39,7 +41,7 @@ final class ShareCard
     private Canvas $c;
 
     /**
-     * @param  'rank-up'|'block'|'tournament'|'wrapped'  $type
+     * @param  'rank-up'|'block'|'tournament'|'wrapped'|'tournament-invite'  $type
      * @param  string  $key  the card's own part of its file name and URL
      * @param  array<string, mixed>  $facts
      */
@@ -58,6 +60,16 @@ final class ShareCard
     public static function tournament(Tournament $tournament, TournamentParticipant $winner): self
     {
         return new self('tournament', (string) $tournament->id, ShareMoments::tournament($tournament, $winner));
+    }
+
+    /**
+     * A published tournament's own card, its link preview and invite image:
+     * cover, name, start and the places taken. Not a moment of a player, so
+     * it is never a share post (SharePosts only takes a player's moments).
+     */
+    public static function tournamentInvite(Tournament $tournament): self
+    {
+        return new self('tournament-invite', (string) $tournament->id, ShareMoments::tournamentInvite($tournament));
     }
 
     public static function wrapped(Season $season, User $user): self
@@ -111,6 +123,7 @@ final class ShareCard
             'rank-up' => 'rank-up/'.$this->key,
             'block' => 'block/'.str_replace('-npub', '/npub', $this->key),
             'tournament' => 'tournament/'.$this->key,
+            'tournament-invite' => 'tournament-invite/'.$this->key,
             'wrapped' => 'wrapped/'.preg_replace('/-(npub1[0-9a-z]+)$/', '/$1', $this->key),
         };
 
@@ -133,6 +146,7 @@ final class ShareCard
             'rank-up' => $story ? $this->rankUpStory() : $this->rankUpWide(),
             'block' => $story ? $this->blockStory() : $this->blockWide(),
             'tournament' => $story ? $this->tournamentStory() : $this->tournamentWide(),
+            'tournament-invite' => $story ? $this->inviteStory() : $this->inviteWide(),
             'wrapped' => $story ? $this->wrappedStory() : $this->wrappedWide(),
         };
 
@@ -293,6 +307,95 @@ final class ShareCard
             $cy = $y + intdiv($index, $columns) * ($avatar + 18);
             $this->c->avatar($this->drawable($member), $cx, $cy, $avatar);
             $this->c->text($this->c->fit((string) $member['name'], 'mono-bold', $px, $column - $avatar - 32), 'mono-bold', $px, $cx + $avatar + 14, $cy + $avatar * 0.7, Canvas::INK);
+        }
+    }
+
+    /* ---------- Tournament invite -------------------------------------------------------------------------------- */
+
+    private function inviteWide(): void
+    {
+        $f = $this->facts;
+        $this->inviteCover(640, 64, 496, 232);
+        $this->kicker($this->inviteStatus(), 64, 92, 26);
+        // One line as large as it fits, else two lines at the smallest size.
+        $size = $this->c->fitSize((string) $f['tournament'], 'display', [56, 48, 40], 536);
+        $after = $this->c->paragraph((string) $f['tournament'], 'display', $size, 64, 164, 536, 2, Canvas::INK, 1.12);
+        $this->c->paragraph($this->inviteLine(), 'mono', 26, 64, $after + 6, 536, 2, Canvas::INK_2);
+        $this->inviteSeats(64, 400, 1072, 48, 30);
+    }
+
+    private function inviteStory(): void
+    {
+        $f = $this->facts;
+        $this->inviteCover(72, 160, 936, 438);
+        $this->kicker($this->inviteStatus(), 72, 700, 40);
+        $after = $this->c->paragraph((string) $f['tournament'], 'display', 88, 72, 810, 936, 3, Canvas::INK, 1.1);
+        $this->c->paragraph($this->inviteLine(), 'mono', 36, 72, $after + 16, 936, 3, Canvas::INK_2);
+        $this->inviteSeats(72, 1400, 936, 72, 40);
+    }
+
+    /** The game's cover, or its name on the game's colours. */
+    private function inviteCover(int $x, int $y, int $w, int $h): void
+    {
+        $path = app(GameRegistry::class)->coverPath((string) $this->facts['game']);
+
+        if ($path !== null && $this->c->cover($path, $x, $y, $w, $h)) {
+            return;
+        }
+
+        $chess = $this->facts['game'] === 'chess';
+        [$from, $to] = $chess ? ['#0E7490', '#134E4A'] : ['#C2410C', '#9D174D'];
+
+        for ($row = 0; $row < $h; $row += 4) {
+            $this->c->rect($x, $y + $row, $w, 4, $this->c->mix($from, $to, $row / $h));
+        }
+
+        $name = $chess ? __('Chess') : 'Rocket League';
+        $size = $this->c->fitSize($name, 'display', [64, 52, 40], $w - 64);
+        $this->c->text($name, 'display', $size, $x + 32, $y + $h - 36, Canvas::INK);
+    }
+
+    private function inviteStatus(): string
+    {
+        return match ($this->facts['status']) {
+            'open' => __('Sign-up open'),
+            'signup', 'drawing' => __('Sign-up closed'),
+            'running' => __('Running'),
+            'finished' => __('Finished'),
+            default => __('Called off'),
+        };
+    }
+
+    /** Game and mode, format, start. */
+    private function inviteLine(): string
+    {
+        $f = $this->facts;
+        $game = $f['game'] === 'chess' ? __('Chess').' '.($f['mode'] === 'correspondence' ? __('Daily') : __('Blitz 5+3')) : 'Rocket League '.$f['mode'];
+
+        return __(':game, :format. Starts :date.', ['game' => $game, 'format' => TournamentFormat::from((string) $f['format'])->label(), 'date' => $f['starts']]);
+    }
+
+    /** One block per place, taken ones orange, and the count. */
+    private function inviteSeats(int $x, int $y, int $width, int $height, int $px): void
+    {
+        $taken = (int) $this->facts['taken'];
+        $places = max(1, (int) $this->facts['places']);
+        $this->c->text(__(':taken of :places spots taken', ['taken' => $taken, 'places' => $places]), 'mono-bold', $px, $x, $y - 18, Canvas::INK);
+        $cells = min($places, 48);
+        $gap = $cells > 24 ? 3 : 6;
+        $cell = ($width - $gap * ($cells - 1)) / $cells;
+        $filled = (int) round($taken / $places * $cells);
+
+        for ($i = 0; $i < $cells; $i++) {
+            $cx = $x + $i * ($cell + $gap);
+
+            if ($i < $filled) {
+                $this->c->rect($cx, $y, $cell, $height, Canvas::ORANGE);
+                $this->c->rect($cx, $y + $height - 5, $cell, 5, '#B9640A');
+            } else {
+                $this->c->rect($cx, $y, $cell, $height, '#3A3A42');
+                $this->c->rect($cx + 1, $y + 1, $cell - 2, $height - 2, Canvas::GROUND);
+            }
         }
     }
 

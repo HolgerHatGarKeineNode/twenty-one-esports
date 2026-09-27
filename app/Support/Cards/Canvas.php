@@ -288,6 +288,29 @@ final class Canvas
         $this->textRight($host, 'mono', (int) round($tile * 0.36), $right, $baseline, self::INK_2);
     }
 
+    /**
+     * A picture filling a $w × $h box, cropped around its centre (a game's
+     * cover art). Returns false when the file cannot be read, so the caller
+     * can draw its stand-in.
+     */
+    public function cover(string $path, int|float $x, int|float $y, int|float $w, int|float $h): bool
+    {
+        $bytes = @file_get_contents($path);
+        $source = $bytes === false ? false : @imagecreatefromstring($bytes);
+
+        if ($source === false) {
+            return false;
+        }
+
+        $ratio = $w / $h;
+        [$sw, $sh] = [imagesx($source), imagesy($source)];
+        [$cw, $ch] = $sw / $sh > $ratio ? [(int) round($sh * $ratio), $sh] : [$sw, (int) round($sw / $ratio)];
+        imagecopyresampled($this->image, $source, (int) round($x * $this->scale), (int) round($y * $this->scale), intdiv($sw - $cw, 2), intdiv($sh - $ch, 2),
+            (int) round($w * $this->scale), (int) round($h * $this->scale), $cw, $ch);
+
+        return true;
+    }
+
     public function picture(string $path, int|float $x, int|float $y, int $size, int $radius): void
     {
         $bytes = @file_get_contents($path);

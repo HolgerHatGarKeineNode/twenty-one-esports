@@ -140,7 +140,8 @@ final class TournamentPublisher
     }
 
     /**
-     * Format, match size, seeding and prize split in words (NIP "Tournaments").
+     * Format, match size, seeding and prize split in words (NIP "Tournaments"),
+     * after the organizer's description when there is one.
      */
     private function content(Tournament $tournament): string
     {
@@ -159,7 +160,10 @@ final class TournamentPublisher
         };
         $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
         $lines[] = 'Page: '.route('tournaments.show', $tournament);
+        $rules = implode(' ', $lines);
+        $description = trim((string) $tournament->description);
 
-        return implode(' ', $lines);
+        // The organizer's own words come first, as their own paragraph; the rules follow unchanged.
+        return $description === '' ? $rules : $description."\n\n".$rules;
     }
 }

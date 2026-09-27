@@ -188,6 +188,7 @@ Route::prefix('cards/{locale}')
         Route::get('rank-up/{version}-{format}.png', [ShareCardController::class, 'rankUp'])->where('version', '[0-9]{1,18}')->name('cards.rank-up');
         Route::get('block/{block}/{npub}-{format}.png', [ShareCardController::class, 'block'])->where(['block' => '[0-9]{1,18}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.block');
         Route::get('tournament/{finished}-{format}.png', [ShareCardController::class, 'tournament'])->where('finished', '[0-9]{1,18}')->name('cards.tournament');
+        Route::get('tournament-invite/{tournament}-{format}.png', [ShareCardController::class, 'tournamentInvite'])->where('tournament', '[0-9]{1,18}')->name('cards.tournament-invite');
         Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]{1,64}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.wrapped');
     });
 

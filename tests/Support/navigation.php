@@ -112,6 +112,7 @@ const NAV_NOT_PAGES = [
     'cards.rank-up' => 'image',
     'cards.block' => 'image',
     'cards.tournament' => 'image',
+    'cards.tournament-invite' => 'image',
     'cards.wrapped' => 'image',
 ];
 

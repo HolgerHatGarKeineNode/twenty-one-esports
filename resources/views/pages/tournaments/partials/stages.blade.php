@@ -6,8 +6,10 @@
     $stages: TournamentView::stages()
 --}}
 @foreach ($stages as $stage)
-    <section aria-labelledby="stage-{{ $stage['number'] }}-h" class="flex flex-col gap-3" data-test="stage" data-format="{{ $stage['format']->value }}">
-        <h2 id="stage-{{ $stage['number'] }}-h" class="m-0 font-display text-xl font-bold">{{ count($stages) > 1 ? $stage['title'] : __('Bracket') }}</h2>
+    <section aria-label="{{ count($stages) > 1 ? $stage['title'] : __('Bracket') }}" class="flex flex-col gap-3" data-test="stage" data-format="{{ $stage['format']->value }}">
+        @if (count($stages) > 1)
+            <h3 class="m-0 text-[15px] font-bold">{{ $stage['title'] }}</h3>
+        @endif
 
         <div @class(['grid gap-4', 'lg:grid-cols-2' => count($stage['parts']) > 1])>
             @foreach ($stage['parts'] as $part)
@@ -21,14 +23,19 @@
                             @if ($section['title'])
                                 <h4 class="m-0 text-xs font-normal text-ink-3">{{ $section['title'] }}</h4>
                             @endif
-                            <div class="overflow-x-auto" data-test="bracket-scroll">
-                                <div class="flex min-w-max gap-4">
+                            {{-- Only this container scrolls sideways on a phone, never the page. --}}
+                            <div class="overflow-x-auto overscroll-x-contain pb-1" data-test="bracket-scroll">
+                                <div class="tl-bracket flex min-w-max gap-6">
                                     @foreach ($section['columns'] as $column)
-                                        <div class="flex w-[220px] flex-col justify-around gap-3">
+                                        <div class="tl-col flex w-[220px] flex-col gap-3">
                                             <span class="text-xs text-ink-3">{{ $column['label'] }}</span>
-                                            @foreach ($column['matches'] as $box)
-                                                @include('pages.tournaments.partials.box', ['box' => $box])
-                                            @endforeach
+                                            <div class="flex grow flex-col justify-around gap-3">
+                                                @foreach ($column['matches'] as $box)
+                                                    <div class="tl-match relative">
+                                                        @include('pages.tournaments.partials.box', ['box' => $box])
+                                                    </div>
+                                                @endforeach
+                                            </div>
                                         </div>
                                     @endforeach
                                 </div>

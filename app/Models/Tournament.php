@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property string $name
+ * @property string|null $description the organizer's own words, shown in the page hero and the 31923 content
  * @property string $game
  * @property string $mode
  * @property TournamentFormat $format
@@ -68,7 +69,7 @@ use Illuminate\Support\Carbon;
  * @property-read NostrEvent|null $event
  * @property-read NostrEvent|null $drawEvent
  */
-#[Fillable(['name', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
+#[Fillable(['name', 'description', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
     'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address'])]
 class Tournament extends Model
 {

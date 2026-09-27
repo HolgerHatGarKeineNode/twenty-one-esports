@@ -1588,6 +1588,157 @@ select:focus[data-flux-control] {
     }
 }
 
+/*
+ * Tournament landing (pages::tournaments.show, sign-up): one load sequence,
+ * the poster settles and the seats fill in sign-up order while the number
+ * counts up; afterwards only what changes moves (a new entry drops into the
+ * grid, the match up now breathes). Everything here stops with reduced
+ * motion (the global rule below), and every end state is the static state.
+ */
+.tl-poster-in {
+    animation: tl-poster 0.6s var(--ease-snap) both;
+}
+
+.tl-poster img,
+.tl-poster > span {
+    box-shadow: 0 0 0 1px #2A2A30, 0 24px 64px -24px rgba(247, 147, 26, 0.35);
+}
+
+@media (width >= 64rem) {
+    .tl-poster {
+        transform: perspective(1200px) rotateY(-7deg);
+        transform-origin: right center;
+    }
+}
+
+@keyframes tl-poster {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+}
+
+.tl-seats {
+    display: grid;
+    grid-template-columns: repeat(var(--cells), minmax(0, 1fr));
+    gap: 4px;
+}
+
+.tl-seat {
+    height: 28px;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px var(--color-dash);
+    transition: background-color 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+
+.tl-seat.is-taken {
+    background: var(--color-btc);
+    box-shadow: inset 0 -4px 0 var(--color-btc-deep);
+    animation: tl-seat 0.35s var(--ease-pop) both;
+}
+
+@media (width >= 64rem) {
+    .tl-seat {
+        height: 36px;
+    }
+}
+
+/* Many places (team modes): smaller blocks that wrap into rows, like a mempool. */
+.tl-seats.is-dense {
+    grid-template-columns: repeat(auto-fill, minmax(14px, 1fr));
+    gap: 3px;
+}
+
+.tl-seats.is-dense .tl-seat {
+    height: 18px;
+}
+
+@keyframes tl-seat {
+    from { transform: scaleY(0.2); opacity: 0; }
+}
+
+/* The main button breathes while sign-up is open. */
+.tl-go {
+    animation: breathe 2.6s ease-in-out 1.4s infinite;
+}
+
+/* An entry that arrived with a poll. */
+.tl-arrive {
+    animation: tl-arrive 0.5s var(--ease-pop) both, tl-arrive-glow 1.6s ease-out 0.2s both;
+}
+
+@keyframes tl-arrive {
+    from { transform: translateY(-16px) scale(0.96); opacity: 0; }
+}
+
+@keyframes tl-arrive-glow {
+    0% { box-shadow: 0 0 0 2px var(--color-btc), 0 0 32px rgba(247, 147, 26, 0.45); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* The match up now. */
+.tl-live {
+    animation: breathe 2.6s ease-in-out infinite;
+}
+
+/* Bracket lines: a stub out of every match and into the next round. */
+.tl-col:not(:first-child) .tl-match::before,
+.tl-col:not(:last-child) .tl-match::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 12px;
+    border-top: 1px solid var(--color-dash);
+}
+
+.tl-col:not(:first-child) .tl-match::before {
+    right: 100%;
+}
+
+.tl-col:not(:last-child) .tl-match::after {
+    left: 100%;
+}
+
+.tl-col:not(:last-child) .tl-match:has([data-status="done"])::after {
+    border-top-color: var(--color-btc-deep);
+}
+
+/* Sign-up: the seat that is yours, and the burst when it is taken. */
+.tl-seat-mine[data-taken] {
+    outline: 2px solid var(--color-win);
+    outline-offset: 2px;
+}
+
+.tl-slide-in {
+    animation: tl-slide 0.6s var(--ease-pop) both;
+}
+
+@keyframes tl-slide {
+    from { transform: translateX(-40px) scale(0.8); opacity: 0; }
+}
+
+.tl-burst {
+    position: relative;
+    isolation: isolate;
+}
+
+.tl-burst::before,
+.tl-burst::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    animation: tl-burst 1.2s var(--ease-snap) 0.1s both;
+}
+
+.tl-burst::after {
+    animation-delay: 0.35s;
+}
+
+@keyframes tl-burst {
+    0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.55); }
+    100% { box-shadow: 0 0 0 28px rgba(74, 222, 128, 0); }
+}
+
 /* Motion is decoration here, never information: switch it all off on request. */
 @media (prefers-reduced-motion: reduce) {
     *,

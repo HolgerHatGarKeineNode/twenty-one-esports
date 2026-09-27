@@ -3,6 +3,7 @@
 namespace App\Support\Cards;
 
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\LineupSeat;
 use App\Models\RankBadge;
 use App\Models\RankBadgeVersion;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Rating\RankTiers;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Support\Collection;
 
 /**
@@ -84,6 +86,30 @@ final class ShareMoments
             'winner' => $winner->name,
             'detail' => BadgeCopy::ladder($tournament->game, $tournament->mode).' · '.$tournament->format->label().' · '.trans_choice(':count entry|:count entries', $tournament->participants()->count()),
             'members' => array_values($members->map(fn (User $user): array => self::person($user, $user->pubkey))->all()),
+        ];
+    }
+
+    /**
+     * The invite card of a published tournament (its link preview): what it
+     * is, when it starts and how many places are taken. Raw values; the card
+     * translates them when it draws.
+     *
+     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: bool}
+     */
+    public static function tournamentInvite(Tournament $tournament): array
+    {
+        $places = app(TournamentSignups::class)->places($tournament);
+
+        return [
+            'tournament' => $tournament->name,
+            'game' => $tournament->game,
+            'mode' => $tournament->mode,
+            'format' => $tournament->format->value,
+            'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
+            'starts' => $tournament->starts_at->copy()->timezone((string) config('esports.preseason.display_timezone'))->format('Y-m-d H:i T'),
+            'taken' => $places['taken'],
+            'places' => $places['places'],
+            'cover' => app(GameRegistry::class)->coverPath($tournament->game) !== null,
         ];
     }
 

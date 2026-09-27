@@ -37,6 +37,7 @@
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10)
 #   5: NavigationCrawlTest (~47s, the P16 walk per role and width)
 #   6: NavigationMenusTest (~17s, P16 menus and context actions)
+#   7: TournamentLandingTest (the tournament page and sign-up at three widths)
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
 # instead.
@@ -68,6 +69,7 @@ SHARD_FILES=(
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php"
     "tests/Browser/NavigationCrawlTest.php"
     "tests/Browser/NavigationMenusTest.php"
+    "tests/Browser/TournamentLandingTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

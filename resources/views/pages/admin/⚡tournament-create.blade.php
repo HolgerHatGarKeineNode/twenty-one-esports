@@ -41,6 +41,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
     public string $name = '';
 
+    public string $description = '';
+
     public string $date = '';
 
     public string $time = '19:00';
@@ -358,6 +360,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         $this->validate([
             'name' => ['required', 'string', 'max:80'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'date' => ['required', 'date_format:Y-m-d'],
             'time' => ['required', 'date_format:H:i'],
             'players' => ['required', 'integer', 'between:2,64'],
@@ -403,6 +406,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         $tournament = Tournament::query()->create([
             'name' => $this->name,
+            'description' => trim($this->description) === '' ? null : trim($this->description),
             'game' => $profile->game,
             'mode' => $profile->mode,
             'format' => $format,
@@ -463,6 +467,14 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                 {{ __('Starts') }}
                 <input type="time" wire:model="time" class="h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink [color-scheme:dark]">
                 @error('time')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
+            </label>
+            <label class="col-span-2 flex flex-col gap-1.5 text-xs text-ink-2 lg:col-span-3">
+                {{ __('Description (optional)') }}
+                <textarea wire:model="description" maxlength="1000" rows="3" data-test="tournament-description"
+                          placeholder="{{ __('What makes this one worth playing: the stakes, the stream, the after-party.') }}"
+                          class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
+                <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
+                @error('description')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
             </label>
         </section>
 
