@@ -174,6 +174,24 @@ final class DailyChallenges
     }
 
     /**
+     * The user's open challenges in both directions, keyed by the other
+     * player's id: the challenge page marks those players and does not offer
+     * a second challenge to them.
+     *
+     * @return Collection<int, ChessChallenge>
+     */
+    public function openWith(User $user): Collection
+    {
+        return ChessChallenge::query()
+            ->where('status', ChessInviteStatus::Pending)
+            ->where('expires_at', '>', now())
+            ->where(fn ($query) => $query->where('challenger_id', $user->id)->orWhere('challenged_id', $user->id))
+            ->latest('id')
+            ->get()
+            ->keyBy(fn (ChessChallenge $challenge): int => $challenge->challenger_id === $user->id ? $challenge->challenged_id : $challenge->challenger_id);
+    }
+
+    /**
      * @return Collection<int, ChessChallenge>
      */
     public function incoming(User $user): Collection

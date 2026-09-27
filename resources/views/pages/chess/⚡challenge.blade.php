@@ -118,9 +118,24 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
             ->when($term !== '', fn ($query) => $query->where(fn ($query) => $query->where('name', 'like', '%'.$term.'%')->orWhere('npub', 'like', $term.'%')))
             ->with('clanMember.clan')
             ->withCount(['whiteGames', 'blackGames'])
+            ->when($this->openChallenges->isNotEmpty(), fn ($query) => $query->orderByRaw(
+                'case when id in ('.implode(',', array_fill(0, $this->openChallenges->count(), '?')).') then 0 else 1 end',
+                $this->openChallenges->keys()->all(),
+            ))
             ->latest('updated_at')
             ->limit(8)
             ->get();
+    }
+
+    /**
+     * Open challenges with other players, keyed by their id (sent or received).
+     *
+     * @return Collection<int, \App\Models\ChessChallenge>
+     */
+    #[Computed]
+    public function openChallenges(): Collection
+    {
+        return app(DailyChallenges::class)->openWith($this->user());
     }
 
     #[Computed]
@@ -182,6 +197,9 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                                 <span class="truncate">{{ $player->displayName() }}</span>
                                 <x-clan-tag :clan="$player->clanMember?->clan" size="sm" />
                                 @if ($player->is_member)<x-member-badge />@endif
+                                @if ($open = $this->openChallenges->get($player->id))
+                                    <span class="shrink-0 rounded-sm bg-btc-press px-1.5 py-0.5 text-[11px] font-bold text-btc-hi" data-test="open-challenge-badge">{{ $open->challenger_id === $me->id ? __('challenge sent') : __('challenges you') }}</span>
+                                @endif
                             </span>
                             @php($daily = $ratings[$player->id])
                             <span class="max-md:hidden" data-test="pick-rating">{{ $daily['rating'] }}</span>
@@ -301,14 +319,28 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 @endforeach
             </div>
 
-            <button type="button" wire:click="send" @disabled(! $opponent) data-test="send-challenge"
-                    class="btn-p inline-flex h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc disabled:cursor-not-allowed disabled:opacity-50">
-                <x-icon name="shield-check" :size="18" />{{ __('Send challenge') }}
-            </button>
+            @php($openWithOpponent = $opponent ? $this->openChallenges->get($opponent->id) : null)
+            @if ($openWithOpponent)
+                <div class="flex flex-col gap-2 rounded-md bg-btc-press px-4 py-3 text-[13px] leading-normal" data-test="open-challenge-notice">
+                    <b class="text-btc-hi">{{ $openWithOpponent->challenger_id === $me->id ? __('You already challenged :name.', ['name' => $opponent->displayName()]) : __(':name already challenged you.', ['name' => $opponent->displayName()]) }}</b>
+                    <span class="text-ink-2">{{ __('Open until :time.', ['time' => $openWithOpponent->expires_at->timezone(config('esports.preseason.display_timezone'))->isoFormat('lll')]) }}</span>
+                </div>
+                <a href="{{ route('me.correspondence') }}" wire:navigate data-test="open-challenge-link"
+                   class="btn-p inline-flex h-[52px] items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc hover:text-on-btc">
+                    <x-icon name="shield-check" :size="18" />{{ $openWithOpponent->challenger_id === $me->id ? __('View or withdraw challenge') : __('Accept or decline challenge') }}
+                </a>
+            @else
+                <button type="button" wire:click="send" @disabled(! $opponent) data-test="send-challenge"
+                        class="btn-p inline-flex h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc disabled:cursor-not-allowed disabled:opacity-50">
+                    <x-icon name="shield-check" :size="18" />{{ __('Send challenge') }}
+                </button>
+            @endif
             @if ($error)<p class="m-0 text-[13px] text-loss" role="alert">{{ $error }}</p>@endif
+            @unless ($openWithOpponent)
             <span class="text-xs leading-normal text-ink-2">
                 {{ $opponent ? __(':name has :hours h to accept. You can withdraw the challenge while it is open.', ['name' => $opponent->displayName(), 'hours' => $hours]) : __('The other player has :hours h to accept.', ['hours' => $hours]) }}
             </span>
+            @endunless
             <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
                 [__('Record'), __('a casual challenge stays with the league (no kind 2150)')],
                 [__('Moves'), __('each move a NIP-64 note, signed by the player who makes it')],

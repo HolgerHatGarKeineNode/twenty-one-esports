@@ -177,3 +177,29 @@ test('piece names on hover are on by default and follow the chess setting', func
     $this->actingAs($game->white)->get(route('games.show', $game))->assertOk()
         ->assertDontSee('data-test="piece-tip"', false);
 });
+
+test('the challenge page marks players with an open challenge and offers no second one', function () {
+    $me = User::factory()->create();
+    $sentTo = User::factory()->create(['name' => 'sent-to']);
+    $from = User::factory()->create(['name' => 'challenger']);
+    User::factory()->count(10)->create();
+    app(DailyChallenges::class)->challenge($me, $sentTo);
+    app(DailyChallenges::class)->challenge($from, $me);
+
+    $page = Livewire::actingAs($me)->test('pages::chess.challenge');
+    $html = $page->html();
+
+    expect(substr_count($html, 'data-test="open-challenge-badge"'))->toBe(2)
+        ->and($html)->toContain('challenge sent')->toContain('challenges you');
+
+    $page->call('pick', $sentTo->id)
+        ->assertSee('You already challenged sent-to.')
+        ->assertSeeHtml('data-test="open-challenge-link"')
+        ->assertDontSeeHtml('data-test="send-challenge"');
+
+    $page->call('pick', $from->id)->assertSee('challenger already challenged you.');
+
+    $page->call('pick', User::factory()->create()->id)
+        ->assertSeeHtml('data-test="send-challenge"')
+        ->assertDontSeeHtml('data-test="open-challenge-notice"');
+});

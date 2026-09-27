@@ -3,6 +3,7 @@
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\DailyChallenges;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
@@ -220,6 +221,38 @@ test('the header search: type and press Enter at 375 and 1440 px, results for a 
         foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
             $problems[] = "{$width}px match: {$problem}";
         }
+    }
+
+    expect($problems)->toBe([]);
+});
+
+test('an open challenge shows in the opponent list and replaces the send button, at 375 and 1440 px', function () {
+    $me = User::factory()->create(['locale' => 'en']);
+    $opponent = User::factory()->create(['name' => 'open-rival']);
+    User::factory()->count(10)->create();
+    app(DailyChallenges::class)->challenge($me, $opponent);
+    $problems = [];
+
+    foreach ([375, 1440] as $width) {
+        $page = navPage($me, $width);
+        navOpen($page, route('chess.challenge', absolute: false), $problems);
+
+        $badge = $page->evaluate('() => { const b = document.querySelector(\'[data-test="open-challenge-badge"]\'); if (!b) return null; const r = b.getBoundingClientRect(); return {w: r.width, h: r.height, right: r.right, vw: innerWidth, text: b.textContent.trim()}; }');
+        expect($badge)->not->toBeNull()
+            ->and($badge['text'])->toBe('challenge sent')
+            ->and($badge['h'])->toBeGreaterThan(0)
+            ->and($badge['right'])->toBeLessThanOrEqual($badge['vw']);
+
+        $page->locator('[data-test="open-challenge-badge"]')->click();
+        BrowserWait::until($page, '() => !!document.querySelector(\'[data-test="open-challenge-notice"]\')', 5_000);
+        expect($page->evaluate('() => !!document.querySelector(\'[data-test="send-challenge"]\')'))->toBeFalse()
+            ->and($page->evaluate('() => document.documentElement.scrollWidth <= innerWidth'))->toBeTrue();
+
+        foreach ($page->evaluate('() => window.__errors') as $error) {
+            $problems[] = "after pick: {$error}";
+        }
+
+        $page->screenshot(true, "open-challenge-{$width}");
     }
 
     expect($problems)->toBe([]);

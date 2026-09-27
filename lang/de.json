@@ -3189,5 +3189,10 @@
     "The tournament clock is not running.": "Die Turnier-Uhr läuft nicht.",
     "It has not run yet: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute.": "Sie ist noch nie gelaufen: Keine Anmeldung schließt, keine Auslosung läuft und keine Frist greift, bis der Scheduler `tournaments:tick` jede Minute ausführt.",
     "Its last run was :ago: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute again.": "Ihr letzter Lauf war :ago: Keine Anmeldung schließt, keine Auslosung läuft und keine Frist greift, bis der Scheduler `tournaments:tick` wieder jede Minute ausführt.",
-    "Deadline changes apply to matches paired from now on; running matches keep theirs.": "Friständerungen gelten für Matches, die ab jetzt gepaart werden; laufende Matches behalten ihre."
+    "Deadline changes apply to matches paired from now on; running matches keep theirs.": "Friständerungen gelten für Matches, die ab jetzt gepaart werden; laufende Matches behalten ihre.",
+    "challenge sent": "Herausforderung gesendet",
+    "You already challenged :name.": "Du hast :name schon herausgefordert.",
+    ":name already challenged you.": ":name hat dich schon herausgefordert.",
+    "View or withdraw challenge": "Herausforderung ansehen oder zurückziehen",
+    "Accept or decline challenge": "Herausforderung annehmen oder ablehnen"
 }
