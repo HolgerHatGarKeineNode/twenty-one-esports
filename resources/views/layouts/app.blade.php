@@ -12,6 +12,14 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
     <head>
         @include('partials.head', ['title' => $title, 'realtime' => $realtime, 'scripts' => $scripts])
+        {{--
+            Whose remote-signer session this browser may bring back (resources/js/millAuth.js):
+            the logged-in pubkey, or empty for a guest. Only on pages with a session, so an
+            error page that has none decides nothing.
+        --}}
+        @if (request()->hasSession())
+            <meta name="nostr-session" content="{{ auth()->user()?->pubkey ?? '' }}">
+        @endif
     </head>
     <body class="flex min-h-svh flex-col bg-ground font-mono text-ink antialiased">
         <a href="#content" class="sr-only z-50 rounded-lg bg-btc px-4 py-3 text-sm font-bold text-on-btc focus:not-sr-only focus:fixed focus:top-2 focus:left-2">{{ __('Skip to content') }}</a>

@@ -86,6 +86,22 @@ test('the account menu shows name and short npub, never an email', function () {
         ->assertDontSee('email');
 });
 
+test('the page names whose remote-signer session the browser may restore, a 404 included', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get('/')->assertOk()
+        ->assertSee('<meta name="nostr-session" content="'.$user->pubkey.'">', false);
+    // The fallback route runs with the session: a mistyped link must not read as "logged out"
+    // (resources/js/millAuth.js would forget the stored remote signer).
+    $this->get('/no-such-page-'.uniqid())->assertNotFound()
+        ->assertSee('<meta name="nostr-session" content="'.$user->pubkey.'">', false);
+
+    auth()->logout();
+
+    $this->get('/login')->assertOk()
+        ->assertSee('<meta name="nostr-session" content="">', false);
+});
+
 test('the account menu links to the admin area (its disputes, P16) only for admins', function (bool $isAdmin) {
     $user = User::factory()->create();
 

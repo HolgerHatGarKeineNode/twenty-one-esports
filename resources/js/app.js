@@ -9,7 +9,7 @@ import './toasts';
 import nostrLogin from './nostrLogin.js';
 import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
-import { dropFailedBunker } from './millAuth.js';
+import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
 import playerPicker from './playerPicker.js';
 import './nostrSign.js';
@@ -34,3 +34,6 @@ document.addEventListener('alpine:init', () => {
 
 // Call before submitting the logout form so a remote signer is not inherited.
 window.forgetNostrSigner = dropFailedBunker;
+
+// A stored remote-signer session that is not the logged-in player's goes at once.
+forgetForeignSession();

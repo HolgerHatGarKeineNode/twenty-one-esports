@@ -11,7 +11,7 @@ namespace App\Support\Nostr;
 final class SignerMessages
 {
     /**
-     * @return array{noSigner: string, rejected: string, unreachable: string, wrongKey: string, signerFailed: string, failed: string}
+     * @return array{noSigner: string, rejected: string, unreachable: string, wrongKey: string, revoked: string, signerFailed: string, failed: string}
      */
     public static function labels(): array
     {
@@ -20,6 +20,8 @@ final class SignerMessages
             'rejected' => __('The confirmation was not given. Please try again.'),
             'unreachable' => __('Your signer did not answer. Check that it is unlocked and online, then try again.'),
             'wrongKey' => __('This signer holds a different key than the one you logged in with.'),
+            // A remote signer (NIP-46) that removed this browser: the next try pairs it anew.
+            'revoked' => __('Your remote signer no longer accepts this browser. Try again to connect it anew.'),
             // ":reason" is filled in by the browser with the signer's own error.
             'signerFailed' => __('Your signer could not sign this (:reason). Please try again.'),
             'failed' => __('That did not work. Please try again.'),

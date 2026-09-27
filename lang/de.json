@@ -1254,6 +1254,7 @@
     "Your signer cannot encrypt messages (NIP-44), so the chat is off. A Nostr extension or signer app with NIP-44 turns it on; the game itself works as usual.": "Dein Signer kann keine Nachrichten verschlüsseln (NIP-44), deshalb ist der Chat aus. Eine Nostr-Erweiterung oder Signer-App mit NIP-44 schaltet ihn ein; die Partie selbst läuft wie gewohnt.",
     "Your signer could not sign this (:reason). Please try again.": "Dein Signer konnte das nicht signieren (:reason). Bitte versuch es erneut.",
     "Your signer did not answer. Check that it is unlocked and online, then try again.": "Dein Signer hat nicht geantwortet. Prüf, ob er entsperrt und online ist, und versuch es dann erneut.",
+    "Your remote signer no longer accepts this browser. Try again to connect it anew.": "Dein Remote-Signer akzeptiert diesen Browser nicht mehr. Versuch es noch einmal, um ihn neu zu verbinden.",
     "Your tag shows on ladders, rankings and match cards.": "Dein Kürzel steht in Ladders, Ranglisten und auf Match-Karten.",
     "Your time for move :n ran out :at.": "Deine Zeit für Zug :n lief am :at ab.",
     "Yours, breathing (off with reduced motion)": "Deins, atmend (aus bei reduzierter Bewegung)",

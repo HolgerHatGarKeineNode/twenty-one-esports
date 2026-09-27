@@ -69,7 +69,7 @@ SHARD_FILES=(
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"
     "tests/Browser/NavigationCrawlTest.php"
     "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentTimeTest.php"
-    "tests/Browser/TournamentLandingTest.php"
+    "tests/Browser/TournamentLandingTest.php tests/Browser/BunkerSessionTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

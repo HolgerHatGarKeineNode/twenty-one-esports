@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from 'nostr-tools/pure';
-import { DECLINED, FAILED, plainDraft, SignerError, signerFailure, signerMessage, signTemplate, UNREACHABLE, WRONG_KEY } from '../../resources/js/signing.js';
+import { DECLINED, FAILED, plainDraft, REVOKED, SignerError, signerFailure, signerMessage, signTemplate, UNREACHABLE, WRONG_KEY } from '../../resources/js/signing.js';
 
 const secret = generateSecretKey();
 const pubkey = getPublicKey(secret);
@@ -42,6 +42,7 @@ const messages = {
     rejected: 'declined',
     unreachable: 'no answer',
     wrongKey: 'other key',
+    revoked: 'pair again',
     signerFailed: 'could not sign (:reason)',
 };
 
@@ -141,6 +142,10 @@ test('an older page without the new messages still says "not confirmed", and a l
     assert.equal(signerMessage(old, new SignerError(UNREACHABLE, 'x')), 'declined');
     assert.equal(signerMessage(old, new SignerError(FAILED, 'x')), 'declined');
     assert.equal(signerMessage(old, new SignerError(WRONG_KEY, 'x')), 'other key');
+    // A remote signer that dropped this browser (millAuth.js): its own message, else "no answer", else "not confirmed".
+    assert.equal(signerMessage(messages, new SignerError(REVOKED, 'unauthorized')), 'pair again');
+    assert.equal(signerMessage({ rejected: 'declined', unreachable: 'no answer' }, new SignerError(REVOKED, 'x')), 'no answer');
+    assert.equal(signerMessage(old, new SignerError(REVOKED, 'x')), 'declined');
 
     const long = signerMessage(messages, new SignerError(FAILED, new Error('x'.repeat(500))));
     assert.ok(long.length < 200, long.length);

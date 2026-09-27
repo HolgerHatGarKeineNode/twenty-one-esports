@@ -9,6 +9,7 @@ import { dailyGame } from './dailyGame.js';
 import { gameChat } from './gameChat.js';
 import { boardKey } from './hotkeys.js';
 import { ensureSigner } from './nostrSign.js';
+import { restoreSigner } from './millAuth.js';
 import { signTemplate } from './signing.js';
 import { moveSound, playSound, sounds } from './sounds.js';
 import { displaySan, inputSan } from './sanNotation.js';
@@ -169,7 +170,10 @@ window.chessBoardCells = boardCells;
  * connected on this page). Returns the signed event, or null.
  */
 async function signQuietly(template, pubkey) {
-    if (typeof window.nostr?.signEvent !== 'function' || !template) return null;
+    if (!template) return null;
+    // A remote signer paired on an earlier page comes back without a dialog.
+    if (typeof window.nostr?.signEvent !== 'function') await restoreSigner();
+    if (typeof window.nostr?.signEvent !== 'function') return null;
     try {
         // signTemplate signs a plain copy and logs a refusal with its reason (console.warn).
         return await signTemplate(template, { pubkey });

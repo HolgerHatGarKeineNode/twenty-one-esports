@@ -11,7 +11,7 @@
  * The signed events travel as one JSON string: Laravel's TrimStrings and
  * ConvertEmptyStringsToNull must never touch a signed payload.
  */
-import { connectMill, dropFailedBunker, hasNostrExtension } from './millAuth.js';
+import { connectMill, dropFailedBunker, hasNostrExtension, restoreSigner } from './millAuth.js';
 import { signerMessage, signTemplate } from './signing.js';
 
 // Fallbacks only; pages pass the translated set (App\Support\Nostr\SignerMessages).
@@ -20,12 +20,18 @@ const DEFAULT_MESSAGES = {
     rejected: 'The confirmation was not given. Please try again.',
     unreachable: 'Your signer did not answer. Check that it is unlocked and online, then try again.',
     wrongKey: 'This signer holds a different key than the one you logged in with.',
+    revoked: 'Your remote signer no longer accepts this browser. Try again to connect it anew.',
     signerFailed: 'Your signer could not sign this (:reason). Please try again.',
     failed: 'That did not work. Please try again.',
 };
 
 export async function ensureSigner() {
     if (hasNostrExtension() || typeof window.nostr?.signEvent === 'function') {
+        return true;
+    }
+
+    // The remote signer paired at login (or on an earlier page): back without a dialog.
+    if (await restoreSigner()) {
         return true;
     }
 

@@ -4,13 +4,15 @@
  * telling apart why it failed.
  *
  * Every failure is logged with console.warn together with the signer's own
- * error, so it is visible in the browser console. The player sees one of four
+ * error, so it is visible in the browser console. The player sees one of five
  * messages instead of one catch-all:
  *
  *   declined     the player said no, or closed the prompt
  *   unreachable  the signer did not answer: a remote signer that is offline,
  *                a timeout, no relay reached
  *   wrongKey     the signer holds another key than the logged-in one
+ *   revoked      a remote signer no longer accepts this browser's client key
+ *                (only thrown by millAuth.js, which then forgets the pairing)
  *   failed       anything else, with the signer's reason in the message
  *
  * The patterns follow the errors the signers in use actually throw: nos2x
@@ -26,6 +28,10 @@ export const DECLINED = 'declined';
 export const UNREACHABLE = 'unreachable';
 export const WRONG_KEY = 'wrongKey';
 export const FAILED = 'failed';
+// A remote signer (NIP-46) that no longer knows this browser's client key:
+// thrown by millAuth.js, which has already forgotten the pairing, so the next
+// attempt opens the connect dialog.
+export const REVOKED = 'revoked';
 
 const UNREACHABLE_PATTERN = /timed out|timeout|disconnected|not connected|client closed|failed to publish|failed to fetch|network ?error|websocket|connection (closed|refused|lost)|could ?n[o']?t (reach|connect)|unreachable|offline/i;
 const DECLINED_PATTERN = /denied|reject|declin|cancel|refus|insufficient permission|not (allowed|authori[sz]ed|permitted)|unauthori[sz]ed|blocked by your permissions|password required|closed/i;
@@ -133,6 +139,7 @@ export function signerMessage(messages, error) {
     if (kind === DECLINED) return fallback;
     if (kind === UNREACHABLE) return messages.unreachable ?? fallback;
     if (kind === WRONG_KEY) return messages.wrongKey ?? fallback;
+    if (kind === REVOKED) return messages.revoked ?? messages.unreachable ?? fallback;
 
     const cause = error instanceof SignerError ? error.cause : error;
     let reason = reasonOf(cause);
