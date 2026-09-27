@@ -7,9 +7,12 @@ use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use Carbon\CarbonInterface;
 use Database\Factories\SeriesMatchFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -70,6 +73,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $challenge_event_id
  * @property int|null $answer_event_id
  * @property int|null $tournament_match_id the tournament match this series plays (P8b)
+ * @property int $tournament_attempt 1, or the replay number after an admin voided the series before (P18)
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -91,7 +95,7 @@ use Illuminate\Support\Carbon;
     'lobby_name', 'lobby_password', 'lobby_region', 'lobby_updated_by_id',
     'live_games', 'rosters', 'noshow_side', 'noshow_reported_at', 'new_report_requested_at',
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
-    'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'sides',
+    'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'tournament_attempt', 'sides',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -116,6 +120,7 @@ class SeriesMatch extends Model
     {
         return [
             'rated' => 'boolean',
+            'tournament_attempt' => 'integer',
             'status' => SeriesStatus::class,
             'proposals' => 'array',
             'respond_by' => 'datetime',
@@ -221,6 +226,37 @@ class SeriesMatch extends Model
     public function latestReport(): HasOne
     {
         return $this->hasOne(SeriesReport::class)->ofMany('id', 'max');
+    }
+
+    /**
+     * The admins' open cases (the disputes queue): a disputed series, a
+     * reported no-show, and a report nobody confirmed or disputed for
+     * `esports.tournaments.unanswered_report_hours` (P18).
+     *
+     * @param  Builder<SeriesMatch>  $query
+     */
+    #[Scope]
+    protected function openCase(Builder $query): void
+    {
+        $query->where(fn (Builder $query) => $query
+            ->where('status', SeriesStatus::Disputed)
+            ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'))
+            ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Reported)
+                ->whereHas('latestReport', fn (Builder $report) => $report->where('created_at', '<=', self::unansweredSince()))));
+    }
+
+    /** Reports made before this are unanswered for too long. */
+    public static function unansweredSince(): CarbonInterface
+    {
+        return now()->subHours((int) config('esports.tournaments.unanswered_report_hours', 2));
+    }
+
+    /** A report nobody answered for `unanswered_report_hours` (P18). */
+    public function isUnansweredReport(): bool
+    {
+        return $this->status === SeriesStatus::Reported
+            && $this->latestReport?->created_at !== null
+            && $this->latestReport->created_at->lte(self::unansweredSince());
     }
 
     /**

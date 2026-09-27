@@ -229,6 +229,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tournaments in players mode (P18, "nothing hangs")
+    |--------------------------------------------------------------------------
+    |
+    | first_move_seconds: a tournament chess game gives the side to move this
+    | long for its first move, per mode, instead of `chess.first_move_seconds`.
+    | A side that misses it loses the match by forfeit (unrated, like a
+    | director forfeit). Slice 2 makes this a setting of each tournament.
+    |
+    | first_move_restarts: when both sides miss their first move (White did
+    | not move and Black never opened the board), the game restarts this many
+    | times; after that the match is decided by the double no-show rule
+    | (Swiss/round robin: a loss for both; knockout: the higher seed advances).
+    |
+    | drawn_replays: a drawn knockout chess game is replayed with the colours
+    | swapped at most this many times; after that the higher seed advances.
+    |
+    | unanswered_report_hours: a series report nobody confirmed or disputed
+    | for this long joins the admin queue as "unanswered report".
+    |
+    */
+
+    'tournaments' => [
+        'first_move_seconds' => ['blitz' => 300, 'correspondence' => 86400],
+        'first_move_restarts' => 1,
+        'drawn_replays' => 2,
+        'unanswered_report_hours' => 2,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | League key (season chain, P7c)
     |--------------------------------------------------------------------------
     |

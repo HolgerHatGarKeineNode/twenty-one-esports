@@ -7,7 +7,8 @@ namespace App\Support\Tournaments\Engine;
  * Rocket League series, the two games of a 2-game chess match; 1 or 0 for a
  * single game, ½ each for a draw), `points` scored (goals), and for a heat or
  * a leaderboard the places (1 = best). `winner` is the winning slot, null for
- * a draw.
+ * a draw. `doubleLoss` (P18): nobody won and both sides lose, a double
+ * no-show in a Swiss or round-robin match (no points for either).
  */
 final readonly class MatchResult
 {
@@ -21,6 +22,7 @@ final readonly class MatchResult
         public array $games = [],
         public array $points = [],
         public ?array $ranks = null,
+        public bool $doubleLoss = false,
     ) {}
 
     /**
@@ -53,9 +55,14 @@ final readonly class MatchResult
         return new self(is_int($best) ? $best : null, [], [], $ranks);
     }
 
+    public static function doubleLoss(): self
+    {
+        return new self(null, [0.0, 0.0], [], null, true);
+    }
+
     public function isDraw(): bool
     {
-        return $this->winner === null;
+        return $this->winner === null && ! $this->doubleLoss;
     }
 
     public function loser(): ?int

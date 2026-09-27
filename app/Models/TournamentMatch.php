@@ -21,7 +21,10 @@ use Illuminate\Support\Carbon;
  * plus who produced it: `by` = `players` (the linked series or game ended)
  * or `director` with `user_id`, `name`, `at` and, after a correction,
  * `corrected` (who and when) and `was` (the replaced result's label); `games`
- * carries a series' goals per game. The normal match it is played as is
+ * carries a series' goals per game. P18: `by` = `league` for a match the
+ * league decided itself (a withdrawn side, the double no-show rule, the
+ * higher seed after the last drawn replay), with `forfeit`, `double_loss`
+ * and `decided` (`withdrawn`, `noshow`, `seed`). The normal match it is played as is
  * {@see seriesMatch()} (Rocket League) or {@see chessGame()} (chess).
  *
  * @property int $id
@@ -68,11 +71,13 @@ class TournamentMatch extends Model
     }
 
     /**
+     * The current series: the latest attempt (an admin may void one, P18).
+     *
      * @return HasOne<SeriesMatch, $this>
      */
     public function seriesMatch(): HasOne
     {
-        return $this->hasOne(SeriesMatch::class);
+        return $this->hasOne(SeriesMatch::class)->latestOfMany();
     }
 
     /**
@@ -99,6 +104,7 @@ class TournamentMatch extends Model
             array_values(array_map(floatval(...), (array) ($result['games_won'] ?? []))),
             array_values(array_map(floatval(...), (array) ($result['points'] ?? []))),
             isset($result['ranks']) ? array_values(array_map(intval(...), (array) $result['ranks'])) : null,
+            (bool) ($result['double_loss'] ?? false),
         );
     }
 

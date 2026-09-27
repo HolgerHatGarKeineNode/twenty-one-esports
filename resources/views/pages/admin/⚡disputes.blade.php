@@ -18,7 +18,9 @@ use Livewire\Component;
 
 /*
  * Disputes, 1:1 from AdminDisputes.dc.html: series where a captain reported
- * a problem, and no-shows, each with its history and how long it is open.
+ * a problem, no-shows, and reports nobody answered for
+ * `esports.tournaments.unanswered_report_hours` (P18, SeriesMatch::openCase()),
+ * each with its history and how long it is open.
  * Admins never decide a case of their own clan (enforced on the case page);
  * "Hide matches of my own clans" only filters the list.
  */
@@ -53,9 +55,7 @@ new #[Title('Disputes')] #[Layout('layouts::app', ['section' => 'admin'])] class
         $clan = Clan::query()->where('slug', $this->clan)->first();
 
         return $query
-            ->when($tab === 'open', fn (Builder $query) => $query->where(fn (Builder $query) => $query
-                ->where('status', SeriesStatus::Disputed)
-                ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'))))
+            ->when($tab === 'open', fn (Builder $query) => $query->openCase())
             ->when($tab === 'resolved', fn (Builder $query) => $query->where('status', SeriesStatus::Resolved))
             ->when($this->mode !== '', fn (Builder $query) => $query->where('mode', $this->mode))
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
@@ -118,7 +118,7 @@ new #[Title('Disputes')] #[Layout('layouts::app', ['section' => 'admin'])] class
 
         $chips[] = $match->status === SeriesStatus::Resolved
             ? ['kind' => 'decided', 'title' => __('Decided'), 'who' => $match->resolution?->label() ?? '', 'note' => '']
-            : ['kind' => 'open', 'title' => __('Decision open'), 'who' => __('admin to decide'), 'note' => $match->noshow_reported_at !== null && $match->reports->isEmpty() ? __('Forfeit possible') : __('Who played: recorded')];
+            : ['kind' => 'open', 'title' => $match->isUnansweredReport() ? __('Unanswered report') : __('Decision open'), 'who' => __('admin to decide'), 'note' => $match->noshow_reported_at !== null && $match->reports->isEmpty() ? __('Forfeit possible') : __('Who played: recorded')];
 
         return $chips;
     }

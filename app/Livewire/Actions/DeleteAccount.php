@@ -3,12 +3,16 @@
 namespace App\Livewire\Actions;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\TournamentStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
+use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Clans\ClanService;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -17,7 +21,7 @@ use Illuminate\Validation\ValidationException;
 
 class DeleteAccount
 {
-    public function __construct(private ChessGameService $games, private ClanService $clans) {}
+    public function __construct(private ChessGameService $games, private ClanService $clans, private TournamentRunner $runner) {}
 
     /**
      * Delete everything this site stores about the user and log them out.
@@ -25,6 +29,11 @@ class DeleteAccount
      * Signed Nostr events (challenges, results) are not ours to delete: they
      * live on relays under the user's key. The flash message says so. Chess
      * games and ratings stay too, with the player shown as "Deleted player".
+     *
+     * A running tournament loses the player (P18): an entry left without any
+     * account is withdrawn, and each match it would still play goes to the
+     * opponent by forfeit, unrated (TournamentRunner::forfeitWithdrawn()).
+     * Results already played stay with their pinned subjects (P7d F3).
      */
     public function __invoke(User $user): void
     {
@@ -39,18 +48,27 @@ class DeleteAccount
         }
 
         // Casual games still running end first (aborted before the clocks run, else
-        // resigned): the game rows stay with the side anonymised (security re-check item 4).
+        // resigned; a tournament game is forfeited, P18): the game rows stay with the side
+        // anonymised (security re-check item 4).
         $running = ChessGame::query()->where('status', ChessGameStatus::Active)
             ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
             ->get();
 
         foreach ($running as $game) {
             try {
-                $game->clocksRunning() ? $this->games->resign($game, $user) : $this->games->abort($game, $user);
+                match (true) {
+                    $game->tournament_match_id !== null => $this->games->forfeit($game, $user),
+                    $game->clocksRunning() => $this->games->resign($game, $user),
+                    default => $this->games->abort($game, $user),
+                };
             } catch (ChessRuleViolation) {
                 // ended in between
             }
         }
+
+        $tournaments = TournamentParticipant::query()->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Running))->get()
+            ->filter(fn (TournamentParticipant $participant): bool => in_array($user->id, $participant->memberIds(), true))
+            ->pluck('tournament_id')->unique()->values();
 
         if ($user->avatar_path !== null) {
             Storage::disk('public')->delete($user->avatar_path);
@@ -69,6 +87,10 @@ class DeleteAccount
 
             $user->delete();
         });
+
+        foreach (Tournament::query()->whereIn('id', $tournaments)->get() as $tournament) {
+            $this->runner->sync($tournament);
+        }
 
         Auth::guard('web')->logout();
         Session::invalidate();

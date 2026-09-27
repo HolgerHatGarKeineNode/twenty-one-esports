@@ -200,9 +200,11 @@ final class SeasonChains
             $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
         }
 
-        $content = $game->end_reason === ChessEndReason::Director
-            ? 'Entered by the tournament director; not played on the league server and not confirmed by the players.'
-            : 'Played on the league server, which checked every move; no signed report or response.';
+        $content = match ($game->end_reason) {
+            ChessEndReason::Director => 'Entered by the tournament director; not played on the league server and not confirmed by the players.',
+            ChessEndReason::Forfeit => 'Decided by forfeit: a player missed the first move or withdrew from the tournament; unrated.',
+            default => 'Played on the league server, which checked every move; no signed report or response.',
+        };
         $event = $league->publish(self::ATTESTATION, $this->chessTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
 
         return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
@@ -264,8 +266,10 @@ final class SeasonChains
         $tags[] = ['p', $white, '', 'challenger'];
         $tags[] = ['p', $black, '', 'challenged'];
         $tags[] = ['board', '1', $white, $black, (string) $game->result];
-        // A director's no-show is a `forfeit` (NIP rev. 7, "Director results"); every other chess result `admin`.
-        $forfeit = $game->end_reason === ChessEndReason::Director && (bool) ($game->tournamentMatch->result['forfeit'] ?? false);
+        // A director's no-show is a `forfeit` (NIP rev. 7, "Director results"), and so is a tournament game the
+        // league decided against a side that missed its first move or withdrew (P18); every other chess result `admin`.
+        $forfeit = $game->end_reason === ChessEndReason::Forfeit
+            || ($game->end_reason === ChessEndReason::Director && (bool) ($game->tournamentMatch->result['forfeit'] ?? false));
         $tags[] = ['resolution', ($forfeit ? Resolution::Forfeit : Resolution::Admin)->value];
         $tags[] = ['winner', match ($game->result) {
             '1-0' => 'challenger',

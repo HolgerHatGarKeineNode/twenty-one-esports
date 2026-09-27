@@ -83,21 +83,22 @@ function lineupSignup(Tournament $tournament, Lineup $lineup, User $captain, Tes
 
 /**
  * A running chess tournament of `$n` players (seed 1 strongest), bracket
- * stored and synced.
+ * stored and synced; blitz unless `$chessMode` says `correspondence`.
  *
  * @param  array<string, mixed>  $options
  */
-function runningChess(TournamentFormat $format, int $n, TournamentResultsMode $mode = TournamentResultsMode::Director, array $options = [], bool $clans = false): Tournament
+function runningChess(TournamentFormat $format, int $n, TournamentResultsMode $mode = TournamentResultsMode::Director, array $options = [], bool $clans = false, string $chessMode = 'blitz'): Tournament
 {
     $tournament = Tournament::factory()->create([
         'format' => $format,
-        'options' => FormatOptions::fromArray($options, GameProfile::for('chess', 'blitz'))->toArray(),
+        'mode' => $chessMode,
+        'options' => FormatOptions::fromArray($options, GameProfile::for('chess', $chessMode))->toArray(),
         'capacity' => $n,
         'results_mode' => $mode,
         'status' => TournamentStatus::Running,
         'slug' => 'test-cup-'.fake()->unique()->numberBetween(1, 1_000_000),
         // Frozen as a publish would freeze it: the open ladder, or none (unrated).
-        'ladder_address' => Ladders::address('chess', 'blitz'),
+        'ladder_address' => Ladders::address('chess', $chessMode),
     ]);
 
     foreach (range(1, $n) as $index) {

@@ -56,7 +56,9 @@ final class Standings
                 $row->pointsFor += $result->points[$slot] ?? 0.0;
                 $row->pointsAgainst += $result->points[1 - $slot] ?? 0.0;
 
-                if ($result->winner === null) {
+                if ($result->doubleLoss) {
+                    $row->losses++;
+                } elseif ($result->winner === null) {
                     $row->ties++;
                     $row->points += $tie;
                 } elseif ($result->winner === $slot) {
@@ -179,7 +181,7 @@ final class Standings
             }
 
             $slot = $a === $entrant ? 0 : 1;
-            $wins += $result->winner === null ? 0.5 : ($result->winner === $slot ? 1.0 : 0.0);
+            $wins += $result->doubleLoss ? 0.0 : ($result->winner === null ? 0.5 : ($result->winner === $slot ? 1.0 : 0.0));
         }
 
         return $wins;

@@ -138,7 +138,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $bySide = [];
     foreach ($reports as $r) { $bySide[$r->side] = $r; }
     $compare = array_values($bySide);
-    $open = SeriesService::isOpenCase($case) || $case->status === SeriesStatus::Reported;
+    $open = SeriesService::isDecidable($case);
     $ownClan = $viewer->clanMember !== null && in_array($viewer->clanMember->clan_id, array_filter([$case->challengerLineup?->clan_id, $case->challengedLineup?->clan_id]), true);
     $disputed = $reports->first(fn (SeriesReport $r) => $r->response_reason !== null);
     $age = $case->updated_at?->diffForHumans();

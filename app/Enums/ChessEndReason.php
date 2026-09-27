@@ -7,6 +7,8 @@ namespace App\Enums;
  * result; the draws by rule end the game on their own (the server does not
  * wait for a claim). `Abandoned`: the other player claimed the win after the
  * opponent stayed disconnected past the claim timeout (ChessOverlays).
+ * `Forfeit` (P18): a tournament game the league decided against a side that
+ * missed its first move or withdrew (account deleted); it moves no Elo.
  */
 enum ChessEndReason: string
 {
@@ -21,6 +23,7 @@ enum ChessEndReason: string
     case Aborted = 'aborted';
     case Abandoned = 'abandoned';
     case Director = 'director';
+    case Forfeit = 'forfeit';
 
     /**
      * English label; views translate it.
@@ -39,6 +42,7 @@ enum ChessEndReason: string
             self::Aborted => 'Aborted',
             self::Abandoned => 'Opponent left',
             self::Director => 'Entered by the tournament director',
+            self::Forfeit => 'Forfeit',
         };
     }
 }

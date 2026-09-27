@@ -382,14 +382,15 @@ test('the daily pair cap is shared with ladder series: a capped tournament resul
     expect(RatingChange::query()->where('source_id', $next->id)->count())->toBe(2);
 });
 
-test('regression (P7d F3 class): a loser who deletes his account after the pairing is still rated through the pinned subjects', function () {
+test('regression (P7d F3 class): a loser who deletes his account after the result was reported is still rated through the pinned subjects', function () {
     openSeason(['slug' => 'season-1']);
     [$a, $b] = [p8cSoloSide(), p8cSoloSide()];
     [, $series] = p8cTournament('1v1', [$a, $b]);
     [$loserId, $loserKey] = [$b[0]->id, $b[0]->pubkey];
 
-    app(DeleteAccount::class)($b[0]);
+    // Reported first: an accepted series nobody reported would be a withdrawal forfeit (P18).
     $series = p8cReport($series, $a);
+    app(DeleteAccount::class)($b[0]);
     app(SeriesService::class)->decide($series, p8cAdmin(), ['type' => 'report', 'report' => $series->latestReport->id], 'The loser deleted his account.');
 
     $loser = Rating::query()->where('pool', Rating::RATED)->where('subject', 'user:'.$loserId)->sole();

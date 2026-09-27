@@ -942,9 +942,11 @@ final class SeriesService
     /* ---------- Admin ------------------------------------------------------------------------------------------ */
 
     /**
-     * An admin decides a disputed series, a stale report or a no-show (NIP
-     * `resolution` admin, forfeit or void; the reason is public). Admins never
-     * decide a case of their own clan (AdminDisputes.dc.html).
+     * An admin decides a disputed series, a report not yet confirmed, a
+     * no-show, or an accepted tournament series nobody reported (P18; see
+     * isDecidable()) with NIP `resolution` admin, forfeit or void; the reason
+     * is public. Admins never decide a case of their own clan or one they play
+     * in (AdminDisputes.dc.html, security gate P8c F1).
      *
      * @param  array{type: 'report', report: int}|array{type: 'result', games: list<array{winner: string, challenger: int|null, challenged: int|null}>}|array{type: 'forfeit', winner: string}|array{type: 'void'}  $decision
      *
@@ -1093,12 +1095,27 @@ final class SeriesService
     }
 
     /**
-     * Open cases for the admins: disputed, a report nobody answers, a no-show.
+     * Open cases for the admins, listed in the disputes queue: disputed, a
+     * no-show, a report nobody answered for `unanswered_report_hours` (P18;
+     * same rule as the SeriesMatch::openCase() scope).
      */
     public static function isOpenCase(SeriesMatch $match): bool
     {
         return $match->status === SeriesStatus::Disputed
-            || ($match->status === SeriesStatus::Accepted && $match->noshow_reported_at !== null);
+            || ($match->status === SeriesStatus::Accepted && $match->noshow_reported_at !== null)
+            || $match->isUnansweredReport();
+    }
+
+    /**
+     * What an admin may decide: an open case, any report not yet confirmed,
+     * and an accepted tournament series of a players-mode tournament with
+     * neither a report nor a no-show (P18: it would block its bracket).
+     */
+    public static function isDecidable(SeriesMatch $match): bool
+    {
+        return self::isOpenCase($match)
+            || $match->status === SeriesStatus::Reported
+            || ($match->status === SeriesStatus::Accepted && $match->tournament_match_id !== null && ! self::isDirectorEntered($match));
     }
 
     private function assertCanDecide(SeriesMatch $match, User $admin): void
@@ -1126,7 +1143,7 @@ final class SeriesService
             throw new SeriesRuleViolation('own_case', __('You cannot decide a case you play in.'));
         }
 
-        if (! self::isOpenCase($match) && $match->status !== SeriesStatus::Reported) {
+        if (! self::isDecidable($match)) {
             throw new SeriesRuleViolation('not_open_case', __('This match has nothing to decide.'));
         }
     }

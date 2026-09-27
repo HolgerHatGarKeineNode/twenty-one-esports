@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Enums\ChessGameStatus;
 use App\Enums\LineupRole;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
@@ -105,8 +106,10 @@ final class TournamentMatchMaker
                     continue;
                 }
 
-                if ($match->seriesMatch === null) {
-                    DB::transaction(fn () => $this->createSeries($tournament, $match, $a, $b));
+                // No series yet, or the last one was voided by an admin: it is played again (P18). The
+                // attempt follows from the series seen here, so a concurrent run hits the unique index.
+                if ($match->seriesMatch === null || $match->seriesMatch->resolution === SeriesResolution::Void) {
+                    DB::transaction(fn () => $this->createSeries($tournament, $match, $a, $b, ($match->seriesMatch->tournament_attempt ?? 0) + 1));
                 }
             } catch (UniqueConstraintViolationException) {
                 // A concurrent run started this match first: it has its series or game.
@@ -117,15 +120,21 @@ final class TournamentMatchMaker
     }
 
     /**
-     * A chess match needs a (new) game when it has none, or when its last
-     * game was drawn in a knockout, where a draw decides nothing: it is
-     * replayed with the colours swapped.
+     * A chess match needs a (new) game when it has none, when its last game
+     * was drawn in a knockout, where a draw decides nothing (replayed with
+     * the colours swapped, at most `drawn_replays` times), or when both sides
+     * missed the first move (restarted `first_move_restarts` times, P18).
      */
     public static function needsGame(TournamentMatch $match): bool
     {
         $game = $match->chessGame;
 
-        return $game === null || ($game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match));
+        return match (true) {
+            $game === null => true,
+            $game->status === ChessGameStatus::Aborted => TournamentRunner::abortedGames($match) <= TournamentRunner::firstMoveRestarts(),
+            $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays(),
+            default => false,
+        };
     }
 
     /**
@@ -163,8 +172,11 @@ final class TournamentMatchMaker
             return;
         }
 
-        // Slot 0 has White; a knockout replay after a draw swaps the colours.
-        [$white, $black] = $match->chessGame !== null && $match->chessGame->white_id === $first->id ? [$second, $first] : [$first, $second];
+        // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart after both
+        // sides missed the first move keeps them.
+        $last = $match->chessGame;
+        $swap = $last !== null && ($last->status === ChessGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
+        [$white, $black] = $swap ? [$second, $first] : [$first, $second];
 
         try {
             $this->chess->start($white, $black, $tournament->mode, null, $this->chessPin($tournament, $white, $black), $match->id,
@@ -189,7 +201,10 @@ final class TournamentMatchMaker
         return $pin->isEligible($white->pubkey) && $pin->isEligible($black->pubkey) ? $pin : null;
     }
 
-    public function createSeries(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): SeriesMatch
+    /**
+     * @param  int  $attempt  1, or the replay after an admin voided attempt `$attempt - 1` (P18)
+     */
+    public function createSeries(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, int $attempt = 1): SeriesMatch
     {
         $lineups = [$this->lineup($a), $this->lineup($b)];
         $mode = $this->games->mode($tournament->game, $tournament->mode);
@@ -248,6 +263,7 @@ final class TournamentMatchMaker
                 default => ['challenger' => 'lineup:'.$lineups[0]?->id, 'challenged' => 'lineup:'.$lineups[1]?->id],
             },
             'tournament_match_id' => $match->id,
+            'tournament_attempt' => $attempt,
             'sides' => $sides === [] ? null : $sides,
         ]);
 

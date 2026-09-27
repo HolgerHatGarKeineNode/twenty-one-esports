@@ -49,6 +49,13 @@ use Illuminate\Support\Facades\DB;
  * one day" after every move. A missed deadline before both first moves
  * aborts the game, later it loses on time, exactly like a blitz flag. A
  * player is in at most one live (blitz) game, but in any number of daily ones.
+ *
+ * Tournament games (P18) never hang on a missed first move: the side to
+ * move gets `esports.tournaments.first_move_seconds` of its mode, and a side
+ * that misses it loses by forfeit (unrated, attested as `forfeit`). Before
+ * any move, a Black who never opened the board missed as well: the game is
+ * aborted and the tournament restarts it or applies the double no-show rule
+ * (TournamentRunner::chessGameAborted()). Players cannot abort them.
  */
 final class ChessGameService
 {
@@ -97,7 +104,7 @@ final class ChessGameService
                 'white_ms' => $initialMs,
                 'black_ms' => $initialMs,
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + ($daily ? $initialMs : $this->firstMoveMs()),
+                'deadline_ms' => $now + ($tournamentMatchId !== null ? $this->tournamentFirstMoveMs($mode) : ($daily ? $initialMs : $this->firstMoveMs())),
                 'rematch_of_id' => $rematchOf?->id,
                 'tournament_match_id' => $tournamentMatchId,
                 'tournament_game' => $tournamentGame,
@@ -237,7 +244,7 @@ final class ChessGameService
             $game->deadline_ms = match (true) {
                 $game->isCorrespondence() => $now + $game->initial_ms,
                 $game->clocksRunning() => $now + ($game->turn() === 'w' ? $game->white_ms : $game->black_ms),
-                default => $now + $this->firstMoveMs(),
+                default => $now + ($game->tournament_match_id !== null ? $this->tournamentFirstMoveMs($game->mode) : $this->firstMoveMs()),
             };
 
             $outcome = ChessRules::outcome($chess, [$game->startFen(), ...$fens, $fen]);
@@ -357,7 +364,8 @@ final class ChessGameService
     }
 
     /**
-     * Either player may abort until both have made their first move.
+     * Either player may abort until both have made their first move, except
+     * in a tournament game: there a missed first move is a forfeit (P18).
      *
      * @throws ChessRuleViolation
      */
@@ -366,11 +374,34 @@ final class ChessGameService
         return $this->change($game, function (ChessGame $game, int $now) use ($user): void {
             $this->playerColor($game, $user);
 
+            if ($game->tournament_match_id !== null) {
+                throw new ChessRuleViolation('tournament_game');
+            }
+
             if ($game->clocksRunning()) {
                 throw new ChessRuleViolation('too_late_to_abort');
             }
 
             $this->end($game, ChessGameStatus::Aborted, null, ChessEndReason::Aborted, $now);
+        });
+    }
+
+    /**
+     * The player gives up a tournament game (their account is being
+     * deleted, P18): the opponent wins by forfeit, unrated.
+     *
+     * @throws ChessRuleViolation
+     */
+    public function forfeit(ChessGame $game, User $user): ChessGame
+    {
+        return $this->change($game, function (ChessGame $game, int $now) use ($user): void {
+            $color = $this->playerColor($game, $user);
+
+            if ($game->tournament_match_id === null) {
+                throw new ChessRuleViolation('not_a_tournament_game');
+            }
+
+            $this->forfeitAgainst($game, $color, $now);
         });
     }
 
@@ -404,17 +435,23 @@ final class ChessGameService
     /**
      * The player is here (page load, reconnect, any action): their own
      * "gone" mark is cleared, so an old report cannot be claimed against them.
+     * In a tournament game the first visit is kept: a Black who never opened
+     * the board missed the first move too (P18).
      */
     public function markPresent(ChessGame $game, User $user): void
     {
-        $column = match ($game->colorOf($user)) {
-            'w' => 'white_gone_ms',
-            'b' => 'black_gone_ms',
-            default => null,
-        };
+        $color = $game->colorOf($user);
 
-        if ($column !== null) {
-            ChessGame::query()->whereKey($game->id)->whereNotNull($column)->update([$column => null]);
+        if ($color === null) {
+            return;
+        }
+
+        $column = $color === 'w' ? 'white_gone_ms' : 'black_gone_ms';
+        ChessGame::query()->whereKey($game->id)->whereNotNull($column)->update([$column => null]);
+
+        if ($game->tournament_match_id !== null) {
+            $seen = $color === 'w' ? 'white_seen_at' : 'black_seen_at';
+            ChessGame::query()->whereKey($game->id)->whereNull($seen)->update([$seen => now()]);
         }
     }
 
@@ -762,7 +799,14 @@ final class ChessGameService
         }
 
         if (! $game->clocksRunning()) {
-            $this->end($game, ChessGameStatus::Aborted, null, ChessEndReason::Aborted, $game->deadline_ms);
+            $missed = $this->missedFirstMove($game);
+
+            if ($game->tournament_match_id !== null && count($missed) === 1) {
+                $this->forfeitAgainst($game, $missed[0], $game->deadline_ms);
+            } else {
+                $this->end($game, ChessGameStatus::Aborted, null, ChessEndReason::Aborted, $game->deadline_ms);
+                $this->moveBracket($game);
+            }
         } else {
             $flagged = $game->turn();
             $winner = $this->opponent($flagged);
@@ -787,12 +831,54 @@ final class ChessGameService
         // rated game in a live season, its league attestation commit together.
         $this->ratings->applyChessGame($game);
         $this->chains->attestChessGame($game);
+        $this->moveBracket($game);
+    }
 
-        // A tournament game moves its bracket once the result is committed (P8b).
-        if ($game->tournament_match_id !== null) {
-            $id = $game->id;
-            DB::afterCommit(fn () => app(TournamentRunner::class)->chessGameFinished($id));
+    /**
+     * A tournament game decided against the side that missed its first move
+     * or withdrew (P18). Unrated like a director forfeit (NIP rev. 7.1): no
+     * rating change, so the attestation carries `forfeit` and no `elo`.
+     *
+     * @param  'w'|'b'  $loser
+     */
+    private function forfeitAgainst(ChessGame $game, string $loser, int $at): void
+    {
+        $this->end($game, ChessGameStatus::Finished, $loser === 'w' ? '0-1' : '1-0', ChessEndReason::Forfeit, $at);
+        $this->chains->attestChessGame($game);
+        $this->moveBracket($game);
+    }
+
+    /**
+     * The sides that missed their first move when the first-move deadline
+     * passed: the side to move, and before any move a Black who never
+     * opened the board of a tournament game.
+     *
+     * @return list<'w'|'b'>
+     */
+    private function missedFirstMove(ChessGame $game): array
+    {
+        $missed = [$game->turn()];
+
+        if ($game->tournament_match_id !== null && $game->ply === 0 && $game->black_seen_at === null) {
+            $missed[] = 'b';
         }
+
+        return $missed;
+    }
+
+    /**
+     * A tournament game moves its bracket once its end is committed (P8b):
+     * a result, or an abort after both sides missed their first move (P18).
+     */
+    private function moveBracket(ChessGame $game): void
+    {
+        if ($game->tournament_match_id === null) {
+            return;
+        }
+
+        $id = $game->id;
+        $aborted = $game->status === ChessGameStatus::Aborted;
+        DB::afterCommit(fn () => $aborted ? app(TournamentRunner::class)->chessGameAborted($id) : app(TournamentRunner::class)->chessGameFinished($id));
     }
 
     /**
@@ -896,6 +982,15 @@ final class ChessGameService
     private function firstMoveMs(): int
     {
         return (int) config('esports.chess.first_move_seconds') * 1000;
+    }
+
+    /**
+     * The first-move window of a tournament game (P18): 5 minutes in blitz,
+     * a day in daily chess, by default.
+     */
+    private function tournamentFirstMoveMs(string $mode): int
+    {
+        return (int) (config("esports.tournaments.first_move_seconds.{$mode}") ?? config('esports.chess.first_move_seconds')) * 1000;
     }
 
     private function nowMs(): int

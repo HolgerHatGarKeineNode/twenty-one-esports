@@ -202,7 +202,7 @@ final class TournamentView
 
             if ($result !== null && $match->bracket !== 'bye') {
                 $won = $result['games_won'][$index] ?? null;
-                $score = $chess ? ($winner === null ? '½' : ($winner === $index ? '1' : '0')) : ($won === null ? null : self::number((float) $won));
+                $score = $chess ? (($result['double_loss'] ?? false) ? '0' : ($winner === null ? '½' : ($winner === $index ? '1' : '0'))) : ($won === null ? null : self::number((float) $won));
             }
 
             $sides[] = [

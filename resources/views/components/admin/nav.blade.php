@@ -6,10 +6,7 @@
     settings) are shown muted and not clickable yet.
 --}}
 @php
-    $open = \App\Models\SeriesMatch::query()
-        ->where(fn ($query) => $query->where('status', \App\Enums\SeriesStatus::Disputed)
-            ->orWhere(fn ($query) => $query->where('status', \App\Enums\SeriesStatus::Accepted)->whereNotNull('noshow_reported_at')))
-        ->count();
+    $open = \App\Models\SeriesMatch::query()->openCase()->count();
     $items = [
         ['status', __('Status'), route('admin.status'), null],
         ['disputes', __('Disputes'), route('admin.disputes'), $open],

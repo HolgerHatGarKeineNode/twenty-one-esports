@@ -13,6 +13,7 @@ use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
 use App\Models\TournamentResultEntry;
 use App\Models\TournamentRound;
 use App\Models\TournamentStage;
@@ -50,6 +51,14 @@ use Illuminate\Support\Facades\Gate;
  *
  * Tournament matches never mine season-chain blocks (SeasonChains refuses
  * them as candidates); they count for Elo like any match.
+ *
+ * Nothing hangs in players mode (P18): a side whose players have no account
+ * left is withdrawn and loses each match it would still play by forfeit; a
+ * chess game whose first move was missed is a forfeit, or, when both sides
+ * missed it, restarted once and then decided by the double no-show rule; a
+ * knockout draw is replayed at most `drawn_replays` times, then the higher
+ * seed advances; a voided series is played again. The league's own
+ * decisions are unrated (`by` = `league`, TournamentMatch).
  */
 final class TournamentRunner
 {
@@ -85,6 +94,10 @@ final class TournamentRunner
             $this->applyState($locked);
 
             if (! $locked->isDirectorMode()) {
+                while ($this->forfeitWithdrawn($locked)) {
+                    $this->applyState($locked);
+                }
+
                 $this->closeCompleteRounds($locked);
             }
 
@@ -306,6 +319,13 @@ final class TournamentRunner
             return;
         }
 
+        // A voided series is played again (P18): the next sync starts a new attempt.
+        if ($series->resolution === SeriesResolution::Void && $series->id === $match->seriesMatch?->id) {
+            $this->sync($match->tournament);
+
+            return;
+        }
+
         if (! $series->status->hasResult() || $series->resolution === SeriesResolution::Void || ! in_array($series->winner, SeriesMatch::SIDES, true)) {
             return;
         }
@@ -338,7 +358,12 @@ final class TournamentRunner
         $whiteSlot = in_array((int) $game->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
 
         if ($game->result === '1/2-1/2' && ! self::allowsDraw($match)) {
-            // A knockout needs a winner: the game is replayed (TournamentMatchMaker::needsGame()).
+            // A knockout needs a winner: the game is replayed (TournamentMatchMaker::needsGame()), and
+            // after the last allowed replay the higher seed advances (P18; Armageddon is slice 2).
+            if (self::drawnGames($match) > self::drawnReplays()) {
+                $this->store($match, $this->seedDecision($match, 'seed') + ['number' => $game->number]);
+            }
+
             $this->sync($match->tournament);
 
             return;
@@ -350,16 +375,187 @@ final class TournamentRunner
             default => null,
         };
 
+        $forfeit = $game->end_reason === ChessEndReason::Forfeit;
+
         $this->store($match, [
             'winner' => $winner,
             'games_won' => $winner === null ? [0.5, 0.5] : ($winner === 0 ? [1.0, 0.0] : [0.0, 1.0]),
             'points' => [],
-            'label' => self::chessLabel($winner),
+            'forfeit' => $forfeit,
+            'label' => $forfeit ? __('forfeit') : self::chessLabel($winner),
             'by' => 'players',
             'number' => $game->number,
         ]);
 
         $this->sync($match->tournament);
+    }
+
+    /**
+     * Both sides missed the first move of a tournament game (P18): it is
+     * started again `first_move_restarts` times (TournamentMatchMaker::needsGame()),
+     * then the double no-show rule decides the match.
+     */
+    public function chessGameAborted(int $chessGameId): void
+    {
+        $game = ChessGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($chessGameId);
+        $match = $game?->tournamentMatch;
+
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== ChessGameStatus::Aborted) {
+            return;
+        }
+
+        if (self::abortedGames($match) > self::firstMoveRestarts()) {
+            $this->store($match, $this->doubleNoShow($match) + ['number' => $game->number]);
+        }
+
+        $this->sync($match->tournament);
+    }
+
+    /** Knockout draws of a chess match so far. */
+    public static function drawnGames(TournamentMatch $match): int
+    {
+        return ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Finished)->where('result', '1/2-1/2')->count();
+    }
+
+    /** Games of a chess match aborted because both sides missed the first move (players cannot abort one). */
+    public static function abortedGames(TournamentMatch $match): int
+    {
+        return ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Aborted)->count();
+    }
+
+    public static function drawnReplays(): int
+    {
+        return max(0, (int) config('esports.tournaments.drawn_replays', 2));
+    }
+
+    public static function firstMoveRestarts(): int
+    {
+        return max(0, (int) config('esports.tournaments.first_move_restarts', 1));
+    }
+
+    /* ---------- The league's own decisions (P18) ------------------------------------------------------------ */
+
+    /**
+     * Whether no player of this entry has an account any more: it is
+     * withdrawn and loses every match it would still play by forfeit.
+     */
+    public static function isWithdrawn(?TournamentParticipant $participant): bool
+    {
+        return $participant !== null && ! User::query()->whereIn('id', $participant->memberIds())->exists();
+    }
+
+    /**
+     * Decide every ready match with a withdrawn side (players mode): the
+     * other side wins by forfeit, and when both are withdrawn the double
+     * no-show rule applies. A match already under way is left to its normal
+     * match: a chess game still running ends on its own clock, a series
+     * already reported or disputed goes to the confirmation or an admin (its
+     * rated subjects stay pinned, P7d F3). An accepted series nobody reported
+     * is decided by forfeit, unrated. True if a match was decided.
+     */
+    private function forfeitWithdrawn(Tournament $tournament): bool
+    {
+        $decided = false;
+        $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
+            ->where('bracket', '!=', 'bye')->whereNull('result')
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
+
+        foreach ($matches as $match) {
+            if (count($match->slots) !== 2) {
+                continue;
+            }
+
+            $gone = [self::isWithdrawn($match->slots[0]->participant), self::isWithdrawn($match->slots[1]->participant)];
+
+            if (! $gone[0] && ! $gone[1]) {
+                continue;
+            }
+
+            if ($match->chessGame !== null && $match->chessGame->status === ChessGameStatus::Active) {
+                continue;
+            }
+
+            $series = $match->seriesMatch;
+
+            if ($series !== null && $series->resolution !== SeriesResolution::Void && $series->status !== SeriesStatus::Accepted) {
+                continue;
+            }
+
+            $result = $gone[0] && $gone[1] ? $this->doubleNoShow($match) : [
+                'winner' => $gone[0] ? 1 : 0,
+                'games_won' => $gone[0] ? [0.0, 1.0] : [1.0, 0.0],
+                'points' => [],
+                'forfeit' => true,
+                'decided' => 'withdrawn',
+                'label' => __('forfeit'),
+                'by' => 'league',
+            ];
+
+            if ($series !== null && $series->status === SeriesStatus::Accepted) {
+                $this->forfeitSeries($series, $result['winner']);
+                $result['number'] = $series->number;
+            }
+
+            $this->store($match, $result);
+            $decided = true;
+        }
+
+        return $decided;
+    }
+
+    /**
+     * An accepted tournament series of a withdrawn side, decided by the league
+     * as a forfeit: unrated like a director forfeit (no rating change, so the
+     * attestation carries `forfeit` and no `elo`), void when both withdrew.
+     */
+    private function forfeitSeries(SeriesMatch $series, ?int $winner): void
+    {
+        $series->forceFill([
+            'status' => SeriesStatus::Resolved,
+            'resolution' => $winner === null ? SeriesResolution::Void : SeriesResolution::Forfeit,
+            'winner' => $winner === null ? 'none' : ($winner === 0 ? 'challenger' : 'challenged'),
+            'resolution_reason' => 'Withdrawn from the tournament: no player of the side has an account any more.',
+            'finished_at' => now(),
+        ])->save();
+
+        $this->chains->attestSeries($series->fresh() ?? $series);
+    }
+
+    /**
+     * The double no-show rule (CEO default, P18): in a Swiss or round-robin
+     * match both sides lose (no points); in a knockout the higher seed advances.
+     *
+     * @return array<string, mixed>
+     */
+    private function doubleNoShow(TournamentMatch $match): array
+    {
+        if (! self::allowsDraw($match)) {
+            return $this->seedDecision($match, 'noshow');
+        }
+
+        return ['winner' => null, 'double_loss' => true, 'games_won' => [0.0, 0.0], 'points' => [], 'forfeit' => true, 'decided' => 'noshow', 'label' => __('double no-show'), 'by' => 'league'];
+    }
+
+    /**
+     * The higher seed (lower seed number) advances, without a game.
+     *
+     * @param  'seed'|'noshow'  $decided
+     * @return array<string, mixed>
+     */
+    private function seedDecision(TournamentMatch $match, string $decided): array
+    {
+        $seeds = [$match->slots[0]->participant->seed ?? PHP_INT_MAX, $match->slots[1]->participant->seed ?? PHP_INT_MAX];
+        $winner = $seeds[1] < $seeds[0] ? 1 : 0;
+
+        return [
+            'winner' => $winner,
+            'games_won' => $winner === 0 ? [1.0, 0.0] : [0.0, 1.0],
+            'points' => [],
+            'forfeit' => $decided === 'noshow',
+            'decided' => $decided,
+            'label' => __('higher seed'),
+            'by' => 'league',
+        ];
     }
 
     /* ---------- Tournament directors ------------------------------------------------------------------------ */
