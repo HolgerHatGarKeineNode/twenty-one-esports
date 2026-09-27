@@ -1,44 +1,86 @@
 {{--
-    TA2 · tournament bracket (look A). PLACEHOLDER until the designed slide lands (plan
-    2026-09-27T1456-stream-tournament-slides, P2): prints the contract fields as text.
+    TA2 · Arena · upcoming tournament, bracket preview. Dark left half: the name, the projected groups (or the
+    first-round pairings of a bracket format) with seeds and "Open spot", the stage note and the line that this is a
+    preview. Orange right half: "Who plays" (seeds with Elo), the invitation row "Your spot?" with the open spots, and a
+    block with the call to sign up and a small countdown in fixed digit cells.
+    Top right (x > 1040, y < 112) stays plain orange for the client's LIVE badge.
 
-    Data contract (App\Support\TwentyOne\Stream\TournamentSlides::data(), via SceneSource::rotation()):
-      $tournament  array:
-        id int, name string, description string|null, status "Sign-up open",
-        game string ("EA Sports FC 26"), mode string ("1v1"), format string ("Two Stage"), teamSize int, rated bool,
-        where "Online"|"On site",
-        startsAt string ("Sat 3 Oct, 20:00", Europe/Berlin), signupClosesAt string|null (same format),
-        countdown string ("6d 06:05:01", "06:05:01" below a day; ticks every second), countdownLabel "Sign-up closes in",
-        taken int, places int, spotsLeft int (player places),
-        roster list<array{seed: int, name: string, rating: int|null}> (seeded entries, best first, at most 8), openSpots int,
-        preview array|null: {kind: 'groups'|'bracket', groups?: array<string, list<array{seed: int, name: string|null}>>,
-                             matches?: list<array{sides: list<array{seed: int|null, name: string|null}>}>, byes: list<int>,
-                             stageNote: string}  (null name = open spot)
-        cover string|null (data:image/jpeg;base64,…), url "esports.einundzwanzig.space/tournaments/1" (text, no scheme)
-      $stats  StreamStats::all()
-    Names are cleaned (PublicName::clean), not shortened or escaped: the view limits and Blade escapes.
+    Data contract: $tournament as in docs/plans/2026-09-27T1456-stream-tournament-slides.md (name, preview, roster,
+    openSpots, taken, places, spotsLeft, countdown, countdownLabel, url). $stats is not used here.
 --}}
+@use('App\Support\TwentyOne\Stream\RotationKit', 'K')
+@php
+    $t = is_array($tournament ?? null) ? $tournament : [];
+    $countdown = is_string($t['countdown'] ?? null) ? $t['countdown'] : '';
+    $spots = K::spots($t);
+    $title = K::name(K::text($t, 'name'), 'Tournament', 30, 560);
+    $p = K::previewBoxes(is_array($t['preview'] ?? null) ? $t['preview'] : null, 40, 148, 560, 400, 2, 16, 30, 34);
+    $sub = K::fit(K::previewHeading($p), K::MONO, 20, 560);
+    $foot = K::fit(K::previewFoot($p), K::MONO, 18, 560);
+    $rows = [];
+    foreach (K::whoPlays($t, 9) as $i => $r) {
+        $rows[] = $r + ['y' => 240 + $i * 38, 'label' => $r['kind'] === 'player' ? K::name($r['name'], 'Player', 24, 382) : null];
+    }
+    $cd = K::countdownParts($t['countdown'] ?? null);
+    $days = $cd && $cd['days'] > 0 ? $cd['days'].'d' : null;
+    // The small countdown ("6d 06:05:01") gets the room right of "Sign up" (24 px apart): at most 36 px, smaller only
+    // for a day count too wide for it. 6.375 em = hh:mm:ss in digit cells; the size changes at most once a day.
+    $cdEm = 6.375 + ($days ? K::width($days, K::DISPLAY, 1) * 1.04 + 10 / 36 : 0);
+    $cdSize = floor(min(36, (1208 - 704 - K::width('Sign up', K::DISPLAY, 36) * 1.04 - 24) / $cdEm));
+    $cells = $cd ? K::digitCells($cd['hms'], 1208, $cdSize, true) : null;
+    $starts = K::text($t, 'startsAt');
+    $url = K::tournamentUrl($t);
+    $urlSize = K::monoSize($url, 18, 504);
+@endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
+@include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
-<text x="40" y="70" font-family="Unbounded" font-weight="800" font-size="32" fill="#FFFFFF">{{ \App\Support\TwentyOne\Stream\PublicName::limit($tournament['name'], 40) }} · {{ $tournament['countdown'] }}</text>
-<text x="40" y="110" font-family="JetBrains Mono" font-size="20" fill="#B8B2A7">Who plays · +{{ $tournament['openSpots'] }} open spots</text>
-@foreach ($tournament['roster'] as $row)
-<text x="40" y="{{ 145 + 30 * $loop->index }}" font-family="JetBrains Mono" font-size="20" fill="#FFFFFF">#{{ $row['seed'] }} {{ \App\Support\TwentyOne\Stream\PublicName::limit($row['name'], 24) }} {{ $row['rating'] ?? '' }}</text>
-@endforeach
-@if ($tournament['preview'] !== null)
-<text x="560" y="110" font-family="JetBrains Mono" font-size="20" fill="#B8B2A7">{{ $tournament['preview']['stageNote'] }} · A preview, not the draw</text>
-@if ($tournament['preview']['kind'] === 'groups')
-@foreach ($tournament['preview']['groups'] as $letter => $members)
-<text x="560" y="{{ 145 + 30 * $loop->index }}" font-family="JetBrains Mono" font-size="18" fill="#FFFFFF">Group {{ $letter }}:@foreach ($members as $side) #{{ $side['seed'] }} {{ $side['name'] === null ? 'Open spot' : \App\Support\TwentyOne\Stream\PublicName::limit($side['name'], 12) }}@endforeach</text>
-@endforeach
+<rect x="640" y="0" width="640" height="720" fill="#F7931A"/>
+
+<text data-unit="title" data-box="39 50 601 92" x="40" y="84" font-family="{{ $title['font'] }}" font-weight="800" font-size="30" fill="#FFFFFF">{{ $title['text'] }}</text>
+<text data-unit="sub" x="40" y="120" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#ADADB0">{{ $sub }}</text>
+@if ($p['boxes'] === [])
+<text data-unit="no-preview" x="40" y="200" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">The bracket takes shape as players sign up.</text>
 @else
-@foreach (array_slice($tournament['preview']['matches'], 0, 12) as $match)
-<text x="560" y="{{ 145 + 30 * $loop->index }}" font-family="JetBrains Mono" font-size="18" fill="#FFFFFF">@foreach ($match['sides'] as $side){{ $loop->first ? '' : ' vs ' }}#{{ $side['seed'] }} {{ $side['name'] === null ? 'Open spot' : \App\Support\TwentyOne\Stream\PublicName::limit($side['name'], 16) }}@endforeach</text>
+@include('stream.rotation.partials.t-preview', ['p' => $p, 'panel' => '#16161A', 'rule' => '#2A2A30', 'titleFill' => '#F7931A', 'seedFill' => '#8B8B90', 'nameFill' => '#FFFFFF', 'openFill' => '#8B8B90'])
+@endif
+@if ($foot !== '')<text data-unit="foot" data-box="39 570 601 596" x="40" y="590" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $foot }}</text>@endif
+<text data-unit="preview-1" x="40" y="630" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#FFFFFF">A preview, not the draw.</text>
+<text data-unit="preview-2" x="40" y="656" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">Seeds are fixed when sign-up closes.</text>
+
+<text data-unit="who" x="680" y="160" font-family="Unbounded" font-weight="800" font-size="40" fill="#17120A">Who plays</text>
+<text data-unit="who-sub" x="680" y="194" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Seeds if sign-up closed now, by Elo</text>
+@foreach ($rows as $i => $r)
+@if ($r['kind'] === 'player')
+<text data-unit="seed-{{ $i }}" x="712" y="{{ $r['y'] }}" font-family="Unbounded" font-weight="800" font-size="24" fill="#17120A" text-anchor="end">{{ $r['seed'] }}</text>
+<text data-unit="player-{{ $i }}" data-box="727 {{ $r['y'] - 26 }} 1112 {{ $r['y'] + 8 }}" x="728" y="{{ $r['y'] }}" font-family="{{ $r['label']['font'] }}" font-weight="800" font-size="24" fill="#17120A">{{ $r['label']['text'] }}</text>
+@if ($r['rating'] !== null)<text data-unit="elo-{{ $i }}" x="1232" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#17120A" text-anchor="end">{{ $r['rating'] }} Elo</text>@endif
+@elseif ($r['kind'] === 'invite')
+<rect x="681" y="{{ $r['y'] - 27 }}" width="550" height="36" fill="none" stroke="#17120A" stroke-width="2"/>
+<text data-unit="seed-{{ $i }}" x="712" y="{{ $r['y'] }}" font-family="Unbounded" font-weight="800" font-size="24" fill="#17120A" text-anchor="end">{{ $r['seed'] }}</text>
+<text data-unit="invite" x="728" y="{{ $r['y'] }}" font-family="Unbounded" font-weight="800" font-size="24" fill="#17120A">Your spot?</text>
+@if ($r['more'] > 0)<text data-unit="invite-more" x="1216" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#17120A" text-anchor="end">{{ K::moreOpen($r['more']) }}</text>@endif
+@elseif ($r['kind'] === 'open')
+<text data-unit="seed-{{ $i }}" x="712" y="{{ $r['y'] }}" font-family="Unbounded" font-weight="800" font-size="24" fill="#4A3A20" text-anchor="end">{{ $r['seed'] }}</text>
+<text data-unit="open-{{ $i }}" x="728" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#4A3A20">Open spot</text>
+@else
+<text data-unit="more" x="728" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#4A3A20">{{ K::moreOpen($r['more']) }}</text>
+@endif
 @endforeach
+
+<rect x="680" y="576" width="552" height="104" fill="#17120A"/>
+<text data-unit="cta" data-box="703 590 996 644" x="704" y="626" font-family="Unbounded" font-weight="800" font-size="36" fill="#F7931A">{{ $spots['full'] ? 'Watch it live' : 'Sign up' }}</text>
+<text data-unit="url" data-box="703 646 1209 672" x="704" y="666" font-family="JetBrains Mono" font-weight="700" font-size="{{ $urlSize }}" fill="#FFFFFF">{{ $url }}</text>
+<g data-countdown="{{ $countdown }}">
+@if ($spots['full'])
+@if ($starts !== '')
+<text data-unit="cd-label" x="1208" y="600" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">Starts</text>
+<text data-unit="starts" data-box="1000 614 1209 640" x="1208" y="634" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A" text-anchor="end">{{ K::fit($starts, K::MONO, 20, 208) }}</text>
 @endif
-@if ($tournament['preview']['byes'] !== [])
-<text x="560" y="600" font-family="JetBrains Mono" font-size="18" fill="#B8B2A7">Byes: {{ implode(', ', $tournament['preview']['byes']) }}</text>
+@elseif ($cells)
+<text data-unit="cd-label" x="1208" y="600" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">{{ K::fit(K::text($t, 'countdownLabel', 'Sign-up closes in'), K::MONO, 16, 250) }}</text>
+@include('stream.rotation.partials.clock', ['c' => $cells, 'y' => 636, 'fill' => '#F7931A'])
+@if ($days)<text data-unit="cd-days" x="{{ $cells['x0'] - 10 }}" y="636" font-family="Unbounded" font-weight="800" font-size="{{ $cdSize }}" fill="#F7931A" text-anchor="end">{{ $days }}</text>@endif
 @endif
-@endif
-<text x="40" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A">{{ $tournament['url'] }}</text>
+</g>
 </svg>

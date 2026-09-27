@@ -1,34 +1,84 @@
 {{--
-    TC1 · tournament hero (look C). PLACEHOLDER until the designed slide lands (plan
-    2026-09-27T1456-stream-tournament-slides, P2): prints the contract fields as text.
+    TC1 · Terminal ticker · upcoming tournament, hero. Header line and stats bar as every C scene. Top: the cover (or a
+    neutral game panel) and, beside it, the name and a key/value table (game, format, starts, where). Middle: the
+    description. Bottom: the countdown to sign-up close in JetBrains Mono (every glyph 0.6 em, so the ticking seconds
+    never shift), the spots bar and the orange call to sign up. A full tournament says "Sign-up is full" and "Watch
+    it live".
 
-    Data contract (App\Support\TwentyOne\Stream\TournamentSlides::data(), via SceneSource::rotation()):
-      $tournament  array:
-        id int, name string, description string|null, status "Sign-up open",
-        game string ("EA Sports FC 26"), mode string ("1v1"), format string ("Two Stage"), teamSize int, rated bool,
-        where "Online"|"On site",
-        startsAt string ("Sat 3 Oct, 20:00", Europe/Berlin), signupClosesAt string|null (same format),
-        countdown string ("6d 06:05:01", "06:05:01" below a day; ticks every second), countdownLabel "Sign-up closes in",
-        taken int, places int, spotsLeft int (player places),
-        roster list<array{seed: int, name: string, rating: int|null}> (seeded entries, best first, at most 8), openSpots int,
-        preview array|null: {kind: 'groups'|'bracket', groups?: array<string, list<array{seed: int, name: string|null}>>,
-                             matches?: list<array{sides: list<array{seed: int|null, name: string|null}>}>, byes: list<int>,
-                             stageNote: string}  (null name = open spot)
-        cover string|null (data:image/jpeg;base64,…), url "esports.einundzwanzig.space/tournaments/1" (text, no scheme)
-      $stats  StreamStats::all()
-    Names are cleaned (PublicName::clean), not shortened or escaped: the view limits and Blade escapes.
+    Data contract: $tournament as in docs/plans/2026-09-27T1456-stream-tournament-slides.md (name, description, game,
+    mode, format, rated, where, startsAt, countdown, countdownLabel, taken, places, spotsLeft, cover, url);
+    $stats for the stats bar.
 --}}
+@use('App\Support\TwentyOne\Stream\RotationKit', 'K')
+@php
+    $t = is_array($tournament ?? null) ? $tournament : [];
+    $countdown = is_string($t['countdown'] ?? null) ? $t['countdown'] : '';
+    $spots = K::spots($t);
+    $cover = K::coverUri($t['cover'] ?? null);
+    $title = K::headline(K::text($t, 'name', 'Tournament'), [36, 30], 736, 2, K::MONO);
+    $titleStep = round($title['size'] * 1.2);
+    // First baseline: ascenders (0.8 em) start at y 116, below the LIVE corner (y < 112 for x > 1040).
+    $titleY = 116 + round($title['size'] * 0.8);
+    $rowY = $titleY + (count($title['lines']) - 1) * $titleStep + 44;
+    $game = K::text($t, 'game').(K::text($t, 'mode') === '' ? '' : ', '.K::text($t, 'mode'));
+    $facts = [
+        ['game', $game],
+        ['format', K::text($t, 'format')],
+        ['starts', K::text($t, 'startsAt')],
+        ['where', K::where($t).', '.mb_strtolower(K::ratedLabel($t))],
+    ];
+    $desc = K::wrap($t['description'] ?? '', K::MONO, 18, 720, 2);
+    $cd = K::countdownParts($countdown);
+    $cdText = $cd ? ($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'] : K::fit($countdown, K::MONO, 80, 720);
+    $cdSize = K::monoSize($cdText, 80, 720);
+    $note = $cd && $cd['days'] === 0 ? K::countdownNote($cd, $spots['full']) : null;
+    $bar = K::spotCells($spots['taken'], $spots['places'], 780, 460, 4);
+    $url = K::tournamentUrl($t);
+    $urlSize = K::monoSize($url, 20, 428);
+    $gameLines = K::wrap(K::text($t, 'game', 'Tournament'), K::MONO, 28, 400, 2);
+@endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
+@include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
-@if ($tournament['cover'] !== null)
-<image x="880" y="40" width="360" height="203" href="{{ $tournament['cover'] }}"/>
+@include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => 'upcoming tournament'])
+
+<g data-unit="cover" data-box="40 96 472 339">
+<rect x="40" y="96" width="432" height="243" fill="#16161A"/>
+@if ($cover)
+{{-- The cover once, as xlink:href (SVG 1.1, read by every librsvg): a second href would double the 43 kB data URI. --}}
+<image x="40" y="96" width="432" height="243" preserveAspectRatio="xMidYMid meet" xlink:href="{{ $cover }}"/>
+@else
+@foreach ($gameLines as $i => $line)
+<text x="256" y="{{ 227 - (count($gameLines) - 1) * 17 + $i * 34 }}" font-family="JetBrains Mono" font-weight="700" font-size="28" fill="#8B8B90" text-anchor="middle">{{ $line }}</text>
+@endforeach
 @endif
-<text x="40" y="80" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">{{ \App\Support\TwentyOne\Stream\PublicName::limit($tournament['name'], 36) }}</text>
-<text x="40" y="130" font-family="JetBrains Mono" font-size="22" fill="#FFFFFF">{{ $tournament['game'] }} · {{ $tournament['mode'] }} · {{ $tournament['format'] }} · {{ $tournament['where'] }}{{ $tournament['rated'] ? ' · Rated' : '' }}</text>
-<text x="40" y="170" font-family="JetBrains Mono" font-size="20" fill="#B8B2A7">{{ \App\Support\TwentyOne\Stream\PublicName::limit((string) $tournament['description'], 80) }}</text>
-<text x="40" y="240" font-family="JetBrains Mono" font-size="22" fill="#FFFFFF">{{ $tournament['status'] }} · {{ $tournament['countdownLabel'] }} {{ $tournament['countdown'] }}</text>
-<text x="40" y="280" font-family="JetBrains Mono" font-size="22" fill="#FFFFFF">Starts {{ $tournament['startsAt'] }} · Sign-up closes {{ $tournament['signupClosesAt'] }}</text>
-<text x="40" y="320" font-family="JetBrains Mono" font-size="22" fill="#FFFFFF">{{ $tournament['taken'] }}/{{ $tournament['places'] }} places · {{ $tournament['spotsLeft'] }} left · team size {{ $tournament['teamSize'] }}</text>
-<text x="40" y="380" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#F7931A">{{ $tournament['spotsLeft'] > 0 ? 'Sign up' : 'Watch it live' }}</text>
-<text x="40" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A">{{ $tournament['url'] }}</text>
+</g>
+@foreach ($title['lines'] as $i => $line)
+<text data-unit="title-{{ $i }}" data-box="503 {{ $titleY - $title['size'] + $i * $titleStep }} 1241 {{ $titleY + $i * $titleStep + 10 }}" x="504" y="{{ $titleY + $i * $titleStep }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $title['size'] }}" fill="#FFFFFF">{{ $line }}</text>
+@endforeach
+@foreach ($facts as $i => [$key, $value])
+@php($fy = $rowY + $i * 34)
+<rect x="504" y="{{ $fy - 24 }}" width="736" height="1" fill="#2A2A30"/>
+<text data-unit="fact-key-{{ $i }}" x="504" y="{{ $fy }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#8B8B90">{{ $key }}</text>
+<text data-unit="fact-{{ $i }}" data-box="599 {{ $fy - 20 }} 1241 {{ $fy + 6 }}" x="600" y="{{ $fy }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ K::fit($value === '' ? '-' : $value, K::MONO, 20, 640) }}</text>
+@endforeach
+
+@foreach ($desc as $i => $line)
+<text data-unit="desc-{{ $i }}" data-box="39 {{ 364 + $i * 26 }} 761 {{ 386 + $i * 26 }}" x="40" y="{{ 380 + $i * 26 }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $line }}</text>
+@endforeach
+
+@if ($countdown !== '')<text data-unit="cd-label" x="40" y="464" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#8B8B90">{{ K::fit(K::text($t, 'countdownLabel', 'Sign-up closes in'), K::MONO, 18, 720) }}</text>@endif
+<text data-unit="countdown" data-countdown="{{ $countdown }}" data-box="39 470 761 556" x="40" y="548" font-family="JetBrains Mono" font-weight="700" font-size="{{ $cdSize }}" fill="#F7931A">{{ $cdText }}</text>
+@if ($note)<text data-unit="cd-note" x="40" y="590" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#FFFFFF">{{ $note }}</text>@endif
+
+<text data-unit="spots-taken" x="780" y="464" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#8B8B90">{{ $spots['takenText'] }}</text>
+<text data-unit="spots-left" x="1240" y="464" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A" text-anchor="end">{{ $spots['leftText'] }}</text>
+<g data-unit="spots-bar">
+@foreach ($bar as $cell)
+@if ($cell['filled'])<rect x="{{ $cell['x'] }}" y="478" width="{{ $cell['w'] }}" height="28" fill="#F7931A"/>@else<rect x="{{ $cell['x'] + 1 }}" y="479" width="{{ $cell['w'] - 2 }}" height="26" fill="none" stroke="#6B6B72" stroke-width="2"/>@endif
+@endforeach
+</g>
+<rect x="780" y="522" width="460" height="80" fill="#F7931A"/>
+<text data-unit="cta" data-box="795 528 1225 564" x="796" y="556" font-family="JetBrains Mono" font-weight="700" font-size="30" fill="#17120A">{{ $spots['full'] ? 'Watch it live' : 'Sign up' }}</text>
+<text data-unit="url" data-box="795 570 1225 596" x="796" y="588" font-family="JetBrains Mono" font-weight="700" font-size="{{ $urlSize }}" fill="#17120A">{{ $url }}</text>
 </svg>

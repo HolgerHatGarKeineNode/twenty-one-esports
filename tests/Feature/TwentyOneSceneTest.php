@@ -223,7 +223,7 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
         ->and($svgs['b1'])->toContain('Nf3')
         ->and($svgs['c1'])->toContain('Nf3')
         ->and($svgs['a1'])->toContain('Pleb &lt;script')
-        ->and(array_filter(array_intersect_key($svgs, array_flip(RotationPlanner::TOURNAMENT_SCENES)), fn (string $svg): bool => ! str_contains($svg, 'Cup &lt;script&gt;')))->toBe([])
+        ->and(array_filter(array_intersect_key($svgs, array_flip(RotationPlanner::TOURNAMENT_SCENES)), fn (string $svg): bool => ! str_contains($svg, '&lt;script&gt;alert')))->toBe([])
         ->and($svgs['ta1'].$svgs['tb1'].$svgs['tc1'])->toContain($slide['countdown'])
         ->and($svgs['ta2'].$svgs['tb2'].$svgs['tc2'])->toContain('Seed &lt;b&gt;one')
         ->and(implode('', $svgs))->not->toContain('<b>one')

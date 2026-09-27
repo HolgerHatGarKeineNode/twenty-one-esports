@@ -359,4 +359,532 @@ final class RotationKit
     {
         return $row['w'] === null || $row['d'] === null || $row['l'] === null ? null : $row['w'].'/'.$row['d'].'/'.$row['l'];
     }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Tournament slides (resources/views/stream/rotation/t{a,b,c}{1,2}-*.blade.php). $t is the $tournament array of
+    // the plan's data contract; every reader below tolerates a missing or mistyped key.
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /** Longest cover data URI accepted (bytes); a 480x270 JPEG is about 43 kB as base64. */
+    private const COVER_MAX = 400_000;
+
+    /**
+     * The cover as an inline JPEG/PNG data URI, or null. Anything else (a URL, a file:// path, markup) is refused:
+     * rsvg-convert would read a local file behind an href while rendering.
+     */
+    public static function coverUri(mixed $uri): ?string
+    {
+        if (! is_string($uri) || strlen($uri) > self::COVER_MAX) {
+            return null;
+        }
+
+        return preg_match('#^data:image/(jpeg|png);base64,[A-Za-z0-9+/]+={0,2}$#', $uri) === 1 ? $uri : null;
+    }
+
+    /**
+     * $s cleaned and broken into at most $maxLines lines of at most $maxPx. What does not fit ends the last line with
+     * "…" after the last whole word that fits (a single word longer than a line is cut inside the word).
+     *
+     * @return list<string>
+     */
+    public static function wrap(?string $s, string $font, float $size, float $maxPx, int $maxLines): array
+    {
+        $words = explode(' ', self::clean($s));
+        if ($words === [''] || $maxLines < 1) {
+            return [];
+        }
+        $reserve = $font === self::MONO ? 1.0 : 1.04;
+        $lines = [];
+        $line = '';
+        $count = count($words);
+        for ($i = 0; $i < $count; $i++) {
+            $try = $line === '' ? $words[$i] : $line.' '.$words[$i];
+            if (self::width($try, $font, $size) * $reserve <= $maxPx) {
+                $line = $try;
+
+                continue;
+            }
+            if (count($lines) === $maxLines - 1) {
+                $lines[] = self::lastLine($line, array_slice($words, $i), $font, $size, $maxPx);
+
+                return $lines;
+            }
+            if ($line !== '') {
+                $lines[] = $line;
+            }
+            $line = self::fit($words[$i], $font, $size, $maxPx);
+            if ($line !== $words[$i]) {
+                // The word alone is too long for a line: it was cut, so nothing after it can follow on this line.
+                $lines[] = $line;
+                if (count($lines) === $maxLines || $i === $count - 1) {
+                    return $lines;
+                }
+                $line = '';
+            }
+        }
+        if ($line !== '') {
+            $lines[] = $line;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The last line of wrap(): $line plus as many of $rest as fit with "…" after them.
+     *
+     * @param  list<string>  $rest
+     */
+    private static function lastLine(string $line, array $rest, string $font, float $size, float $maxPx): string
+    {
+        $reserve = $font === self::MONO ? 1.0 : 1.04;
+        foreach ($rest as $word) {
+            $try = $line === '' ? $word : $line.' '.$word;
+            if (self::width($try.'…', $font, $size) * $reserve > $maxPx) {
+                break;
+            }
+            $line = $try;
+        }
+        if ($line === '') {
+            return self::fit(implode(' ', $rest), $font, $size, $maxPx);
+        }
+        while (self::width($line.'…', $font, $size) * $reserve > $maxPx && str_contains($line, ' ')) {
+            $line = substr($line, 0, (int) strrpos($line, ' '));
+        }
+
+        return self::width($line.'…', $font, $size) * $reserve > $maxPx ? self::fit($line.' x', $font, $size, $maxPx) : rtrim($line, ' ,.;:').'…';
+    }
+
+    /**
+     * A headline in at most $maxLines lines: the first size of $sizes (largest first) at which it fits whole, else
+     * the last size, shortened with "…". Unbounded when it has every character, JetBrains Mono otherwise.
+     *
+     * @param  list<float|int>  $sizes
+     * @return array{lines: list<string>, size: float, font: string}
+     */
+    public static function headline(?string $s, array $sizes, float $maxPx, int $maxLines, ?string $font = null): array
+    {
+        $clean = self::clean($s);
+        $font ??= $clean === '' ? self::DISPLAY : self::nameFont($clean);
+        $lines = [];
+        $size = 0.0;
+        foreach ($sizes as $size) {
+            $size = (float) $size;
+            $lines = self::wrap($clean, $font, $size, $maxPx, $maxLines);
+            if (implode(' ', $lines) === $clean) {
+                break;
+            }
+        }
+
+        return ['lines' => $lines, 'size' => $size, 'font' => $font];
+    }
+
+    /**
+     * The countdown string of the data contract ("6d 06:05:01", "06:05:01", "42:10") as parts, or null when it does
+     * not parse. Hours of 24 and more are carried into days.
+     *
+     * @return array{days: int, h: int, m: int, s: int, hms: string}|null
+     */
+    public static function countdownParts(mixed $text): ?array
+    {
+        if (! is_string($text) || ! preg_match('/^\s*(?:(\d{1,4})\s*d(?:ays?)?\s*)?(?:(\d{1,3}):)?(\d{1,2}):(\d{2})\s*$/', $text, $m)) {
+            return null;
+        }
+        $days = (int) $m[1];
+        $h = $m[2] === '' ? 0 : (int) $m[2];
+        $days += intdiv($h, 24);
+        $h %= 24;
+        $min = (int) $m[3];
+        $sec = (int) $m[4];
+        if ($min > 59 || $sec > 59) {
+            return null;
+        }
+
+        return ['days' => $days, 'h' => $h, 'm' => $min, 's' => $sec, 'hms' => sprintf('%02d:%02d:%02d', $h, $min, $sec)];
+    }
+
+    /**
+     * The line above the big hh:mm:ss: "6 days" / "1 day", and on the last day the urgency the audience should
+     * feel ("Last day to sign up", "Last hour to sign up"). A full tournament gets no urgency line.
+     *
+     * @param  array{days: int, h: int, m: int, s: int, hms: string}|null  $parts
+     */
+    public static function countdownNote(?array $parts, bool $full): ?string
+    {
+        return match (true) {
+            $parts === null => null,
+            $parts['days'] > 0 => $parts['days'].' '.($parts['days'] === 1 ? 'day' : 'days'),
+            $full, $parts['hms'] === '00:00:00' => null,
+            $parts['h'] > 0 => 'Last day to sign up',
+            default => 'Last hour to sign up',
+        };
+    }
+
+    /**
+     * Text in fixed Unbounded cells (0.9375 em a digit, 0.375 em a colon, other characters their own advance), from
+     * $x0 or ending at $x0. The width depends only on the shape of the text, never on the digits, so a countdown that
+     * ticks every second does not jitter. Same shape as clock(), for partials/clock.
+     *
+     * @return array{digits: list<array{ch: string, x: float}>, size: float, width: float, x0: float, x1: float}
+     */
+    public static function digitCells(string $text, float $x0, float $size, bool $alignEnd = false): array
+    {
+        $cells = [];
+        $width = 0.0;
+        foreach (mb_str_split($text) as $ch) {
+            $w = (ctype_digit($ch) ? 0.9375 : ($ch === ':' ? 0.375 : (self::UNBOUNDED[mb_ord($ch)] ?? 600) / 1000)) * $size;
+            $cells[] = [$ch, $w];
+            $width += $w;
+        }
+        $cx = $alignEnd ? $x0 - $width : $x0;
+        $start = $cx;
+        $digits = [];
+        foreach ($cells as [$ch, $w]) {
+            $digits[] = ['ch' => $ch, 'x' => round($cx + $w / 2, 1)];
+            $cx += $w;
+        }
+
+        return ['digits' => $digits, 'size' => $size, 'width' => $width, 'x0' => $start, 'x1' => $cx];
+    }
+
+    /**
+     * Places taken and left, with the site's wording.
+     *
+     * @param  array<string, mixed>  $t
+     * @return array{taken: int, places: int, left: int, full: bool, takenText: string, leftText: string}
+     */
+    public static function spots(array $t): array
+    {
+        $places = is_int($t['places'] ?? null) && $t['places'] > 0 ? $t['places'] : 1;
+        $taken = is_int($t['taken'] ?? null) ? max(0, min($places, $t['taken'])) : 0;
+        $left = is_int($t['spotsLeft'] ?? null) ? max(0, min($places, $t['spotsLeft'])) : $places - $taken;
+
+        return [
+            'taken' => $taken, 'places' => $places, 'left' => $left, 'full' => $left === 0,
+            'takenText' => $taken.' of '.$places.' spots taken',
+            'leftText' => $left === 0 ? 'Sign-up is full' : $left.' '.($left === 1 ? 'spot left' : 'spots left'),
+        ];
+    }
+
+    /**
+     * The site's spots bar: one cell per place up to $max places, beyond that one bar filled in proportion.
+     *
+     * @return list<array{x: float, w: float, filled: bool}>
+     */
+    public static function spotCells(int $taken, int $places, float $x, float $w, float $gap, int $max = 32): array
+    {
+        $places = max(1, $places);
+        $taken = max(0, min($places, $taken));
+        if ($places > $max) {
+            $filled = round($w * $taken / $places, 1);
+
+            $bar = [];
+            if ($filled >= 1) {
+                $bar[] = ['x' => $x, 'w' => $filled, 'filled' => true];
+            }
+            if ($w - $filled >= 1) {
+                $bar[] = ['x' => $x + $filled, 'w' => $w - $filled, 'filled' => false];
+            }
+
+            return $bar;
+        }
+        $cw = ($w - $gap * ($places - 1)) / $places;
+        $cells = [];
+        for ($i = 0; $i < $places; $i++) {
+            $cells[] = ['x' => round($x + $i * ($cw + $gap), 1), 'w' => round($cw, 1), 'filled' => $i < $taken];
+        }
+
+        return $cells;
+    }
+
+    /**
+     * "EA Sports FC 26, 1v1, Two Stage": the parts that are set, cleaned.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function tournamentMeta(array $t): string
+    {
+        $parts = [];
+        foreach (['game', 'mode', 'format'] as $key) {
+            $v = self::clean(is_string($t[$key] ?? null) ? $t[$key] : '');
+            if ($v !== '') {
+                $parts[] = $v;
+            }
+        }
+
+        return implode(', ', $parts);
+    }
+
+    /**
+     * "Rated" only when the contract says so; anything else is "Casual".
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function ratedLabel(array $t): string
+    {
+        return ($t['rated'] ?? false) === true ? 'Rated' : 'Casual';
+    }
+
+    /**
+     * Where it is played, "Online" when missing.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function where(array $t): string
+    {
+        $where = self::clean(is_string($t['where'] ?? null) ? $t['where'] : '');
+
+        return $where === '' ? 'Online' : $where;
+    }
+
+    /**
+     * A plain string field of the contract, cleaned, or $fallback.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function text(array $t, string $key, string $fallback = ''): string
+    {
+        $v = self::clean(is_string($t[$key] ?? null) ? $t[$key] : '');
+
+        return $v === '' ? $fallback : $v;
+    }
+
+    /**
+     * The tournament's address as text, without a scheme; only host/path characters, else the site's address.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function tournamentUrl(array $t): string
+    {
+        $url = preg_replace('#^https?://#i', '', self::text($t, 'url')) ?? '';
+
+        return preg_match('#^[A-Za-z0-9.-]+(/[A-Za-z0-9._/-]*)?$#', $url) === 1 && strlen($url) <= 80 ? $url : 'esports.einundzwanzig.space';
+    }
+
+    /** The largest whole JetBrains Mono size <= $maxSize at which $s fits $maxPx (never below 12). */
+    public static function monoSize(string $s, float $maxSize, float $maxPx): float
+    {
+        $len = max(1, mb_strlen($s));
+
+        return max(12.0, min($maxSize, floor($maxPx / ($len * 0.6))));
+    }
+
+    /**
+     * The seeding list: rows with a printable name, at most $limit, and how many more there are.
+     *
+     * @param  array<string, mixed>  $t
+     * @return array{rows: list<array{seed: int, name: string, rating: ?int}>, more: int, open: int}
+     */
+    public static function roster(array $t, int $limit): array
+    {
+        $rows = [];
+        foreach (array_values(is_array($t['roster'] ?? null) ? $t['roster'] : []) as $i => $row) {
+            if (! is_array($row) || ! is_string($row['name'] ?? null) || self::clean($row['name']) === '') {
+                continue;
+            }
+            $rows[] = [
+                'seed' => is_int($row['seed'] ?? null) && $row['seed'] > 0 ? $row['seed'] : $i + 1,
+                'name' => $row['name'],
+                'rating' => is_int($row['rating'] ?? null) ? $row['rating'] : null,
+            ];
+        }
+        $open = is_int($t['openSpots'] ?? null) ? max(0, $t['openSpots']) : self::spots($t)['left'];
+
+        return ['rows' => array_slice($rows, 0, $limit), 'more' => max(0, count($rows) - $limit), 'open' => $open];
+    }
+
+    /**
+     * The projected groups (kind 'groups') or first-round pairings (kind 'bracket') laid out as boxes in a grid of
+     * $cols columns inside ($x, $y, $w, $h). Row pitch is the largest <= $maxPitch at which every box fits; when even
+     * $minPitch does not fit, whole rows of boxes are dropped (counted in 'hidden'), and when one box alone is too
+     * tall its last rows fold into "+N more". Boxes are as tall as their content, not stretched.
+     *
+     * A group title is "Group A" (string keys of one to three characters are used as given, others count A, B, …).
+     * A row with name null is an open spot. Coordinates: 'titleY' and each row's 'y' are text baselines.
+     *
+     * @param  array<string, mixed>|null  $preview
+     * @return array{kind: ?string, boxes: list<array{x: float, y: float, w: float, h: float, title: ?string, titleY: float, rows: list<array{seed: ?int, name: ?string, y: float}>, more: int, moreY: float}>, pitch: float, size: float, hidden: int, byes: list<int>, stageNote: string, pad: float}
+     */
+    public static function previewBoxes(?array $preview, float $x, float $y, float $w, float $h, int $cols, float $gap, float $titleH, float $maxPitch, float $minPitch = 26, float $pad = 12): array
+    {
+        $kind = in_array($preview['kind'] ?? null, ['groups', 'bracket'], true) ? $preview['kind'] : null;
+        $items = [];
+        if ($kind === 'groups') {
+            $i = 0;
+            foreach ((is_array($preview['groups'] ?? null) ? $preview['groups'] : []) as $key => $members) {
+                $label = is_string($key) && ! is_numeric($key) && mb_strlen(self::clean($key)) >= 1 && mb_strlen(self::clean($key)) <= 3
+                    ? self::clean($key) : ($i < 26 ? chr(65 + $i) : (string) ($i + 1));
+                $items[] = ['title' => 'Group '.$label, 'rows' => self::slots(is_array($members) ? $members : [])];
+                $i++;
+            }
+        } elseif ($kind === 'bracket') {
+            foreach ((is_array($preview['matches'] ?? null) ? $preview['matches'] : []) as $match) {
+                $sides = is_array($match) && is_array($match['sides'] ?? null) ? array_slice($match['sides'], 0, 2) : [];
+                $items[] = ['title' => null, 'rows' => self::slots($sides)];
+            }
+        }
+        $kept = [];
+        foreach ($items as $item) {
+            if ($item['rows'] !== []) {
+                $kept[] = $item;
+            }
+        }
+        $items = $kept;
+        $byes = [];
+        foreach ((is_array($preview['byes'] ?? null) ? $preview['byes'] : []) as $bye) {
+            if (is_int($bye)) {
+                $byes[] = $bye;
+            }
+        }
+        $out = ['kind' => $kind, 'boxes' => [], 'pitch' => $maxPitch, 'size' => 0.0, 'hidden' => 0, 'byes' => $byes,
+            'stageNote' => self::clean(is_string($preview['stageNote'] ?? null) ? $preview['stageNote'] : ''), 'pad' => $pad];
+        if ($items === []) {
+            return $out;
+        }
+        $tH = $kind === 'groups' ? $titleH : 0.0;
+        // Pairings: one wide column when every pairing fits at a pitch of $minPitch + 4 (names get the whole width).
+        if ($kind === 'bracket' && count($items) * (2 * ($minPitch + 4) + 2 * $pad) + (count($items) - 1) * $gap <= $h) {
+            $cols = 1;
+        }
+        $maxRows = 1;
+        foreach ($items as $item) {
+            $maxRows = max($maxRows, count($item['rows']));
+        }
+        $cols = max(1, $cols);
+        $n = count($items);
+        $pitch = $maxPitch;
+        while (true) {
+            $gridRows = (int) ceil($n / $cols);
+            $boxH = ($h - $gap * ($gridRows - 1)) / $gridRows;
+            $pitch = min($maxPitch, ($boxH - $tH - 2 * $pad) / $maxRows);
+            if ($pitch >= $minPitch || $n <= $cols) {
+                break;
+            }
+            $n = max($cols, $n - $cols);
+        }
+        $shownRows = $maxRows;
+        if ($pitch < $minPitch) {
+            $pitch = $minPitch;
+            $shownRows = max(1, (int) floor(($boxH - $tH - 2 * $pad) / $minPitch));
+        }
+        $bw = ($w - $gap * ($cols - 1)) / $cols;
+        $contentRows = min($maxRows, $shownRows);
+        $bh = $tH + 2 * $pad + $contentRows * $pitch;
+        $boxes = [];
+        foreach (array_slice($items, 0, $n) as $i => $item) {
+            $bx = round($x + ($i % $cols) * ($bw + $gap), 1);
+            $by = round($y + intdiv($i, $cols) * ($bh + $gap), 1);
+            $fold = count($item['rows']) > $shownRows;
+            $keep = $fold ? $shownRows - 1 : count($item['rows']);
+            $rows = [];
+            foreach (array_slice($item['rows'], 0, $keep) as $j => $row) {
+                $rows[] = $row + ['y' => round($by + $pad + $tH + $j * $pitch + $pitch * 0.68, 1)];
+            }
+            $boxes[] = [
+                'x' => $bx, 'y' => $by, 'w' => round($bw, 1), 'h' => round($bh, 1),
+                'title' => $item['title'], 'titleY' => round($by + $pad + $tH * 0.62, 1), 'rows' => $rows,
+                'more' => $fold ? count($item['rows']) - $keep : 0,
+                'moreY' => round($by + $pad + $tH + $keep * $pitch + $pitch * 0.68, 1),
+            ];
+        }
+
+        return ['boxes' => $boxes, 'pitch' => round($pitch, 1), 'size' => floor(min(20, $pitch * 0.56)), 'hidden' => count($items) - $n] + $out;
+    }
+
+    /**
+     * Seats of a group or a match: seed int|null, name string|null (null or unprintable = open spot).
+     *
+     * @param  array<mixed>  $seats
+     * @return list<array{seed: ?int, name: ?string}>
+     */
+    private static function slots(array $seats): array
+    {
+        $rows = [];
+        foreach ($seats as $seat) {
+            if (! is_array($seat)) {
+                continue;
+            }
+            $name = is_string($seat['name'] ?? null) && self::clean($seat['name']) !== '' ? $seat['name'] : null;
+            $rows[] = ['seed' => is_int($seat['seed'] ?? null) ? $seat['seed'] : null, 'name' => $name];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The heading of the preview: the contract's stageNote ("Groups if sign-up closed now", "Round 1 if sign-up closed
+     * now"), else the same wording derived from the kind.
+     *
+     * @param  array{kind: ?string, stageNote: string}  $p
+     */
+    public static function previewHeading(array $p): string
+    {
+        if ($p['stageNote'] !== '') {
+            return $p['stageNote'];
+        }
+
+        return $p['kind'] === 'bracket' ? 'Round 1 if sign-up closed now' : 'Groups if sign-up closed now';
+    }
+
+    /**
+     * The line under the preview: the byes and how many groups or matches did not fit ('' when neither).
+     *
+     * @param  array{kind: ?string, hidden: int, byes: list<int>}  $p
+     */
+    public static function previewFoot(array $p): string
+    {
+        $parts = [];
+        if ($p['byes'] !== []) {
+            $parts[] = (count($p['byes']) === 1 ? 'Bye for seed ' : 'Byes for seeds ').implode(', ', array_slice($p['byes'], 0, 8)).(count($p['byes']) > 8 ? ', …' : '');
+        }
+        if ($p['hidden'] > 0) {
+            $parts[] = '+'.$p['hidden'].' more '.($p['kind'] === 'groups' ? ($p['hidden'] === 1 ? 'group' : 'groups') : ($p['hidden'] === 1 ? 'match' : 'matches'));
+        }
+
+        return $parts === [] ? '' : implode('. ', $parts).'.';
+    }
+
+    /**
+     * The "Who plays" list as the site shows it, in $slots rows: the seeded players, then (while there is room) the
+     * invitation "Your spot?" on the next seed, open seats as "Open spot", and "+N more open spots" for the rest.
+     * With no free row left the invitation carries the count itself ('more' on the invite row).
+     *
+     * @param  array<string, mixed>  $t
+     * @return list<array{kind: string, seed: ?int, name: ?string, rating: ?int, more: int}>
+     */
+    public static function whoPlays(array $t, int $slots): array
+    {
+        $roster = self::roster($t, $slots);
+        $rows = [];
+        $seed = 0;
+        foreach ($roster['rows'] as $r) {
+            $rows[] = ['kind' => 'player', 'seed' => $r['seed'], 'name' => $r['name'], 'rating' => $r['rating'], 'more' => 0];
+            $seed = max($seed, $r['seed']);
+        }
+        $open = $roster['open'];
+        if ($open === 0 || count($rows) >= $slots) {
+            return $rows;
+        }
+        $rest = $open - 1;
+        $free = $slots - count($rows) - 1;
+        // No room after the invite row: it carries the count of the remaining open spots itself.
+        $rows[] = ['kind' => 'invite', 'seed' => $seed + 1, 'name' => null, 'rating' => null, 'more' => $rest > 0 && $free === 0 ? $rest : 0];
+        if ($rest > 0 && $free === 0) {
+            return $rows;
+        }
+        $list = $rest <= $free ? $rest : $free - 1;
+        for ($i = 1; $i <= $list; $i++) {
+            $rows[] = ['kind' => 'open', 'seed' => $seed + 1 + $i, 'name' => null, 'rating' => null, 'more' => 0];
+        }
+        if ($rest > $list) {
+            $rows[] = ['kind' => 'more', 'seed' => null, 'name' => null, 'rating' => null, 'more' => $rest - $list];
+        }
+
+        return $rows;
+    }
+
+    /** "+9 more open spots" / "+1 more open spot". */
+    public static function moreOpen(int $n): string
+    {
+        return '+'.$n.' more open '.($n === 1 ? 'spot' : 'spots');
+    }
 }
