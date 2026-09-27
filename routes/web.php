@@ -4,6 +4,7 @@ use App\Games\GameRegistry;
 use App\Http\Controllers\BadgeImageController;
 use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
+use App\Http\Controllers\LnurlPayController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
@@ -127,8 +128,9 @@ Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')-
 
 /*
  * Tournaments (P8b): the list, one tournament with its bracket, the draw,
- * sign-up (logged in), and the director desk (the tournament's directors:
- * gate `direct-tournament`, checked again in every action).
+ * sign-up (logged in), the director desk (the tournament's directors:
+ * gate `direct-tournament`, checked again in every action), and the prize
+ * pool settings (P9: its organizer and admins, gate `manage-tournament`).
  */
 Route::livewire('tournaments', 'pages::tournaments.index')->name('tournaments.index');
 Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNumber('tournament')->name('tournaments.show');
@@ -138,6 +140,8 @@ Route::get('tournaments/{tournament}/calendar.ics', TournamentCalendarController
 Route::livewire('tournaments/{tournament}/tv', 'pages::tournaments.tv')->whereNumber('tournament')->name('tournaments.tv');
 Route::middleware('auth')->group(function () {
     Route::livewire('tournaments/{tournament}/signup', 'pages::tournaments.signup')->whereNumber('tournament')->name('tournaments.signup');
+    Route::livewire('tournaments/{tournament}/pool', 'pages::tournaments.pool')->whereNumber('tournament')
+        ->middleware('can:manage-tournament,tournament')->name('tournaments.pool');
     Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')
         ->middleware('can:direct-tournament,tournament')->name('tournaments.director');
 });
@@ -214,6 +218,12 @@ Route::prefix('cards/{locale}')
 Route::get('.well-known/nostr.json', NostrJsonController::class)
     ->withoutMiddleware('web')
     ->name('nostr.nip05');
+
+// The league's Lightning address pool@<host> (P9, LUD-06/16 with NIP-57 zaps); public JSON, no session.
+Route::withoutMiddleware('web')->middleware('throttle:invoices')->group(function () {
+    Route::get('.well-known/lnurlp/{username}', [LnurlPayController::class, 'metadata'])->where('username', '[a-z0-9._-]{1,64}')->name('lnurl.pay');
+    Route::get('lnurlp/{username}/callback', [LnurlPayController::class, 'callback'])->where('username', '[a-z0-9._-]{1,64}')->name('lnurl.callback');
+});
 
 // Search engines (P14): robots.txt and the sitemap; public, no session.
 Route::get('robots.txt', RobotsController::class)

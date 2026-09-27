@@ -384,6 +384,70 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | League wallet, prize pools and payouts (P9, NIP "Pots and zap targets")
+    |--------------------------------------------------------------------------
+    |
+    | One wallet, two NIP-47 (Nostr Wallet Connect) connections, both
+    | `nostr+walletconnect://...` URIs in `.env` only:
+    |
+    | - `nwc_uri` can pay, with a budget limit set in the wallet. Only the
+    |   payout runner uses it (App\Support\Payouts\PayoutRunner); nothing
+    |   else can even name its type.
+    | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`,
+    |   `get_balance` for zaps and sponsor invoices into the pots.
+    |
+    | Fail closed: without `nwc_uri` no payout is attempted, without
+    | `nwc_receive_uri` no invoice is made; the pages say so. The secrets
+    | never reach a log, an exception, a response, a Livewire payload or an
+    | event (App\Support\Wallet\NwcConnection).
+    |
+    | Keys (hex or nsec, `.env` only): `lnurl_nsec` signs the zap receipts
+    | (9735) of the league's own LNURL endpoint, `sponsor_nsec` the zap
+    | requests of sponsor invoices. `pool_npub` is the pool key's public key,
+    | named by every pot's `zap` tag; the pool key itself stays offline and
+    | publishes a kind 0 whose `lud16` is `<lnurl_username>@<APP_URL host>`.
+    |
+    | `invoice_networks`: BOLT11 prefixes accepted from wallets and Lightning
+    | addresses (`bc` mainnet; tests use `bcrt`). `lnurl_insecure_hosts`:
+    | `host:port` pairs whose Lightning addresses are fetched over plain
+    | http without the public-address check; empty everywhere but the
+    | integration suite's local fake. `nwc_insecure_relays`: the same for
+    | NIP-47 relays (`host:port` reached over ws:// without the check);
+    | ignored in production. Every other NWC relay is wss:// on port 443 of a
+    | DNS name whose addresses are all public, and the socket is pinned to
+    | the address that was checked.
+    |
+    | `open_invoices_per_user` / `open_invoices_per_ip`: unpaid, unexpired
+    | invoices of the zap panel and the LNURL endpoint one requester may
+    | hold at once (an event's shared network gets the larger cap).
+    |
+    */
+
+    'wallet' => [
+        'nwc_uri' => env('ESPORTS_NWC_URI'),
+        'nwc_receive_uri' => env('ESPORTS_NWC_RECEIVE_URI'),
+        'nwc_timeout_seconds' => (float) env('ESPORTS_NWC_TIMEOUT', 30),
+        'lnurl_nsec' => env('ESPORTS_LNURL_NSEC'),
+        'sponsor_nsec' => env('ESPORTS_SPONSOR_NSEC'),
+        'pool_npub' => env('ESPORTS_POOL_NPUB'),
+        'lnurl_username' => 'pool',
+        // Zap amounts the league's endpoint accepts, in sats.
+        'min_sats' => 1,
+        'max_sats' => 10_000_000,
+        'invoice_expiry_seconds' => 900,
+        'invoice_networks' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_INVOICE_NETWORKS', 'bc'))))),
+        'lnurl_insecure_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_LNURL_INSECURE_HOSTS', ''))))),
+        'nwc_insecure_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_NWC_INSECURE_RELAYS', ''))))),
+        // How long one payout attempt may hold a payout (Lightning address, invoice, payment).
+        'payout_lease_seconds' => 180,
+        // Invoices anyone may open per IP and minute (zap panel and LNURL callback).
+        'invoices_per_minute' => 10,
+        'open_invoices_per_user' => 5,
+        'open_invoices_per_ip' => 20,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Relays the league publishes to
     |--------------------------------------------------------------------------
     |

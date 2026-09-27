@@ -22,14 +22,16 @@ director forfeits unrated, disinterested directors, Rocket League 1v1 as a playe
 **revision 8** (2026-09-26): rank badges from rated ladders only, the badge artwork URL, the profile
 badge list written by the app, share posts; **revision 8.1** (2026-09-27): rated Rocket League
 series in tournaments whose players report, with the pairing challenge signed by the league;
-**revision 8.2** (2026-09-27): EA Sports FC 26 and 27 in the game registry). Not
+**revision 8.2** (2026-09-27): EA Sports FC 26 and 27 in the game registry;
+**revision 9** (2026-09-27): the prize pool of a tournament as the league runs it, from the zap into
+the pool or the tournament's own wallet to the Payout `2157` of every winner). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8 and 8.1 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1 and 9 (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -50,6 +52,73 @@ adopts revision 8. The rules marked "rev. 8.1" concern tournaments only; like th
 apply to every tournament whose first `31923` version the league signs after it adopts revision 8.1.
 A tournament published earlier keeps what its `content` said about rating: under revision 7 the
 Rocket League series of a tournament whose players report were casual, and they stay casual.
+The rules marked "rev. 9" concern tournament prize pools only; a pool opened after the league adopts
+revision 9 follows them, whatever revision its tournament was published under.
+
+### Changelog of revision 9 (2026-09-27)
+
+The prize pool of a tournament as the league runs it (app phase P9). No new kind: the pool is the
+`31923`, a contribution is a NIP-57 zap (`9734`/`9735`), a prize is a Payout (`2157`). Checked against
+a fake NIP-47 wallet on a local `nak` relay (the app's integration suite), not yet on rnostr, strfry
+and khatru, and without printed examples (see [Open points](#open-points)).
+
+- **Opening and closing the pool** ([Prize pool funding](#prize-pool-funding)): the pool opens with a
+  new `31923` version that adds the pool key's `zap` tag and states the split in `content`. It closes
+  at the admin's check after the tournament finished: a last version moves `end` to the moment of the
+  check and drops `zap`. Receipts with `created_at` from then on count for the league reserve (check
+  5 of Counting the pool), so a tournament that ends before its planned `end` settles at once, and
+  rule 28's "`end` has passed" holds for every tournament payout.
+- **The split**: percent per place, 50 / 30 / 20 unless the organizer sets another (1 to 8 places,
+  whole percents, never more for a lower place, 100 in total). It can change while sign-up is open,
+  each change a new `31923` version, and never after sign-up closed: players sign up under it. Places
+  come from the bracket (a knock-out: by how late a side was knocked out, the final before the match
+  for third place; a table: its ranks); tied sides share the percentages of the places they hold
+  together. A side's share is split **equally among its roster**, the players it was registered or
+  drawn with, substitutes included. Every division rounds down to whole sats, and what is left goes
+  to the reserve at the check. This supersedes "the players who played" in the NIP-57 row of
+  [Reused NIPs](#reused-nips): who played is not on Nostr for every format.
+- **Attribution of contributions**: the league's LNURL endpoint takes a zap request that names a
+  tournament with an open pool by `a` (the tournament's pot) or no pot at all (the reserve). It refuses
+  an `e` for now (the reserve's zap goal and match fees are not run yet: refusing is better than
+  counting a payment in the wrong pot), a request that names two pots, one whose `amount` differs
+  from the payment, and amounts that are not whole sats. The invoice's description hash is SHA-256 of
+  the request exactly as the client sent it, and the receipt carries that text as `description`.
+  A visitor without Nostr pays through a request the league signs with a **throwaway key**; a
+  sponsor through one the **sponsor desk key** signs with `content` `Sponsor: <name>`. A payment
+  through the endpoint without a zap request goes to the reserve and gets no receipt.
+- **Receipts** (`9735`, signed by the LNURL server key) carry `p` (the pool key), `P` (the request's
+  author), the request's `a`, `e` and `k`, `bolt11`, `description`, `preimage`, `created_at` = the
+  settle time, and go to the league relays. The request's own `relays` are not written to: the
+  endpoint does not open connections to relays a stranger names.
+- **Payout** ([Payout (`2157`)](#payout-2157)), tournament settlement: tags `a` (the tournament, with
+  the league relay), `p`, `bolt11`, `preimage`, `alt`; `content` empty; `created_at` the moment the
+  league saw the preimage. The invoice comes from the player's Lightning address (LUD-16 on LUD-06),
+  and the league pays it only if its amount is the prize and its description hash is SHA-256 of the
+  address's metadata. A player without a Lightning address keeps the payout open until they add one;
+  nothing is published for it until it is paid. Payouts are plain Lightning payments, not zaps.
+- **Exactly once** (league practice, not checkable from outside): one payout per player and
+  tournament with a fixed key per (tournament, recipient, place); a payment attempt holds the payout
+  exclusively; once an invoice is stored, no second invoice is paid while the first might still be,
+  the wallet is asked about the stored payment hash first (NIP-47 `lookup_invoice`), and a new invoice
+  replaces an expired one only after the wallet refused the payment outright.
+- **NIP-47** in practice: every request carries an `expiration` (a wallet must not act on a request
+  that arrived after the league stopped waiting for it); `nip44_v2` when the wallet's info event lists
+  it, else `nip04`. The paying connection is used for payouts only, a receive-only one for invoices,
+  lookups and the balance.
+- **A pot in the tournament's own wallet** ([Prize pool funding](#prize-pool-funding)): instead of the
+  league's pot, a tournament's pot can be the balance of a wallet of its own, connected over NIP-47.
+  Its `31923` then has **no `zap` tag** (the league's endpoint refuses zaps that name it) and its
+  `content` says where the pot is held. The pot is the wallet's `get_balance`, read by the league
+  every two minutes and shown with the time of the read; there are no receipts, so it is the
+  league's claim only. The prizes are paid from that wallet, split from its balance at the check
+  less 1 % (at least 10 sats) held back for routing fees; what is left stays in that wallet. The
+  Payouts (`2157`) are the same as for a league pot.
+- **Cleanup of the chess Result Response**: the revision note of 2026-09-27 in
+  [Game Record](#game-record-64-reused-from-nip-64) removed `2153` from chess games; the places it
+  listed now say so themselves (the kind table, [Result Response](#result-response-2153), step 5 of
+  [Queue pairings](#queue-pairings), the chess paragraph of [League Attestation](#league-attestation-2154),
+  the state machine and rule 14). The relay-proof examples of a chess `2153` stay as signed, marked
+  as superseded.
 
 ### Changelog of revision 8.2 (2026-09-27)
 
@@ -355,7 +424,7 @@ by this NIP.
 | `2150` | regular | Challenge | acting captain of the challenger lineup, or the challenging player (solo game); rev. 8.1: the league key for the pairing of a tournament whose players report |
 | `2151` | regular | Challenge Answer | the challenged side (`accepted`, `declined`) or the challenger side (`withdrawn`): an acting captain, or the player in a solo game |
 | `2152` | regular | Result Report | acting captain of either lineup |
-| `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report; in chess the other player of the game |
+| `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report (series only: a chess game has none, see [Game Record](#game-record-64-reused-from-nip-64)) |
 | `2154` | regular | League Attestation | league key |
 | `2155` | regular | Tournament Draw (optional) | league key |
 | `64` | regular | Game Record, **reused from NIP-64** (chess) | a player of the game |
@@ -813,8 +882,9 @@ roster is a reason to dispute.
 
 ### Result Response (`2153`)
 
-Required tags: `e` report (or chess game record), `e` challenge, `status`, `alt`, the `a` references
-of the challenge. For a roster side, a roster player of that side responds. With
+Required tags: `e` report, `e` challenge, `status`, `alt`, the `a` references of the challenge. A
+Result Response answers a series report only, never a chess game record (see the revision note in
+[Game Record](#game-record-64-reused-from-nip-64)). For a roster side, a roster player of that side responds. With
 `disputed`, `content` should give a short public reason. Evidence never goes into the event.
 
 ### Game Record (`64`, reused from NIP-64)
@@ -872,7 +942,7 @@ loses on time; the league decides that with `resolution` `forfeit`.
 ### League Attestation (`2154`)
 
 Signed by the league key. Required tags: `e` for every event of the chain it decides on
-(challenge, accepting answer, and every report or game record and response, if there are any), `a`
+(challenge, accepting answer, and every report, response or game record, if there are any), `a`
 ladder, `a` challenger and challenged lineup with roles whenever the challenge has lineup sides,
 `resolution`, `winner`, `elo` for both rated entities, `prev` (except for the first attestation of a
 season), `alt`.
@@ -917,7 +987,8 @@ any report or game record (a whole-team no-show) carries the gate rows of the ac
 on one ladder: the two lineups of a series, or two players.
 
 **Chess.** Every chess game is attested on the player ladder of its mode with one `board` row, copied
-from the confirmed game record, and the two players as roster entries by side. A **team match over
+from the league's own record of the game (the counted game record, if it exists, carries the same
+PGN), and the two players as roster entries by side. A **team match over
 `n` boards has no attestation of its own**: it produces `n` board attestations, each also carrying
 the two lineup `a` references with their roles and the players' lineup roles, chained by `prev` like
 any other. The team result is derived from them: the sum of board points (win 1, draw ½, loss 0) of
@@ -926,9 +997,9 @@ points are a draw. The team result moves no rating. If not a single board was pl
 did not show up), the league attests the challenge once with the two lineups, `resolution`
 `forfeit` or `void`, `winner`, and neither `board` nor `elo`; that attestation is unrated. A board
 attestation's `challenger` and `challenged` are the players of that board by side, not by color.
-Each attestation references the challenge, the accepting answer and the counted game record with its
-response; for correspondence the final move is the record, and its `e` chain leads to every other
-move.
+Each attestation references the challenge, the accepting answer and the counted game record, if it
+exists (no Result Response answers a chess game); for correspondence the final move is the record,
+and its `e` chain leads to every other move.
 
 **No-show.** When a lineup does not show up for an accepted match, nobody signs a report. The league
 decides the match with `resolution` `forfeit` and `winner` set to the lineup that showed up,
@@ -1137,7 +1208,7 @@ target of the prize pool (see [Prize pool funding](#prize-pool-funding)).
 | `location` | the tournament page |
 | `r` | the rules page |
 | `a` | the league calendar (`31924:<league>:tournaments`), and the ladder the matches are rated on; rev. 7: the ladder only in a rated tournament, see below |
-| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below |
+| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes |
 | `t` | hashtags, e.g. `esports` and the game |
 | `alt` | NIP-31 text |
 
@@ -1183,6 +1254,8 @@ that zaps it anyway follows NIP-57 and pays the author's lightning address, the 
 league's LNURL endpoint refuses a zap request whose `a` names a tournament without `zap` in its current
 version, so no receipt arises and nothing is counted. The league adds `zap` with a new version when the
 pool opens; receipts count from then on, under the rules of [Counting the pool](#prize-pool-funding).
+Rev. 9: at the admin's check after the end the league closes the pool with a last version, `end` at
+the check and no `zap` ([Closing the pool](#prize-pool-funding)).
 
 **Seeding.** Clan lineups are seeded by their rating on the tournament's ladder at registration
 close, mix teams follow in the order of the draw. The rating is public (`32152`), so the seeding can
@@ -1213,9 +1286,10 @@ The match flow is the same as for a challenge, with the league choosing the side
    `start` a few seconds ahead and `respond_by` shortly after it.
 4. **Answer.** The other app signs `2151` `accepted`. If it does not answer before `respond_by` (tab
    closed, signer offline) the challenge expires unrated; its number stays unused.
-5. From here on it is a solo game: the final game record (`64`), the response (`2153`) and the
-   attestation (`2154`) with four `e` references, `gate` rows without opponent lists, `clan` rows and
-   the match number.
+5. From here on it is a solo game: the final game record (`64`) and the attestation (`2154`), which
+   the league signs when the game ends, with `e` to the challenge, the answer and the counted game
+   record, `gate` rows without opponent lists, `clan` rows and the match number. No Result Response
+   (`2153`) follows a chess game.
 
 Rematches and "invite a friend who is online" are ordinary challenges without `pairing`, and the full
 trust gate applies. A login through nostr-mill with Google signs through a remote signer (NIP-46),
@@ -1910,7 +1984,13 @@ player's Lightning address. Two occasions:
   blocks, fees and bounties. There are no payouts during a season.
 - **Tournament settlement:** after a tournament's `end` and an admin's check of that tournament, **one
   payout per player and tournament** for the prize: `a` = the tournament, no genesis. Tournament
-  prizes do not wait for the season end.
+  prizes do not wait for the season end. Rev. 9: the check itself moves `end` to its own moment
+  ([Closing the pool](#prize-pool-funding)); the prize is the player's share by
+  [the split](#prize-pool-funding); tags `a` (with the league relay), `p`, `bolt11`, `preimage`, `alt`
+  in this order, `content` empty, `created_at` the moment the league saw the preimage. The invoice
+  comes from the player's Lightning address (LUD-16/LUD-06) and is paid only if its amount is the prize
+  and its description hash is SHA-256 of the address's metadata; the payment is a plain Lightning
+  payment, not a zap.
 
 | tag | meaning |
 |---|---|
@@ -2124,8 +2204,8 @@ drawn from one version or one attestation, so a posted card keeps showing what h
 | open | 2151 `withdrawn` | acting captain, challenger lineup | withdrawn | none |
 | open | time | league | expired | `respond_by` has passed; no event is signed for this |
 | accepted | 2152 | acting captain, either lineup | reported | `created_at >= ` chosen `start`; scores valid for the game and `bo`; roster valid |
-| accepted | 64 final record (chess, per game or board) | a player of that game | reported (that game) | `created_at >= ` chosen `start`; PGN valid and legal; for correspondence the last move of a valid chain |
-| reported (game) | 2153 | the other player of that game | confirmed / disputed (that game) | `e` points at the counted final record; each board is attested on its own |
+| accepted | the game ends on the server (chess, per game or board) | league | attested (that game) | mate, a draw by rule, a flag, a resignation, an abandoned game or a draw both players agreed to; `2154` `admin` (`forfeit` for a director's no-show), `e` to the counted final record if it exists; each board is attested on its own; no `2153` |
+| accepted | 64 final record (chess, per game or board) | a player of that game | unchanged | the players' signature over the server's PGN, not a report: `created_at >= ` chosen `start`; PGN valid and legal; for correspondence the last move of a valid chain |
 | reported | time | league | attested (`admin`) | the league's confirmation window passed without a response; the league decides from its own record |
 | reported | 2153 `confirmed` | acting captain of the other lineup | confirmed | `e` points at the latest report of this challenge |
 | reported | 2153 `disputed` | acting captain of the other lineup | disputed | as above |
@@ -2231,8 +2311,8 @@ Per kind:
     entry of a 1v1 player side (rev. 7.1) is the side's `p` of the challenge, with role `player`; no
     pubkey appears twice in the event.
 14. **2153**: the author is an acting captain of the lineup (or a roster player of the roster side)
-    that did not author the report; the report is the latest one for the challenge. For a chess game record: the author is the other
-    player of that game, and the record is the counted final record of the game.
+    that did not author the report; the report is the latest one for the challenge. A `2153` never
+    answers a chess game record (revision note 2026-09-27 in [Game Record](#game-record-64-reused-from-nip-64)).
 15. **64** (in a challenge): `e` challenge accepted; the `a` references equal the challenge's; one
     `p` `white` and one `p` `black`, and the author is one of them; in a team match `board` is between
     1 and `boards`, White and Black are active lineup players of the sides the board parity gives
@@ -2342,7 +2422,8 @@ Per kind:
     block counts it.
 28. **2157** (rev. 5): signed by the league key; either one `e` to a genesis whose season has ended
     (season settlement: blocks, fees, bounties), or no genesis and one `a` to a tournament whose `end`
-    has passed (tournament settlement); one `p`;
+    has passed (tournament settlement; rev. 9: the `end` of its newest version, which the admin's check
+    set); one `p`;
     `bolt11` and `preimage` present, and `SHA-256(preimage)` is the invoice's payment hash; every
     referenced block names that player as a winner and is not voided by a counted `void-block` label;
     every referenced challenge had fees for such a block; every `a` is a bounty or tournament the
@@ -2640,6 +2721,61 @@ the winners' `lud16` are the other half (receipts only where the winners' LNURL 
 NIP-57). A NIP-75 zap goal (`9041`) linked from the tournament with `goal` would add a progress bar in
 NIP-75 clients; it needs a target amount and is not used in V1.
 
+**Closing the pool (rev. 9).** The pool of a tournament closes at the admin's check after the
+tournament finished (see [Payout](#payout-2157)): the league publishes a last `31923` version whose
+`end` is the moment of the check and which has no `zap`. From then on the endpoint refuses zaps to the
+tournament; a receipt of an invoice made before and paid after the check has a `created_at` after
+`end` and counts for the reserve. The pool is what the counted receipts hold at that moment.
+
+**The split (rev. 9).** The tournament's `content` states it once the pool is open: percent per place,
+50 / 30 / 20 unless the organizer set another (1 to 8 places, whole percents, never more for a lower
+place, 100 in total), changeable only while sign-up is open (each change a new version). At the check:
+
+1. **Places** come from the bracket: in a knock-out final stage, the winner first, then everyone of
+   that stage by how late their last match was (the final before the match for third place in the
+   same step, a win before a loss); sides out in the same step share a place (the two losing
+   semi-finalists without a match for third place are both third, the next place is fifth). A table
+   (round robin, Swiss) ranks by its points and tie-breaks. Only the final stage is placed.
+2. **Ties** share: sides tied on a place share the percentages of all places they hold together.
+3. **Rosters**: a side's share is split equally among the players it was registered or drawn with,
+   substitutes included.
+4. **Rounding**: every division rounds down to whole sats; the rest, and the shares of places nobody
+   holds, go to the reserve.
+
+A reader who has the bracket's results (the attestations and director results of the tournament) and
+the counted receipts can recompute every prize; the Payouts (`2157`) show what was paid.
+
+**Who pays and when (rev. 9).** An admin checks the tournament after it finished and approves the
+payouts; organizers set the pool up (target, split, sponsors) but neither approve nor pay. Each prize
+is paid through the league's paying NWC connection to the player's Lightning address; a player
+without one keeps their payout open, visible on the tournament page, until they add one.
+The address paid is the one the admin approved: if the player's profile (kind `0`) names another
+one by the time of the payment, nothing is paid and the payout is open again until an admin
+approves the new address, so a hijacked profile cannot redirect a prize.
+
+**A pot in the tournament's own wallet (rev. 9).** An organizer or admin may hold a tournament's pot
+in a wallet of its own instead, connected with a NIP-47 connection string that may read the balance
+(`get_balance`) and pay (`pay_invoice`); the league checks both before it accepts the connection and
+never publishes it. Its relay has to be a `wss://` address on a public host name: the league does not
+connect to a relay on a private or loopback address. A league pot that has a paid or still unpaid
+invoice cannot move to an own wallet (its receipts would count for a pot nobody pays from). Such a pot:
+
+- is **not zapped**: the tournament's `31923` has no `zap` tag, and the league's endpoint refuses a
+  zap request that names the tournament. People add sats to that wallet directly, through its
+  owner; the league's pages show no Lightning address for it;
+- is **the wallet's balance**, read by the league every two minutes and on demand. Pages show it with
+  the time of the read; a failed read keeps the last value with its time, and a pot that was never read
+  is not shown. There are no receipts, so nobody can recount it from Nostr: it is the league's claim;
+- is **split** like a league pot (above) from the balance read at the check, less 1 % (at least
+  10 sats) held back for the routing fees that wallet pays itself. What is left stays in that wallet,
+  not in the league reserve;
+- is **paid** from that wallet, with the same rules and Payouts (`2157`) as a league pot. The
+  preimage in each `2157` is still the proof that a prize was paid.
+
+The tournament's `content` says which kind of pot it has: "… of the pot, held in the tournament's own
+wallet and paid from it after 1 % is held back for routing fees; …" instead of "… of the pool; … the
+rest goes to the league reserve."
+
 ## Pots and zap targets (rev. 5)
 
 The league has **one wallet** with two NWC connections (NIP-47): a receive-only one, which the LNURL
@@ -2870,7 +3006,7 @@ wanted protected player events would have to accept them from their authenticate
 | 56 | reports (`1984`) that can lower a trust rank |
 | 52 | tournaments as time-based calendar events (`31923`) in the league calendar (`31924`); rev. 5 also bounties (`d` = `bounty/<slug>`) and season announcements (`d` = `season/<season>`); no calendar event per match (the answer's `start` already is the schedule) |
 | 64 | chess game records and correspondence moves (kind `64`, PGN) |
-| 57 | zaps into a tournament's prize pool (receipts from the league's own LNURL endpoint, see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16`. Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
+| 57 | zaps into a tournament's prize pool (receipts from the league's own LNURL endpoint, see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
 | 58 | rank badges (rev. 5): one `30009` definition per player, game and mode, replaced on every rank change, one `8` award, listed by the player in `10008`; signed by the badge key, see [Rank badges](#rank-badges-rev-5) |
 | 65 | the league key publishes a relay list (`10002`) so clients find the ladder |
 | 75 | rev. 5: the league reserve is a zap goal (`9041`), the zap target of the reserve pot; tournaments still use no goal |
@@ -3536,6 +3672,9 @@ carries the clan `a` only (see [Revision 6](#revision-6-a-roster-invitation-and-
 ```
 
 #### Result Response (`2153`) to a game record
+
+Superseded (revision note 2026-09-27 in [Game Record](#game-record-64-reused-from-nip-64)): a chess
+game gets no Result Response any more. Kept as it was signed, because it is part of the relay proof.
 
 ```json
 {
@@ -5254,6 +5393,15 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 ```
 
 ## Open points
+
+- **Revision 9 has no signed example yet.** The pool's `31923` versions, the zap receipts and the
+  Payouts (`2157`) of a tournament are checked against a local `nak serve` relay with a fake NIP-47
+  wallet in the app's integration suite, not yet on rnostr, strfry and khatru. Also open: the reserve's
+  zap goal (`9041`) and the match-fee and bounty pots (the endpoint refuses their zaps until the league
+  runs them); season settlement; whether a payout to a Lightning address that supports NIP-57 should be
+  a zap; how long an open payout (no Lightning address) waits before its prize goes to the reserve.
+  A pot in a tournament's own wallet is checked only against the in-process fake wallet, not over a
+  relay, and its sponsors have no receipts (they pay that wallet directly).
 
 - **Revision 8 has no signed example yet.** The badge definitions, awards, profile lists and share
   posts of revision 8 are tested against a local `nak serve` relay in the app's browser test, not yet

@@ -261,3 +261,14 @@ Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlappin
  * Horizon's metrics dashboard stays empty without regular snapshots.
  */
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+
+/*
+ * The league wallet (P9): paid pool invoices are settled and receipted, and
+ * unfinished payouts continued (never started) every minute; once a day the
+ * wallet's balance is compared with the pots. Both do nothing without the
+ * wallet connections. Every two minutes the pots held in tournaments' own
+ * wallets are read (their balance is the pot).
+ */
+Schedule::command('wallet:sync')->everyMinute()->withoutOverlapping();
+Schedule::command('wallet:reconcile')->dailyAt('04:21')->withoutOverlapping();
+Schedule::command('wallet:read-pots')->everyTwoMinutes()->withoutOverlapping();

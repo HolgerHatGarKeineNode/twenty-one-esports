@@ -16,6 +16,7 @@ use App\Support\Tournaments\TournamentDeadlines;
 use Carbon\CarbonImmutable;
 use Database\Factories\TournamentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -65,6 +66,18 @@ use Illuminate\Support\Carbon;
  * @property int|null $noshow_minutes
  * @property int|null $report_hours
  * @property int|null $response_minutes
+ * @property int|null $prize_target_sats the organizer's goal for the pool (P9); shown, never paid from by itself
+ * @property list<int>|null $prize_split percent per place, null = {@see self::DEFAULT_SPLIT}
+ * @property Carbon|null $pool_opened_at the 31923 names the pool key in `zap` since then
+ * @property Carbon|null $pool_closed_at receipts after it count for the reserve (the admin check at the end)
+ * @property Carbon|null $payouts_approved_at
+ * @property int|null $payouts_approved_by_id
+ * @property string|null $pot_source `league` | `wallet` | null (no pot)
+ * @property string|null $pot_nwc_uri the tournament's own NWC connection (encrypted at rest, never shown)
+ * @property string|null $pot_lud16 the Lightning address of that wallet, if its connection string names one
+ * @property int|null $pot_balance_sats last balance read from the own wallet
+ * @property Carbon|null $pot_balance_at when that balance was read
+ * @property string|null $pot_balance_error why the latest read failed (the last good value stays)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -76,10 +89,15 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, TournamentBan> $bans
  * @property-read NostrEvent|null $event
  * @property-read NostrEvent|null $drawEvent
+ * @property-read Collection<int, TournamentSponsor> $sponsors
+ * @property-read Collection<int, TournamentPayout> $payouts
  */
 #[Fillable(['name', 'description', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
     'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address',
-    'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes'])]
+    'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes',
+    'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
+    'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error'])]
+#[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */
@@ -93,6 +111,9 @@ class Tournament extends Model
 
     /** Substitutes a lineup may bring on top of the mode's size. */
     public const SUBSTITUTES = 2;
+
+    /** Percent of the pool per place when the organizer sets no split (open question 10). */
+    public const DEFAULT_SPLIT = [50, 30, 20];
 
     protected function casts(): array
     {
@@ -115,6 +136,14 @@ class Tournament extends Model
             'noshow_minutes' => 'integer',
             'report_hours' => 'integer',
             'response_minutes' => 'integer',
+            'prize_target_sats' => 'integer',
+            'prize_split' => 'array',
+            'pool_opened_at' => 'datetime',
+            'pool_closed_at' => 'datetime',
+            'payouts_approved_at' => 'datetime',
+            'pot_nwc_uri' => 'encrypted',
+            'pot_balance_sats' => 'integer',
+            'pot_balance_at' => 'datetime',
         ];
     }
 
@@ -196,6 +225,48 @@ class Tournament extends Model
     public function resultEntries(): HasMany
     {
         return $this->hasMany(TournamentResultEntry::class)->orderByDesc('id');
+    }
+
+    /**
+     * @return HasMany<TournamentSponsor, $this>
+     */
+    public function sponsors(): HasMany
+    {
+        return $this->hasMany(TournamentSponsor::class)->orderBy('id');
+    }
+
+    /**
+     * @return HasMany<TournamentPayout, $this>
+     */
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(TournamentPayout::class)->orderBy('place')->orderBy('name');
+    }
+
+    /**
+     * Percent of the pool per place, first place first (P9).
+     *
+     * @return list<int>
+     */
+    public function prizeSplit(): array
+    {
+        return $this->prize_split === null ? self::DEFAULT_SPLIT : array_map(intval(...), $this->prize_split);
+    }
+
+    /** Zaps and sponsor invoices are taken: the pool is open and not yet closed. */
+    public function isPoolOpen(): bool
+    {
+        return $this->pool_opened_at !== null && $this->pool_closed_at === null;
+    }
+
+    public const POT_LEAGUE = 'league';
+
+    public const POT_WALLET = 'wallet';
+
+    /** The pot lives in the tournament's own NWC wallet, not in the league's. */
+    public function hasOwnWallet(): bool
+    {
+        return $this->pot_source === self::POT_WALLET;
     }
 
     /**

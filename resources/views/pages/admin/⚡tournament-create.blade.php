@@ -2,11 +2,14 @@
 
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Livewire\Concerns\EditsPrizePot;
 use App\Livewire\TournamentFormatChooser;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
+use App\Support\Tournaments\TournamentRuleViolation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -22,9 +25,16 @@ use Livewire\Attributes\Title;
  *
  * The chooser and the results section are one island: changing an input
  * re-renders only them (and the summary island), never the page. Creating
- * saves a draft; sign-up, the prize pot and publishing follow in P8b/P9.
+ * saves a draft; sign-up and publishing follow on the tournament page.
+ *
+ * The prize pot is optional and off by default (P9 scope addition,
+ * App\Livewire\Concerns\EditsPrizePot): a draft with a pot is created
+ * only when the pot is valid too (a wallet connection is checked live), and
+ * it opens when the tournament is published.
  */
 new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFormatChooser {
+    use EditsPrizePot;
+
     public string $name = '';
 
     public string $description = '';
@@ -38,6 +48,12 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         $this->startsAt = now()->addWeek()->timezone(LeagueTime::zone())->format('Y-m-d').'T19:00';
         $this->options = FormatOptions::defaults($this->profile())->toArray();
+        $this->fillPot(null);
+    }
+
+    protected function potTournament(): ?Tournament
+    {
+        return null;
     }
 
     public function chooserCreator(): ?User
@@ -80,27 +96,40 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         $profile = $this->profile();
 
-        $tournament = Tournament::query()->create([
-            'name' => $this->name,
-            'description' => trim($this->description) === '' ? null : trim($this->description),
-            'game' => $profile->game,
-            'mode' => $profile->mode,
-            'format' => $format,
-            'options' => $this->chosenOptions()->toArray(),
-            'capacity' => $this->count(),
-            'starts_at' => $startsAt,
-            'time_window' => $this->window,
-            'on_site' => $this->stationLimit() !== null,
-            'stations' => $this->stationLimit(),
-            'times' => $this->chosenTimes(),
-            'results_mode' => TournamentResultsMode::from($this->resultsMode),
-            'status' => TournamentStatus::Draft,
-            'created_by_id' => auth()->id(),
-            ...$this->chosenDeadlines(),
-        ]);
+        // The draft and its pot are one step: a refused pot creates nothing.
+        try {
+            $tournament = DB::transaction(function () use ($profile, $format, $startsAt): Tournament {
+                $tournament = Tournament::query()->create([
+                    'name' => $this->name,
+                    'description' => trim($this->description) === '' ? null : trim($this->description),
+                    'game' => $profile->game,
+                    'mode' => $profile->mode,
+                    'format' => $format,
+                    'options' => $this->chosenOptions()->toArray(),
+                    'capacity' => $this->count(),
+                    'starts_at' => $startsAt,
+                    'time_window' => $this->window,
+                    'on_site' => $this->stationLimit() !== null,
+                    'stations' => $this->stationLimit(),
+                    'times' => $this->chosenTimes(),
+                    'results_mode' => TournamentResultsMode::from($this->resultsMode),
+                    'status' => TournamentStatus::Draft,
+                    'created_by_id' => auth()->id(),
+                    ...$this->chosenDeadlines(),
+                ]);
 
-        if ($tournament->results_mode === TournamentResultsMode::Director) {
-            $tournament->directors()->attach(User::query()->whereKey($this->directorIds)->pluck('id')->all(), ['added_by_id' => auth()->id()]);
+                if ($tournament->results_mode === TournamentResultsMode::Director) {
+                    $tournament->directors()->attach(User::query()->whereKey($this->directorIds)->pluck('id')->all(), ['added_by_id' => auth()->id()]);
+                }
+
+                if ($this->potEnabled && ! $this->savePot($tournament)) {
+                    throw new TournamentRuleViolation('pot', $this->potError);
+                }
+
+                return $tournament;
+            });
+        } catch (TournamentRuleViolation) {
+            return;
         }
 
         session()->flash('status', __(':name was created as a draft.', ['name' => $tournament->name]));
@@ -152,6 +181,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
         @include('pages.admin.partials.tournament-deadlines')
 
+        @include('pages.admin.partials.prize-pot', ['potTournament' => null, 'potSave' => null])
+
         <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:flex-row lg:items-center lg:gap-4 lg:px-6 lg:py-5">
             @island(name: 'summary')
                 @php
@@ -162,7 +193,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                     <b class="text-sm">{{ $this->format->label() }}@if ($this->format === \App\Enums\TournamentFormat::Swiss), {{ trans_choice(':count round|:count rounds', $this->evaluation->swissRounds) }}@endif,
                         {{ $summaryProfile->entersTeams() ? trans_choice(':count team|:count teams', $this->count()) : trans_choice(':count player|:count players', $this->count()) }},
                         {{ __('about :duration', ['duration' => \App\Support\Tournaments\Estimator::format($summaryRow->total(), $summaryProfile)]) }}</b>
-                    <span class="text-xs text-ink-2">{{ __('Next: sign-up, prize money and sponsors on the tournament page. The format can change until sign-up closes.') }}</span>
+                    <span class="text-xs text-ink-2">{{ __('Next: sign-up and sponsors on the tournament page. The format can change until sign-up closes.') }}</span>
                 </span>
             @endisland
             <span class="hidden grow lg:block"></span>

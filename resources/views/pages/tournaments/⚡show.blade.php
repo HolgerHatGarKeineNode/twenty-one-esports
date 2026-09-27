@@ -38,6 +38,11 @@ use Livewire\Component;
  * seconds (only the TV view, pages::tournaments.tv, listens on the
  * tournament's Reverb channel); a new entry drops into the grid when it
  * arrives.
+ *
+ * The prize pool (P9): the pot, the split and the sponsors come from the
+ * league's pool (App\Support\Prizes\LeaguePrizePool behind
+ * TournamentPrizePool); the zap panel, the payouts and the organizer's and
+ * admin's links are their own component (components/⚡tournament-pool).
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public Tournament $tournament;
@@ -647,6 +652,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     @if ($this->pool !== null)
         @include('pages.tournaments.partials.prize-pool', ['pool' => $this->pool])
     @endif
+    @if ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true)))
+        <livewire:tournament-pool :tournament="$tournament" :key="'pool-'.$tournament->id" />
+    @endif
 
     {{-- How it works, and the facts --}}
     <section aria-labelledby="how-h" class="grid gap-8 px-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12 lg:px-12">
@@ -691,7 +699,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 [__('How are seeds set?'), \Illuminate\Support\Str::ucfirst($teams
                     ? __('by Elo at sign-up close, equal Elo by earlier sign-up; mix teams after the lineups, in draw order')
                     : __('by Elo at sign-up close, equal Elo by earlier sign-up')).'.'],
-                {{-- The prize pool question joins with P9, when the page can show the pool itself. --}}
+                ...($this->pool !== null ? [[__('How is the prize pool paid out?'), __('When the tournament has ended, an admin checks it and closes the pool. The pool is split by place as shown; tied places share their percentages and a team’s share is split equally among its roster. Each player’s share goes to the Lightning address in their Nostr profile, and the league publishes every payment on Nostr with its proof.')]] : []),
             ] as [$question, $answer])
                 <details class="group rounded-md bg-card">
                     <summary class="flex min-h-12 cursor-pointer items-center gap-3 px-4 text-[13px] font-bold">

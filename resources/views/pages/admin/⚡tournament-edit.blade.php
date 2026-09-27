@@ -2,6 +2,7 @@
 
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Livewire\Concerns\EditsPrizePot;
 use App\Livewire\TournamentFormatChooser;
 use App\Models\Tournament;
 use App\Models\TournamentBan;
@@ -31,8 +32,14 @@ use Livewire\Attributes\Layout;
  * draw only the name and the start change; the rest is locked with the
  * reason. The rules live in App\Support\Tournaments\TournamentEditor and
  * TournamentModeration; every step lands in the moderation log shown here.
+ *
+ * The optional prize pot has its own section and save (P9 scope addition,
+ * App\Livewire\Concerns\EditsPrizePot): its split follows the sign-up
+ * rules, its wallet connection is never shown.
  */
 new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFormatChooser {
+    use EditsPrizePot;
+
     public Tournament $tournament;
 
     public string $name = '';
@@ -67,6 +74,33 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
         $this->tournament = $tournament;
         $this->fillFromTournament();
+        $this->fillPot($tournament);
+    }
+
+    protected function potTournament(): ?Tournament
+    {
+        return $this->tournament;
+    }
+
+    public function savePotSettings(): void
+    {
+        Gate::authorize('manage-tournament', $this->tournament);
+
+        // Each saved pot may sign a new 31923: once every 2 s per tournament, like the other edits.
+        $throttle = 'tournament-edit:'.$this->tournament->id;
+
+        if (RateLimiter::tooManyAttempts($throttle, 1)) {
+            $this->potError = __('Saved a moment ago. Wait :seconds s and save again.', ['seconds' => max(1, RateLimiter::availableIn($throttle))]);
+
+            return;
+        }
+
+        if ($this->savePot($this->tournament)) {
+            RateLimiter::hit($throttle, 2);
+            $this->tournament = $this->tournament->refresh();
+            $this->fillPot($this->tournament);
+            $this->potNotice = __('Prize pot saved.');
+        }
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -454,6 +488,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 <span class="hidden grow lg:block"></span>
                 <x-button wire:click="save" class="shrink-0" data-test="edit-save">{{ __('Save changes') }}</x-button>
             </div>
+
+            @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => 'savePotSettings'])
         @endif
 
         <section id="signups" aria-labelledby="signups-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="moderation">

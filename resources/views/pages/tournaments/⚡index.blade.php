@@ -17,9 +17,9 @@ use Livewire\Component;
  * Tournaments (Tournaments.dc.html; before Block 0 the head of
  * TournamentsPrelaunch.dc.html): the next tournament open for sign-up, every
  * published tournament, and the formats in one line each. Drafts never show
- * here. The artboard's pool amounts and payout box follow with P9; its line
- * "rated tournament games mine blocks" is outdated (user, 2026-09-26:
- * tournaments never mine).
+ * here. Tournaments with a prize pot carry its chip (P9, <x-prize-chip>);
+ * the artboard's line "rated tournament games mine blocks" is outdated
+ * (user, 2026-09-26: tournaments never mine).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -90,6 +90,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                 <span class="text-xs text-ink-2">{{ __('Next tournament') }}</span>
                 <h2 id="next-h" class="m-0 font-display text-[26px] font-bold break-words"><a href="{{ route('tournaments.show', $next) }}" class="text-ink hover:text-ink">{{ $next->name }}</a></h2>
                 <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · <x-league-time :at="$next->starts_at" data-test="next-tournament-start" />@if (($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($next, (string) config('esports.preseason.display_timezone'))) !== null) · <span data-test="open-end">{{ $openEnd }}</span>@endif</p>
+                <x-prize-chip :tournament="$next" class="h-7 text-[13px]" />
                 <div class="flex flex-col gap-1.5 pt-2">
                     <span class="text-[13px]">{{ __(':taken of :places places taken', ['taken' => $places['taken'], 'places' => $places['places']]) }}</span>
                     <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $places['places'] > 0 ? min(100, (int) round(100 * $places['taken'] / $places['places'])) : 0 }}%"></span></span>
@@ -112,7 +113,10 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             <ul class="m-0 flex list-none flex-col p-0">
                 @foreach ($this->tournaments as $tournament)
                     <li class="flex flex-col gap-1 border-t border-hairline py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-4" wire:key="t-{{ $tournament->id }}" data-test="tournament-item">
-                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold sm:w-[30%]"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>
+                        <span class="flex min-w-0 flex-col gap-1.5 sm:w-[30%]">
+                            <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>
+                            <x-prize-chip :tournament="$tournament" class="sm:ml-[58px]" />
+                        </span>
                         <x-league-time :at="$tournament->starts_at" class="text-ink-2 sm:w-[22%]" />
                         <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
                         <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>

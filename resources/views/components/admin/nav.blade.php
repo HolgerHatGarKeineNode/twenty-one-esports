@@ -2,8 +2,8 @@
 
 {{--
     Admin sub-navigation from AdminDisputes.dc.html / AdminDispute.dc.html.
-    Built pages link; the ones of later phases (payouts P9,
-    settings) are shown muted and not clickable yet.
+    Built pages link; the ones of later phases (settings) are shown muted
+    and not clickable yet.
 --}}
 @php
     $open = \App\Models\SeriesMatch::query()->openCase()->count();
@@ -11,7 +11,7 @@
         ['status', __('Status'), route('admin.status'), null],
         ['disputes', __('Disputes'), route('admin.disputes'), $open],
         ['tournaments', __('Tournaments'), route('admin.tournaments'), null],
-        ['payouts', __('Payouts'), null, null],
+        ['payouts', __('Payouts'), route('admin.payouts'), null],
         ['seasons', __('Seasons'), route('admin.season'), null],
         ['events', __('Weekly events'), route('admin.events'), null],
         ['trust', __('Trust'), route('admin.trust'), null],

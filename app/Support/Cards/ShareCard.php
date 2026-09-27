@@ -382,6 +382,12 @@ final class ShareCard
         $taken = (int) $this->facts['taken'];
         $places = max(1, (int) $this->facts['places']);
         $this->c->text(__(':taken of :places spots taken', ['taken' => $taken, 'places' => $places]), 'mono-bold', $px, $x, $y - 18, Canvas::INK);
+
+        // The prize pot on the right of the same line (P9), when the tournament has one.
+        if (($this->facts['pot'] ?? null) !== null) {
+            $pot = __(':sats sats prize pot', ['sats' => self::sats((int) $this->facts['pot'])]);
+            $this->c->text($pot, 'mono-bold', $px, $x + $width - $this->c->width($pot, 'mono-bold', $px), $y - 18, Canvas::ORANGE);
+        }
         $cells = min($places, 48);
         $gap = $cells > 24 ? 3 : 6;
         $cell = ($width - $gap * ($cells - 1)) / $cells;

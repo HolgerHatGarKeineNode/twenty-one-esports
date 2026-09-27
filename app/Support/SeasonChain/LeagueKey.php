@@ -51,7 +51,36 @@ final class LeagueKey
         return self::fromSecret(config('esports.badges.nsec'));
     }
 
-    private static function fromSecret(mixed $secret): ?self
+    /**
+     * The LNURL server key (`esports.wallet.lnurl_nsec`, NIP "Prize pool
+     * funding"): signs only the zap receipts (9735) of the league's own LNURL
+     * endpoint. Null without a valid secret (no invoice is made then).
+     */
+    public static function lnurl(): ?self
+    {
+        return self::fromSecret(config('esports.wallet.lnurl_nsec'));
+    }
+
+    /**
+     * The sponsor desk key (`esports.wallet.sponsor_nsec`): signs only the
+     * zap requests (9734) behind sponsor invoices. Null without a valid secret.
+     */
+    public static function sponsorDesk(): ?self
+    {
+        return self::fromSecret(config('esports.wallet.sponsor_nsec'));
+    }
+
+    /**
+     * A fresh key for one anonymous zap request (NIP "Who pays how": a
+     * visitor without Nostr pays an invoice whose zap request was signed with
+     * a throwaway key). Its secret is dropped with the object.
+     */
+    public static function throwaway(): self
+    {
+        return self::fromSecret(bin2hex(random_bytes(32))) ?? self::throwaway();
+    }
+
+    private static function fromSecret(#[\SensitiveParameter] mixed $secret): ?self
     {
         $hex = NostrKeys::secretToHex(is_string($secret) ? $secret : null);
 
@@ -73,6 +102,20 @@ final class LeagueKey
     public function pubkey(): string
     {
         return $this->signer->pubkey;
+    }
+
+    /**
+     * Sign only: nothing is stored or published (a zap request goes to the
+     * LNURL endpoint, not to a relay).
+     *
+     * @param  list<list<string>>  $tags
+     */
+    public function sign(int $kind, array $tags, string $content, int $createdAt): SignedEvent
+    {
+        $event = (new Event)->setKind($kind)->setTags($tags)->setContent($content)->setCreatedAt($createdAt);
+
+        return SignedEvent::fromInput($this->signer->sign($event))
+            ?? throw new RuntimeException('The key produced a malformed event.');
     }
 
     /**

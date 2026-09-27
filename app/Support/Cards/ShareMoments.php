@@ -14,6 +14,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
@@ -94,7 +95,7 @@ final class ShareMoments
      * is, when it starts and how many places are taken. Raw values; the card
      * translates them when it draws.
      *
-     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: string|null}
+     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null}
      */
     public static function tournamentInvite(Tournament $tournament): array
     {
@@ -111,6 +112,8 @@ final class ShareMoments
             'places' => $places['places'],
             // The cover's file name, not just whether there is one: a new cover file draws a new card.
             'cover' => ($cover = app(GameRegistry::class)->coverPath($tournament->game)) === null ? null : basename($cover),
+            // The prize pot as the tournament page shows it (P9); null without an open pot.
+            'pot' => $tournament->pool_opened_at === null ? null : app(PrizePool::class)->potSats($tournament),
         ];
     }
 

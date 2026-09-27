@@ -7,6 +7,7 @@ use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
+use swentel\nostr\Key\Key;
 
 /**
  * P15: the real stack (NOT Pest\Browser's own in-process LaravelHttpServer
@@ -43,6 +44,12 @@ final class Stack
 
     public readonly FakeBitcoin $bitcoin;
 
+    public readonly FakeNwc $nwc;
+
+    public readonly string $lnurlSecret;
+
+    public readonly string $poolSecret;
+
     public readonly string $reverbAppId;
 
     public readonly string $reverbAppKey;
@@ -72,6 +79,9 @@ final class Stack
         $this->baseUrl = 'http://127.0.0.1:'.$this->appPort;
         $this->relayUrl = 'ws://127.0.0.1:'.$this->relayPort;
         $this->bitcoin = new FakeBitcoin(self::freePort());
+        $this->nwc = new FakeNwc(self::freePort());
+        $this->lnurlSecret = bin2hex(random_bytes(32));
+        $this->poolSecret = bin2hex(random_bytes(32));
         $this->reverbAppId = 'integration-'.bin2hex(random_bytes(4));
         $this->reverbAppKey = 'integration-key-'.bin2hex(random_bytes(6));
         $this->reverbAppSecret = bin2hex(random_bytes(16));
@@ -145,6 +155,21 @@ final class Stack
     }
 
     /**
+     * P9: the fake wallet on the relay and the players' fake Lightning
+     * addresses, started by the first test that needs them (the payout
+     * flow), so every other test runs against the stack it ran against
+     * before P9. The app server and queue worker know the wallet's
+     * connection URIs from the boot on; nothing calls them until then.
+     */
+    public function wallet(): FakeNwc
+    {
+        $this->boot();
+        $this->nwc->start($this->relayUrl);
+
+        return $this->nwc;
+    }
+
+    /**
      * Points THIS PHP process's own DB/cache connections at the same SQLite
      * file and the same cache table the real app server and queue worker
      * use, and its own `app.url`/esports config to match — so a throwaway
@@ -179,6 +204,7 @@ final class Stack
             'esports.trust.nsec' => $this->trustSecret,
             'esports.bitcoin.api' => $this->bitcoin->baseUrl(),
             'esports.bitcoin.confirmations' => 1,
+            ...$this->walletConfig(),
             'broadcasting.default' => 'reverb',
             'broadcasting.connections.reverb.key' => $this->reverbAppKey,
             'broadcasting.connections.reverb.secret' => $this->reverbAppSecret,
@@ -193,6 +219,25 @@ final class Stack
         Cache::purge('database');
 
         return $this;
+    }
+
+    /**
+     * The wallet settings of the app server, for this test process too.
+     *
+     * @return array<string, mixed>
+     */
+    private function walletConfig(): array
+    {
+        return [
+            'esports.wallet.nwc_uri' => $this->nwc->uri('pay', $this->relayUrl),
+            'esports.wallet.nwc_receive_uri' => $this->nwc->uri('receive', $this->relayUrl),
+            'esports.wallet.lnurl_nsec' => $this->lnurlSecret,
+            'esports.wallet.pool_npub' => (new Key)->getPublicKey($this->poolSecret),
+            'esports.wallet.invoice_networks' => ['bcrt'],
+            'esports.wallet.lnurl_insecure_hosts' => [$this->nwc->lnurlHost()],
+            // The local relay is ws:// on 127.0.0.1: allowed here only (RelayGuard, not in production).
+            'esports.wallet.nwc_insecure_relays' => ['127.0.0.1:'.$this->relayPort],
+        ];
     }
 
     /** @return array<string, string> */
@@ -229,6 +274,13 @@ final class Stack
             'ESPORTS_TRUST_NSEC' => $this->trustSecret,
             'ESPORTS_BITCOIN_API' => $this->bitcoin->baseUrl(),
             'ESPORTS_BITCOIN_CONFIRMATIONS' => '1',
+            'ESPORTS_NWC_URI' => $this->nwc->uri('pay', $this->relayUrl),
+            'ESPORTS_NWC_RECEIVE_URI' => $this->nwc->uri('receive', $this->relayUrl),
+            'ESPORTS_LNURL_NSEC' => $this->lnurlSecret,
+            'ESPORTS_POOL_NPUB' => (new Key)->getPublicKey($this->poolSecret),
+            'ESPORTS_INVOICE_NETWORKS' => 'bcrt',
+            'ESPORTS_LNURL_INSECURE_HOSTS' => $this->nwc->lnurlHost(),
+            'ESPORTS_NWC_INSECURE_RELAYS' => '127.0.0.1:'.$this->relayPort,
             'ESPORTS_RATED_CHESS' => 'true',
             'WEBPUSH_VAPID_PUBLIC_KEY' => '',
             'WEBPUSH_VAPID_PRIVATE_KEY' => '',
@@ -255,6 +307,16 @@ final class Stack
         return Process::path(base_path())->env($this->env())->timeout(30)
             ->run(['php', 'artisan', ...explode(' ', $command), '--no-interaction'])
             ->throw()->exitCode() ?? 0;
+    }
+
+    /**
+     * Start an artisan command in its own OS process against the stack and
+     * return at once, so two of them can race (P9: two payment attempts).
+     */
+    public function artisanInBackground(string $command): InvokedProcess
+    {
+        return Process::path(base_path())->env($this->env())->timeout(120)
+            ->start(['php', 'artisan', ...explode(' ', $command), '--no-interaction']);
     }
 
     /**
@@ -306,6 +368,7 @@ final class Stack
         }
 
         $this->bitcoin->stop();
+        $this->nwc->stop();
 
         // `php artisan serve` re-execs the actual `php -S ... server.php` as
         // a detached grandchild in some setups (measured 2026-09-26): stop()

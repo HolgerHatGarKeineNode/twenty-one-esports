@@ -215,6 +215,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @if ($next)
                 <a href="{{ route('tournaments.show', $next) }}" class="flex flex-wrap items-baseline justify-between gap-2 text-ink hover:text-ink" data-test="game-next-tournament"><b class="font-display text-lg">{{ $next->name }}</b><span class="text-xs text-ink-2">{{ GameNames::mode($next->game, $next->mode) }} · {{ $next->format->label() }}</span></a>
                 <x-league-time :at="$next->starts_at" class="text-[13px] text-ink" data-test="game-next-tournament-start" />
+                <x-prize-chip :tournament="$next" />
             @else
                 <p class="m-0 text-[13px] text-ink-2">{{ __('No :game tournament is open for sign-up right now.', ['game' => $gameName]) }}</p>
             @endif

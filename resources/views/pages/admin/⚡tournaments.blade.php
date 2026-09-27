@@ -17,8 +17,8 @@ use Livewire\Component;
  * AdminTournaments (AdminTournaments.dc.html, P8a): the tournaments, newest
  * first — all of them for an admin, their own for an organizer — and, for
  * admins, the organizers who may create tournaments. Each row links its
- * edit page (gate `manage-tournament`). The prize pool and sponsors of the
- * artboard follow in P9.
+ * edit page (gate `manage-tournament`). The prize pool of each
+ * row is linked too (P9).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
@@ -172,6 +172,9 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                     <td class="py-2.5 pr-3">
                                         <a href="{{ route('tournaments.show', $tournament) }}" class="font-bold">{{ $tournament->name }}</a>
                                         <span class="block text-xs text-ink-3">{{ __('by :name', ['name' => $tournament->creator?->displayName() ?? __('a former player')]) }}</span>
+                                        @unless (in_array($tournament->status, [\App\Enums\TournamentStatus::Draft, \App\Enums\TournamentStatus::Cancelled], true))
+                                            <a href="{{ route('tournaments.pool', $tournament) }}" class="text-xs" data-test="row-pool">{{ $tournament->pool_opened_at ? __('Prize pool') : __('Set up the prize pool') }}</a>
+                                        @endunless
                                     </td>
                                     <td class="py-2.5 pr-3">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}</td>
                                     <td class="py-2.5 pr-3 whitespace-nowrap"><x-league-time :at="$tournament->starts_at" /></td>

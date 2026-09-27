@@ -9,8 +9,12 @@ use App\Models\User;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
+use App\Support\Prizes\LeaguePrizePool;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
+use App\Support\Tournaments\TournamentPrizePool;
+use App\Support\Wallet\NwcTransport;
+use App\Support\Wallet\WebsocketNwcTransport;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
@@ -62,6 +66,12 @@ class AppServiceProvider extends ServiceProvider
 
         // The trust job's ranks (P7d); without a run in the live season rated play stays closed.
         $this->app->bind(TrustFacts::class, AnchoredTrustFacts::class);
+
+        // NIP-47 travels over the wallet's relay (P9); the feature tests put a fake wallet here.
+        $this->app->bind(NwcTransport::class, WebsocketNwcTransport::class);
+
+        // The tournament page's prize pool section reads the league's pools (P9).
+        $this->app->bind(TournamentPrizePool::class, LeaguePrizePool::class);
     }
 
     /**
@@ -91,6 +101,9 @@ class AppServiceProvider extends ServiceProvider
         // The player picker (<x-player-picker>) asks once per typing pause.
         RateLimiter::for('player-search', fn (Request $request): Limit => Limit::perMinute(60)
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
+
+        // Invoices into the prize pools (P9): each one asks the wallet, so a limit per IP.
+        RateLimiter::for('invoices', fn (Request $request): Limit => Limit::perMinute((int) config('esports.wallet.invoices_per_minute', 10))->by($request->ip()));
 
         // The site search (P16): three capped lookups per request, open to guests, so per IP.
         RateLimiter::for('search', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));

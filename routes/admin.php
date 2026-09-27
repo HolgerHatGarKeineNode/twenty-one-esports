@@ -20,6 +20,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Trust (P7d): the reports the trust job read, dismissals and exclusions.
     Route::livewire('trust', 'pages::admin.trust')->name('trust');
 
+    // Tournament payouts (P9): the admin check at the end and the payments; `?tournament=<id>`.
+    Route::livewire('payouts', 'pages::admin.payouts')->name('payouts');
+
     // Series disputes and no-shows (P6a); `{match}` is the league match number.
     Route::livewire('disputes', 'pages::admin.disputes')->name('disputes');
     Route::livewire('disputes/{match}', 'pages::admin.dispute')->name('disputes.show');

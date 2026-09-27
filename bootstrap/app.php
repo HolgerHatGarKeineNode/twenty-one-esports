@@ -24,6 +24,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => EnsureUserIsAdmin::class,
         ]);
+
+        // nginx hands requests to PHP-FPM directly, so REMOTE_ADDR is the client. Without an explicit
+        // list Laravel trusts every proxy on *.on-forge.com hosts, and a forged X-Forwarded-For would
+        // then pick request()->ip() and every per-IP limit (security re-gate R1, 2026-09-27).
+        // Never an empty list: that falls through to the on-forge rule.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
