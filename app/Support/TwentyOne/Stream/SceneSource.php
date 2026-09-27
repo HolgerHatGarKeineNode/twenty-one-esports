@@ -108,14 +108,24 @@ class SceneSource
      * The data of one rotation scene, as its view's docblock describes it:
      * a match (x1) gets its game with the last moves, a gallery (x2) the
      * cards, the teasers the counts, the zap and scan scenes their QR code,
-     * B3 the daily game on show (if any).
+     * B3 the daily game on show (if any), a tournament slide (t*) its
+     * tournament as TournamentSlides builds it.
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
+     * @param  array<string, mixed>|null  $tournament  TournamentSlides::data() of the slide's tournament
      * @return array<string, mixed>
      */
-    public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats): array
+    public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats, ?array $tournament = null): array
     {
+        if (in_array($scene, RotationPlanner::TOURNAMENT_SCENES, true)) {
+            if ($tournament === null) {
+                throw new LogicException('A tournament slide needs a tournament.');
+            }
+
+            return ['tournament' => $tournament, 'stats' => $stats];
+        }
+
         if (str_ends_with($scene, '1')) {
             $game = collect($games)->first(fn (ChessGame $game): bool => $game->id === $gameId) ?? $games[0] ?? null;
 

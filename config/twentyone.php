@@ -169,7 +169,9 @@ return [
         | (blitz longer), gallery from two games, then teasers from the pool
         | of nine. Without games: teasers, and every `loop_every_rounds`-th
         | round one pass of the promo loop (its length read with ffprobe at
-        | start; `loop_fallback_seconds` when that fails).
+        | start; `loop_fallback_seconds` when that fails). While a tournament
+        | is open for sign-up, every round shows its hero and bracket slides
+        | (`tournament_seconds` each); a round without games then has one teaser.
         */
         'rotation' => [
             'match_seconds' => 45,
@@ -179,6 +181,7 @@ return [
             'teasers_per_round' => 3,
             'loop_every_rounds' => 3,
             'loop_fallback_seconds' => 60,
+            'tournament_seconds' => 15,
         ],
 
         'stats' => [

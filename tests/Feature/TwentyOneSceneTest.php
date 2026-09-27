@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ChessEndReason;
+use App\Enums\TournamentFormat;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
@@ -9,7 +10,9 @@ use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use App\Support\TwentyOne\Stream\TournamentSlides;
 use Illuminate\Support\Facades\Blade;
+use Tests\Support\TestSigner;
 
 test('the scene shows the oldest live game with escaped, shortened public names', function () {
     $older = ChessGame::factory()->create([
@@ -190,6 +193,11 @@ test('the stream views define no closures, which leak on every render without th
 });
 
 test('every rotation scene renders from the real data: moves in SAN, the QR codes, escaped names', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    $tournament = openTournament(['name' => 'Cup <script>alert(2)</script>', 'format' => TournamentFormat::SingleElimination, 'capacity' => 4]);
+    [$entrant, $entrantSigner] = keyedPlayer();
+    $entrant->forceFill(['name' => 'Seed <b>one</b>'])->save();
+    soloSignup($tournament, $entrant, $entrantSigner);
     $chess = app(ChessGameService::class);
     $white = User::factory()->create(['name' => 'Pleb <script>alert(1)</script>']);
     $black = User::factory()->create(['name' => 'Satoshi']);
@@ -202,10 +210,11 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
     ['games' => $games, 'more' => $more] = $source->sceneGames(60);
     $stats = app(StreamStats::class)->all();
     $renderer = SceneRenderer::fromConfig();
+    $slide = app(TournamentSlides::class)->data($tournament->refresh(), (int) now()->getTimestampMs());
 
     $svgs = [];
     foreach (RotationPlanner::VIEWS as $scene => $view) {
-        $svgs[$scene] = $renderer->svg($source->rotation($scene, $game->id, $games, $more, (int) now()->getTimestampMs(), $stats), $view);
+        $svgs[$scene] = $renderer->svg($source->rotation($scene, $game->id, $games, $more, (int) now()->getTimestampMs(), $stats, $slide), $view);
     }
 
     expect($source->moves($game->refresh()))->toBe(['e4', 'e5', 'Nf3'])
@@ -214,6 +223,10 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
         ->and($svgs['b1'])->toContain('Nf3')
         ->and($svgs['c1'])->toContain('Nf3')
         ->and($svgs['a1'])->toContain('Pleb &lt;script')
+        ->and(array_filter(array_intersect_key($svgs, array_flip(RotationPlanner::TOURNAMENT_SCENES)), fn (string $svg): bool => ! str_contains($svg, 'Cup &lt;script&gt;')))->toBe([])
+        ->and($svgs['ta1'].$svgs['tb1'].$svgs['tc1'])->toContain($slide['countdown'])
+        ->and($svgs['ta2'].$svgs['tb2'].$svgs['tc2'])->toContain('Seed &lt;b&gt;one')
+        ->and(implode('', $svgs))->not->toContain('<b>one')
         // The QR codes are drawn (their module path), never the address as text.
         ->and($svgs['a5'])->toContain('<path style="stroke:#17120a"')
         ->and($svgs['c5'])->toContain('<path style="stroke:#17120a"')

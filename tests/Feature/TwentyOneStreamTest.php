@@ -9,6 +9,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
@@ -567,4 +568,46 @@ test('the 30311 names the game the scene shows, and the loop texts otherwise', f
         'title' => config('twentyone.stream.event.title'),
         'summary' => config('twentyone.stream.event.summary'),
     ]);
+});
+
+test('an open tournament brings its slides into the rotation, and their countdown ticks every second', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    // Each render keeps the countdown the slide shows (its one hh:mm:ss text).
+    File::put($this->dir.'/rsvg-convert', "#!/bin/sh\nsvg=$(cat)\nprintf %s \"\$svg\" | grep -oE '[0-9]{2}:[0-9]{2}:[0-9]{2}' >> ".$this->dir."/countdowns\nprintf '\\211PNG'\n");
+    chmod($this->dir.'/rsvg-convert', 0755);
+    config(['twentyone.stream.scene.rsvg_convert' => $this->dir.'/rsvg-convert']);
+    shortRotation();
+    config(['twentyone.stream.rotation.tournament_seconds' => 2.5]);
+    $tournament = openTournament();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 7.5]);
+    $output = Artisan::output();
+    $countdowns = array_values(array_unique(file($this->dir.'/countdowns', FILE_IGNORE_NEW_LINES) ?: []));
+
+    expect($output)->toContain('rotation: promo loop', 'rotation: ta1 tournament '.$tournament->id.', rendered in', 'rotation: ta2 tournament '.$tournament->id.', rendered in', 'rotation: a3 teaser')
+        ->and(strpos($output, 'rotation: ta1 tournament'))->toBeLessThan(strpos($output, 'rotation: ta2 tournament'))
+        ->and(strpos($output, 'rotation: ta2 tournament'))->toBeLessThan(strpos($output, 'rotation: a3 teaser'))
+        ->and($output)->not->toContain('not built')
+        // A render per second while the slide is on: the countdown moves.
+        ->and(count($countdowns))->toBeGreaterThanOrEqual(2)
+        ->and($countdowns[0])->toMatch('/^23:59:\d\d$/');
+});
+
+test('upcoming tournaments that cannot be read leave the rotation to the teasers, logged once', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    $slides = Mockery::mock(TournamentSlides::class, [app(GameRegistry::class)])->makePartial();
+    $slides->shouldReceive('snapshots')->andThrow(new PDOException('SQLSTATE[HY000]: General error: 5 database is locked'));
+    app()->instance(TournamentSlides::class, $slides);
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 4]);
+    $output = Artisan::output();
+
+    expect(substr_count($output, 'upcoming tournaments not read, keeping the last 0: PDOException'))->toBe(1)
+        ->and($output)->toContain('rotation: promo loop', 'rotation: a3 teaser', 'rotation: a4 teaser')
+        ->and($output)->not->toContain(' tournament ');
 });

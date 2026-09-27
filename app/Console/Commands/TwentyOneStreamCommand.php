@@ -19,6 +19,7 @@ use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
 use Illuminate\Console\Attributes\Description;
@@ -104,13 +105,16 @@ class TwentyOneStreamCommand extends Command
     /** Whether the rotation scene failed on the last frame (logged once per series). */
     private bool $rotationFailing = false;
 
+    /** Whether the upcoming tournaments could not be read on the last poll (logged once per series). */
+    private bool $tournamentsFailing = false;
+
     /** @var list<string> run ids of the encoders this process started */
     private array $runIds = [];
 
     /**
      * Execute the console command.
      */
-    public function handle(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts): int
+    public function handle(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, TournamentSlides $slides): int
     {
         $prepared = (string) config('twentyone.stream.prepared');
         $hlsDir = rtrim((string) config('twentyone.stream.hls_dir'), '/');
@@ -138,6 +142,7 @@ class TwentyOneStreamCommand extends Command
         // The instance can be reused (Artisan::call in one process): only runs of this start count.
         $this->runIds = [];
         $this->rotationFailing = false;
+        $this->tournamentsFailing = false;
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -156,7 +161,7 @@ class TwentyOneStreamCommand extends Command
         }
 
         try {
-            $this->supervise($builder, $publisher, $source, $counts, $public, $hlsDir, $prepared);
+            $this->supervise($builder, $publisher, $source, $counts, $slides, $public, $hlsDir, $prepared);
         } finally {
             // Also after an exception: `ended` goes out, the encoders stop.
             $this->shutdown($builder, $publisher, $public);
@@ -165,7 +170,7 @@ class TwentyOneStreamCommand extends Command
         return self::SUCCESS;
     }
 
-    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, PublicPlaylist $public, string $hlsDir, string $prepared): void
+    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, TournamentSlides $slides, PublicPlaylist $public, string $hlsDir, string $prepared): void
     {
         $renderer = SceneRenderer::fromConfig();
         // Games that ended within this window stay on show with their result.
@@ -195,6 +200,8 @@ class TwentyOneStreamCommand extends Command
         $sceneMore = 0;
         /** @var array<string, mixed> $stats the last counts that could be read */
         $stats = [];
+        /** @var list<array<string, mixed>> $tournamentSnapshots the last upcoming tournaments that could be read */
+        $tournamentSnapshots = [];
         $slotKey = null;
         /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
         $frame = null;
@@ -237,15 +244,19 @@ class TwentyOneStreamCommand extends Command
                     }
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames));
+                // Upcoming tournaments (cached like the counts); their countdown ticks with this poll.
+                $tournamentSnapshots = $this->readTournaments($slides, $tournamentSnapshots, $pollFailures === 0);
+                $tournaments = $this->tournamentFrames($slides, $tournamentSnapshots, (int) ($now * 1000));
+
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), array_column($tournaments, 'id'));
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
                     $stats = $this->readStats($counts, $stats, $pollFailures === 0);
-                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame);
+                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame, $tournaments);
                 }
 
-                $key = $slot['kind'].':'.$slot['scene'].':'.$slot['gameId'].':'.$slot['until'];
+                $key = $slot['kind'].':'.$slot['scene'].':'.$slot['gameId'].':'.$slot['tournamentId'].':'.$slot['until'];
 
                 if ($key !== $slotKey) {
                     $slotKey = $key;
@@ -482,22 +493,24 @@ class TwentyOneStreamCommand extends Command
      * the fallback while games are on show. The previous frame stays when the
      * data cannot be built (a database that fails mid-read).
      *
-     * @param  array{kind: string, scene: string|null, gameId: int|null, until: float}  $slot
+     * @param  array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}  $slot
      * @param  list<ChessGame>  $games
      * @param  array<string, mixed>  $stats
      * @param  array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null  $previous
+     * @param  list<array<string, mixed>>  $tournaments  TournamentSlides::frames() of this poll
      * @return array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null
      */
-    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous): ?array
+    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = []): ?array
     {
         $scene = (string) $slot['scene'];
+        $tournament = collect($tournaments)->firstWhere('id', $slot['tournamentId']);
 
         try {
             return [
                 'view' => RotationPlanner::VIEWS[$scene],
-                'data' => $source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats),
+                'data' => $source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats, $tournament),
                 'fallback' => $games === [] ? null : $source->gallery($games, $more, $nowMs),
-                'label' => $scene.' '.$slot['kind'].($slot['gameId'] !== null ? ' game '.$slot['gameId'] : ''),
+                'label' => $scene.' '.$slot['kind'].($slot['gameId'] !== null ? ' game '.$slot['gameId'] : '').($slot['tournamentId'] !== null ? ' '.$slot['tournamentId'] : ''),
                 'announce' => $previous['announce'] ?? false,
             ];
         } catch (Throwable $e) {
@@ -524,6 +537,56 @@ class TwentyOneStreamCommand extends Command
             return $counts->all();
         } catch (Throwable $e) {
             return $last;
+        }
+    }
+
+    /**
+     * The upcoming tournaments' snapshots (TournamentSlides, cached); the
+     * last ones while the database fails. Their close times still apply:
+     * tournamentFrames() drops a tournament once its sign-up closed.
+     *
+     * @param  list<array<string, mixed>>  $last
+     * @return list<array<string, mixed>>
+     */
+    private function readTournaments(TournamentSlides $slides, array $last, bool $databaseUp): array
+    {
+        if (! $databaseUp) {
+            return $last;
+        }
+
+        try {
+            $snapshots = $slides->snapshots();
+            $this->tournamentsFailing = false;
+
+            return $snapshots;
+        } catch (Throwable $e) {
+            if (! $this->tournamentsFailing) {
+                $this->log('upcoming tournaments not read, keeping the last '.count($last).': '.$this->describe($e));
+                $this->tournamentsFailing = true;
+            }
+
+            return $last;
+        }
+    }
+
+    /**
+     * The tournament slides' data at `$nowMs`; none when it cannot be built,
+     * so the rotation goes on without them.
+     *
+     * @param  list<array<string, mixed>>  $snapshots
+     * @return list<array<string, mixed>>
+     */
+    private function tournamentFrames(TournamentSlides $slides, array $snapshots, int $nowMs): array
+    {
+        try {
+            return $slides->frames($snapshots, $nowMs);
+        } catch (Throwable $e) {
+            if (! $this->tournamentsFailing) {
+                $this->log('tournament slides not built, the rotation goes on without them: '.$this->describe($e));
+                $this->tournamentsFailing = true;
+            }
+
+            return [];
         }
     }
 
