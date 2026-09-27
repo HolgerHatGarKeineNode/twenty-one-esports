@@ -79,6 +79,14 @@ class TwentyOneStreamBotCommand extends Command
             return self::FAILURE;
         }
 
+        // The bot may chat under the account's own key; then its kind 0 would replace the
+        // account's profile, so the account keeps the one `twentyone:profile` publishes.
+        if ($key->pubkey() === NostrKeys::toHex((string) config('twentyone.nostr.npub'))) {
+            $this->error('The bot signs with the account key; its profile would replace the account profile. Publish that one with twentyone:profile.');
+
+            return self::FAILURE;
+        }
+
         /** @var array{name: string, about: string, picture: string} $profile */
         $profile = config('esports.stream_bot.profile');
         $content = json_encode([

@@ -82,3 +82,13 @@ test('without a bot key there is no profile', function () {
 
     expect($this->published)->toBe([]);
 });
+
+test('a bot signing with the account key never publishes its profile over the account profile', function () {
+    config(['twentyone.nostr.npub' => NostrKeys::hexToNpub($this->botKey->pubkey)]);
+
+    $this->artisan('twentyone:stream-bot', ['--profile' => true])
+        ->expectsOutputToContain('its profile would replace the account profile')
+        ->assertExitCode(1);
+
+    expect($this->published)->toBe([]);
+});
