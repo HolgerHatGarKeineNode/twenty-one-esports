@@ -1032,7 +1032,9 @@ final class RotationKit
 
     /**
      * rosterFaces() spread over the places each row takes (its `seats`: a lineup's team size, a player one; 1 when
-     * missing), in roster order: the face of every taken seat of seats().
+     * missing), in roster order, then one seat per `solos` entry (a team tournament's unseeded solo sign-up) with its
+     * avatar: the face of every taken seat of seats(). The roster is cut after its first rows, so with solos present
+     * the seats of seeded rows it left out keep a neutral face, and each solo stays on its own seat.
      *
      * @param  array<string, mixed>  $t
      * @return list<array{uri: ?string, tag: ?string, fit: string}>
@@ -1050,6 +1052,18 @@ final class RotationKit
             for ($i = 0; $i < $seats; $i++) {
                 $out[] = $face;
             }
+        }
+        $solos = array_values(array_filter(is_array($t['solos'] ?? null) ? $t['solos'] : [], is_array(...)));
+        if ($solos === []) {
+            return $out;
+        }
+        $seeded = self::spots($t)['taken'] - count($solos);
+        $out = array_slice($out, 0, max(0, $seeded));
+        while (count($out) < $seeded) {
+            $out[] = self::face(null);
+        }
+        foreach ($solos as $solo) {
+            $out[] = self::face($solo);
         }
 
         return $out;

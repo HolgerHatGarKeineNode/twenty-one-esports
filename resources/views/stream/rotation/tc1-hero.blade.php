@@ -7,9 +7,11 @@
     says "Sign-up is full" and "Watch it live".
 
     Data contract: $tournament as in docs/plans/2026-09-27T1456-stream-tournament-slides.md (name, description, game,
-    mode, format, rated, where, startsAt, countdown, countdownLabel, taken, places, spotsLeft, cover, url, roster)
-    plus 'avatar' per roster row ('logo' for a clan) and the backdrop ($backdrop, else $tournament['backdrop']) per
-    docs/plans/2026-09-27T1811-stream-avatars-imagery.md; $stats for the stats bar.
+    mode, format, rated, where, startsAt, countdown, countdownLabel, taken, places, spotsLeft, cover, url, roster) plus
+    'avatar' per roster row ('logo' for a clan), 'seats' per roster row (the places it takes) and 'solos' (a team
+    tournament's solo sign-ups, unseeded until the draw and so not in the roster: one seat each, 'name' and 'avatar'),
+    and the backdrop ($backdrop, else $tournament['backdrop']) per docs/plans/2026-09-27T1811-stream-avatars-imagery.md;
+    $stats for the stats bar.
 --}}
 @use('App\Support\TwentyOne\Stream\RotationKit', 'K')
 @php

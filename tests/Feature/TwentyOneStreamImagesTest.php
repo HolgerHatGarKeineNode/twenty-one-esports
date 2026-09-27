@@ -12,6 +12,7 @@ use App\Support\Nostr\HostResolver;
 use App\Support\TwentyOne\Stream\ImageFetcher;
 use App\Support\TwentyOne\Stream\RotationKit;
 use App\Support\TwentyOne\Stream\RotationPlanner;
+use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamImageBuilder;
 use App\Support\TwentyOne\Stream\StreamImageFailed;
@@ -683,4 +684,55 @@ test('every taken seat of a lineup shows its clan logo on the seat map', functio
         ->and(array_column(array_column($filled, 'face'), 'uri'))->toBe([$first, $first, $first, $second, $second, $second])
         ->and(count($seats))->toBe($tournament['places'])
         ->and(array_filter($seats, fn (array $seat): bool => ! $seat['filled'] && $seat['face'] !== null))->toBe([]);
+});
+
+test('a solo sign-up of a team tournament takes its seat with its avatar, and stays out of the seeded lists', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    Storage::fake('public');
+    $logos = app(ClanLogos::class);
+    $teams = openTournament([], rocketLeague: true);
+    [$lineup, $captain, $signer] = keyedLineup();
+    $png = streamPicture(64, 64, [200, 10, 10]);
+    $logos->store($png);
+    $lineup->clan->forceFill(['picture' => $logos->urlFor($png)])->save();
+    lineupSignup($teams, $lineup, $captain, $signer);
+    $solos = [];
+    foreach ([0, 1] as $i) {
+        [$solo, $soloSigner] = keyedPlayer();
+        soloSignup($teams, $solo, $soloSigner);
+        $solos[] = 'data:image/svg+xml;base64,'.base64_encode(Blockpile::svg($solo->pubkey));
+    }
+
+    app(StreamImageBuilder::class)->refreshLogos();
+    $now = (int) now()->getTimestampMs();
+    $slide = app(TournamentSlides::class)->data($teams->refresh(), $now);
+    $renderer = SceneRenderer::fromConfig();
+    $svgs = [];
+    foreach (['ta1', 'tb1', 'tc1'] as $scene) {
+        $data = app(SceneSource::class)->rotation($scene, null, [], 0, $now, [], $slide);
+        $svgs[$scene] = $renderer->svg($data, RotationPlanner::VIEWS[$scene]);
+    }
+    $seats = RotationKit::seats($slide, 696, 368, 512, 40)['seats'];
+    $filled = array_values(array_filter($seats, fn (array $seat): bool => $seat['filled']));
+    $logo = $slide['roster'][0]['logo'];
+    $withoutSolos = array_diff_key($slide, ['solos' => true]);
+    // Nine 2-player lineups and the two solos: the roster keeps eight rows, so the ninth lineup's seats stay neutral
+    // and the solos keep their own seats.
+    $cut = [...$slide, 'teamSize' => 2, 'taken' => 20, 'roster' => array_fill(0, 8, [...$slide['roster'][0], 'seats' => 2])];
+
+    expect($slide)->toMatchArray(['teamSize' => 3, 'taken' => 5, 'places' => 24])
+        ->and($logo)->toStartWith('data:image/png;base64,')
+        ->and($solos[0])->not->toBe($solos[1])
+        // 3 logo seats, then one avatar seat per solo sign-up in sign-up order, the rest empty.
+        ->and(array_column(array_column($filled, 'face'), 'uri'))->toBe([$logo, $logo, $logo, $solos[0], $solos[1]])
+        ->and(count($seats))->toBe(24)
+        ->and(array_filter($seats, fn (array $seat): bool => ! $seat['filled'] && $seat['face'] !== null))->toBe([])
+        ->and(array_column($slide['solos'], 'avatar'))->toBe($solos)
+        ->and(array_column(RotationKit::seatFaces($cut), 'uri'))->toBe([...array_fill(0, 16, $logo), null, null, $solos[0], $solos[1]])
+        // "Who plays" and the preview seed the lineup alone, as before.
+        ->and(array_column($slide['roster'], 'seed'))->toBe([1])
+        ->and(RotationKit::whoPlays($slide, 8))->toBe(RotationKit::whoPlays($withoutSolos, 8))
+        ->and(collect($slide['preview']['matches'])->pluck('sides')->flatten(1)->whereNotNull('name')->pluck('seed')->all())->toBe([1])
+        // Every hero draws each solo's face once: on its seat.
+        ->and(array_map(fn (string $svg): array => [substr_count($svg, $solos[0]), substr_count($svg, $solos[1])], $svgs))->toBe(['ta1' => [1, 1], 'tb1' => [1, 1], 'tc1' => [1, 1]]);
 });

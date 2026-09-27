@@ -27,6 +27,10 @@ use Throwable;
  *
  * Every roster row says how many places it takes (`seats`: a lineup its
  * team size, a player one), so a seat map can give each taken seat its face.
+ * A team tournament's solo sign-ups have no seed before the draw (they are
+ * drawn into mix teams), so they stay out of the roster and the preview;
+ * they take one place each and are listed apart, in sign-up order, as
+ * `solos` (`name`, `avatar`), for the seat map only.
  *
  * Pictures join in frame(), from plain refs the snapshot keeps per seed
  * (StreamImages): every roster row and every preview side with a name gets
@@ -40,6 +44,9 @@ class TournamentSlides
 
     /** Seeds the "Who plays" list shows. */
     public const ROSTER = 8;
+
+    /** Solo sign-ups kept for the seat map, which draws at most this many places (RotationKit::seats()). */
+    public const SOLOS = 32;
 
     /** @var array<string, string|null> game slug => cover as a data URI, null without a file */
     private static array $covers = [];
@@ -155,9 +162,16 @@ class TournamentSlides
         $names = [];
         $roster = [];
         $pictures = [];
+        $solos = [];
 
         foreach ($landing->roster() as $row) {
             if ($row['seed'] === null) {
+                // An unseeded solo sign-up of a team mode: one taken seat with the player's face, nothing else.
+                if ($row['kind'] === 'solo' && count($solos) < self::SOLOS) {
+                    $user = $row['users'][0] ?? null;
+                    $solos[] = ['name' => PublicName::clean($user?->displayName() ?? $row['name']), 'avatar' => StreamImages::avatarRef($user)];
+                }
+
                 continue;
             }
 
@@ -196,6 +210,7 @@ class TournamentSlides
             'places' => $places['places'],
             'spotsLeft' => $open,
             'roster' => $roster,
+            'solos' => $solos,
             'openSpots' => $open,
             'preview' => $this->preview($landing->projection(), $names),
             'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
@@ -220,6 +235,7 @@ class TournamentSlides
         $pictures = is_array($snapshot['pictures'] ?? null) ? $snapshot['pictures'] : [];
         unset($snapshot['deadlineMs'], $snapshot['closesMs'], $snapshot['gameSlug'], $snapshot['pictures']);
         $snapshot['roster'] = array_map(fn (array $row): array => $this->pictured($row, $pictures), $snapshot['roster']);
+        $snapshot['solos'] = array_map(fn (array $solo): array => [...$solo, 'avatar' => $this->images->avatar($solo['avatar'])], $snapshot['solos'] ?? []);
 
         if (is_array($snapshot['preview'])) {
             foreach ($snapshot['preview']['matches'] ?? [] as $index => $match) {
