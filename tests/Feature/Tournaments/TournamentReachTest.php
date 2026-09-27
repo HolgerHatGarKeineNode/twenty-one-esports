@@ -1,9 +1,13 @@
 <?php
 
+use App\Enums\IncomingPaymentStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\IncomingPayment;
 use App\Models\Tournament;
+use App\Models\TournamentSponsor;
 use App\Models\User;
+use App\Support\Cards\ShareCard;
 use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
@@ -109,4 +113,33 @@ test('the prize pool, edit and payouts are buttons for whoever may use them, on 
     auth()->logout();
     expect(Blade::render('<x-tournaments.manage-actions :tournament="$t" />', ['t' => $withPot]))->not->toContain('data-test="manage-');
     $this->get(route('tournaments.show', $withPot))->assertOk()->assertDontSeeHtml('data-test="manage-actions"')->assertDontSeeHtml(route('admin.payouts'));
+});
+
+test('the prize pot heads the tournament page: the pot, the podium and the paid sponsors with logo before the call to action', function () {
+    fakeWallet();
+    $tournament = publishForPool(Tournament::factory()->create(['created_by_id' => organizer()->id, 'status' => TournamentStatus::Signup,
+        'prize_mode' => Tournament::PRIZES_FIXED, 'prize_fixed' => [60000, 30000, 10000]]), ownPotWallet(0));
+    $tournament->forceFill(['pot_can_receive' => true])->save();
+
+    // No paid sponsor yet: it says so, and anyone can add to the pot; "Add a sponsor" is the organizer's.
+    $this->actingAs(User::factory()->create())->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertSeeInOrder(['data-test="tournament-hero"', 'data-test="prize-pool"', 'data-test="pool-sats">'.ShareCard::sats(100000).'<',
+            'data-test="pool-left"', 'data-test="pool-podium"', 'data-test="pool-no-sponsor"', 'href="#pot-topup"', 'data-test="signup-cta"', 'id="pot-topup"'], false)
+        ->assertDontSeeHtml('data-test="pool-add-sponsor"');
+    $this->actingAs($tournament->creator)->get(route('tournaments.show', $tournament))
+        ->assertSeeHtml('href="'.route('tournaments.pool', $tournament).'#sponsors-h"');
+
+    // A paid sponsor shows with name and logo; a pledge alone does not.
+    $paid = new TournamentSponsor;
+    $paid->forceFill(['tournament_id' => $tournament->id, 'name' => 'Satoshi Pizza', 'pledged_sats' => 5000, 'logo_path' => 'sponsor-logos/pizza.png'])->save();
+    $pledge = new TournamentSponsor;
+    $pledge->forceFill(['tournament_id' => $tournament->id, 'name' => 'Pledge Only', 'pledged_sats' => 5000])->save();
+    (new IncomingPayment)->forceFill(['pot' => 'tournament:'.$tournament->id, 'tournament_id' => $tournament->id, 'sponsor_id' => $paid->id, 'source' => 'sponsor',
+        'amount_sats' => 5000, 'bolt11' => 'lnbc1', 'payment_hash' => hash('sha256', 'reach'), 'status' => IncomingPaymentStatus::Settled,
+        'expires_at' => now()->addHour(), 'settled_at' => now()])->save();
+
+    $this->get(route('tournaments.show', $tournament))
+        ->assertSeeInOrder(['data-test="prize-pool"', 'data-test="pool-sponsor"', 'sponsor-logos/pizza.png', 'Satoshi Pizza', 'data-test="signup-cta"'], false)
+        ->assertDontSee('Pledge Only')
+        ->assertDontSeeHtml('data-test="pool-no-sponsor"');
 });

@@ -398,19 +398,25 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     --}}
     @if ($this->canManage)
         <div class="-mb-6 flex flex-col gap-2 px-4 pt-4 sm:flex-row sm:items-center sm:gap-4 lg:-mb-10 lg:px-12" data-test="manage-bar">
-            <span class="text-[13px] text-ink-2">{{ __('You manage this tournament.') }}</span>
+            <span class="text-[13px] text-ink-2 max-sm:sr-only">{{ __('You manage this tournament.') }}</span>
             <x-tournaments.manage-actions :tournament="$tournament" />
         </div>
     @endif
 
-    {{-- Hero: cover, name, the call to action with the countdown, the places --}}
+    {{--
+        Hero: cover, name, the prize pot, the call to action with the countdown, the places. Four grid items,
+        each placed explicitly from lg: name over the call to action on the left, cover over the pot on the
+        right (user, 2026-09-28: the pot is the most important thing of a tournament and sat far down the
+        page). Below lg in reading order: cover, name, pot, call to action, so the pot's number is in the
+        phone's first screen.
+    --}}
     <section aria-labelledby="t-name" class="tl-hero relative isolate" data-test="tournament-hero">
-        <div class="grid gap-6 px-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:items-center lg:gap-12 lg:px-12">
-            <div class="flex min-w-0 flex-col gap-5 lg:order-2">
+        <div class="grid gap-6 px-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,440px)] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:px-12">
+            <div class="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-start-1 lg:self-end">
                 @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'tl-poster-in w-full lg:max-w-[440px] lg:justify-self-end'])
             </div>
 
-            <div class="flex min-w-0 flex-col gap-5 lg:order-1">
+            <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:self-end">
                 <div class="flex flex-wrap items-center gap-2 text-xs">
                     <span class="inline-flex h-8 items-center gap-2 rounded-sm bg-btc-chip px-3 font-bold text-btc-hi" data-test="tournament-status">
                         <span @class(['size-1.5 rounded-full bg-btc', 'animate-live' => in_array($cta, ['open', 'live'], true)])></span>{{ $status->label() }}
@@ -424,6 +430,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </div>
 
                 <h1 id="t-name" class="m-0 font-display text-[32px] leading-[1.08] font-bold break-words sm:text-[44px] xl:text-[56px]">{{ $tournament->name }}</h1>
+            </div>
+
+            @if ($this->pool !== null)
+                <div class="min-w-0 lg:col-start-2 lg:row-start-2 lg:self-start">
+                    @include('pages.tournaments.partials.prize-pool', ['pool' => $this->pool, 'tournament' => $tournament, 'manage' => $this->canManage,
+                        'topUp' => \App\Support\Prizes\PotTopUps::enabled($tournament)])
+                </div>
+            @endif
+
+            <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2 lg:self-start">
 
                 @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
 
@@ -767,10 +783,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
-    {{-- The prize pool (P9): only when the league has one for this tournament --}}
-    @if ($this->pool !== null)
-        @include('pages.tournaments.partials.prize-pool', ['pool' => $this->pool])
-    @endif
+    {{-- The pot's working part (P9): its state, "Add to the pot" (#pot-topup) and the payouts; the pot itself heads the page. --}}
     @if ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true)))
         <livewire:tournament-pool :tournament="$tournament" :key="'pool-'.$tournament->id" />
     @endif

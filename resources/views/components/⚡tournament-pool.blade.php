@@ -187,7 +187,7 @@ new class extends Component {
     </div>
 
     @if ($hasPot && $open)
-        <div class="flex flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="topup-panel">
+        <div id="pot-topup" class="flex scroll-mt-24 flex-col gap-3 rounded-card bg-card p-4 sm:p-6" data-test="topup-panel">
             <h3 class="m-0 flex items-center gap-1.5 text-[13px] font-bold"><span class="flex text-bolt"><x-icon name="bolt-toast" :size="16" /></span>{{ __('Add to the pot') }}</h3>
 
             @if (! $topUps)
