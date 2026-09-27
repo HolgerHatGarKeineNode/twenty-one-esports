@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use Illuminate\Support\Facades\Blade;
 
 test('the scene shows the oldest live game with escaped, shortened public names', function () {
     $older = ChessGame::factory()->create([
@@ -166,4 +167,21 @@ test('a clock shows m:ss below one hour and h:mm from one hour up', function () 
 
     // Black's card first: 1 h 0 min 59 s, then White's 59:59.
     expect(implode('', $digits[1]))->toBe('1:00'.'59:59');
+});
+
+test('the stream views define no closures, which leak on every render without the CLI opcache', function () {
+    $views = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(resource_path('views/stream'), FilesystemIterator::SKIP_DOTS));
+    $closures = [];
+
+    foreach ($views as $view) {
+        $tokens = token_get_all(Blade::compileString(file_get_contents($view->getPathname())));
+
+        foreach ($tokens as $token) {
+            if (is_array($token) && in_array($token[0], [T_FUNCTION, T_FN], true)) {
+                $closures[] = $view->getFilename().':'.$token[2];
+            }
+        }
+    }
+
+    expect($closures)->toBe([]);
 });
