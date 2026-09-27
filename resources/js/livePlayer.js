@@ -203,8 +203,13 @@ export function livePlayer(config) {
             this.stepAside = keyboard || sheet;
         },
 
+        /**
+         * An object, not a string: Alpine writes a style string over the whole
+         * attribute, which wiped x-show's display:none whenever the floor moved
+         * (a hidden or closed player came back over the page, off air at 375 px).
+         */
         get position() {
-            return this.bottom === null ? 'bottom: calc(16px + env(safe-area-inset-bottom, 0px))' : `bottom: ${this.bottom}px`;
+            return { bottom: this.bottom === null ? 'calc(16px + env(safe-area-inset-bottom, 0px))' : `${this.bottom}px` };
         },
     };
 }
