@@ -70,9 +70,12 @@ Rocket League series of a tournament whose players report were casual, and they 
   entities, `clan` rows, the ladder being open) is read when the league signs the pairing, and the
   rated entities (lineups in `2v2`/`3v3`, pubkeys in `1v1`) stay those, also if a lineup or an account
   is gone before the result.
-- **Rated only on the tournament's ladder**: a result counts only while the ladder the tournament froze
-  at its first version is still the open one; a series paired in one season and finished in the next
-  is not rated and not attested ([Tournaments](#tournaments)).
+- **Rated only on the ladder of the challenge**: a result counts only while the ladder its challenge
+  named (for a tournament, the ladder it froze at its first version) is still the open one; a series
+  challenged or paired in one season and decided after that season closed is neither rated nor
+  attested, also once the next season is open ([Tournaments](#tournaments), rule 16). This holds for
+  ladder series as well; [Rest](#rest-before-block-0-and-between-seasons) already said so for events
+  after `ends`.
 - **Two sides of one clan play casual** in such a tournament: the state machine asks a challenge for
   different clans, and the league does not sign a pairing whose confirmation would come from the same
   party. Mix teams stay unrated as before.
@@ -87,7 +90,9 @@ Rocket League series of a tournament whose players report were casual, and they 
   structural check of `2152`/`2153` required exactly three `a` tags, which refused every rated 1v1
   player side and every tournament report with its tournament `a`; an attestation named a deleted
   account's `elo` entity with an empty pubkey instead of the pubkey pinned at the pairing; the proof
-  view of a tournament series waited for a `2151` that never comes. All three are fixed in the app.
+  view of a tournament series waited for a `2151` that never comes; a ladder series challenged in one
+  season and confirmed after the next season opened was rated and attested on the new season's ladder.
+  All four are fixed in the app.
 
 ### Changelog of revision 8 (2026-09-26)
 
@@ -2197,7 +2202,11 @@ Per kind:
     all moves are legal for the ladder's `variant`, `Result` equals the terminator, `TimeControl`
     equals the ladder's `time_control`. Correspondence moves also follow the ordering rules in
     [Game Record](#game-record-64-reused-from-nip-64).
-16. **2154**: signed by the key in the ladder address; `prev` equals the id of the latest
+16. **2154**: signed by the key in the ladder address; the ladder `a` is the one the challenge names
+    (rev. 8.1, stated here although rule 11 and [Rest](#rest-before-block-0-and-between-seasons)
+    already imply it), and that ladder is open at the attestation's `created_at`: a result reached
+    after the ladder closed is never attested and moves no rating, also once a later season's ladder
+    is open; `prev` equals the id of the latest
     attestation of this ladder; the `elo` entities match the ladder's `rates` (lineup addresses or
     pubkeys); each `elo` "before" value equals the entity's "after" value in its previous
     attestation of this ladder that has an `elo` row for it (rev. 7.1: attestations without one, such

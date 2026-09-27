@@ -28,7 +28,9 @@ use Illuminate\Support\Facades\DB;
  *   a mix team (a roster side of several players) is never rated.
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
- *   result moves nothing (fail closed). A rated result reads only the trust
+ *   result moves nothing (fail closed). A rated series counts only on the
+ *   ladder its challenge named while that ladder is still open, never on a
+ *   later season's. A rated result reads only the trust
  *   gate pinned at its accept ({@see GatePin}), never live trust facts: an
  *   unfollow or a lower rank after the accept changes nothing (NIP "Nothing
  *   after the accept undoes the gate"). Without a pin, or with a roster that
@@ -91,9 +93,11 @@ final class RatingService
             return false;
         }
 
-        // A tournament match is rated on the tournament's frozen ladder only, never on a later one
-        // (NIP "Tournaments": "A match is never rated on any other ladder").
-        if ($match->rated && $match->tournament_match_id !== null && $match->ladder_address !== Ladders::address($match->game, $match->mode)) {
+        // A rated series counts only on the ladder its challenge named (a tournament's frozen
+        // ladder), and only while that ladder is still the open one: a result reached after it
+        // closed belongs to no season and moves nothing, never a later season's ladder (NIP
+        // "Rest": events after `ends` are never attested; "Tournaments": never on another ladder).
+        if ($match->rated && $match->ladder_address !== Ladders::address($match->game, $match->mode)) {
             return false;
         }
 

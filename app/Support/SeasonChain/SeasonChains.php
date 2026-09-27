@@ -72,8 +72,9 @@ final class SeasonChains
         $live = Seasons::live();
         $ladder = Ladders::address($match->game, $match->mode);
 
-        // A tournament match belongs to the tournament's frozen ladder only (NIP "Tournaments").
-        if ($live === null || $ladder === null || ($match->tournament_match_id !== null && $match->ladder_address !== $ladder)) {
+        // A series belongs to the ladder its challenge named (a tournament's frozen ladder), and
+        // only while that ladder is open: never attested on a later season's ladder (NIP "Rest").
+        if ($live === null || $ladder === null || $match->ladder_address !== $ladder) {
             return null;
         }
 
