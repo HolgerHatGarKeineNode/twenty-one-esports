@@ -7,8 +7,10 @@ use App\Events\ChessInviteChanged;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\ChessQueueEntry;
+use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\Series\CasualInvites;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -36,7 +38,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessInvites
 {
-    public function __construct(private ChessGameService $games, private ChessNotifications $notifications) {}
+    public function __construct(private ChessGameService $games, private ChessNotifications $notifications, private CasualInvites $casualInvites) {}
 
     /**
      * Returns the invite; its `chess_game_id` is set when the invitee was
@@ -69,6 +71,7 @@ final class ChessInvites
 
             $previous?->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
             ChessQueueEntry::query()->where('user_id', $inviter->id)->delete();
+            SeriesQueueEntry::query()->where('user_id', $inviter->id)->delete();
 
             return ChessInvite::query()->create([
                 'inviter_id' => $inviter->id,
@@ -86,6 +89,9 @@ final class ChessInvites
         if ($previous !== null) {
             $this->announce($previous);
         }
+
+        // One intent at a time (P23): a blitz invite withdraws the casual 1v1 invite sent.
+        $this->casualInvites->withdrawOutgoing($inviter);
 
         $this->announce($invite);
 

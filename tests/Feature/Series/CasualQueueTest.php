@@ -13,6 +13,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessQueue;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualQueue;
 use Illuminate\Support\Facades\Event;
@@ -171,4 +172,60 @@ test('an invite that was accepted is not withdrawn by a later join', function ()
 
     expect(casualRefusal(fn () => app(CasualQueue::class)->join($anna, 'rocket-league', Platform::Pc)))->toBe('already_playing')
         ->and(SeriesInvite::query()->sole()->status)->toBe(ChessInviteStatus::Accepted);
+});
+
+test('searching or inviting for blitz ends a casual search and withdraws the casual invite sent', function () {
+    [$anna, $bert, $carl, $dora, $eve, $finn] = User::factory()->count(6)->create(['looking_to_play' => 'rocket-league/1v1']);
+    $eve->forceFill(['looking_to_play' => 'chess/blitz'])->save();
+    $casualInvites = app(CasualInvites::class);
+    $queue = app(CasualQueue::class);
+
+    // The blitz queue: one player searching casual, one with a casual invite out.
+    $queue->join($anna, 'ea-sports-fc-26', Platform::Pc);
+    app(ChessQueue::class)->join($anna);
+    $fromFinn = $casualInvites->invite($finn, $carl, 'rocket-league', Platform::Pc, true);
+    app(ChessQueue::class)->leave($anna);
+    app(ChessQueue::class)->join($finn);
+
+    // A blitz invite: the same two cases.
+    $fromBert = $casualInvites->invite($bert, $carl, 'rocket-league', Platform::Pc, true);
+    app(ChessInvites::class)->invite($bert, $eve);
+    $queue->join($dora, 'ea-sports-fc-27', Platform::Pc);
+    app(ChessInvites::class)->invite($dora, $eve);
+
+    expect(SeriesQueueEntry::query()->count())->toBe(0)
+        ->and($fromFinn->refresh()->status)->toBe(ChessInviteStatus::Withdrawn)
+        ->and($fromBert->refresh()->status)->toBe(ChessInviteStatus::Withdrawn);
+});
+
+test('a live chess game that starts ends both players\' casual search and withdraws their casual invites, sent and received', function () {
+    Event::fake([ChessGameStarted::class]);
+    [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create(['looking_to_play' => 'rocket-league/1v1']);
+    $casualInvites = app(CasualInvites::class);
+    $sent = $casualInvites->invite($anna, $carl, 'rocket-league', Platform::Pc, true);
+    $received = $casualInvites->invite($dora, $anna, 'rocket-league', Platform::Pc, true);
+    $other = $casualInvites->invite($carl, $dora, 'rocket-league', Platform::Pc, true);
+    app(CasualQueue::class)->join($bert, 'ea-sports-fc-26', Platform::Pc);
+    $bert->forceFill(['looking_to_play' => 'chess/blitz'])->save();
+
+    // Anna invites Bert to blitz and he accepts: a live game starts.
+    $chessInvites = app(ChessInvites::class);
+    $chessInvites->accept($chessInvites->invite($anna, $bert), $bert);
+
+    expect(SeriesQueueEntry::query()->count())->toBe(0)
+        ->and($sent->refresh()->status)->toBe(ChessInviteStatus::Withdrawn)
+        ->and($received->refresh()->status)->toBe(ChessInviteStatus::Withdrawn)
+        // An invite between two other players stays open.
+        ->and($other->refresh()->status)->toBe(ChessInviteStatus::Pending);
+});
+
+test('a daily chess game leaves the casual queue and invites alone', function () {
+    [$anna, $bert, $carl] = User::factory()->count(3)->create(['looking_to_play' => 'rocket-league/1v1']);
+    $sent = app(CasualInvites::class)->invite($anna, $carl, 'rocket-league', Platform::Pc, true);
+    app(CasualQueue::class)->join($bert, 'ea-sports-fc-26', Platform::Pc);
+
+    app(ChessGameService::class)->start($anna, $bert, 'correspondence');
+
+    expect(SeriesQueueEntry::query()->count())->toBe(1)
+        ->and($sent->refresh()->status)->toBe(ChessInviteStatus::Pending);
 });

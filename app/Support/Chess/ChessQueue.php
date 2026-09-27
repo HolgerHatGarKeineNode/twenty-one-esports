@@ -4,8 +4,10 @@ namespace App\Support\Chess;
 
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
+use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\Series\CasualInvites;
 use Carbon\CarbonInterface;
 
 /**
@@ -29,6 +31,7 @@ final class ChessQueue
         private ChessNotifications $notifications,
         private ChessInvites $invites,
         private PresenceLookup $presence,
+        private CasualInvites $casualInvites,
     ) {}
 
     /**
@@ -48,6 +51,10 @@ final class ChessQueue
         if ($refusal !== null) {
             throw new ChessRuleViolation('rated_not_open', $refusal);
         }
+
+        // One intent at a time (P23): searching blitz ends a casual 1v1 search and withdraws the casual invite sent.
+        SeriesQueueEntry::query()->where('user_id', $user->id)->delete();
+        $this->casualInvites->withdrawOutgoing($user);
 
         $invited = $this->fromOpenInvite($user, $mode);
 

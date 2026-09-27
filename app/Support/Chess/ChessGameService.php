@@ -8,6 +8,7 @@ use App\Enums\ChessInviteStatus;
 use App\Events\ChessGameStarted;
 use App\Events\ChessGameUpdated;
 use App\Events\ChessInviteChanged;
+use App\Events\SeriesInviteChanged;
 use App\Games\GameRegistry;
 use App\Jobs\CheckChessClock;
 use App\Models\ChessGame;
@@ -16,6 +17,8 @@ use App\Models\ChessMove;
 use App\Models\ChessQueueEntry;
 use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
+use App\Models\SeriesInvite;
+use App\Models\SeriesQueueEntry;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
@@ -141,6 +144,26 @@ final class ChessGameService
             foreach ($open as $invite) {
                 $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
                 Broadcasts::send(new ChessInviteChanged($invite->id, $invite->status->value, $invite->inviter_id, $invite->invitee_id));
+            }
+
+            // The same for casual 1v1 (P23): both leave its queue, and their open invites there are withdrawn.
+            SeriesQueueEntry::query()->whereIn('user_id', [$white->id, $black->id])->delete();
+
+            $casual = SeriesInvite::query()
+                ->where('status', ChessInviteStatus::Pending)
+                ->where('expires_at', '>', now())
+                ->where(fn ($query) => $query
+                    ->whereIn('inviter_id', [$white->id, $black->id])
+                    ->orWhereIn('invitee_id', [$white->id, $black->id]))
+                ->get();
+
+            foreach ($casual as $invite) {
+                $withdrawn = SeriesInvite::query()->whereKey($invite->id)->where('status', ChessInviteStatus::Pending)
+                    ->update(['status' => ChessInviteStatus::Withdrawn, 'updated_at' => now()]);
+
+                if ($withdrawn === 1) {
+                    Broadcasts::send(new SeriesInviteChanged($invite->id, ChessInviteStatus::Withdrawn->value, $invite->inviter_id, $invite->invitee_id));
+                }
             }
 
             if ($rematchOf !== null) {
