@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Cache;
 use Pest\Browser\Playwright\Client;
 use Pest\Browser\Playwright\Page;
 use Tests\Integration\Support\Stack;
+use Tests\Support\BrowserConsole;
 use Tests\Support\TestSigner;
 
 /**
@@ -110,6 +111,14 @@ function integrationPage(User $user, string $urlOrPath = '/', array $viewport = 
     }
 
     $page = visit($loginUrl, $options)->page();
+    // Installed BEFORE TestSigner's stub for the same reason both are
+    // addInitScript() calls at all: the real app server is a separate
+    // process, so a signing/Livewire failure here shows up nowhere a
+    // server-side test could see it (tests/Browser/ClanEditTest.php's own
+    // collector, reused here — BrowserWait::until() reads window.__errors on
+    // a timeout so a hung wait names the JS error instead of just the
+    // selector that never appeared).
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->context()->addInitScript(TestSigner::browserStub($user));
 
     // Page::reload() (used after a real-server round trip) sends no per-call

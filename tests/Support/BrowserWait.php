@@ -40,6 +40,32 @@ final class BrowserWait
             Execution::instance()->wait($intervalMs / 1000);
         } while (microtime(true) < $deadline);
 
-        throw new RuntimeException("Condition did not become true within {$timeoutMs}ms: {$jsCondition}");
+        throw new RuntimeException("Condition did not become true within {$timeoutMs}ms: {$jsCondition}".self::consoleErrors($page));
+    }
+
+    /**
+     * window.__errors from Tests\Support\BrowserConsole::COLLECTOR, when that
+     * collector was installed on this page (tests/Integration's own
+     * integrationPage(); most tests/Browser files install it too, some do
+     * not) — feature-detected so a page without it still throws the plain
+     * message above instead of a second, unrelated error.
+     */
+    private static function consoleErrors(Page $page): string
+    {
+        try {
+            $errors = $page->evaluate('() => (typeof window.__errors !== "undefined" ? window.__errors : null)');
+        } catch (Throwable) {
+            return '';
+        }
+
+        if (! is_array($errors)) {
+            return '';
+        }
+
+        if ($errors === []) {
+            return ' (console/network collector installed, no errors captured)';
+        }
+
+        return ' — console/network errors captured on this page: '.json_encode($errors);
     }
 }
