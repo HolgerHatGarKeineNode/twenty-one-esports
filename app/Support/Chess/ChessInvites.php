@@ -286,7 +286,7 @@ final class ChessInvites
 
             if ($invite->tournament_match_id !== null) {
                 // A cup match (P25): its own game, colours as the bracket has them. Refused = nothing changes.
-                $game = $this->maker->startInvited(TournamentMatch::query()->findOrFail($invite->tournament_match_id))
+                $game = $this->maker->startInvited(TournamentMatch::query()->findOrFail($invite->tournament_match_id), $invitee)
                     ?? throw new ChessRuleViolation('match_not_open');
 
                 $invite->forceFill(['chess_game_id' => $game->id])->save();

@@ -82,11 +82,16 @@ final class CasualCupNotices
 
     /**
      * A cup game started (accepted invite, the auto slot, a replay): both
-     * players, wherever they are.
+     * players, wherever they are; not the one who just accepted the invite
+     * and is taken to the board anyway.
      */
-    public function gameStarted(Tournament $cup, ChessGame $game): void
+    public function gameStarted(Tournament $cup, ChessGame $game, ?User $except = null): void
     {
         foreach ([$game->white, $game->black] as $player) {
+            if ($except !== null && $player->is($except)) {
+                continue;
+            }
+
             $locale = $this->locale($player);
 
             $this->notifier->send($player, NotificationKind::TournamentNews, new Notice(

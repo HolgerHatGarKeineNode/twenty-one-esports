@@ -1,6 +1,8 @@
 <?php
 
 use App\Enums\ChessGameStatus;
+use App\Enums\SeriesResolution;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
@@ -8,6 +10,7 @@ use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\NostrEvent;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
@@ -15,6 +18,7 @@ use App\Models\TournamentRound;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
+use App\Support\Series\CasualMatches;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Engine\BracketBuilder;
 use App\Support\Tournaments\Engine\Entrant;
@@ -346,6 +350,12 @@ test('"Play your cup match": the opponent accepts and the match game starts with
         ->and($game->white_id)->toBe($white->id)
         ->and($invite->refresh()->chess_game_id)->toBe($game->id)
         ->and($game->status)->toBe(ChessGameStatus::Active);
+
+    // The inviter hears the game is on; the one who accepted is taken to the board and gets no second notice.
+    $started = fn (User $player) => $player->notifications()->get()->pluck('data')->where('title', 'Chess Casual Cup #1: your game is on')->count();
+
+    expect($started($black))->toBe(1)
+        ->and($started($white))->toBe(0);
 });
 
 test('the cup page marks the cup casual and lets a player invite their opponent', function () {
@@ -365,6 +375,30 @@ test('the cup page marks the cup casual and lets a player invite their opponent'
         ->assertSeeHtml('data-test="cup-match-accept"')
         ->call('acceptCupInvite', ChessInvite::query()->sole()->id)
         ->assertRedirect(route('games.show', ChessGame::query()->sole()));
+});
+
+test('a player in a running casual 1v1 starts no cup game: invites are refused and the auto slot waits until it is over', function () {
+    $cup = runningCup(4);
+    cupTick();
+    [$busyMatch, $freeMatch] = openCupMatches($cup)->all();
+    [$busy, $opponent] = matchPlayers($busyMatch);
+    $casual = app(CasualMatches::class)->create($busy, User::factory()->create(), 'rocket-league', SeriesMatch::ORIGIN_QUEUE, []);
+    $invites = app(ChessInvites::class);
+
+    expect(casualChessRefusal(fn () => $invites->inviteToCupMatch($busy, $busyMatch)))->toBe('casual_playing')
+        ->and(casualChessRefusal(fn () => $invites->accept($invites->inviteToCupMatch($opponent, $busyMatch), $busy)))->toBe('casual_playing');
+
+    $this->travelTo(CasualCups::autoSlot($busyMatch->round->window_ends_at));
+    cupTick();
+
+    // The other match starts at the slot; this one is tried again on the next run.
+    expect(ChessGame::query()->where('tournament_match_id', $freeMatch->id)->count())->toBe(1)
+        ->and(ChessGame::query()->where('tournament_match_id', $busyMatch->id)->count())->toBe(0);
+
+    $casual->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Void, 'winner' => 'none', 'finished_at' => now()])->save();
+    cupTick();
+
+    expect(ChessGame::query()->where('tournament_match_id', $busyMatch->id)->sole()->status)->toBe(ChessGameStatus::Active);
 });
 
 test('at the deadline the one who tried to play advances, else a draw of lots decides', function () {

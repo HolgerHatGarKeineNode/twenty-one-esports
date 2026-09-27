@@ -130,10 +130,11 @@ final class TournamentMatchMaker
      * accepted "Play your cup match" invite, ChessInvites): its game starts
      * inside the caller's transaction. Null when it cannot start (the round
      * is not open, the match is decided or under way, a player is busy).
+     * The player who accepted is at the board already and gets no notice.
      *
      * @throws TournamentRuleViolation
      */
-    public function startInvited(TournamentMatch $match): ?ChessGame
+    public function startInvited(TournamentMatch $match, User $acceptedBy): ?ChessGame
     {
         $tournament = $match->tournament()->firstOrFail();
 
@@ -143,7 +144,7 @@ final class TournamentMatchMaker
 
         $match = TournamentMatch::query()->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->findOrFail($match->id);
 
-        if ($this->startLocked($tournament, $match, invited: true) !== true) {
+        if ($this->startLocked($tournament, $match, $acceptedBy) !== true) {
             return null;
         }
 
@@ -157,7 +158,7 @@ final class TournamentMatchMaker
      *
      * @throws TournamentRuleViolation
      */
-    private function startLocked(Tournament $tournament, TournamentMatch $match, bool $invited = false): ?bool
+    private function startLocked(Tournament $tournament, TournamentMatch $match, ?User $acceptedBy = null): ?bool
     {
         $locked = Tournament::query()->lockForUpdate()->find($tournament->id);
 
@@ -178,7 +179,7 @@ final class TournamentMatchMaker
         }
 
         // A casual cup (P25): only in its round's window, when its players agreed or at the auto slot.
-        if ($locked->isCasualCup() && ! CasualCups::mayStart($match, $invited)) {
+        if ($locked->isCasualCup() && ! CasualCups::mayStart($match, $acceptedBy !== null)) {
             return false;
         }
 
@@ -188,7 +189,7 @@ final class TournamentMatchMaker
             if ($tournament->isDirectorMode()) {
                 $this->pinPairing($tournament, $match, $a, $b);
             } elseif (self::needsGame($match)) {
-                return $this->startGame($tournament, $match, $a, $b) !== null;
+                return $this->startGame($tournament, $match, $a, $b, $acceptedBy) !== null;
             }
 
             return true;
@@ -272,7 +273,7 @@ final class TournamentMatchMaker
         $match->forceFill(['pairing' => ['gate' => $pin?->toArray(), 'clans' => $clans, 'ladder' => $pin === null ? null : $tournament->openLadder()]])->save();
     }
 
-    private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): ?ChessGame
+    private function startGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, ?User $acceptedBy = null): ?ChessGame
     {
         $first = User::query()->find($a->memberIds()[0] ?? 0);
         $second = User::query()->find($b->memberIds()[0] ?? 0);
@@ -297,7 +298,7 @@ final class TournamentMatchMaker
 
         // A cup game may start while its players are away (the auto slot): they are told on every channel.
         if ($tournament->isCasualCup()) {
-            $this->cupNotices->gameStarted($tournament, $game);
+            $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
         }
 
         return $game;
