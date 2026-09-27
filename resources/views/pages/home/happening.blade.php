@@ -11,11 +11,9 @@
     $boards = $live['boards'];
     $featured = $boards->first();
     $others = $boards->slice(1);
-    // P20 (the 24/7 stream: LiveStatus, <x-live-badge>, /live) is not merged yet. This slot
-    // lights up by itself once it is: the stream shows here while it is on air, and never otherwise.
-    $liveStatusClass = 'App\\Support\\TwentyOne\\LiveStatus';
-    $stream = class_exists($liveStatusClass) ? $liveStatusClass::current() : null;
-    $streamLive = $stream !== null && ($stream->live ?? false) && \Illuminate\Support\Facades\Route::has('live');
+    // The 24/7 stream (P20) shows here while it is on air, and never otherwise.
+    $stream = App\Support\TwentyOne\LiveStatus::current();
+    $streamLive = $stream->live;
 @endphp
 
 <section aria-labelledby="now-h" class="flex flex-col gap-4 px-4 lg:gap-5 lg:px-12" data-test="happening-now">
@@ -68,8 +66,7 @@
             @if ($streamLive)
                 {{-- The 24/7 stream (P20) while it is on air --}}
                 <a href="{{ route('live') }}" class="flex min-h-14 items-center gap-3 rounded-card bg-card px-4 py-3 text-ink shadow-ring hover:text-ink" data-test="home-stream">
-                    {{-- Resolved at runtime: the component arrives with P20. --}}
-                    <x-dynamic-component component="live-badge" />
+                    <x-live-badge as="span" class="flex" />
                     <b class="grow truncate text-[13px]">{{ $stream->title ?? __('The league stream is on air') }}</b>
                     <span class="text-xs text-ink-2">{{ __('Watch') }}</span>
                 </a>

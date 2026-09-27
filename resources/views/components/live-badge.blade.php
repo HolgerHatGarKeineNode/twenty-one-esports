@@ -14,8 +14,10 @@
     The caller sets the display: `flex`, or e.g. `hidden md:flex lg:hidden`.
     `off-air`: off air, a plain "Live" link in row 1's `.nav-link` style
     instead of nothing, so /live is one click away on desktop either way.
+    `as="span"`: the badge alone, not a link, for use inside a card that is
+    already a link (a nested <a> is split apart by every HTML parser).
 --}}
-@props(['offAir' => false])
+@props(['offAir' => false, 'as' => 'a'])
 
 @php
     $status = App\Support\TwentyOne\LiveStatus::current();
@@ -28,7 +30,7 @@
     $current = request()->routeIs('live');
 @endphp
 
-<a href="{{ route('live') }}" aria-label="{{ $label }}" title="{{ $label }}" @if ($current) aria-current="page" @endif
+<{{ $as === 'span' ? 'span' : 'a' }} @if ($as !== 'span') href="{{ route('live') }}" @if ($current) aria-current="page" @endif @endif aria-label="{{ $label }}" title="{{ $label }}"
    x-data="{ labels: @js($labels), get label() { const n = $store.live.viewers; return n === null ? this.labels.plain : this.labels[n === 1 ? 'one' : 'many'].replace('#', n); } }"
    x-show="$store.live.live" x-bind:aria-label="label" x-bind:title="label" @unless ($status->live) style="display: none" @endunless
    {{ $attributes->class('group min-h-11 shrink-0 items-center text-ink hover:text-ink') }} data-test="live-badge">
@@ -39,7 +41,7 @@
               x-show="$store.live.viewers !== null" x-text="$store.live.viewers" x-effect="$store.live.tick($el)"
               @if ($status->viewers === null) style="display: none" @endif>{{ $status->viewers }}</span>
     </span>
-</a>
+</{{ $as === 'span' ? 'span' : 'a' }}>
 @if ($offAir)
     <a href="{{ route('live') }}" aria-label="{{ __('Live stream') }}" @if ($current) aria-current="page" @endif
        x-data x-show="! $store.live.live" @if ($status->live) style="display: none" @endif
