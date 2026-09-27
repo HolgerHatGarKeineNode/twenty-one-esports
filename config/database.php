@@ -45,9 +45,36 @@ return [
             // SQLite file (P15; a real multi-writer setup, unlike the
             // :memory: default suite).
             'busy_timeout' => env('DB_BUSY_TIMEOUT'),
-            'journal_mode' => null,
+            // Was `null` (unset) before 2026-09-27: nothing here read this
+            // config key at all, so nothing could opt into it without
+            // editing code — a gap production (web + Horizon + scheduler +
+            // twentyone:stream, all real, separate processes on ONE SQLite
+            // file) cannot afford. WAL lets a reader run without blocking on
+            // a writer (and vice versa) for the life of the file — it is a
+            // per-FILE, not per-connection, setting (sticks once written;
+            // harmless no-op against `:memory:`, verified 2026-09-27:
+            // `PRAGMA journal_mode=wal` against `:memory:` silently reports
+            // back "memory" and changes nothing).
+            'journal_mode' => env('DB_JOURNAL_MODE', 'wal'),
             'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            // IMMEDIATE takes the write lock at BEGIN time instead of only
+            // when the transaction's first write statement runs. Measured
+            // 2026-09-27 (App\Support\Tournaments\TournamentSignups, P15):
+            // under DEFERRED (SQLite's own default, this repo's default
+            // until now), a transaction that reads before it writes and then
+            // finds the file locked gets SQLITE_BUSY in ~0ms regardless of
+            // `busy_timeout` — SQLite's busy-handler is not invoked for that
+            // specific lock-upgrade, only for a lock taken up front. Needs
+            // PHP >= 8.4: Illuminate\Database\SQLiteConnection::
+            // executeBeginTransactionStatement() only issues the
+            // BEGIN {mode} TRANSACTION statement this key controls on
+            // 8.4+, and silently falls back to plain (DEFERRED)
+            // PDO::beginTransaction() below that — this app's own
+            // composer.json requires only "^8.3", so this key is a NO-OP,
+            // not a bug shield, unless production's actual PHP version is
+            // confirmed >= 8.4 (not verified from this worktree: no Forge
+            // CLI session here — flagged, not fixed).
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'IMMEDIATE'),
         ],
 
         'mysql' => [

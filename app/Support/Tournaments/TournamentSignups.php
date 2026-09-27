@@ -14,7 +14,6 @@ use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -409,58 +408,55 @@ final class TournamentSignups
      * under a lock on the tournament so capacity and one-entry-per-person hold
      * against a concurrent sign-up.
      *
-     * Retried on a transient SQLITE_BUSY ("database is locked"), never on
-     * TournamentRuleViolation/RejectedEvent (str_contains() below only
-     * matches the lock message). This is NOT the same as passing
-     * `$attempts` to DB::transaction(): that retries with no wait at all
-     * between attempts, and this closure reads (findOrFail/plan()'s own
-     * lookups) before it writes — SQLite's busy-handler is documented to NOT
-     * be invoked once a transaction already holds a read snapshot and then
-     * needs to upgrade to a write lock (sqlite.org, "WAL": a writer that
-     * already read cannot safely be told to just wait, since the snapshot
-     * it read from may no longer be current), so the PDO-level busy_timeout
-     * PRAGMA (Tests\Integration\Support\Stack::env()) never gets a chance to
-     * wait either — confirmed by isolated repro (2026-09-27): a transaction
-     * that SELECTs before it INSERTs against a file another connection
-     * holds under `BEGIN IMMEDIATE` fails in 0ms on every attempt, budget
-     * or no budget, while the SAME INSERT alone (no prior SELECT) waits out
-     * the full PRAGMA as expected. The explicit usleep() below is what
-     * actually gives the other writer time to finish — the same shape as
-     * Stack::retryOnLock() (test side); this is its app-side counterpart for
-     * a real HTTP request. Measured against tests/Integration's real stack
-     * (P15, TournamentFlowTest, 2026-09-27): the queue worker holding the
-     * write lock made the captain's "enter lineup" click 500 on the
-     * Livewire update route, and `[data-test=my-entry]` never appeared.
+     * No per-call retry here (there was one; removed 2026-09-27, see below)
+     * — a transient SQLITE_BUSY ("database is locked") under real
+     * multi-process contention (production: web + Horizon + the scheduler +
+     * twentyone:stream, all real, separate processes on ONE SQLite file) is
+     * config/database.php's job now, not this call site's: `transaction_mode`
+     * (`'IMMEDIATE'`) makes `DB::transaction()` take the write lock at BEGIN
+     * time instead of only at the first write, so `busy_timeout` gets a
+     * chance to wait it out. That budget did NOT used to apply here: this
+     * closure reads (`findOrFail`/`plan()`'s own lookups) before it writes,
+     * and SQLite's busy-handler is documented to skip a transaction that has
+     * already read once it needs to upgrade to a write lock (the read
+     * snapshot would go stale) — confirmed by isolated repro (2026-09-27): a
+     * transaction that SELECTs before it INSERTs against a file another
+     * connection holds under `BEGIN IMMEDIATE` failed in 0ms on every
+     * attempt under the OLD default (`transaction_mode='DEFERRED'`, SQLite's
+     * own default), budget or no budget, while the same INSERT alone (no
+     * prior SELECT) waited out the full PRAGMA as expected — a per-call
+     * `usleep()` retry loop closed the gap for THIS call site only; the
+     * config change closes it for every `DB::transaction()` in the app
+     * (verified against two OTHER call sites too:
+     * tests/Feature/Tournaments/TournamentDrawLockRetryTest.php,
+     * tests/Feature/Series/SeriesAnswerLockRetryTest.php). Needs PHP >= 8.4
+     * — see config/database.php's own comment on `transaction_mode` for why,
+     * and for the unresolved question of whether production is on it.
+     * Measured against tests/Integration's real stack (P15,
+     * TournamentFlowTest, 2026-09-27): the queue worker holding the write
+     * lock made the captain's "enter lineup" click 500 on the Livewire
+     * update route, and `[data-test=my-entry]` never appeared — see
+     * tests/Feature/Tournaments/TournamentSignupLockRetryTest.php.
      *
      * @param  list<mixed>  $signed
      * @param  callable(Tournament): array{0: int|null, 1: string, 2: list<int>, 3: array{kind: int, tags: list<list<string>>, content: string, created_at: int}}  $plan
      */
     private function store(Tournament $tournament, User $user, array $signed, callable $plan): TournamentSignup
     {
-        for ($attempt = 1; ; $attempt++) {
-            try {
-                return DB::transaction(function () use ($tournament, $user, $signed, $plan): TournamentSignup {
-                    $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
-                    [$lineupId, $name, $members, $template] = $plan($locked);
-                    $event = $this->verify($signed, $template, $user);
+        return DB::transaction(function () use ($tournament, $user, $signed, $plan): TournamentSignup {
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
+            [$lineupId, $name, $members, $template] = $plan($locked);
+            $event = $this->verify($signed, $template, $user);
 
-                    return TournamentSignup::query()->create([
-                        'tournament_id' => $locked->id,
-                        'user_id' => $user->id,
-                        'lineup_id' => $lineupId,
-                        'name' => mb_substr($name, 0, 80),
-                        'members' => $members,
-                        'event_id' => NostrEvent::fromSigned($event)->id,
-                    ]);
-                });
-            } catch (QueryException $exception) {
-                if ($attempt >= 5 || ! str_contains($exception->getMessage(), 'database is locked')) {
-                    throw $exception;
-                }
-
-                usleep(150_000 * $attempt);
-            }
-        }
+            return TournamentSignup::query()->create([
+                'tournament_id' => $locked->id,
+                'user_id' => $user->id,
+                'lineup_id' => $lineupId,
+                'name' => mb_substr($name, 0, 80),
+                'members' => $members,
+                'event_id' => NostrEvent::fromSigned($event)->id,
+            ]);
+        });
     }
 
     /**
