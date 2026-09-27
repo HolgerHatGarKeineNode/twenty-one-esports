@@ -204,6 +204,8 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $fixedMode = $tournament?->prizeMode() === Tournament::PRIZES_FIXED;
     $pool = $tournament ? PrizePool::payable($tournament, (int) $tournament->pot_balance_sats) : null;
     $shortfall = $tournament ? PrizePool::shortfall($tournament, (int) $tournament->pot_balance_sats) : 0;
+    // Fixed prizes are approved without a fresh read too; the page says when the last one failed.
+    $unread = $fixedMode && ($tournament->pot_balance_error !== null || $tournament->pot_balance_at === null);
     $payouts = $this->payouts;
     $pending = $payouts->where('status', PayoutStatus::Pending);
 @endphp
@@ -266,6 +268,12 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         <p class="m-0 text-[13px] text-loss" data-test="payouts-blocker">{{ $blocker }}</p>
                     @else
                         @php($preview = $pool === null ? null : app(PayoutPlan::class)->compute($tournament, $pool))
+                        @if ($unread)
+                            <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-unread">
+                                <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />
+                                <span>{{ __('Balance could not be read; you can still approve, the admin is responsible.') }}</span>
+                            </p>
+                        @endif
                         @if ($shortfall > 0)
                             <p class="m-0 flex max-w-[80ch] items-start gap-2 rounded-md bg-loss-tint px-3 py-2 text-[13px] leading-normal text-loss" role="alert" data-test="payouts-underfunded">
                                 <x-icon name="warn" :size="16" class="mt-0.5 shrink-0" />

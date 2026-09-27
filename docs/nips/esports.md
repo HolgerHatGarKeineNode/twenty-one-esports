@@ -2769,8 +2769,9 @@ never after sign-up closed: players sign up under them.
 - **Fixed amounts**: whole sats per place (1 to 8 places, each at least 1 sat and at most the league's
   limit per place, the sum at most its limit in total). A place wins exactly its amount. The approval
   reads the balance and shows it next to the sum plus the fee reserve on the sum (1 %, at least 10
-  sats), with a warning when it is short; the approval is not refused for it (the admin is
-  responsible), and a payment the wallet cannot make fails and can be retried. What the wallet holds beyond the
+  sats), with a warning when it is short or could not be read; the approval is not refused for
+  either (the admin is responsible; percent prizes need the read), and a payment the wallet cannot
+  make fails and can be retried. What the wallet holds beyond the
   prizes stays in it and is shown to the organizer as left over after prizes. `content`: "Prizes:
   place 1 60000 sats, …, fixed, paid from the tournament's own wallet once it holds their sum and 1 %
   (at least 10 sats) for routing fees; …".

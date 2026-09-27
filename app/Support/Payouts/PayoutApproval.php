@@ -28,8 +28,9 @@ use Illuminate\Support\Facades\Gate;
  * Admins only (gate `admin`): organizers set up the pot and see the
  * payouts, but the check and the payment are the league's (decision P9).
  * Fail closed: without the pot's wallet connection or the league key
- * nothing closes, and the pot is what its wallet holds at this moment
- * (read now, never assumed). Percent prizes split that balance less the
+ * nothing closes, and a percent pot is what its wallet holds at this
+ * moment (read now, never assumed; fixed prizes are approved even when
+ * the read fails, with a warning on the page). Percent prizes split that balance less the
  * fee reserve ({@see PrizePool::payable()}); fixed prizes are approved as
  * set, and a balance short of them is only a warning on the page (user,
  * 2026-09-27: the admin is responsible). What is left stays in
@@ -109,8 +110,9 @@ final class PayoutApproval
             throw new TournamentRuleViolation('payout_blocked', $blocker);
         }
 
-        // The pot is what its wallet holds now: read, never assumed (fail closed).
-        if (! $this->balances->read($tournament)) {
+        // Percent prizes are a share of what the wallet holds now: read, never assumed (fail closed). Fixed prizes do not
+        // depend on the balance: an unreadable one is a warning on the page, the admin is responsible (coordinator, 2026-09-27).
+        if (! $this->balances->read($tournament) && $tournament->prizeMode() !== Tournament::PRIZES_FIXED) {
             throw new TournamentRuleViolation('pot_unread', __('The pot’s wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
         }
 

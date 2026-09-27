@@ -12,6 +12,7 @@ use App\Support\Payouts\PayoutRunner;
 use App\Support\PreSeason;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Livewire\Livewire;
+use Tests\Support\FakeNwcTransport;
 
 /*
 | P9 DoD: a payout from the pot's own fake NWC wallet pays exactly once,
@@ -225,6 +226,35 @@ test('fixed prizes: a short balance is a warning next to them, the approval stil
     $wallet->balanceMsats += 30_000_000;
     app(PayoutRunner::class)->run($second->refresh(), true);
     expect($second->refresh()->status)->toBe(PayoutStatus::Paid);
+});
+
+test('fixed prizes: an unreadable balance is a warning and the approval goes through; percent prizes are refused without a read', function () {
+    fakeWallet();
+    config(['esports.wallet.nwc_timeout_seconds' => 1]);
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    $tournament = finishedPoolTournament($wallet, 85_000, 2, fixed: [50_000, 30_000]);
+    app(FakeNwcTransport::class)->offline[$wallet->pubkey] = true;
+
+    // The read fails: the warning says so next to the prizes, and the approval still writes them (coordinator, 2026-09-27).
+    $page = Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
+        ->call('readBalance')->assertHasErrors('payouts')
+        ->assertSeeHtml('data-test="payouts-unread"')->assertSee(__('Balance could not be read; you can still approve, the admin is responsible.'))
+        ->assertSeeHtml('data-test="approve-payouts"');
+    $page->call('approve')->assertHasNoErrors();
+
+    expect($tournament->refresh()->payouts_approved_at)->not->toBeNull()
+        ->and($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
+
+    // Percent prizes are a share of the balance read now: no read, no approval.
+    $percentWallet = ownPotWallet(0);
+    fakeLightningAddresses($percentWallet);
+    $percent = finishedPoolTournament($percentWallet, 40_000, 2);
+    app(FakeNwcTransport::class)->offline[$percentWallet->pubkey] = true;
+
+    expect(fn () => app(PayoutApproval::class)->approve($percent, anAdmin()))->toThrow(TournamentRuleViolation::class, 'did not tell its balance just now')
+        ->and($percent->refresh()->payouts_approved_at)->toBeNull()->and($percent->payouts()->count())->toBe(0);
+    Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $percent->id])->assertDontSeeHtml('data-test="payouts-unread"');
 });
 
 test('fixed prizes: a covered balance shows no warning', function () {
