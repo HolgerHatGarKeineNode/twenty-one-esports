@@ -146,6 +146,11 @@ export function livePlayer(config) {
             this.play();
         },
 
+        /** The play button after autoplay was refused: runs inside the click, so the browser lets it play. */
+        resume() {
+            player?.resume();
+        },
+
         /** Fold into the tab. A muted picture stops loading; sound the viewer switched on keeps playing. */
         minimise() {
             if (this.muted) this.halt();
@@ -255,6 +260,11 @@ export function liveStage(config) {
 
         retry() {
             player?.start();
+        },
+
+        /** The play button after autoplay was refused: runs inside the click, so the browser lets it play. */
+        resume() {
+            player?.resume();
         },
 
         showMiniPlayer() {

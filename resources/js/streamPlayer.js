@@ -11,8 +11,14 @@
  * until `start()` is called again. `stop()` detaches everything, so a closed
  * player costs no bandwidth.
  *
+ * Autoplay refused even muted (NotAllowedError: Firefox and LibreWolf with
+ * "block audio and video", Safari's "never auto-play") is no error: the
+ * state turns `blocked`, the stream stays loaded, nothing is retried, and
+ * `resume()` from a click (a user gesture, always allowed) plays it. The
+ * page cannot ask the browser for autoplay permission.
+ *
  * States reported through `onState`: loading, playing, retrying, ended,
- * unsupported.
+ * unsupported, blocked.
  */
 
 const RETRY_SECONDS = [5, 10, 20, 40];
@@ -37,6 +43,7 @@ export class StreamPlayer {
         this.lastTime = -1;
         this.lastProgressAt = 0;
         this.running = false;
+        this.blocked = false;
         this.engine = null;
 
         this.onPlaying = () => {
@@ -112,16 +119,46 @@ export class StreamPlayer {
     }
 
     play() {
-        const played = this.video.play();
+        const refused = (error) => error?.name === 'NotAllowedError';
+        const attempt = () => Promise.resolve(this.video.play());
 
-        // Autoplay can still be refused (a sound-on start without a gesture): fall back to muted.
-        if (played && typeof played.catch === 'function') {
-            played.catch(() => {
-                if (!this.running || this.video.muted) return;
+        attempt().catch((error) => {
+            if (!this.running || !refused(error)) return;
+
+            // Refused with sound (a sound-on start without a gesture): once more muted.
+            if (!this.video.muted) {
                 this.video.muted = true;
-                this.video.play().catch(() => {});
-            });
+                attempt().catch((again) => {
+                    if (this.running && refused(again)) this.block();
+                });
+
+                return;
+            }
+
+            this.block();
+        });
+    }
+
+    /** Autoplay refused even muted: wait for a click instead of "Tuning in" forever. */
+    block() {
+        this.blocked = true;
+        this.onState('blocked');
+    }
+
+    /**
+     * Play after a click on the page's play button. Call it from the click
+     * handler itself: video.play() must run inside the gesture.
+     */
+    resume() {
+        if (!this.running) {
+            this.start();
+
+            return;
         }
+
+        this.blocked = false;
+        this.onState('loading');
+        this.play();
     }
 
     /**
@@ -152,8 +189,8 @@ export class StreamPlayer {
         this.lastProgressAt = Date.now();
         clearInterval(this.stallTimer);
         this.stallTimer = setInterval(() => {
-            // Paused on purpose (or refused to autoplay): nothing to watch for.
-            if (this.video.paused && this.video.readyState >= 2) {
+            // Paused on purpose, or waiting for a click after autoplay was refused: nothing to watch for.
+            if (this.blocked || (this.video.paused && this.video.readyState >= 2)) {
                 this.lastProgressAt = Date.now();
 
                 return;
@@ -177,6 +214,7 @@ export class StreamPlayer {
     stop(final = true) {
         clearTimeout(this.retryTimer);
         clearInterval(this.stallTimer);
+        this.blocked = false;
         this.retryTimer = null;
         this.stallTimer = null;
         this.mediaRecoveries = 0;

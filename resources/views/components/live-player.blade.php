@@ -36,6 +36,7 @@
             'retrying' => __('Signal lost. Reconnecting…'),
             'ended' => __('The stream went off air.'),
             'unsupported' => __('This browser cannot play the stream.'),
+            'blocked' => __('Your browser blocks autoplay. Press play, or allow autoplay for this site in the address bar.'),
         ],
     ];
 @endphp
@@ -77,7 +78,11 @@
                         <video x-ref="video" class="size-full object-contain" playsinline muted preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-mini-video"></video>
                         <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[rgba(10,10,11,.72)] p-3 text-center text-xs text-ink-2"
                              x-show="status !== 'playing' && status !== 'idle'" role="status" data-test="live-mini-status">
-                            <span x-text="statusText"></span>
+                            {{-- Autoplay refused even muted: a click plays it (a gesture is always allowed). --}}
+                            <button type="button" class="live-play size-12" x-show="status === 'blocked'" x-on:click="resume()" aria-label="{{ __('Play the live stream') }}" data-test="live-mini-play">
+                                <x-icon name="play" :size="22" />
+                            </button>
+                            <span class="text-[11px] leading-[15px]" x-text="statusText"></span>
                             <button type="button" class="btn-w inline-flex h-9 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-ink" x-show="status === 'ended'" x-on:click="retry()">{{ __('Try again') }}</button>
                         </div>
                     </div>

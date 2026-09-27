@@ -481,3 +481,122 @@ test('/live on air: the big player plays, the floating one is not there, nothing
     liveShot($page, 'live-page-'.$width);
     expect(liveErrors($page))->toBe([]);
 })->with([375, 1440]);
+
+/**
+ * Autoplay refused for every medium, muted included (LibreWolf, Firefox with
+ * "block audio and video", Safari's "never auto-play"): play() rejects with a
+ * NotAllowedError unless a click came within the last second, as those
+ * browsers allow a play() inside a user gesture.
+ * Layout shifts after a mark are recorded to check the button moves nothing.
+ */
+const LIVE_NO_AUTOPLAY = <<<'JS'
+    window.__refusals = 0;
+    window.__shifts = [];
+    const nativePlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+        // A click in the last second is the gesture (Playwright's evaluate() counts as user activation, so that flag cannot tell).
+        if (!(performance.now() - (window.__gestureAt ?? -Infinity) < 1000)) {
+            window.__refusals += 1;
+            return Promise.reject(new DOMException('Autoplay is only allowed when approved by the user, the site is activated by the user, or media is muted.', 'NotAllowedError'));
+        }
+        return nativePlay.call(this);
+    };
+    window.addEventListener('pointerdown', () => { window.__gestureAt = performance.now(); }, true);
+    new PerformanceObserver((list) => list.getEntries().forEach((e) => { if (!e.hadRecentInput) window.__shifts.push({ value: e.value, at: e.startTime }); })).observe({ type: 'layout-shift', buffered: true });
+    JS;
+
+/** The play button over a refused stage: its box, the stage's box, the hint text and whether it fits. */
+const LIVE_BLOCKED = <<<'JS'
+    (which) => {
+        const button = document.querySelector(`[data-test=live-${which}-play]`);
+        const status = document.querySelector(`[data-test=live-${which}-status]`);
+        const stage = status?.parentElement;
+        const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
+        if (!button || !button.checkVisibility()) return null;
+        const b = button.getBoundingClientRect(), s = stage.getBoundingClientRect();
+        return {
+            button: box(button), stage: box(stage),
+            inside: b.left >= s.left && b.right <= s.right && b.top >= s.top && b.bottom <= s.bottom,
+            // What shows: innerText skips the hidden "Try again" of the ended state.
+            text: status.innerText.replace(/\s+/g, ' ').trim(),
+            fits: status.scrollHeight <= status.clientHeight + 1 && status.scrollWidth <= status.clientWidth + 1,
+            hit: document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('button') === button,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+    }
+    JS;
+
+function liveNoAutoplayPage(int $width, string $to): Page
+{
+    $page = visit('/robots.txt')->page();
+    $page->context()->addInitScript(LIVE_COLLECTOR);
+    $page->context()->addInitScript(LIVE_NO_AUTOPLAY);
+    $page->setViewportSize($width, $width < 640 ? 667 : 900);
+    liveGoto($page, $to);
+
+    return $page;
+}
+
+test('autoplay refused even muted: /live and the mini player show a play button within 2 s, and a click plays', function (int $width) {
+    $page = liveNoAutoplayPage($width, '/live');
+
+    // Positive control: without a gesture the stub really refuses, with the name browsers use.
+    $control = $page->evaluate('() => Promise.race([document.createElement("video").play().then(() => "played", (e) => e.name), new Promise((resolve) => setTimeout(() => resolve("pending, activation " + navigator.userActivation?.isActive + ", stub " + (window.__refusals !== undefined)), 1000))])');
+    expect($control)->toBe('NotAllowedError');
+
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=live-stage-play]")?.checkVisibility()', 2_000);
+    $mark = $page->evaluate('() => performance.now()');
+    Execution::instance()->wait(0.5);
+    $stage = $page->evaluate(LIVE_BLOCKED, 'stage');
+    liveShot($page, "autoplay-blocked-live-{$width}");
+    fwrite(STDERR, "\n[autoplay {$width}] /live ".json_encode($stage)."\n");
+
+    expect($stage['text'])->toBe('Your browser blocks autoplay. Press play, or allow autoplay for this site in the address bar.')
+        ->and($stage['button'][2])->toBeGreaterThanOrEqual(44)->and($stage['button'][3])->toBeGreaterThanOrEqual(44)
+        ->and($stage['inside'])->toBeTrue()->and($stage['fits'])->toBeTrue()->and($stage['hit'])->toBeTrue()
+        ->and($stage['overflow'])->toBeLessThanOrEqual(0)
+        ->and($page->evaluate('() => window.__refusals'))->toBeGreaterThanOrEqual(1);
+
+    $page->locator('[data-test=live-stage-play]')->click();
+    BrowserWait::until($page, '() => { const v = document.querySelector("[data-test=live-stage-video]"); return !v.paused && v.currentTime > 0.5 && !document.querySelector("[data-test=live-stage-status]").checkVisibility(); }', 20_000);
+    expect($page->evaluate('(mark) => window.__shifts.filter((s) => s.at > mark)', $mark))->toBe([]);
+
+    // The mini player, opened again after a reload (no gesture): the same button, sized for its 16:9 box.
+    $page->evaluate('() => localStorage.setItem("twentyone.live-player", "open")');
+    liveGoto($page, '/rules');
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=live-mini-play]")?.checkVisibility()', 2_000);
+    Execution::instance()->wait(0.5);
+    $mini = $page->evaluate(LIVE_BLOCKED, 'mini');
+    liveShot($page, "autoplay-blocked-mini-{$width}");
+    fwrite(STDERR, "\n[autoplay {$width}] mini ".json_encode($mini)."\n");
+
+    expect($mini['text'])->toBe($stage['text'])
+        ->and($mini['button'][2])->toBeGreaterThanOrEqual(44)->and($mini['button'][3])->toBeGreaterThanOrEqual(44)
+        ->and($mini['inside'])->toBeTrue()->and($mini['fits'])->toBeTrue()->and($mini['hit'])->toBeTrue()
+        ->and($mini['overflow'])->toBeLessThanOrEqual(0)
+        // No hint on the tab: its line still says what is on.
+        ->and($page->evaluate('() => document.querySelector("[data-test=live-tab]").textContent'))->not->toContain('autoplay');
+
+    $page->locator('[data-test=live-mini-play]')->click();
+    BrowserWait::until($page, '() => { const v = document.querySelector("[data-test=live-mini-video]"); return !v.paused && v.currentTime > 0.5 && !document.querySelector("[data-test=live-mini-status]").checkVisibility(); }', 20_000);
+
+    expect(liveErrors($page))->toBe([]);
+    $page->locator('[data-test=live-close]')->click();
+})->with([375, 1440]);
+
+test('autoplay refused with hls.js (Firefox, LibreWolf): the play button shows and a click plays', function () {
+    $page = visit('/robots.txt')->page();
+    $page->context()->addInitScript(LIVE_COLLECTOR);
+    $page->context()->addInitScript(LIVE_NO_AUTOPLAY);
+    // No native HLS, as in Firefox: the player takes hls.js.
+    $page->context()->addInitScript('(() => { const original = HTMLMediaElement.prototype.canPlayType; HTMLMediaElement.prototype.canPlayType = function (type) { return /mpegurl/i.test(type) ? "" : original.call(this, type); }; })();');
+    $page->setViewportSize(1440, 900);
+    liveGoto($page, '/live');
+
+    BrowserWait::until($page, '() => !!document.querySelector("[data-test=live-stage-play]")?.checkVisibility()', 2_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=live-stage-video]").dataset.engine'))->toBe('hls.js');
+
+    $page->locator('[data-test=live-stage-play]')->click();
+    BrowserWait::until($page, '() => { const v = document.querySelector("[data-test=live-stage-video]"); return !v.paused && v.currentTime > 0.5 && !document.querySelector("[data-test=live-stage-status]").checkVisibility(); }', 20_000);
+    expect(liveErrors($page))->toBe([]);
+});

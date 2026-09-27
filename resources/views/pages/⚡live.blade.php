@@ -102,6 +102,7 @@ new #[Layout('layouts::app')] class extends Component {
             'retrying' => __('Signal lost. Reconnecting…'),
             'ended' => __('The stream went off air.'),
             'unsupported' => __('This browser cannot play the stream.'),
+            'blocked' => __('Your browser blocks autoplay. Press play, or allow autoplay for this site in the address bar.'),
         ],
     ];
 @endphp
@@ -134,10 +135,14 @@ new #[Layout('layouts::app')] class extends Component {
             <div class="-mx-4 sm:mx-0 lg:mx-auto lg:w-full lg:max-w-[max(36rem,calc((100dvh-26rem)*16/9))]" wire:ignore x-data="liveStage(@js($stage))" data-live-stage>
                     <div class="flex flex-col gap-2" x-show="onScreen" @unless ($status->live) style="display: none" @endunless data-test="live-stage">
                         <div class="relative aspect-video overflow-hidden bg-black sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]">
-                            <video x-ref="video" class="size-full object-contain" controls playsinline muted autoplay preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-stage-video"></video>
+                            <video x-ref="video" class="size-full object-contain" controls playsinline muted preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-stage-video"></video>
                             <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[rgba(10,10,11,.72)] p-4 text-center text-[13px] text-ink-2"
                                  x-show="status !== 'playing' && status !== 'idle'" x-cloak role="status" data-test="live-stage-status">
-                                <span x-text="statusText"></span>
+                                {{-- Autoplay refused even muted: a click plays it (a gesture is always allowed). --}}
+                                <button type="button" class="live-play size-16 sm:size-20" x-show="status === 'blocked'" x-on:click="resume()" aria-label="{{ __('Play the live stream') }}" data-test="live-stage-play">
+                                    <x-icon name="play" :size="30" />
+                                </button>
+                                <span class="max-w-[48ch]" x-text="statusText"></span>
                                 <x-button variant="quiet" x-show="status === 'ended'" x-on:click="retry()">{{ __('Try again') }}</x-button>
                             </div>
                         </div>

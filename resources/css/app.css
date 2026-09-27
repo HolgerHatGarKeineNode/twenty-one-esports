@@ -2346,6 +2346,29 @@ select:focus[data-flux-control] {
     color: var(--color-btc);
 }
 
+/* The play button over a stage whose autoplay the browser refused: the one thing to press. */
+.live-play {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--color-btc);
+    color: var(--color-on-btc);
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(10, 10, 11, 0.6);
+    transition: background-color 0.15s ease-out;
+}
+
+.live-play:hover {
+    background: var(--color-btc-hi);
+}
+
+.live-play svg {
+    margin-left: 3px;
+    fill: currentColor;
+}
+
 /* A viewer count that changed ticks once; it never changes its box (tabular figures, room for three digits). */
 .live-tick {
     animation: live-tick 0.24s ease-out;
