@@ -20,14 +20,15 @@ rule 7; **revision 7** (2026-09-26): running tournaments, with the sign-up conse
 results, tournaments before Block 0, and no blocks from tournaments; **revision 7.1** (2026-09-26):
 director forfeits unrated, disinterested directors, Rocket League 1v1 as a player ladder;
 **revision 8** (2026-09-26): rank badges from rated ladders only, the badge artwork URL, the profile
-badge list written by the app, share posts). Not
+badge list written by the app, share posts; **revision 8.1** (2026-09-27): rated Rocket League
+series in tournaments whose players report, with the pairing challenge signed by the league). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither does revision 8 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8 and 8.1 (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -44,7 +45,49 @@ director results apply with revision 7; the one on Rocket League 1v1 applies to 
 `rocket-league/1v1` ladder whose first version is signed after the league adopts revision 7.1,
 because `rates` is a frozen ladder parameter. The rules marked "rev. 8" concern badges, the
 profile badge list and share posts; no ladder depends on them, and they apply from the day a league
-adopts revision 8.
+adopts revision 8. The rules marked "rev. 8.1" concern tournaments only; like those of revision 7 they
+apply to every tournament whose first `31923` version the league signs after it adopts revision 8.1.
+A tournament published earlier keeps what its `content` said about rating: under revision 7 the
+Rocket League series of a tournament whose players report were casual, and they stay casual.
+
+### Changelog of revision 8.1 (2026-09-27)
+
+- **Tournament pairings** (new subsection [Tournament pairings](#tournament-pairings-rev-81)): in a
+  tournament whose **players** report the results, a rated Rocket League series starts with a
+  Challenge (`2150`) **signed by the league key** at the pairing: `pairing` `tournament`, both sides
+  (lineup `a` with role, or a 1v1 player `p` with side), the ladder and the tournament `a`, exactly one
+  `start` (the pairing), no `respond_by`, no `zap`. No Challenge Answer (`2151`) follows: the pairing
+  is the accept, and each side's sign-up consent (`22150`) is its agreement to play whoever the bracket
+  pairs it with. Revision 7 left these series casual.
+- **Which event carries the result**: the same chain as a ladder series. An acting captain (or the
+  player of a 1v1 player side) signs the Result Report (`2152`) with `e` to the league's challenge; an
+  acting captain or player of the other side signs the Result Response (`2153`); the league attests
+  (`2154`) with `resolution` `confirmed` and `e` to challenge, report and response, or, after a
+  dispute, an admin decides with `admin`, `forfeit` or `void` like any ladder dispute.
+- **No `entered-by`** in these attestations: `entered-by` stays the mark of a
+  [director result](#director-results-rev-7), and a series with a league-signed pairing never has one.
+- **Pinned at the pairing**: everything a ladder series reads "at the accept" (trust gate, rated
+  entities, `clan` rows, the ladder being open) is read when the league signs the pairing, and the
+  rated entities (lineups in `2v2`/`3v3`, pubkeys in `1v1`) stay those, also if a lineup or an account
+  is gone before the result.
+- **Rated only on the tournament's ladder**: a result counts only while the ladder the tournament froze
+  at its first version is still the open one; a series paired in one season and finished in the next
+  is not rated and not attested ([Tournaments](#tournaments)).
+- **Two sides of one clan play casual** in such a tournament: the state machine asks a challenge for
+  different clans, and the league does not sign a pairing whose confirmation would come from the same
+  party. Mix teams stay unrated as before.
+- **The league's daily pairing limit** (league policy, the same count as for ladder series) applies to
+  tournament pairings: a result beyond it stands in the bracket and is attested without `elo`. That
+  attestation already existed in the app and was missing from rule 16.
+- Validation rules 11, 12, 16 amended; the `a` references that a report or response copies are those
+  of its challenge (the Result Report section said "the three `a` references", which a 1v1 player side
+  since revision 7.1 and a tournament challenge since revision 4 do not have). Tags `pairing`, `start`,
+  `respond_by`, the kind table and the state machine name the league-signed pairing.
+- **App alignment** (code that differed from the text, found while writing this revision): the
+  structural check of `2152`/`2153` required exactly three `a` tags, which refused every rated 1v1
+  player side and every tournament report with its tournament `a`; an attestation named a deleted
+  account's `elo` entity with an empty pubkey instead of the pubkey pinned at the pairing; the proof
+  view of a tournament series waited for a `2151` that never comes. All three are fixed in the app.
 
 ### Changelog of revision 8 (2026-09-26)
 
@@ -289,7 +332,7 @@ by this NIP.
 
 | kind | class | name | signed by |
 |---|---|---|---|
-| `2150` | regular | Challenge | acting captain of the challenger lineup, or the challenging player (solo game) |
+| `2150` | regular | Challenge | acting captain of the challenger lineup, or the challenging player (solo game); rev. 8.1: the league key for the pairing of a tournament whose players report |
 | `2151` | regular | Challenge Answer | the challenged side (`accepted`, `declined`) or the challenger side (`withdrawn`): an acting captain, or the player in a solo game |
 | `2152` | regular | Result Report | acting captain of either lineup |
 | `2153` | regular | Result Response | acting captain of the lineup that did **not** author the report; in chess the other player of the game |
@@ -406,11 +449,11 @@ it and returns non-matching events; see the relay proof).
 | `color` | `white` \| `black` | 2150 | the challenger's color in a solo chess game |
 | `board` | `<no>` | 64 | the board this game record belongs to (team match) |
 | `board` | `<no>`, `<white pubkey>`, `<black pubkey>`, `<result>` | 2154 | one chess game: board number (1 in a solo game), players, PGN result `1-0`, `0-1` or `1/2-1/2` |
-| `start` | `<unix seconds>` | 2150 (1-3), 2151 (1, if accepted) | proposed start times; the chosen one |
-| `respond_by` | `<unix seconds>` | 2150 | the challenge is open until this time. Deliberately **not** NIP-40 `expiration`, see [Relay behaviour](#relay-behaviour) |
+| `start` | `<unix seconds>` | 2150 (1-3), 2151 (1, if accepted) | proposed start times; the chosen one; rev. 8.1: exactly one in a league-signed tournament pairing, the time of the pairing |
+| `respond_by` | `<unix seconds>` | 2150 (not in a league-signed tournament pairing, rev. 8.1) | the challenge is open until this time. Deliberately **not** NIP-40 `expiration`, see [Relay behaviour](#relay-behaviour) |
 | `tournament` | `<slug>` | 2150 (optional), 2155 | revision 3 only: the tournament a challenge belongs to. Revision 4 references the tournament's `31923` with `a` instead |
 | `match` | `<positive integer>` | 2150, 2154 (rev. 4); `14` rumors | the league match number, assigned by the league before the challenge is signed and copied into every attestation of the challenge; in a chat or notification rumor the match it is about |
-| `pairing` | `queue` \| `tournament` | 2150 (rev. 4, optional) | the league paired the two sides: the rated queue or a tournament bracket. Absent: one side chose the other. Changes the trust gate, see [Trust gate](#trust-gate) |
+| `pairing` | `queue` \| `tournament` | 2150 (rev. 4, optional) | the league paired the two sides: the rated queue or a tournament bracket. Absent: one side chose the other. Changes the trust gate, see [Trust gate](#trust-gate). Rev. 8.1: a `2150` signed by the league key always carries `tournament` |
 | `clan` | `<pubkey>`, `<clan address>` | 2154 (rev. 4) | the clan a rated player was an active member of at the accept; one row per rated player with a clan. Input of [Clan hashrate](#clan-hashrate) |
 | `hashrate` | `<win>`, `<draw>`, `<loss>`, `<team win bonus>` | 32152 (rev. 4) | activity points of the season, see [Clan hashrate](#clan-hashrate); its presence makes the ladder a revision-4 ladder |
 | `teams` | `<team size>` | 2155 (rev. 4) | the solo pool is drawn into teams of this size |
@@ -661,6 +704,8 @@ where the game has one, one to three `start`, `respond_by`, `alt`.
 
 **Tournament matches are ordinary challenges** on the same ladder and are rated like any other,
 except that a match with a mix team is unrated (see [League Attestation](#league-attestation-2154)).
+Rev. 8.1: in a tournament whose players report, the league signs the challenge (see
+[Tournament pairings](#tournament-pairings-rev-81)).
 In revision 4 a challenge of a tournament carries `pairing` `tournament`, an `a` to the tournament's
 `31923`, and, if the tournament has a solo-pool draw, an `e` to that draw, so that
 `{"kinds":[2150],"#a":["31923:<league>:<slug>"]}` returns every challenge of the tournament. The
@@ -673,6 +718,42 @@ Revision 7 adds three limits. A match of a tournament that names no ladder (see
 carries the match-fee `zap` tag: tournament matches mine no blocks, so there would be no block for a
 fee to go to ([Fees](#fees)); the tournament's pot is its `31923`. And in a tournament whose directors
 enter the results, no challenge is signed at all ([Director results](#director-results-rev-7)).
+
+#### Tournament pairings (rev. 8.1)
+
+In a tournament whose **players** report the results, nobody chooses the opponent and nobody answers:
+the league pairs the sides from its bracket, and each side agreed to that when it signed its
+[Tournament Consent](#tournament-consent-22150). The league therefore signs the challenge of a rated
+pairing itself, at the moment it makes the pairing:
+
+- author: the league key (the key of the tournament's `31923` and of the ladder);
+- the two sides as in any challenge: a lineup `a` with role `challenger` or `challenged`, or on the
+  Rocket League 1v1 player ladder a player side `["p", "<pubkey>", "<relay>", "<side>"]`; never a roster
+  side (a mix team is unrated and gets no challenge);
+- the ladder `a` (the one the tournament froze, open at the pairing), the tournament `a`, and the `e`
+  to its draw if it has one;
+- `pairing` `tournament`, `bo`, `match`, exactly one `start` (the time of the pairing, not earlier than
+  `created_at`), no `respond_by`, no `zap`; plain `p` tags for the owners of the lineups' clans are
+  recommended, so their clients can subscribe with `#p`;
+- `content` empty or a short public note; `alt` names the tournament.
+
+No Challenge Answer (`2151`) exists for such a challenge: it is accepted when it is signed. From there the
+series runs like any other: an acting captain of either side (the player, for a 1v1 player side) signs
+the Result Report (`2152`) with `e` to this challenge, the other side confirms or disputes with a Result
+Response (`2153`), a dispute goes to an admin, and the league attests. Everything that a ladder series
+reads "at the accept" (the [trust gate](#trust-gate) on rank, the eligible players of each side, the
+rated entities, the `clan` rows, whether the ladder is open) is read at the pairing and pinned.
+
+The league signs no such challenge, and the match is casual, when the tournament names no ladder or its
+ladder is not open at the pairing, when the trust gate fails, when a side is a mix team, or when the
+two sides belong to the same clan at the pairing (a player of one side in the clan of a player or the
+lineup of the other): a confirmation would then come from the party that reported. A director
+tournament signs no challenge at all ([Director results](#director-results-rev-7)).
+
+**What the league-signed challenge proves.** It is the league's public statement that it paired these
+two sides on this ladder; it is not the players' signature. The players' consent is their sign-up,
+which the league keeps and never publishes. The result itself is still backed by two signatures the
+league cannot produce: the report of one side and the confirming response of the other.
 
 **Trust gate.** On a ladder with `trust`, the league SHOULD refuse a challenge whose
 [trust gate](#trust-gate) would fail when it is submitted. The binding check happens at the accept.
@@ -691,7 +772,9 @@ refuses the answer and the challenge stays open. The answer itself carries no tr
 ### Result Report (`2152`)
 
 Required tags: `e` challenge, one `score` per game played in order, the **roster** (one `p` per
-player who played in the series, with side and lineup role), `alt`, and the three `a` references.
+player who played in the series, with side and lineup role), `alt`, and the `a` references of the
+challenge without roles: the lineups (two, or one when a 1v1 player side meets a lineup, none between
+two player sides), the ladder, and the tournament `a` of a tournament challenge.
 A `p` without side for the other lineup's captain is recommended if that captain is not on the
 roster.
 
@@ -1038,7 +1121,10 @@ tournament is therefore optional, and it is **frozen with the first version**:
 - in a tournament **with** a ladder `a`, a match is rated on that ladder only if the ladder is still
   open (no `ends`) at the match's pairing and the [trust gate](#trust-gate) passes on rank; otherwise
   the match is casual. A season that ends during a tournament ends its rated matches. A match is
-  never rated on any other ladder.
+  never rated on any other ladder. Rev. 8.1: that holds until the result: a match paired while the
+  ladder was open and decided after it closed is neither rated nor attested. In a tournament whose
+  players report, the two sides must also belong to different clans at the pairing, and the league
+  signs the challenge ([Tournament pairings](#tournament-pairings-rev-81)).
 
 Why frozen: whether a tournament counts is then decided and public before anyone signs up, the consent
 (`22150`) names the version that says so, and one bracket never mixes rated and unrated rounds because
@@ -1318,7 +1404,9 @@ example an admin raising the minimum). A ladder without `trust`, such as every l
 1 and 2 examples, has no gate.
 
 - **Gatekeepers** are the two pubkeys that agreed to the pairing: in a solo game the two players; with
-  lineups the author of the challenge and the author of the accepting answer (acting captains).
+  lineups the author of the challenge and the author of the accepting answer (acting captains). In a
+  tournament pairing, where the league made the pairing (rev. 7 director results, rev. 8.1 league-signed
+  challenges), they are the two players of a solo game or 1v1, else the owners of the two lineups' clans.
 - **Rated players** are the players the attestation rates or lists on its roster: the two players of
   a solo game or board, the roster players of a series.
 
@@ -2002,6 +2090,7 @@ drawn from one version or one attestation, so a posted card keeps showing what h
 | confirmed | 2154 `confirmed` | league | attested | exactly one attestation per challenge, or per board of a chess team match |
 | disputed | 2154 `admin`, `forfeit`, `void` | league | attested | decided by a league admin; reason in `content` |
 | accepted | 2154 `forfeit`, `void` | league | attested | no report exists; `created_at` is at least the chosen `start` plus the league's grace period; reason in `content` |
+| none | 2150 `pairing` `tournament`, signed by the league key | league | accepted | rev. 8.1: a rated pairing of a tournament whose players report ([Tournament pairings](#tournament-pairings-rev-81)); ladder open, trust gate passed on rank, different clans, no mix team; no 2151 follows |
 | none | 2154 `admin`, `forfeit` with `entered-by` | league | attested | rev. 7: a [director result](#director-results-rev-7) of a rated tournament match; no 2150 to 2153 or game record exists; the director's round is closed |
 
 For a **roster side** (rev. 4), "acting captain" of that side reads "a roster player of that side".
@@ -2080,9 +2169,14 @@ Per kind:
     (the app adds it; see [Fees](#fees)), except (rev. 7) a challenge with `pairing` `tournament`,
     which carries no `zap`; a challenge created before the ladder's `starts` or after
     its `ends` is refused and never attested ([Rest](#rest-before-block-0-and-between-seasons)).
+    Revision 8.1: a challenge with `pairing` `tournament` of a tournament whose players report is signed
+    by the league key, not by a captain; it has no roster side, the tournament `a` names a `31923` of the
+    league key whose ladder `a` is this ladder, exactly one `start` not earlier than `created_at`, no
+    `respond_by` and no `zap`, and its two sides belong to different clans at `created_at`.
 12. **2151**: see the state machine for author and timing (a roster player for a roster side); `a`
     references equal the challenge's; on a ladder with `trust`, an `accepted` answer passes the
-    [trust gate](#trust-gate), except for a challenge with a roster side, which is unrated.
+    [trust gate](#trust-gate), except for a challenge with a roster side, which is unrated. Rev. 8.1: a
+    challenge signed by the league key has no answer; a `2151` that references one is invalid.
 13. **2152**: `score` numbers run from 1 without gaps; each `score` has a winner (`draw` only if the
     game registry allows it); the point values are both absent or empty, or both non-negative
     integers, and then the winner has more points; the series ends in the game in which one side
@@ -2107,15 +2201,18 @@ Per kind:
     attestation of this ladder; the `elo` entities match the ladder's `rates` (lineup addresses or
     pubkeys); each `elo` "before" value equals the entity's "after" value in its previous
     attestation of this ladder that has an `elo` row for it (rev. 7.1: attestations without one, such
-    as a mix-team match or a director forfeit, are skipped), or else its `seed`, or else the ladder's
+    as a mix-team match, a director forfeit or a result beyond the pairing limit, are skipped), or
+    else its `seed`, or else the ladder's
     start rating; each
     "after" value follows [Rating](#rating); `score` and roster `p` tags follow
     [League Attestation](#league-attestation-2154) for the given `resolution` and pass the checks of
     rule 13; a `board` row equals the counted game record, and `winner` follows from it; without
     any report or game record, `resolution` is `forfeit` or `void`; the only attestations without
     `elo` are the unrated whole-team forfeit or void of a chess team match, (rev. 4) an
-    attestation of a challenge with a roster side of several players, and (rev. 7.1) a director
-    result with `resolution` `forfeit`, which never has `elo`. Rev. 7.1: on a player ladder, each `elo`
+    attestation of a challenge with a roster side of several players, (rev. 7.1) a director
+    result with `resolution` `forfeit`, which never has `elo`, and (rev. 8.1) a rated result the league
+    did not count because the pairing had reached the league's daily pairing limit (league policy; it
+    keeps `trust`, `gate` and `clan` rows). Rev. 7.1: on a player ladder, each `elo`
     entity is the pubkey of a roster player; a 1v1 side's entity is its one roster player, with or
     without a lineup `a`. On a ladder with `trust`:
     the attestation (except one with a roster side) carries `trust` and a `gate` row for both
@@ -2124,7 +2221,7 @@ Per kind:
     equal to the row's rank, at least the minimum; each gatekeeper's opponent list is a `30000` by that
     gatekeeper with `d` = `esports/<league key>` that lists the other gatekeeper (not required for a
     tournament pairing); every referenced event is signed and has a `created_at` not later than the
-    accepting answer's. On a ladder without `trust`, neither `trust` nor `gate` appears. Revision 4:
+    accepting answer's (rev. 8.1: than the league-signed challenge's, which has no answer). On a ladder without `trust`, neither `trust` nor `gate` appears. Revision 4:
     `match` equals the challenge's; one `clan` row per rated player who was an active clan member at
     the accept, naming that clan, and none for anyone else; the tournament `a` equals the challenge's;
     an attestation of a challenge with a roster side (a mix team) has no `elo`, `trust`, `gate` or
@@ -2135,7 +2232,10 @@ Per kind:
     challenge, so no `e` is required, and "without any report or game record, `resolution` is
     `forfeit` or `void`" does not apply; with `admin`, a series carries `score` and roster, a chess
     game one `board` row; "at the accept" reads "at the pairing". Without a tournament `a`, no
-    `entered-by`.
+    `entered-by`. Rev. 8.1: an attestation of a series whose challenge the league signed never carries
+    `entered-by`; "at the accept" reads "at the pairing"; its `resolution` is `confirmed` after the
+    other side's response, else `admin`, `forfeit` or `void` after an admin decision; the ladder `a` is
+    the tournament's, and it is open at the attestation's `created_at`.
 17. **2155**: signed by the league key; `a` ladder of this league whose season window contains
     `created_at` (at submission: the ladder has no `ends` yet), rev. 7: present exactly when the
     tournament's `31923` names a ladder, and then equal to it; the height in `draw` is above the
@@ -2232,7 +2332,8 @@ Per kind:
 - **Transition binding.** Every match-flow event references its predecessor by `e` and is valid only
   while the predecessor is in the expected state. Once a challenge is accepted, a replayed accept
   or a replayed confirm finds the state already moved and changes nothing. An answer cannot be
-  signed before the challenge exists, because it has to contain the challenge id.
+  signed before the challenge exists, because it has to contain the challenge id. Rev. 8.1: a
+  league-signed tournament pairing is accepted when it is signed; a report binds to it by its id.
 - **League and season binding.** The ladder `a` tag names the league key and the season. An event
   replayed to another league or into a later season fails rule 11.
 - **Unique ids.** The league stores every accepted event id with a unique index (rule 5).
@@ -5144,8 +5245,10 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   the roster in the report show who played) are league policy. P4 decided that accepting another
   clan's invitation is a switch ([Ownership](#ownership-rev-5)); a running challenge is not covered.
 - Anti-farming limits (plan, open question 4) are league policy; this NIP only reserves the check in
-  rule 11. A double-elimination bracket can pair the same lineups twice in one evening, so the
-  policy should exempt tournament challenges.
+  rule 11. A double-elimination bracket can pair the same lineups twice in one evening. Rev. 8.1: the
+  league does **not** exempt tournament pairings from its daily pairing limit; a result beyond it
+  stands in the bracket and is attested without `elo` (rule 16), so a grand final with a reset can
+  leave the last result of the evening unrated.
 - **Carry-over across a quiet season.** A season seeds only entities with a rated result in it
   (step 3 of [Season transition](#season-transition)). With league-wide seasons, every game that is not
   played for a whole season loses its ratings: Rocket League 2v2 season 3 starts both lineups at 1000,
@@ -5179,6 +5282,14 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 - **Legal and tax questions** of paying sats from a donated pot for won games are not checked.
 - **The reserve's goal amount.** NIP-75 requires one; the examples use 21 000 000 sats as a number that
   promises nothing. Whether clients show that as a target is a design question.
+- **Revision 8.1 has no signed example yet.** A league-signed tournament pairing (`2150`), the report
+  and response that reference it, and its attestation are tested in the app against the rule checker,
+  not yet signed onto the ndak test bed.
+- **Tournaments published before revision 8.1** stay as their `content` says (casual Rocket League
+  series in players mode). A league that adopts revision 8.1 while such a tournament with a ladder `a`
+  is still running has to keep its series casual; the app of this revision does not tell the two
+  apart (it has no record of which revision published a tournament), so it relies on no such
+  tournament running at the switch.
 - **Revision 7 has no signed example yet.** A director result (`2154` with `entered-by`), a draw and a
   tournament without a ladder `a`, and a tournament consent (`22150`, signed but not published) still
   need their round in the relay proof.
