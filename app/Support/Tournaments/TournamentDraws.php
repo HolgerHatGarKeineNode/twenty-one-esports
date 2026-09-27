@@ -36,14 +36,10 @@ final class TournamentDraws
 {
     public const TOURNAMENT_DRAW = 2155;
 
-    /** Why an entry is dropped at close (stored in English like every log reason). */
-    public const NOT_RECONFIRMED = 'The entry was not confirmed again after the rules changed.';
-
     public function __construct(
         private BitcoinBlocks $blocks,
         private TournamentBrackets $brackets,
         private TournamentRunner $runner,
-        private TournamentModeration $moderation,
     ) {}
 
     /**
@@ -103,19 +99,12 @@ final class TournamentDraws
             return false;
         }
 
-        $dropped = [];
-
-        $closed = DB::transaction(function () use ($tournament, $league, $tip, &$dropped): bool {
+        return DB::transaction(function () use ($tournament, $league, $tip): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
 
             if ($locked->status !== TournamentStatus::Signup) {
                 return false;
             }
-
-            // Entries that never confirmed a rules change (TournamentEditor) are dropped before anything is counted.
-            $dropped = $this->moderation->removeLocked($locked, null,
-                TournamentSignup::query()->where('tournament_id', $locked->id)->active()->whereNotNull('reconfirm_since')->orderBy('id')->get(),
-                self::NOT_RECONFIRMED);
 
             $signups = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->orderBy('id')->get();
             $size = $locked->teamSize();
@@ -134,12 +123,6 @@ final class TournamentDraws
 
             return true;
         });
-
-        if ($dropped !== []) {
-            $this->moderation->notifyRemoved($tournament, $dropped, self::NOT_RECONFIRMED);
-        }
-
-        return $closed;
     }
 
     /**

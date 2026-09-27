@@ -80,7 +80,7 @@ final class TournamentModeration
      * @param  iterable<TournamentSignup>  $signups
      * @return list<int> user ids
      */
-    public function removeLocked(Tournament $locked, ?User $actor, iterable $signups, string $reason): array
+    public function removeLocked(Tournament $locked, User $actor, iterable $signups, string $reason): array
     {
         $notify = [];
 
@@ -112,16 +112,15 @@ final class TournamentModeration
     /**
      * Append one line to the moderation log.
      *
-     * @param  'edited'|'removed'|'blocked'|'unblocked'|'reconfirm'  $action
-     * @param  User|null  $actor  null = the league itself (sign-up close)
+     * @param  'edited'|'removed'|'blocked'|'unblocked'  $action
      * @param  array<string, array{0: mixed, 1: mixed}>|null  $details
      */
-    public function log(Tournament $tournament, ?User $actor, string $action, ?string $subject = null, ?string $reason = null, ?array $details = null, ?int $signupId = null): void
+    public function log(Tournament $tournament, User $actor, string $action, ?string $subject = null, ?string $reason = null, ?array $details = null, ?int $signupId = null): void
     {
         TournamentModerationEntry::query()->create([
             'tournament_id' => $tournament->id,
-            'user_id' => $actor?->id,
-            'user_name' => $actor === null ? 'League' : mb_substr($actor->displayName(), 0, 80),
+            'user_id' => $actor->id,
+            'user_name' => mb_substr($actor->displayName(), 0, 80),
             'action' => $action,
             'tournament_signup_id' => $signupId,
             'subject' => $subject === null ? null : mb_substr($subject, 0, 80),
@@ -182,29 +181,6 @@ final class TournamentModeration
     }
 
     /**
-     * Tell the entrants of entries waiting for a new consent what changed.
-     *
-     * @param  list<int>  $userIds
-     * @param  list<string>  $changed  English field labels, translated per player
-     */
-    public function notifyReconfirm(Tournament $tournament, array $userIds, array $changed): void
-    {
-        foreach (User::query()->whereKey($userIds)->get() as $player) {
-            $locale = $player->locale ?? (string) config('app.locale');
-
-            $this->notifier->send($player, NotificationKind::TournamentRulesChanged, new Notice(
-                __('The rules of :tournament changed', ['tournament' => $tournament->name], $locale),
-                __('Changed: :fields. Confirm your entry again before sign-up closes, or it is dropped.', [
-                    'fields' => implode(', ', array_map(fn (string $field): string => __($field, [], $locale), $changed)),
-                ], $locale),
-                route('tournaments.signup', $tournament),
-                null,
-                __('Confirm', [], $locale),
-            ));
-        }
-    }
-
-    /**
      * The players of an entry and the captain who entered it.
      *
      * @return list<int> user ids
@@ -224,9 +200,9 @@ final class TournamentModeration
         }
     }
 
-    private function markRemoved(Tournament $locked, ?User $actor, TournamentSignup $signup, string $reason): void
+    private function markRemoved(Tournament $locked, User $actor, TournamentSignup $signup, string $reason): void
     {
-        $signup->forceFill(['removed_at' => now(), 'removed_by_id' => $actor?->id, 'removal_reason' => $reason])->save();
+        $signup->forceFill(['removed_at' => now(), 'removed_by_id' => $actor->id, 'removal_reason' => $reason])->save();
         $this->log($locked, $actor, 'removed', subject: $signup->name, reason: $reason, signupId: $signup->id);
     }
 

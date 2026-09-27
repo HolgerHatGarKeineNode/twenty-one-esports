@@ -131,16 +131,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $this->attempt(fn () => app(TournamentSignups::class)->withdraw($this->tournament, $this->user(), $this->decode($signed)));
     }
 
-    public function prepareReconfirm(): ?array
-    {
-        return $this->attempt(fn () => app(TournamentSignups::class)->prepareReconfirm($this->tournament, $this->user()));
-    }
-
-    public function reconfirm(string $signed): void
-    {
-        $this->attempt(fn () => app(TournamentSignups::class)->reconfirm($this->tournament, $this->user(), $this->decode($signed)));
-    }
-
     private function user(): User
     {
         $user = auth()->user();
@@ -286,18 +276,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         <p class="m-0 text-xs text-ink-3">{{ __('Your captain can pull the lineup out.') }}</p>
                     @endif
                 </div>
-                @if ($open && $entry->needsReconfirm())
-                    {{-- A rules change since sign-up (TournamentEditor): the entry needs a consent to the current version. --}}
-                    <div class="flex flex-col gap-2 rounded-md px-4 py-4 shadow-[inset_0_0_0_1px_#F7931A]" data-test="reconfirm">
-                        <p class="m-0 text-[13px] font-bold">{{ __('The rules changed after you signed up') }}</p>
-                        <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Read the tournament page, then confirm your entry for the current rules. An entry not confirmed by sign-up close is dropped.') }}</p>
-                        @if ($entry->lineup_id === null || ($entry->lineup?->isActingCaptain($me) ?? false))
-                            <div><x-button x-on:click="run('prepareReconfirm', 'reconfirm')" ::disabled="busy" data-test="reconfirm-button">{{ __('Confirm my entry') }}</x-button></div>
-                        @else
-                            <p class="m-0 text-xs text-ink-3">{{ __('Your captain confirms the lineup.') }}</p>
-                        @endif
-                    </div>
-                @endif
             @else
                 @if ($lineup)
                     <div class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-ring-hairline" data-test="lineup-entry">

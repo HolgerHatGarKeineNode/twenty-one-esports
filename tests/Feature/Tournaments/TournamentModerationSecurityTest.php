@@ -2,7 +2,6 @@
 
 use App\Enums\ClanRole;
 use App\Enums\LineupRole;
-use App\Enums\NotificationKind;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
@@ -44,7 +43,7 @@ use Tests\Support\TrustedFacts;
 | F1: a player blocked from a tournament never plays in it through a clan
 | lineup: sign-up checks every active seat, and a tournament series takes
 | its players from the entry's recorded members, not from today's seats.
-| F2: a rules change asks the entries for a new consent. F3: the shared
+| F2: a rules change leaves the entries as they are. F3: the shared
 | calendar is never signed ahead of the clock by a burst of edits.
 |
 */
@@ -149,87 +148,74 @@ test('blocking a lineup entry blocks every active seat of the lineup, not only t
 });
 
 /*
-| F2: a change to what the entrants agreed to (results mode, directors, game
-| or mode, format) asks every active entry for a new consent against the
-| current version; the entrants hear what changed, and an entry not
-| confirmed again by sign-up close is dropped, notified and logged.
+| F2 (accepted risk, 2026-09-27): a change to what the entrants agreed to
+| (results mode, directors, game or mode, format) never touches an entry.
+| It stays valid through the draw, nobody is asked to act, nobody is
+| notified; the moderation log keeps the edit. Players still pull out freely.
 */
 
-test('a rules change after sign-ups asks every entry to confirm again and tells its players what changed', function () {
+test('a rules change after sign-ups leaves every entry valid, asks nobody for anything, and only logs the edit', function () {
     $tournament = openTournament();
     [$ana, $anaKey] = keyedPlayer();
     [$bob, $bobKey] = keyedPlayer();
-    $anaEntry = soloSignup($tournament, $ana, $anaKey);
+    soloSignup($tournament, $ana, $anaKey);
     soloSignup($tournament, $bob, $bobKey);
-    $editor = app(TournamentEditor::class);
-
-    // A name is no rule a consent agreed to: nothing to confirm.
-    $editor->update($tournament, $tournament->creator, ['name' => 'Blitz Night Renamed']);
-
-    expect(TournamentSignup::query()->whereNotNull('reconfirm_since')->count())->toBe(0);
 
     $this->travel(3)->seconds();
-    $editor->update($tournament, $tournament->creator, ['results_mode' => TournamentResultsMode::Director]);
-    $notice = $ana->notifications()->sole();
+    app(TournamentEditor::class)->update($tournament, $tournament->creator, ['results_mode' => TournamentResultsMode::Director]);
 
-    expect(TournamentSignup::query()->active()->whereNull('reconfirm_since')->count())->toBe(0)
-        ->and($notice->data['kind'])->toBe(NotificationKind::TournamentRulesChanged->value)
-        ->and($notice->data['body'])->toContain('Results')
-        ->and($bob->notifications()->count())->toBe(1)
-        ->and(TournamentModerationEntry::query()->where('action', 'reconfirm')->sole()->reason)->toBe('Results');
-    // A player has to act on it: a DM by default (NotificationKind::dmByDefault).
-    Queue::assertPushed(SendNostrDm::class, 2);
+    expect(TournamentSignup::query()->where('tournament_id', $tournament->id)->active()->count())->toBe(2)
+        ->and($ana->notifications()->count() + $bob->notifications()->count())->toBe(0)
+        ->and(TournamentModerationEntry::query()->pluck('action')->all())->toBe(['edited'])
+        ->and(TournamentModerationEntry::query()->sole()->details)->toHaveKey('results_mode');
+    Queue::assertNotPushed(SendNostrDm::class);
 
-    Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="needs-reconfirm"');
+    Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament->refresh()])
+        ->assertDontSeeHtml('reconfirm');
     Livewire::actingAs($ana)->test('pages::tournaments.signup', ['tournament' => $tournament])
-        ->assertSeeHtml('data-test="reconfirm-button"');
+        ->assertSeeHtml('data-test="withdraw"')
+        ->assertDontSeeHtml('reconfirm');
 
-    // Ana confirms with one signed consent against the current version; her first consent stays on record.
+    // Pulling out still works as before, against the consent she signed for the old version.
     $signups = app(TournamentSignups::class);
-    $signups->reconfirm($tournament->refresh(), $ana, $anaKey->signTemplates($signups->prepareReconfirm($tournament, $ana)));
-    $anaEntry->refresh();
-    $consent = NostrEvent::query()->findOrFail($anaEntry->reconfirm_event_id)->payload();
+    $signups->withdraw($tournament->refresh(), $ana, $anaKey->signTemplates($signups->prepareWithdraw($tournament, $ana)));
 
-    expect($anaEntry->needsReconfirm())->toBeFalse()
-        ->and($anaEntry->event_id)->not->toBeNull()->not->toBe($anaEntry->reconfirm_event_id)
-        ->and($consent['tags'])->toContain(['e', $tournament->event->event_id, ''], ['action', 'signup'], ['p', $ana->pubkey, '', 'entrant'])
-        ->and(fn () => $signups->prepareReconfirm($tournament, $ana))->toThrow(TournamentRuleViolation::class);
+    expect(TournamentSignup::query()->where('user_id', $ana->id)->sole()->withdrawn_at)->not->toBeNull();
 });
 
-test('an entry not confirmed again by sign-up close is dropped at the close, notified and logged', function () {
-    Http::fake(fn ($request) => str_ends_with($request->url(), '/blocks/tip/height') ? Http::response('900000') : Http::response('', 404));
+test('entries signed up before a rules change are all drawn', function () {
+    $hash = hash('sha256', 'block 900001');
+    $tip = 900000;
+    Http::fake(function ($request) use (&$tip, $hash) {
+        return match (true) {
+            str_ends_with($request->url(), '/blocks/tip/height') => Http::response((string) $tip),
+            str_ends_with($request->url(), '/block-height/900001') => Http::response($hash),
+            str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->addMinutes(10)->getTimestamp()]),
+            default => Http::response('', 404),
+        };
+    });
     $tournament = openTournament();
-    $players = collect(range(1, 3))->map(function () use ($tournament): array {
+    $players = collect(range(1, 3))->map(function () use ($tournament): User {
         [$player, $key] = keyedPlayer();
         soloSignup($tournament, $player, $key);
 
-        return [$player, $key];
+        return $player;
     });
 
     $this->travel(3)->seconds();
     app(TournamentEditor::class)->update($tournament, $tournament->creator, ['format' => TournamentFormat::RoundRobin]);
-    $signups = app(TournamentSignups::class);
-
-    foreach ($players->take(2) as [$player, $key]) {
-        $signups->reconfirm($tournament->refresh(), $player, $key->signTemplates($signups->prepareReconfirm($tournament, $player)));
-    }
-
-    [$late] = $players->last();
     $this->travel(25)->hours();
+    $draws = app(TournamentDraws::class);
 
-    expect(app(TournamentDraws::class)->close($tournament->refresh()))->toBeTrue();
+    expect($draws->close($tournament->refresh()))->toBeTrue()
+        ->and(TournamentSignup::query()->whereNotNull('removed_at')->count())->toBe(0);
 
-    $dropped = TournamentSignup::query()->where('user_id', $late->id)->sole();
+    $tip = 900006;
 
-    expect($tournament->refresh()->status)->toBe(TournamentStatus::Drawing)
-        ->and($dropped->removed_at)->not->toBeNull()
-        ->and($dropped->removal_reason)->toBe(TournamentDraws::NOT_RECONFIRMED)
-        ->and(TournamentSignup::query()->active()->count())->toBe(2)
-        ->and($late->notifications()->get()->pluck('data.kind')->sort()->values()->all())
-        ->toBe([NotificationKind::TournamentEntryRemoved->value, NotificationKind::TournamentRulesChanged->value])
-        ->and(TournamentModerationEntry::query()->where('action', 'removed')->sole()->only(['user_id', 'user_name', 'subject']))
-        ->toBe(['user_id' => null, 'user_name' => 'League', 'subject' => $dropped->name]);
+    expect($draws->resolve($tournament->refresh()))->toBeTrue()
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Running)
+        ->and($tournament->participants()->pluck('user_id')->sort()->values()->all())->toBe($players->pluck('id')->sort()->values()->all())
+        ->and(TournamentModerationEntry::query()->pluck('action')->all())->toBe(['edited']);
 });
 
 /*

@@ -481,9 +481,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 <p class="m-0 text-[13px] text-ink-2">{{ __('Nobody has signed up yet.') }}</p>
             @else
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Removing an entry frees its places and tells its players why. Their signed sign-up stays on record; nothing is published.') }}</p>
-                @if ($this->signups->contains(fn ($signup) => $signup->needsReconfirm()))
-                    <p class="m-0 text-xs leading-normal text-btc-hi" data-test="reconfirm-note">{{ __('The rules changed after these sign-ups. Entries marked “needs re-confirm” are dropped at sign-up close unless their players confirm again.') }}</p>
-                @endif
                 @if ($moderationError !== '')
                     <p class="m-0 text-[13px] text-loss" role="alert" data-test="moderation-error">{{ $moderationError }}</p>
                 @endif
@@ -499,11 +496,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                                         <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-raised px-1.5 text-[10px] text-ink-2">{{ $teams ? __('solo') : __('player') }}</span>
                                     @endif
                                     <b class="min-w-0 truncate">{{ $signup->name }}</b>
-                                    @if ($signup->needsReconfirm())
-                                        <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-btc-chip px-1.5 text-[10px] font-bold text-btc-hi" data-test="needs-reconfirm">{{ __('needs re-confirm') }}</span>
-                                    @elseif ($signup->reconfirm_event_id)
-                                        <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-win-tint px-1.5 text-[10px] text-win" data-test="reconfirmed">{{ __('re-confirmed') }}</span>
-                                    @endif
                                 </span>
                                 <x-button variant="secondary" wire:click="startRemove({{ $signup->id }})" class="h-9 px-3 lg:order-last" data-test="remove-{{ $signup->id }}">{{ __('Remove') }}</x-button>
                                 <span class="col-span-2 min-w-0 text-xs text-ink-2 [overflow-wrap:anywhere] lg:col-span-1">

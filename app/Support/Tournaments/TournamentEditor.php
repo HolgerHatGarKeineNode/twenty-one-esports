@@ -51,7 +51,9 @@ use Illuminate\Support\Facades\Gate;
  *
  * Every change to a published tournament republishes its `31923` and the
  * league calendar (TournamentPublisher::republish); the address never
- * changes. Every change is logged in the moderation log.
+ * changes. Every change is logged in the moderation log. No change asks
+ * the entries for anything: an entry stays valid through the draw, whatever
+ * the organizer edits before it (their players only read the new version).
  */
 final class TournamentEditor
 {
@@ -60,9 +62,6 @@ final class TournamentEditor
 
     /** Why a lineup is removed by a game correction (English key, translated for each player). */
     public const GAME_CORRECTED = 'The game or mode of the tournament was corrected.';
-
-    /** What an entrant agreed to with their consent: a change asks every entry to confirm again. */
-    public const CONSENT_FIELDS = ['results_mode' => 'Results', 'directors' => 'Tournament directors', 'game' => 'Game', 'mode' => 'Mode', 'format' => 'Format'];
 
     public function __construct(private TournamentPublisher $publisher, private TournamentModeration $moderation) {}
 
@@ -78,12 +77,12 @@ final class TournamentEditor
             throw new TournamentRuleViolation('not_manager', __('Only the organizer of this tournament or an admin can do this.'));
         }
 
-        [$changed, $removed, $reconfirm, $consentFields] = DB::transaction(function () use ($tournament, $actor, $changes, $removeIncompatible): array {
+        [$changed, $removed] = DB::transaction(function () use ($tournament, $actor, $changes, $removeIncompatible): array {
             $locked = Tournament::query()->with(['event', 'directors'])->lockForUpdate()->findOrFail($tournament->id);
             $diff = $this->diff($locked, $changes);
 
             if ($diff === []) {
-                return [[], [], [], []];
+                return [[], []];
             }
 
             $this->assertAllowed($locked, $diff);
@@ -134,55 +133,19 @@ final class TournamentEditor
 
             $this->moderation->log($locked, $actor, 'edited', details: $details);
             $removed = $this->moderation->removeLocked($locked, $actor, $incompatible, self::GAME_CORRECTED);
-            [$reconfirm, $consentFields] = $this->askForReconfirm($locked, $actor, array_keys($details));
 
             if ($locked->status !== TournamentStatus::Draft) {
                 $this->publisher->republish($locked);
             }
 
-            return [array_keys($details), $removed, $reconfirm, $consentFields];
+            return [array_keys($details), $removed];
         });
 
         if ($removed !== []) {
             $this->moderation->notifyRemoved($tournament->refresh(), $removed, self::GAME_CORRECTED);
         }
 
-        if ($reconfirm !== []) {
-            $this->moderation->notifyReconfirm($tournament->refresh(), $reconfirm, $consentFields);
-        }
-
         return $changed;
-    }
-
-    /**
-     * A change to what an entrant agreed to (results mode, directors, game
-     * or mode, format) while entries exist: their consents (22150) name the
-     * superseded version. Every active entry waits for a new consent against
-     * the current version (TournamentSignups::reconfirm); one still waiting
-     * when sign-up closes is dropped (TournamentDraws::close). Returns who to
-     * notify and the English labels of what changed.
-     *
-     * @param  list<string>  $changed
-     * @return array{0: list<int>, 1: list<string>}
-     */
-    private function askForReconfirm(Tournament $locked, User $actor, array $changed): array
-    {
-        $fields = array_values(array_intersect_key(self::CONSENT_FIELDS, array_flip($changed)));
-
-        if ($fields === [] || $locked->status !== TournamentStatus::Signup) {
-            return [[], []];
-        }
-
-        $entries = TournamentSignup::query()->where('tournament_id', $locked->id)->active()->get();
-
-        if ($entries->isEmpty()) {
-            return [[], []];
-        }
-
-        TournamentSignup::query()->whereKey($entries->modelKeys())->update(['reconfirm_since' => now(), 'reconfirm_event_id' => null]);
-        $this->moderation->log($locked, $actor, 'reconfirm', subject: trans_choice(':count entry|:count entries', $entries->count()), reason: implode(', ', $fields));
-
-        return [array_values(array_unique(array_merge(...$entries->map(fn (TournamentSignup $signup): array => TournamentModeration::entrants($signup))->all()))), $fields];
     }
 
     /**
