@@ -4,8 +4,10 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\Rating;
 use App\Models\User;
+use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Carbon;
 
@@ -57,10 +59,12 @@ test('the ladders are the casual chess ladders in the ladder page order', functi
 
     expect(array_column($ladders['blitz'], 'elo'))->toBe([1040, 1020, 1020, 1020])
         ->and(array_column($ladders['blitz'], 'games'))->toBe([3, 5, 2, 2])
-        ->and($ladders['blitz'][0])->toBe(['rank' => 1, 'name' => 'Alice', 'elo' => 1040, 'games' => 3, 'wins' => 3, 'draws' => 0, 'losses' => 0])
+        ->and($ladders['blitz'][0])->toBe(['rank' => 1, 'name' => 'Alice', 'elo' => 1040, 'games' => 3, 'wins' => 3, 'draws' => 0, 'losses' => 0,
+            'avatarRef' => ['id' => $first->user_id, 'pubkey' => $first->user->pubkey, 'source' => null]])
         ->and($ladders['blitz'][1]['name'])->toBe($second->user->displayName())
         ->and([$ladders['blitz'][2]['name'], $ladders['blitz'][3]['name']])->toBe([$third->user->displayName(), $fourth->user->displayName()])
-        ->and($ladders['daily'])->toBe([['rank' => 1, 'name' => 'Daisy', 'elo' => 990, 'games' => 1, 'wins' => 0, 'draws' => 0, 'losses' => 1]])
+        ->and($ladders['daily'])->toBe([['rank' => 1, 'name' => 'Daisy', 'elo' => 990, 'games' => 1, 'wins' => 0, 'draws' => 0, 'losses' => 1,
+            'avatarRef' => ['id' => $daily->user_id, 'pubkey' => $daily->user->pubkey, 'source' => null]]])
         ->and($first->id)->toBeInt()
         ->and($daily->id)->toBeInt();
 });
@@ -81,7 +85,7 @@ test('the clan spotlight counts members and their games, and takes turns', funct
 
     [$shown, $other] = $turn === 0 ? [$spotlight, $next] : [$next, $spotlight];
 
-    expect($shown)->toBe(['name' => 'Satoshis Hodlers', 'tag' => $older->clantag, 'members' => 1, 'games' => 2, 'founded' => 'Sep 20, 2026', 'logoUrl' => 'https://example.com/logo.png'])
+    expect($shown)->toBe(['name' => 'Satoshis Hodlers', 'tag' => $older->clantag, 'members' => 1, 'games' => 2, 'founded' => 'Sep 20, 2026', 'logoUrl' => 'https://example.com/logo.png', 'logoRef' => null])
         ->and($other['name'])->toBe($newer->name)
         ->and($other['logoUrl'])->toBeNull();
 });
@@ -99,4 +103,40 @@ test('without clans there is no spotlight, and the numbers are cached for a whil
     $this->travel(16)->seconds();
 
     expect($stats->all()['players'])->toBe(1);
+});
+
+test('changed numbers reach the teaser data once the cache period passed, not before', function () {
+    // One spotlight turn for the whole test: the oldest clan stays on show.
+    config(['twentyone.stream.stats.clan_spotlight_seconds' => 10_000_000_000]);
+    $clan = Clan::factory()->create(['name' => 'Oldest']);
+    $alice = casualRating(User::factory()->create(['name' => 'Alice']), 'blitz', 1100, 3);
+    $bob = casualRating(User::factory()->create(['name' => 'Bob']), 'blitz', 1000, 2);
+    ChessGame::factory()->finished()->create(['ended_at' => now()]);
+    ChessGame::factory()->create();
+    // What the supervisor renders: this poll's counts, through the scene data of a teaser.
+    $shown = fn (): array => app(SceneSource::class)->rotation('a3', null, [], 0, (int) now()->getTimestampMs(), app(StreamStats::class)->all())['stats'];
+
+    $before = $shown();
+    User::factory()->create();
+    Clan::factory()->create();
+    ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => User::factory()->create()->id, 'role' => 'member', 'joined_at' => now()]);
+    ChessGame::factory()->finished()->create(['ended_at' => now()]);
+    ChessGame::factory()->create();
+    $bob->forceFill(['rating' => 1200, 'results' => 3])->save();
+    $this->travel(10)->seconds();
+    $cached = $shown();
+    $this->travel(6)->seconds();
+    $after = $shown();
+    $numbers = fn (array $stats): array => [$stats['players'], $stats['clans'], $stats['gamesPlayed'], $stats['gamesToday'], $stats['liveNow'], $stats['clan']['members']];
+
+    expect($numbers($before))->toBe([$before['players'], 1, 1, 1, 1, 1])
+        ->and(array_column($before['ladders']['blitz'], 'name'))->toBe(['Alice', 'Bob'])
+        ->and($cached)->toBe($before)
+        ->and($numbers($after))->toBe([User::query()->count(), 2, 2, 2, 2, 2])
+        ->and($after['players'])->toBeGreaterThan($before['players'])
+        ->and($after['clan']['name'])->toBe('Oldest')
+        // A new result moves Bob up, with his Elo.
+        ->and(array_column($after['ladders']['blitz'], 'name'))->toBe(['Bob', 'Alice'])
+        ->and(array_column($after['ladders']['blitz'], 'elo'))->toBe([1200, 1100])
+        ->and($alice->id)->toBeInt();
 });

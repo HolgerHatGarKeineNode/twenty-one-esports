@@ -2,6 +2,7 @@
 
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\NostrKeys;
@@ -9,6 +10,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\Stream\ViewerCounter;
@@ -257,7 +259,7 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
  */
 function scriptedSource(array $answers): void
 {
-    $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class)])->makePartial();
+    $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class), app(StreamImages::class)])->makePartial();
     $source->shouldReceive('sceneGames')->andReturnUsing(function () use (&$answers) {
         $answer = count($answers) > 1 ? array_shift($answers) : $answers[0];
 
@@ -610,7 +612,7 @@ test('upcoming tournaments that cannot be read leave the rotation to the teasers
     fakeEncoder($this->dir);
     fakeRenderer($this->dir);
     shortRotation();
-    $slides = Mockery::mock(TournamentSlides::class, [app(GameRegistry::class)])->makePartial();
+    $slides = Mockery::mock(TournamentSlides::class, [app(GameRegistry::class), app(StreamImages::class)])->makePartial();
     $slides->shouldReceive('snapshots')->andThrow(new PDOException('SQLSTATE[HY000]: General error: 5 database is locked'));
     app()->instance(TournamentSlides::class, $slides);
 
@@ -931,4 +933,35 @@ test('twentyone:stream:end publishes ended once for the session and clears it; w
 
     expect(Artisan::call('twentyone:stream:end', ['--relays' => 'ws://'.stream_socket_get_name($silent, false)]))->toBe(1)
         ->and(File::exists($this->dir.'/session.json'))->toBeTrue();
+});
+
+test('a teaser whose numbers change mid-slide is rendered again with the new data', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    // Every SVG the daemon sends to rsvg-convert, kept (a frame with the same SVG is never sent twice).
+    File::put($this->dir.'/rsvg-convert', "#!/bin/sh\ncat >> ".$this->dir."/renders\necho '<!--end-->' >> ".$this->dir."/renders\nprintf '\\211PNG'\n");
+    chmod($this->dir.'/rsvg-convert', 0755);
+    config(['twentyone.stream.scene.rsvg_convert' => $this->dir.'/rsvg-convert']);
+    shortRotation();
+    config(['twentyone.stream.rotation.teaser_seconds' => 4, 'twentyone.stream.stats.cache_seconds' => 1]);
+    // Another process adds a result while the ladder teaser is on: after its first render.
+    $added = false;
+    View::composer('stream.rotation.a3-ladders', function () use (&$added): void {
+        if (! $added) {
+            $added = true;
+            $user = User::factory()->create(['name' => 'Latecomer']);
+            Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1234, 'results' => 3]);
+        }
+    });
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5.5]);
+    $output = Artisan::output();
+    // The ladder teaser's frames, in the order they were sent.
+    $ladders = array_values(array_filter(explode('<!--end-->', (string) @file_get_contents($this->dir.'/renders')), fn (string $svg): bool => str_contains($svg, 'Casual Elo, top two')));
+
+    expect($output)->toContain('rotation: a3 teaser, rendered in')
+        ->and($added)->toBeTrue()
+        ->and(count($ladders))->toBeGreaterThanOrEqual(2)
+        ->and($ladders[0])->not->toContain('Latecomer')
+        ->and($ladders[count($ladders) - 1])->toContain('Latecomer');
 });

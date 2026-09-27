@@ -258,6 +258,13 @@ Artisan::command('esports:trust-run', function (TrustJob $job) {
 Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlapping();
 
 /*
+ * The stream's pictures (App\Console\Commands\TwentyOneStreamImagesCommand):
+ * avatars older than a day are fetched again, a new picture right away;
+ * backdrops only when a cover changed. The daemon reads the files.
+ */
+Schedule::command('twentyone:stream:images')->everyTenMinutes()->withoutOverlapping();
+
+/*
  * Horizon's metrics dashboard stays empty without regular snapshots.
  */
 Schedule::command('horizon:snapshot')->everyFiveMinutes();

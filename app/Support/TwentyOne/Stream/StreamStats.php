@@ -20,16 +20,23 @@ use Throwable;
  * played as the footer counts them (finished chess games), the casual
  * ladders as the ladder page orders them. Names are raw display names;
  * the scene views clean and escape them. Nothing here is estimated.
+ *
+ * The cached counts carry plain picture refs (StreamImages::avatarRef(),
+ * ::logoRef()); all() turns them into data URIs from the daemon's memory:
+ * every ladder row gets `avatar`, the clan spotlight `logo` (our redrawn
+ * logo, else null).
  */
 class StreamStats
 {
+    public function __construct(private StreamImages $images) {}
+
     public const CACHE_KEY = 'twentyone.stream.stats';
 
     /** Ladder slug => chess mode. */
     public const LADDERS = ['blitz' => 'blitz', 'daily' => ChessGame::CORRESPONDENCE];
 
     /**
-     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null}|null}
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null}|null}
      */
     public function all(): array
     {
@@ -37,16 +44,43 @@ class StreamStats
 
         // A failing cache store must not stop the scene: count directly then.
         try {
-            return Cache::remember(self::CACHE_KEY, $seconds, fn (): array => $this->count());
+            $counts = Cache::remember(self::CACHE_KEY, $seconds, fn (): array => $this->count());
         } catch (Throwable $e) {
             report($e);
 
-            return $this->count();
+            $counts = $this->count();
         }
+
+        return $this->withPictures($counts);
     }
 
     /**
-     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null}|null}
+     * count() with its refs turned into data URIs; a count cached before
+     * the refs existed (just after a deploy) gets no picture, not an error.
+     *
+     * @param  array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logoRef: string|null}|null}  $counts
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logo: string|null}|null}
+     */
+    private function withPictures(array $counts): array
+    {
+        $clan = $counts['clan'];
+
+        return [
+            'players' => $counts['players'],
+            'clans' => $counts['clans'],
+            'gamesPlayed' => $counts['gamesPlayed'],
+            'liveNow' => $counts['liveNow'],
+            'gamesToday' => $counts['gamesToday'],
+            'ladders' => ['blitz' => $this->ladderWithAvatars($counts['ladders']['blitz']), 'daily' => $this->ladderWithAvatars($counts['ladders']['daily'])],
+            'clan' => $clan === null ? null : [
+                'name' => $clan['name'], 'tag' => $clan['tag'], 'members' => $clan['members'], 'games' => $clan['games'],
+                'founded' => $clan['founded'], 'logoUrl' => $clan['logoUrl'], 'logo' => $this->images->logo($clan['logoRef'] ?? null),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{players: int, clans: int, gamesPlayed: int, liveNow: int, gamesToday: int, ladders: array{blitz: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>, daily: list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>}, clan: array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logoRef: string|null}|null}
      */
     public function count(): array
     {
@@ -69,10 +103,29 @@ class StreamStats
     }
 
     /**
+     * @param  list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>  $rows
+     * @return list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatar: string|null}>
+     */
+    private function ladderWithAvatars(array $rows): array
+    {
+        $ladder = [];
+
+        foreach ($rows as $row) {
+            $ladder[] = [
+                'rank' => $row['rank'], 'name' => $row['name'], 'elo' => $row['elo'], 'games' => $row['games'],
+                'wins' => $row['wins'], 'draws' => $row['draws'], 'losses' => $row['losses'],
+                'avatar' => $this->images->avatar($row['avatarRef'] ?? null),
+            ];
+        }
+
+        return $ladder;
+    }
+
+    /**
      * The top of a casual chess ladder, in the ladder page's order: rating,
      * then more results, then first rated; only players with a result.
      *
-     * @return list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int}>
+     * @return list<array{rank: int, name: string, elo: int, games: int, wins: int, draws: int, losses: int, avatarRef: array{id: int, pubkey: string, source: string|null}|null}>
      */
     private function ladder(string $mode): array
     {
@@ -93,6 +146,7 @@ class StreamStats
                 'wins' => $row->wins,
                 'draws' => $row->draws,
                 'losses' => $row->losses,
+                'avatarRef' => StreamImages::avatarRef($row->user),
             ])
             ->all());
     }
@@ -101,7 +155,7 @@ class StreamStats
      * One clan, taking turns every `clan_spotlight_seconds` in founding
      * order. Games are finished chess games a current member played in.
      *
-     * @return array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null}|null
+     * @return array{name: string, tag: string, members: int, games: int, founded: string|null, logoUrl: string|null, logoRef: string|null}|null
      */
     private function clanSpotlight(): ?array
     {
@@ -129,6 +183,7 @@ class StreamStats
                 ->count(),
             'founded' => $clan->created_at?->format('M j, Y'),
             'logoUrl' => filled($clan->picture) ? $clan->picture : null,
+            'logoRef' => StreamImages::logoRef($clan),
         ];
     }
 }

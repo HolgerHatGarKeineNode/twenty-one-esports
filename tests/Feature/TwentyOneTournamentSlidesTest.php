@@ -5,8 +5,12 @@ use App\Enums\TournamentStatus;
 use App\Models\Rating;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Nostr\Blockpile;
+use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Tests\Support\TestSigner;
 
 /*
@@ -30,9 +34,20 @@ function slidePlayer(Tournament $tournament, string $name, int $elo): User
     return $user;
 }
 
-/** The contract's keys (resources/views/stream/rotation/ta1-hero.blade.php). */
+/** The contract's keys (resources/views/stream/rotation/ta1-hero.blade.php); SceneSource lifts `backdrop` onto the scene. */
 const SLIDE_KEYS = ['id', 'name', 'description', 'status', 'game', 'mode', 'format', 'teamSize', 'rated', 'where', 'startsAt', 'signupClosesAt',
-    'countdown', 'countdownLabel', 'taken', 'places', 'spotsLeft', 'roster', 'openSpots', 'preview', 'cover', 'url'];
+    'countdown', 'countdownLabel', 'taken', 'places', 'spotsLeft', 'roster', 'openSpots', 'preview', 'cover', 'backdrop', 'url'];
+
+/**
+ * Roster rows or preview sides without `avatar` and `logo` (TwentyOneStreamImagesTest checks those).
+ *
+ * @param  list<array<string, mixed>>  $entries
+ * @return list<array<string, mixed>>
+ */
+function slideEntriesWithoutPictures(array $entries): array
+{
+    return array_map(fn (array $entry): array => array_diff_key($entry, ['avatar' => true, 'logo' => true]), $entries);
+}
 
 test('a two stage tournament: every contract field, the seeds by Elo, the projected groups, the ticking countdown', function () {
     $tournament = openTournament([
@@ -69,16 +84,16 @@ test('a two stage tournament: every contract field, the seeds by Elo, the projec
             'places' => 8,
             'spotsLeft' => 6,
             'openSpots' => 6,
-            'roster' => [['seed' => 1, 'name' => 'hodl queen', 'rating' => 1400], ['seed' => 2, 'name' => 'satsjaeger', 'rating' => 1100]],
             'url' => 'esports.einundzwanzig.space/tournaments/'.$tournament->id,
         ])
+        ->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => 'hodl queen', 'rating' => 1400], ['seed' => 2, 'name' => 'satsjaeger', 'rating' => 1100]])
         // Berlin is UTC+1 or +2: 18:00 UTC is 19:00 or 20:00 there.
         ->and($data['startsAt'])->toMatch('/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, (19|20):00$/')
         ->and($data['cover'])->toStartWith('data:image/jpeg;base64,/9j/')
         ->and($data['preview']['kind'])->toBe('groups')
         ->and($data['preview']['stageNote'])->toBe('Groups if sign-up closed now')
         ->and(array_keys($data['preview']['groups']))->toBe(['A', 'B'])
-        ->and(array_merge(...array_values($data['preview']['groups'])))->toContain(['seed' => 1, 'name' => 'hodl queen'], ['seed' => 2, 'name' => 'satsjaeger'], ['seed' => 8, 'name' => null])
+        ->and(slideEntriesWithoutPictures(array_merge(...array_values($data['preview']['groups']))))->toContain(['seed' => 1, 'name' => 'hodl queen'], ['seed' => 2, 'name' => 'satsjaeger'], ['seed' => 8, 'name' => null])
         ->and($data['preview'])->not->toHaveKey('matches')
         // Below a day the days go.
         ->and(app(TournamentSlides::class)->data($tournament, $closesMs - 3_661_000)['countdown'])->toBe('01:01:01');
@@ -95,7 +110,7 @@ test('a single elimination tournament previews round 1 with open spots and byes'
         ->and($preview)->not->toHaveKey('groups')
         ->and($preview['byes'])->toBe([1, 2])
         ->and($preview['matches'])->toHaveCount(2)
-        ->and(array_merge(...array_column($preview['matches'], 'sides')))->toEqualCanonicalizing([
+        ->and(slideEntriesWithoutPictures(array_merge(...array_column($preview['matches'], 'sides'))))->toEqualCanonicalizing([
             ['seed' => 3, 'name' => null], ['seed' => 4, 'name' => null], ['seed' => 5, 'name' => null], ['seed' => 6, 'name' => null],
         ]);
 });
@@ -117,8 +132,8 @@ test('a team mode counts player places, seeds the lineup under its clan and leav
         'taken' => 4,
         'places' => 24,
         'spotsLeft' => 20,
-        'roster' => [['seed' => 1, 'name' => $lineup->clan->name, 'rating' => (int) config('season.rating.start', 1000)]],
-    ])->and($data['preview']['matches'][0]['sides'][0])->toBe(['seed' => 1, 'name' => $lineup->clan->name]);
+    ])->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => $lineup->clan->name, 'rating' => (int) config('season.rating.start', 1000)]])
+        ->and(slideEntriesWithoutPictures($data['preview']['matches'][0]['sides'])[0])->toBe(['seed' => 1, 'name' => $lineup->clan->name]);
 });
 
 test('a full tournament stays upcoming with no spot left', function () {
@@ -176,3 +191,51 @@ test('a cover file that cannot be read costs only the cover, not the slides', fu
     chmod($file, 0600);
     unlink($file);
 })->skip(fn (): bool => function_exists('posix_geteuid') && posix_geteuid() === 0, 'root reads any file');
+
+test('changed tournaments reach the slide data once the cache period passed, not before; a new avatar file within the memory TTL', function () {
+    config(['twentyone.stream.images.dir' => $dir = storage_path('framework/testing/slides-images-'.bin2hex(random_bytes(4)))]);
+    $tournament = openTournament(['name' => 'First Cup', 'capacity' => 8]);
+    $first = slidePlayer($tournament, 'first', 1400);
+    $first->forceFill(['picture' => 'https://cdn.example/first.png'])->save();
+    $firstFile = StreamImages::avatarFile($first->id, 'https://cdn.example/first.png');
+    File::ensureDirectoryExists(dirname($firstFile));
+    File::put($firstFile, 'one');
+    $slides = app(TournamentSlides::class);
+    $source = app(SceneSource::class);
+    // What the supervisor renders: this poll's frames, through the scene data of a tournament slide.
+    $shown = function () use ($slides, $source): array {
+        $now = (int) now()->getTimestampMs();
+
+        return array_map(fn (array $frame): array => $source->rotation('ta1', null, [], 0, $now, [], $frame)['tournament'], $slides->all($now));
+    };
+
+    $before = $shown();
+    $second = slidePlayer($tournament, 'second', 1200);
+    $tournament->forceFill(['name' => 'Renamed Cup'])->save();
+    $other = openTournament(['name' => 'Second Cup']);
+    File::put($firstFile, 'two');
+    $this->travel(10)->seconds();
+    $cached = $shown();
+    $this->travel(6)->seconds();
+    $after = $shown();
+    $this->travel(600)->seconds();
+    $later = $shown();
+    File::deleteDirectory($dir);
+
+    expect($before)->toHaveCount(1)
+        ->and($before[0])->toMatchArray(['name' => 'First Cup', 'taken' => 1, 'spotsLeft' => 7])
+        ->and($before[0]['roster'][0])->toMatchArray(['name' => 'first', 'avatar' => 'data:image/jpeg;base64,'.base64_encode('one')])
+        // Within the cache period nothing moved yet.
+        ->and(array_column($cached, 'id'))->toBe([$tournament->id])
+        ->and($cached[0])->toMatchArray(['name' => 'First Cup', 'taken' => 1, 'spotsLeft' => 7])
+        ->and($cached[0]['roster'])->toHaveCount(1)
+        // After it: the new sign-up with its avatar, the new name, the new tournament.
+        ->and(array_column($after, 'id'))->toEqualCanonicalizing([$tournament->id, $other->id])
+        ->and(collect($after)->firstWhere('id', $tournament->id))->toMatchArray(['name' => 'Renamed Cup', 'taken' => 2, 'spotsLeft' => 6])
+        ->and(collect($after)->firstWhere('id', $other->id)['name'])->toBe('Second Cup')
+        ->and(array_column(collect($after)->firstWhere('id', $tournament->id)['roster'], 'name'))->toBe(['first', 'second'])
+        ->and(collect($after)->firstWhere('id', $tournament->id)['roster'][1]['avatar'])->toBe('data:image/svg+xml;base64,'.base64_encode(Blockpile::svg($second->pubkey)))
+        // The changed avatar file: held for the memory TTL, then shown.
+        ->and(collect($after)->firstWhere('id', $tournament->id)['roster'][0]['avatar'])->toBe('data:image/jpeg;base64,'.base64_encode('one'))
+        ->and(collect($later)->firstWhere('id', $tournament->id)['roster'][0]['avatar'])->toBe('data:image/jpeg;base64,'.base64_encode('two'));
+});

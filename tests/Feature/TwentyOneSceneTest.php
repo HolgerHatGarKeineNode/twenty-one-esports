@@ -240,3 +240,33 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
         ->and(implode('', $svgs))->not->toContain('getalby')
         ->and(implode('', $svgs))->not->toContain('LNURL');
 });
+
+test('a started game, a move and a result reach the scene data on the next poll, without a cache', function () {
+    $chess = app(ChessGameService::class);
+    $source = app(SceneSource::class);
+    [$white, $black, $third, $fourth] = User::factory()->count(4)->create()->all();
+    $first = $chess->start($white, $black);
+    // What the supervisor renders every second: this poll's games, through the match and gallery data.
+    $poll = function (string $scene) use ($source, $first): array {
+        ['games' => $games, 'more' => $more] = $source->sceneGames(60);
+
+        return $source->rotation($scene, $first->id, $games, $more, (int) now()->getTimestampMs(), []);
+    };
+
+    $before = $poll('a1');
+    $second = $chess->start($third, $fourth);
+    $gallery = $poll('a2');
+    $chess->move($first->refresh(), $white, 'e2e4');
+    $moved = $poll('a1');
+    $chess->resign($first->refresh(), $black);
+    $ended = $poll('a1');
+
+    expect($before['game']['moves'])->toBe([])
+        ->and($before['game']['result'])->toBeNull()
+        ->and(array_column(array_column($gallery['games'], 'white'), 'name'))->toBe([$white->displayName(), $third->displayName()])
+        ->and($moved['game']['moves'])->toBe(['e4'])
+        ->and($moved['game']['fen'])->not->toBe($before['game']['fen'])
+        ->and($moved['game']['lastMove'])->toBe(['from' => 'e2', 'to' => 'e4'])
+        ->and($ended['game']['result'])->toBe('1-0 · Black resigned')
+        ->and($second->id)->toBeInt();
+});

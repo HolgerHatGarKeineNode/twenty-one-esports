@@ -224,6 +224,28 @@ return [
             'max_datagrams_per_tick' => 2000,
         ],
 
+        /*
+        | Pictures on the scenes (StreamImages): `twentyone:stream:images`
+        | (scheduled every 10 minutes) redraws every avatar the stream can show
+        | as a 128 px JPEG under `<dir>/avatars` and blurs the game covers and the
+        | brand cover into `<dir>/backdrops`. The daemon only reads those files,
+        | never the network, and keeps at most `memory_entries` data URIs for
+        | `memory_seconds`. A remote picture is fetched over https only, from a
+        | public address, pinned, without redirects, within `fetch_seconds` and
+        | `max_bytes`; a failed fetch waits `retry_seconds` before the next try.
+        */
+        'images' => [
+            'dir' => env('TWENTYONE_STREAM_IMAGES_DIR') ?: storage_path('app/stream'),
+            'max_users' => 500,
+            'refresh_seconds' => 86400,
+            'retry_seconds' => 3600,
+            'fetch_seconds' => 5,
+            'max_bytes' => 2 * 1024 * 1024,
+            'max_side' => 4096,
+            'memory_entries' => 500,
+            'memory_seconds' => 600,
+        ],
+
         'stats' => [
             'cache_seconds' => 15,
             'timezone' => 'Europe/Berlin',

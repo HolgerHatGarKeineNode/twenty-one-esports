@@ -24,6 +24,12 @@ use LogicException;
  *
  * Names are the public profile names the lobby shows (User::displayName()).
  * Stats are real counts only; nothing here is a placeholder or a rating.
+ *
+ * Pictures (StreamImages, local files only): every player has `avatar`, a
+ * data URI (their cached picture as JPEG, else their Blockpile as SVG);
+ * every scene has `backdrop`, a data URI or null while it is not built:
+ * the tournament's game for a tournament slide, chess for the match, the
+ * gallery and the fallback scene, the brand cover for the teasers.
  */
 class SceneSource
 {
@@ -39,6 +45,7 @@ class SceneSource
     public function __construct(
         private ChessGameService $chess,
         private GameRegistry $games,
+        private StreamImages $images,
     ) {}
 
     /**
@@ -101,6 +108,7 @@ class SceneSource
             'more' => $more,
             'stats' => $this->stats(),
             'url' => (string) config('twentyone.stream.scene.url'),
+            'backdrop' => $this->images->backdrop(StreamImages::CHESS),
         ];
     }
 
@@ -123,7 +131,11 @@ class SceneSource
                 throw new LogicException('A tournament slide needs a tournament.');
             }
 
-            return ['tournament' => $tournament, 'stats' => $stats];
+            // The slide's backdrop (the cover of its game) sits on the scene, not in the tournament.
+            $backdrop = $tournament['backdrop'] ?? null;
+            unset($tournament['backdrop']);
+
+            return ['tournament' => $tournament, 'stats' => $stats, 'backdrop' => is_string($backdrop) ? $backdrop : null];
         }
 
         if (str_ends_with($scene, '1')) {
@@ -133,18 +145,20 @@ class SceneSource
                 throw new LogicException('A match scene needs a game.');
             }
 
-            return ['game' => [...$this->card($game, $nowMs), 'moves' => $this->moves($game)], 'stats' => $stats];
+            return ['game' => [...$this->card($game, $nowMs), 'moves' => $this->moves($game)], 'stats' => $stats, 'backdrop' => $this->images->backdrop(StreamImages::CHESS)];
         }
 
         if (str_ends_with($scene, '2')) {
-            return ['games' => array_map(fn (ChessGame $game): array => $this->card($game, $nowMs), $games), 'more' => $more, 'stats' => $stats];
+            return ['games' => array_map(fn (ChessGame $game): array => $this->card($game, $nowMs), $games), 'more' => $more, 'stats' => $stats, 'backdrop' => $this->images->backdrop(StreamImages::CHESS)];
         }
 
+        $brand = $this->images->backdrop(StreamImages::BRAND);
+
         return match ($scene) {
-            'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats],
-            'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats],
-            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs)],
-            default => ['stats' => $stats],
+            'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats, 'backdrop' => $brand],
+            'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
+            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $brand],
+            default => ['stats' => $stats, 'backdrop' => $brand],
         };
     }
 
@@ -181,7 +195,7 @@ class SceneSource
     }
 
     /**
-     * @return array{white: array{name: string, clockMs: int, toMove: bool}, black: array{name: string, clockMs: int, toMove: bool}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, stats: string, url: string, result: string|null}
+     * @return array{white: array{name: string, clockMs: int, toMove: bool, avatar: string|null}, black: array{name: string, clockMs: int, toMove: bool, avatar: string|null}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, stats: string, url: string, result: string|null, backdrop: string|null}
      */
     public function scene(ChessGame $game, int $nowMs): array
     {
@@ -189,13 +203,14 @@ class SceneSource
             ...$this->card($game, $nowMs),
             'stats' => $this->stats(),
             'url' => (string) config('twentyone.stream.scene.url'),
+            'backdrop' => $this->images->backdrop(StreamImages::CHESS),
         ];
     }
 
     /**
      * One game as the view's data contract describes it.
      *
-     * @return array{white: array{name: string, clockMs: int, toMove: bool}, black: array{name: string, clockMs: int, toMove: bool}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, result: string|null}
+     * @return array{white: array{name: string, clockMs: int, toMove: bool, avatar: string|null}, black: array{name: string, clockMs: int, toMove: bool, avatar: string|null}, fen: string, lastMove: array{from: string, to: string}|null, mode: string, result: string|null}
      */
     private function card(ChessGame $game, int $nowMs): array
     {
@@ -208,8 +223,8 @@ class SceneSource
         $label = $game->isCorrespondence() ? 'Correspondence' : ($this->games->mode('chess', $game->mode)->name ?? $game->mode);
 
         return [
-            'white' => ['name' => $game->white->displayName(), 'clockMs' => $clocks['w'], 'toMove' => $toMove === 'w'],
-            'black' => ['name' => $game->black->displayName(), 'clockMs' => $clocks['b'], 'toMove' => $toMove === 'b'],
+            'white' => ['name' => $game->white->displayName(), 'clockMs' => $clocks['w'], 'toMove' => $toMove === 'w', 'avatar' => $this->images->forUser($game->white)],
+            'black' => ['name' => $game->black->displayName(), 'clockMs' => $clocks['b'], 'toMove' => $toMove === 'b', 'avatar' => $this->images->forUser($game->black)],
             'fen' => $game->fen,
             'lastMove' => $last === null ? null : ['from' => substr($last->uci, 0, 2), 'to' => substr($last->uci, 2, 2)],
             'mode' => 'LIVE · CHESS '.mb_strtoupper($label).($game->rated ? '' : ' · CASUAL'),

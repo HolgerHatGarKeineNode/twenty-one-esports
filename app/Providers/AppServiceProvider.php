@@ -15,6 +15,7 @@ use App\Support\SeasonChain\TrustFacts;
 use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Wallet\NwcTransport;
 use App\Support\Wallet\WebsocketNwcTransport;
+use App\Support\TwentyOne\Stream\StreamImages;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
@@ -36,6 +37,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry(
             array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
         ));
+
+        // The stream daemon keeps one bounded map of data URIs (StreamImages).
+        $this->app->singleton(StreamImages::class);
 
         // One PageMeta per request, kept on the request itself: a scoped
         // binding is only reset by Octane and queue workers, so in HTTP tests

@@ -24,6 +24,12 @@ use Throwable;
  * the countdown is computed from the frame's clock every second, and a
  * tournament whose sign-up closed drops out at once, not at the next read.
  * Covers are read once per game for the process lifetime.
+ *
+ * Pictures join in frame(), from plain refs the snapshot keeps per seed
+ * (StreamImages): every roster row and every preview side with a name gets
+ * `avatar` (a player's picture or Blockpile; null for a lineup, a mix team
+ * or an open spot) and `logo` (a lineup's clan logo, if we redrew it; else
+ * null); the slide gets `backdrop`, its game's blurred cover.
  */
 class TournamentSlides
 {
@@ -35,7 +41,7 @@ class TournamentSlides
     /** @var array<string, string|null> game slug => cover as a data URI, null without a file */
     private static array $covers = [];
 
-    public function __construct(private GameRegistry $games) {}
+    public function __construct(private GameRegistry $games, private StreamImages $images) {}
 
     /**
      * Tournaments open for sign-up, soonest sign-up close first
@@ -145,6 +151,7 @@ class TournamentSlides
         // public name of today, a lineup its clan's name as the roster has it.
         $names = [];
         $roster = [];
+        $pictures = [];
 
         foreach ($landing->roster() as $row) {
             if ($row['seed'] === null) {
@@ -153,6 +160,10 @@ class TournamentSlides
 
             $user = in_array($row['kind'], ['player', 'solo'], true) ? ($row['users'][0] ?? null) : null;
             $names[$row['seed']] = PublicName::clean($user?->displayName() ?? $row['name']);
+            $pictures[$row['seed']] = [
+                'avatar' => StreamImages::avatarRef($user),
+                'logo' => $row['kind'] === 'lineup' ? StreamImages::logoRef($row['clan']) : null,
+            ];
 
             if (count($roster) < self::ROSTER) {
                 $roster[] = ['seed' => $row['seed'], 'name' => $names[$row['seed']], 'rating' => $row['rating']];
@@ -187,6 +198,7 @@ class TournamentSlides
             'deadlineMs' => $countdown['ms'] ?? null,
             'closesMs' => $tournament->signup_closes_at?->getTimestampMs(),
             'gameSlug' => $tournament->game,
+            'pictures' => $pictures,
         ];
     }
 
@@ -201,12 +213,44 @@ class TournamentSlides
     {
         $deadline = $snapshot['deadlineMs'];
         $slug = (string) $snapshot['gameSlug'];
-        unset($snapshot['deadlineMs'], $snapshot['closesMs'], $snapshot['gameSlug']);
+        $pictures = is_array($snapshot['pictures'] ?? null) ? $snapshot['pictures'] : [];
+        unset($snapshot['deadlineMs'], $snapshot['closesMs'], $snapshot['gameSlug'], $snapshot['pictures']);
+        $snapshot['roster'] = array_map(fn (array $row): array => $this->pictured($row, $pictures), $snapshot['roster']);
+
+        if (is_array($snapshot['preview'])) {
+            foreach ($snapshot['preview']['matches'] ?? [] as $index => $match) {
+                $snapshot['preview']['matches'][$index]['sides'] = array_map(fn (array $side): array => $this->pictured($side, $pictures), $match['sides']);
+            }
+
+            foreach ($snapshot['preview']['groups'] ?? [] as $group => $sides) {
+                $snapshot['preview']['groups'][$group] = array_map(fn (array $side): array => $this->pictured($side, $pictures), $sides);
+            }
+        }
 
         return [
             ...$snapshot,
             'countdown' => self::countdown(is_int($deadline) ? $deadline : $nowMs, $nowMs),
             'cover' => $this->cover($slug),
+            'backdrop' => $this->images->backdrop($slug),
+        ];
+    }
+
+    /**
+     * A roster row or preview side with its seed's pictures; an open spot
+     * (no name) or an unknown seed has none.
+     *
+     * @param  array<string, mixed>  $entry  with `seed` and `name`
+     * @param  array<int, array{avatar: array{id: int, pubkey: string, source: string|null}|null, logo: string|null}>  $pictures
+     * @return array<string, mixed>
+     */
+    private function pictured(array $entry, array $pictures): array
+    {
+        $picture = $entry['name'] === null ? null : ($pictures[$entry['seed']] ?? null);
+
+        return [
+            ...$entry,
+            'avatar' => $this->images->avatar($picture['avatar'] ?? null),
+            'logo' => $this->images->logo($picture['logo'] ?? null),
         ];
     }
 
