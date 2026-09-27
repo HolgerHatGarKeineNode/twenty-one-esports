@@ -17,6 +17,7 @@ use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserThrottle;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
+use Tests\Support\WaitForPort;
 
 pest()->group('browser');
 
@@ -87,9 +88,7 @@ function bunkerRelayStart(int $port): InvokedProcess
 {
     $relay = Process::start(['nak', 'serve', '--hostname', '127.0.0.1', '--port', (string) $port]);
 
-    for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-        usleep(100_000);
-    }
+    WaitForPort::open('127.0.0.1', $port);
 
     return $relay;
 }
