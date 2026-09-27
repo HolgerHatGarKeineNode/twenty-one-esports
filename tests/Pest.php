@@ -45,6 +45,17 @@ pest()->extend(TestCase::class)
     ->group('relay')
     ->in('Relay');
 
+// The Playwright client's own request timeout defaults to 5s (every click(),
+// fill(), goto() and evaluate() round-trip shares it), which is also the
+// plugin's default per-element wait. Under host CPU contention (parallel
+// agent sessions on a shared box) that single fixed budget is what actually
+// throws "Playwright 5s timeout" from inside a locator action, not from any
+// wait this suite wrote — raising it here is the documented fix, not a
+// per-test wait-for-N-seconds. tests/Support/BrowserWait.php still narrows
+// this back down around its own polling calls so a raised default here does
+// not silently swallow its shorter, condition-specific budgets.
+pest()->browser()->timeout(15_000);
+
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
     // Browser tests run their pages through this same in-process app
