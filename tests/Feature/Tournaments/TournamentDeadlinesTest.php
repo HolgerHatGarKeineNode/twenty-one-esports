@@ -375,3 +375,10 @@ test('an unreadable cache counts as a stale heartbeat instead of failing the pag
 
     expect(TournamentScheduler::health())->toBe(['last_run_at' => null, 'stale' => true]);
 });
+
+test('a heartbeat the cache hands back as a numeric string counts as fresh', function () {
+    Cache::forever(TournamentScheduler::HEARTBEAT, (string) now()->getTimestamp());
+
+    expect(TournamentScheduler::health()['stale'])->toBeFalse()
+        ->and(TournamentScheduler::health()['last_run_at']->timestamp)->toBe(now()->timestamp);
+});

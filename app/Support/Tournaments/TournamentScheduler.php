@@ -85,11 +85,13 @@ final class TournamentScheduler
             $stamp = null;
         }
 
-        $lastRunAt = is_int($stamp) ? CarbonImmutable::createFromTimestamp($stamp) : null;
+        // Redis stores a number unserialized and hands it back as a string.
+        $stamp = is_numeric($stamp) ? (int) $stamp : null;
+        $lastRunAt = $stamp === null ? null : CarbonImmutable::createFromTimestamp($stamp);
 
         return [
             'last_run_at' => $lastRunAt,
-            'stale' => ! is_int($stamp) || now()->getTimestamp() - $stamp > self::STALE_AFTER_SECONDS,
+            'stale' => $stamp === null || now()->getTimestamp() - $stamp > self::STALE_AFTER_SECONDS,
         ];
     }
 
