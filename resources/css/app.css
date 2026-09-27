@@ -1920,8 +1920,11 @@ select:focus[data-flux-control] {
         display: flex;
         flex-shrink: 0;
         align-items: center;
+        justify-content: center;
         gap: 8px;
         height: 44px;
+        /* "RL" alone, below 360 px, was a 42 px wide target. */
+        min-width: 44px;
         padding: 0 12px 0 4px;
         border: 1px solid var(--color-line);
         border-radius: var(--radius-control);
@@ -1933,6 +1936,20 @@ select:focus[data-flux-control] {
 
     button.gchip {
         padding-left: 12px;
+    }
+
+    /* A label longer than a chip can hold ends in "…" (the full name is the chip's title and accessible name). */
+    .gchip > span {
+        max-width: 8rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Below 360 px the thumbnail steps aside, so the label needs the padding back. */
+    @media (width < 22.5rem) {
+        .gchip {
+            padding-left: 12px;
+        }
     }
 
     .gchip:hover {

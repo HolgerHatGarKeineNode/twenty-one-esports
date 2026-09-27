@@ -40,6 +40,19 @@ const SHELL_MEASURE = <<<'JS'
         const squeezed = [...document.querySelectorAll('[data-test=game-tabs], [data-test=context-bar], [data-test=tab-bar] ul, [data-test=tab-bar] .tab span, .nav-link, .ctx-link')]
             .filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && el.scrollWidth > el.clientWidth + 1)
             .map((el) => `${el.dataset.test || el.className.split(' ')[0] || el.tagName} ${el.scrollWidth}>${el.clientWidth}`);
+        // The phone's game chips: no label cut inside its chip, no chip wider than the row, the active one whole inside the row's visible part.
+        const chipRow = document.getElementById('game-chips');
+        if (chipRow && chipRow.checkVisibility()) {
+            const row = chipRow.getBoundingClientRect();
+            for (const span of chipRow.querySelectorAll('.gchip span')) {
+                if (span.scrollWidth > span.clientWidth + 1) squeezed.push(`chip label ${span.textContent.trim()} ${span.scrollWidth}>${span.clientWidth}`);
+            }
+            for (const chip of chipRow.querySelectorAll('.gchip')) {
+                const r = chip.getBoundingClientRect();
+                if (r.width > row.width + 1) squeezed.push(`chip ${chip.textContent.trim()} ${Math.round(r.width)} wider than its row ${Math.round(row.width)}`);
+                if (chip.hasAttribute('aria-current') && (r.left < row.left - 1 || r.right > row.right + 1)) squeezed.push(`active chip ${chip.textContent.trim()} ${Math.round(r.left)}-${Math.round(r.right)} outside its row ${Math.round(row.left)}-${Math.round(row.right)}`);
+            }
+        }
         const nav = document.querySelector('[data-test=game-tabs]');
         const search = document.querySelector('[data-test=site-search-form]');
         if (nav && search && nav.checkVisibility() && search.checkVisibility()) {

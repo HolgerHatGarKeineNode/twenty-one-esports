@@ -76,3 +76,33 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
 
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
+
+test('on a phone the active game chip shows whole and no chip label is cut, with each game active, at 320 and 375 px', function () {
+    $problems = [];
+    $failures = [];
+    $pages = [
+        'chess' => route('chess.lobby', absolute: false),
+        'rocket-league' => route('games.rocket-league', absolute: false),
+        'ea-sports-fc-27' => route('games.series', 'ea-sports-fc-27', false),
+        'ea-sports-fc-26' => route('games.series', 'ea-sports-fc-26', false),
+    ];
+
+    foreach ([375 => 667, 320 => 568] as $width => $height) {
+        $page = shellPage(null, $width, $height);
+
+        foreach ($pages as $slug => $url) {
+            shellOpen($page, $url, $problems);
+            $m = $page->evaluate(SHELL_MEASURE);
+            $chips = $page->evaluate('() => [...document.querySelectorAll("#game-chips .gchip")].map((c) => `${c.textContent.trim()} ${Math.round(c.getBoundingClientRect().width)}${c.hasAttribute("aria-current") ? " active" : ""}`)');
+            fwrite(STDERR, "\n[shell-chips] {$slug} @{$width}: ".json_encode($chips));
+            if ($m['squeezed'] !== []) {
+                $failures[] = "{$slug} @{$width}: ".json_encode($m['squeezed']);
+            }
+            if ($width === 375 && $slug === 'rocket-league') {
+                shellShot($page, 'shell-guest-375-chips-rocket-league');
+            }
+        }
+    }
+
+    expect($failures)->toBe([])->and($problems)->toBe([]);
+});

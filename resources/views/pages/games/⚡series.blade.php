@@ -133,16 +133,21 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 @endphp
 
 <div class="flex grow flex-col" data-test="game-page" data-game="{{ $slug }}">
-    <div class="flex flex-col gap-4 px-4 pt-6 pb-4 sm:flex-row sm:items-center lg:px-12 lg:pt-8">
-        <x-game-cover :game="$slug" size="header" class="w-full rounded-lg shadow-ring sm:w-[320px] lg:w-[400px]" />
-        <div class="flex min-w-0 flex-col gap-2">
-            <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ $gameName }}</h1>
+    {{--
+        The head. Below sm the cover sits small next to the name, so the invite under it stays above the
+        phone's tab bar (full width, the cover alone took 193 px and pushed the invite to 626 px, under the
+        tab bar at 603 px of 667). From sm the cover spans both rows next to name and buttons.
+    --}}
+    <div class="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 pt-6 pb-4 sm:grid-cols-[320px_minmax(0,1fr)] sm:gap-x-4 sm:gap-y-2 lg:grid-cols-[400px_minmax(0,1fr)] lg:px-12 lg:pt-8">
+        <x-game-cover :game="$slug" size="header" class="w-full rounded-lg shadow-ring sm:row-span-2" />
+        <div class="flex min-w-0 flex-col gap-1 sm:gap-2 sm:self-end">
+            <h1 class="m-0 font-display text-2xl leading-tight font-bold sm:text-[28px] lg:text-[34px]">{{ $gameName }}</h1>
             <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
-            <div class="flex flex-wrap gap-2">
-                @auth<x-button :href="route('challenges.create', ['game' => $slug])" data-test="game-page-challenge">{{ __('Challenge a clan') }}</x-button>@endauth
-                <x-button variant="secondary" :href="route('ladder.show', [$slug, array_key_first($modes)])">{{ __('Ladder') }}</x-button>
-                <x-button variant="quiet" :href="route('matches.index', ['game' => $slug])">{{ __('Matches') }}</x-button>
-            </div>
+        </div>
+        <div class="col-span-2 flex flex-wrap gap-2 sm:col-span-1 sm:col-start-2 sm:self-start">
+            @auth<x-button :href="route('challenges.create', ['game' => $slug])" data-test="game-page-challenge">{{ __('Challenge a clan') }}</x-button>@endauth
+            <x-button variant="secondary" :href="route('ladder.show', [$slug, array_key_first($modes)])">{{ __('Ladder') }}</x-button>
+            <x-button variant="quiet" :href="route('matches.index', ['game' => $slug])">{{ __('Matches') }}</x-button>
         </div>
     </div>
 

@@ -56,6 +56,22 @@ const INVITE_BOX = <<<'JS'
     (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), vh: innerHeight, vw: innerWidth }; }
     JS;
 
+/** Top of the shell's tab bar where it shows (below lg), else the window height. */
+const INVITE_FLOOR = <<<'JS'
+    () => { const bar = document.querySelector('[data-test=tab-bar]'); return bar && bar.checkVisibility() ? Math.round(bar.getBoundingClientRect().top) : innerHeight; }
+    JS;
+
+/** The module's visible call to action (log in, start a clan, create the link) and what a tap at its centre hits. */
+const INVITE_CTA_HIT = <<<'JS'
+    () => {
+        const cta = [...document.querySelectorAll('[data-test=invite-module] :is([data-test=invite-login], [data-test=invite-start-clan], [data-test=invite-create])')].find((el) => el.checkVisibility());
+        if (!cta) return { found: false, hit: false, bottom: 0, test: null, top: null };
+        const r = cta.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { found: true, hit: !!top && (top === cta || cta.contains(top)), bottom: Math.round(r.bottom), test: cta.dataset.test, top: top ? (top.dataset?.test || top.closest('[data-test]')?.dataset.test || top.tagName) : null };
+    }
+    JS;
+
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));
 
@@ -102,12 +118,19 @@ function inviteShot(Page $page, string $name): void
 function inviteInFirstViewport(Page $page, string $label): array
 {
     $box = $page->evaluate(INVITE_BOX, '[data-test=invite-module]');
-    fwrite(STDERR, "\n[invite] {$label}: ".json_encode($box)."\n");
+    // The first viewport ends where the fixed chrome at the bottom starts: the shell's tab bar below lg, the window from lg.
+    $floor = $page->evaluate(INVITE_FLOOR);
+    // The module's call to action must take a tap at its centre, not the tab bar or anything else over it.
+    $cta = $page->evaluate(INVITE_CTA_HIT);
+    fwrite(STDERR, "\n[invite] {$label}: ".json_encode($box + ['floor' => $floor, 'cta' => $cta])."\n");
 
     expect($box['top'])->toBeGreaterThanOrEqual(0)
-        ->and($box['bottom'])->toBeLessThanOrEqual($box['vh'])
+        ->and($box['bottom'])->toBeLessThanOrEqual($floor)
         ->and($box['left'])->toBeGreaterThanOrEqual(0)
-        ->and($box['right'])->toBeLessThanOrEqual($box['vw']);
+        ->and($box['right'])->toBeLessThanOrEqual($box['vw'])
+        ->and($cta['found'])->toBeTrue("{$label}: no call to action in the invite module")
+        ->and($cta['bottom'])->toBeLessThanOrEqual($floor)
+        ->and($cta['hit'])->toBeTrue("{$label}: the centre of {$cta['test']} is covered by {$cta['top']}");
 
     return $box;
 }
@@ -135,7 +158,7 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
         inviteInFirstViewport($page, "chess invite {$width}x{$height}");
         $find = $page->evaluate(INVITE_BOX, '[data-test=find-opponent-button]');
         fwrite(STDERR, "\n[invite] chess find-opponent {$width}x{$height}: ".json_encode($find)."\n");
-        expect($find['bottom'])->toBeLessThanOrEqual($height);
+        expect($find['bottom'])->toBeLessThanOrEqual($page->evaluate(INVITE_FLOOR));
         inviteShot($page, "chess-{$width}");
 
         // The options open inline, and the link is made from the top of the lobby.
@@ -161,6 +184,14 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
         inviteShot($page, "rocket-league-{$width}");
         inviteClean($page, "rocket league {$width}");
 
+        // Every other series game page has the same head: the same first-viewport rule.
+        foreach (['ea-sports-fc-27', 'ea-sports-fc-26'] as $slug) {
+            $page = invitePage($captain, route('games.series', $slug, false), $width, $height);
+            BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]") !== null', 10_000);
+            inviteInFirstViewport($page, "{$slug} invite {$width}x{$height}");
+            inviteClean($page, "{$slug} {$width}");
+        }
+
         // A finished game: play again, and the invite under it.
         $page = invitePage($player, route('games.show', $finished, absolute: false), $width, $height);
         BrowserWait::until($page, '() => document.querySelector("[data-test=play-again]") !== null', 10_000);
@@ -176,6 +207,12 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
     expect($page->evaluate('() => document.querySelector("[data-test=invite-login]").getAttribute("href")'))->toEndWith('/login');
     inviteShot($page, 'chess-guest-375');
     inviteClean($page, 'chess guest 375');
+
+    // A guest's game page carries the most chrome (the "New here?" strip and the tab bar): the invite still fits.
+    $page = invitePage(null, route('games.rocket-league', ['lang' => 'en'], false), 375, 667);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module][data-state=guest]") !== null', 10_000);
+    inviteInFirstViewport($page, 'rocket league guest 375x667');
+    inviteClean($page, 'rocket league guest 375');
 });
 
 test('the invite collector sees a thrown error and a missing asset (positive control)', function () {

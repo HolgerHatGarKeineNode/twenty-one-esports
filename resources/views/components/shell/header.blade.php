@@ -48,20 +48,25 @@
             </span>
         </a>
 
-        {{-- Phones: every game as a chip, inside the top bar (one 56 px bar, not two), the active one scrolled into view; the last chip opens the hub. --}}
+        {{--
+            Phones: every game as a chip, inside the top bar (one 56 px bar, not two), the active one scrolled
+            into view; the last chip opens the hub. Chips carry the short label (Chess, RL, FC27) and the full
+            name as their accessible name: with full names "Rocket League" (175 px) was wider than the whole
+            chip row (129 px for a guest at 375). Below 360 px the thumbnail and the grid icon step aside.
+        --}}
         <nav class="flex min-w-0 flex-1 snap-x snap-mandatory gap-2 overflow-x-auto px-1 [scrollbar-width:none] [mask-image:linear-gradient(90deg,#000_calc(100%-24px),transparent)] lg:hidden" aria-label="{{ __('Game titles') }}" id="game-chips" x-ref="chips">
             @foreach ($games as $game)
-                <a href="{{ $game['page'] }}" style="--game: {{ $game['colour'] }}" class="gchip"
+                <a href="{{ $game['page'] }}" style="--game: {{ $game['colour'] }}" class="gchip" aria-label="{{ $game['short'] === $game['name'] ? $game['name'] : $game['short'].', '.$game['name'] }}" title="{{ $game['name'] }}"
                    @if ($game['slug'] === $active['slug']) aria-current="{{ $onGamePage ? 'page' : 'true' }}" @endif
                    @if ($game['slug'] !== 'chess') data-test="mobile-{{ $game['slug'] }}" @endif>
                     {{-- Eager: the chips are the top bar of every phone page, above the fold by definition. --}}
-                    <x-game-cover :game="$game['slug']" size="thumb" loading="eager" class="w-12 rounded-xs" />
-                    <span>{{ $game['name'] }}</span>
+                    <x-game-cover :game="$game['slug']" size="thumb" loading="eager" class="w-8 rounded-xs max-[359px]:hidden" />
+                    <span aria-hidden="true">{{ $game['short'] }}</span>
                 </a>
             @endforeach
-            <button type="button" class="gchip" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog" x-on:click="toggleHub($el)" data-test="mobile-games-menu">
-                <x-icon name="grid" :size="18" class="text-ink-3" />
-                <span>{{ $allGames }}</span>
+            <button type="button" class="gchip" aria-label="{{ $allGames }}" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog" x-on:click="toggleHub($el)" data-test="mobile-games-menu">
+                <x-icon name="grid" :size="18" class="text-ink-3 max-[359px]:hidden" />
+                <span aria-hidden="true">{{ __('All :count', ['count' => count($games)]) }}</span>
             </button>
         </nav>
 
