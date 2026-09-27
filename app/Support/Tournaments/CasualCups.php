@@ -39,8 +39,13 @@ use Throwable;
  *   called-off cup gives its number back, so there are no gaps. The unique
  *   indexes on (series, number) and on the open series keep two runs from
  *   ever opening two cups (SQLite has no row locks).
- * - Sign-up: the cup starts at once when every place is taken; at the close
- *   it starts with at least `min_players`, else sign-up is extended once by
+ * - Sign-up (P27): the cup opens small (`sizes`, 4 places) and grows to the
+ *   next size whenever only one place is left, until `growth_freeze_minutes`
+ *   before sign-up closes ({@see grow()}); each growth is a new version of
+ *   the 31923 (its content names the places). Full at the last size, or full
+ *   once growth is frozen, it starts at once. At the close it plays with
+ *   whoever signed up: `min_players` or more a double elimination, 2 and more
+ *   a small cup's live evening; fewer than 2 extend sign-up once by
  *   `extension_hours`, then the cup is called off and its players are told.
  * - Rounds: a round opens as soon as the one before it is done and gets a
  *   window (48 h, 36 h with more than 8 players), capped at `max_days` after
@@ -51,7 +56,7 @@ use Throwable;
  *   under way, the league decides ({@see decision()}).
  * - Chess draws: a second game with the colours swapped, then Armageddon
  *   (a draw advances Black; TournamentRunner::chessGameFinished()).
- * - Small cups (S2): with fewer than `min_players` after the extension the
+ * - Small cups (S2): with fewer than `min_players` at the close the
  *   cup is not called off but switched to a small format ({@see formatFor()}:
  *   2 players one match, 3 to 5 a round robin) and played as one live
  *   evening: the rounds follow each other after a short break and the
@@ -103,9 +108,42 @@ final class CasualCups
         ];
     }
 
+    /**
+     * The sizes a cup grows through (P27), smallest first.
+     *
+     * @return non-empty-list<int>
+     */
+    public static function sizes(): array
+    {
+        $sizes = array_values(array_unique(array_filter(array_map(intval(...), (array) config('esports.casual_cups.sizes', [4, 8, 16])), fn (int $size): bool => $size >= 2)));
+        sort($sizes);
+
+        return $sizes === [] ? [16] : $sizes;
+    }
+
+    /** The most places a cup can grow to. */
     public static function capacity(): int
     {
-        return max(2, (int) config('esports.casual_cups.capacity', 16));
+        return max(self::sizes());
+    }
+
+    /** The size after this capacity, or null at the last. */
+    public static function nextSize(int $capacity): ?int
+    {
+        foreach (self::sizes() as $size) {
+            if ($size > $capacity) {
+                return $size;
+            }
+        }
+
+        return null;
+    }
+
+    /** Growth stops `growth_freeze_minutes` before sign-up closes (P27). */
+    public static function growthFrozen(Tournament $cup): bool
+    {
+        return $cup->signup_closes_at === null
+            || ! $cup->signup_closes_at->toImmutable()->subMinutes(max(0, (int) config('esports.casual_cups.growth_freeze_minutes', 60)))->isFuture();
     }
 
     public static function minPlayers(): int
@@ -243,11 +281,11 @@ final class CasualCups
     /* ---------- The clock ------------------------------------------------------------------------------------- */
 
     /**
-     * @return array{opened: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}
+     * @return array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}
      */
     public function tick(): array
     {
-        $done = ['opened' => 0, 'extended' => 0, 'evenings' => 0, 'cancelled' => 0, 'rounds' => 0, 'decided' => 0];
+        $done = ['opened' => 0, 'grown' => 0, 'extended' => 0, 'evenings' => 0, 'cancelled' => 0, 'rounds' => 0, 'decided' => 0];
 
         // Cups that ended some other way (the last result, an admin's call-off) give back their open place first.
         foreach (Tournament::query()->whereNotNull('cup_open_series')->whereIn('status', [TournamentStatus::Finished, TournamentStatus::Cancelled])->get() as $cup) {
@@ -325,7 +363,7 @@ final class CasualCups
                     'mode' => $setup['mode'],
                     'format' => TournamentFormat::DoubleElimination,
                     'options' => FormatOptions::fromArray(['bestOf' => $setup['best_of'], 'finalBestOf' => $setup['final_best_of'], 'grandFinal' => 'single'], $profile)->toArray(),
-                    'capacity' => self::capacity(),
+                    'capacity' => self::sizes()[0],
                     'starts_at' => $closesAt,
                     'time_window' => self::maxDays() * ($profile->isDaily() ? 1 : 1440),
                     'on_site' => false,
@@ -348,15 +386,20 @@ final class CasualCups
     /* ---------- Sign-up --------------------------------------------------------------------------------------- */
 
     /**
-     * Start a full cup at once; at the close start it with enough players or
-     * extend its sign-up once; after the extension switch it to a small
-     * format with 2 to 5 players, or call it off.
+     * Before the close: grow when one place is left, start at once when full
+     * and it cannot grow. At the close: a double elimination with enough
+     * players, a small cup's evening with 2 or more, else extend sign-up
+     * once, then call it off.
      *
-     * @return 'extended'|'evenings'|'cancelled'|null
+     * @return 'grown'|'extended'|'evenings'|'cancelled'|null
      */
     private function settleSignup(Tournament $cup): ?string
     {
         $signedUp = $this->signedUp($cup);
+
+        if ($cup->signup_closes_at?->isFuture() && $this->grow($cup, $signedUp)) {
+            return 'grown';
+        }
 
         if ($signedUp >= $cup->capacity && $cup->signup_closes_at?->isFuture()) {
             // Full: sign-up closes now and the draw commits to the next block.
@@ -376,17 +419,45 @@ final class CasualCups
             return null;
         }
 
-        if ($cup->cup_extended_at === null) {
-            return $this->extend($cup) ? 'extended' : null;
-        }
-
         if ($this->toEvening($cup, $signedUp)) {
             $this->draws->close($cup->refresh());
 
             return 'evenings';
         }
 
+        if ($cup->cup_extended_at === null) {
+            return $this->extend($cup) ? 'extended' : null;
+        }
+
         return $this->cancel($cup) ? 'cancelled' : null;
+    }
+
+    /**
+     * Raise a cup with one place (or none) left to the next size, before
+     * growth is frozen: a conditional update on the capacity seen, so two
+     * runs grow it once, then a new version of the 31923 (its content names
+     * the places). A sign-up that lands meanwhile only makes it fuller.
+     */
+    public function grow(Tournament $cup, int $signedUp): bool
+    {
+        $next = self::nextSize($cup->capacity);
+
+        if ($next === null || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || self::growthFrozen($cup) || $cup->capacity - $signedUp > 1) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($cup, $next): bool {
+            $grown = Tournament::query()->whereKey($cup->id)->where('status', TournamentStatus::Signup)->where('capacity', $cup->capacity)
+                ->update(['capacity' => $next]);
+
+            if ($grown !== 1) {
+                return false;
+            }
+
+            $this->publisher->republish(Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id));
+
+            return true;
+        });
     }
 
     /**

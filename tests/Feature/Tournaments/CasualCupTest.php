@@ -65,7 +65,7 @@ test('two ticks open exactly one chess cup, published by the league like an admi
         ->and($cup->status)->toBe(TournamentStatus::Signup)
         ->and($cup->format)->toBe(TournamentFormat::DoubleElimination)
         ->and($cup->formatOptions()->grandFinal)->toBe('single')
-        ->and($cup->capacity)->toBe(16)
+        ->and($cup->capacity)->toBe(4)
         ->and($cup->ladder_address)->toBeNull()
         ->and($cup->signup_closes_at->equalTo(now()->addHours(72)))->toBeTrue()
         ->and(NostrEvent::query()->findOrFail($cup->event_id)->kind)->toBe(Tournament::CALENDAR_EVENT);
@@ -149,7 +149,7 @@ test('an admin edit never changes what makes a cup: game, mode, format, capacity
 /* ---------- Sign-up ----------------------------------------------------------------------------------------- */
 
 test('a full cup closes sign-up at once and commits its draw', function () {
-    config(['esports.casual_cups.capacity' => 8]);
+    config(['esports.casual_cups.sizes' => [8]]);
     Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
     cupTick();
     $cup = openCup();

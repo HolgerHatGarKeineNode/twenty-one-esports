@@ -126,18 +126,16 @@ test('every small format stays within the play budget per player, computed from 
 
 /* ---------- The switch and the evening ---------------------------------------------------------------------- */
 
-test('after the extension three players switch to a round robin evening at 20:00 Berlin the next day, published once', function () {
+test('at the close three players switch to a round robin evening at 20:00 Berlin the next day, published once', function () {
     $tip = 900000;
     eveningBlocks($tip);
     cupTick();
     $cup = openCup();
     cupSignups($cup, 3);
-
-    $this->travel(72)->hours();
-    cupTick();
     $beforeSwitch = count(eveningVersions($cup));
 
-    $this->travel(48)->hours();
+    // P27: 2 to 5 at the close play their evening at once; the extension is for fewer than 2.
+    $this->travel(72)->hours();
     $done = cupTick();
     $cup->refresh();
     $versions = eveningVersions($cup);
@@ -148,11 +146,11 @@ test('after the extension three players switch to a round robin evening at 20:00
     expect($done['cups']['evenings'])->toBe(1)
         ->and($cup->status)->toBe(TournamentStatus::Drawing)
         ->and($cup->format)->toBe(TournamentFormat::RoundRobin)
-        ->and($cup->starts_at->setTimezone('Europe/Berlin')->format('Y-m-d H:i'))->toBe('2026-10-11 20:00')
+        ->and($cup->starts_at->setTimezone('Europe/Berlin')->format('Y-m-d H:i'))->toBe('2026-10-09 20:00')
         ->and(count($versions))->toBe($beforeSwitch + 1)
         ->and((int) $tags['start'])->toBe($cup->starts_at->getTimestamp())
         ->and((int) $tags['end'])->toBe($cup->starts_at->getTimestamp() + $plan['span_minutes'] * 60)
-        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup #1: live evening Sun 11 Oct, 20:00 CEST');
+        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup #1: live evening Fri 9 Oct, 20:00 CEST');
 
     // The block comes: the round robin is drawn, and nothing starts before the evening; no further version.
     $tip = 900001;

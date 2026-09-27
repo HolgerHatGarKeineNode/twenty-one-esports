@@ -1315,10 +1315,12 @@ cannot be checked from relays.
   hash of the draw's seed (the committed block hash) and the entry, not a rating. With too few
   players the cup is called off like any tournament: a new version with "Called off" in `title`
   and `summary`; its number is taken by the next cup, so the numbers have no gaps;
-- a cup that still has 2 to 5 players after its one extension is not called off but switched to a
-  small format (2 players one match, 3 to 5 a round robin) and played as **one live evening**; the
-  switch is one new version whose `start` and `end` are the evening's planned start and end, and no
-  further version follows for its start;
+- a cup opens with few places and grows (4, 8, 16) whenever only one place is left, until one hour
+  before sign-up closes; each growth is one new version whose `content` names the places (at most
+  two per cup). Only fewer than 2 players extend sign-up (once); a cup with 2 to 5 players at the
+  close is switched to a small format (2 players one match, 3 to 5 a round robin) and played as
+  **one live evening**; the switch is one new version whose `start` and `end` are the evening's
+  planned start and end, and no further version follows for its start;
 - a match not played by its round's deadline is decided by the league without a game: the one side
   that tried to play advances, otherwise a random draw of lots ("advanced by draw"). The lot is
   drawn by the league at the deadline and is not reproducible from relays; it is league data, like

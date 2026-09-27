@@ -354,11 +354,16 @@ return [
     | once their casual match flow (P23 S2-S4) is live. games: the mode each
     | series plays, its name, and the series lengths (finals = grand final).
     |
-    | capacity: sign-up places; the cup starts at once when they are taken.
-    | min_players: fewer at the close extends sign-up once by
-    | extension_hours, then the cup is called off. More than 8 players play a
-    | 16-slot bracket; the top seeds get the byes. gap_hours: the next cup of
-    | a game opens this long after the previous final or call-off.
+    | sizes (P27): a cup opens with the first size of places; whenever only
+    | one place is left (3/4, 7/8 ...) the league raises it to the next size,
+    | up to the last, until `growth_freeze_minutes` before sign-up closes.
+    | A cup full at its last size, or full once growth is frozen, starts at
+    | once. At the close it plays with whoever signed up: min_players or more
+    | a double elimination, 2 to min_players - 1 a small cup's live evening
+    | (below); fewer than 2 extend sign-up once by extension_hours, then the
+    | cup is called off. More than 8 players play a 16-slot bracket; the top
+    | seeds get the byes. gap_hours: the next cup of a game opens this long
+    | after the previous final or call-off.
     |
     | Rounds: window_hours (large_window_hours with more than 8 players) from
     | the moment a round opens, which is as soon as the round before it is
@@ -388,7 +393,8 @@ return [
             'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
             'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
         ],
-        'capacity' => 16,
+        'sizes' => [4, 8, 16],
+        'growth_freeze_minutes' => 60,
         'min_players' => 6,
         'signup_hours' => 72,
         'extension_hours' => 48,

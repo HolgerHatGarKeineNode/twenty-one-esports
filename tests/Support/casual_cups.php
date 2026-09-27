@@ -12,6 +12,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
@@ -29,6 +30,8 @@ function cupSignups(Tournament $cup, int $n): void
 {
     foreach (range(1, $n) as $ignored) {
         [$player, $signer] = keyedPlayer();
+        // The league grows a cup with one place left before the next player comes (P27).
+        app(CasualCups::class)->grow($cup->refresh(), $cup->signups()->active()->count());
         soloSignup($cup->refresh(), $player, $signer);
     }
 }
