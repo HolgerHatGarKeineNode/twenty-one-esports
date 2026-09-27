@@ -5,6 +5,7 @@ namespace App\Support\Payouts;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\MatchResult;
@@ -178,7 +179,8 @@ final class TournamentPlacements
         $swiss = $format === TournamentFormat::Swiss;
         $custom = $options->rankBy === 'custom';
         $rows = Standings::table(
-            array_map(intval(...), array_keys($members)),
+            // A tie nothing splits falls back to this order: by seed, as the public table has it (TournamentView::table()).
+            array_values(TournamentParticipant::query()->whereKey(array_keys($members))->orderBy('seed')->pluck('id')->map(intval(...))->all()),
             $games,
             $swiss || $custom ? $options->pointsWin : 1.0,
             $swiss || $custom ? $options->pointsTie : 0.5,
