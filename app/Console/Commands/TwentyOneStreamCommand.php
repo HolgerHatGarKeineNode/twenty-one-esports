@@ -17,6 +17,7 @@ use App\Support\TwentyOne\Stream\PublishSchedule;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamSession;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
@@ -52,8 +53,12 @@ use Throwable;
  *
  * The stream is announced as a NIP-53 kind-30311 event: `live` only while the
  * playlist is fresh (so a dead encoder ages out in clients by itself), with
- * the game in title and summary while the scene shows one, and `ended` on
- * SIGTERM/SIGINT.
+ * the game in title and summary while the scene shows one. SIGTERM/SIGINT
+ * (every deploy restarts the daemon) publishes nothing: the `live` event
+ * stays, NIP-53 lets clients treat it as ended after an hour without update,
+ * and the next start continues the same session (StreamSession: the same
+ * `starts`, so zap.stream keeps showing the chat). A permanent stop is
+ * `twentyone:stream:end`, which publishes `ended` and clears the session.
  *
  * Viewers are counted from nginx's playlist access log, sent as syslog
  * datagrams to a unix socket this process binds (ViewerSocket, config
@@ -65,7 +70,7 @@ use Throwable;
  * A stop keeps the public playlist and the segments its window references:
  * players that are still open keep a valid playlist across a daemon restart,
  * and the next start appends to it (DISCONTINUITY + MAP) once its encoder has
- * a segment. `ended` is the offline signal; `--clear` starts from nothing.
+ * a segment. `--clear` starts from nothing.
  */
 #[Signature('twentyone:stream
     {--relays= : Comma-separated relay URLs, instead of twentyone.stream.relays}
@@ -103,7 +108,13 @@ class TwentyOneStreamCommand extends Command
     /** @var list<string> */
     private array $relays = [];
 
+    /** `starts` of the session this run announces, set with its first `live`. */
     private ?int $startedAt = null;
+
+    /** `starts` of a session a recent run left (StreamSession), continued by the first `live`. */
+    private ?int $resumedStarts = null;
+
+    private ?StreamSession $session = null;
 
     private int $lastCreatedAt = 0;
 
@@ -156,6 +167,20 @@ class TwentyOneStreamCommand extends Command
         $public = new PublicPlaylist($hlsDir, $playlistName);
         // The instance can be reused (Artisan::call in one process): only runs of this start count.
         $this->runIds = [];
+        $this->startedAt = null;
+        $this->resumedStarts = null;
+        $this->session = null;
+
+        if ($this->signer !== null) {
+            $this->session = StreamSession::fromConfig();
+            $this->resumedStarts = $this->session->resumableStarts(time(), 60 * max(0, (int) config('twentyone.stream.session_resume_minutes', 30)), $sessionProblem);
+
+            if ($sessionProblem !== null) {
+                $this->log('session file '.$this->session->path().' '.$sessionProblem.', starting a new session');
+            } elseif ($this->resumedStarts !== null) {
+                $this->log('continuing the live session of '.$this->resumedStarts.' (starts)');
+            }
+        }
         $this->rotationFailing = false;
         $this->tournamentsFailing = false;
         $this->tournamentFramesFailing = false;
@@ -180,8 +205,8 @@ class TwentyOneStreamCommand extends Command
         try {
             $this->supervise($builder, $publisher, $source, $counts, $slides, $public, $hlsDir, $prepared);
         } finally {
-            // Also after an exception: `ended` goes out, the encoders stop.
-            $this->shutdown($builder, $publisher, $public);
+            // Also after an exception: the encoders stop.
+            $this->shutdown($public);
         }
 
         return self::SUCCESS;
@@ -409,8 +434,8 @@ class TwentyOneStreamCommand extends Command
             // restart (and rewritten when trimmed), but says nothing about
             // whether an encoder of this process works: only its segments count.
             if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($announced, time())) {
-                $this->startedAt ??= time();
-                // A SIGTERM during this publish aborts it; `ended` follows below.
+                $this->startedAt ??= $this->resumedStarts ?? time();
+                // A SIGTERM during this publish aborts it.
                 $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping, $viewerCount);
                 $schedule->published($announced, time());
             }
@@ -420,21 +445,14 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * `ended` first (a supervisor that kills us after its grace period must
-     * not find it unsent behind a slow ffmpeg stop), then the encoders. The
-     * public playlist and its segments stay for the next start. Best effort:
-     * runs on every exit, exceptions included.
+     * Stop the encoders and close the viewer socket; nothing is published (a
+     * deploy restarts the daemon, and the next start continues the session;
+     * `twentyone:stream:end` is the permanent stop). The public playlist and
+     * its segments stay for the next start. Best effort: runs on every exit,
+     * exceptions included.
      */
-    private function shutdown(EventBuilder $builder, RelayPublisher $publisher, PublicPlaylist $public): void
+    private function shutdown(PublicPlaylist $public): void
     {
-        try {
-            if ($this->signer !== null && $this->startedAt !== null) {
-                $this->publish($builder, $publisher, 'ended', StreamTexts::for(null), (float) config('twentyone.stream.shutdown_publish_seconds', 8));
-            }
-        } catch (Throwable $e) {
-            $this->log('ended not published: '.$this->describe($e));
-        }
-
         foreach ([$this->pending, $this->active] as $run) {
             if ($run !== null) {
                 try {
@@ -879,7 +897,7 @@ class TwentyOneStreamCommand extends Command
             $this->signer->pubkey,
             $status,
             $this->startedAt,
-            $status === 'ended' ? $createdAt : null,
+            null,
             $viewers,
         )->setCreatedAt($createdAt);
         $event = $this->signer->sign($unsigned);
@@ -887,13 +905,24 @@ class TwentyOneStreamCommand extends Command
 
         $results = $publisher->publish($event, $this->relays, $timeoutSeconds, $abort);
         $summary = collect($results)->map(fn ($result): string => $result->relay.' '.($result->accepted ? 'ok' : 'failed: '.$result->message));
+        $accepted = collect($results)->where('accepted', true)->count();
+
+        // Only an accepted `live` keeps the session resumable.
+        if ($status === 'live' && $accepted > 0 && $this->session !== null) {
+            try {
+                $this->session->recordLive($this->startedAt, $createdAt);
+            } catch (Throwable $e) {
+                $this->log('session not recorded: '.$this->describe($e));
+            }
+        }
 
         $this->log(sprintf(
-            'published kind 30311 status=%s id=%s created_at=%d to %d/%d relays (%s)',
+            'published kind 30311 status=%s starts=%d id=%s created_at=%d to %d/%d relays (%s)',
             $status,
+            $this->startedAt,
             $event['id'],
             $event['created_at'],
-            collect($results)->where('accepted', true)->count(),
+            $accepted,
             count($results),
             $summary->implode('; '),
         ));

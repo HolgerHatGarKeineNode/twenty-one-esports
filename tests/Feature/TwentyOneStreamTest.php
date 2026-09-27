@@ -44,6 +44,7 @@ beforeEach(function () {
         // no ACL, as there is no `forge` user here.
         'twentyone.stream.viewers.dir' => sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(6)),
         'twentyone.stream.viewers.nginx_user' => '',
+        'twentyone.stream.session_file' => $this->dir.'/session.json',
     ]);
 
     File::ensureDirectoryExists($this->dir.'/music');
@@ -185,7 +186,7 @@ test('ffmpeg does not inherit the nsec or other secrets from the environment', f
         ->and(preg_match('/^(TWENTYONE_NOSTR_NSEC|TWENTYONE_TEST_API_TOKEN|APP_KEY)=/m', $environment))->toBe(0);
 });
 
-test('on stop the stream publishes ended first, in parallel, then stops ffmpeg and keeps the playlist', function () {
+test('on stop the stream publishes no ended event, stops ffmpeg and keeps the playlist', function () {
     File::put(config('twentyone.stream.prepared'), 'fake');
     $hlsDir = config('twentyone.stream.hls_dir');
     // Three relays that accept the connection and never answer.
@@ -200,21 +201,19 @@ test('on stop the stream publishes ended first, in parallel, then stops ffmpeg a
     $elapsed = microtime(true) - $startedAt;
     $output = Artisan::output();
 
-    preg_match('/status=live id=\w+ created_at=(\d+)/', $output, $live);
-    preg_match('/status=ended id=\w+ created_at=(\d+) to 0\/3 relays/', $output, $ended);
+    preg_match('/status=live starts=\d+ id=\w+ created_at=(\d+) to 0\/3 relays/', $output, $live);
 
     expect($exitCode)->toBe(0)
-        // live (0.3 s budget) + stop-after (1 s) + ended (0.3 s budget), not 3 × per
-        // relay. Publish timeouts are kept short (0.3 s, not 1 s) precisely so this
-        // budget has real headroom over the deterministic sum (~1.6 s): measured
-        // 1.85 s idle / up to 2.14 s under 2× CPU oversubscription (24 and 48 busy
-        // `yes` processes on a 24-core box), so 3.0 s still leaves ~40 % margin
-        // instead of the ~0 % margin the old 1 s timeouts left against 3.5 s.
+        // live (0.3 s budget, all relays in parallel, not 3 × per relay) + stop-after (1 s).
+        // Measured with an `ended` on stop as well: 1.85 s idle, up to 2.14 s under 2× CPU
+        // oversubscription; without it the margin under 3.0 s only grew.
         ->and($elapsed)->toBeLessThan(3.0)
         ->and($live)->not->toBe([])
-        ->and($ended)->not->toBe([])
-        ->and((int) $ended[1])->toBeGreaterThan((int) $live[1])
-        ->and(strpos($output, 'status=ended'))->toBeLessThan(strpos($output, 'ffmpeg stopped'))
+        // A deploy restarts the daemon: the live event stays, nothing says ended.
+        ->and($output)->not->toContain('status=ended')
+        ->and($output)->toContain('ffmpeg stopped')
+        // No relay accepted the live event, so there is no session to continue.
+        ->and(File::exists($this->dir.'/session.json'))->toBeFalse()
         ->and(File::exists($hlsDir.'/stream.m3u8'))->toBeTrue()
         ->and(array_filter(referencedFiles((string) file_get_contents($hlsDir.'/stream.m3u8')), fn (string $uri): bool => ! is_file($hlsDir.'/'.$uri)))->toBe([])
         ->and($output)->not->toContain($this->nsec)
@@ -827,3 +826,109 @@ test('a socket directory that is not private leaves the count off and the stream
         symlink($dir.'-target', $dir);
     }, 'socket directory is a symlink, refused'],
 ]);
+
+/**
+ * A fake relay that accepts one event and keeps it in `$file`; [process, ws URL].
+ *
+ * @return array{0: resource, 1: string}
+ */
+function recordingRelay(string $file): array
+{
+    $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $file], [1 => ['pipe', 'w']], $pipes);
+
+    return [$relay, 'ws://127.0.0.1:'.(int) fgets($pipes[1])];
+}
+
+/**
+ * One daemon run of `$seconds` against a recording relay: the log and the
+ * event the relay accepted (null when none).
+ *
+ * @return array{0: string, 1: array<string, mixed>|null}
+ */
+function streamRunRecorded(string $dir, int $run, float $seconds = 2): array
+{
+    [$relay, $url] = recordingRelay($dir."/event-{$run}.json");
+    Artisan::call('twentyone:stream', ['--relays' => $url, '--stop-after' => $seconds]);
+    $output = Artisan::output();
+    proc_terminate($relay);
+    proc_close($relay);
+    $event = is_file($dir."/event-{$run}.json") ? json_decode((string) file_get_contents($dir."/event-{$run}.json"), true)[1] : null;
+
+    return [$output, $event];
+}
+
+/**
+ * The value of the first `$name` tag of an event.
+ *
+ * @param  array<string, mixed>  $event
+ */
+function eventTag(array $event, string $name): ?string
+{
+    return collect($event['tags'])->firstWhere(0, $name)[1] ?? null;
+}
+
+test('a restart within the resume window continues the session with the same starts; after it, a new session', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    $sessionFile = $this->dir.'/session.json';
+
+    [, $first] = streamRunRecorded($this->dir, 1);
+    $session = json_decode((string) file_get_contents($sessionFile), true);
+    [$secondLog, $second] = streamRunRecorded($this->dir, 2);
+
+    // The last live is 31 minutes old: a new session.
+    File::put($sessionFile, json_encode(['starts' => $session['starts'] - 5000, 'lastLiveAt' => time() - 31 * 60]));
+    [$thirdLog, $third] = streamRunRecorded($this->dir, 3);
+    $after = json_decode((string) file_get_contents($sessionFile), true);
+
+    expect([eventTag($first, 'status'), eventTag($second, 'status'), eventTag($third, 'status')])->toBe(['live', 'live', 'live'])
+        ->and($session['starts'])->toBe((int) eventTag($first, 'starts'))
+        ->and($session['lastLiveAt'])->toBe($first['created_at'])
+        ->and(eventTag($second, 'starts'))->toBe(eventTag($first, 'starts'))
+        ->and($second['created_at'])->toBeGreaterThan($first['created_at'])
+        ->and($secondLog)->toContain('continuing the live session of '.$session['starts'])
+        ->and((int) eventTag($third, 'starts'))->not->toBe($session['starts'] - 5000)
+        ->and((int) eventTag($third, 'starts'))->toBeGreaterThanOrEqual(time() - 10)
+        ->and($thirdLog)->not->toContain('continuing the live session')
+        ->and($after['starts'])->toBe((int) eventTag($third, 'starts'));
+});
+
+test('a corrupt session file starts a new session, logged once, and is replaced', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    File::put($this->dir.'/session.json', '{"starts": 17');
+
+    [$log, $event] = streamRunRecorded($this->dir, 1);
+
+    expect(substr_count($log, 'session file '.$this->dir.'/session.json unreadable or not JSON'))->toBe(1)
+        ->and($log)->toContain('starting a new session')
+        ->and((int) eventTag($event, 'starts'))->toBeGreaterThanOrEqual(time() - 10)
+        ->and(json_decode((string) file_get_contents($this->dir.'/session.json'), true)['starts'])->toBe((int) eventTag($event, 'starts'));
+});
+
+test('twentyone:stream:end publishes ended once for the session and clears it; with no relay accepting, the session stays', function () {
+    $lastLive = time() + 5;
+    File::put($this->dir.'/session.json', json_encode(['starts' => 1790000000, 'lastLiveAt' => $lastLive]));
+    [$relay, $url] = recordingRelay($this->dir.'/ended.json');
+
+    $exit = Artisan::call('twentyone:stream:end', ['--relays' => $url]);
+    $output = Artisan::output();
+    proc_terminate($relay);
+    proc_close($relay);
+    $event = json_decode((string) file_get_contents($this->dir.'/ended.json'), true)[1];
+
+    expect($exit)->toBe(0)
+        ->and(substr_count($output, 'status=ended'))->toBe(1)
+        ->and(eventTag($event, 'status'))->toBe('ended')
+        ->and(eventTag($event, 'starts'))->toBe('1790000000')
+        ->and($event['created_at'])->toBe($lastLive + 1)
+        ->and(eventTag($event, 'ends'))->toBe((string) ($lastLive + 1))
+        ->and(File::exists($this->dir.'/session.json'))->toBeFalse();
+
+    File::put($this->dir.'/session.json', json_encode(['starts' => 1790000000, 'lastLiveAt' => 1790000100]));
+    $silent = stream_socket_server('tcp://127.0.0.1:0');
+    config(['twentyone.stream.shutdown_publish_seconds' => 0.3]);
+
+    expect(Artisan::call('twentyone:stream:end', ['--relays' => 'ws://'.stream_socket_get_name($silent, false)]))->toBe(1)
+        ->and(File::exists($this->dir.'/session.json'))->toBeTrue();
+});

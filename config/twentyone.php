@@ -118,9 +118,15 @@ return [
         // An encoder that wrote no segment for this long (3 x 6 s) is restarted.
         'watchdog_seconds' => 18,
 
-        // Total budget for the `ended` publish on SIGTERM, all relays in
-        // parallel. Supervisors kill after ~10 s (supervisord stopwaitsecs).
+        // Total budget for the `ended` publish of `twentyone:stream:end`, all
+        // relays in parallel. A SIGTERM (every deploy) publishes nothing.
         'shutdown_publish_seconds' => 8,
+
+        // The session (`starts` of the 30311) survives a restart whose last
+        // accepted `live` is younger than this: zap.stream shows only the
+        // chat from `starts` on. `twentyone:stream:end` clears the file.
+        'session_file' => env('TWENTYONE_STREAM_SESSION_FILE') ?: storage_path('app/stream/session.json'),
+        'session_resume_minutes' => 30,
 
         'backoff' => [
             'initial_seconds' => 5,
