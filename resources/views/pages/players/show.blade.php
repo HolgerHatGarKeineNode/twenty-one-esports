@@ -1,7 +1,7 @@
 {{--
     Player page. The header follows PlayerHeader.dc.html (1440) and
     MobilePlayerHeader.dc.html (390): banner, picture, name, NIP-05, bio,
-    clan, website, Lightning address, npub, and the rating chips (P7b: chess
+    clan, website, whether zaps can be received, npub, and the rating chips (P7b: chess
     blitz and each Rocket League lineup, casual before Block 0) and, for a
     signed-in visitor, "Add as opponent" (P7e). Trust and the
     stats below the header come with their phases; until then the rest of the
@@ -103,12 +103,11 @@
                                class="inline-flex min-h-11 min-w-0 items-center gap-1.5 text-[13px]"><x-icon name="link" :size="14" /><span class="truncate">{{ $profile->websiteLabel }}</span></a>
                         </div>
                     @endif
+                    {{-- A Lightning address is never shown as text, only that one exists --}}
                     @if ($profile->hasProfile && $profile->lud16)
-                        <div class="relative flex min-h-12 min-w-0 items-center gap-2 border-b border-hairline text-[13px] lg:min-h-11" data-test="header-lud16">
-                            <span class="flex text-bolt" title="{{ __('Lightning address') }}"><x-icon name="bolt-toast" :size="14" /></span>
-                            <span class="sr-only">{{ __('Lightning address') }}</span>
-                            <span class="min-w-0 truncate">{{ $profile->lud16 }}</span>
-                            <x-zap-soon />
+                        <div class="relative flex min-h-12 min-w-0 items-center gap-2 border-b border-hairline text-[13px] text-ink-2 lg:min-h-11" data-test="header-lud16">
+                            <span class="flex text-bolt"><x-icon name="bolt-toast" :size="14" /></span>
+                            <span class="min-w-0 truncate">{{ __('Can receive zaps') }}</span>
                         </div>
                     @endif
                     <div class="flex min-h-14 items-center gap-3 lg:min-h-[52px]">

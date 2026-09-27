@@ -475,7 +475,7 @@ test('an opponent profile read from the relay shows on the board and in the play
 
         // Hover the name: the player card opens with the fresh profile.
         $page->locator($card.' [data-test=player-name]')->hover();
-        BrowserWait::until($page, '() => { const pop = document.querySelector("[data-test=profile-popover]"); return pop.checkVisibility() && pop.innerText.includes("Blitz after work, stack sats.") && pop.innerText.includes("bert@getalby.com"); }', 5_000);
+        BrowserWait::until($page, '() => { const pop = document.querySelector("[data-test=profile-popover]"); return pop.checkVisibility() && pop.innerText.includes("Blitz after work, stack sats.") && pop.querySelector("[data-test=card-lud16]") !== null && ! pop.innerText.includes("getalby"); }', 5_000);
         expect($page->evaluate('() => document.querySelector("[data-test=profile-popover] [data-test=card-name]").innerText'))->toBe('Bert Blocks')
             ->and($page->evaluate('() => document.querySelector("[data-test=profile-popover]").getAttribute("aria-label")'))->toBe('Bert Blocks profile');
 

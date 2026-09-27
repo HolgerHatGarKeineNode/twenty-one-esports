@@ -224,7 +224,8 @@ test('the player card shows the cached profile and the clan', function () {
         ->assertSee('max@mempool.example')
         ->assertSee('Reads fee charts for fun.')
         ->assertSeeInOrder(['Clan', 'MMP', 'Mempool Maniacs', 'captain'])
-        ->assertSee('max@walletofsatoshi.com')
+        ->assertSeeInOrder(['data-test="card-lud16"', 'Can receive zaps'], false)
+        ->assertDontSee('walletofsatoshi')
         ->assertSee(route('players.show', $player->npub))
         ->assertSee('data-npub="'.$player->npub.'"', false);
 });
@@ -293,6 +294,22 @@ test('the player page shows the header of a known player and 404s for an unknown
 
     $this->get(route('players.show', 'npub1nobody'))->assertNotFound();
     $this->get(route('players.card', 'npub1nobody'))->assertNotFound();
+});
+
+test('the player page never shows the Lightning address as text, only that zaps can be received', function () {
+    [$player] = knownPlayer(['name' => 'Mempool Max', 'lud16' => 'max@walletofsatoshi.com', 'profile_event_at' => now()]);
+
+    $this->get(route('players.show', $player->npub))
+        ->assertOk()
+        ->assertSeeInOrder(['data-test="header-lud16"', 'Can receive zaps'], false)
+        ->assertDontSee('walletofsatoshi')
+        ->assertDontSee('Zapping from TWENTY ONE');
+
+    [$other] = knownPlayer(['name' => 'rbf_rita', 'profile_event_at' => now()]);
+
+    $this->get(route('players.show', $other->npub))
+        ->assertOk()
+        ->assertDontSee('data-test="header-lud16"', false);
 });
 
 test('the generated avatar is served as a cacheable SVG', function () {

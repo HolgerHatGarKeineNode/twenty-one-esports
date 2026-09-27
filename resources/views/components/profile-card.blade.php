@@ -132,12 +132,11 @@
         @endif
     </div>
 
+    {{-- A Lightning address is never shown as text, only that one exists --}}
     @if ($profile->hasProfile && $profile->lud16)
-        <div class="relative flex min-w-0 items-center gap-2 border-t border-hairline px-4 py-2.5 text-xs" data-test="card-lud16">
-            <span class="flex text-bolt" title="{{ __('Lightning address') }}"><x-icon name="bolt-toast" :size="14" /></span>
-            <span class="sr-only">{{ __('Lightning address') }}</span>
-            <span class="min-w-0 grow truncate">{{ $profile->lud16 }}</span>
-            <x-zap-soon />
+        <div class="relative flex min-w-0 items-center gap-2 border-t border-hairline px-4 py-2.5 text-xs text-ink-2" data-test="card-lud16">
+            <span class="flex text-bolt"><x-icon name="bolt-toast" :size="14" /></span>
+            <span class="min-w-0 grow truncate">{{ __('Can receive zaps') }}</span>
         </div>
     @endif
 
