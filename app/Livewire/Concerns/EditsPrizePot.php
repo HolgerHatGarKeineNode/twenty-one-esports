@@ -216,6 +216,13 @@ trait EditsPrizePot
      */
     public function potPreviewSats(): ?int
     {
+        // The pot as set comes first (user, 2026-09-28): a typed target, then a balance.
+        $target = trim($this->potTarget);
+
+        if (ctype_digit($target) && (int) $target > 0) {
+            return PrizePool::afterFeeReserve((int) $target);
+        }
+
         if ($this->potCheckedSats !== null) {
             return PrizePool::afterFeeReserve($this->potCheckedSats);
         }
@@ -226,9 +233,7 @@ trait EditsPrizePot
             return PrizePool::afterFeeReserve($tournament->pot_balance_sats);
         }
 
-        $target = trim($this->potTarget);
-
-        return ctype_digit($target) && (int) $target > 0 ? PrizePool::afterFeeReserve((int) $target) : null;
+        return null;
     }
 
     /**

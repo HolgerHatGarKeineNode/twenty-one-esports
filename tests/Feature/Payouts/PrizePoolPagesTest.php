@@ -115,7 +115,7 @@ test('the organizer sets the prizes and a sponsor whose invoice comes from the p
     $this->travel(10)->seconds();
     $page->call('checkInvoice');
 
-    $this->get(route('tournaments.show', $tournament))->assertSee('Satoshi’s Pizza')->assertSeeHtml('data-test="pool-sats">'.ShareCard::sats(50000).'<');
+    $this->get(route('tournaments.show', $tournament))->assertSee('Satoshi’s Pizza')->assertSeeHtml('data-test="pool-sats">'.ShareCard::sats(500000).'<');
 });
 
 test('the prizes are frozen once sign-up closed, and only the organizer or an admin manages the pot', function () {

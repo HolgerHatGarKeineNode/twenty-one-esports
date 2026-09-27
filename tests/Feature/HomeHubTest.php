@@ -100,7 +100,7 @@ test('the pot shows only when the league has a pool for the tournament', functio
 
     $this->get(route('home'))->assertOk()
         ->assertSee('data-test="hero-pot"', false)
-        ->assertSee(__(':sats of :target sats pot', ['sats' => ShareCard::sats(210_000), 'target' => ShareCard::sats(500_000)]));
+        ->assertSee(__(':sats sats pot', ['sats' => ShareCard::sats(500_000)]));
 
     // The seam decides: a pool the league does not report is not shown.
     app()->bind(TournamentPrizePool::class, NoTournamentPrizePool::class);

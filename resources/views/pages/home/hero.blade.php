@@ -26,7 +26,6 @@
     $open = max(0, ($overflow ? $tiles - 1 : $tiles) - count($faces));
     $rest = $places['places'] - count($faces) - $open;
     $pot = $cup['pot'];
-    $potTarget = $pot['target'] ?? null;
 @endphp
 
 <section aria-labelledby="hero-name" class="grid gap-3 px-4 pt-4 lg:grid-cols-[minmax(0,8fr)_minmax(0,7fr)] lg:items-center lg:gap-12 lg:px-12 lg:pt-8" data-test="home-hero" data-tournament="{{ $tournament->id }}">
@@ -38,11 +37,7 @@
             @if ($pot !== null)
                 <span class="inline-flex h-7 items-center gap-1 rounded-tag bg-btc px-2.5 whitespace-nowrap text-on-btc" data-test="hero-pot">
                     <x-icon name="bolt" :size="14" />
-                    @if ($potTarget !== null)
-                        {{ __(':sats of :target sats pot', ['sats' => ShareCard::sats($pot['sats']), 'target' => ShareCard::sats($potTarget)]) }}
-                    @else
-                        {{ __(':sats sats pot', ['sats' => ShareCard::sats($pot['sats'])]) }}
-                    @endif
+                    {{ __(':sats sats pot', ['sats' => ShareCard::sats($pot['sats'])]) }}
                 </span>
             @endif
         </figcaption>

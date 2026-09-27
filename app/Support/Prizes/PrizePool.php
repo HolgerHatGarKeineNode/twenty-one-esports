@@ -81,7 +81,19 @@ final class PrizePool
      */
     public function potSats(Tournament $tournament): ?int
     {
-        return $tournament->hasOwnWallet() ? $tournament->pot_balance_sats : null;
+        if (! $tournament->hasOwnWallet()) {
+            return null;
+        }
+
+        // The pot as the tournament sets it, not the wallet's balance (user,
+        // 2026-09-28: „nicht die Zahl nehmen, die in der Wallet als Balance
+        // ist, sondern den Pot, wie er im Turnier eingestellt ist“): the
+        // fixed prizes' sum, else the target; the balance only without either.
+        if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
+            return self::fixedTotal($tournament);
+        }
+
+        return $tournament->prize_target_sats ?? $tournament->pot_balance_sats;
     }
 
     /** The routing-fee reserve on an amount of sats. */
@@ -168,7 +180,7 @@ final class PrizePool
      */
     public function funding(Tournament $tournament): array
     {
-        $balance = (int) $this->potSats($tournament);
+        $balance = (int) $tournament->pot_balance_sats;
 
         if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
             $total = self::fixedTotal($tournament);

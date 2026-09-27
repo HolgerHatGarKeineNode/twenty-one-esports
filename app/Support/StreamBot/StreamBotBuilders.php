@@ -581,7 +581,9 @@ final class StreamBotBuilders
      */
     private function potSats(Tournament $tournament): ?int
     {
-        if ($tournament->hasOwnWallet() && PrizePool::isBalanceStale($tournament)) {
+        $configured = $tournament->prizeMode() === Tournament::PRIZES_FIXED || $tournament->prize_target_sats !== null;
+
+        if ($tournament->hasOwnWallet() && ! $configured && PrizePool::isBalanceStale($tournament)) {
             return null;
         }
 

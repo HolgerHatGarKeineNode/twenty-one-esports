@@ -26,10 +26,8 @@
             <p class="m-0 flex flex-col gap-1">
                 <span class="font-display text-[40px] leading-none font-bold text-btc tabular-nums sm:text-[56px]" data-test="pool-sats">{{ $sats($pool['sats']) }}</span>
                 <span class="text-[13px] text-ink-2">
-                    @if ($poolFixed && $poolTarget !== null)
+                    @if ($poolTarget !== null)
                         {{ __('sats in the pot, funded :have of :target sats for the prizes', ['have' => $sats(min($poolHave, $poolTarget)), 'target' => $sats($poolTarget)]) }}
-                    @elseif ($poolTarget !== null)
-                        {{ __('sats in the pot, target :target sats', ['target' => $sats($poolTarget)]) }}
                     @else
                         {{ __('sats in the pot') }}
                     @endif

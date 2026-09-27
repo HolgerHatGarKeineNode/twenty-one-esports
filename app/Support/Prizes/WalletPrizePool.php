@@ -8,9 +8,10 @@ use App\Support\Tournaments\TournamentPrizePool;
 /**
  * The prize pot wherever a tournament shows (P9), behind the seam the pages
  * and the TV were built with. A pot is the tournament's own wallet: its sats
- * are that wallet's last balance read, with its time, and a pot is left out
- * until the first read succeeded (never a guess). The prizes are the
- * percents of that balance (less the fee reserve) or the fixed amounts; the
+ * are the pot as the tournament sets it (the fixed prizes' sum or the
+ * target; the last balance read only without either, user 2026-09-28). The
+ * prizes are the percents of that pot (less the fee reserve) or the fixed
+ * amounts; the balance only feeds the funding bar. The
  * sponsors are the ones whose invoice is paid (a pledge alone shows nothing).
  */
 final class WalletPrizePool implements TournamentPrizePool

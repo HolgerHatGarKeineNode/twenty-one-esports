@@ -141,7 +141,7 @@ test('the split is 100 % in total, presets or custom, and frozen once sign-up cl
     expect($tournament->refresh()->prizeSplit())->toBe([45, 35, 20]);
 });
 
-test('the pot shows wherever the tournament shows, with the balance time, and a failed read never invents a number', function () {
+test('the pot shows as set wherever the tournament shows, with the balance time, and a failed read never changes it', function () {
     fakeWallet();
     $own = ownPotWallet(120_000);
     $tournament = openTournament(rocketLeague: true);
@@ -149,7 +149,8 @@ test('the pot shows wherever the tournament shows, with the balance time, and a 
         ->set('potEnabled', true)->set('potUri', $own->uri('pay', 'pot@wallet.example'))
         ->set('potTarget', '100000')->call('usePotPreset', 'winner')->call('savePotSettings')->assertSet('potError', '');
 
-    $sats = ShareCard::sats(120_000);
+    // The pot as the tournament sets it (the target), not the 120 000 the wallet holds (user, 2026-09-28).
+    $sats = ShareCard::sats(100_000);
     $this->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSeeHtml('data-test="pool-sats">'.$sats.'<')->assertSeeHtml('data-test="pool-funded"')
         ->assertSeeHtml('data-test="pool-as-of"')->assertDontSee('pot@wallet.example')
@@ -174,8 +175,10 @@ test('the pot shows wherever the tournament shows, with the balance time, and a 
     Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])->call('readPotBalance')->assertSet('potError', '');
     expect($tournament->refresh()->pot_balance_sats)->toBe(150_000)->and($tournament->pot_balance_error)->toBeNull();
 
-    // Never read at all: no pot is shown rather than a guess.
+    // Never read at all: the pot as set still shows; only a pot without a target or fixed prizes needs a read.
     $tournament->forceFill(['pot_balance_sats' => null, 'pot_balance_at' => null])->save();
+    $this->get(route('tournaments.show', $tournament))->assertSeeHtml('data-test="pool-sats">'.$sats.'<');
+    $tournament->forceFill(['prize_target_sats' => null])->save();
     $this->get(route('tournaments.show', $tournament))->assertDontSeeHtml('data-test="prize-pool"');
     $this->get(route('tournaments.index'))->assertDontSeeHtml('data-test="prize-chip"');
 });
@@ -258,7 +261,7 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
         ->and($pool['target'])->toBe(85_000)->and($pool['have'])->toBe(49_150)->and($pool['funded'])->toBeFalse();
     $this->get(route('tournaments.show', $tournament))->assertSee(__(':sats sats', ['sats' => ShareCard::sats(60_000)]))
         ->assertSee(__('sats in the pot, funded :have of :target sats for the prizes', ['have' => ShareCard::sats(49_150), 'target' => ShareCard::sats(85_000)]));
-    $this->get(route('tournaments.index'))->assertSee(__(':sats of :target sats pot', ['sats' => ShareCard::sats(50_000), 'target' => ShareCard::sats(85_000)]));
+    $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot', ['sats' => ShareCard::sats(85_000)]));
     // The TV lobby names each place's fixed sats, not a share of the balance.
     $this->get(route('tournaments.tv', $tournament))->assertOk()->assertSee('data-test="tv-pot"', false)
         ->assertSee(__(':sats sats', ['sats' => ShareCard::sats(25_000)]));
@@ -269,7 +272,7 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
     expect(app(PrizePool::class)->funding($tournament->refresh()))->toBe(['goal' => 85_000, 'have' => 99_150, 'funded' => true, 'leftover' => 14_150]);
     Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament])
         ->assertSeeHtml('data-test="pool-leftover"')->assertSee(PreSeason::formatSats(14_150));
-    $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot, funded', ['sats' => ShareCard::sats(100_000)]));
+    $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot, funded', ['sats' => ShareCard::sats(85_000)]));
 });
 
 test('the prize mode switches freely before sign-up closes and is frozen after, percent mode unchanged', function () {
