@@ -60,10 +60,11 @@ final class EventBuilder
      * Client rules this enforces (zapstream.md A.1-A.7): exactly one
      * `streaming` tag, its URL ending in `.m3u8` with nothing after it, and
      * the `p` tag with all four elements (Primal reads `t[3]` of every `p`).
+     * `current_participants` only when the viewers were counted.
      *
      * @param  array{d: string, title: string, summary: string, image: string, t?: list<string>}  $stream
      */
-    public function liveActivity(array $stream, string $streamingUrl, string $hostPubkey, string $status, int $starts, ?int $ends = null): Event
+    public function liveActivity(array $stream, string $streamingUrl, string $hostPubkey, string $status, int $starts, ?int $ends = null, ?int $currentParticipants = null): Event
     {
         if (! self::isStreamingUrl($streamingUrl)) {
             throw new InvalidArgumentException('The streaming URL must end in .m3u8: '.$streamingUrl);
@@ -87,6 +88,10 @@ final class EventBuilder
         }
 
         $tags[] = ['streaming', $streamingUrl];
+
+        if ($currentParticipants !== null) {
+            $tags[] = ['current_participants', (string) max(0, $currentParticipants)];
+        }
 
         foreach ($stream['t'] ?? [] as $topic) {
             $tags[] = ['t', $topic];

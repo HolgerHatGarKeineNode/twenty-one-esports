@@ -20,6 +20,8 @@ use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
+use App\Support\TwentyOne\Stream\ViewerCounter;
+use App\Support\TwentyOne\Stream\ViewerSocket;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
 use Illuminate\Console\Attributes\Description;
@@ -52,6 +54,13 @@ use Throwable;
  * playlist is fresh (so a dead encoder ages out in clients by itself), with
  * the game in title and summary while the scene shows one, and `ended` on
  * SIGTERM/SIGINT.
+ *
+ * Viewers are counted from nginx's playlist access log, sent as syslog
+ * datagrams to a unix socket this process binds (ViewerSocket, config
+ * twentyone.stream.viewers; the nginx lines are there). The count reaches
+ * every scene as `viewers` and the `live` 30311 as `current_participants`;
+ * it is null, and the stream runs on without it, when the socket cannot be
+ * bound or read.
  *
  * A stop keeps the public playlist and the segments its window references:
  * players that are still open keep a valid playlist across a daemon restart,
@@ -111,6 +120,9 @@ class TwentyOneStreamCommand extends Command
     /** Whether the tournament slides could not be built on the last frame (logged once per series). */
     private bool $tournamentFramesFailing = false;
 
+    /** The socket nginx logs playlist requests to; null while the count is off. */
+    private ?ViewerSocket $viewerSocket = null;
+
     /** @var list<string> run ids of the encoders this process started */
     private array $runIds = [];
 
@@ -147,6 +159,7 @@ class TwentyOneStreamCommand extends Command
         $this->rotationFailing = false;
         $this->tournamentsFailing = false;
         $this->tournamentFramesFailing = false;
+        $this->viewerSocket = null;
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -209,6 +222,8 @@ class TwentyOneStreamCommand extends Command
         $slotKey = null;
         /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
         $frame = null;
+        $viewerCounter = $this->openViewerCount();
+        $viewerLimit = max(1, (int) config('twentyone.stream.viewers.max_datagrams_per_tick', 2000));
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
 
         while (! $this->stopping) {
@@ -219,6 +234,8 @@ class TwentyOneStreamCommand extends Command
 
                 break;
             }
+
+            $viewerCount = $viewerCounter === null ? null : $this->countViewers($viewerCounter, (int) $now, $viewerLimit);
 
             // Once a second: which games are on show (live ones, daily included,
             // and those that just ended), which rotation slot runs, and its data.
@@ -257,7 +274,7 @@ class TwentyOneStreamCommand extends Command
 
                 if ($slot['scene'] !== null) {
                     $stats = $this->readStats($counts, $stats, $pollFailures === 0);
-                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame, $tournaments);
+                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame, $tournaments, $viewerCount);
                 }
 
                 $key = $slot['kind'].':'.$slot['scene'].':'.$slot['gameId'].':'.$slot['tournamentId'].':'.$slot['until'];
@@ -385,15 +402,17 @@ class TwentyOneStreamCommand extends Command
             }
 
             $texts = $this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : StreamTexts::for(null);
+            // A new viewer count is republished like a text change (at most once per text_change_seconds).
+            $announced = [...$texts, 'viewers' => $viewerCount];
 
             // A playlist kept from before this start is fresh after a quick
             // restart (and rewritten when trimmed), but says nothing about
             // whether an encoder of this process works: only its segments count.
-            if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($texts, time())) {
+            if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($announced, time())) {
                 $this->startedAt ??= time();
                 // A SIGTERM during this publish aborts it; `ended` follows below.
-                $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping);
-                $schedule->published($texts, time());
+                $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping, $viewerCount);
+                $schedule->published($announced, time());
             }
 
             usleep(250_000);
@@ -427,6 +446,8 @@ class TwentyOneStreamCommand extends Command
         }
 
         $this->pending = $this->active = null;
+        $this->viewerSocket?->close();
+        $this->viewerSocket = null;
         $this->log('stopped, keeping '.count($public->state()->window).' segments in the public playlist');
     }
 
@@ -502,9 +523,10 @@ class TwentyOneStreamCommand extends Command
      * @param  array<string, mixed>  $stats
      * @param  array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null  $previous
      * @param  list<array<string, mixed>>  $tournaments  TournamentSlides::frames() of this poll
+     * @param  int|null  $viewers  the live viewer count every scene gets as `viewers` (null: not counted)
      * @return array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null
      */
-    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = []): ?array
+    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = [], ?int $viewers = null): ?array
     {
         $scene = (string) $slot['scene'];
         $tournament = collect($tournaments)->firstWhere('id', $slot['tournamentId']);
@@ -512,8 +534,8 @@ class TwentyOneStreamCommand extends Command
         try {
             return [
                 'view' => RotationPlanner::VIEWS[$scene],
-                'data' => $source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats, $tournament),
-                'fallback' => $games === [] ? null : $source->gallery($games, $more, $nowMs),
+                'data' => [...$source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats, $tournament), 'viewers' => $viewers],
+                'fallback' => $games === [] ? null : [...$source->gallery($games, $more, $nowMs), 'viewers' => $viewers],
                 'label' => $scene.' '.$slot['kind'].($slot['gameId'] !== null ? ' game '.$slot['gameId'] : '').($slot['tournamentId'] !== null ? ' '.$slot['tournamentId'] : ''),
                 'announce' => $previous['announce'] ?? false,
             ];
@@ -594,6 +616,51 @@ class TwentyOneStreamCommand extends Command
             }
 
             return [];
+        }
+    }
+
+    /**
+     * Bind the viewer socket; on failure (path too long, no permission, a
+     * file in the way) the count stays off for this run, logged once, and
+     * the stream goes on without it.
+     */
+    private function openViewerCount(): ?ViewerCounter
+    {
+        $path = (string) config('twentyone.stream.viewers.socket');
+
+        try {
+            $this->viewerSocket = ViewerSocket::bind($path);
+            $this->log('viewer count on '.$path);
+
+            return ViewerCounter::fromConfig();
+        } catch (Throwable $e) {
+            $this->viewerSocket = null;
+            $this->log('viewer count off: '.$this->describe($e));
+
+            return null;
+        }
+    }
+
+    /**
+     * Read the pending playlist requests (at most `$limit`) and count the
+     * viewers; null, and the count off for the rest of the run, when reading fails.
+     */
+    private function countViewers(ViewerCounter $counter, int $now, int $limit): ?int
+    {
+        if ($this->viewerSocket === null) {
+            return null;
+        }
+
+        try {
+            $this->viewerSocket->drain($counter, $now, $limit);
+
+            return $counter->count($now);
+        } catch (Throwable $e) {
+            $this->log('viewer count off: '.$this->describe($e));
+            $this->viewerSocket->close();
+            $this->viewerSocket = null;
+
+            return null;
         }
     }
 
@@ -798,8 +865,9 @@ class TwentyOneStreamCommand extends Command
     /**
      * @param  array{title: string, summary: string}  $texts
      * @param  (Closure(): bool)|null  $abort
+     * @param  int|null  $viewers  `current_participants`, left out when null
      */
-    private function publish(EventBuilder $builder, RelayPublisher $publisher, string $status, array $texts, float $timeoutSeconds, ?Closure $abort = null): void
+    private function publish(EventBuilder $builder, RelayPublisher $publisher, string $status, array $texts, float $timeoutSeconds, ?Closure $abort = null, ?int $viewers = null): void
     {
         assert($this->signer !== null && $this->startedAt !== null);
 
@@ -814,6 +882,7 @@ class TwentyOneStreamCommand extends Command
             $status,
             $this->startedAt,
             $status === 'ended' ? $createdAt : null,
+            $viewers,
         )->setCreatedAt($createdAt);
         $event = $this->signer->sign($unsigned);
         $this->lastCreatedAt = $createdAt;

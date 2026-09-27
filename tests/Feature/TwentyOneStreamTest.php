@@ -7,13 +7,17 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
+use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\Stream\TournamentSlides;
+use App\Support\TwentyOne\Stream\ViewerCounter;
+use App\Support\TwentyOne\Stream\ViewerSocket;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\View;
 use swentel\nostr\Key\Key;
 use Tests\Support\TestSigner;
 
@@ -36,6 +40,8 @@ beforeEach(function () {
         'twentyone.stream.scene.work_dir' => $this->dir.'/work',
         'twentyone.stream.music.dir' => $this->dir.'/music',
         'twentyone.stream.music.instrumental_dir' => $this->dir.'/music/instrumental',
+        // A socket path of its own per test (parallel workers), short enough for sun_path (107 bytes).
+        'twentyone.stream.viewers.socket' => sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(6)).'.sock',
     ]);
 
     File::ensureDirectoryExists($this->dir.'/music');
@@ -47,6 +53,7 @@ beforeEach(function () {
 
 afterEach(function () {
     File::deleteDirectory($this->dir);
+    File::delete(config('twentyone.stream.viewers.socket'));
 
     foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_DELAY', 'FAKE_ENCODER_EXIT_AFTER', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
         putenv($name);
@@ -610,4 +617,136 @@ test('upcoming tournaments that cannot be read leave the rotation to the teasers
     expect(substr_count($output, 'upcoming tournaments not read, keeping the last 0: PDOException'))->toBe(1)
         ->and($output)->toContain('rotation: promo loop', 'rotation: a3 teaser', 'rotation: a4 teaser')
         ->and($output)->not->toContain(' tournament ');
+});
+
+/**
+ * Record the `viewers` every stream view is rendered with ('missing' when a
+ * view gets none), as [view, viewers] pairs.
+ *
+ * @return ArrayObject<int, array{0: string, 1: int|string|null}>
+ */
+function captureViewers(): ArrayObject
+{
+    $seen = new ArrayObject;
+
+    View::composer([...array_values(RotationPlanner::VIEWS), 'stream.scene'], function ($view) use ($seen): void {
+        $data = $view->getData();
+        $seen[] = [$view->name(), array_key_exists('viewers', $data) ? $data['viewers'] : 'missing'];
+    });
+
+    return $seen;
+}
+
+/**
+ * A child process that plays nginx: it waits for the socket and then sends
+ * `$datagrams` every 100 ms until `$seconds` have passed.
+ *
+ * @param  list<string>  $datagrams
+ * @return resource
+ */
+function fakeNginx(string $socket, array $datagrams, float $seconds)
+{
+    $script = '$until = microtime(true) + '.$seconds.'; $lines = json_decode($argv[2], true);'
+        .' while (microtime(true) < $until) { $c = @stream_socket_client("udg://".$argv[1]);'
+        .' if ($c !== false) { foreach ($lines as $line) { @fwrite($c, $line); } fclose($c); } usleep(100000); }';
+
+    return proc_open([PHP_BINARY, '-r', $script, $socket, json_encode($datagrams)], [], $pipes);
+}
+
+test('viewers counted from the socket reach every scene, the game scene fallback and the 30311', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    // The rotation scenes fail, so the old game scene renders as well.
+    fakeRenderer($this->dir, failRotation: true);
+    // The first live goes out after the counter has read the datagrams.
+    setChildEnv('FAKE_ENCODER_DELAY', '1.5');
+    config(['twentyone.stream.shutdown_publish_seconds' => 1]);
+    ChessGame::factory()->create();
+    $seen = captureViewers();
+    $socket = config('twentyone.stream.viewers.socket');
+    $firefox = 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0';
+    $nginx = fakeNginx($socket, [
+        "<190>Sep 27 12:00:00 hls: 203.0.113.1|{$firefox}|200",
+        "<190>Sep 27 12:00:00 hls: 203.0.113.1|{$firefox}|304",
+        '<190>Sep 27 12:00:00 hls: 203.0.113.1|VLC/3.0.20 LibVLC/3.0.20|206',
+        "<190>Sep 27 12:00:00 hls: 2001:db8::7|{$firefox}|200",
+        '<190>Sep 27 12:00:00 hls: 203.0.113.2|curl/8.10.1|200',
+        "<190>Sep 27 12:00:00 hls: 203.0.113.3|{$firefox}|404",
+        'garbage',
+    ], 4);
+    $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $this->dir.'/event.json'], [1 => ['pipe', 'w']], $pipes);
+    $port = (int) fgets($pipes[1]);
+
+    Artisan::call('twentyone:stream', ['--relays' => 'ws://127.0.0.1:'.$port, '--stop-after' => 3]);
+    $output = Artisan::output();
+    proc_terminate($relay);
+    proc_close($relay);
+    proc_terminate($nginx);
+    proc_close($nginx);
+    $event = json_decode((string) file_get_contents($this->dir.'/event.json'), true)[1];
+    $counted = collect($seen->getArrayCopy())->filter(fn (array $render): bool => $render[1] === 3);
+
+    expect($output)->toContain('viewer count on '.$socket)
+        ->and($output)->not->toContain('203.0.113', '2001:db8', 'Firefox')
+        ->and(collect($seen->getArrayCopy())->where(1, 'missing')->all())->toBe([])
+        ->and($counted->pluck(0)->unique()->sort()->values()->all())->toBe(['stream.rotation.a1-match', 'stream.scene'])
+        ->and(collect($event['tags'])->where(0, 'current_participants')->values()->all())->toBe([['current_participants', '3']])
+        // The daemon removes its socket on the way out.
+        ->and(file_exists($socket))->toBeFalse();
+});
+
+test('a socket that cannot be bound leaves the count off and the stream running', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    config(['twentyone.stream.shutdown_publish_seconds' => 1]);
+    // One byte over sun_path: PHP would bind a truncated path instead of failing.
+    $socket = str_pad(sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(4)).'-', ViewerSocket::MAX_PATH_BYTES + 1 - strlen('.sock'), 'x').'.sock';
+    config(['twentyone.stream.viewers.socket' => $socket]);
+    $seen = captureViewers();
+    $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $this->dir.'/event.json'], [1 => ['pipe', 'w']], $pipes);
+    $port = (int) fgets($pipes[1]);
+
+    $exitCode = Artisan::call('twentyone:stream', ['--relays' => 'ws://127.0.0.1:'.$port, '--stop-after' => 4]);
+    $output = Artisan::output();
+    proc_terminate($relay);
+    proc_close($relay);
+    $event = json_decode((string) file_get_contents($this->dir.'/event.json'), true)[1];
+
+    expect(strlen($socket))->toBe(ViewerSocket::MAX_PATH_BYTES + 1)
+        ->and($exitCode)->toBe(0)
+        ->and(substr_count($output, 'viewer count off: RuntimeException: socket path is empty or longer than 107 bytes (108)'))->toBe(1)
+        ->and($output)->toContain('rotation: a3 teaser, rendered in', 'status=live')
+        ->and($seen->count())->toBeGreaterThan(0)
+        ->and(collect($seen->getArrayCopy())->pluck(1)->unique()->all())->toBe([null])
+        ->and(collect($event['tags'])->where(0, 'current_participants')->all())->toBe([])
+        ->and(file_exists(substr($socket, 0, ViewerSocket::MAX_PATH_BYTES)))->toBeFalse();
+});
+
+test('the viewer socket replaces a stale socket, never another file, and reads a limited batch per turn', function () {
+    $path = config('twentyone.stream.viewers.socket');
+    File::put($path, 'not ours');
+
+    expect(fn () => ViewerSocket::bind($path))->toThrow(RuntimeException::class, 'not a socket, left in place')
+        ->and(file_get_contents($path))->toBe('not ours');
+
+    File::delete($path);
+    // A socket a killed daemon left behind.
+    fclose(stream_socket_server('udg://'.$path, $errorCode, $errorMessage, STREAM_SERVER_BIND));
+    $socket = ViewerSocket::bind($path);
+    $client = stream_socket_client('udg://'.$path);
+
+    foreach (range(1, 10) as $index) {
+        fwrite($client, "<190>Sep 27 12:00:00 hls: 203.0.113.{$index}|Mozilla/5.0 Firefox/131.0|200");
+    }
+
+    $counter = new ViewerCounter(20);
+    $batches = [$socket->drain($counter, 0, 4), $counter->count(0), $socket->drain($counter, 0, 100), $counter->count(0), $socket->drain($counter, 0, 100)];
+    $mode = fileperms($path) & 0777;
+    $socket->close();
+
+    expect($batches)->toBe([4, 4, 6, 10, 0])
+        ->and($mode)->toBe(0666)
+        ->and(file_exists($path))->toBeFalse();
 });

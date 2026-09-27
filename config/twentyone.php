@@ -184,6 +184,30 @@ return [
             'tournament_seconds' => 15,
         ],
 
+        /*
+        | Live viewer count (ViewerCounter, ViewerSocket): nginx logs every
+        | request for the playlist to a unix datagram socket the daemon binds,
+        |
+        |   log_format twentyone_hls escape=json '$remote_addr|$http_user_agent|$status';
+        |   access_log syslog:server=unix:<socket>,nohostname,tag=hls twentyone_hls;
+        |
+        | (log_format at http level, access_log only in the location serving
+        | /live/*.m3u8). A viewer is a distinct IP + user agent with a 200/206/304
+        | within `window_seconds`; `exclude_agents` never counts. The scenes get
+        | it as `viewers`, the 30311 as `current_participants`. The socket path
+        | must stay within 107 bytes; a socket that cannot be bound leaves the
+        | count off (null) and the stream running.
+        */
+        'viewers' => [
+            'socket' => env('TWENTYONE_STREAM_VIEWERS_SOCKET') ?: storage_path('app/stream/viewers.sock'),
+            'window_seconds' => 20,
+            'exclude_agents' => '/HeadlessChrome|Playwright|curl|Wget|python-requests|Go-http-client|bot|spider|monitor/i',
+            // Memory bound: at most this many IP + agent hashes; a flood pushes out the oldest.
+            'max_keys' => 10000,
+            // Datagrams read per loop turn (4 per second); the rest waits for the next turn.
+            'max_datagrams_per_tick' => 2000,
+        ],
+
         'stats' => [
             'cache_seconds' => 15,
             'timezone' => 'Europe/Berlin',
