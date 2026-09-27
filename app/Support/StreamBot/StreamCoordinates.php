@@ -32,10 +32,7 @@ final readonly class StreamCoordinates
     public static function fromConfig(): ?self
     {
         $d = config('twentyone.stream.event.d');
-        $relays = array_values(array_filter(
-            RelayPublisher::relayUrls(config('twentyone.stream.relays')),
-            fn (string $relay): bool => EventBuilder::isRelayUrl($relay),
-        ));
+        $relays = self::relays();
         $pubkey = self::streamPubkey();
 
         if (! is_string($d) || trim($d) === '' || $relays === [] || $pubkey === null) {
@@ -43,6 +40,20 @@ final readonly class StreamCoordinates
         }
 
         return new self($pubkey, $d, $relays);
+    }
+
+    /**
+     * The stream relays (`twentyone.stream.relays`), valid websocket URLs
+     * only: where the bot publishes its profile and its notes too.
+     *
+     * @return list<string>
+     */
+    public static function relays(): array
+    {
+        return array_values(array_filter(
+            RelayPublisher::relayUrls(config('twentyone.stream.relays')),
+            fn (string $relay): bool => EventBuilder::isRelayUrl($relay),
+        ));
     }
 
     /** NIP-53/NIP-01 address of the live event: `30311:<pubkey>:<d>`. */

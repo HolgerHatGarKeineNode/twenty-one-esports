@@ -1327,6 +1327,15 @@ tournament, and a tournament signed by another key could be replaced by someone 
 not name. The cost is a wider key scope for the league key (`31923`, `31924`); see
 [League relay and keys](#league-relay-and-keys).
 
+**Announcement notes.** The stream chat bot (its own key, kind `0` with `bot: true`) posts one kind
+`1` note on its profile per published tournament, casual cups included: name, game and mode, start
+in the league's time zone, the pot as set (never a wallet balance), the tournament page, and after a
+blank line the `31923` as `nostr:naddr1…` (NIP-19/21/27, the first league relay as hint). Its only
+tag is a NIP-18 `q` on the address with that relay (`["q", "31923:<league>:<slug>", "<relay>"]`), so
+clients embed the calendar event; no `a` (the note is not part of the tournament's event set above),
+no `p`, no `t` and no `#`. The note is informational and league state never reads it. A tournament
+called off before its note gets none; a note already out is not repeated or withdrawn.
+
 ## Queue pairings
 
 Rated blitz is played from a **queue**: players who are online and searching are paired by the league.
@@ -3056,6 +3065,7 @@ wanted protected player events would have to accept them from their authenticate
 | 07, 46, 55 | signing on the client (browser extension, remote signer, Android signer); a Google login through nostr-mill is a NIP-46 bunker (pomegranate) |
 | 09 | deletion requests are accepted by relays but do not change league state |
 | 19, 21 | `naddr` for clans, lineups, ladders; `nevent` for matches and draws; `nostr:` links |
+| 18, 27 | the stream bot's tournament notes (kind `1`): the calendar event as `nostr:naddr1…` in `content` and a `q` tag on its address |
 | 04 | deliberately **not** used: `unrecommended`, deprecated in favor of NIP-17 |
 | 17, 44, 59 | private chat and notifications: kind `14` rumors, NIP-44 sealed (`13`), gift-wrapped (`1059`); DM relay list `10050`; not the ephemeral `21059` |
 | 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind |

@@ -306,3 +306,9 @@ Schedule::command('wallet:read-pots')->everyTwoMinutes()->withoutOverlapping();
  * message. Does nothing unless ESPORTS_STREAM_BOT_ENABLED and its key are set.
  */
 Schedule::command('twentyone:stream-bot')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
+ * The same bot posts a note on its own profile for every published tournament
+ * (the backlog too), a few per run, each exactly once. Same flag and key.
+ */
+Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->withoutOverlapping()->onOneServer();

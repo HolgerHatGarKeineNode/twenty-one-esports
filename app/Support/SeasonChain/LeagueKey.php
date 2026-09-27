@@ -75,8 +75,9 @@ final class LeagueKey
 
     /**
      * The stream chat bot key (`esports.stream_bot.nsec`, P22): signs only
-     * its kind-1311 chat messages and its own kind 0 (`bot: true`). Never
-     * the league or the stream key. Null without a valid secret.
+     * its kind-1311 chat messages, its kind-1 tournament notes and its own
+     * kind 0 (`bot: true`). Never the league or the stream key. Null
+     * without a valid secret.
      */
     public static function streamBot(): ?self
     {

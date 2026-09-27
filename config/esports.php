@@ -766,9 +766,16 @@ return [
         'winner_days' => 14,
         'clan_days' => 7,
         'rank_up_hours' => 48,
+        // Kind-1 notes on the bot's own profile, one per published tournament (twentyone:stream-bot:tournaments):
+        // at most `per_run` per run (the backlog goes out a few at a time), a failed send is retried
+        // after `retry_minutes` with the same signed event.
+        'tournament_notes' => [
+            'per_run' => 3,
+            'retry_minutes' => 10,
+        ],
         'profile' => [
             'name' => 'TWENTY ONE Bot',
-            'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Posts only while the stream is live. It reads no replies.',
+            'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Chats only while the stream is live, and posts every new tournament here. It reads no replies.',
             'picture' => 'https://blossom.einundzwanzig.space/c6f8d996841c1a1b81102ff268a9f4408536a17fb35dfb87eb71b407bad41d8f.png',
         ],
     ],

@@ -122,9 +122,10 @@ final class NostrKeys
 
     /**
      * NIP-19 `naddr` of an addressable event: TLV 0 = d (UTF-8), 2 = author
-     * (32 bytes), 3 = kind (4 bytes, big-endian). No relay hints.
+     * (32 bytes), 3 = kind (4 bytes, big-endian), and 1 = one relay hint
+     * when given (a hint longer than 255 bytes is left out).
      */
-    public static function naddr(int $kind, string $pubkey, string $d): string
+    public static function naddr(int $kind, string $pubkey, string $d, ?string $relay = null): string
     {
         $length = strlen($d);
 
@@ -133,7 +134,10 @@ final class NostrKeys
             throw new \InvalidArgumentException('A d tag longer than 255 bytes has no naddr.');
         }
 
+        $hint = $relay !== null && $relay !== '' && strlen($relay) <= 255 ? chr(1).chr(strlen($relay)).$relay : '';
+
         $tlv = chr(0).chr($length).$d
+            .$hint
             .chr(2).chr(32).hex2bin($pubkey)
             .chr(3).chr(4).pack('N', $kind);
 

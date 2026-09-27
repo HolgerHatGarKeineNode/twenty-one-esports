@@ -132,6 +132,18 @@ final class StreamBotCopy
             ['⚡ Enjoying the stream? Zap it right here, every sat says thanks', '🌐 More on the site: :url'],
             ['⚡ Liking the stream? A zap goes a long way', '🌐 :url'],
         ],
+
+        // Notes on the bot's own profile (kind 1, TournamentNotes), one per tournament, by its status
+        // when the note goes out. The `nostr:naddr1…` of the calendar event follows after a blank line.
+        'tournament_note_open' => [
+            ['🏆 New tournament: :name', '🎮 :game · starts :starts', '💰 :pot sats in the pot', '👉 Sign up: :url'],
+        ],
+        'tournament_note_running' => [
+            ['🏆 Tournament on now: :name', '🎮 :game · started :starts', '💰 :pot sats in the pot', '👉 Follow it: :url'],
+        ],
+        'tournament_note_finished' => [
+            ['🏆 Tournament: :name', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 Bracket and results: :url'],
+        ],
     ];
 
     /**
