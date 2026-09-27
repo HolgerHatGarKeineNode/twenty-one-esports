@@ -108,6 +108,7 @@ const NAV_NOT_PAGES = [
     'players.card' => 'fragment: the player card on hover',
     'players.search' => 'JSON: the player picker suggestions',
     'stream.status' => 'JSON: the live stream status the pages poll',
+    'stream.cover' => 'image: the live stream cover the 30311 event points at',
     'admin.disputes.evidence' => 'file: a dispute screenshot, linked from the dispute page',
     'nostr.nip05' => 'JSON for Nostr clients',
     'lnurl.pay' => 'JSON for Lightning wallets: the pool address (LUD-06/16)',

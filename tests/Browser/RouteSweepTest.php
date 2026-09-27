@@ -507,7 +507,7 @@ const SWEEP_FLUSH_PATHS = ['/'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV). */
 const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
-    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped'];
+    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'stream.cover'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {
