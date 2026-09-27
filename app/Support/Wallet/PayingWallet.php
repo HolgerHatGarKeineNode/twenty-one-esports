@@ -5,12 +5,13 @@ namespace App\Support\Wallet;
 use App\Models\Tournament;
 
 /**
- * The league wallet's paying NIP-47 connection (`esports.wallet.nwc_uri`),
- * with the budget limit set in the wallet. Only the payout runner holds one
- * (App\Support\Payouts\PayoutRunner; tests/Feature/Payouts/WalletTest.php
- * keeps it that way): receiving, counting and reconciling use
- * {@see ReceivingWallet}. Null without a valid URI (fail closed: no payout
- * is attempted).
+ * A NIP-47 connection that pays: a tournament pot's own wallet
+ * ({@see forTournament()}), or the league wallet's paying connection
+ * (`esports.wallet.nwc_uri`, the Season-Chain's only, never a tournament's).
+ * Only the payout runner holds one (App\Support\Payouts\PayoutRunner;
+ * tests/Feature/Payouts/WalletTest.php keeps it that way): receiving,
+ * counting and reconciling use {@see ReceivingWallet}. Null without a valid
+ * URI (fail closed: no payout is attempted).
  */
 final class PayingWallet
 {
@@ -24,13 +25,14 @@ final class PayingWallet
     }
 
     /**
-     * The wallet a tournament's prizes are paid from: its own NWC wallet when
-     * its pot has one, else the league's paying connection.
+     * The wallet a tournament's prizes are paid from: its pot's own NWC
+     * wallet, and nothing else. Null without one (a tournament never falls
+     * back to the league wallet).
      */
     public static function forTournament(Tournament $tournament): ?self
     {
         if (! $tournament->hasOwnWallet()) {
-            return self::fromConfig();
+            return null;
         }
 
         $connection = NwcConnection::fromUri($tournament->pot_nwc_uri);

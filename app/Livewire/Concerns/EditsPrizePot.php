@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * The optional prize pot of the tournament create and edit pages and of the
- * pool page (P9 scope addition, user 2026-09-27): off by default; on, the
- * pot is held by the league (zaps to the pool key) or in the tournament's
- * own NWC wallet, with a target and a split by place (presets or custom,
- * 100 % in total) previewed in sats. The rules live in
- * {@see PrizePool::configurePot()}.
+ * pool page (P9, user 2026-09-27): off by default; on, the pot is the
+ * tournament's own NWC wallet (never the league's), with its prizes set in
+ * one of two modes: a share of the pot per place (presets or custom, 100 %
+ * in total) or fixed sats per place, both previewed in sats. The rules live
+ * in {@see PrizePool::configurePot()}.
  *
  * The connection string is typed into `$potUri` and nowhere else: it is
  * never filled from the database, and it is cleared after every save, so a
@@ -29,9 +29,6 @@ trait EditsPrizePot
 {
     public bool $potEnabled = false;
 
-    /** `league` or `wallet`. */
-    public string $potSource = Tournament::POT_WALLET;
-
     /** A newly pasted connection string; never a stored one. */
     public string $potUri = '';
 
@@ -40,8 +37,14 @@ trait EditsPrizePot
 
     public string $potTarget = '';
 
-    /** @var list<int|string> */
+    /** `percent` or `fixed`. */
+    public string $potMode = Tournament::PRIZES_PERCENT;
+
+    /** @var list<int|string> percents per place */
     public array $potSplit = Tournament::DEFAULT_SPLIT;
+
+    /** @var list<int|string> sats per place */
+    public array $potFixed = [];
 
     /** Balance of the pasted wallet at its last check, in sats; null = not checked. */
     public ?int $potCheckedSats = null;
@@ -55,15 +58,22 @@ trait EditsPrizePot
 
     protected function fillPot(?Tournament $tournament): void
     {
-        $source = $tournament->pot_source ?? ($tournament?->pool_opened_at !== null ? Tournament::POT_LEAGUE : null);
-
-        $this->potEnabled = $source !== null;
-        $this->potSource = $source ?? (PrizePool::leagueCanHold() ? Tournament::POT_LEAGUE : Tournament::POT_WALLET);
+        $this->potEnabled = $tournament?->hasOwnWallet() === true;
         $this->potUri = '';
         $this->potReplacing = false;
         $this->potTarget = $tournament?->prize_target_sats === null ? '' : (string) $tournament->prize_target_sats;
+        $this->potMode = $tournament?->prizeMode() ?? Tournament::PRIZES_PERCENT;
         $this->potSplit = $tournament?->prizeSplit() ?? Tournament::DEFAULT_SPLIT;
+        $this->potFixed = $tournament?->prizeFixed() ?: [];
         $this->potCheckedSats = null;
+    }
+
+    public function usePotMode(string $mode): void
+    {
+        if (in_array($mode, [Tournament::PRIZES_PERCENT, Tournament::PRIZES_FIXED], true)) {
+            $this->potMode = $mode;
+            $this->potFixed = $this->potFixed === [] ? [50_000, 30_000, 20_000] : $this->potFixed;
+        }
     }
 
     public function usePotPreset(string $preset): void
@@ -75,6 +85,14 @@ trait EditsPrizePot
 
     public function addPotPlace(): void
     {
+        if ($this->potMode === Tournament::PRIZES_FIXED) {
+            if (count($this->potFixed) < PrizePool::MAX_PLACES) {
+                $this->potFixed[] = 1000;
+            }
+
+            return;
+        }
+
         if (count($this->potSplit) < PrizePool::MAX_PLACES) {
             $this->potSplit[] = 1;
         }
@@ -82,6 +100,14 @@ trait EditsPrizePot
 
     public function removePotPlace(): void
     {
+        if ($this->potMode === Tournament::PRIZES_FIXED) {
+            if (count($this->potFixed) > 1) {
+                array_pop($this->potFixed);
+            }
+
+            return;
+        }
+
         if (count($this->potSplit) > 1) {
             array_pop($this->potSplit);
         }
@@ -141,7 +167,8 @@ trait EditsPrizePot
         }
 
         $this->potCheckedSats = $check['balance'];
-        $this->potNotice = __('Connected. The wallet holds :sats sats and may pay invoices.', ['sats' => PreSeason::formatSats($check['balance'])]);
+        $this->potNotice = __('Connected. The wallet holds :sats sats and may pay invoices.', ['sats' => PreSeason::formatSats($check['balance'])])
+            .' '.($check['can_receive'] ? __('Anyone can add sats to it from the tournament page.') : __('It may not make invoices, so top-ups from the tournament page are off.'));
     }
 
     /**
@@ -175,30 +202,34 @@ trait EditsPrizePot
     }
 
     /**
-     * The sats the preview splits: a checked wallet's balance, the pot as
-     * it stands, else the target; null when there is none of these.
+     * The sats the percent preview splits: a checked wallet's balance, the
+     * stored pot's balance, else the target, each less the fee reserve; null
+     * when there is none of these.
      */
     public function potPreviewSats(): ?int
     {
-        if ($this->potSource === Tournament::POT_WALLET && $this->potCheckedSats !== null) {
+        if ($this->potCheckedSats !== null) {
             return PrizePool::afterFeeReserve($this->potCheckedSats);
         }
 
         $tournament = $this->potTournament();
 
-        if ($tournament !== null && $tournament->pool_opened_at !== null && ($tournament->pot_source ?? Tournament::POT_LEAGUE) === $this->potSource) {
-            $payable = app(PrizePool::class)->payableSats($tournament);
-
-            if ($payable !== null && $payable > 0) {
-                return $payable;
-            }
+        if ($tournament !== null && $tournament->hasOwnWallet() && $tournament->pot_balance_sats !== null && $tournament->pot_balance_sats > 0) {
+            return PrizePool::afterFeeReserve($tournament->pot_balance_sats);
         }
 
         $target = trim($this->potTarget);
 
-        return ctype_digit($target) && (int) $target > 0
-            ? ($this->potSource === Tournament::POT_WALLET ? PrizePool::afterFeeReserve((int) $target) : (int) $target)
-            : null;
+        return ctype_digit($target) && (int) $target > 0 ? PrizePool::afterFeeReserve((int) $target) : null;
+    }
+
+    /**
+     * The balance the fixed-mode summary compares with: a checked wallet's,
+     * else the stored pot's; null when unknown.
+     */
+    public function potKnownBalance(): ?int
+    {
+        return $this->potCheckedSats ?? ($this->potTournament()?->hasOwnWallet() === true ? $this->potTournament()->pot_balance_sats : null);
     }
 
     /**
@@ -211,11 +242,11 @@ trait EditsPrizePot
         $target = trim($this->potTarget);
 
         // A new connection string is checked live on save: the same budget as the check button, counted before (F1).
-        if ($this->potEnabled && $this->potSource === Tournament::POT_WALLET && trim($this->potUri) !== '' && ! $this->mayCheckWallet($this->potUser())) {
+        if ($this->potEnabled && trim($this->potUri) !== '' && ! $this->mayCheckWallet($this->potUser())) {
             return false;
         }
 
-        if ($this->potEnabled && $target !== '' && ! ctype_digit($target)) {
+        if ($this->potEnabled && $this->potMode === Tournament::PRIZES_PERCENT && $target !== '' && ! ctype_digit($target)) {
             $this->potError = __('The target is a whole number of sats.');
 
             return false;
@@ -225,10 +256,12 @@ trait EditsPrizePot
             app(PrizePool::class)->configurePot(
                 $tournament,
                 $this->potUser(),
-                $this->potEnabled ? $this->potSource : null,
-                $this->potEnabled && $this->potSource === Tournament::POT_WALLET ? $this->potUri : null,
-                $this->potEnabled && $target !== '' ? (int) $target : null,
+                $this->potEnabled,
+                $this->potEnabled ? $this->potUri : null,
+                $this->potEnabled && $target !== '' && ctype_digit($target) ? (int) $target : null,
+                $this->potMode,
                 $this->potSplit,
+                $this->potFixed,
             );
         } catch (TournamentRuleViolation $violation) {
             $this->potError = $violation->getMessage();

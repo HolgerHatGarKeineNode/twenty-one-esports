@@ -385,7 +385,9 @@ final class ShareCard
 
         // The prize pot on the right of the same line (P9), when the tournament has one.
         if (($this->facts['pot'] ?? null) !== null) {
-            $pot = __(':sats sats prize pot', ['sats' => self::sats((int) $this->facts['pot'])]);
+            $pot = ($this->facts['first_prize'] ?? null) !== null
+                ? __('1st place wins :sats sats', ['sats' => self::sats((int) $this->facts['first_prize'])])
+                : __(':sats sats prize pot', ['sats' => self::sats((int) $this->facts['pot'])]);
             $this->c->text($pot, 'mono-bold', $px, $x + $width - $this->c->width($pot, 'mono-bold', $px), $y - 18, Canvas::ORANGE);
         }
         $cells = min($places, 48);

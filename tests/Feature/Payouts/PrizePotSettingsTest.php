@@ -5,7 +5,9 @@ use App\Models\LedgerTransfer;
 use App\Models\Tournament;
 use App\Support\Cards\ShareCard;
 use App\Support\PreSeason;
+use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
+use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -38,9 +40,11 @@ function createPage(): Testable
         ->set('name', 'Pot Cup');
 }
 
-test('a tournament without a pot works as before: the section is off and nothing shows', function () {
+test('a tournament without a pot works as before: the section is off, has no league option, and nothing shows', function () {
     fakeWallet();
-    $page = createPage()->assertSet('potEnabled', false)->assertSeeHtml('data-test="prize-pot"')->assertDontSeeHtml('data-test="pot-uri"');
+    $page = createPage()->assertSet('potEnabled', false)->assertSeeHtml('data-test="prize-pot"')->assertDontSeeHtml('data-test="pot-uri"')
+        ->set('potEnabled', true)->assertSeeHtml('data-test="pot-uri"')->assertDontSeeHtml('data-test="pot-source-league"')->assertDontSee('League pot')
+        ->set('potEnabled', false);
 
     $page->call('create')->assertHasNoErrors();
     $tournament = Tournament::query()->where('name', 'Pot Cup')->sole();
@@ -62,11 +66,11 @@ test('an own wallet is checked live, stored encrypted and never rendered, logged
     $uri = $own->uri('pay', 'Pot@Wallet.example');
     $secret = $own->clients['pay']['secret'];
 
-    $page = createPage()->set('potEnabled', true)->set('potSource', Tournament::POT_WALLET);
+    $page = createPage()->set('potEnabled', true);
 
     // Not a connection string; then the league's own wallet; then a connection that may not pay.
     $page->set('potUri', 'https://example.com')->call('checkPotConnection')->assertNotSet('potError', '');
-    $page->set('potUri', (string) config('esports.wallet.nwc_receive_uri'))->call('checkPotConnection')->assertSet('potError', __('This is the league’s own wallet. Pick “League pot” instead.'));
+    $page->set('potUri', (string) config('esports.wallet.nwc_receive_uri'))->call('checkPotConnection')->assertSet('potError', __('This is the league’s own wallet. A tournament pot needs a wallet of its own.'));
     $page->set('potUri', $own->uri('receive'))->call('create');
     expect(Tournament::query()->count())->toBe(0)->and($page->get('potError'))->toContain('pay invoice');
 
@@ -113,7 +117,7 @@ test('the split is 100 % in total, presets or custom, and frozen once sign-up cl
     $own = ownPotWallet();
     $tournament = openTournament();
     $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->set('potEnabled', true)->set('potSource', Tournament::POT_WALLET)->set('potUri', $own->uri('pay'));
+        ->set('potEnabled', true)->set('potUri', $own->uri('pay'));
 
     $page->set('potSplit', [50, 30, 10])->call('savePotSettings')->assertSet('potError', __('The shares add up to 100 percent.'));
     expect($tournament->refresh()->pot_source)->toBeNull();
@@ -142,14 +146,14 @@ test('the pot shows wherever the tournament shows, with the balance time, and a 
     $own = ownPotWallet(120_000);
     $tournament = openTournament(rocketLeague: true);
     Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->set('potEnabled', true)->set('potSource', Tournament::POT_WALLET)->set('potUri', $own->uri('pay', 'pot@wallet.example'))
+        ->set('potEnabled', true)->set('potUri', $own->uri('pay', 'pot@wallet.example'))
         ->set('potTarget', '100000')->call('usePotPreset', 'winner')->call('savePotSettings')->assertSet('potError', '');
 
     $sats = ShareCard::sats(120_000);
     $this->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSeeHtml('data-test="pool-sats">'.$sats.'<')->assertSeeHtml('data-test="pool-funded"')
         ->assertSeeHtml('data-test="pool-as-of"')->assertDontSee('pot@wallet.example')
-        ->assertDontSeeHtml('data-test="zap-panel"');
+        ->assertSeeHtml('data-test="topup-panel"');
     $this->get(route('tournaments.index'))->assertSeeHtml('data-test="prize-chip"')->assertSee(__(':sats sats pot, funded', ['sats' => $sats]));
     $this->get(route('games.rocket-league'))->assertSeeHtml('data-test="prize-chip"');
 
@@ -180,7 +184,7 @@ test('an own-wallet pot pays from that wallet, exactly once, and a missing addre
     $league = fakeWallet();
     $own = ownPotWallet(40_000);
     fakeLightningAddresses($own);
-    $tournament = finishedOwnWalletTournament($own, 4, withoutAddress: [4]);
+    $tournament = finishedPoolTournament($own, 0, 4, withoutAddress: [4]);
     $admin = anAdmin();
     $own->balanceMsats = 41_000_000;
 
@@ -214,10 +218,75 @@ test('an own-wallet pot pays from that wallet, exactly once, and a missing addre
 test('an own-wallet pot is not approved when its wallet does not answer', function () {
     fakeWallet();
     $own = ownPotWallet(40_000);
-    $tournament = finishedOwnWalletTournament($own);
+    $tournament = finishedPoolTournament($own, 0);
     app(FakeNwcTransport::class)->offline[$own->pubkey] = true;
     config(['esports.wallet.nwc_timeout_seconds' => 1]);
 
     Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $tournament->id])->call('approve')->assertHasErrors('payouts');
     expect($tournament->refresh()->payouts_approved_at)->toBeNull()->and($tournament->payouts()->count())->toBe(0);
+});
+
+test('fixed amounts: each place wins exactly its sats, the pot shows funded X of Y, and what is left over stays', function () {
+    fakeWallet();
+    $own = ownPotWallet(50_000);
+    $tournament = openTournament(rocketLeague: true);
+    $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->set('potEnabled', true)->set('potUri', $own->uri('pay'))
+        ->call('usePotMode', 'fixed')->set('potFixed', [60_000, 25_000])
+        ->assertSeeHtml('data-test="pot-fixed-sum"')->assertSeeHtml('data-test="pot-mode-fixed"');
+
+    // Validation: positive whole sats, at most the configured maximum per place and in all.
+    $page->set('potFixed', [60_000, 0])->call('savePotSettings')->assertNotSet('potError', '');
+    $page->set('potFixed', [(int) config('esports.wallet.fixed_prize_max_sats') + 1])->call('savePotSettings')->assertNotSet('potError', '');
+    config(['esports.wallet.fixed_prizes_max_total_sats' => 80_000]);
+    $page->set('potFixed', [60_000, 25_000])->call('savePotSettings')->assertNotSet('potError', '');
+    config(['esports.wallet.fixed_prizes_max_total_sats' => 50_000_000]);
+    $page->call('savePotSettings')->assertSet('potError', '');
+
+    $tournament->refresh();
+    expect($tournament->prizeMode())->toBe(Tournament::PRIZES_FIXED)
+        ->and($tournament->prizeFixed())->toBe([60_000, 25_000])
+        ->and($tournament->event->payload()['content'])->toContain('place 1 60000 sats')->toContain('fixed');
+
+    // 50 000 held of the 85 000 in prizes (less the fee reserve of 850): not funded yet.
+    $pool = app(TournamentPrizePool::class)->for($tournament);
+    expect($pool['mode'])->toBe('fixed')
+        ->and($pool['split'])->toBe([['place' => 1, 'percent' => null, 'sats' => 60_000], ['place' => 2, 'percent' => null, 'sats' => 25_000]])
+        ->and($pool['target'])->toBe(85_000)->and($pool['have'])->toBe(49_150)->and($pool['funded'])->toBeFalse();
+    $this->get(route('tournaments.show', $tournament))->assertSee(__(':sats sats', ['sats' => ShareCard::sats(60_000)]))
+        ->assertSee(__('sats in the pot, funded :have of :target sats for the prizes', ['have' => ShareCard::sats(49_150), 'target' => ShareCard::sats(85_000)]));
+    $this->get(route('tournaments.index'))->assertSee(__(':sats of :target sats pot', ['sats' => ShareCard::sats(50_000), 'target' => ShareCard::sats(85_000)]));
+    // The TV lobby names each place's fixed sats, not a share of the balance.
+    $this->get(route('tournaments.tv', $tournament))->assertOk()->assertSee('data-test="tv-pot"', false)
+        ->assertSee(__(':sats sats', ['sats' => ShareCard::sats(25_000)]));
+
+    // Funded; the organizer sees what is left over after prizes.
+    $own->balanceMsats = 100_000_000;
+    app(PotBalances::class)->read($tournament);
+    expect(app(PrizePool::class)->funding($tournament->refresh()))->toBe(['goal' => 85_000, 'have' => 99_150, 'funded' => true, 'leftover' => 14_150]);
+    Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="pool-leftover"')->assertSee(PreSeason::formatSats(14_150));
+    $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot, funded', ['sats' => ShareCard::sats(100_000)]));
+});
+
+test('the prize mode switches freely before sign-up closes and is frozen after, percent mode unchanged', function () {
+    fakeWallet();
+    $own = ownPotWallet(10_000);
+    $tournament = openTournament();
+    $edit = fn () => Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament->refresh()]);
+
+    $edit()->set('potEnabled', true)->set('potUri', $own->uri('pay'))->call('usePotMode', 'fixed')->set('potFixed', [7_000])->call('savePotSettings')->assertSet('potError', '');
+    expect($tournament->refresh()->prizeMode())->toBe(Tournament::PRIZES_FIXED);
+
+    $this->travel(3)->seconds();
+    $edit()->call('usePotMode', 'percent')->call('usePotPreset', '60-30-10')->call('savePotSettings')->assertSet('potError', '');
+    expect($tournament->refresh()->prizeMode())->toBe(Tournament::PRIZES_PERCENT)
+        ->and($tournament->prizeSplit())->toBe([60, 30, 10])
+        ->and($tournament->prize_fixed)->toBeNull()
+        ->and(app(PrizePool::class)->projection($tournament)[0])->toBe(['place' => 1, 'percent' => 60, 'sats' => intdiv(PrizePool::afterFeeReserve(10_000) * 60, 100)]);
+
+    $this->travel(3)->seconds();
+    $tournament->forceFill(['signup_closes_at' => now()->subMinute()])->save();
+    $edit()->call('usePotMode', 'fixed')->set('potFixed', [5_000])->call('savePotSettings')->assertNotSet('potError', '');
+    expect($tournament->refresh()->prizeMode())->toBe(Tournament::PRIZES_PERCENT);
 });

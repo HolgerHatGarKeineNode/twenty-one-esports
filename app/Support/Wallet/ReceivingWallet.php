@@ -52,6 +52,26 @@ final class ReceivingWallet
     }
 
     /**
+     * A plain invoice for `$amountSats` with a text description (a top-up of
+     * a tournament pot: no zap request, no receipt). The wallet's answer is
+     * checked: a different amount or network is refused.
+     *
+     * @throws NwcError
+     */
+    public function makePlainInvoice(int $amountSats, string $description, int $expiry): Bolt11
+    {
+        $result = $this->client->request('make_invoice', ['amount' => $amountSats * 1000, 'description' => $description, 'expiry' => $expiry]);
+        $invoice = is_string($result['invoice'] ?? null) ? Bolt11::decode($result['invoice']) : null;
+
+        if ($invoice === null || $invoice->amountMsats !== $amountSats * 1000
+            || ! in_array($invoice->network, (array) config('esports.wallet.invoice_networks', ['bc']), true)) {
+            throw new NwcError('OTHER', 'the wallet returned an invoice that does not match');
+        }
+
+        return $invoice;
+    }
+
+    /**
      * The invoice's state at the wallet, null when the wallet does not know it.
      *
      * @throws NwcError
@@ -76,13 +96,26 @@ final class ReceivingWallet
      */
     public function permits(string $method): ?bool
     {
+        $methods = $this->methods();
+
+        return $methods === null ? null : in_array($method, $methods, true);
+    }
+
+    /**
+     * What this connection may call (NIP-47 `get_info`), null when the wallet
+     * does not answer it.
+     *
+     * @return list<string>|null
+     */
+    public function methods(): ?array
+    {
         try {
             $methods = $this->client->request('get_info', [], 15.0)['methods'] ?? null;
         } catch (NwcError) {
             return null;
         }
 
-        return is_array($methods) ? in_array($method, $methods, true) : null;
+        return is_array($methods) ? array_values(array_filter($methods, is_string(...))) : null;
     }
 
     /**

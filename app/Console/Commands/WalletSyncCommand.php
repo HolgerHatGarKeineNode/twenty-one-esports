@@ -6,6 +6,7 @@ use App\Enums\PayoutStatus;
 use App\Models\TournamentPayout;
 use App\Support\Payouts\PayoutRunner;
 use App\Support\Prizes\IncomingPayments;
+use App\Support\Prizes\PotTopUps;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -21,9 +22,10 @@ use Illuminate\Console\Command;
 #[Description('Settle paid pool invoices and continue unfinished payouts')]
 class WalletSyncCommand extends Command
 {
-    public function handle(IncomingPayments $payments, PayoutRunner $runner): int
+    public function handle(IncomingPayments $payments, PotTopUps $topUps, PayoutRunner $runner): int
     {
-        $settled = $payments->checkAll();
+        // The league reserve on the league wallet; each tournament pot on its own wallet.
+        $settled = $payments->checkAll() + $topUps->checkAll();
 
         $unfinished = TournamentPayout::query()->where('status', PayoutStatus::Paying)
             ->where(fn ($query) => $query->whereNull('lease_until')->orWhere('lease_until', '<', now()))

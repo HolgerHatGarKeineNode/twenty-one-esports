@@ -68,11 +68,14 @@ use Illuminate\Support\Carbon;
  * @property int|null $response_minutes
  * @property int|null $prize_target_sats the organizer's goal for the pool (P9); shown, never paid from by itself
  * @property list<int>|null $prize_split percent per place, null = {@see self::DEFAULT_SPLIT}
- * @property Carbon|null $pool_opened_at the 31923 names the pool key in `zap` since then
+ * @property Carbon|null $pool_opened_at the pot is open since then (set at publish, own wallet only)
  * @property Carbon|null $pool_closed_at receipts after it count for the reserve (the admin check at the end)
  * @property Carbon|null $payouts_approved_at
  * @property int|null $payouts_approved_by_id
- * @property string|null $pot_source `league` | `wallet` | null (no pot)
+ * @property string|null $pot_source `wallet` | null (no pot): a pot is always the tournament's own NWC wallet
+ * @property string|null $prize_mode `percent` (null) or `fixed`
+ * @property list<int>|null $prize_fixed sats per place in `fixed` mode
+ * @property bool|null $pot_can_receive the pot's connection may `make_invoice` (top-ups); null = unknown
  * @property string|null $pot_nwc_uri the tournament's own NWC connection (encrypted at rest, never shown)
  * @property string|null $pot_lud16 the Lightning address of that wallet, if its connection string names one
  * @property int|null $pot_balance_sats last balance read from the own wallet
@@ -97,7 +100,8 @@ use Illuminate\Support\Carbon;
     'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address',
     'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes',
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
-    'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at'])]
+    'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at',
+    'prize_mode', 'prize_fixed', 'pot_can_receive'])]
 #[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
@@ -146,6 +150,8 @@ class Tournament extends Model
             'pot_balance_sats' => 'integer',
             'pot_balance_at' => 'datetime',
             'paused_at' => 'datetime',
+            'prize_fixed' => 'array',
+            'pot_can_receive' => 'boolean',
         ];
     }
 
@@ -261,9 +267,28 @@ class Tournament extends Model
         return $this->pool_opened_at !== null && $this->pool_closed_at === null;
     }
 
-    public const POT_LEAGUE = 'league';
-
+    /** The only pot source: the tournament's own NWC wallet (the league wallet is the Season-Chain's). */
     public const POT_WALLET = 'wallet';
+
+    public const PRIZES_PERCENT = 'percent';
+
+    public const PRIZES_FIXED = 'fixed';
+
+    /** `percent` (a share of the pot per place) or `fixed` (sats per place). */
+    public function prizeMode(): string
+    {
+        return $this->prize_mode === self::PRIZES_FIXED ? self::PRIZES_FIXED : self::PRIZES_PERCENT;
+    }
+
+    /**
+     * Sats per place in `fixed` mode (empty in `percent` mode).
+     *
+     * @return list<int>
+     */
+    public function prizeFixed(): array
+    {
+        return $this->prizeMode() === self::PRIZES_FIXED ? array_map(intval(...), $this->prize_fixed ?? []) : [];
+    }
 
     /** The pot lives in the tournament's own NWC wallet, not in the league's. */
     public function hasOwnWallet(): bool

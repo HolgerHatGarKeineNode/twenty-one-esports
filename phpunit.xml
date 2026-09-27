@@ -58,7 +58,6 @@
         <env name="ESPORTS_NWC_URI" value="" force="true"/>
         <env name="ESPORTS_NWC_RECEIVE_URI" value="" force="true"/>
         <env name="ESPORTS_LNURL_NSEC" value="" force="true"/>
-        <env name="ESPORTS_SPONSOR_NSEC" value="" force="true"/>
         <env name="ESPORTS_STREAM_BOT_ENABLED" value="false" force="true"/>
         <env name="ESPORTS_STREAM_BOT_NSEC" value="" force="true"/>
         <env name="ESPORTS_STREAM_BOT_CHAT_RELAYS" value="" force="true"/>

@@ -69,7 +69,7 @@ final class TournamentPublisher
             $slug = $locked->slug ?? Str::limit(Str::slug($locked->name), 50, '').'-'.$locked->id;
 
             // A prize pot set on the draft opens with the first version (P9).
-            if ($locked->pot_source !== null && $locked->pool_opened_at === null && PrizePool::canOpen($locked->pot_source)) {
+            if ($locked->hasOwnWallet() && $locked->pool_opened_at === null && PrizePool::canOpen()) {
                 $locked->forceFill(['pool_opened_at' => now()]);
             }
 
@@ -104,9 +104,8 @@ final class TournamentPublisher
      * Each version is signed at least one second after the one it replaces
      * ({@see nextSignedAt()}).
      *
-     * The prize pool republishes too (P9): the pool key's `zap` tag when the
-     * pool opens; at its close the `end` moves to the close and the `zap` tag
-     * goes (NIP rev. 9: receipts count until `end`).
+     * The prize pot republishes too (P9): its prizes in `content` when it
+     * opens or they change; at its close the `end` moves to the close.
      *
      * @throws TournamentRuleViolation without the league key, or after too many changes in a row
      */
@@ -197,8 +196,9 @@ final class TournamentPublisher
     /**
      * NIP-52 tags of the tournament (NIP "Tournaments" table): one `D` per UTC
      * day of the timeframe, the ladder `a` only when it was frozen with the
-     * first version (rated tournament); the pool key in `zap` while the
-     * pool is open (P9), and `end` at the pool's close once it closed.
+     * first version (rated tournament), and `end` at the pot's close once it
+     * closed (P9). No `zap` tag: a tournament pot is its own wallet, never
+     * zapped through the league's pool key.
      *
      * @return list<list<string>>
      */
@@ -231,16 +231,30 @@ final class TournamentPublisher
             $tags[] = ['a', $tournament->ladder_address, ''];
         }
 
-        $pool = PrizePool::poolPubkey();
-
-        // A pot in the tournament's own wallet is not zapped through the league: no `zap` tag.
-        if ($tournament->isPoolOpen() && ! $tournament->hasOwnWallet() && $pool !== null) {
-            $tags[] = ['zap', $pool, (string) (config('esports.relays')[0] ?? ''), '1'];
-        }
-
         $tags[] = ['alt', ($calledOff ? 'Called off tournament: ' : 'Tournament: ').$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
 
         return $tags;
+    }
+
+    /**
+     * The prizes in words (NIP rev. 9): percents of the pot or fixed sats per
+     * place, both paid from the tournament's own wallet.
+     */
+    private function prizes(Tournament $tournament): string
+    {
+        $fee = PrizePool::WALLET_FEE_PERCENT.' % (at least '.PrizePool::WALLET_FEE_MIN.' sats)';
+
+        if ($tournament->prizeMode() === Tournament::PRIZES_FIXED) {
+            $fixed = $tournament->prizeFixed();
+
+            return 'Prizes: '.implode(', ', array_map(fn (int $sats, int $index): string => 'place '.($index + 1).' '.$sats.' sats', $fixed, array_keys($fixed)))
+                .', fixed, paid from the tournament\'s own wallet once it holds their sum and '.$fee.' for routing fees; tied places share the sum of their amounts, a team\'s share is split equally among its roster, sats are rounded down and the rest stays in that wallet.';
+        }
+
+        $split = $tournament->prizeSplit();
+
+        return 'Prize split: '.implode(', ', array_map(fn (int $percent, int $index): string => 'place '.($index + 1).' '.$percent.' %', $split, array_keys($split)))
+            .' of the pot, held in the tournament\'s own wallet and paid from it after '.$fee.' is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays in that wallet.';
     }
 
     private function summary(Tournament $tournament): string
@@ -271,12 +285,8 @@ final class TournamentPublisher
         };
         $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
 
-        if ($tournament->pool_opened_at !== null) {
-            $split = $tournament->prizeSplit();
-            $lines[] = 'Prize split: '.implode(', ', array_map(fn (int $percent, int $index): string => 'place '.($index + 1).' '.$percent.' %', $split, array_keys($split)))
-                .($tournament->hasOwnWallet()
-                    ? ' of the pot, held in the tournament\'s own wallet and paid from it after '.PrizePool::WALLET_FEE_PERCENT.' % is held back for routing fees; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest stays in that wallet.'
-                    : ' of the pool; tied places share their percentages, a team\'s share is split equally among its roster, sats are rounded down and the rest goes to the league reserve.');
+        if ($tournament->pool_opened_at !== null && $tournament->hasOwnWallet()) {
+            $lines[] = $this->prizes($tournament);
         }
         $lines[] = 'Page: '.route('tournaments.show', $tournament);
         $rules = implode(' ', $lines);

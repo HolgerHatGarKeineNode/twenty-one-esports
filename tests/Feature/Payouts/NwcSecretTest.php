@@ -48,10 +48,11 @@ test('the NWC secrets reach no log, exception, response, Livewire payload, job, 
     File::delete($logPath);
     config(['logging.default' => 'nwc_secret', 'logging.channels.nwc_secret' => ['driver' => 'single', 'path' => $logPath, 'level' => 'debug']]);
 
-    $wallet = fakeWallet();
+    $league = fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet, broken: ['player2']);
     // A 12-character prefix counts as a leak too: a trace may cut string arguments short.
-    $secrets = [substr($wallet->clients['pay']['secret'], 0, 12), substr($wallet->clients['receive']['secret'], 0, 12)];
+    $secrets = [substr($wallet->clients['pay']['secret'], 0, 12), substr($league->clients['pay']['secret'], 0, 12), substr($league->clients['receive']['secret'], 0, 12)];
     $tournament = finishedPoolTournament($wallet, 40_000, 4);
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);

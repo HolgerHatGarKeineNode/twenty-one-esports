@@ -9,7 +9,6 @@ use App\Support\Lightning\Bolt11;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Lightning\LightningAddressFailure;
 use App\Support\SeasonChain\LeagueKey;
-use App\Support\Wallet\Ledger;
 use App\Support\Wallet\NwcError;
 use App\Support\Wallet\PayingWallet;
 use Illuminate\Support\Facades\DB;
@@ -17,9 +16,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Pays one tournament payout, exactly once (P9), through the league's
- * paying NWC connection to the player's Lightning address. The only holder
- * of a {@see PayingWallet}.
+ * Pays one tournament payout, exactly once (P9), from the tournament pot's
+ * own NWC wallet to the player's Lightning address; never from the league
+ * wallet, and nothing is booked in the league ledger. The only holder of a
+ * {@see PayingWallet}.
  *
  * Three guards, each enough against a double click or a retried job:
  *
@@ -28,7 +28,7 @@ use Illuminate\Support\Str;
  *    the reconciliation continues its work.
  * 2. The state machine, also by compare-and-set: only `pending` or `failed`
  *    become `paying`, and only `paying` becomes `paid`, so one payout has
- *    one success, one ledger booking and one Payout event (2157).
+ *    one success and one Payout event (2157).
  * 3. One invoice: once an invoice is stored, nothing pays another while the
  *    first might still be paid. A later attempt first asks the wallet for
  *    the stored payment hash (`lookup_invoice`): settled means paid; pending
@@ -52,7 +52,7 @@ final class PayoutRunner
     /** Reasons of a `failed` payout after which the wallet refused outright (a new invoice is safe). */
     private const REFUSALS = ['wallet_error', 'insufficient_balance', 'budget_exceeded'];
 
-    public function __construct(private LightningAddress $addresses, private Ledger $ledger) {}
+    public function __construct(private LightningAddress $addresses) {}
 
     /**
      * Work on a payout: with `$start` an admin asked to pay (a `pending` or
@@ -278,7 +278,7 @@ final class PayoutRunner
 
     /**
      * Paid, once: the preimage must hash to the invoice's payment hash. Then
-     * the ledger books it and the league signs the Payout (2157).
+     * the league signs the Payout (2157).
      */
     private function markPaid(TournamentPayout $payout, string $preimage, ?int $feesMsats): void
     {
@@ -301,11 +301,6 @@ final class PayoutRunner
 
             $payout->refresh();
             $tournament = $payout->tournament;
-
-            // An own-wallet pot is not in the league's books: that wallet paid, fees included.
-            if (! $tournament->hasOwnWallet()) {
-                $this->ledger->payout($payout, $feesMsats === null ? 0 : (int) ceil($feesMsats / 1000));
-            }
 
             $league = LeagueKey::required();
             $relay = (string) (config('esports.relays')[0] ?? '');

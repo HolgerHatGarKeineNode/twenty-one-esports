@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PoolRefusal;
-use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Wallet\WalletSetup;
 use Illuminate\Http\JsonResponse;
@@ -15,7 +14,9 @@ use Illuminate\Http\Request;
  * The league's own LNURL-pay endpoint (P9, NIP "Prize pool funding"), the
  * Lightning address `pool@<host>` of the pool key's profile: LUD-06 and
  * LUD-16 with NIP-57 zaps (`allowsNostr`, `nostrPubkey` = the LNURL server
- * key). Invoices come from the league's receiving wallet connection; a zap
+ * key), for the league reserve only (the Season-Chain's pot; tournament pots
+ * are their own wallets and are refused here). Invoices come from the
+ * league's receiving wallet connection; a zap
  * request decides the pot (App\Support\Prizes\ZapRequests), a payment
  * without one goes to the reserve.
  *
@@ -34,7 +35,7 @@ class LnurlPayController extends Controller
 
         $key = LeagueKey::lnurl();
 
-        if ($key === null || ! WalletSetup::canReceive() || PrizePool::poolPubkey() === null) {
+        if ($key === null || ! WalletSetup::canReceive() || LeagueKey::poolPubkey() === null) {
             return self::error(__('The league wallet cannot take payments yet.'));
         }
 

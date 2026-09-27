@@ -1,18 +1,20 @@
 {{--
-    The prize pool of a tournament (P9): the pot in sats, the split per
-    place and the sponsors. Rendered only when the league has a pool for the
-    tournament (App\Support\Tournaments\TournamentPrizePool), so every number
-    here is the league's own.
+    The prize pot of a tournament (P9): its wallet's balance in sats, what
+    each place wins (a share of the pot or a fixed amount) and the sponsors.
+    Rendered only when the tournament has a pot whose balance was read
+    (App\Support\Tournaments\TournamentPrizePool), so every number here is
+    the pot's own.
 
-    $pool: the shape of TournamentPrizePool::for() — sats, split, sponsors,
-    and the optional target/funded, as_of/stale (a pot in the tournament's
-    own wallet: when its balance was read). A Lightning address is never shown
-    as text here (user, 2026-09-27: at most an LNURL QR code).
+    $pool: the shape of TournamentPrizePool::for() — sats, mode, split,
+    sponsors, and the optional target/have/funded, as_of/stale. A Lightning
+    address is never shown as text here (user, 2026-09-27).
 --}}
 @php
     $sats = fn (int $amount): string => \App\Support\Cards\ShareCard::sats($amount);
     $placeLabel = fn (int $place): string => match ($place) { 1 => __('1st place'), 2 => __('2nd place'), 3 => __('3rd place'), default => __(':place. place', ['place' => $place]) };
     $poolTarget = $pool['target'] ?? null;
+    $poolFixed = ($pool['mode'] ?? 'percent') === 'fixed';
+    $poolHave = $pool['have'] ?? $pool['sats'];
     $poolAsOf = $pool['as_of'] ?? null;
     $poolZone = \App\Support\LeagueTime::zone();
 @endphp
@@ -24,7 +26,9 @@
             <p class="m-0 flex flex-col gap-1">
                 <span class="font-display text-[40px] leading-none font-bold text-btc tabular-nums sm:text-[56px]" data-test="pool-sats">{{ $sats($pool['sats']) }}</span>
                 <span class="text-[13px] text-ink-2">
-                    @if ($poolTarget !== null)
+                    @if ($poolFixed && $poolTarget !== null)
+                        {{ __('sats in the pot, funded :have of :target sats for the prizes', ['have' => $sats(min($poolHave, $poolTarget)), 'target' => $sats($poolTarget)]) }}
+                    @elseif ($poolTarget !== null)
                         {{ __('sats in the pot, target :target sats', ['target' => $sats($poolTarget)]) }}
                     @else
                         {{ __('sats in the pot') }}
@@ -32,11 +36,11 @@
                 </span>
             </p>
             @if ($poolTarget !== null && $poolTarget > 0)
-                <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ min(100, (int) floor(100 * $pool['sats'] / $poolTarget)) }}%"></span></span>
+                <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ min(100, (int) floor(100 * $poolHave / $poolTarget)) }}%"></span></span>
                 @if ($pool['funded'] ?? false)
                     <span class="inline-flex h-6 items-center gap-1 self-start rounded-xs bg-win-tint px-2 text-xs font-bold text-win" data-test="pool-funded"><x-icon name="check" :size="12" />{{ __('Funded') }}</span>
                 @else
-                    <span class="text-xs text-ink-2" data-test="pool-progress">{{ __(':percent % of the target', ['percent' => min(100, (int) floor(100 * $pool['sats'] / $poolTarget))]) }}</span>
+                    <span class="text-xs text-ink-2" data-test="pool-progress">{{ $poolFixed ? __(':percent % of the prizes', ['percent' => min(100, (int) floor(100 * $poolHave / $poolTarget))]) : __(':percent % of the target', ['percent' => min(100, (int) floor(100 * $poolHave / $poolTarget))]) }}</span>
                 @endif
             @endif
             @if ($poolAsOf !== null)
@@ -53,7 +57,7 @@
             <ol class="m-0 grid list-none gap-2 p-0 sm:grid-cols-3">
                 @foreach ($pool['split'] as $share)
                     <li class="flex flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring-hairline" wire:key="pool-{{ $share['place'] }}">
-                        <span class="text-xs text-ink-2">{{ $placeLabel($share['place']) }}, {{ $share['percent'] }} %</span>
+                        <span class="text-xs text-ink-2">{{ $placeLabel($share['place']) }}@if ($share['percent'] !== null), {{ $share['percent'] }} %@endif</span>
                         <span class="font-display text-lg font-bold tabular-nums">{{ __(':sats sats', ['sats' => $sats($share['sats'])]) }}</span>
                     </li>
                 @endforeach

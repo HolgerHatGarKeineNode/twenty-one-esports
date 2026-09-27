@@ -8,102 +8,90 @@ use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Cards\ShareCard;
-use App\Support\Lightning\Bolt11;
-use App\Support\Nostr\SignedEvent;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\PreSeason;
-use App\Support\Prizes\IncomingPayments;
-use App\Support\Prizes\PoolInvoices;
-use App\Support\Prizes\PrizePool;
-use App\Support\Wallet\Ledger;
+use App\Support\Prizes\PotTopUps;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
-use Tests\Support\TestSigner;
+use Tests\Support\FakeNwcTransport;
 
 /*
-| P9 pages: the pool on the tournament page (total from paid invoices, the
-| split, paid sponsors, the zap panel), the pool settings of the organizer,
-| and the admins' payouts page.
+| P9 pages: the pot on the tournament page (its own wallet's balance, the
+| prizes, paid sponsors, "Add to the pot"), the pool settings of the
+| organizer, and the admins' payouts page. A pot is always its tournament's
+| own wallet (user, 2026-09-27).
 */
 
-test('a guest zaps the pool without Nostr and the page counts it once it is paid', function () {
-    $wallet = fakeWallet();
-    $tournament = runningChess(TournamentFormat::SingleElimination, 4);
-    publishForPool($tournament);
+test('anyone adds sats to the pot: the tournament wallet makes the invoice, shown as a QR code, and the pot grows once it is paid', function () {
+    fakeWallet();
+    $pot = ownPotWallet(0);
+    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4), $pot);
 
     $this->get(route('tournaments.show', $tournament))->assertOk()->assertSeeHtml('data-test="pool-sats">0<');
 
     $panel = Livewire::test('tournament-pool', ['tournament' => $tournament->refresh()])
         ->set('amount', 21000)
-        ->set('comment', 'Go go go')
-        ->call('zapAnonymously')
-        ->assertSeeHtml('data-test="zap-bolt11"');
+        ->call('topUp')
+        ->assertSeeHtml('data-test="topup-qr"')
+        ->assertSeeHtml('<svg');
 
     $payment = IncomingPayment::query()->sole();
     expect($payment->pot)->toBe('tournament:'.$tournament->id)
-        ->and($payment->source)->toBe('anonymous')
+        ->and($payment->source)->toBe('topup')
         ->and($payment->amount_sats)->toBe(21000)
-        ->and($payment->comment)->toBe('Go go go');
+        ->and(collect($pot->calls)->pluck('method')->all())->toContain('make_invoice');
+    // The invoice is a QR code and a button, never text on the page.
+    $panel->assertDontSeeHtml('>'.$payment->bolt11.'<');
 
     // Not paid yet: nothing counted.
     $this->travel(5)->seconds();
-    $panel->call('checkInvoice')->assertDontSeeHtml('data-test="zap-received"');
+    $panel->call('checkInvoice')->assertDontSeeHtml('data-test="topup-received"');
 
-    $wallet->settleIncoming($payment->payment_hash);
+    $pot->settleIncoming($payment->payment_hash);
     $this->travel(5)->seconds();
-    $panel->call('checkInvoice')->assertSeeHtml('data-test="zap-received"')->assertSee(PreSeason::formatSats(21000).' sats');
+    $panel->call('checkInvoice')->assertSeeHtml('data-test="topup-received"')->assertSee(PreSeason::formatSats(21000).' sats');
     $this->get(route('tournaments.show', $tournament))->assertSeeHtml('data-test="pool-sats">'.ShareCard::sats(21000).'<');
 
-    // The receipt (9735) is signed by the LNURL server key and names the tournament.
-    $receipt = SignedEvent::fromInput(NostrEvent::query()->where('kind', 9735)->sole()->payload());
-    expect($receipt->hasValidSignature())->toBeTrue()
-        ->and($receipt->tag('a'))->toBe($tournament->refresh()->address())
-        ->and(hash('sha256', (string) $receipt->tag('description')))->toBe(Bolt11::decode((string) $receipt->tag('bolt11'))?->descriptionHash)
-        ->and(hash('sha256', (string) hex2bin((string) $receipt->tag('preimage'))))->toBe($payment->payment_hash);
+    // No zap receipt: only the LNURL server of the wallet that made the invoice could sign one.
+    expect(NostrEvent::query()->where('kind', 9735)->count())->toBe(0);
 });
 
-test('a player zaps with their own key, and a request signed by another key is refused', function () {
+test('top-ups are hidden when the pot’s connection may not make invoices', function () {
     fakeWallet();
-    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
-    $signer = new TestSigner;
-    $player = User::factory()->withPubkey($signer->pubkey)->create();
+    $pot = ownPotWallet(0);
+    $pot->payMethods = ['pay_invoice', 'get_balance', 'get_info'];
+    $tournament = openTournament();
 
-    $panel = Livewire::actingAs($player)->test('tournament-pool', ['tournament' => $tournament])->set('amount', 2100);
-    $templates = $panel->instance()->prepareZap(app(PoolInvoices::class));
+    Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->set('potEnabled', true)->set('potUri', $pot->uri('pay'))->call('savePotSettings')->assertSet('potError', '');
 
-    $foreign = json_encode((new TestSigner)->signTemplates($templates));
-    $panel->call('submitZap', $foreign)->assertHasErrors('zap');
-    expect(IncomingPayment::query()->count())->toBe(0);
-
-    $panel->call('submitZap', json_encode($signer->signTemplates($templates)))->assertHasNoErrors()->assertSeeHtml('data-test="zap-bolt11"');
-    expect(IncomingPayment::query()->sole())->payer_pubkey->toBe($signer->pubkey)->source->toBe('zap');
-});
-
-test('without a receiving wallet no invoice is made and the panel says why', function () {
-    fakeWallet();
-    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
-    config(['esports.wallet.nwc_receive_uri' => null]);
-
-    Livewire::test('tournament-pool', ['tournament' => $tournament])->call('zapAnonymously')->assertHasErrors('zap');
+    expect($tournament->refresh()->pot_can_receive)->toBeFalse();
+    Livewire::test('tournament-pool', ['tournament' => $tournament])
+        ->assertSeeHtml('data-test="topup-off"')->assertSee(__('Top-ups not enabled for this pot.'))
+        ->assertDontSeeHtml('data-test="topup"')
+        ->call('topUp')->assertHasErrors('topup');
     expect(IncomingPayment::query()->count())->toBe(0);
 });
 
-test('the organizer opens the pool, sets the split and a sponsor whose logo shows once paid', function () {
+test('the organizer sets the prizes and a sponsor whose invoice comes from the pot’s wallet and whose logo shows once paid', function () {
     Storage::fake('public');
-    $wallet = fakeWallet();
+    fakeWallet();
+    $pot = ownPotWallet(0);
     $tournament = openTournament();
     $organizer = $tournament->creator;
 
     $page = Livewire::actingAs($organizer)->test('pages::tournaments.pool', ['tournament' => $tournament])
-        ->call('openPool')->assertHasNoErrors();
+        ->assertSeeHtml('data-test="pool-no-pot"')
+        ->assertDontSeeHtml('data-test="pot-source-league"')
+        ->set('potEnabled', true)->set('potUri', $pot->uri('pay'))->call('savePotSettings')->assertSet('potError', '');
     $tournament->refresh();
 
-    // The pool opened with a new 31923 version that names the pool key in `zap`.
+    // Published already: the pot opened at once, with a new 31923 that names the prizes and has no `zap` tag.
     expect($tournament->pool_opened_at)->not->toBeNull()
-        ->and($tournament->event->payload()['tags'])->toContain(['zap', PrizePool::poolPubkey(), '', '1']);
+        ->and(collect($tournament->event->payload()['tags'])->where(0, 'zap'))->toBeEmpty()
+        ->and($tournament->event->payload()['content'])->toContain('own wallet');
 
-    $page->assertSet('potEnabled', true)->assertSet('potSource', Tournament::POT_LEAGUE);
     $page->set('potSplit', [60, 40, 10])->call('savePotSettings')->assertNotSet('potError', '');
     $page->set('potSplit', [30, 70])->call('savePotSettings')->assertNotSet('potError', '');
     $page->set('potSplit', [70, 30])->set('potTarget', '500000')->call('savePotSettings')->assertSet('potError', '');
@@ -115,52 +103,54 @@ test('the organizer opens the pool, sets the split and a sponsor whose logo show
         ->call('addSponsor')->assertHasNoErrors();
     $sponsor = $tournament->sponsors()->sole();
     expect($sponsor->logo_path)->toStartWith('sponsor-logos/');
-    Storage::disk('public')->assertExists($sponsor->logo_path);
 
     // A pledge alone shows nothing on the tournament page.
     $this->get(route('tournaments.show', $tournament))->assertOk()->assertDontSee('Satoshi’s Pizza');
 
-    $page->call('sponsorInvoice', $sponsor->id)->assertSeeHtml('data-test="sponsor-invoice"');
+    $page->call('sponsorInvoice', $sponsor->id)->assertSeeHtml('data-test="sponsor-qr"');
     $payment = IncomingPayment::query()->sole();
-    expect($payment->source)->toBe('sponsor')->and($payment->sponsor_id)->toBe($sponsor->id)
-        ->and(json_decode((string) $payment->zap_request, true)['content'])->toBe('Sponsor: Satoshi’s Pizza');
+    expect($payment->source)->toBe('sponsor')->and($payment->sponsor_id)->toBe($sponsor->id)->and($payment->zap_request)->toBeNull();
 
-    $wallet->settleIncoming($payment->payment_hash);
+    $pot->settleIncoming($payment->payment_hash);
     $this->travel(10)->seconds();
     $page->call('checkInvoice');
 
     $this->get(route('tournaments.show', $tournament))->assertSee('Satoshi’s Pizza')->assertSeeHtml('data-test="pool-sats">'.ShareCard::sats(50000).'<');
 });
 
-test('the split is frozen once sign-up closed, and only the organizer or an admin manages the pool', function () {
+test('the prizes are frozen once sign-up closed, and only the organizer or an admin manages the pot', function () {
     fakeWallet();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
     $tournament->forceFill(['created_by_id' => organizer()->id])->save();
 
     Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament])
-        ->set('potSplit', [100])->call('savePotSettings')->assertNotSet('potError', '');
-    expect($tournament->refresh()->prizeSplit())->toBe(Tournament::DEFAULT_SPLIT);
+        ->set('potSplit', [100])->call('savePotSettings')->assertNotSet('potError', '')
+        ->call('usePotMode', 'fixed')->call('savePotSettings')->assertNotSet('potError', '');
+    expect($tournament->refresh()->prizeSplit())->toBe(Tournament::DEFAULT_SPLIT)->and($tournament->prizeMode())->toBe(Tournament::PRIZES_PERCENT);
 
     $this->actingAs(User::factory()->create())->get(route('tournaments.pool', $tournament))->assertForbidden();
     $this->actingAs(organizer())->get(route('tournaments.pool', $tournament))->assertForbidden();
     $this->actingAs(anAdmin())->get(route('tournaments.pool', $tournament))->assertOk();
 });
 
-test('the payouts page is for admins, says when no wallet is set up, and pays through the fake wallet', function () {
-    $wallet = fakeWallet();
-    fakeLightningAddresses($wallet);
-    $tournament = finishedPoolTournament($wallet, 20_000, 2);
+test('the payouts page is for admins, says when the pot’s wallet is missing, and pays through that wallet', function () {
+    fakeWallet();
+    $pot = ownPotWallet(0);
+    fakeLightningAddresses($pot);
+    $tournament = finishedPoolTournament($pot, 20_000, 2);
     $admin = anAdmin();
+    $uri = $tournament->pot_nwc_uri;
 
     $this->actingAs($tournament->creator ?? organizer())->get(route('admin.payouts'))->assertForbidden();
 
-    config(['esports.wallet.nwc_uri' => null]);
+    $tournament->forceFill(['pot_nwc_uri' => 'not a connection'])->save();
     Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
-        ->assertSee('ESPORTS_NWC_URI')
+        ->assertSee(__('The connection of this pot’s own wallet is missing, so nothing can be paid out.'))
         ->assertDontSeeHtml('data-test="approve-payouts"')
+        ->assertDontSeeHtml('data-test="wallet-panel"')
         ->call('approve')->assertHasErrors('payouts');
 
-    config(['esports.wallet.nwc_uri' => $wallet->uri('pay')]);
+    $tournament->forceFill(['pot_nwc_uri' => $uri])->save();
     $page = Livewire::actingAs($admin)->test('pages::admin.payouts', ['tournamentId' => $tournament->id])
         ->assertSeeHtml('data-test="payouts-preview"')
         ->call('approve')->assertHasNoErrors();
@@ -169,26 +159,27 @@ test('the payouts page is for admins, says when no wallet is set up, and pays th
     $page->call('pay', $winner->id)->call('pay', $winner->id)->call('payAll');
 
     expect($tournament->payouts()->pluck('status')->unique()->all())->toBe([PayoutStatus::Paid])
-        ->and($wallet->payRequests())->toHaveCount(2);
+        ->and($pot->payRequests())->toHaveCount(2);
 
     $this->get(route('tournaments.show', $tournament))->assertOk()->assertSeeHtml('data-test="pool-payouts"');
 });
 
-test('a payment that settles after the pool closed goes to the reserve, not to the tournament', function () {
-    $wallet = fakeWallet();
-    fakeLightningAddresses($wallet);
-    $tournament = finishedPoolTournament($wallet, 10_000, 2);
-    $late = app(PoolInvoices::class)->anonymousZap($tournament, 5_000, '');
+test('a top-up that settles after the pot closed is marked late and changes no prize', function () {
+    fakeWallet();
+    $pot = ownPotWallet(0);
+    fakeLightningAddresses($pot);
+    $tournament = finishedPoolTournament($pot, 10_000, 2);
+    $late = app(PotTopUps::class)->invoice($tournament, 5_000);
 
     app(PayoutApproval::class)->approve($tournament, anAdmin());
-    // 50 + 30 % of 10 000 are paid out; the other 2 000 went to the reserve at the check.
-    expect(app(Ledger::class)->balance('reserve'))->toBe(2_000);
+    $prizes = (int) $tournament->payouts()->sum('amount_sats');
     $this->travel(1)->minutes();
-    $wallet->settleIncoming($late->payment_hash);
-    app(IncomingPayments::class)->check($late, 0);
+    $pot->settleIncoming($late->payment_hash);
+    app(PotTopUps::class)->check($late, 0);
 
     expect($late->refresh()->status)->toBe(IncomingPaymentStatus::Settled)
         ->and($late->late)->toBeTrue()
-        ->and(app(PrizePool::class)->fundedSats($tournament))->toBe(10_000)
-        ->and(app(Ledger::class)->balance('reserve'))->toBe(7_000);
+        ->and($tournament->refresh()->pot_balance_sats)->toBe(10_000)
+        ->and((int) $tournament->payouts()->sum('amount_sats'))->toBe($prizes)
+        ->and(app(FakeNwcTransport::class)->wallet->calls)->toBe([]);
 });

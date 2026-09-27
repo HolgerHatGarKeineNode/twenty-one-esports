@@ -388,28 +388,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | League wallet, prize pools and payouts (P9, NIP "Pots and zap targets")
+    | Wallets: the league's (Season-Chain only) and each tournament pot's own
     |--------------------------------------------------------------------------
     |
-    | One wallet, two NIP-47 (Nostr Wallet Connect) connections, both
-    | `nostr+walletconnect://...` URIs in `.env` only:
+    | Every tournament pot is its tournament's own NIP-47 wallet, connected on
+    | the tournament's pages and stored encrypted with the tournament (user,
+    | 2026-09-27). Tournaments never use the league wallet below.
     |
-    | - `nwc_uri` can pay, with a budget limit set in the wallet. Only the
-    |   payout runner uses it (App\Support\Payouts\PayoutRunner); nothing
-    |   else can even name its type.
+    | The league wallet belongs to the Season-Chain (the reserve, season
+    | settlement later): one wallet, two NIP-47 (Nostr Wallet Connect)
+    | connections, both `nostr+walletconnect://...` URIs in `.env` only:
+    |
+    | - `nwc_uri` can pay, with a budget limit set in the wallet;
     | - `nwc_receive_uri` only receives: `make_invoice`, `lookup_invoice`,
-    |   `get_balance` for zaps and sponsor invoices into the pots.
+    |   `get_balance` for zaps into the reserve through `pool@<host>`.
     |
-    | Fail closed: without `nwc_uri` no payout is attempted, without
-    | `nwc_receive_uri` no invoice is made; the pages say so. The secrets
-    | never reach a log, an exception, a response, a Livewire payload or an
-    | event (App\Support\Wallet\NwcConnection).
+    | Fail closed: without a connection nothing is attempted; the pages say
+    | so. The secrets never reach a log, an exception, a response, a Livewire
+    | payload or an event (App\Support\Wallet\NwcConnection).
     |
     | Keys (hex or nsec, `.env` only): `lnurl_nsec` signs the zap receipts
-    | (9735) of the league's own LNURL endpoint, `sponsor_nsec` the zap
-    | requests of sponsor invoices. `pool_npub` is the pool key's public key,
-    | named by every pot's `zap` tag; the pool key itself stays offline and
-    | publishes a kind 0 whose `lud16` is `<lnurl_username>@<APP_URL host>`.
+    | (9735) of the league's own LNURL endpoint. `pool_npub` is the pool
+    | key's public key, the recipient of zaps into the reserve; the pool key
+    | itself stays offline and publishes a kind 0 whose `lud16` is
+    | `<lnurl_username>@<APP_URL host>`.
     |
     | `invoice_networks`: BOLT11 prefixes accepted from wallets and Lightning
     | addresses (`bc` mainnet; tests use `bcrt`). `lnurl_insecure_hosts`:
@@ -422,8 +424,11 @@ return [
     | the address that was checked.
     |
     | `open_invoices_per_user` / `open_invoices_per_ip`: unpaid, unexpired
-    | invoices of the zap panel and the LNURL endpoint one requester may
+    | invoices (tournament top-ups and the LNURL endpoint) one requester may
     | hold at once (an event's shared network gets the larger cap).
+    |
+    | `fixed_prize_max_sats` / `fixed_prizes_max_total_sats`: the largest
+    | fixed prize per place, and all fixed prizes of a tournament together.
     |
     */
 
@@ -432,7 +437,6 @@ return [
         'nwc_receive_uri' => env('ESPORTS_NWC_RECEIVE_URI'),
         'nwc_timeout_seconds' => (float) env('ESPORTS_NWC_TIMEOUT', 30),
         'lnurl_nsec' => env('ESPORTS_LNURL_NSEC'),
-        'sponsor_nsec' => env('ESPORTS_SPONSOR_NSEC'),
         'pool_npub' => env('ESPORTS_POOL_NPUB'),
         'lnurl_username' => 'pool',
         // Zap amounts the league's endpoint accepts, in sats.
@@ -447,6 +451,8 @@ return [
         // Invoices anyone may open per IP and minute (zap panel and LNURL callback).
         'invoices_per_minute' => 10,
         'open_invoices_per_user' => 5,
+        'fixed_prize_max_sats' => 10_000_000,
+        'fixed_prizes_max_total_sats' => 50_000_000,
         'open_invoices_per_ip' => 20,
     ],
 

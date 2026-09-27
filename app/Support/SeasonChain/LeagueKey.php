@@ -62,12 +62,15 @@ final class LeagueKey
     }
 
     /**
-     * The sponsor desk key (`esports.wallet.sponsor_nsec`): signs only the
-     * zap requests (9734) behind sponsor invoices. Null without a valid secret.
+     * The pool key's pubkey (hex, `esports.wallet.pool_npub`): the `p` of
+     * zaps into the league reserve (the Season-Chain's); null when not set
+     * up. Tournament pots are never zapped through it.
      */
-    public static function sponsorDesk(): ?self
+    public static function poolPubkey(): ?string
     {
-        return self::fromSecret(config('esports.wallet.sponsor_nsec'));
+        $key = config('esports.wallet.pool_npub');
+
+        return is_string($key) && trim($key) !== '' ? NostrKeys::toHex(trim($key)) : null;
     }
 
     /**

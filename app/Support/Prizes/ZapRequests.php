@@ -3,39 +3,36 @@
 namespace App\Support\Prizes;
 
 use App\Models\IncomingPayment;
-use App\Models\Tournament;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
 
 /**
- * Which pot a zap request (NIP-57 `9734`) pays into, checked as the league's
- * LNURL endpoint must check it (NIP-57 appendix D, NIP "Pots and zap
- * targets"):
+ * Which pot a zap request (NIP-57 `9734`) to the league's LNURL endpoint
+ * pays into, checked as the endpoint must check it (NIP-57 appendix D, NIP
+ * "Pots and zap targets"):
  *
  * - kind 9734 with a valid signature and tags;
  * - exactly one `p`, the pool key;
- * - at most one `a`: a tournament of the league (`31923:<league>:<slug>`)
- *   whose pool is open; the tournament's pot. Without `a` and `e`: the
- *   reserve. An `e` names a pot the league does not run yet (the reserve's
- *   zap goal, match fees): refused rather than counted in the wrong pot;
- * - an `amount` tag, when present, equal to the amount paid; a `k` tag,
- *   when present, the kind the `a` names.
- *
- * Every request names exactly one pot; a request that names two is refused.
+ * - no `a` and no `e`: the league reserve, the only pot the endpoint takes.
+ *   A tournament (`a`) is refused: every tournament pot is its tournament's
+ *   own wallet (user, 2026-09-27), never the league's. An `e` names a pot
+ *   the league does not run yet (the reserve's zap goal, match fees):
+ *   refused rather than counted in the wrong pot;
+ * - an `amount` tag, when present, equal to the amount paid.
  */
 final class ZapRequests
 {
     /**
-     * @return array{pot: string, tournament: Tournament|null}
+     * The pot the request pays into (always the reserve).
      *
      * @throws PoolRefusal
      */
-    public function potOf(SignedEvent $request, int $amountMsats): array
+    public function potOf(SignedEvent $request, int $amountMsats): string
     {
-        $pool = PrizePool::poolPubkey();
+        $pool = LeagueKey::poolPubkey();
 
         if ($pool === null) {
-            throw new PoolRefusal(__('The prize pools are not set up yet.'));
+            throw new PoolRefusal(__('The league reserve is not set up yet.'));
         }
 
         if ($request->kind !== 9734 || $request->tags === [] || ! $request->hasValidSignature()) {
@@ -54,45 +51,14 @@ final class ZapRequests
             throw new PoolRefusal(__('The zap request is for a different amount.'));
         }
 
-        $addresses = $request->tagsNamed('a');
-        $events = $request->tagsNamed('e');
+        if ($request->tagsNamed('a') !== []) {
+            throw new PoolRefusal(__('Tournament pots take no zaps through the league: add sats on the tournament page.'));
+        }
 
-        if ($events !== []) {
+        if ($request->tagsNamed('e') !== []) {
             throw new PoolRefusal(__('This pot does not take zaps yet.'));
         }
 
-        if (count($addresses) > 1) {
-            throw new PoolRefusal(__('A zap request names exactly one pot.'));
-        }
-
-        if ($addresses === []) {
-            return ['pot' => IncomingPayment::RESERVE, 'tournament' => null];
-        }
-
-        $tournament = $this->tournament((string) ($addresses[0][0] ?? ''));
-
-        if ($tournament === null || ! $tournament->isPoolOpen() || $tournament->hasOwnWallet()) {
-            throw new PoolRefusal(__('This tournament takes no zaps: it has no open prize pool.'));
-        }
-
-        $kind = $request->tag('k');
-
-        if ($kind !== null && $kind !== (string) Tournament::CALENDAR_EVENT) {
-            throw new PoolRefusal(__('Not a valid zap request.'));
-        }
-
-        return ['pot' => IncomingPayment::tournamentPot($tournament->id), 'tournament' => $tournament];
-    }
-
-    private function tournament(string $address): ?Tournament
-    {
-        $league = LeagueKey::fromConfig()?->pubkey();
-        $parts = explode(':', $address, 3);
-
-        if ($league === null || count($parts) !== 3 || $parts[0] !== (string) Tournament::CALENDAR_EVENT || $parts[1] !== $league || $parts[2] === '') {
-            return null;
-        }
-
-        return Tournament::query()->where('slug', $parts[2])->whereNotNull('event_id')->first();
+        return IncomingPayment::RESERVE;
     }
 }

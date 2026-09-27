@@ -2,31 +2,39 @@
 
 use App\Enums\PayoutStatus;
 use App\Jobs\PayTournamentPayout;
+use App\Models\LedgerTransfer;
 use App\Models\NostrEvent;
+use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Payouts\PayoutApproval;
+use App\Support\Payouts\PayoutPlan;
 use App\Support\Payouts\PayoutRunner;
+use App\Support\PreSeason;
 use App\Support\Tournaments\TournamentRuleViolation;
-use App\Support\Wallet\Ledger;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Support\Facades\Event;
 
 /*
-| P9 DoD: a payout against the fake NWC wallet pays exactly once, also on a
-| double click and on a retry; a missing Lightning address keeps it open.
+| P9 DoD: a payout from the pot's own fake NWC wallet pays exactly once,
+| also on a double click and on a retry; a missing Lightning address keeps
+| it open. Percent prizes split the balance less the fee reserve; fixed
+| prizes are paid exactly, and only when the balance covers them.
 */
 
 test('the pool is split by place, ties share, and every winner is paid once with a published payout', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 100_000);
 
     app(PayoutApproval::class)->approve($tournament, anAdmin());
     $payouts = $tournament->payouts()->get();
 
-    // 50/30/20 over four players, single elimination without a match for third: the two
-    // losing semi-finalists share places 3 and 4, that is 20 % between them.
+    // 50/30/20 of 99 000 (100 000 less the 1 % fee reserve) over four players, single elimination without a
+    // match for third: the two losing semi-finalists share places 3 and 4, that is 20 % between them.
     expect($payouts->map(fn (TournamentPayout $p) => [$p->place, $p->amount_sats, $p->status])->all())->toBe([
-        [1, 50_000, PayoutStatus::Pending], [2, 30_000, PayoutStatus::Pending], [3, 10_000, PayoutStatus::Pending], [3, 10_000, PayoutStatus::Pending],
+        [1, 49_500, PayoutStatus::Pending], [2, 29_700, PayoutStatus::Pending], [3, 9_900, PayoutStatus::Pending], [3, 9_900, PayoutStatus::Pending],
     ]);
 
     foreach ($payouts as $payout) {
@@ -36,7 +44,7 @@ test('the pool is split by place, ties share, and every winner is paid once with
     expect($tournament->payouts()->pluck('status')->unique()->all())->toBe([PayoutStatus::Paid])
         ->and($wallet->paid)->toHaveCount(4)
         ->and($wallet->payRequests())->toHaveCount(4)
-        ->and(app(Ledger::class)->balance('tournament:'.$tournament->id))->toBe(0);
+        ->and(LedgerTransfer::query()->count())->toBe(0);
 
     $payout = $tournament->payouts()->where('place', 1)->sole();
     $event = SignedEvent::fromInput(json_decode(NostrEvent::query()->findOrFail($payout->event_id)->raw, true));
@@ -49,7 +57,8 @@ test('the pool is split by place, ties share, and every winner is paid once with
 });
 
 test('a double click and a retried job pay once', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     app(PayoutApproval::class)->approve($tournament, anAdmin());
@@ -67,11 +76,14 @@ test('a double click and a retried job pay once', function () {
 });
 
 test('an attempt that holds the payout keeps a second one out', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     app(PayoutApproval::class)->approve($tournament, anAdmin());
     $payout = $tournament->payouts()->where('place', 1)->sole();
+    // The approval read the pot's balance fresh; only what the second click asks counts here.
+    $wallet->calls = [];
 
     // A first attempt is still running (its lease is fresh) when the second click arrives.
     $payout->forceFill(['lease_until' => now()->addMinute(), 'lease_owner' => 'first'])->save();
@@ -82,7 +94,8 @@ test('an attempt that holds the payout keeps a second one out', function () {
 });
 
 test('an answer that never came is looked up, not paid again', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     app(PayoutApproval::class)->approve($tournament, anAdmin());
@@ -107,7 +120,8 @@ test('an answer that never came is looked up, not paid again', function () {
 });
 
 test('a refused payment stays retryable and is paid once on retry', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     app(PayoutApproval::class)->approve($tournament, anAdmin());
@@ -131,7 +145,8 @@ test('a refused payment stays retryable and is paid once on retry', function () 
 });
 
 test('a player without a Lightning address keeps the payout open with its reason until an admin approves the one they add', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2, withoutAddress: [1]);
     app(PayoutApproval::class)->approve($tournament, anAdmin());
@@ -157,19 +172,21 @@ test('a player without a Lightning address keeps the payout open with its reason
         ->and($payout->lud16)->toBe('late@wallet.example');
 });
 
-test('without a paying wallet connection nothing is approved or attempted', function () {
-    $wallet = fakeWallet();
+test('without the pot’s wallet connection nothing is approved or attempted', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
-    config(['esports.wallet.nwc_uri' => null]);
+    $tournament->forceFill(['pot_nwc_uri' => 'broken'])->save();
 
-    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'ESPORTS_NWC_URI')
+    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'own wallet')
         ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
         ->and($tournament->payouts()->count())->toBe(0);
 });
 
 test('only an admin approves payouts, and approving twice changes nothing', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
 
@@ -179,4 +196,64 @@ test('only an admin approves payouts, and approving twice changes nothing', func
     app(PayoutApproval::class)->approve($tournament, $admin);
     expect(fn () => app(PayoutApproval::class)->approve($tournament->refresh(), $admin))->toThrow(TournamentRuleViolation::class)
         ->and($tournament->payouts()->count())->toBe(2);
+});
+
+test('fixed prizes: approval is refused while the pot does not cover them, and pays exactly those amounts once it does', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    // 50 000 + 30 000 need 80 800 sats with the 1 % fee reserve; the pot holds 80 000.
+    $tournament = finishedPoolTournament($wallet, 80_000, 2, fixed: [50_000, 30_000]);
+
+    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, PreSeason::formatSats(80_800))
+        ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
+        ->and($tournament->payouts()->count())->toBe(0);
+
+    // Someone adds sats; the approval reads the balance again.
+    $wallet->balanceMsats += 5_000_000;
+    app(PayoutApproval::class)->approve($tournament, anAdmin());
+
+    expect($tournament->payouts()->orderBy('place')->pluck('amount_sats', 'place')->all())->toBe([1 => 50_000, 2 => 30_000]);
+
+    foreach ($tournament->payouts()->get() as $payout) {
+        app(PayoutRunner::class)->run($payout, true);
+    }
+
+    // What the pot held beyond the prizes and their fees stays in it.
+    expect($tournament->payouts()->where('status', 'paid')->count())->toBe(2)
+        ->and(intdiv($wallet->balanceMsats, 1000))->toBe(85_000 - 80_000 - 2);
+});
+
+test('fixed prizes: tied places share the sum of their amounts, rounded down, the rest stays in the wallet', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    // Four players without a match for third: both losing semi-finalists hold places 3 and 4.
+    $tournament = finishedPoolTournament($wallet, 200_000, 4, fixed: [50_000, 30_000, 15_001, 5_000]);
+    app(PayoutApproval::class)->approve($tournament, anAdmin());
+
+    expect($tournament->payouts()->orderBy('place')->orderBy('id')->get()->map(fn (TournamentPayout $p) => [$p->place, $p->amount_sats])->all())
+        ->toBe([[1, 50_000], [2, 30_000], [3, 10_000], [3, 10_000]])
+        ->and(app(PayoutPlan::class)->compute($tournament, 100_001)['remainder'])->toBe(1);
+});
+
+test('fixed prizes: a balance that drops between the check and the lock still refuses the approval', function () {
+    fakeWallet();
+    $wallet = ownPotWallet(0);
+    fakeLightningAddresses($wallet);
+    $tournament = finishedPoolTournament($wallet, 100_000, 2, fixed: [50_000, 30_000]);
+
+    // A balance read of another process lands after the first check, before the row is locked.
+    $dropped = false;
+    Event::listen(TransactionBeginning::class, function () use ($tournament, &$dropped): void {
+        if (! $dropped) {
+            $dropped = true;
+            Tournament::query()->whereKey($tournament->id)->update(['pot_balance_sats' => 1_000]);
+        }
+    });
+
+    expect(fn () => app(PayoutApproval::class)->approve($tournament, anAdmin()))->toThrow(TournamentRuleViolation::class, 'no longer covers')
+        ->and($dropped)->toBeTrue()
+        ->and($tournament->refresh()->payouts_approved_at)->toBeNull()
+        ->and($tournament->payouts()->count())->toBe(0);
 });

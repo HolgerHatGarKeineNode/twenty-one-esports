@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
-use App\Support\Prizes\LeaguePrizePool;
+use App\Support\Prizes\WalletPrizePool;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Tournaments\TournamentPrizePool;
@@ -75,7 +75,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(NwcTransport::class, WebsocketNwcTransport::class);
 
         // The tournament page's prize pool section reads the league's pools (P9).
-        $this->app->bind(TournamentPrizePool::class, LeaguePrizePool::class);
+        $this->app->bind(TournamentPrizePool::class, WalletPrizePool::class);
     }
 
     /**

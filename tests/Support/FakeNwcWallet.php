@@ -61,6 +61,9 @@ final class FakeNwcWallet
     /** Runs when a valid request arrives, before it is answered (to change the world mid-request). */
     public ?\Closure $onRequest = null;
 
+    /** @var list<string>|null what `get_info` lists for the `pay` connection; null = everything */
+    public ?array $payMethods = null;
+
     public int $feeMsats = 1000;
 
     /** @var list<string> */
@@ -176,7 +179,7 @@ final class FakeNwcWallet
             'make_invoice' => $this->makeInvoice((int) ($params['amount'] ?? 0), is_string($params['description_hash'] ?? null) ? $params['description_hash'] : null, (int) ($params['expiry'] ?? 3600)),
             'lookup_invoice' => $this->lookup((string) ($params['payment_hash'] ?? '')),
             'get_balance' => ['result' => ['balance' => $this->balanceMsats]],
-            'get_info' => ['result' => ['alias' => 'fake', 'network' => 'regtest', 'methods' => $role === 'pay' ? ['pay_invoice', 'make_invoice', 'lookup_invoice', 'get_balance', 'get_info'] : ['make_invoice', 'lookup_invoice', 'get_balance', 'get_info']]],
+            'get_info' => ['result' => ['alias' => 'fake', 'network' => 'regtest', 'methods' => $role === 'pay' ? ($this->payMethods ?? ['pay_invoice', 'make_invoice', 'lookup_invoice', 'get_balance', 'get_info']) : ['make_invoice', 'lookup_invoice', 'get_balance', 'get_info']]],
             default => ['error' => ['code' => 'NOT_IMPLEMENTED', 'message' => $method]],
         };
 

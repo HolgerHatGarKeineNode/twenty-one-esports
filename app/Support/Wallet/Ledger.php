@@ -4,24 +4,21 @@ namespace App\Support\Wallet;
 
 use App\Models\IncomingPayment;
 use App\Models\LedgerTransfer;
-use App\Models\TournamentPayout;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
 
 /**
- * The league's double-entry book of the pots (P9, plan "Wallet und Töpfe"):
- * every movement of sats is one booking from account A to account B
- * ({@see LedgerTransfer}), so each booking balances by construction and the
- * sum over all accounts is always zero.
+ * The league wallet's double-entry book (P9, plan "Wallet und Töpfe"), the
+ * Season-Chain's only: every movement of sats is one booking from account A
+ * to account B ({@see LedgerTransfer}), so each booking balances by
+ * construction and the sum over all accounts is always zero.
  *
- * Accounts: `outside` (the world beyond the wallet), `reserve`,
- * `tournament:<id>`. What the wallet should hold is what the pots hold:
- * the sum over every account but `outside`, which is minus the balance of
- * `outside`.
+ * Accounts: `outside` (the world beyond the wallet) and `reserve`. What the
+ * wallet should hold is minus the balance of `outside`. Tournament pots are
+ * never booked here: each is its tournament's own wallet (user, 2026-09-27).
  *
- * Each booking is tied to its cause (an incoming payment, a payout, a
- * tournament's remainder) by a unique key, so booking the same cause twice
- * (a retried job, a double click) is a no-op.
+ * Each booking is tied to its cause by a unique key, so booking the same
+ * cause twice (a retried job, a double click) is a no-op.
  */
 final class Ledger
 {
@@ -29,26 +26,14 @@ final class Ledger
 
     public const RESERVE = 'reserve';
 
-    /** A settled invoice: from outside into its pot (or the reserve, when late). */
+    /** A settled invoice of the league wallet: from outside into the reserve. */
     public function contribution(IncomingPayment $payment, string $pot): void
     {
-        $this->book(self::OUTSIDE, $pot, $payment->amount_sats, 'contribution', ['incoming_payment_id' => $payment->id]);
-    }
-
-    /** A paid prize: from the tournament's pot to outside; the routing fee from the reserve. */
-    public function payout(TournamentPayout $payout, int $feeSats): void
-    {
-        $this->book(IncomingPayment::tournamentPot($payout->tournament_id), self::OUTSIDE, $payout->amount_sats, 'payout', ['tournament_payout_id' => $payout->id]);
-
-        if ($feeSats > 0) {
-            $this->book(self::RESERVE, self::OUTSIDE, $feeSats, 'fee', ['tournament_payout_id' => $payout->id]);
+        if ($pot !== self::RESERVE) {
+            throw new InvalidArgumentException('The league ledger books the reserve only; tournament pots are their own wallets.');
         }
-    }
 
-    /** What a tournament's split leaves over goes to the reserve (NIP "Pots": "what is left goes to reserve"). */
-    public function remainder(int $tournamentId, int $sats): void
-    {
-        $this->book(IncomingPayment::tournamentPot($tournamentId), self::RESERVE, $sats, 'remainder', ['tournament_id' => $tournamentId]);
+        $this->book(self::OUTSIDE, $pot, $payment->amount_sats, 'contribution', ['incoming_payment_id' => $payment->id]);
     }
 
     /**

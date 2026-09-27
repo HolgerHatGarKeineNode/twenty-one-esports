@@ -23,8 +23,9 @@ director forfeits unrated, disinterested directors, Rocket League 1v1 as a playe
 badge list written by the app, share posts; **revision 8.1** (2026-09-27): rated Rocket League
 series in tournaments whose players report, with the pairing challenge signed by the league;
 **revision 8.2** (2026-09-27): EA Sports FC 26 and 27 in the game registry;
-**revision 9** (2026-09-27): the prize pool of a tournament as the league runs it, from the zap into
-the pool or the tournament's own wallet to the Payout `2157` of every winner). Not
+**revision 9** (2026-09-27): the prize pool of a tournament as the league runs it, to the Payout
+`2157` of every winner; **revision 9.1** (2026-09-27): every pot is the tournament's own wallet,
+top-ups as plain invoices, fixed prizes per place). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
@@ -53,7 +54,39 @@ apply to every tournament whose first `31923` version the league signs after it 
 A tournament published earlier keeps what its `content` said about rating: under revision 7 the
 Rocket League series of a tournament whose players report were casual, and they stay casual.
 The rules marked "rev. 9" concern tournament prize pools only; a pool opened after the league adopts
-revision 9 follows them, whatever revision its tournament was published under.
+revision 9 follows them, whatever revision its tournament was published under. The rules marked
+"rev. 9.1" replace those of revision 9 where they differ, for every pot from the day the league adopts
+revision 9.1 (a league pot of revision 9 becomes no pot; see [Prize pool funding](#prize-pool-funding)).
+
+### Changelog of revision 9.1 (2026-09-27)
+
+Every tournament pot is the tournament's own NIP-47 wallet; the league's wallet, ledger and LNURL
+endpoint are the season chain's only. Checked against a fake NIP-47 wallet on a local `nak` relay
+(the app's integration suite), without printed examples.
+
+- **League pots retired** ([Prize pool funding](#prize-pool-funding)): a tournament's pot is never
+  the league's wallet nor another tournament's; the league refuses its own wallet as a pot. The
+  `31923` of a tournament never carries `zap`, and the league's LNURL endpoint refuses zap requests
+  that name a tournament by `a`; it takes zaps for the reserve only. A league pot of revision 9 becomes
+  "no pot", with an entry in the tournament's moderation log.
+- **Top-ups**: anyone can add sats through an invoice the tournament's own wallet makes
+  (`make_invoice`) and the league checks with `lookup_invoice` on the same wallet; shown as a QR code
+  only. A connection without `make_invoice` has no top-ups, and the page says so.
+- **No zap receipts for tournament pots**: a top-up is a plain invoice. Only the LNURL server that
+  made an invoice can sign its `9735` (NIP-57 appendix E), and that is never the league's for a
+  tournament's invoice. The sponsor desk key is retired: a sponsor pays an invoice from the
+  tournament's wallet.
+- **Fixed prizes**: besides percent of the pot, the prizes can be whole sats per place. Approval needs
+  a fresh balance that covers their sum plus the fee reserve (1 %, at least 10 sats); tied places share
+  the sum of their amounts equally, rounded down; what is left stays in the wallet. Frozen at sign-up
+  close like the percentages.
+- **Rest of a split**: in both modes the rounding rest and the prizes of unheld places stay in the
+  tournament's wallet (revision 9 sent a league pot's rest to the reserve).
+
+### Changelog of revision 9 (2026-09-27)
+
+Revision 9.1 replaces its league pot, zap attribution, receipts and sponsor desk key (below): a
+tournament's pot is its own wallet only.
 
 ### Changelog of revision 9 (2026-09-27)
 
@@ -388,7 +421,7 @@ by this NIP.
 - **League publisher**: the key the league's server authenticates with (NIP-42) on the league relay
   to publish accepted events. It signs no stored event.
 - **Notification key, pool key, LNURL server key, sponsor desk key, badge key** (rev. 5): further single-purpose league
-  keys, see [League relay and keys](#league-relay-and-keys).
+  keys, see [League relay and keys](#league-relay-and-keys). Revision 9.1 retires the sponsor desk key.
 - **Anchor list**: the trust key's public NIP-51 list of the anchors.
 - **Acting captain** of a lineup: a pubkey that is currently an active member of the lineup's clan
   and is either the lineup's author (the clan owner) or listed in the lineup with role `captain`.
@@ -469,7 +502,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `30000` | 51 | anchor list, `d` = `esports/<league key>/anchors` | trust key |
 | `14` in `13` in `1059` | 17, 59 | private chat between players; notifications | a player; the notification key |
 | `10050` | 17 | a player's DM relays | the player |
-| `9734`, `9735` | 57 | zaps to a pot: tournament, bounty, match fees, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)) | the zapper; the league's LNURL server key |
+| `9734`, `9735` | 57 | zaps to a pot: bounty, match fees, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)); rev. 9.1: never a tournament's pot, which takes plain invoices from its own wallet | the zapper; the league's LNURL server key |
 | `9041` | 75 | rev. 5: the league reserve as a zap goal | league key |
 | `30000` | 51 | rev. 5: the admin list, `d` = `esports/<league key>/admins` | league key |
 | `1985` | 32 | rev. 5: release of Block 0 (`release-block-0`); correction of the season review (`void-block`) | a listed admin; the league key |
@@ -570,7 +603,7 @@ it and returns non-matching events; see the relay proof).
 | `moves` | `<full moves>` | 2156, 2158 (rev. 5) | minimum length of a chess game that mines (rule 2) |
 | `effective` | `<unix seconds>` | 2158 (rev. 5) | from when a parameter change is in force |
 | `tip` | `<block id>` | 2158 (rev. 5) | the newest block when the change was signed |
-| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
+| `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament; rev. 9.1: never, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
 | `action` | `signup` \| `withdraw` | 22150 (rev. 7) | what the tournament consent does |
 | `entered-by` | `<director pubkey>` | 2154 (rev. 7) | the tournament director whose entry decided this result, lower-case hex; see [Director results](#director-results-rev-7) |
 | `bolt11`, `preimage` | `<invoice>`; `<hex>` | 2157 (rev. 5) | the paid invoice and its preimage |
@@ -1197,8 +1230,8 @@ confirmation is the consent.)
 
 A tournament is a [NIP-52](https://github.com/nostr-protocol/nips/blob/master/52.md) time-based
 calendar event (`31923`) signed by the league key, listed in the league's calendar (`31924`, `d` =
-`tournaments`). Calendar clients show it, `naddr` links to it work in any client, and it is the zap
-target of the prize pool (see [Prize pool funding](#prize-pool-funding)).
+`tournaments`). Calendar clients show it, `naddr` links to it work in any client, and its `content`
+states the prizes of its pot (see [Prize pool funding](#prize-pool-funding)).
 
 | tag | content |
 |---|---|
@@ -1208,7 +1241,7 @@ target of the prize pool (see [Prize pool funding](#prize-pool-funding)).
 | `location` | the tournament page |
 | `r` | the rules page |
 | `a` | the league calendar (`31924:<league>:tournaments`), and the ladder the matches are rated on; rev. 7: the ladder only in a rated tournament, see below |
-| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes |
+| `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes; rev. 9.1: never, a tournament's pot is its own wallet and takes no zaps |
 | `t` | hashtags, e.g. `esports` and the game |
 | `alt` | NIP-31 text |
 
@@ -1255,7 +1288,7 @@ league's LNURL endpoint refuses a zap request whose `a` names a tournament witho
 version, so no receipt arises and nothing is counted. The league adds `zap` with a new version when the
 pool opens; receipts count from then on, under the rules of [Counting the pool](#prize-pool-funding).
 Rev. 9: at the admin's check after the end the league closes the pool with a last version, `end` at
-the check and no `zap` ([Closing the pool](#prize-pool-funding)).
+the check and no `zap` ([Closing the pot](#prize-pool-funding)).
 
 **Seeding.** Clan lineups are seeded by their rating on the tournament's ladder at registration
 close, mix teams follow in the order of the draw. The rating is public (`32152`), so the seeding can
@@ -1985,7 +2018,7 @@ player's Lightning address. Two occasions:
 - **Tournament settlement:** after a tournament's `end` and an admin's check of that tournament, **one
   payout per player and tournament** for the prize: `a` = the tournament, no genesis. Tournament
   prizes do not wait for the season end. Rev. 9: the check itself moves `end` to its own moment
-  ([Closing the pool](#prize-pool-funding)); the prize is the player's share by
+  ([Closing the pot](#prize-pool-funding)); the prize is the player's share by
   [the split](#prize-pool-funding); tags `a` (with the league relay), `p`, `bolt11`, `preimage`, `alt`
   in this order, `content` empty, `created_at` the moment the league saw the preimage. The invoice
   comes from the player's Lightning address (LUD-16/LUD-06) and is paid only if its amount is the prize
@@ -2386,7 +2419,7 @@ Per kind:
     ladder `a` is optional and frozen: present in every version exactly when it is present in the
     first, with the same value, and present in the first exactly when a ladder of this league with the
     tournament's game and mode was open at its `created_at`; `zap` is optional, and if present names
-    the pool key.
+    the pool key. Revision 9.1: a version signed after the league adopted it has no `zap`.
 22. **31924** (calendar): signed by the league key; `d` = `tournaments`; every `a` is a `31923` of the
     league key.
 23. **30000** (anchor list, rev. 4): signed by the trust key; `d` = `esports/<league key>/anchors`;
@@ -2583,7 +2616,7 @@ may publish any kind. A zooid tenant as the league relay needs changes upstream.
 | notification key | `0`; seals (`13`) of notifications | league server |
 | pool key | `0` (with the pool's `lud16`) | offline after setup |
 | LNURL server key | `9735` | the league's LNURL endpoint |
-| sponsor desk key | `9734` for sponsor invoices | league server |
+| sponsor desk key | `9734` for sponsor invoices; retired in rev. 9.1 (a sponsor pays an invoice of the tournament's own wallet) | none since rev. 9.1 |
 | badge key (rev. 5) | `0`, `30009` rank badge definitions, `8` awards | league server |
 
 A compromise of a server-side key can forge notifications, receipts, sponsor requests or badges, but
@@ -2668,113 +2701,93 @@ The league notifies players by Nostr DM from a dedicated **notification key**, b
 
 ## Prize pool funding
 
-Anyone can zap a tournament; the pool grows live and anyone can recount it.
+**Revision 9.1: a tournament's pot is always its own wallet.** Every prize pot is a wallet of the
+tournament's own, connected over NIP-47; the league's wallet, its ledger and its LNURL endpoint
+belong to the season chain (the reserve, [Pots and zap targets](#pots-and-zap-targets-rev-5)) and
+never hold, count or pay a tournament's pot. Revisions 4 to 9 described a league pot funded by zaps
+to the `31923`, counted from receipts; revision 9.1 retires it. A tournament whose pot was a league
+pot has no pot from then on (the league's migration logs this in the tournament's moderation log; a
+pot whose payouts were already approved is left as it is). The round-4 example below stays as it
+was signed.
 
-**Zap target.** The tournament's `31923`. A zap request (NIP-57 `9734`) carries `a` =
-`31923:<league>:<slug>`, `k` `31923`, `p` = the pool key (from the event's `zap` tag), `amount`,
-`lnurl` and `relays` = the league relay. The pool key's `lud16` (and the league key's) point at the
-league's own LNURL endpoint, for example `pool@example.org`.
+**The wallet.** An organizer or admin connects a NIP-47 connection string that may read the balance
+(`get_balance`) and pay (`pay_invoice`); the league checks both with `get_info` before it accepts the
+connection, refuses the league's own wallet, and never publishes the string. Its relay has to be a
+`wss://` address on a public host name: the league does not connect to a relay on a private or
+loopback address. If the connection may also `make_invoice` and `lookup_invoice`, anyone can add
+sats (top-ups, below); if not, the tournament page says "Top-ups not enabled for this pot".
 
-**LNURL endpoint.** The league runs the LNURL-pay endpoint itself on top of its NWC wallet
-(NIP-47), instead of relying on a wallet provider's lightning address:
+**The pot is the wallet's balance**, read by the league every two minutes, after a top-up is paid,
+on demand and at the check. Pages show it with the time of the read; a failed read keeps the last
+value with its time, and a pot that was never read is not shown. There are no receipts, so nobody can
+recount it from Nostr: it is the league's claim. The tournament's `31923` has **no `zap` tag**: the
+league's LNURL endpoint takes zaps for the reserve only and refuses a zap request that names a
+tournament by `a`.
 
-1. `/.well-known/lnurlp/pool` answers with `allowsNostr: true` and `nostrPubkey` = the LNURL server key;
-2. the callback validates the zap request (NIP-57 appendix D) and asks the wallet for an invoice with
-   `make_invoice` and `description_hash` = SHA-256 of the zap request;
-3. when `lookup_invoice` reports `settled`, it signs the receipt (`9735`: `p`, `P`, `a`, `k`, `bolt11`,
-   `description`, `preimage`, `created_at` = the settle time) and publishes it to the relays of the
-   request.
+**Top-ups (rev. 9.1).** Anyone, with or without Nostr, can add sats on the tournament page while the
+pot is open: the tournament's wallet makes the invoice (`make_invoice`, description
+`Prize pot: <tournament name>`), the page shows it as a QR code and an "open in wallet" link, never
+as text, and the league learns that it was paid with `lookup_invoice` on the same wallet. A sponsor's
+invoice comes from that wallet the same way (description `Sponsor: <name> – <tournament name>`); when
+it is paid, the logo appears. Invoices are limited per user, per network address (kept only as a
+keyed hash) and per minute. A top-up paid after the pot closed is marked late and changes no prize.
 
-A wallet provider's lightning address works too, but only if it supports NIP-57 and publishes to the
-league relay; which one the league's wallet would be is open.
+**No zap receipts for top-ups (rev. 9.1).** A top-up is a plain invoice, not a NIP-57 zap, and gets no
+`9735`. A receipt is signed by the `nostrPubkey` of the LNURL server that made the invoice (NIP-57
+appendix E); the tournament's invoice comes from the tournament's wallet, whose LNURL server (if it has
+one) is not the league's. A receipt signed by the league's LNURL server key for an invoice it did not
+make would claim a payment that key never saw; one made by the league's endpoint would put the sats in
+the league's wallet, which a tournament pot must never use. So the page asks for no zap request and the
+league signs nothing for it.
 
-**Who pays how.**
+**Closing the pot (rev. 9).** The pot closes at the admin's check after the tournament finished (see
+[Payout](#payout-2157)): the league publishes a last `31923` version whose `end` is the moment of the
+check. The prizes are computed from the balance read at that moment.
 
-- A player zaps with their own key (a Google login signs the zap request through its bunker).
-- A visitor without Nostr pays an invoice whose zap request the page signed with a throwaway key.
-- The **admin top-up** is a zap from the admin's npub with the comment "League top-up", not a direct
-  deposit into the wallet: a deposit outside the endpoint leaves no receipt and could not be counted.
-- A **sponsor** pays a Lightning invoice that belongs to a zap request signed by the league's sponsor
-  desk key with the comment "Sponsor: <name>" (or by the sponsor's own npub). When the receipt
-  appears, the logo appears. The league keeps sponsor, zap request id, payment hash and logo in its
-  database; logos are not published on Nostr.
+**The prizes (rev. 9, fixed amounts rev. 9.1).** The tournament's `content` states them once the pot
+is open, in one of two modes, changeable only while sign-up is open (each change a new version) and
+never after sign-up closed: players sign up under them.
 
-**Counting the pool.** The pool is the sum over zap receipts `{"kinds":[9735],"#a":["31923:<league>:<slug>"]}`
-that pass all of:
+- **Percent of the pot**: 50 / 30 / 20 unless the organizer set another (1 to 8 places, whole
+  percents, never more for a lower place, 100 in total). The amount split is the balance at the check
+  less 1 % (at least 10 sats) held back for the routing fees the wallet pays itself. `content`:
+  "Prize split: place 1 50 %, … of the pot, held in the tournament's own wallet and paid from it after
+  1 % (at least 10 sats) is held back for routing fees; …".
+- **Fixed amounts**: whole sats per place (1 to 8 places, each at least 1 sat and at most the league's
+  limit per place, the sum at most its limit in total). A place wins exactly its amount. The admin can
+  approve the payouts only when a balance read at that moment covers the sum plus the fee reserve on
+  the sum (1 %, at least 10 sats); otherwise the approval is refused. What the wallet holds beyond the
+  prizes stays in it and is shown to the organizer as left over after prizes. `content`: "Prizes:
+  place 1 60000 sats, …, fixed, paid from the tournament's own wallet once it holds their sum and 1 %
+  (at least 10 sats) for routing fees; …".
 
-1. signed by the `nostrPubkey` of the league's LNURL endpoint;
-2. `description` is a validly signed `9734` whose `a` is the tournament;
-3. SHA-256 of `description` equals the invoice's description hash;
-4. the invoice amount equals the zap request's `amount`;
-5. `created_at` is before the tournament's `end`;
-6. each payment hash counts once.
-
-Receipts after `end` go to the league reserve (revision 4: to the league's next pool). In round 4 the example pool counts
-3 receipts, 171 000 sats; a receipt signed by the zapper, one whose invoice is smaller than its
-request, one whose description does not match the invoice and one after `end` are rejected; all four
-are on rnostr, strfry and khatru, which store receipts unchecked.
-
-**What this proves.** NIP-57: "The `zap receipt` is not a proof of payment". Every receipt of the pool
-comes from the league's own endpoint, so the pool is the league's claim, made checkable: every sat is
-tied to a signed request and to an invoice signed by the league's Lightning node, and the payouts to
-the winners' `lud16` are the other half (receipts only where the winners' LNURL servers support
-NIP-57). A NIP-75 zap goal (`9041`) linked from the tournament with `goal` would add a progress bar in
-NIP-75 clients; it needs a target amount and is not used in V1.
-
-**Closing the pool (rev. 9).** The pool of a tournament closes at the admin's check after the
-tournament finished (see [Payout](#payout-2157)): the league publishes a last `31923` version whose
-`end` is the moment of the check and which has no `zap`. From then on the endpoint refuses zaps to the
-tournament; a receipt of an invoice made before and paid after the check has a `created_at` after
-`end` and counts for the reserve. The pool is what the counted receipts hold at that moment.
-
-**The split (rev. 9).** The tournament's `content` states it once the pool is open: percent per place,
-50 / 30 / 20 unless the organizer set another (1 to 8 places, whole percents, never more for a lower
-place, 100 in total), changeable only while sign-up is open (each change a new version). At the check:
+At the check:
 
 1. **Places** come from the bracket: in a knock-out final stage, the winner first, then everyone of
    that stage by how late their last match was (the final before the match for third place in the
    same step, a win before a loss); sides out in the same step share a place (the two losing
    semi-finalists without a match for third place are both third, the next place is fifth). A table
    (round robin, Swiss) ranks by its points and tie-breaks. Only the final stage is placed.
-2. **Ties** share: sides tied on a place share the percentages of all places they hold together.
+2. **Ties** share: sides tied on a place share the percentages, or the sum of the fixed amounts, of all
+   places they hold together, equally.
 3. **Rosters**: a side's share is split equally among the players it was registered or drawn with,
    substitutes included.
-4. **Rounding**: every division rounds down to whole sats; the rest, and the shares of places nobody
-   holds, go to the reserve.
+4. **Rounding**: every division rounds down to whole sats; the rest, and the prizes of places nobody
+   holds, stay in the tournament's wallet.
 
 A reader who has the bracket's results (the attestations and director results of the tournament) and
-the counted receipts can recompute every prize; the Payouts (`2157`) show what was paid.
+the prizes in `content` can recompute every fixed prize; a percent prize also needs the balance at the
+check, which only the league's claim states. The Payouts (`2157`) show what was paid.
 
 **Who pays and when (rev. 9).** An admin checks the tournament after it finished and approves the
-payouts; organizers set the pool up (target, split, sponsors) but neither approve nor pay. Each prize
-is paid through the league's paying NWC connection to the player's Lightning address; a player
-without one keeps their payout open, visible on the tournament page, until they add one.
-The address paid is the one the admin approved: if the player's profile (kind `0`) names another
-one by the time of the payment, nothing is paid and the payout is open again until an admin
-approves the new address, so a hijacked profile cannot redirect a prize.
-
-**A pot in the tournament's own wallet (rev. 9).** An organizer or admin may hold a tournament's pot
-in a wallet of its own instead, connected with a NIP-47 connection string that may read the balance
-(`get_balance`) and pay (`pay_invoice`); the league checks both before it accepts the connection and
-never publishes it. Its relay has to be a `wss://` address on a public host name: the league does not
-connect to a relay on a private or loopback address. A league pot that has a paid or still unpaid
-invoice cannot move to an own wallet (its receipts would count for a pot nobody pays from). Such a pot:
-
-- is **not zapped**: the tournament's `31923` has no `zap` tag, and the league's endpoint refuses a
-  zap request that names the tournament. People add sats to that wallet directly, through its
-  owner; the league's pages show no Lightning address for it;
-- is **the wallet's balance**, read by the league every two minutes and on demand. Pages show it with
-  the time of the read; a failed read keeps the last value with its time, and a pot that was never read
-  is not shown. There are no receipts, so nobody can recount it from Nostr: it is the league's claim;
-- is **split** like a league pot (above) from the balance read at the check, less 1 % (at least
-  10 sats) held back for the routing fees that wallet pays itself. What is left stays in that wallet,
-  not in the league reserve;
-- is **paid** from that wallet, with the same rules and Payouts (`2157`) as a league pot. The
-  preimage in each `2157` is still the proof that a prize was paid.
-
-The tournament's `content` says which kind of pot it has: "… of the pot, held in the tournament's own
-wallet and paid from it after 1 % is held back for routing fees; …" instead of "… of the pool; … the
-rest goes to the league reserve."
+payouts; organizers set the pot up (wallet, prizes, sponsors) but neither approve nor pay. Each prize
+is paid from the tournament's own wallet (`pay_invoice`) to the player's Lightning address; a player
+without one keeps their payout open, visible on the tournament page, until they add one. Without a
+working connection to that wallet nothing is approved or paid; the league's wallet is never a
+fallback. The address paid is the one the admin approved: if the player's profile (kind `0`) names
+another one by the time of the payment, nothing is paid and the payout is open again until an admin
+approves the new address, so a hijacked profile cannot redirect a prize. The preimage in each `2157`
+is the proof that a prize was paid.
 
 ## Pots and zap targets (rev. 5)
 
@@ -2833,7 +2846,7 @@ the attestations. Every part a new kind would carry already has a home:
 | part | where |
 |---|---|
 | target, ladder, window, rules | the `31923`: `p` with role `target`, `a` ladder, `start` / `end`, rules in `content` |
-| funding | zaps to the `31923` (its `zap` tag names the pool key), counted as in [Prize pool funding](#prize-pool-funding) with `end` as the cut-off |
+| funding | zaps to the `31923` (its `zap` tag names the pool key), counted from the LNURL server key's receipts (signed by that key, a valid `9734` naming the bounty as `description`, matching description hash and amount, each payment hash once) with `end` as the cut-off; not run yet |
 | claim | derived from the ladder's attestations; nothing is signed for it |
 | payout | with the season's settlement: a `2157` that names the bounty by `a` (see [Payout](#payout-2157)) |
 
@@ -2959,7 +2972,7 @@ These stay on the league server, on purpose:
 | tournament consents (`22150`, rev. 7) | signed by the entrant or captain and kept by the league as evidence; registrations matter to nobody outside the tournament, and the draw is their public trace ([Tournament Consent](#tournament-consent-22150)) |
 | tournament directors, their entries and corrections (rev. 7) | who may enter results is league data; the append-only log of entries and corrections stays with the league; the final entry is public as the attestation with `entered-by` |
 | casual ratings (before Block 0, between seasons, unrated tournaments) | never attested; an unrated tournament's seeding rests on them and cannot be checked from relays |
-| pool balance of the wallet, sponsor contracts, sponsor logos, NWC secret | operational; the pool is counted from receipts (see [Prize pool funding](#prize-pool-funding)) |
+| pot balance of a tournament's wallet, sponsor contracts, sponsor logos, NWC secrets | operational; a tournament's pot is its wallet's balance, the league's claim (see [Prize pool funding](#prize-pool-funding)) |
 | Google e-mail address of a login | known to nostr-mill's servers (pomegranate), not to the league |
 | sessions, presence, online counters, live ticker | ephemeral, high-frequency, worthless as history |
 | rating computation internals, idempotency keys, payout status, NWC secret | operational state; only the rating result is attested |
@@ -3001,12 +3014,12 @@ wanted protected player events would have to accept them from their authenticate
 | 32 | `L`/`l` labels that mark a report as a league report and give its reason; rev. 5: kind `1985` labels for the admins' release of Block 0 (`release-block-0`) and the corrections of the season review (`void-block`) |
 | 40 | deliberately **not** used on challenges (see [Relay behaviour](#relay-behaviour)) |
 | 42 | authentication on a league-operated relay |
-| 47 | Nostr Wallet Connect, server side only: rev. 5 one wallet with a receive-only connection (LNURL invoices) and a paying connection with a budget (payouts) |
+| 47 | Nostr Wallet Connect, server side only: rev. 5 one wallet with a receive-only connection (LNURL invoices) and a paying connection with a budget (payouts); rev. 9.1: that wallet is the season chain's only, and every tournament pot is a wallet of its own (`get_balance`, `pay_invoice`, and `make_invoice`/`lookup_invoice` for top-ups) |
 | 51 | opponent list and anchor list as follow sets (`30000`); mute list (`10000`) read by the client |
 | 56 | reports (`1984`) that can lower a trust rank |
 | 52 | tournaments as time-based calendar events (`31923`) in the league calendar (`31924`); rev. 5 also bounties (`d` = `bounty/<slug>`) and season announcements (`d` = `season/<season>`); no calendar event per match (the answer's `start` already is the schedule) |
 | 64 | chess game records and correspondence moves (kind `64`, PGN) |
-| 57 | zaps into a tournament's prize pool (receipts from the league's own LNURL endpoint, see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
+| 57 | zaps into the league's pots (receipts from the league's own LNURL endpoint); rev. 9.1: never into a tournament's pot, whose top-ups are plain invoices from its own wallet without receipts (see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
 | 58 | rank badges (rev. 5): one `30009` definition per player, game and mode, replaced on every rank change, one `8` award, listed by the player in `10008`; signed by the badge key, see [Rank badges](#rank-badges-rev-5) |
 | 65 | the league key publishes a relay list (`10002`) so clients find the ladder |
 | 75 | rev. 5: the league reserve is a zap goal (`9041`), the zap target of the reserve pot; tournaments still use no goal |
@@ -5394,14 +5407,14 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 
 ## Open points
 
-- **Revision 9 has no signed example yet.** The pool's `31923` versions, the zap receipts and the
-  Payouts (`2157`) of a tournament are checked against a local `nak serve` relay with a fake NIP-47
-  wallet in the app's integration suite, not yet on rnostr, strfry and khatru. Also open: the reserve's
-  zap goal (`9041`) and the match-fee and bounty pots (the endpoint refuses their zaps until the league
-  runs them); season settlement; whether a payout to a Lightning address that supports NIP-57 should be
-  a zap; how long an open payout (no Lightning address) waits before its prize goes to the reserve.
-  A pot in a tournament's own wallet is checked only against the in-process fake wallet, not over a
-  relay, and its sponsors have no receipts (they pay that wallet directly).
+- **Revisions 9 and 9.1 have no signed example yet.** The pot's `31923` versions, a top-up through the
+  tournament's own wallet and the Payouts (`2157`) of a tournament are checked against a local
+  `nak serve` relay with a fake NIP-47 wallet in the app's integration suite, not yet on rnostr, strfry
+  and khatru. Also open: the reserve's zap goal (`9041`) and the match-fee and bounty pots (the endpoint
+  refuses their zaps until the league runs them); season settlement; whether a payout to a Lightning
+  address that supports NIP-57 should be a zap; how long an open payout (no Lightning address) waits,
+  and what happens to its prize, which stays in the tournament's wallet meanwhile. A tournament's pot
+  has no receipts at all (rev. 9.1): its balance and its top-ups are the league's claim.
 
 - **Revision 8 has no signed example yet.** The badge definitions, awards, profile lists and share
   posts of revision 8 are tested against a local `nak serve` relay in the app's browser test, not yet
@@ -5499,9 +5512,8 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   league that commits to the next block (`H` = tip + 1) meets rule 17 but can never prove it with
   OpenTimestamps, and loses the commitment if the block is found between reading the tip and
   publishing. How far ahead is tournament policy.
-- **Tournament prize pools** (rev. 7). Until the league runs a tournament's pool, its `31923` carries
-  no `zap` and zaps to it are refused ([Tournaments](#tournaments)); the pool, the endpoint's refusal
-  and the version that adds `zap` are implemented later.
+- **Tournament prize pools** (rev. 7). Resolved by revisions 9 and 9.1: a tournament's pot is its own
+  wallet, and its `31923` carries no `zap` ([Prize pool funding](#prize-pool-funding)).
 - **Not every rule has a failing example.** The signed examples show wins that fail rules 1, 4 and 7,
   and the checker shows rule 9 as a counterfactual (the same games with a supply of 8 400 sats). Failures
   of rules 0, 2, 3, 5 and 8 exist only in the checker's code, not in any signed event.

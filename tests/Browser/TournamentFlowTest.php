@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\IncomingPayment;
 use App\Models\Lineup;
+use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentSignup;
 use App\Models\TournamentSponsor;
@@ -249,13 +250,14 @@ test('a tournament game offers no abort, and a missed first move ends it on the 
 });
 
 /*
-| P9: the prize pool in the browser. A player zaps an open pool with their
-| own key (the zap request signed through window.nostr) and with "Pay
-| without Nostr"; the fake wallet settles the first invoice and the panel
-| notices it by itself. A finished tournament shows its sponsors and
-| payouts; the admins' payouts page and the pool settings are measured too.
-| All at 375 and 1440 px, with the collector armed and a positive control.
-| P9_SHOTS=<dir> writes the English screenshots there.
+| P9: the prize pot in the browser. A pot is always its tournament's own
+| wallet (user, 2026-09-27). Anyone adds sats: the wallet makes the invoice,
+| shown as a QR code only; the fake wallet settles it and the panel notices
+| it by itself. A pot whose connection may not make invoices says so. A
+| finished tournament shows its sponsors and payouts; the admins' payouts
+| page, the pool settings and the create page (percent, then fixed amounts)
+| are measured too. All at 375 and 1440 px, with the collector armed and a
+| positive control. P9_SHOTS=<dir> writes the English screenshots there.
 */
 /** Elements that reach past the viewport's right edge (for the report when a page overflows). */
 const POOL_WIDE = <<<'JS'
@@ -265,34 +267,46 @@ const POOL_WIDE = <<<'JS'
         .map((el) => el.tagName + '.' + String(el.className).slice(0, 60) + ' ' + Math.round(el.getBoundingClientRect().right))
     JS;
 
-test('the prize pool: zaps with and without a key, sponsors, payouts and the admin pages, at 375 and 1440 px', function () {
+test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the admin pages, at 375 and 1440 px', function () {
     // The LNURL fake of the winners' addresses answers instead of the blanket fake of beforeEach.
     Http::swap(new HttpFactory);
-    $wallet = fakeWallet();
-    fakeLightningAddresses($wallet);
+    fakeWallet();
     Storage::fake('public');
 
+    // An open pot that takes top-ups, 50/30/20.
+    $openPot = ownPotWallet(42_000);
     $open = openTournament(['name' => 'Halving Cup', 'capacity' => 8], rocketLeague: true);
-    app(PrizePool::class)->open($open, $open->creator);
-    fundPool($wallet, $open->refresh(), 42_000);
+    app(PrizePool::class)->configurePot($open, $open->creator, true, $openPot->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]);
 
-    // A pot in the tournament's own wallet (P9 scope addition), 60/30/10 with a target it has reached.
+    // A pot whose connection may only pay: no top-ups.
+    $payOnly = ownPotWallet(21_000);
+    $payOnly->payMethods = ['pay_invoice', 'get_balance', 'get_info'];
+    $closedPot = openTournament(['name' => 'Lightning Ladder', 'capacity' => 8], rocketLeague: true);
+    app(PrizePool::class)->configurePot($closedPot, $closedPot->creator, true, $payOnly->uri('pay'), null, Tournament::PRIZES_PERCENT, [60, 40]);
+
+    // Fixed amounts in a wallet that covers them, with sats left over.
     $own = ownPotWallet(150_000);
     $walletSecret = $own->clients['pay']['secret'];
     $walletPot = openTournament(['name' => 'Stacker Open', 'capacity' => 8], rocketLeague: true);
-    app(PrizePool::class)->configurePot($walletPot, $walletPot->creator, 'wallet', $own->uri('pay', 'pot@wallet.example'), 100_000, [60, 30, 10]);
+    app(PrizePool::class)->configurePot($walletPot, $walletPot->creator, true, $own->uri('pay', 'pot@wallet.example'), null, Tournament::PRIZES_FIXED, [], [60_000, 30_000, 10_000]);
 
-    $finished = finishedPoolTournament($wallet, 210_000, 4, withoutAddress: [4]);
+    expect([$open->refresh()->pool_opened_at, $closedPot->refresh()->pool_opened_at, $walletPot->refresh()->pool_opened_at])->each->not->toBeNull()
+        ->and($closedPot->pot_can_receive)->toBeFalse()->and($open->pot_can_receive)->toBeTrue();
+
+    $finishedPot = ownPotWallet(0);
+    fakeLightningAddresses($finishedPot);
+    $finished = finishedPoolTournament($finishedPot, 210_000, 4, withoutAddress: [4]);
     $finished->forceFill(['name' => 'Blitz Night Munich'])->save();
     $admin = anAdmin();
     $admin->forceFill(['locale' => 'en', 'name' => 'ada_admin'])->save();
-    // A sponsor who paid while the tournament ran (its logo shows once paid).
+    // A sponsor who paid while the tournament ran (its logo shows once paid), into the pot's own wallet.
     $sponsor = TournamentSponsor::query()->create(['tournament_id' => $finished->id, 'name' => 'Satoshi’s Pizza', 'pledged_sats' => 50_000,
         'logo_path' => app(SponsorLogos::class)->store(UploadedFile::fake()->image('pizza.png', 600, 200))]);
-    fundPool($wallet, $finished, 50_000);
-    IncomingPayment::query()->latest('id')->firstOrFail()->forceFill(['sponsor_id' => $sponsor->id])->save();
+    $finished->forceFill(['pool_closed_at' => null])->save();
+    fundPool($finishedPot, $finished, 50_000, topUp: true);
+    IncomingPayment::query()->latest('id')->firstOrFail()->forceFill(['sponsor_id' => $sponsor->id, 'source' => 'sponsor'])->save();
 
-    app(PayoutApproval::class)->approve($finished, $admin);
+    app(PayoutApproval::class)->approve($finished->refresh(), $admin);
 
     foreach ($finished->payouts()->get() as $payout) {
         app(PayoutRunner::class)->run($payout, true);
@@ -307,28 +321,30 @@ test('the prize pool: zaps with and without a key, sponsors, payouts and the adm
         $page = tournamentPage($player);
         $page->setViewportSize($width, $height);
 
-        // With my key: the zap request is signed in the browser.
+        // Anyone adds sats: the pot's own wallet makes the invoice, shown as a QR code, never as text.
         $page->goto(ComputeUrl::from(route('tournaments.show', $open)));
-        BrowserWait::until($page, '() => document.querySelector("[data-test=zap-signed]") !== null', 8_000);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup]") !== null', 8_000);
         $page->evaluate('() => document.querySelector("[data-test=prize-pool]").scrollIntoView()');
         tournamentShot($page, "p9-pool-open-{$width}");
-        $page->locator('[data-test=zap-signed]')->click();
-        BrowserWait::until($page, '() => document.querySelector("[data-test=zap-bolt11]") !== null', 10_000);
-        $invoice = $page->evaluate('() => { const box = document.querySelector("[data-test=zap-invoice]").getBoundingClientRect(); return [Math.round(box.left), Math.round(box.right), Math.round(box.width)]; }');
-        tournamentShot($page, "p9-zap-invoice-{$width}");
+        $page->locator('[data-test=topup]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-qr] svg") !== null', 10_000);
+        $topUp = IncomingPayment::query()->latest('id')->firstOrFail();
+        $invoice = $page->evaluate('() => { const box = document.querySelector("[data-test=topup-invoice]").getBoundingClientRect(); const qr = document.querySelector("[data-test=topup-qr]").getBoundingClientRect(); return [Math.round(box.left), Math.round(box.right), Math.round(box.width), Math.round(qr.width), Math.round(qr.height)]; }');
+        $invoiceText = $page->evaluate('(bolt11) => document.body.innerText.toLowerCase().includes(bolt11.toLowerCase().slice(0, 24))', $topUp->bolt11);
+        tournamentShot($page, "p9-topup-invoice-{$width}");
 
-        $signed = IncomingPayment::query()->latest('id')->firstOrFail();
-        $wallet->settleIncoming($signed->payment_hash);
-        BrowserWait::until($page, '() => document.querySelector("[data-test=zap-received]") !== null', 12_000);
-        $zap = $page->evaluate(TOURNAMENT_STATE);
-        tournamentShot($page, "p9-zap-received-{$width}");
+        $openPot->settleIncoming($topUp->payment_hash);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-received]") !== null', 12_000);
+        $received = $page->evaluate(TOURNAMENT_STATE);
+        tournamentShot($page, "p9-topup-received-{$width}");
 
-        // Without Nostr: the league signs the request with a throwaway key.
-        $page->locator('[data-test=zap-again]')->click();
-        BrowserWait::until($page, '() => document.querySelector("[data-test=zap-anonymous]") !== null', 8_000);
-        $page->locator('[data-test=zap-anonymous]')->click();
-        BrowserWait::until($page, '() => document.querySelector("[data-test=zap-bolt11]") !== null', 10_000);
-        $anonymous = IncomingPayment::query()->latest('id')->firstOrFail();
+        // A pot whose connection may not make invoices: no top-ups, and it says so.
+        $page->goto(ComputeUrl::from(route('tournaments.show', $closedPot)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=topup-off]") !== null', 8_000);
+        $page->evaluate('() => document.querySelector("[data-test=prize-pool]").scrollIntoView()');
+        $off = $page->evaluate(TOURNAMENT_STATE);
+        $off['button'] = $page->evaluate('() => document.querySelector("[data-test=topup]") !== null');
+        tournamentShot($page, "p9-topup-off-{$width}");
 
         $page->goto(ComputeUrl::from(route('tournaments.show', $finished)));
         BrowserWait::until($page, '() => document.querySelector("[data-test=pool-payouts]") !== null', 8_000);
@@ -336,12 +352,14 @@ test('the prize pool: zaps with and without a key, sponsors, payouts and the adm
         $payouts = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-payouts-public-{$width}");
 
-        expect($signed->source)->toBe('zap')->and($signed->payer_pubkey)->toBe($player->pubkey)->and($signed->refresh()->status->value)->toBe('settled')
-            ->and($anonymous->source)->toBe('anonymous')
-            ->and($zap['errors'])->toBe([])->and($payouts['errors'])->toBe([])
-            ->and($zap['overflow'])->toBeLessThanOrEqual(0)->and($payouts['overflow'])->toBeLessThanOrEqual(0)
+        expect($topUp->source)->toBe('topup')->and($topUp->pot)->toBe('tournament:'.$open->id)->and($topUp->refresh()->status->value)->toBe('settled')
+            ->and($invoiceText)->toBeFalse()
+            ->and($off['button'])->toBeFalse()
+            ->and($received['errors'])->toBe([])->and($off['errors'])->toBe([])->and($payouts['errors'])->toBe([])
+            ->and($received['overflow'])->toBeLessThanOrEqual(0)->and($off['overflow'])->toBeLessThanOrEqual(0)->and($payouts['overflow'])->toBeLessThanOrEqual(0)
             ->and($invoice[0])->toBeGreaterThanOrEqual(16)
-            ->and($invoice[1])->toBeLessThanOrEqual($width - 16);
+            ->and($invoice[1])->toBeLessThanOrEqual($width - 16)
+            ->and($invoice[3])->toBeGreaterThanOrEqual(200);
 
         $desk = tournamentPage($admin);
         $desk->setViewportSize($width, $height);
@@ -356,12 +374,10 @@ test('the prize pool: zaps with and without a key, sponsors, payouts and the adm
         $settings['wide'] = $desk->evaluate(POOL_WIDE);
         tournamentShot($desk, "p9-pool-settings-{$width}");
 
-        // The optional pot of the create page: on, own wallet, checked live, a preset with its preview in sats.
+        // The optional pot of the create page: on, its own wallet (no other source), checked live, a preset with its preview in sats.
         $desk->goto(ComputeUrl::from(route('admin.tournaments.create')));
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-enabled]") !== null', 8_000);
         $desk->locator('[data-test=pot-enabled]')->click();
-        BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-source-wallet]") !== null', 8_000);
-        $desk->locator('[data-test=pot-source-wallet]')->click();
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-uri]") !== null', 8_000);
         $desk->locator('[data-test=pot-uri]')->fill($own->uri('pay', 'pot@wallet.example'));
         $desk->locator('[data-test=pot-check]')->click();
@@ -373,20 +389,36 @@ test('the prize pool: zaps with and without a key, sponsors, payouts and the adm
         $create['wide'] = $desk->evaluate(POOL_WIDE);
         // Positive control of the secret probe below: before saving, the typed string is in the page's Livewire snapshot.
         $create['secret'] = $desk->evaluate('(secret) => document.documentElement.outerHTML.includes(secret)', substr($own->clients['pay']['secret'], 0, 12));
+        $create['league'] = $desk->evaluate('() => document.querySelector("[data-test=prize-pot]").innerText.includes("League pot")');
         tournamentShot($desk, "p9-pot-create-{$width}");
 
-        // The edit page of a tournament whose pot is in its own wallet: "connected", never the string.
+        // Fixed amounts: sats per place, a place added, the sum with the fee reserve.
+        $desk->locator('[data-test=pot-mode-fixed]')->click();
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-fixed-1]") !== null', 8_000);
+        $desk->locator('[data-test=pot-fixed-add]')->click();
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-fixed-4]") !== null', 8_000);
+        $desk->locator('[data-test=pot-fixed-4]')->fill('5000');
+        BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-fixed-sum]").innerText.includes("105")', 8_000);
+        $desk->evaluate('() => document.querySelector("[data-test=prize-pot]").scrollIntoView()');
+        $fixed = $desk->evaluate(TOURNAMENT_STATE);
+        $fixed['wide'] = $desk->evaluate(POOL_WIDE);
+        $fixed['inputs'] = $desk->evaluate('() => [...document.querySelectorAll("[data-test^=pot-fixed-]")].filter((el) => el.tagName === "INPUT").map((el) => { const r = el.closest("label").getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.height)]; })');
+        $fixed['sum'] = $desk->evaluate('() => document.querySelector("[data-test=pot-fixed-sum]").innerText');
+        tournamentShot($desk, "p9-pot-create-fixed-{$width}");
+
+        // The edit page of a pot with fixed amounts in its own wallet: "connected", never the string, and what is left over.
         $desk->goto(ComputeUrl::from(route('admin.tournaments.edit', $walletPot)));
         BrowserWait::until($desk, '() => document.querySelector("[data-test=pot-connected]") !== null', 8_000);
         $desk->evaluate('() => document.querySelector("[data-test=prize-pot]").scrollIntoView()');
         $edit = $desk->evaluate(TOURNAMENT_STATE);
         $edit['wide'] = $desk->evaluate(POOL_WIDE);
         $edit['secret'] = $desk->evaluate('(secret) => document.documentElement.outerHTML.includes(secret)', substr($walletSecret, 0, 12));
+        $edit['funding'] = $desk->evaluate('() => document.querySelector("[data-test=pot-fixed-funding]")?.innerText ?? null');
         tournamentShot($desk, "p9-pot-edit-{$width}");
 
         // Where players look: the index with the pot chips, the tournament page with the balance time.
         $page->goto(ComputeUrl::from(route('tournaments.index')));
-        BrowserWait::until($page, '() => document.querySelectorAll("[data-test=prize-chip]").length >= 2', 8_000);
+        BrowserWait::until($page, '() => document.querySelectorAll("[data-test=prize-chip]").length >= 3', 8_000);
         $index = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-pot-index-{$width}");
         $page->goto(ComputeUrl::from(route('tournaments.show', $walletPot)));
@@ -395,20 +427,23 @@ test('the prize pool: zaps with and without a key, sponsors, payouts and the adm
         $walletShow = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-pot-show-{$width}");
 
-        fwrite(STDERR, "\n[p9-pool] {$width}: ".json_encode(['admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit])."\n");
+        fwrite(STDERR, "\n[p9-pool] {$width}: ".json_encode(['admin' => $adminState, 'settings' => $settings, 'create' => $create, 'fixed' => $fixed, 'edit' => $edit])."\n");
 
         expect($adminState['errors'])->toBe([])->and($settings['errors'])->toBe([])
             ->and($adminState['overflow'])->toBeLessThanOrEqual(0)->and($settings['overflow'])->toBeLessThanOrEqual(0)
-            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()
+            ->and($create['errors'])->toBe([])->and($create['overflow'])->toBeLessThanOrEqual(0)->and($create['secret'])->toBeTrue()->and($create['league'])->toBeFalse()
+            ->and($fixed['errors'])->toBe([])->and($fixed['overflow'])->toBeLessThanOrEqual(0)->and($fixed['inputs'])->toHaveCount(4)
+            ->and(collect($fixed['inputs'])->every(fn (array $box): bool => $box[0] >= 0 && $box[1] <= $width && $box[2] >= 44))->toBeTrue()
+            ->and($edit['funding'])->toContain('left over')
             ->and($edit['errors'])->toBe([])->and($edit['overflow'])->toBeLessThanOrEqual(0)->and($edit['secret'])->toBeFalse()
             ->and($index['errors'])->toBe([])->and($index['overflow'])->toBeLessThanOrEqual(0)
             ->and($walletShow['errors'])->toBe([])->and($walletShow['overflow'])->toBeLessThanOrEqual(0);
 
-        $measured[$width] = ['invoice' => $invoice, 'zap' => $zap, 'payouts' => $payouts, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
+        $measured[$width] = ['invoice' => $invoice, 'received' => $received, 'off' => $off, 'payouts' => $payouts, 'fixed' => $fixed, 'admin' => $adminState, 'settings' => $settings, 'create' => $create, 'edit' => $edit, 'index' => $index, 'walletShow' => $walletShow];
     }
 
     expect($finished->payouts()->pluck('status')->map->value->sort()->values()->all())->toBe(['open', 'paid', 'paid', 'paid'])
-        ->and($wallet->payRequests())->toHaveCount(3);
+        ->and($finishedPot->payRequests())->toHaveCount(3);
 
     // Positive control: an error thrown on the page reaches the collector.
     $desk->evaluate('() => { setTimeout(() => { throw new Error("probe"); }, 0); }');

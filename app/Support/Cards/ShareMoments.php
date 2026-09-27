@@ -95,7 +95,7 @@ final class ShareMoments
      * is, when it starts and how many places are taken. Raw values; the card
      * translates them when it draws.
      *
-     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null}
+     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null, first_prize: int|null}
      */
     public static function tournamentInvite(Tournament $tournament): array
     {
@@ -112,8 +112,9 @@ final class ShareMoments
             'places' => $places['places'],
             // The cover's file name, not just whether there is one: a new cover file draws a new card.
             'cover' => ($cover = app(GameRegistry::class)->coverPath($tournament->game)) === null ? null : basename($cover),
-            // The prize pot as the tournament page shows it (P9); null without an open pot.
-            'pot' => $tournament->pool_opened_at === null ? null : app(PrizePool::class)->potSats($tournament),
+            // The prize pot as the tournament page shows it (P9): the pot, and in fixed mode what 1st place wins; null without an open pot.
+            'pot' => $pot = ($tournament->pool_opened_at === null ? null : app(PrizePool::class)->potSats($tournament)),
+            'first_prize' => $pot !== null && $tournament->prizeMode() === Tournament::PRIZES_FIXED ? ($tournament->prizeFixed()[0] ?? null) : null,
         ];
     }
 

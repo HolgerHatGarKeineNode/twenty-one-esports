@@ -9,7 +9,8 @@ use InvalidArgumentException;
  * (the league adds no dependency for it; the stream scenes use static SVGs
  * made once with `qrencode`, which cannot follow a tournament's own URL).
  *
- * Byte mode, error correction level M, versions 1 to 10 (up to 213 bytes),
+ * Byte mode, error correction level M, versions 1 to 20 (up to 666 bytes, a
+ * BOLT11 invoice with route hints fits; P9 pot top-ups),
  * following ISO/IEC 18004 as Project Nayuki's reference encoder lays it out
  * (https://www.nayuki.io/page/qr-code-generator-library). The mask with the
  * lowest penalty of rules N1, N2 and N4 is taken; a reader decodes any of
@@ -18,10 +19,15 @@ use InvalidArgumentException;
 final class QrCode
 {
     /** ECC codewords per block, level M, by version. */
-    private const ECC_PER_BLOCK = [1 => 10, 2 => 16, 3 => 26, 4 => 18, 5 => 24, 6 => 16, 7 => 18, 8 => 22, 9 => 22, 10 => 26];
+    private const ECC_PER_BLOCK = [1 => 10, 2 => 16, 3 => 26, 4 => 18, 5 => 24, 6 => 16, 7 => 18, 8 => 22, 9 => 22, 10 => 26,
+        11 => 30, 12 => 22, 13 => 22, 14 => 24, 15 => 24, 16 => 28, 17 => 28, 18 => 26, 19 => 26, 20 => 26];
 
     /** Error correction blocks, level M, by version. */
-    private const BLOCKS = [1 => 1, 2 => 1, 3 => 1, 4 => 2, 5 => 2, 6 => 4, 7 => 4, 8 => 4, 9 => 5, 10 => 5];
+    private const BLOCKS = [1 => 1, 2 => 1, 3 => 1, 4 => 2, 5 => 2, 6 => 4, 7 => 4, 8 => 4, 9 => 5, 10 => 5,
+        11 => 5, 12 => 8, 13 => 9, 14 => 9, 15 => 10, 16 => 10, 17 => 11, 18 => 13, 19 => 14, 20 => 16];
+
+    /** The largest version drawn. */
+    public const MAX_VERSION = 20;
 
     /** Format bits of level M (01). */
     private const LEVEL_BITS = 0;
@@ -51,7 +57,7 @@ final class QrCode
         $bytes = array_values(unpack('C*', $text) ?: []);
         $version = 0;
 
-        for ($candidate = 1; $candidate <= 10; $candidate++) {
+        for ($candidate = 1; $candidate <= self::MAX_VERSION; $candidate++) {
             $countBits = $candidate <= 9 ? 8 : 16;
 
             if (4 + $countBits + 8 * count($bytes) <= self::dataCodewords($candidate) * 8) {
@@ -61,7 +67,7 @@ final class QrCode
         }
 
         if ($version === 0) {
-            throw new InvalidArgumentException('Text too long for a version 10 QR code.');
+            throw new InvalidArgumentException('Text too long for a version '.self::MAX_VERSION.' QR code.');
         }
 
         $qr = new self($version);

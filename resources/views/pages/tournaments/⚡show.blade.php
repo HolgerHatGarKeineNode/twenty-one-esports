@@ -40,7 +40,7 @@ use Livewire\Component;
  * arrives.
  *
  * The prize pool (P9): the pot, the split and the sponsors come from the
- * league's pool (App\Support\Prizes\LeaguePrizePool behind
+ * league's pool (App\Support\Prizes\WalletPrizePool behind
  * TournamentPrizePool); the zap panel, the payouts and the organizer's and
  * admin's links are their own component (components/⚡tournament-pool).
  */

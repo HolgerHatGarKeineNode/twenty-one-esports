@@ -8,35 +8,38 @@ use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Lightning\LightningAddress;
+use App\Support\PreSeason;
 use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
-use App\Support\Wallet\Ledger;
 use App\Support\Wallet\WalletSetup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
  * The admin check at a tournament's end (P9, NIP "Payout": "after a
- * tournament's `end` and an admin's check"): the pool closes, the league
- * publishes the tournament's last version with `end` at the close and
- * without `zap`, the places are read from the bracket, and one payout per
- * player is written with its fixed idempotency key. The split's remainder
- * goes to the reserve. Nothing is paid here; the admin pays afterwards.
+ * tournament's `end` and an admin's check"): the pot closes, the league
+ * publishes the tournament's last version with `end` at the close, the
+ * places are read from the bracket, and one payout per player is written
+ * with its fixed idempotency key. Nothing is paid here; the admin pays
+ * afterwards, from the pot's own wallet.
  *
- * Admins only (gate `admin`): organizers set up the pool and see the
+ * Admins only (gate `admin`): organizers set up the pot and see the
  * payouts, but the check and the payment are the league's (decision P9).
- * Fail closed: without the paying wallet connection or the league key
- * nothing closes. A pot in the tournament's own NWC wallet is split from
- * that wallet's balance read at this moment, less its fee reserve
- * ({@see PrizePool::afterFeeReserve()}); what is left stays in that wallet. Approving twice changes nothing: the tournament row is
- * locked and approved only once, and the idempotency keys are unique.
+ * Fail closed: without the pot's wallet connection or the league key
+ * nothing closes, and the pot is what its wallet holds at this moment
+ * (read now, never assumed). Percent prizes split that balance less the
+ * fee reserve ({@see PrizePool::payable()}); fixed prizes are approved only
+ * when the balance covers their sum and its reserve. What is left stays in
+ * the pot's wallet; the league wallet and ledger are never touched.
+ * Approving twice changes nothing: the tournament row is locked and
+ * approved only once, and the idempotency keys are unique.
  */
 final class PayoutApproval
 {
-    public function __construct(private PayoutPlan $plan, private PrizePool $pool, private TournamentPublisher $publisher, private Ledger $ledger, private PotBalances $balances) {}
+    public function __construct(private PayoutPlan $plan, private TournamentPublisher $publisher, private PotBalances $balances) {}
 
     /**
      * What keeps the admin from approving, or null.
@@ -46,9 +49,8 @@ final class PayoutApproval
         $reasons = [
             [$tournament->payouts_approved_at !== null, 'The payouts of this tournament are approved already.'],
             [$tournament->status !== TournamentStatus::Finished, 'Payouts are approved once the tournament has finished.'],
-            [$tournament->pool_opened_at === null, 'This tournament has no prize pool.'],
-            [$tournament->hasOwnWallet() && ! WalletSetup::canPay($tournament), 'The connection of this pot’s own wallet is missing, so nothing can be paid out.'],
-            [! $tournament->hasOwnWallet() && ! WalletSetup::canPay(), 'No paying wallet connection is set up (ESPORTS_NWC_URI), so nothing can be paid out.'],
+            [$tournament->pool_opened_at === null || ! $tournament->hasOwnWallet(), 'This tournament has no prize pool.'],
+            [! WalletSetup::potCanPay($tournament), 'The connection of this pot’s own wallet is missing, so nothing can be paid out.'],
             [LeagueKey::fromConfig() === null, 'The league key is not set up, so nothing can be published yet.'],
         ];
 
@@ -107,9 +109,16 @@ final class PayoutApproval
             throw new TournamentRuleViolation('payout_blocked', $blocker);
         }
 
-        // An own-wallet pot is what that wallet holds now: read, never assumed (fail closed).
-        if ($tournament->hasOwnWallet() && ! $this->balances->read($tournament)) {
+        // The pot is what its wallet holds now: read, never assumed (fail closed).
+        if (! $this->balances->read($tournament)) {
             throw new TournamentRuleViolation('pot_unread', __('The pot’s wallet did not tell its balance just now, so nothing was approved. Try again in a moment.'));
+        }
+
+        // Fixed prizes are paid in full or not at all: the balance has to cover them and their fee reserve.
+        if (PrizePool::payable($tournament, (int) $tournament->pot_balance_sats) === null) {
+            throw new TournamentRuleViolation('pot_underfunded', __('The pot holds :have sats; the fixed prizes need :need sats with the fee reserve. Add sats to the wallet, read its balance again, then approve.', [
+                'have' => PreSeason::formatSats((int) $tournament->pot_balance_sats), 'need' => PreSeason::formatSats((int) PrizePool::requiredSats($tournament)),
+            ]));
         }
 
         return DB::transaction(function () use ($tournament, $admin): Tournament {
@@ -122,7 +131,8 @@ final class PayoutApproval
             $locked->forceFill(['pool_closed_at' => now(), 'payouts_approved_at' => now(), 'payouts_approved_by_id' => $admin->id])->save();
             $this->publisher->republish($locked);
 
-            $pool = (int) $this->pool->payableSats($locked);
+            $pool = PrizePool::payable($locked, (int) $locked->pot_balance_sats)
+                ?? throw new TournamentRuleViolation('pot_underfunded', __('The pot no longer covers the fixed prizes.'));
             $plan = $this->plan->compute($locked, $pool) ?? throw new TournamentRuleViolation('no_places', __('The final places of this tournament cannot be read from its bracket.'));
 
             foreach ($plan['rows'] as $row) {
@@ -141,11 +151,6 @@ final class PayoutApproval
                     'status' => $lud16 === null ? PayoutStatus::Open : PayoutStatus::Pending,
                     'reason' => $lud16 === null ? 'no_lud16' : null,
                 ]);
-            }
-
-            // The remainder of an own-wallet pot simply stays in that wallet.
-            if ($plan['remainder'] > 0 && ! $locked->hasOwnWallet()) {
-                $this->ledger->remainder($locked->id, $plan['remainder']);
             }
 
             return $locked;

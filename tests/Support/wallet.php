@@ -4,18 +4,14 @@
  * Helpers of the wallet and payout tests (P9), loaded from tests/Pest.php.
  */
 
-use App\Enums\IncomingPaymentStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
-use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\HostResolver;
-use App\Support\Prizes\IncomingPayments;
-use App\Support\Prizes\PoolInvoices;
+use App\Support\Prizes\PotTopUps;
 use App\Support\Tournaments\TournamentPublisher;
-use App\Support\Wallet\Ledger;
 use App\Support\Wallet\NwcTransport;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Request;
@@ -36,8 +32,9 @@ function anAdmin(): User
 }
 
 /**
- * A fake NIP-47 wallet behind both league connections, with every key the
- * pools need (league, LNURL server, sponsor desk, pool key).
+ * A fake NIP-47 wallet behind both league connections (the Season-Chain's;
+ * tournaments never use it), with the league's keys (league, LNURL server,
+ * pool key). Tournament pots are ownPotWallet()s on the same transport.
  */
 function fakeWallet(): FakeNwcWallet
 {
@@ -52,7 +49,6 @@ function fakeWallet(): FakeNwcWallet
         'esports.wallet.nwc_uri' => $wallet->uri('pay'),
         'esports.wallet.nwc_receive_uri' => $wallet->uri('receive'),
         'esports.wallet.lnurl_nsec' => (new TestSigner)->secret,
-        'esports.wallet.sponsor_nsec' => (new TestSigner)->secret,
         'esports.wallet.pool_npub' => (new TestSigner)->pubkey,
         'esports.wallet.invoice_networks' => ['bcrt'],
     ]);
@@ -111,24 +107,27 @@ function fakeLightningAddresses(FakeNwcWallet $wallet, array $broken = []): void
 }
 
 /**
- * A finished single-elimination chess tournament of `$n` players with an
- * open pool holding `$sats` from one zap, each player with a Lightning
- * address unless listed in `$withoutAddress` (by seed, 1 = strongest).
+ * A finished single-elimination chess tournament of `$n` players whose pot
+ * is its own wallet `$pot` holding `$sats` more (read as when it was
+ * connected), each player with a Lightning address unless listed in
+ * `$withoutAddress` (by seed, 1 = strongest). `$fixed` sets fixed prizes.
  *
  * @param  list<int>  $withoutAddress
+ * @param  list<int>|null  $split
+ * @param  list<int>|null  $fixed
  */
-function finishedPoolTournament(FakeNwcWallet $wallet, int $sats = 100_000, int $n = 4, array $withoutAddress = [], ?array $split = null): Tournament
+function finishedPoolTournament(FakeNwcWallet $pot, int $sats = 100_000, int $n = 4, array $withoutAddress = [], ?array $split = null, ?array $fixed = null): Tournament
 {
     $tournament = runningChess(TournamentFormat::SingleElimination, $n);
-    $tournament->forceFill(['prize_split' => $split])->save();
-    publishForPool($tournament);
+    $tournament->forceFill(['prize_split' => $split, 'prize_mode' => $fixed === null ? null : Tournament::PRIZES_FIXED, 'prize_fixed' => $fixed])->save();
+    publishForPool($tournament, $pot);
 
     foreach ($tournament->participants()->orderByDesc('rating')->get()->values() as $index => $participant) {
         $user = User::query()->find($participant->user_id);
         $user?->forceFill(['lud16' => in_array($index + 1, $withoutAddress, true) ? null : 'player'.($index + 1).'@wallet.example', 'name' => 'Seed '.($index + 1)])->save();
     }
 
-    fundPool($wallet, $tournament, $sats);
+    fundPool($pot, $tournament, $sats);
     playOutAsDirector($tournament);
 
     return $tournament->refresh();
@@ -136,17 +135,20 @@ function finishedPoolTournament(FakeNwcWallet $wallet, int $sats = 100_000, int 
 
 /**
  * Give a stored (not published) running tournament its 31923 and an open
- * pool, as TournamentPublisher and PrizePool::open() would.
+ * pot in its own wallet `$pot` (a fresh empty fake wallet by default), as
+ * the pot settings and TournamentPublisher would.
  */
-function publishForPool(Tournament $tournament): Tournament
+function publishForPool(Tournament $tournament, ?FakeNwcWallet $pot = null): Tournament
 {
+    $pot ??= ownPotWallet(0);
     $status = $tournament->status;
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
 
-    $tournament->forceFill(['status' => TournamentStatus::Draft, 'starts_at' => now()->addHours(2)])->save();
+    $tournament->forceFill(['status' => TournamentStatus::Draft, 'starts_at' => now()->addHours(2), 'pot_source' => Tournament::POT_WALLET,
+        'pot_nwc_uri' => $pot->uri('pay'), 'pot_can_receive' => true, 'pot_balance_sats' => intdiv($pot->balanceMsats, 1000), 'pot_balance_at' => now()])->save();
     $published = app(TournamentPublisher::class)->publish($tournament, $admin, CarbonImmutable::now()->addHour());
-    $published->forceFill(['status' => $status, 'pool_opened_at' => now()])->save();
+    $published->forceFill(['status' => $status, 'pool_opened_at' => $published->pool_opened_at ?? now()])->save();
 
     $published->refresh();
     app(TournamentPublisher::class)->republish($published);
@@ -155,34 +157,27 @@ function publishForPool(Tournament $tournament): Tournament
 }
 
 /**
- * `$sats` into the tournament's pool. By default a paid invoice written
- * straight to the book (fast: no NIP-47 round trips, no signatures) and
- * credited to the fake wallet; with `$zap` the real path, an anonymous zap
- * the fake wallet invoices and settles.
+ * `$sats` into the tournament's pot, its own wallet `$pot`. By default the
+ * wallet's balance simply grows and is read (fast: no invoice); with
+ * `$topUp` the real path, a top-up invoice the wallet makes and settles.
  */
-function fundPool(FakeNwcWallet $wallet, Tournament $tournament, int $sats, bool $zap = false): void
+function fundPool(FakeNwcWallet $pot, Tournament $tournament, int $sats, bool $topUp = false): void
 {
-    if ($zap) {
-        $payment = app(PoolInvoices::class)->anonymousZap($tournament->refresh(), $sats, 'test');
-        $wallet->settleIncoming($payment->payment_hash);
-        app(IncomingPayments::class)->check($payment, 0);
+    if ($topUp) {
+        $payment = app(PotTopUps::class)->invoice($tournament->refresh(), $sats);
+        $pot->settleIncoming($payment->payment_hash);
+        app(PotTopUps::class)->check($payment, 0);
 
         return;
     }
 
-    $fixture = Bolt11Fixture::make($sats * 1000, str_repeat('0', 64));
-    $payment = IncomingPayment::query()->create([
-        'pot' => IncomingPayment::tournamentPot($tournament->id), 'tournament_id' => $tournament->id, 'source' => 'anonymous',
-        'payment_hash' => $fixture['payment_hash'], 'bolt11' => $fixture['invoice'], 'amount_sats' => $sats,
-        'status' => IncomingPaymentStatus::Settled, 'expires_at' => now()->addHour(), 'settled_at' => now(), 'preimage' => $fixture['preimage'],
-    ]);
-    app(Ledger::class)->contribution($payment, $payment->pot);
-    $wallet->balanceMsats += $sats * 1000;
+    $pot->balanceMsats += $sats * 1000;
+    $tournament->forceFill(['pot_balance_sats' => intdiv($pot->balanceMsats, 1000), 'pot_balance_at' => now(), 'pot_balance_error' => null])->save();
 }
 
 /**
- * The own NWC wallet of a tournament's pot (P9 scope addition): a second
- * fake wallet on the same fake transport as the league's, holding `$sats`.
+ * The own NWC wallet of a tournament's pot: a fake wallet on the same fake
+ * transport as the league's (which tournaments never use), holding `$sats`.
  * Call fakeWallet() first.
  */
 function ownPotWallet(int $sats = 100_000): FakeNwcWallet
@@ -191,30 +186,4 @@ function ownPotWallet(int $sats = 100_000): FakeNwcWallet
     $wallet->balanceMsats = $sats * 1000;
 
     return app(FakeNwcTransport::class)->add($wallet);
-}
-
-/**
- * A finished single-elimination chess tournament of `$n` players whose pot
- * is held in `$own` (read once, as when it was connected), each player with
- * a Lightning address unless listed in `$withoutAddress` (by seed).
- *
- * @param  list<int>  $withoutAddress
- */
-function finishedOwnWalletTournament(FakeNwcWallet $own, int $n = 4, array $withoutAddress = []): Tournament
-{
-    $tournament = runningChess(TournamentFormat::SingleElimination, $n);
-    publishForPool($tournament);
-    $tournament->forceFill([
-        'pot_source' => Tournament::POT_WALLET, 'pot_nwc_uri' => $own->uri('pay', 'pot@wallet.example'), 'pot_lud16' => 'pot@wallet.example',
-        'pot_balance_sats' => intdiv($own->balanceMsats, 1000), 'pot_balance_at' => now(),
-    ])->save();
-
-    foreach ($tournament->participants()->orderByDesc('rating')->get()->values() as $index => $participant) {
-        $user = User::query()->find($participant->user_id);
-        $user?->forceFill(['lud16' => in_array($index + 1, $withoutAddress, true) ? null : 'player'.($index + 1).'@wallet.example', 'name' => 'Seed '.($index + 1)])->save();
-    }
-
-    playOutAsDirector($tournament);
-
-    return $tournament->refresh();
 }

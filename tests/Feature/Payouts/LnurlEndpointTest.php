@@ -4,14 +4,14 @@ use App\Enums\TournamentFormat;
 use App\Models\IncomingPayment;
 use App\Support\Lightning\Bolt11;
 use App\Support\Prizes\PoolInvoices;
-use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use Tests\Support\TestSigner;
 
 /*
 | The league's own Lightning address pool@<host> (P9, LUD-06/LUD-16 with
-| NIP-57): what wallets read, and the callback that turns a zap request
-| into an invoice of the right pot.
+| NIP-57), for the league reserve only: what wallets read, and the callback
+| that turns a zap request into an invoice of the reserve. A tournament pot
+| is its tournament's own wallet and is refused here.
 */
 
 test('the pay request names the LNURL server key and allows zaps; fail closed without the wallet', function () {
@@ -34,11 +34,10 @@ test('the pay request names the LNURL server key and allows zaps; fail closed wi
     $this->getJson('/.well-known/lnurlp/pool')->assertOk()->assertJson(['status' => 'ERROR'])->assertJsonMissing(['tag' => 'payRequest']);
 });
 
-test('a zap request through the callback gets an invoice for its pot whose description hash is the request as sent', function () {
+test('a zap request through the callback gets a reserve invoice whose description hash is the request as sent', function () {
     fakeWallet();
-    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
     $signer = new TestSigner;
-    $request = $signer->sign(9734, [['relays', 'wss://relay.example.org'], ['amount', '21000000'], ['p', (string) PrizePool::poolPubkey()], ['a', (string) $tournament->address()], ['k', '31923']], 'Good luck', now()->getTimestamp());
+    $request = $signer->sign(9734, [['relays', 'wss://relay.example.org'], ['amount', '21000000'], ['p', (string) LeagueKey::poolPubkey()]], 'Good luck', now()->getTimestamp());
     // As a client may send it: its own key order and spacing, which the hash must keep.
     $raw = json_encode($request, JSON_PRETTY_PRINT);
 
@@ -48,19 +47,21 @@ test('a zap request through the callback gets an invoice for its pot whose descr
 
     expect($invoice->amountMsats)->toBe(21_000_000)
         ->and($invoice->descriptionHash)->toBe(hash('sha256', $raw))
-        ->and($payment->pot)->toBe('tournament:'.$tournament->id)
+        ->and($payment->pot)->toBe(IncomingPayment::RESERVE)
         ->and($payment->zap_request)->toBe($raw)
         ->and($payment->comment)->toBe('Good luck');
 });
 
-test('the callback refuses what it cannot count, and a plain payment goes to the reserve', function () {
+test('the callback refuses what it cannot count, a tournament above all, and a plain payment goes to the reserve', function () {
     fakeWallet();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
-    $request = json_encode((new TestSigner)->sign(9734, [['amount', '5000'], ['p', (string) PrizePool::poolPubkey()], ['a', (string) $tournament->address()]], '', now()->getTimestamp()));
+    $request = json_encode((new TestSigner)->sign(9734, [['amount', '5000'], ['p', (string) LeagueKey::poolPubkey()]], '', now()->getTimestamp()));
+    $toTournament = json_encode((new TestSigner)->sign(9734, [['amount', '5000'], ['p', (string) LeagueKey::poolPubkey()], ['a', (string) $tournament->address()], ['k', '31923']], '', now()->getTimestamp()));
 
-    // Not whole sats; a request for another amount; a broken request.
+    // Not whole sats; a request for another amount; a broken request; a tournament (its pot is its own wallet).
     $this->getJson('/lnurlp/pool/callback?amount=1500')->assertJson(['status' => 'ERROR']);
     $this->getJson('/lnurlp/pool/callback?'.http_build_query(['amount' => 6000, 'nostr' => $request]))->assertJson(['status' => 'ERROR']);
+    $this->getJson('/lnurlp/pool/callback?'.http_build_query(['amount' => 5000, 'nostr' => $toTournament]))->assertJson(['status' => 'ERROR']);
     $this->getJson('/lnurlp/pool/callback?'.http_build_query(['amount' => 5000, 'nostr' => '{"kind":9734}']))->assertJson(['status' => 'ERROR']);
     expect(IncomingPayment::query()->count())->toBe(0);
 

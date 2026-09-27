@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\IncomingPaymentStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
@@ -8,7 +7,6 @@ use App\Models\IncomingPayment;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\HostResolver;
-use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Wallet\PinnedStreamFactory;
@@ -19,12 +17,11 @@ use Livewire\Livewire;
 use Phrity\Net\Uri;
 use Tests\Support\FakeHostResolver;
 use Tests\Support\FakeNwcTransport;
-use Tests\Support\TestSigner;
 
 /*
 | P9 security gate (2026-09-27), one regression per finding:
 | F1 a pot's NWC relay URL made the server open websockets anywhere (SSRF);
-| F2 the signed-zap path made invoices without the limiter;
+| F2 an invoice path without the limiter (the signed zap, now the top-up);
 | F3 a payout went to the profile's current Lightning address, not the approved one.
 */
 
@@ -108,11 +105,11 @@ test('F1: every live wallet check counts against the limit before it runs, on th
     $tournament = openTournament();
 
     $pages = [
-        'check' => fn () => Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('potEnabled', true)->set('potSource', 'wallet')->set('potUri', $refused),
+        'check' => fn () => Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('potEnabled', true)->set('potUri', $refused),
         'create' => fn () => Livewire::actingAs(organizer())->test('pages::admin.tournament-create')->set('name', 'Limit Cup')
-            ->set('potEnabled', true)->set('potSource', 'wallet')->set('potUri', $refused),
+            ->set('potEnabled', true)->set('potUri', $refused),
         'edit' => fn () => Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-            ->set('potEnabled', true)->set('potSource', 'wallet')->set('potUri', $refused),
+            ->set('potEnabled', true)->set('potUri', $refused),
     ];
     $actions = ['check' => 'checkPotConnection', 'create' => 'create', 'edit' => 'savePotSettings'];
 
@@ -134,16 +131,14 @@ test('F1: every live wallet check counts against the limit before it runs, on th
         ->and($tournament->refresh()->pot_source)->toBeNull();
 });
 
-test('F2: thirty signed zaps in a minute make at most the per-user limit of invoices', function () {
+test('F2: thirty top-ups in a minute make at most the per-user limit of invoices, whatever the network says', function () {
     fakeWallet();
     $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
-    $signer = new TestSigner;
-    $player = User::factory()->withPubkey($signer->pubkey)->create();
+    $player = User::factory()->create();
     $panel = Livewire::actingAs($player)->test('tournament-pool', ['tournament' => $tournament])->set('amount', 2100);
 
     for ($i = 0; $i < 30; $i++) {
-        $templates = $panel->instance()->prepareZap(app(PoolInvoices::class));
-        $panel->call('submitZap', json_encode($signer->signTemplates($templates)))->call('closeInvoice');
+        $panel->call('topUp')->call('closeInvoice');
     }
 
     expect(IncomingPayment::query()->count())->toBe((int) config('esports.wallet.open_invoices_per_user'))
@@ -155,15 +150,15 @@ test('F2: thirty signed zaps in a minute make at most the per-user limit of invo
     $this->travel(2)->minutes();
 
     for ($i = 0; $i < 30; $i++) {
-        $templates = $panel->instance()->prepareZap(app(PoolInvoices::class));
-        $panel->call('submitZap', json_encode($signer->signTemplates($templates)))->call('closeInvoice');
+        $panel->call('topUp')->call('closeInvoice');
     }
 
     expect(IncomingPayment::query()->count())->toBe((int) config('esports.wallet.invoices_per_minute'));
 });
 
 test('F3: a changed Lightning address is not paid until an admin approves it', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     $admin = anAdmin();
@@ -204,14 +199,15 @@ test('hardening: the pot settings check the tournament again under the row lock'
     // The tournament is called off while the wallet is being checked.
     $own->onRequest = fn () => Tournament::query()->whereKey($tournament->id)->update(['status' => TournamentStatus::Cancelled]);
 
-    expect(fn () => app(PrizePool::class)->configurePot($tournament, $tournament->creator, Tournament::POT_WALLET, $own->uri('pay'), null, [50, 30, 20]))
+    expect(fn () => app(PrizePool::class)->configurePot($tournament, $tournament->creator, true, $own->uri('pay'), null, Tournament::PRIZES_PERCENT, [50, 30, 20]))
         ->toThrow(TournamentRuleViolation::class, __('This tournament has ended; its pool can no longer change.'))
         ->and($tournament->refresh()->pot_source)->toBeNull()
         ->and($tournament->pot_nwc_uri)->toBeNull();
 });
 
 test('re-gate R2: an admin approves only the address they were shown, not one swapped in since', function () {
-    $wallet = fakeWallet();
+    fakeWallet();
+    $wallet = ownPotWallet(0);
     fakeLightningAddresses($wallet);
     $tournament = finishedPoolTournament($wallet, 10_000, 2);
     $page = Livewire::actingAs(anAdmin())->test('pages::admin.payouts', ['tournamentId' => $tournament->id])->call('approve');
@@ -247,24 +243,4 @@ test('re-gate R1: a forged X-Forwarded-For on an on-forge.com host does not pick
 
     expect(array_count_values($statuses)[429] ?? 0)->toBe(1)
         ->and(end($statuses))->toBe(429);
-});
-
-test('re-gate: a pot with a pending league zap is not moved to an own wallet or removed', function () {
-    fakeWallet();
-    $own = ownPotWallet();
-    $tournament = publishForPool(runningChess(TournamentFormat::SingleElimination, 4));
-    $admin = anAdmin();
-    $payment = app(PoolInvoices::class)->anonymousZap($tournament->refresh(), 7_000, 'late zap');
-    $move = fn (?string $source) => app(PrizePool::class)->configurePot($tournament->refresh(), $admin, $source, $source === null ? null : $own->uri('pay'), null, $tournament->prizeSplit());
-
-    expect($payment->status)->toBe(IncomingPaymentStatus::Pending)
-        ->and(fn () => $move(Tournament::POT_WALLET))->toThrow(TournamentRuleViolation::class, 'still waiting to be paid')
-        ->and(fn () => $move(null))->toThrow(TournamentRuleViolation::class, 'still waiting to be paid')
-        ->and($tournament->refresh()->pot_source)->toBeNull()
-        ->and($tournament->pot_nwc_uri)->toBeNull();
-
-    // Positive control: once that invoice expired unpaid, the pot may move.
-    $payment->forceFill(['status' => IncomingPaymentStatus::Expired])->save();
-    $move(Tournament::POT_WALLET);
-    expect($tournament->refresh()->pot_source)->toBe(Tournament::POT_WALLET);
 });
