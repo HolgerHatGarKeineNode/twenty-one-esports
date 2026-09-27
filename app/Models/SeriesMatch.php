@@ -252,7 +252,7 @@ class SeriesMatch extends Model
 
     /**
      * The admins' open cases (the disputes queue): a disputed series, a
-     * reported no-show, a report nobody confirmed or disputed for
+     * reported no-show (not a casual 1v1's claim, P23), a report nobody confirmed or disputed for
      * `esports.tournaments.unanswered_report_hours` (P18), and a tournament
      * series nobody reported by its report deadline (P18, `overdue_at`).
      *
@@ -263,7 +263,8 @@ class SeriesMatch extends Model
     {
         $query->where(fn (Builder $query) => $query
             ->where('status', SeriesStatus::Disputed)
-            ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'))
+            // A casual 1v1's no-show claim (P23) is the players' own: contested or forfeited by the clock, never an admin's case.
+            ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at')->whereNull('origin'))
             ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('overdue_at'))
             ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Reported)
                 ->whereHas('latestReport', fn (Builder $report) => $report->where('created_at', '<=', self::unansweredSince()))));

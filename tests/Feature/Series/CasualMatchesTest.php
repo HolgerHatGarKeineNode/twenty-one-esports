@@ -7,6 +7,7 @@ use App\Events\SeriesMatchChanged;
 use App\Events\UserNotified;
 use App\Jobs\PublishNostrEvent;
 use App\Jobs\SendNostrDm;
+use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Series\CasualMatches;
@@ -209,4 +210,22 @@ test('a casual match keeps its lobby off the server and its room renders in ever
         ->and(casualRefusal(fn () => app(SeriesService::class)->reportNoShow($match, $anna)))->toBe('casual_match')
         ->and($match->refresh()->lobby_name)->toBeNull()
         ->and(SeriesQueueEntry::query()->count())->toBe(0);
+});
+
+test('a casual no-show claim never reaches the admin queue, while a series no-show report does', function () {
+    [$match, , $guest] = casualStarted();
+    $this->travel(5)->minutes();
+    $match = app(CasualMatches::class)->claimNoShow($match, $guest);
+    $series = SeriesMatch::factory()->accepted()->create(['noshow_side' => 'challenger', 'noshow_reported_at' => now()]);
+
+    expect(SeriesMatch::query()->openCase()->pluck('id')->all())->toBe([$series->id])
+        ->and(SeriesService::isOpenCase($match))->toBeFalse()
+        ->and(SeriesService::isOpenCase($series))->toBeTrue();
+
+    // Uncontested, the clock decides it; still no case for an admin.
+    $this->travel(5)->minutes();
+    app(CasualScheduler::class)->tick();
+
+    expect(SeriesMatch::query()->openCase()->pluck('id')->all())->toBe([$series->id])
+        ->and($match->refresh()->resolution)->toBe(SeriesResolution::Forfeit);
 });

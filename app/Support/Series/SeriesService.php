@@ -1147,7 +1147,7 @@ final class SeriesService
     public static function isOpenCase(SeriesMatch $match): bool
     {
         return $match->status === SeriesStatus::Disputed
-            || ($match->status === SeriesStatus::Accepted && ($match->noshow_reported_at !== null || $match->overdue_at !== null))
+            || ($match->status === SeriesStatus::Accepted && (($match->noshow_reported_at !== null && ! $match->isCasualPairing()) || $match->overdue_at !== null))
             || $match->isUnansweredReport();
     }
 
