@@ -42,7 +42,7 @@ Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `dai
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 5 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch), DE and
+**Reels**: 8 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`.
 
@@ -94,14 +94,14 @@ rated season or a date.
 
 | Day | Post (texts in `src/copy/posts.md`) | Image / video |
 |---|---|---|
-| 0 | Nostr login | `posters/*/login-*` |
+| 0 | Nostr login | `posters/*/login-*` + `reels/*/login-*.mp4` |
 | 1 | Blitz chess | `posters/*/blitz-*` + `reels/*/blitz-*.mp4` |
 | 2 | Watch live | `posters/*/watch-*` + `reels/*/watch-*.mp4` |
 | 3 | Fernschach | `posters/*/daily-*` + `reels/*/daily-*.mp4` |
 | 4 | Clans | `posters/*/clans-*` + `reels/*/clans-*.mp4` |
-| 5 | Tournaments | `posters/*/tournaments-*` (stream banner for the stream) |
+| 5 | Tournaments | `posters/*/tournaments-*` + `reels/*/tournaments-*.mp4` (stream banner for the stream) |
 | 6 | Invite friends | `posters/*/invite-*` + `reels/*/invite-*.mp4` |
-| 7 (optional) | Open source | `posters/*/opensource-*`, no reel |
+| 7 (optional) | Open source | `posters/*/opensource-*` + `reels/*/opensource-*.mp4` |
 | ∞ | Rotate blitz, watch live, invite friends one-liners weekly, no new claims | the same posters |
 
 Per channel: Nostr gets the long text with the square or 1200×630 poster (or the reel as
@@ -115,7 +115,7 @@ From the repo root. The render scripts run the position and string checks first.
 ```bash
 node docs/promo/src/render-posters.mjs                 # all posters (70), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (10), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (16), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png

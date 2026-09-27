@@ -4,9 +4,10 @@
  * Local Nostr posting bridge for the promo kit.
  *
  * Run from the repo root:
- *   php -S 127.0.0.1:8919 docs/promo/src/nostr-bridge.php
+ *   docs/promo/src/bridge-ctl.sh start    (or the Start button in the gallery)
  *
- * Serves ONLY on localhost. Boots the Laravel app to reuse the project signer
+ * Serves ONLY on localhost, and only to requests carrying the per-start token
+ * (see bridge-ctl.sh, which starts and stops it). Boots the Laravel app to reuse the project signer
  * (TWENTYONE_NOSTR_NSEC from .env — the secret never appears in output, logs
  * or any committed file). Endpoints:
  *
@@ -21,25 +22,70 @@
 
 declare(strict_types=1);
 
+use App\Support\Nostr\NostrKeys;
+use App\Support\TwentyOne\RelayPublisher;
+use App\Support\TwentyOne\TwentyOneSigner;
+use Illuminate\Contracts\Console\Kernel;
+use swentel\nostr\Event\Event;
+
 error_reporting(E_ALL & ~E_DEPRECATED);
 ini_set('display_errors', '0');
 
 $REPO = dirname(__DIR__, 3);
 $PROMO = dirname(__DIR__);
 
+// Who may talk to the bridge. The gallery is opened as a plain file in Firefox
+// (Origin "null") or served on :8734. "null" can be sent by a sandboxed iframe on
+// any web site, and with `Access-Control-Allow-Origin: *` any page open in the same
+// browser could have signed and published notes as the project. So every request
+// except the bare liveness check must carry the per-start token (X-Bridge-Token)
+// that bridge-ctl.sh draws and hands to the gallery in the URL fragment.
+const ALLOWED_ORIGINS = ['null', 'http://127.0.0.1:8734', 'http://localhost:8734'];
+const ALLOWED_HOSTS = ['127.0.0.1:8919', 'localhost:8919'];
+$TOKEN = (string) getenv('PROMO_BRIDGE_TOKEN');
+
 function json_response(int $code, array $body): void
 {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
-    header('Access-Control-Allow-Origin: *');
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if (in_array($origin, ALLOWED_ORIGINS, true)) {
+        header('Access-Control-Allow-Origin: '.$origin);
+        header('Vary: Origin');
+    }
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type, X-Bridge-Token');
     echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     exit;
 }
 
+// Without a token nothing can be authorised: start the bridge with bridge-ctl.sh.
+if (strlen($TOKEN) < 32) {
+    json_response(503, ['error' => 'no token; start the bridge with docs/promo/src/bridge-ctl.sh start']);
+}
+
+// DNS rebinding: a foreign name resolving to 127.0.0.1 arrives with its own Host.
+if (! in_array($_SERVER['HTTP_HOST'] ?? '', ALLOWED_HOSTS, true)) {
+    json_response(403, ['error' => 'unexpected host']);
+}
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? null;
+if ($origin !== null && ! in_array($origin, ALLOWED_ORIGINS, true)) {
+    json_response(403, ['error' => 'origin not allowed']);
+}
+
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     json_response(204, []);
+}
+
+// Liveness without the token: the gallery shows "running, not connected" and offers to connect.
+$authorised = hash_equals($TOKEN, (string) ($_SERVER['HTTP_X_BRIDGE_TOKEN'] ?? ''));
+$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if (! $authorised) {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && rtrim((string) $path, '/') === '/status') {
+        json_response(200, ['running' => true, 'connected' => false]);
+    }
+    json_response(401, ['error' => 'token missing or wrong; reconnect from the gallery']);
 }
 
 // Bind guard: loopback only.
@@ -51,12 +97,6 @@ if (! in_array($remote, ['127.0.0.1', '::1'], true)) {
 require $REPO.'/vendor/autoload.php';
 $app = require $REPO.'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
-
-use App\Support\Nostr\NostrKeys;
-use App\Support\TwentyOne\RelayPublisher;
-use App\Support\TwentyOne\TwentyOneSigner;
-use Illuminate\Contracts\Console\Kernel;
-use swentel\nostr\Event\Event;
 
 $BLOSSOM_SERVERS = ['https://blossom.einundzwanzig.space', 'https://blossom.primal.net'];
 
@@ -121,6 +161,8 @@ $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($uri === '/status' || $uri === '/status/')) {
     json_response(200, [
+        'running' => true,
+        'connected' => true,
         'npub' => $npub,
         'relays' => $relays,
         'blossom' => $BLOSSOM_SERVERS,

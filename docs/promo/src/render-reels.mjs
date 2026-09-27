@@ -33,7 +33,10 @@ const TL = Object.fromEntries(['legal', 'opera', 'qgd', 'qgd7', 'italian'].map((
 const music = {};
 for (const line of fs.readFileSync(path.join(SRC, 'reels/MUSIC.md'), 'utf8').split('\n')) {
   const m = line.match(/^\| ([a-z-]+) \| `([^`]+)` \|$/);
-  if (m) music[m[1]] = path.join(ROOT, 'assets/music', m[2]);
+  if (!m) continue;
+  // Reels use instrumentals only (MUSIC.md): a vocal track is refused, not rendered.
+  if (!/^instrumental\/[^/]+$/.test(m[2])) { console.error(`FAIL music for ${m[1]}: ${m[2]} is not an instrumental (assets/music/instrumental/)`); process.exit(1); }
+  music[m[1]] = path.join(ROOT, 'assets/music', m[2]);
 }
 
 /* Window of `dur` seconds with the highest mean short-term loudness. */

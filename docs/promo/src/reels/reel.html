@@ -395,6 +395,208 @@ S.watch = [
   { html: endCard, update: endUpdate },
 ];
 
+/* ===== login ===== */
+const KEY_SVG = (w) => `<svg viewBox="0 0 16 9" width="${w}" height="${Math.round(w * 9 / 16)}" shape-rendering="crispEdges" aria-hidden="true" style="display:block;flex:none">
+  <path fill="#F7931A" d="M2 1h4v1h1v2h8v2h-1v2h-2V6h-1v1h-2V6H7v2H6v1H2V8H1V2h1z"/>
+  <path fill="#F9B25F" d="M2 1h4v1H2zM1 2h1v2H1zM7 4h8v1H7z"/>
+  <path fill="#B9640A" d="M2 8h4v1H2zM6 7h1v1H6zM13 6h1v2h-1zM10 6h1v1h-1z"/>
+  <path fill="#0A0A0B" d="M3 3h2v3H3z"/></svg>`;
+const G_MARK = '<span aria-hidden="true" style="flex:none;width:44px;height:44px;border-radius:50%;background:#fff;color:#17120A;display:grid;place-items:center;font:800 28px/1 var(--disp)">G</span>';
+const loginCard = (l) => `<div class="center" style="position:absolute"><div class="card cube" data-card style="width:880px;padding:48px;display:grid;row-gap:28px;--d:28px">
+    <b style="font:800 56px/1.1 var(--disp)">${E(UI('logInToPlay', l))}</b>
+    <div class="muted" style="font:500 28px/1.45 var(--mono)">${E(UI('newHere', l))}<br>${E(UI('noPassword', l))}</div>
+    <div class="btnx" data-g style="justify-content:flex-start;gap:22px">${G_MARK}<span>${E(UI('google', l))}</span></div>
+    <div class="btnx ghost" data-n style="justify-content:flex-start;gap:22px;text-align:left">${KEY_SVG(56)}<span style="display:grid;row-gap:6px"><span>${E(UI('nostrExt', l))}</span><span class="muted" style="font:500 24px/1.3 var(--mono)">${E(UI('nostrFor', l))}</span></span></div>
+    <div data-wait class="row" style="font:700 28px/1.2 var(--mono);color:var(--btc-hi);min-height:40px"><i data-dot style="width:16px;height:16px;border-radius:50%;background:var(--btc-hi);flex:none"></i><span>${E(UI('waitingConfirm', l))}</span></div>
+  </div></div>`;
+S.login = [
+  { html: () => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:112px">
+      <div class="input" data-pw style="width:760px;position:relative;font-size:72px;letter-spacing:.14em;color:var(--ink-2)"><span data-dots></span><i data-strike style="position:absolute;left:24px;right:24px;top:50%;height:12px;margin-top:-6px;background:var(--loss);transform-origin:left"></i></div>
+      <div data-key style="position:relative;width:720px;height:405px;filter:drop-shadow(24px 24px 0 var(--btc-frame))">${KEY_SVG(720)}</div></div>`,
+    update(root, t) {
+      root.querySelector('[data-dots]').innerHTML = '•'.repeat(Math.round(8 * seg(t, 0.1, 0.8))) + (t < 0.9 ? '<i class="caret"></i>' : '');
+      root.querySelector('[data-strike]').style.transform = `scaleX(${eo(seg(t, 0.9, 1.2))})`;
+      const pw = root.querySelector('[data-pw]'), f = seg(t, 1.4, 1.9);
+      pw.style.opacity = 1 - f; pw.style.transform = `translateY(${f * f * 260}px) rotate(${f * 7}deg)`;
+      const k = root.querySelector('[data-key]'), p = back(seg(t, 1.6, 2.1));
+      k.style.opacity = t < 1.6 ? 0 : 1;
+      k.style.transform = `translateY(${(1 - p) * -520 + Math.sin(Math.max(0, t - 2.1) * 2.4) * 10}px) rotate(${(1 - p) * -12}deg)`;
+    } },
+  { html: loginCard,
+    update(root, t) {
+      const n = root.querySelector('[data-n]'); const b = n.getBoundingClientRect(), R = root.getBoundingClientRect();
+      const press = cursorTo(root, t, 0.4, 1.1, [900, 1040], [b.left - R.left + b.width * 0.7, b.top - R.top + b.height * 0.35], 1.3);
+      n.classList.toggle('pressed', press);
+      n.style.borderColor = t > 1.3 ? 'var(--btc)' : '';
+      const w = root.querySelector('[data-wait]'); w.style.opacity = t < 1.5 ? 0 : 1;
+      root.querySelector('[data-dot]').style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(249,178,95,.25)`;
+    } },
+  { html: loginCard,
+    update(root, t) {
+      root.querySelector('[data-wait]').style.opacity = 0;
+      root.querySelector('[data-n]').style.opacity = 1 - 0.55 * eo(seg(t, 0.2, 0.6));
+      const g = root.querySelector('[data-g]'); const b = g.getBoundingClientRect(), R = root.getBoundingClientRect();
+      g.classList.toggle('pressed', cursorTo(root, t, 0.5, 1.2, [120, 1040], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.4], 1.4));
+      g.style.boxShadow = t > 1.4 ? `0 0 0 ${Math.round(10 * eo(seg(t, 1.4, 1.8)))}px rgba(247,147,26,.3)` : 'none';
+    } },
+  { html: (l) => phone(`<div data-a style="display:grid;justify-items:center;row-gap:24px;padding-top:120px">${av('zap_zoe', 240)}<b style="font:800 44px/1.1 var(--disp)">zap_zoe</b><span class="muted" style="font:500 24px/1.4 var(--mono);text-align:center">${E(UI('newHere', l))}</span></div>
+      <div data-l class="card" style="padding:28px;display:grid;row-gap:20px;margin-top:48px">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap;row-gap:8px"><b style="font:700 32px/1.2 var(--mono)">${E(UI('findOpponent', l))}</b><span class="dim" style="font:500 22px/1.2 var(--mono)">${E(UI('blitzLive', l))}</span></div>
+        <div class="row" style="background:var(--well);padding:20px"><i class="dotlive" data-pulse></i><span style="font:700 26px/1.2 var(--mono)">${E(UI('playersSearching', l))}</span></div>
+      </div>`),
+    update(root, t) {
+      bob(root, t);
+      const a = root.querySelector('[data-a]'), p = back(seg(t, 0.1, 0.6)); a.style.opacity = clamp(p * 1.5); a.style.transform = `scale(${0.6 + 0.4 * p})`;
+      const lc = root.querySelector('[data-l]'), q = eo(seg(t, 0.9, 1.4)); lc.style.opacity = q; lc.style.transform = `translateY(${(1 - q) * 80}px)`;
+      root.querySelector('[data-pulse]').style.boxShadow = `0 0 0 ${Math.round(10 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(74,222,128,.25)`;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== tournaments ===== */
+const TP = ['satsjaeger', 'hodlqueen', 'kai_blitz', 'zap_zoe', 'taproot_tim', 'lnurl_lena', 'orange_olga', 'hodl_hanna', 'sat_sepp', 'dca_doris', 'nodebert'];
+/* A real block hash (height 900000, mempool.space), so the mock shows what a draw block looks like. */
+const DRAW_HASH = '000000000000000000010538edbfd2d5b809a33dd83f284aeea41c6d0d96968a';
+S.tournaments = [
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card cube" style="width:900px;padding:40px;display:grid;row-gap:28px;--d:28px">
+      <div class="row" style="justify-content:space-between"><b style="font:800 48px/1.1 var(--disp)">${E(UI('whoPlays', l))}</b><span class="row" style="gap:12px;font:700 26px/1.2 var(--mono);color:var(--win)"><i class="dotlive" data-pulse></i>${E(UI('signupOpen', l))}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">${Array.from({ length: 16 }, (_, i) => `<div data-s="${i}" style="height:176px;border:3px dashed var(--dash);display:grid;justify-items:center;align-content:center;row-gap:10px;position:relative"><span data-o class="dim" style="font:500 20px/1.2 var(--mono);text-align:center">${E(UI(i === TP.length ? 'yourSpot' : 'openSpot', l))}</span>${i < TP.length ? `<div data-f style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:10px;background:var(--raised)">${av(TP[i], 88)}<span style="font:700 18px/1.2 var(--mono)">${TP[i]}</span></div>` : ''}</div>`).join('')}</div>
+    </div></div>`,
+    update(root, t) {
+      root.querySelector('[data-pulse]').style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(74,222,128,.25)`;
+      root.querySelectorAll('[data-s]').forEach((c, i) => {
+        const f = c.querySelector('[data-f]');
+        if (f) { const p = back(seg(t, 0.2 + i * 0.17, 0.5 + i * 0.17)); f.style.opacity = clamp(p * 1.4); f.style.transform = `scale(${0.5 + 0.5 * p})`; c.style.borderColor = p > 0.9 ? 'transparent' : ''; }
+        if (i === TP.length) { const on = t > 2.2; c.style.borderColor = on ? 'var(--btc)' : ''; c.style.borderStyle = on ? 'solid' : 'dashed'; c.querySelector('[data-o]').style.color = on ? 'var(--btc)' : ''; c.style.boxShadow = on ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(247,147,26,.25)` : 'none'; }
+      });
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card cube" style="width:880px;padding:48px;display:grid;row-gap:32px;--d:28px">
+      <div class="row" style="gap:28px">${KEY_SVG(160)}<span class="muted" style="font:500 30px/1.45 var(--mono)">${E(UI('confirmNostr', l))}</span></div>
+      <div class="btnx" data-btn></div>
+      <div data-wait class="row" style="font:700 28px/1.2 var(--mono);color:var(--btc-hi);min-height:40px"><i data-dot style="width:16px;height:16px;border-radius:50%;background:var(--btc-hi);flex:none"></i><span>${E(UI('waitingConfirm', l))}</span></div>
+      <div data-in class="card" style="padding:24px 28px;border-color:var(--win);display:flex;align-items:center;gap:20px;background:var(--well)">${av('zap_zoe', 72)}<b style="font:700 34px/1.2 var(--mono)">${E(UI('isIn', l, { a: 'zap_zoe' }))}</b></div>
+    </div></div>`,
+    update(root, t, len, l) {
+      const btn = root.querySelector('[data-btn]'); btn.textContent = UI('signUp', l);
+      const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.3, 1.0, [880, 1040], [b.left - R.left + b.width * 0.6, b.top - R.top + b.height * 0.35], 1.2));
+      btn.style.opacity = t > 2.2 ? 0.4 : 1;
+      const w = root.querySelector('[data-wait]'); w.style.opacity = t > 1.3 && t < 2.2 ? 1 : 0;
+      root.querySelector('[data-dot]').style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(249,178,95,.25)`;
+      const i = root.querySelector('[data-in]'), p = back(seg(t, 2.2, 2.6)); i.style.opacity = t < 2.2 ? 0 : 1; i.style.transform = `translateY(${(1 - p) * 60}px) scale(${0.9 + 0.1 * p})`;
+    } },
+  { html: (l) => {
+      const seeds = [['satsjaeger', 1184], ['hodlqueen', 1127], ['kai_blitz', 1090], ['zap_zoe', 1052], ['taproot_tim', 1031], ['lnurl_lena', 1000], ['orange_olga', 982], ['hodl_hanna', 961]];
+      const pairs = [[0, 7], [3, 4], [1, 6], [2, 5]];
+      const row = (n, e, k) => `<div class="row" style="gap:12px;padding:10px 14px;background:var(--well);height:64px"><span class="dim" style="font:700 22px/1 var(--mono);width:28px;text-align:right">${k + 1}</span>${av(n, 40)}<span style="font:700 22px/1.2 var(--mono);flex:1">${n}</span><span class="dim" style="font:500 20px/1 var(--mono)">${e}</span></div>`;
+      return `<div class="center" style="position:absolute"><div class="card cube" style="width:920px;padding:40px;display:grid;row-gap:28px;--d:28px">
+        <div style="display:grid;row-gap:10px"><b style="font:800 48px/1.1 var(--disp)">${E(UI('theDraw', l))}</b><span class="dim" style="font:500 24px/1.2 var(--mono)">${E(UI('seeding', l))}: ${E(UI('byEloAtClose', l))}</span></div>
+        <div style="background:var(--well);border:2px solid var(--line);padding:20px 24px;display:grid;row-gap:8px"><span class="lbl">${E(UI('blockHash', l))}</span><b data-hash style="font:700 34px/1.35 var(--mono);color:var(--btc);word-break:break-all;min-height:92px"></b></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+          <div style="display:grid;row-gap:8px">${seeds.map(([n, e], k) => `<div data-seed="${k}">${row(n, e, k)}</div>`).join('')}</div>
+          <div style="display:grid;row-gap:8px;align-content:start">${pairs.map(([a, b2], m) => `<div data-pair="${m}" style="border-left:6px solid var(--btc);display:grid;row-gap:0">${row(seeds[a][0], seeds[a][1], a)}${row(seeds[b2][0], seeds[b2][1], b2)}</div>`).join('')}</div>
+        </div></div></div>`;
+    },
+    update(root, t) {
+      const lock = seg(t, 0.3, 1.5), n = Math.round(64 * lock);
+      let s = DRAW_HASH.slice(0, n);
+      for (let k = n; k < 64 && t >= 0.3; k++) s += '0123456789abcdef'[Math.floor(hash(k * 3 + Math.floor(t * 30)) * 16)];
+      const h = root.querySelector('[data-hash]'); h.textContent = s; h.style.color = lock >= 1 ? 'var(--btc)' : 'var(--ink-3)';
+      root.querySelectorAll('[data-seed]').forEach((e) => { e.style.opacity = 1 - 0.6 * eo(seg(t, 1.6, 2.0)); });
+      root.querySelectorAll('[data-pair]').forEach((e, m) => { const p = eo(seg(t, 1.6 + m * 0.18, 2.0 + m * 0.18)); e.style.opacity = p; e.style.transform = `translateX(${(1 - p) * 40}px)`; });
+    } },
+  { html: (l) => {
+      const side = (n, g) => `<div data-side="${n}" class="row" style="gap:18px;padding:20px 24px;background:var(--well)">${av(n, 64)}<b style="font:700 32px/1.2 var(--mono);flex:1">${n}</b><span data-win style="font:700 22px/1.2 var(--mono);color:var(--win)"></span><b style="font:800 56px/1 var(--disp);font-variant-numeric:tabular-nums">${g}</b></div>`;
+      return `<div class="center" style="position:absolute"><div class="card cube" style="width:880px;padding:44px;display:grid;row-gap:24px;--d:28px">
+        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp)">${E(UI('round1', l))}</b><span class="dim" style="font:500 24px/1.2 var(--mono)">${E(UI('playersReport', l))}</span></div>
+        ${side('satsjaeger', 2)}${side('hodlqueen', 1)}
+        <div class="row" style="gap:16px;flex-wrap:wrap"><span data-chip style="font:700 24px/1 var(--mono);color:var(--on-btc);background:var(--btc-hi);padding:12px 16px">${E(UI('reported', l))}</span><span data-wait style="font:700 26px/1.2 var(--mono);color:var(--btc-hi)">${E(UI('waitingConfirm', l))}</span></div>
+        <div class="btnx" data-btn>${E(UI('confirm', l))}</div>
+        <div data-next class="row" style="gap:16px;font:700 28px/1.2 var(--mono);color:var(--ink-2)"><span>${E(UI('semifinal', l))}</span><i style="flex:1;height:6px;background:var(--btc)"></i>${av('satsjaeger', 56)}<b style="color:var(--ink)">satsjaeger</b></div>
+      </div></div>`;
+    },
+    update(root, t, len, l) {
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.5, 1.2, [900, 1050], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.35], 1.4));
+      const done = t > 1.5;
+      btn.style.background = done ? 'var(--win)' : ''; btn.style.opacity = done ? 0.5 : 1;
+      root.querySelector('[data-wait]').style.opacity = done ? 0 : 1;
+      const chip = root.querySelector('[data-chip]'); chip.style.background = done ? 'var(--win)' : 'var(--btc-hi)';
+      const w = root.querySelector('[data-side="satsjaeger"]'); w.style.boxShadow = done ? 'inset 8px 0 0 var(--win)' : 'none';
+      w.querySelector('[data-win]').textContent = done ? UI('winner', l) : '';
+      root.querySelector('[data-side="hodlqueen"]').style.opacity = done ? 0.5 : 1;
+      const nx = root.querySelector('[data-next]'), p = eo(seg(t, 1.9, 2.4)); nx.style.opacity = p; nx.style.transform = `translateX(${(1 - p) * -80}px)`;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== open source ===== */
+const REPO = 'github.com/HolgerHatGarKeineNode/twenty-one-esports';
+/* app/Support/Tournaments/DrawOrder.php lines 18-29, verbatim (the class indent of 4 spaces removed). */
+const DRAW_SRC = [
+  'public static function order(string $blockHash, array $pubkeys): array',
+  '{',
+  '    $hash = strtolower($blockHash);',
+  '    $digests = [];',
+  '',
+  '    foreach ($pubkeys as $pubkey) {',
+  "        $digests[strtolower($pubkey)] = hash('sha256', $hash.':'.strtolower($pubkey));",
+  '    }',
+  '',
+  '    asort($digests, SORT_STRING);',
+  '',
+  '    return array_map(strval(...), array_keys($digests));',
+];
+const hlPhp = (line) => E(line)
+  .replace(/\b(public|static|function|string|array|foreach|as|return)\b/g, '<span style="color:var(--btc)">$1</span>')
+  .replace(/(\$\w+)/g, '<span style="color:var(--chess)">$1</span>')
+  .replace(/(&#39;[^&]*&#39;)/g, '<span style="color:var(--win)">$1</span>');
+S.opensource = [
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card" style="width:880px;display:grid">
+      <div class="row" style="padding:28px 36px;gap:20px;border-bottom:2px solid var(--line)"><div class="logo" style="--logo:40px"><span class="mark">21</span>TWENTY ONE<small>esports</small></div></div>
+      ${['rules', 'howVerified', 'openSource', 'legal'].map((k) => `<div data-f="${k}" style="padding:0 36px;min-height:132px;display:flex;align-items:center;border-bottom:2px solid var(--hairline);font:700 40px/1.2 var(--mono);color:var(--ink-2)"><span>${E(UI(k, l))}</span></div>`).join('')}
+    </div></div>`,
+    update(root, t) {
+      const f = root.querySelector('[data-f="openSource"]'); const b = f.getBoundingClientRect(), R = root.getBoundingClientRect();
+      const press = cursorTo(root, t, 0.5, 1.3, [860, 1040], [b.left - R.left + 300, b.top - R.top + b.height * 0.35], 1.5);
+      const on = t > 1.5;
+      f.style.color = on ? 'var(--ink)' : ''; f.style.background = press ? 'var(--raised)' : (on ? 'rgba(247,147,26,.08)' : '');
+      f.querySelector('span').style.boxShadow = on ? `0 ${Math.round(8 * eo(seg(t, 1.5, 1.8)))}px 0 var(--btc)` : 'none';
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card cube" style="width:900px;display:grid;--d:28px;--cube-face:var(--chess-deep)">
+      <div style="padding:32px 36px;display:grid;row-gap:10px;border-bottom:2px solid var(--line)">
+        <span class="muted" style="font:500 26px/1.2 var(--mono)">github.com/HolgerHatGarKeineNode/</span>
+        <div class="row" style="justify-content:space-between;gap:16px"><b style="font:800 44px/1.1 var(--disp)">twenty-one-esports</b><span style="font:700 22px/1 var(--mono);color:var(--ink-2);border:2px solid var(--dash);padding:8px 14px">Public</span></div>
+      </div>
+      ${['app/', 'config/', 'database/', 'lang/', 'resources/', 'routes/', 'tests/', 'LICENSE', 'README.md'].map((n, i) => `<div data-r="${i}" class="row" style="padding:18px 36px;border-bottom:2px solid var(--hairline);font:500 32px/1.2 var(--mono)"><i style="width:28px;height:22px;flex:none;background:${n.endsWith('/') ? 'var(--chess-deep)' : 'var(--dash)'}"></i><span>${n}</span></div>`).join('')}
+    </div></div>`,
+    update(root, t) { root.querySelectorAll('[data-r]').forEach((e, i) => { const p = eo(seg(t, 0.2 + i * 0.12, 0.6 + i * 0.12)); e.style.opacity = p; e.style.transform = `translateX(${(1 - p) * 60}px)`; }); } },
+  { html: () => `<div class="center" style="position:absolute"><div class="card cube" style="width:940px;background:#0F0F12;display:grid;--d:28px;--cube-face:var(--chess-deep)">
+      <div style="font:700 24px/1.2 var(--mono);color:var(--ink-3);padding:22px 28px;border-bottom:2px solid var(--line)">app/Support/Tournaments/DrawOrder.php</div>
+      <div style="padding:20px 0">${DRAW_SRC.map((line, i) => `<div data-ln="${i}" style="display:grid;grid-template-columns:64px 1fr;font:500 24px/1.6 var(--mono)"><i style="font-style:normal;color:var(--dash);text-align:right;padding-right:18px">${18 + i}</i><code style="font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;padding-right:24px;font-variant-ligatures:none">${hlPhp(line) || ' '}</code></div>`).join('')}</div>
+    </div></div>`,
+    update(root, t) {
+      root.querySelectorAll('[data-ln]').forEach((e, i) => {
+        e.style.opacity = t >= 0.15 + i * 0.11 ? 1 : 0;
+        e.style.background = i === 6 && t > 1.9 ? `rgba(247,147,26,${0.14 + 0.06 * Math.sin((t - 1.9) * 6)})` : 'transparent';
+        e.style.boxShadow = i === 6 && t > 1.9 ? 'inset 6px 0 0 var(--btc)' : 'none';
+      });
+    } },
+  { html: () => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:40px">
+      <div class="card" style="width:880px;padding:28px 32px;display:flex;align-items:center;gap:20px"><span class="muted" style="flex:1;font:500 28px/1.3 var(--mono)">…/twenty-one-esports/issues</span><span class="btnx" data-btn style="font:800 48px/1 var(--disp);width:88px;height:88px;padding:0">+</span></div>
+      <div data-new class="card cube" style="width:880px;padding:40px;display:grid;row-gap:24px;--d:28px">
+        <div class="row" style="gap:18px">${av('taproot_tim', 72)}<span class="input" style="flex:1;min-height:88px"><i class="caret" data-caret></i></span></div>
+        <div style="height:220px;background:var(--well);border:2px solid var(--line)"></div>
+      </div></div>`,
+    update(root, t) {
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.3, 1.0, [300, 1040], [b.left - R.left + b.width * 0.5, b.top - R.top + b.height * 0.4], 1.2));
+      const n = root.querySelector('[data-new]'), p = back(seg(t, 1.4, 1.9)); n.style.opacity = t < 1.4 ? 0 : 1; n.style.transform = `translateY(${(1 - p) * 120}px)`;
+      root.querySelector('[data-caret]').style.opacity = Math.floor(t * 2.2) % 2 ? 0.1 : 1;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
 /* ---------- timeline ---------- */
 let BEATS = [], DUR = 0;
 function fitCaption(el) {

@@ -76,6 +76,23 @@
     colElo: { en: 'Elo', de: 'Elo' },
     colGames: { en: 'Games', de: 'Partien' },
     colWdl: { en: 'W / D / L', de: 'S / R / N' },
+    // login (pages/auth/login), reel 6
+    waitingConfirm: { en: 'Waiting for your confirmation', de: 'Warte auf deine Bestätigung' },
+    // tournaments (pages/tournaments/⚡show), reel 7
+    signupOpen: { en: 'Sign-up open', de: 'Anmeldung offen' },
+    whoPlays: { en: 'Who plays', de: 'Wer spielt' },
+    openSpot: { en: 'Open spot', de: 'Freier Platz' },
+    yourSpot: { en: 'Your spot?', de: 'Dein Platz?' },
+    isIn: { en: ':a is in.', de: ':a ist dabei.' },
+    confirmNostr: { en: 'Confirm with your Nostr key. You can pull out until sign-up closes.', de: 'Bestätige mit deinem Nostr-Schlüssel. Bis Anmeldeschluss kannst du dich wieder abmelden.' },
+    theDraw: { en: 'The draw', de: 'Die Auslosung' },
+    blockHash: { en: 'Block hash', de: 'Block-Hash' },
+    seeding: { en: 'Seeding', de: 'Setzliste' },
+    byEloAtClose: { en: 'by Elo at sign-up close', de: 'nach Elo bei Anmeldeschluss' },
+    reported: { en: 'Reported', de: 'Gemeldet' },
+    confirm: { en: 'Confirm', de: 'Bestätigen' },
+    winner: { en: 'Winner', de: 'Sieger' },
+    playersReport: { en: 'Players report results', de: 'Spieler melden Ergebnisse' },
     // ladder (casual only, pre-season)
     blitzLadder: { en: 'Blitz ladder', de: 'Blitz-Ladder' },
     casualUntil: { en: 'casual until Block 0', de: 'casual bis Block 0' },
