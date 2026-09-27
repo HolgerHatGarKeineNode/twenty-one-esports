@@ -1116,6 +1116,16 @@ final class SeriesService
             throw new SeriesRuleViolation('own_clan', __('You cannot decide a case involving your own clan.'));
         }
 
+        // A party decides nothing, clan or no clan (security gate P8c F1): a roster side's player,
+        // a seat of either lineup, or a rated subject pinned at the accept or pairing.
+        $party = in_array($admin->id, [...$match->rosterSide('challenger'), ...$match->rosterSide('challenged')], true)
+            || in_array('user:'.$admin->id, array_values($match->rated_subjects ?? []), true)
+            || LineupSeat::query()->whereIn('lineup_id', array_filter([$match->challenger_lineup_id, $match->challenged_lineup_id]))->where('user_id', $admin->id)->exists();
+
+        if ($party) {
+            throw new SeriesRuleViolation('own_case', __('You cannot decide a case you play in.'));
+        }
+
         if (! self::isOpenCase($match) && $match->status !== SeriesStatus::Reported) {
             throw new SeriesRuleViolation('not_open_case', __('This match has nothing to decide.'));
         }

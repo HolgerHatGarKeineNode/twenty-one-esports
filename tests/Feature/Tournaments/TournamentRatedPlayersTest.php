@@ -401,3 +401,28 @@ test('regression (P7d F3 class): a loser who deletes his account after the pairi
         ->and(Rating::query()->where('pool', Rating::RATED)->where('user_id', $a[0]->id)->value('rating'))->toBeGreaterThan(1000)
         ->and(p8cSorted(collect(p8cAttestationTags($series))->where(0, 'elo')->pluck(1)->all()))->toBe(p8cSorted([$a[0]->pubkey, $loserKey]));
 });
+
+test('regression (P8c F1): an admin who plays in the series decides nothing, with or without a clan', function () {
+    openSeason(['slug' => 'season-1']);
+    $series = app(SeriesService::class);
+    [$admin, $adminSigner] = keyedPlayer();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $adminSide = [$admin, $adminSigner, null];
+
+    // His own report, decided by himself.
+    [, $own] = p8cTournament('1v1', [p8cSoloSide(), $adminSide]);
+    $own = p8cReport($own, $adminSide);
+    expect(fn () => $series->decide($own->refresh(), $admin, ['type' => 'report', 'report' => $own->latestReport->id], 'Checked.'))
+        ->toThrow(SeriesRuleViolation::class);
+
+    // The other side reports, he disputes and decides a forfeit for himself.
+    $victim = p8cSoloSide();
+    [, $disputed] = p8cTournament('1v1', [$victim, $adminSide]);
+    $disputed = p8cRespond(p8cReport($disputed, $victim), $adminSide, 'disputed');
+    expect(fn () => $series->decide($disputed->refresh(), $admin, ['type' => 'forfeit', 'winner' => $disputed->captainSideOf($admin)], 'No.'))
+        ->toThrow(SeriesRuleViolation::class);
+
+    expect(RatingChange::query()->whereIn('source_id', [$own->id, $disputed->id])->count())->toBe(0)
+        ->and($own->refresh()->resolution)->toBeNull()
+        ->and($disputed->refresh()->resolution)->toBeNull();
+});
