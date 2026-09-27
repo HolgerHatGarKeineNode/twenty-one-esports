@@ -305,6 +305,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <span class="inline-flex h-8 items-center gap-1.5 rounded-sm bg-raised px-3 text-ink-2"><x-icon :name="$chess ? 'pawn' : (app(\App\Games\GameRegistry::class)->find($tournament->game)?->assets()->icon ?? 'trophy')" :size="14" />{{ $gameLine }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->format->label() }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->on_site ? __('On site') : __('Online') }}</span>
+                    @if ($this->canManage)
+                        <a href="{{ route('admin.tournaments.edit', $tournament) }}" class="inline-flex h-8 items-center rounded-sm border border-edge px-3 text-ink hover:text-ink" data-test="to-edit">{{ __('Edit') }}</a>
+                    @endif
                 </div>
 
                 <h1 id="t-name" class="m-0 font-display text-[32px] leading-[1.08] font-bold break-words sm:text-[44px] xl:text-[56px]">{{ $tournament->name }}</h1>

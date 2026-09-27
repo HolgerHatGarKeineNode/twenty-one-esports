@@ -14,7 +14,9 @@ use Illuminate\Support\Carbon;
  * entered (`lineup_id`, `members` = the players it fields, substitutes
  * included) or a solo player (`members` = the player). `event_id` is the
  * signed consent of the person who entered it (App\Support\Tournaments\TournamentSignups);
- * a withdrawal keeps the row and adds its own signed event.
+ * a withdrawal keeps the row and adds its own signed event. An entry an
+ * organizer or admin removed before the draw keeps its row and consent too,
+ * marked `removed_at` (App\Support\Tournaments\TournamentModeration).
  *
  * @property int $id
  * @property int $tournament_id
@@ -25,6 +27,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $event_id
  * @property Carbon|null $withdrawn_at
  * @property int|null $withdraw_event_id
+ * @property Carbon|null $removed_at
+ * @property int|null $removed_by_id
+ * @property string|null $removal_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tournament $tournament
@@ -32,21 +37,23 @@ use Illuminate\Support\Carbon;
  * @property-read Lineup|null $lineup
  * @property-read NostrEvent|null $event
  */
-#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'members', 'event_id', 'withdrawn_at', 'withdraw_event_id'])]
+#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'members', 'event_id', 'withdrawn_at', 'withdraw_event_id', 'removed_at', 'removed_by_id', 'removal_reason'])]
 class TournamentSignup extends Model
 {
     protected function casts(): array
     {
-        return ['members' => 'array', 'withdrawn_at' => 'datetime'];
+        return ['members' => 'array', 'withdrawn_at' => 'datetime', 'removed_at' => 'datetime'];
     }
 
     /**
+     * Entries that count: neither pulled out nor removed.
+     *
      * @param  Builder<TournamentSignup>  $query
      */
     #[Scope]
     protected function active(Builder $query): void
     {
-        $query->whereNull('withdrawn_at');
+        $query->whereNull('withdrawn_at')->whereNull('removed_at');
     }
 
     public function isSolo(): bool

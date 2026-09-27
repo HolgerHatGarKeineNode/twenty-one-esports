@@ -7,6 +7,7 @@ use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
+use App\Models\TournamentBan;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
@@ -33,6 +34,7 @@ use Illuminate\Support\Facades\DB;
  *   a clan whose lineup is entered cannot also enter solo (nor can a lineup
  *   be entered while one of its clan's members is in the solo pool);
  * - a lineup fields the mode's team size plus at most two substitutes;
+ * - a player the organizer blocked (TournamentModeration) signs up no more;
  * - capacity counts player places: `capacity` teams (or players) of the
  *   mode's size; a lineup takes a team's places, a solo player one place.
  *   Solo players left over after the draw wait as substitutes.
@@ -75,6 +77,7 @@ final class TournamentSignups
     private function soloPlan(Tournament $tournament, User $user): void
     {
         $this->assertOpen($tournament);
+        $this->assertNotBlocked($tournament, [$user->id]);
         $this->assertNotEntered($tournament, [$user->id]);
 
         if ($tournament->profile()->entersTeams()) {
@@ -168,6 +171,7 @@ final class TournamentSignups
             throw new TournamentRuleViolation('member_solo', __(':name of your clan is signed up solo. One entry per person: they have to pull out first.', ['name' => $soloClanMember->name]));
         }
 
+        $this->assertNotBlocked($tournament, [$captain->id, ...$ids]);
         $this->assertNotEntered($tournament, $ids);
         $this->assertCapacity($tournament, $tournament->teamSize());
 
@@ -284,6 +288,20 @@ final class TournamentSignups
             if (array_intersect($signup->members, $userIds) !== []) {
                 throw new TournamentRuleViolation('already_entered', __('One entry per person: a player here is signed up already (:entry).', ['entry' => $signup->name]));
             }
+        }
+    }
+
+    /**
+     * Nobody an organizer or admin blocked for this tournament signs up
+     * again, neither solo nor in a lineup nor as the captain who enters it
+     * (TournamentModeration).
+     *
+     * @param  list<int>  $userIds
+     */
+    private function assertNotBlocked(Tournament $tournament, array $userIds): void
+    {
+        if (TournamentBan::query()->where('tournament_id', $tournament->id)->whereIn('user_id', $userIds)->exists()) {
+            throw new TournamentRuleViolation('blocked', __('A player here is blocked from this tournament by its organizer.'));
         }
     }
 

@@ -25,6 +25,7 @@ enum NotificationKind: string
     case ClanJoinRequest = 'clan_join_request';
     case ClanJoinAnswer = 'clan_join_answer';
     case InviteLinkTaken = 'invite_link_taken';
+    case TournamentEntryRemoved = 'tournament_entry_removed';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -54,7 +55,7 @@ enum NotificationKind: string
     {
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken => 'challenge',
-            self::ClanJoinAnswer => 'confirmed',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -95,6 +96,7 @@ enum NotificationKind: string
             self::ClanJoinRequest => ['Clan join request', 'a player asks to join your clan'],
             self::ClanJoinAnswer => ['Clan join answer', 'a clan answered your join request'],
             self::InviteLinkTaken => ['Invite link taken', 'someone took the invite link you shared'],
+            self::TournamentEntryRemoved => ['Tournament entry removed', 'an organizer removed your entry from a tournament'],
         };
     }
 

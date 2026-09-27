@@ -12,7 +12,8 @@
     /*
      * The format chooser and "Who enters results" (AdminTournamentCreate.dc.html,
      * the `renderVals` of its logic script). Rendered inside the `chooser`
-     * island of pages::admin.tournament-create.
+     * island of pages::admin.tournament-create and pages::admin.tournament-edit
+     * (state and actions: App\Livewire\TournamentFormatChooser).
      */
     $profile = $this->profile();
     $evaluation = $this->evaluation;
@@ -179,15 +180,15 @@
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.8fr)_minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
             <span class="flex flex-col gap-1.5">
                 <span id="game-l" class="text-xs text-ink-2">{{ __('Game, mode') }}</span>
-                {{-- One row per registered game: its cover, its name and one button per mode (registry order). --}}
-                @foreach (app(GameRegistry::class)->all() as $pickGame => $pickDefinition)
-                    <span class="flex items-center gap-2" data-test="game-row-{{ $pickGame }}">
+                {{-- One row per registered game with a tournament profile (TournamentGames): its cover, its name and one button per mode. --}}
+                @foreach (\App\Support\Tournaments\TournamentGames::grouped() as $gameRow)
+                    <span class="flex items-center gap-2" wire:key="game-row-{{ $gameRow['slug'] }}" data-test="game-row-{{ $gameRow['slug'] }}">
                         <span class="flex w-[104px] shrink-0 items-center gap-2 text-xs text-ink-3">
-                            <x-game-cover :game="$pickGame" size="thumb" class="w-10 rounded-xs" />
-                            <span class="min-w-0 leading-tight">{{ GameNames::game($pickGame) }}</span>
+                            <x-game-cover :game="$gameRow['slug']" size="thumb" class="w-10 rounded-xs" />
+                            <span class="min-w-0 leading-tight">{{ GameNames::game($gameRow['slug']) }}</span>
                         </span>
-                        <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-{{ $pickGame }}"
-                            :options="array_values(array_map(fn ($pickMode) => [GameProfile::for($pickGame, $pickMode->slug)->key, __($pickMode->name)], $pickDefinition->modes()))" />
+                        <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-{{ $gameRow['slug'] }}"
+                            :options="$gameRow['options']" />
                     </span>
                 @endforeach
             </span>
@@ -578,9 +579,11 @@
             <div class="flex flex-col gap-3" data-test="directors">
                 <span class="text-[13px] font-bold">{{ __('Tournament directors') }}</span>
                 <ul class="m-0 flex list-none flex-wrap gap-2 p-0">
-                    <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground px-2.5 text-[13px] shadow-ring">
-                        <x-avatar :user="auth()->user()" :size="24" />{{ auth()->user()->displayName() }} <span class="text-ink-3">{{ __('(you)') }}</span>
-                    </li>
+                    @if ($chooserCreator = $this->chooserCreator())
+                        <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground px-2.5 text-[13px] shadow-ring">
+                            <x-avatar :user="$chooserCreator" :size="24" />{{ $chooserCreator->displayName() }} <span class="text-ink-3">{{ $chooserCreator->id === auth()->id() ? __('(you)') : __('(creator)') }}</span>
+                        </li>
+                    @endif
                     @foreach ($this->directors as $director)
                         <li class="inline-flex h-9 items-center gap-2 rounded-md bg-ground pl-2.5 text-[13px] shadow-ring" wire:key="director-{{ $director->id }}">
                             <x-avatar :user="$director" :size="24" />{{ $director->displayName() }}
@@ -590,7 +593,7 @@
                 </ul>
                 <form wire:submit="addDirector" class="flex flex-col gap-1.5">
                     <span class="flex items-end gap-2">
-                        <x-player-picker id="dir-new" wire:model="directorId" :label="__('Add a director')" :exclude="[auth()->id(), ...$this->directorIds]" submit-on-pick class="grow lg:max-w-80" />
+                        <x-player-picker id="dir-new" wire:model="directorId" :label="__('Add a director')" :exclude="array_values(array_filter([$this->chooserCreator()?->id, ...$this->directorIds]))" submit-on-pick class="grow lg:max-w-80" />
                         <x-button variant="quiet" type="submit" data-test="add-director">{{ __('Add') }}</x-button>
                     </span>
                     @if ($this->directorError !== '')

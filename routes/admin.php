@@ -29,9 +29,12 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 /*
 | Tournaments (P8a): admins and the organizers an admin unlocked. The list
 | shows an organizer their own tournaments; the organizer list itself is for
-| admins only (checked in the page).
+| admins only (checked in the page). Editing checks `manage-tournament`.
 */
 Route::middleware(['auth', 'can:create-tournaments'])->prefix('admin')->name('admin.')->group(function () {
     Route::livewire('tournaments', 'pages::admin.tournaments')->name('tournaments');
     Route::livewire('tournaments/create', 'pages::admin.tournament-create')->name('tournaments.create');
+    // Editing and moderating: an admin on every tournament, an organizer on their own.
+    Route::livewire('tournaments/{tournament}/edit', 'pages::admin.tournament-edit')->whereNumber('tournament')
+        ->middleware('can:manage-tournament,tournament')->name('tournaments.edit');
 });

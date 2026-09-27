@@ -66,6 +66,7 @@ use Illuminate\Support\Carbon;
  * @property-read Collection<int, TournamentStage> $stages
  * @property-read Collection<int, TournamentMatch> $matches
  * @property-read Collection<int, TournamentSignup> $signups
+ * @property-read Collection<int, TournamentBan> $bans
  * @property-read NostrEvent|null $event
  * @property-read NostrEvent|null $drawEvent
  */
@@ -156,6 +157,26 @@ class Tournament extends Model
     }
 
     /**
+     * Players blocked from signing up again.
+     *
+     * @return HasMany<TournamentBan, $this>
+     */
+    public function bans(): HasMany
+    {
+        return $this->hasMany(TournamentBan::class);
+    }
+
+    /**
+     * The moderation log, newest first.
+     *
+     * @return HasMany<TournamentModerationEntry, $this>
+     */
+    public function moderationEntries(): HasMany
+    {
+        return $this->hasMany(TournamentModerationEntry::class)->orderByDesc('id');
+    }
+
+    /**
      * The director log, newest first.
      *
      * @return HasMany<TournamentResultEntry, $this>
@@ -217,6 +238,15 @@ class Tournament extends Model
         return $this->status === TournamentStatus::Signup
             && $this->signup_closes_at !== null
             && $this->signup_closes_at->isFuture();
+    }
+
+    /**
+     * Draft or sign-up: nothing is committed to a block yet, so format, game
+     * and entries may still change (the edit page, TournamentEditor).
+     */
+    public function isBeforeDraw(): bool
+    {
+        return in_array($this->status, [TournamentStatus::Draft, TournamentStatus::Signup], true);
     }
 
     /**

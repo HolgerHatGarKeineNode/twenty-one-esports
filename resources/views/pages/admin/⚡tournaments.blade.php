@@ -15,8 +15,9 @@ use Livewire\Component;
 /*
  * AdminTournaments (AdminTournaments.dc.html, P8a): the tournaments, newest
  * first — all of them for an admin, their own for an organizer — and, for
- * admins, the organizers who may create tournaments. Editing, sign-up, the
- * prize pool and sponsors of the artboard follow in P8b/P9.
+ * admins, the organizers who may create tournaments. Each row links its
+ * edit page (gate `manage-tournament`). The prize pool and sponsors of the
+ * artboard follow in P9.
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
@@ -140,6 +141,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                 <th class="py-2 pr-3 font-normal">{{ __('Starts') }}</th>
                                 <th class="py-2 pr-3 font-normal">{{ __('Format') }}</th>
                                 <th class="py-2 pr-3 text-right font-normal">{{ __('Entries') }}</th>
+                                <th class="relative py-2 font-normal"><span class="sr-only">{{ __('Edit') }}</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -156,6 +158,11 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                         <span class="block text-xs text-ink-3">{{ __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $tournament->profile())]) }}</span>
                                     </td>
                                     <td class="py-2.5 pr-3 text-right">{{ $tournament->capacity }}</td>
+                                    <td class="py-2.5 text-right">
+                                        @can('manage-tournament', $tournament)
+                                            <a href="{{ route('admin.tournaments.edit', $tournament) }}" class="inline-flex min-h-11 items-center px-2 text-[13px]" data-test="edit-tournament">{{ __('Edit') }}</a>
+                                        @endcan
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>

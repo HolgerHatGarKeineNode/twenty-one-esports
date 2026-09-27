@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\SeasonChain\LeagueKey;
@@ -74,6 +75,41 @@ final class TournamentPublisher
 
             return $locked;
         });
+    }
+
+    /**
+     * A new version of a published tournament after an edit (NIP
+     * "Tournaments": a change of time or rules is a new version of the same
+     * address) and of the league calendar. The `d` never changes; the ladder
+     * is the stored one, frozen with the first version (a game or mode
+     * correction before the draw re-derives it, TournamentEditor). Runs in
+     * the caller's transaction, which holds the lock on the tournament.
+     *
+     * Each version is signed at least one second after the one it replaces:
+     * two versions of one address in the same second would leave the relays
+     * to keep the lower id (NIP-01), which may be the old one.
+     *
+     * @throws TournamentRuleViolation without the league key
+     */
+    public function republish(Tournament $locked): void
+    {
+        if ($locked->event_id === null || $locked->slug === null) {
+            return;
+        }
+
+        $league = LeagueKey::fromConfig()
+            ?? throw new TournamentRuleViolation('no_league_key', __('The league key is not set up, so nothing can be published yet.'));
+
+        $previous = (int) NostrEvent::query()->where('pubkey', $league->pubkey())
+            ->where(fn ($query) => $query->where(fn ($query) => $query->where('kind', Tournament::CALENDAR_EVENT)->where('d', $locked->slug))
+                ->orWhere(fn ($query) => $query->where('kind', Tournament::CALENDAR)->where('d', 'tournaments')))
+            ->max('signed_at');
+        $now = max(now()->getTimestamp(), $previous + 1);
+
+        $locked->event_id = $league->publish(Tournament::CALENDAR_EVENT, $this->tags($locked, $league->pubkey()), $this->content($locked), $now)->id;
+        $locked->save();
+
+        $this->publishCalendar($league, $now);
     }
 
     /**

@@ -70,6 +70,7 @@ const NAV_PAGES = [
     'tournaments.director' => ['roles' => ['organizer', 'admin'], 'max' => 3],
     'admin.tournaments' => ['roles' => ['organizer', 'admin'], 'max' => 1],
     'admin.tournaments.create' => ['roles' => ['organizer', 'admin'], 'max' => 2],
+    'admin.tournaments.edit' => ['roles' => ['organizer', 'admin'], 'max' => 2],
     'admin.status' => ['roles' => ['admin'], 'max' => 2],
     'admin.disputes' => ['roles' => ['admin'], 'max' => 1],
     'admin.disputes.show' => ['roles' => ['admin'], 'max' => 2],

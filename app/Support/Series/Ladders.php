@@ -4,6 +4,7 @@ namespace App\Support\Series;
 
 use App\Support\Nostr\NostrKeys;
 use App\Support\SeasonChain\Seasons;
+use Carbon\CarbonImmutable;
 
 /**
  * Where rated play is recorded: the ladder address of a game and mode (NIP
@@ -16,9 +17,13 @@ final class Ladders
 {
     public const KIND = 32152;
 
-    public static function address(string $game, string $mode): ?string
+    /**
+     * The open ladder now, or the one that was open at `$at` (a tournament
+     * re-derives its frozen ladder from its first publish time).
+     */
+    public static function address(string $game, string $mode, ?CarbonImmutable $at = null): ?string
     {
-        $season = Seasons::live();
+        $season = Seasons::live($at);
 
         if ($season === null || ! NostrKeys::isHexPubkey($season->league_pubkey)) {
             return null;

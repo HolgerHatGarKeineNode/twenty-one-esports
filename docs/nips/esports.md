@@ -96,6 +96,10 @@ Rocket League series of a tournament whose players report were casual, and they 
   of its challenge (the Result Report section said "the three `a` references", which a 1v1 player side
   since revision 7.1 and a tournament challenge since revision 4 do not have). Tags `pairing`, `start`,
   `respond_by`, the kind table and the state machine name the league-signed pairing.
+- **Game or mode correction** ([Tournaments](#tournaments)): before the draw, a tournament whose game
+  or mode was picked wrongly may be corrected; its ladder is re-derived from the first publish time
+  (the corrected game and mode's ladder of the season live then, or none), never from the time of the
+  correction, so a correction cannot make an unrated tournament rated. The new version carries it.
 - **App alignment** (code that differed from the text, found while writing this revision): the
   structural check of `2152`/`2153` required exactly three `a` tags, which refused every rated 1v1
   player side and every tournament report with its tournament `a`; an attestation named a deleted
@@ -1146,7 +1150,10 @@ tournament is therefore optional, and it is **frozen with the first version**:
 - the league adds the ladder `a` exactly when, at the signing of the tournament's first `31923`
   version, a ladder of the tournament's game and mode is open (its season has started, rev. 5: its
   genesis exists, and it has no `ends`). Later versions carry the same ladder `a`, or none if the
-  first had none; a ladder that opens later is never added;
+  first had none; a ladder that opens later is never added. Rev. 8.1: a game or mode correction
+  before the draw re-derives the ladder from the first publish time: the next version carries the
+  ladder of the corrected game and mode of the season that was live when the first version was
+  signed, or none if no ladder was open then. From the draw on, game and mode never change;
 - a tournament **without** a ladder `a` is **unrated** for its whole run: its matches are casual,
   produce no match-flow event and no attestation, even if a ladder of its game and mode opens while it
   runs. Its `content` says so;
