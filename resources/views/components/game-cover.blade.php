@@ -6,6 +6,8 @@
     does not jump. `size` only tells the browser which file to pick:
     thumb (a list row), card (a card or picker), header (a page header),
     hero (full width). The width on screen comes from the caller's class.
+    The picture is shown whole (object-contain), so art in another ratio is
+    letterboxed on the well colour instead of losing its edges.
     `loading="eager"` for a cover at the top of a page (it is then fetched first).
     An unknown game gets a neutral tile with its name, never a broken image.
 --}}
@@ -28,7 +30,7 @@
         <img src="{{ asset($cover->path($cover->smallest(), 'jpg')) }}" srcset="{{ $srcset('jpg') }}" sizes="{{ $sizes }}"
              width="{{ $cover->smallest() }}" height="{{ (int) round($cover->smallest() * 9 / 16) }}"
              alt="{{ __(':game cover', ['game' => $name]) }}" loading="{{ $loading === 'eager' ? 'eager' : 'lazy' }}" decoding="async" @if ($loading === 'eager') fetchpriority="high" @endif
-             class="block size-full object-cover">
+             class="block size-full object-contain">
     </picture>
 @else
     <span role="img" aria-label="{{ __(':game cover', ['game' => $name]) }}" data-game-cover-fallback

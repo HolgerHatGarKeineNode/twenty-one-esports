@@ -37,7 +37,7 @@ final class ShareCard
     public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite'];
 
     /** Bump when a layout changes: every card gets a new file and URL. */
-    private const LAYOUT = 1;
+    private const LAYOUT = 2;
 
     private Canvas $c;
 

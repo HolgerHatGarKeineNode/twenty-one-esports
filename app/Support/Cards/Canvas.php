@@ -289,9 +289,11 @@ final class Canvas
     }
 
     /**
-     * A picture filling a $w × $h box, cropped around its centre (a game's
-     * cover art). Returns false when the file cannot be read, so the caller
-     * can draw its stand-in.
+     * A picture shown whole inside a $w × $h box (a game's cover art), for
+     * any aspect ratio: the picture's darkened average colour fills the box
+     * and the full picture sits centred on top, so no part of the
+     * artwork (a logo at its edge) is cut off. Returns false when the file
+     * cannot be read, so the caller can draw its stand-in.
      */
     public function cover(string $path, int|float $x, int|float $y, int|float $w, int|float $h): bool
     {
@@ -302,11 +304,20 @@ final class Canvas
             return false;
         }
 
-        $ratio = $w / $h;
         [$sw, $sh] = [imagesx($source), imagesy($source)];
-        [$cw, $ch] = $sw / $sh > $ratio ? [(int) round($sh * $ratio), $sh] : [$sw, (int) round($sw / $ratio)];
-        imagecopyresampled($this->image, $source, (int) round($x * $this->scale), (int) round($y * $this->scale), intdiv($sw - $cw, 2), intdiv($sh - $ch, 2),
-            (int) round($w * $this->scale), (int) round($h * $this->scale), $cw, $ch);
+        [$bx, $by, $bw, $bh] = [(int) round($x * $this->scale), (int) round($y * $this->scale), (int) round($w * $this->scale), (int) round($h * $this->scale)];
+
+        // The picture's own average colour, darkened, fills the rest of the box.
+        $pixel = imagecreatetruecolor(1, 1);
+        imagecopyresampled($pixel, $source, 0, 0, 0, 0, 1, 1, $sw, $sh);
+        $rgb = imagecolorat($pixel, 0, 0);
+        $shade = fn (int $channel): int => max(0, min(255, (int) round($channel * 0.35)));
+        imagefilledrectangle($this->image, $bx, $by, $bx + $bw - 1, $by + $bh - 1,
+            (int) imagecolorallocate($this->image, $shade(($rgb >> 16) & 0xFF), $shade(($rgb >> 8) & 0xFF), $shade($rgb & 0xFF)));
+
+        $fit = min($bw / $sw, $bh / $sh);
+        [$fw, $fh] = [(int) round($sw * $fit), (int) round($sh * $fit)];
+        imagecopyresampled($this->image, $source, $bx + intdiv($bw - $fw, 2), $by + intdiv($bh - $fh, 2), 0, 0, $fw, $fh, $sw, $sh);
 
         return true;
     }
