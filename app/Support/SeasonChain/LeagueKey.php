@@ -71,6 +71,16 @@ final class LeagueKey
     }
 
     /**
+     * The stream chat bot key (`esports.stream_bot.nsec`, P22): signs only
+     * its kind-1311 chat messages and its own kind 0 (`bot: true`). Never
+     * the league or the stream key. Null without a valid secret.
+     */
+    public static function streamBot(): ?self
+    {
+        return self::fromSecret(config('esports.stream_bot.nsec'));
+    }
+
+    /**
      * A fresh key for one anonymous zap request (NIP "Who pays how": a
      * visitor without Nostr pays an invoice whose zap request was signed with
      * a throwaway key). Its secret is dropped with the object.

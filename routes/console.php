@@ -279,3 +279,10 @@ Schedule::command('horizon:snapshot')->everyFiveMinutes();
 Schedule::command('wallet:sync')->everyMinute()->withoutOverlapping();
 Schedule::command('wallet:reconcile')->dailyAt('04:21')->withoutOverlapping();
 Schedule::command('wallet:read-pots')->everyTwoMinutes()->withoutOverlapping();
+
+/*
+ * The stream chat bot (P22): every minute it checks its own cadence (live
+ * stream, interval, the human rule, the daily cap) and posts at most one
+ * message. Does nothing unless ESPORTS_STREAM_BOT_ENABLED and its key are set.
+ */
+Schedule::command('twentyone:stream-bot')->everyMinute()->withoutOverlapping()->onOneServer();

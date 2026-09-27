@@ -593,4 +593,64 @@ return [
         'display_timezone' => 'Europe/Berlin',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Stream chat bot (P22)
+    |--------------------------------------------------------------------------
+    |
+    | Short NIP-53 live chat messages (kind 1311) under the 24/7 stream's
+    | kind-30311 event (`twentyone.stream`: its key, `d` and relays), from
+    | its own key: tips about the site and current facts from the database,
+    | each with a direct link (App\Support\StreamBot). `twentyone:stream-bot`
+    | runs every minute and decides itself whether to post.
+    |
+    | Off unless `enabled` AND a valid `nsec` (hex or nsec, `.env` only; never
+    | the league or the stream key). Its kind 0 (`--profile`) says `bot: true`.
+    |
+    | Cadence: only while the stream is live (its session file names an
+    | accepted `live` 30311 younger than `live_minutes` and the public
+    | playlist is fresh); at most one post every `interval_minutes` ±
+    | `jitter_minutes`; never two in a row unless a human wrote in the chat
+    | in between or `alone_minutes` passed; at most `daily_cap` per day in
+    | `timezone`; nothing during `quiet_hours` (`"23-07"` or
+    | `"22:30-07:00"`; empty = none, unreadable = always quiet).
+    |
+    | `chat_relays`: where the bot looks for human chat messages (one REQ,
+    | kind 1311 with the stream's `a` tag, since its last post). Empty = it
+    | never sees any, so only the `alone_minutes` rule lets it post again.
+    |
+    | Rotation: no builder again within `builder_gap` posts, no fact (a
+    | tournament, a game, a feature tip) again within `repeat_hours`.
+    |
+    */
+
+    'stream_bot' => [
+        'enabled' => (bool) env('ESPORTS_STREAM_BOT_ENABLED', false),
+        'nsec' => env('ESPORTS_STREAM_BOT_NSEC'),
+        'chat_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_STREAM_BOT_CHAT_RELAYS', ''))))),
+        'quiet_hours' => env('ESPORTS_STREAM_BOT_QUIET_HOURS'),
+        'timezone' => 'Europe/Berlin',
+        'interval_minutes' => 20,
+        'jitter_minutes' => 5,
+        'alone_minutes' => 45,
+        'daily_cap' => 24,
+        'builder_gap' => 4,
+        'repeat_hours' => 12,
+        // A failed post (no relay accepted) is tried again after this long.
+        'retry_minutes' => 5,
+        // The stream counts as live while its last accepted `live` 30311 is this young (republished every 20 min) ...
+        'live_minutes' => 30,
+        // ... and the public playlist was written within this many seconds.
+        'playlist_fresh_seconds' => 60,
+        // How far back "recent" facts reach.
+        'winner_days' => 14,
+        'clan_days' => 7,
+        'rank_up_hours' => 48,
+        'profile' => [
+            'name' => 'TWENTY ONE Bot',
+            'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Posts only while the stream is live. It reads no replies.',
+            'picture' => 'https://blossom.einundzwanzig.space/c6f8d996841c1a1b81102ff268a9f4408536a17fb35dfb87eb71b407bad41d8f.png',
+        ],
+    ],
+
 ];
