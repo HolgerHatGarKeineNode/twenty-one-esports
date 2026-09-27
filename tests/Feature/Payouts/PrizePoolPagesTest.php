@@ -66,6 +66,9 @@ test('top-ups are hidden when the pot’s connection may not make invoices', fun
 
     Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
         ->set('potEnabled', true)->set('potUri', $pot->uri('pay'))->call('savePotSettings')->assertSet('potError', '');
+    // The check names what the connection lacks.
+    Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->set('potUri', $pot->uri('pay'))->call('checkPotConnection')->assertSee('make_invoice, lookup_invoice');
 
     expect($tournament->refresh()->pot_can_receive)->toBeFalse();
     Livewire::test('tournament-pool', ['tournament' => $tournament])

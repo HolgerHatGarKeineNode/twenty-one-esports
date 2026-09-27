@@ -57,7 +57,7 @@ trait EditsPrizePot
      * The live check of the pasted string, run by {@see checkNewPotWallet()}
      * before a transaction; used by the next {@see savePot()} of this request.
      *
-     * @var array{uri: string, check: array{balance: int, lud16: string|null, can_receive: bool}}|null
+     * @var array{uri: string, check: array{balance: int, lud16: string|null, can_receive: bool, receive_missing?: list<string>|null}}|null
      */
     private ?array $potWalletChecked = null;
 
@@ -176,7 +176,11 @@ trait EditsPrizePot
 
         $this->potCheckedSats = $check['balance'];
         $this->potNotice = __('Connected. The wallet holds :sats sats and may pay invoices.', ['sats' => PreSeason::formatSats($check['balance'])])
-            .' '.($check['can_receive'] ? __('Anyone can add sats to it from the tournament page.') : __('It may not make invoices, so top-ups from the tournament page are off.'));
+            .' '.match (true) {
+                $check['can_receive'] => __('Anyone can add sats to it from the tournament page.'),
+                ($check['receive_missing'] ?? null) === null => __('The wallet did not list what this connection may do (get_info), so top-ups from the tournament page stay off. Allow “get info” for it in the wallet.'),
+                default => __('Top-ups from the tournament page are off: this connection lacks :methods. Allow them for it in the wallet, then check again.', ['methods' => implode(', ', $check['receive_missing'])]),
+            };
     }
 
     /**

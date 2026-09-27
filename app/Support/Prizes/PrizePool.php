@@ -320,7 +320,7 @@ final class PrizePool
      * each connection's budget in the wallet or uses a sub-wallet, and the
      * balance is a visual check only. The string is never part of a message.
      *
-     * @return array{balance: int, lud16: string|null, can_receive: bool}
+     * @return array{balance: int, lud16: string|null, can_receive: bool, receive_missing: list<string>|null}
      *
      * @throws TournamentRuleViolation
      */
@@ -363,7 +363,9 @@ final class PrizePool
         parse_str((string) parse_url(trim($uri), PHP_URL_QUERY), $query);
         $lud16 = is_string($query['lud16'] ?? null) && LightningAddress::target($query['lud16']) !== null ? strtolower($query['lud16']) : null;
 
-        return ['balance' => $balance, 'lud16' => $lud16, 'can_receive' => $methods !== null && in_array('make_invoice', $methods, true) && in_array('lookup_invoice', $methods, true)];
+        $missing = $methods === null ? null : array_values(array_diff(['make_invoice', 'lookup_invoice'], $methods));
+
+        return ['balance' => $balance, 'lud16' => $lud16, 'can_receive' => $missing === [], 'receive_missing' => $missing];
     }
 
     /**
@@ -379,9 +381,9 @@ final class PrizePool
      *
      * @param  array<int, mixed>  $split  percents per place (percent mode)
      * @param  array<int, mixed>  $fixed  sats per place (fixed mode)
-     * @param  array{balance: int, lud16: string|null, can_receive: bool}|null  $checked  the result of {@see checkWallet()} for this very
-     *                                                                                    `$uri`, when the caller ran it before a transaction of its own (a
-     *                                                                                    wallet call inside one holds SQLite's write lock, re-gate O1)
+     * @param  array{balance: int, lud16: string|null, can_receive: bool, receive_missing?: list<string>|null}|null  $checked  the result of {@see checkWallet()} for this very
+     *                                                                                                                         `$uri`, when the caller ran it before a transaction of its own (a
+     *                                                                                                                         wallet call inside one holds SQLite's write lock, re-gate O1)
      *
      * @throws TournamentRuleViolation
      */
