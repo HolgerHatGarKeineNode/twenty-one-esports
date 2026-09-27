@@ -128,8 +128,10 @@ new #[Layout('layouts::app')] class extends Component {
 
     <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
         <div class="flex min-w-0 flex-col gap-4">
-            {{-- The stage: edge to edge on a phone, a framed screen from sm. --}}
-            <div class="-mx-4 sm:mx-0" wire:ignore x-data="liveStage(@js($stage))" data-live-stage>
+            {{-- The stage: edge to edge on a phone, a framed screen from sm. From lg its
+                 width follows the window height, so the whole 16:9 picture fits below the
+                 header without scrolling (user 2026-09-27: too big on desktop). --}}
+            <div class="-mx-4 sm:mx-0 lg:mx-auto lg:w-full lg:max-w-[max(36rem,calc((100dvh-26rem)*16/9))]" wire:ignore x-data="liveStage(@js($stage))" data-live-stage>
                     <div class="flex flex-col gap-2" x-show="onScreen" @unless ($status->live) style="display: none" @endunless data-test="live-stage">
                         <div class="relative aspect-video overflow-hidden bg-black sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]">
                             <video x-ref="video" class="size-full object-contain" controls playsinline muted autoplay preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-stage-video"></video>
