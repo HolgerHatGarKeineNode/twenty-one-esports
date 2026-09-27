@@ -620,17 +620,15 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * Bind the viewer socket; on failure (path too long, no permission, a
-     * file in the way) the count stays off for this run, logged once, and
-     * the stream goes on without it.
+     * Bind the viewer socket; on failure (path too long, a directory that
+     * is not private, setfacl failing, a file in the way) the count stays
+     * off for this run, logged once, and the stream goes on without it.
      */
     private function openViewerCount(): ?ViewerCounter
     {
-        $path = (string) config('twentyone.stream.viewers.socket');
-
         try {
-            $this->viewerSocket = ViewerSocket::bind($path);
-            $this->log('viewer count on '.$path);
+            $this->viewerSocket = ViewerSocket::bind((string) config('twentyone.stream.viewers.dir'), (string) config('twentyone.stream.viewers.nginx_user'));
+            $this->log('viewer count on '.$this->viewerSocket->path);
 
             return ViewerCounter::fromConfig();
         } catch (Throwable $e) {

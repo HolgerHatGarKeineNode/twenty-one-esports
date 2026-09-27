@@ -40,8 +40,10 @@ beforeEach(function () {
         'twentyone.stream.scene.work_dir' => $this->dir.'/work',
         'twentyone.stream.music.dir' => $this->dir.'/music',
         'twentyone.stream.music.instrumental_dir' => $this->dir.'/music/instrumental',
-        // A socket path of its own per test (parallel workers), short enough for sun_path (107 bytes).
-        'twentyone.stream.viewers.socket' => sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(6)).'.sock',
+        // A socket directory of its own per test (parallel workers), short enough for sun_path (107 bytes);
+        // no ACL, as there is no `forge` user here.
+        'twentyone.stream.viewers.dir' => sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(6)),
+        'twentyone.stream.viewers.nginx_user' => '',
     ]);
 
     File::ensureDirectoryExists($this->dir.'/music');
@@ -53,7 +55,9 @@ beforeEach(function () {
 
 afterEach(function () {
     File::deleteDirectory($this->dir);
-    File::delete(config('twentyone.stream.viewers.socket'));
+    $viewerDir = config('twentyone.stream.viewers.dir');
+    is_link($viewerDir) ? unlink($viewerDir) : File::deleteDirectory($viewerDir);
+    File::deleteDirectory($viewerDir.'-target');
 
     foreach (['TWENTYONE_NOSTR_NSEC', 'TWENTYONE_TEST_API_TOKEN', 'FAKE_ENCODER_CAPTURE', 'FAKE_ENCODER_SEGMENTS', 'FAKE_ENCODER_DELAY', 'FAKE_ENCODER_EXIT_AFTER', 'FAKE_ENCODER_LOOP_EXIT_AFTER', 'FAKE_ENCODER_SCENE_DELAY'] as $name) {
         putenv($name);
@@ -663,7 +667,7 @@ test('viewers counted from the socket reach every scene, the game scene fallback
     config(['twentyone.stream.shutdown_publish_seconds' => 1]);
     ChessGame::factory()->create();
     $seen = captureViewers();
-    $socket = config('twentyone.stream.viewers.socket');
+    $socket = config('twentyone.stream.viewers.dir').'/viewers.sock';
     $firefox = 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0';
     $nginx = fakeNginx($socket, [
         "<190>Sep 27 12:00:00 hls: 203.0.113.1|{$firefox}|200",
@@ -691,6 +695,8 @@ test('viewers counted from the socket reach every scene, the game scene fallback
         ->and(collect($seen->getArrayCopy())->where(1, 'missing')->all())->toBe([])
         ->and($counted->pluck(0)->unique()->sort()->values()->all())->toBe(['stream.rotation.a1-match', 'stream.scene'])
         ->and(collect($event['tags'])->where(0, 'current_participants')->values()->all())->toBe([['current_participants', '3']])
+        // Created private: no access for other users.
+        ->and(fileperms(dirname($socket)) & 0777)->toBe(0700)
         // The daemon removes its socket on the way out.
         ->and(file_exists($socket))->toBeFalse();
 });
@@ -702,8 +708,9 @@ test('a socket that cannot be bound leaves the count off and the stream running'
     shortRotation();
     config(['twentyone.stream.shutdown_publish_seconds' => 1]);
     // One byte over sun_path: PHP would bind a truncated path instead of failing.
-    $socket = str_pad(sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(4)).'-', ViewerSocket::MAX_PATH_BYTES + 1 - strlen('.sock'), 'x').'.sock';
-    config(['twentyone.stream.viewers.socket' => $socket]);
+    $dir = str_pad(sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(4)).'-', ViewerSocket::MAX_PATH_BYTES + 1 - strlen('/viewers.sock'), 'x');
+    $socket = $dir.'/viewers.sock';
+    config(['twentyone.stream.viewers.dir' => $dir]);
     $seen = captureViewers();
     $relay = proc_open([PHP_BINARY, base_path('tests/Support/fake-relay.php'), 'record', $this->dir.'/event.json'], [1 => ['pipe', 'w']], $pipes);
     $port = (int) fgets($pipes[1]);
@@ -721,20 +728,23 @@ test('a socket that cannot be bound leaves the count off and the stream running'
         ->and($seen->count())->toBeGreaterThan(0)
         ->and(collect($seen->getArrayCopy())->pluck(1)->unique()->all())->toBe([null])
         ->and(collect($event['tags'])->where(0, 'current_participants')->all())->toBe([])
-        ->and(file_exists(substr($socket, 0, ViewerSocket::MAX_PATH_BYTES)))->toBeFalse();
+        ->and(file_exists(substr($socket, 0, ViewerSocket::MAX_PATH_BYTES)))->toBeFalse()
+        ->and(file_exists($dir))->toBeFalse();
 });
 
 test('the viewer socket replaces a stale socket, never another file, and reads a limited batch per turn', function () {
-    $path = config('twentyone.stream.viewers.socket');
+    $dir = config('twentyone.stream.viewers.dir');
+    $path = $dir.'/viewers.sock';
+    mkdir($dir, 0700);
     File::put($path, 'not ours');
 
-    expect(fn () => ViewerSocket::bind($path))->toThrow(RuntimeException::class, 'not a socket, left in place')
+    expect(fn () => ViewerSocket::bind($dir))->toThrow(RuntimeException::class, 'not a socket, left in place')
         ->and(file_get_contents($path))->toBe('not ours');
 
     File::delete($path);
     // A socket a killed daemon left behind.
     fclose(stream_socket_server('udg://'.$path, $errorCode, $errorMessage, STREAM_SERVER_BIND));
-    $socket = ViewerSocket::bind($path);
+    $socket = ViewerSocket::bind($dir);
     $client = stream_socket_client('udg://'.$path);
 
     foreach (range(1, 10) as $index) {
@@ -750,3 +760,70 @@ test('the viewer socket replaces a stale socket, never another file, and reads a
         ->and($mode)->toBe(0666)
         ->and(file_exists($path))->toBeFalse();
 });
+
+test('the viewer socket directory must be private: other bits, a symlink, a foreign owner or an injected ACL are refused, never repaired', function () {
+    $base = config('twentyone.stream.viewers.dir');
+    mkdir($base, 0700);
+
+    // Open to other users: refused, and left as it is.
+    mkdir($base.'/open', 0700);
+    chmod($base.'/open', 0705);
+    // A symlink to a directory that would pass every other check.
+    mkdir($base.'/private', 0700);
+    symlink($base.'/private', $base.'/link');
+    // A second ACL entry smuggled in through the user name would open the directory to others.
+    mkdir($base.'/injected', 0700);
+    $me = posix_getpwuid(posix_geteuid())['name'];
+
+    expect(fn () => ViewerSocket::bind($base.'/open'))->toThrow(RuntimeException::class, 'socket directory is open to other users (mode 705), refused')
+        ->and(fileperms($base.'/open') & 0777)->toBe(0705)
+        ->and(file_exists($base.'/open/viewers.sock'))->toBeFalse()
+        ->and(fn () => ViewerSocket::bind($base.'/link'))->toThrow(RuntimeException::class, 'socket directory is a symlink, refused')
+        ->and(file_exists($base.'/private/viewers.sock'))->toBeFalse()
+        ->and(fn () => ViewerSocket::bind($base.'/injected', $me.':rwx,o::rwx,u:'.$me))->toThrow(RuntimeException::class, 'not a user name')
+        ->and(fileperms($base.'/injected') & 0007)->toBe(0)
+        ->and(fn () => ViewerSocket::bind($base.'/nosuchuser', 'nosuchuser_tos'))->toThrow(RuntimeException::class, 'setfacl for nosuchuser_tos failed');
+
+    if (posix_geteuid() !== 0) {
+        // /root belongs to root: not ours, whatever its mode.
+        expect(fn () => ViewerSocket::bind('/root'))->toThrow(RuntimeException::class, 'socket directory is not owned by this user');
+    }
+
+    // The nginx user gets search access by ACL; "other" stays closed.
+    $socket = ViewerSocket::bind($base.'/acl', $me);
+    $acl = Process::run(['getfacl', '-cp', $base.'/acl'])->output();
+    $socket->close();
+
+    expect($acl)->toContain('user:'.$me.':--x')
+        ->and($acl)->toContain('other::---');
+});
+
+test('a socket directory that is not private leaves the count off and the stream running', function (Closure $prepare, string $logged) {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    ChessGame::factory()->create();
+    $prepare(config('twentyone.stream.viewers.dir'));
+    $seen = captureViewers();
+
+    $exitCode = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 2]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and(substr_count($output, 'viewer count off: RuntimeException: '.$logged))->toBe(1)
+        ->and($output)->toContain('ffmpeg started mode=scene', 'rendered in')
+        ->and($seen->count())->toBeGreaterThan(0)
+        ->and(collect($seen->getArrayCopy())->pluck(1)->unique()->all())->toBe([null]);
+})->with([
+    'other bits set' => [function (string $dir): void {
+        mkdir($dir, 0700);
+        chmod($dir, 0701);
+    }, 'socket directory is open to other users (mode 701)'],
+    'setfacl for a user that does not exist' => [function (string $dir): void {
+        config(['twentyone.stream.viewers.nginx_user' => 'nosuchuser_tos']);
+    }, 'setfacl for nosuchuser_tos failed'],
+    'a symlink' => [function (string $dir): void {
+        mkdir($dir.'-target', 0700);
+        symlink($dir.'-target', $dir);
+    }, 'socket directory is a symlink, refused'],
+]);

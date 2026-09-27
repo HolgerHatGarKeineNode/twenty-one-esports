@@ -187,19 +187,24 @@ return [
         /*
         | Live viewer count (ViewerCounter, ViewerSocket): nginx logs every
         | request for the playlist to a unix datagram socket the daemon binds,
+        | `<dir>/viewers.sock`,
         |
         |   log_format twentyone_hls escape=json '$remote_addr|$http_user_agent|$status';
-        |   access_log syslog:server=unix:<socket>,nohostname,tag=hls twentyone_hls;
+        |   access_log syslog:server=unix:<dir>/viewers.sock,nohostname,tag=hls twentyone_hls;
         |
         | (log_format at http level, access_log only in the location serving
-        | /live/*.m3u8). A viewer is a distinct IP + user agent with a 200/206/304
-        | within `window_seconds`; `exclude_agents` never counts. The scenes get
-        | it as `viewers`, the 30311 as `current_participants`. The socket path
-        | must stay within 107 bytes; a socket that cannot be bound leaves the
-        | count off (null) and the stream running.
+        | /live/*.m3u8). `dir` is private: owned by the daemon's user, no
+        | access for others, search access for `nginx_user` by ACL (setfacl;
+        | '' = none, when nginx runs as the daemon's user). A viewer is a
+        | distinct IP + user agent with a 200/206/304 within `window_seconds`;
+        | `exclude_agents` never counts. The scenes get it as `viewers`, the
+        | 30311 as `current_participants`. The socket path must stay within
+        | 107 bytes; a directory that is not private or a socket that cannot
+        | be bound leaves the count off (null) and the stream running.
         */
         'viewers' => [
-            'socket' => env('TWENTYONE_STREAM_VIEWERS_SOCKET') ?: storage_path('app/stream/viewers.sock'),
+            'dir' => env('TWENTYONE_STREAM_VIEWERS_DIR') ?: storage_path('app/stream/viewers'),
+            'nginx_user' => (string) env('TWENTYONE_STREAM_VIEWERS_NGINX_USER', 'forge'),
             'window_seconds' => 20,
             'exclude_agents' => '/HeadlessChrome|Playwright|curl|Wget|python-requests|Go-http-client|bot|spider|monitor/i',
             // Memory bound: at most this many IP + agent hashes; a flood pushes out the oldest.
