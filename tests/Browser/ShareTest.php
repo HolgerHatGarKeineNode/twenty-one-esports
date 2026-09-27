@@ -15,6 +15,7 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
+use Tests\Support\WaitForPort;
 use WebSocket\Client;
 use WebSocket\Message\Text;
 
@@ -88,9 +89,7 @@ beforeEach(function () {
     $this->port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
     $this->relay = Process::start(['nak', 'serve', '--hostname', '127.0.0.1', '--port', (string) $this->port]);
 
-    for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $this->port); $i++) {
-        usleep(100_000);
-    }
+    WaitForPort::open('127.0.0.1', $this->port);
 
     $this->relayUrl = 'ws://127.0.0.1:'.$this->port;
     // Profile relays (the page reads and publishes) and league relays (the server publishes): the local relay only.
@@ -245,9 +244,7 @@ function shareMiniRelay(array $seed): array
     File::put($file, (string) json_encode($seed));
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $file]);
 
-    for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-        usleep(100_000);
-    }
+    WaitForPort::open('127.0.0.1', $port);
 
     return [$relay, 'ws://127.0.0.1:'.$port];
 }

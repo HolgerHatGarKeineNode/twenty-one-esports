@@ -18,6 +18,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
+use Tests\Support\WaitForPort;
 
 pest()->group('browser');
 
@@ -89,9 +90,7 @@ test('two players chat over NIP-17 through a relay, and a muted sender disappear
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
 
     try {
-        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-            usleep(100_000);
-        }
+        WaitForPort::open('127.0.0.1', $port);
         // The second relay never answers (unroutable): sending must not wait for it.
         config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port, 'ws://10.255.255.1:7777']]);
 
@@ -142,9 +141,7 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
 
     try {
-        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-            usleep(100_000);
-        }
+        WaitForPort::open('127.0.0.1', $port);
         config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
 
         [$anna, $bert] = User::factory()->count(2)->create();
@@ -211,9 +208,7 @@ test('a series room chat reads back to the challenge, not just the last two days
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
 
     try {
-        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-            usleep(100_000);
-        }
+        WaitForPort::open('127.0.0.1', $port);
         config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
 
         $match = SeriesMatch::factory()->accepted()->create([
@@ -453,9 +448,7 @@ test('an opponent profile read from the relay shows on the board and in the play
     $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
 
     try {
-        for ($i = 0; $i < 50 && ! @fsockopen('127.0.0.1', $port); $i++) {
-            usleep(100_000);
-        }
+        WaitForPort::open('127.0.0.1', $port);
         $game = ChessGame::factory()->create(['white_id' => $anna->id, 'black_id' => $bert->id]);
         app(ChessGameService::class)->move($game, $anna, 'e2e4');
         app(ChessGameService::class)->move($game->refresh(), $bert, 'e7e5');
