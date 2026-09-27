@@ -282,3 +282,16 @@ test('a pairing that loses every retry to a deadlock tells the player instead of
 
     expect(ChessGame::query()->count())->toBe(0);
 })->with(['acceptInvite', 'findOpponent']);
+
+test('a decline from a stale copy never overwrites an invite that was accepted in the meantime', function () {
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
+    $invites = app(ChessInvites::class);
+    $invite = $invites->invite($anna, $bert);
+    $stale = ChessInvite::query()->findOrFail($invite->id); // e.g. "Looking to play" switched off in a second tab
+
+    $game = $invites->accept($invite, $bert);
+    $invites->close($stale, $bert);
+
+    expect($invite->refresh()->status)->toBe(ChessInviteStatus::Accepted)
+        ->and($invite->chess_game_id)->toBe($game->id);
+});

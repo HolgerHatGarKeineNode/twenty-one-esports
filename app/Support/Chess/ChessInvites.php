@@ -206,11 +206,20 @@ final class ChessInvites
             default => throw new ChessRuleViolation('invite_closed'),
         };
 
-        if ($invite->status !== ChessInviteStatus::Pending) {
+        // Only a still pending row changes: an accept that committed in the
+        // meantime (another tab) must not be overwritten by a stale copy.
+        $closed = ChessInvite::query()
+            ->whereKey($invite->id)
+            ->where('status', ChessInviteStatus::Pending)
+            ->update(['status' => $status, 'updated_at' => now()]);
+
+        if ($closed === 0) {
+            $invite->refresh();
+
             return;
         }
 
-        $invite->forceFill(['status' => $status])->save();
+        $invite->refresh();
         $this->announce($invite);
     }
 
