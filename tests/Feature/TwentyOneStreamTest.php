@@ -960,6 +960,23 @@ test('a corrupt session file starts a new session, logged once, and is replaced'
         ->and(json_decode((string) file_get_contents($this->dir.'/session.json'), true)['starts'])->toBe((int) eventTag($event, 'starts'));
 });
 
+test('the live 30311 carries the rendered cover, the configured picture while none rendered', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    config(['twentyone.stream.cover.path' => $this->dir.'/cover.png']);
+
+    // rsvg_convert is the PHP binary here: no cover renders.
+    [$failedLog, $plain] = streamRunRecorded($this->dir, 1);
+
+    fakeRenderer($this->dir);
+    [$log, $event] = streamRunRecorded($this->dir, 2);
+
+    expect(eventTag($plain, 'image'))->toBe(config('twentyone.stream.event.image'))
+        ->and($failedLog)->toContain('cover not rendered, keeping the configured image')
+        ->and($log)->toContain('cover: a4 '.route('stream.cover').'?v=')
+        ->and(eventTag($event, 'image'))->toBe(route('stream.cover').'?v='.substr(hash('sha256', (string) file_get_contents($this->dir.'/cover.png')), 0, 16));
+});
+
 test('twentyone:stream:end publishes ended once for the session and clears it; with no relay accepting, the session stays', function () {
     $lastLive = time() + 5;
     File::put($this->dir.'/session.json', json_encode(['starts' => 1790000000, 'lastLiveAt' => $lastLive]));

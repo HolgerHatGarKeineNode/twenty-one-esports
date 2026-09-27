@@ -17,6 +17,7 @@ use App\Support\TwentyOne\Stream\PublishSchedule;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamCover;
 use App\Support\TwentyOne\Stream\StreamSession;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
@@ -246,6 +247,7 @@ class TwentyOneStreamCommand extends Command
             60 * (int) config('twentyone.stream.republish_minutes', 20),
             (int) config('twentyone.stream.text_change_seconds', 60),
         );
+        $cover = StreamCover::fromConfig();
 
         // An encoder that wrote no segment for three segment lengths is restarted;
         // a scene whose renders have failed for this many wall-clock seconds gives way to the loop.
@@ -311,6 +313,11 @@ class TwentyOneStreamCommand extends Command
                 // Upcoming tournaments (cached like the counts); their countdown ticks with this poll.
                 $tournamentSnapshots = $this->readTournaments($slides, $tournamentSnapshots, $pollFailures === 0);
                 $tournaments = $this->tournamentFrames($slides, $tournamentSnapshots, (int) ($now * 1000));
+
+                if ($cover->due($now)) {
+                    $stats = $this->readStats($counts, $stats, $pollFailures === 0);
+                    $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
+                }
 
                 $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), array_column($tournaments, 'id'));
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
@@ -445,8 +452,9 @@ class TwentyOneStreamCommand extends Command
             }
 
             $texts = $this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : StreamTexts::for(null);
-            // A new viewer count is republished like a text change (at most once per text_change_seconds).
-            $announced = [...$texts, 'viewers' => $viewerCount];
+            $published = $cover->image() === null ? $texts : [...$texts, 'image' => $cover->image()];
+            // A new viewer count or cover is republished like a text change (at most once per text_change_seconds).
+            $announced = [...$published, 'viewers' => $viewerCount];
             $this->cacheAnnouncement(['viewers' => $viewerCount, 'title' => $texts['title'], 'summary' => $texts['summary']], $now);
 
             // A playlist kept from before this start is fresh after a quick
@@ -455,7 +463,7 @@ class TwentyOneStreamCommand extends Command
             if ($this->signer !== null && $public->hasSegmentOf($this->runIds) && $this->isFresh($public->path()) && $schedule->due($announced, time())) {
                 $this->startedAt ??= $this->resumedStarts ?? time();
                 // A SIGTERM during this publish aborts it.
-                $this->publish($builder, $publisher, 'live', $texts, $this->publishTimeout(), fn (): bool => $this->stopping, $viewerCount);
+                $this->publish($builder, $publisher, 'live', $published, $this->publishTimeout(), fn (): bool => $this->stopping, $viewerCount);
                 $schedule->published($announced, time());
             }
 
@@ -580,6 +588,27 @@ class TwentyOneStreamCommand extends Command
             $this->log('scene data for '.$scene.' not built, keeping the last frame: '.$this->describe($e));
 
             return $previous;
+        }
+    }
+
+    /**
+     * Make the next slide the 30311 picture (StreamCover). A slide that cannot
+     * be built or rendered keeps the current picture; tried again a minute later.
+     *
+     * @param  list<array<string, mixed>>  $tournaments  TournamentSlides::frames() of this poll
+     * @param  list<ChessGame>  $games
+     * @param  array<string, mixed>  $stats
+     */
+    private function advanceCover(StreamCover $cover, SceneSource $source, array $tournaments, array $games, int $more, array $stats, float $now): void
+    {
+        try {
+            $label = $cover->advance($now, array_column($tournaments, 'id'), fn (string $scene, ?int $tournamentId): array => [
+                ...$source->rotation($scene, null, $games, $more, (int) ($now * 1000), $stats, collect($tournaments)->firstWhere('id', $tournamentId)),
+                'viewers' => null,
+            ]);
+            $this->log('cover: '.$label.' '.$cover->image());
+        } catch (Throwable $e) {
+            $this->log('cover not rendered, keeping '.($cover->image() ?? 'the configured image').': '.$this->describe($e));
         }
     }
 
@@ -884,7 +913,7 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * @param  array{title: string, summary: string}  $texts
+     * @param  array{title: string, summary: string, image?: string}  $texts  `image` replaces the configured picture
      * @param  (Closure(): bool)|null  $abort
      * @param  int|null  $viewers  `current_participants`, left out when null
      */

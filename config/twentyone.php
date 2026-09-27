@@ -112,6 +112,13 @@ return [
         // A changed title/summary (a new game) is republished at most this often.
         'text_change_seconds' => 60,
 
+        // The 30311 picture (StreamCover): the next slide every `minutes`, one
+        // file overwritten in place, served as /stream/cover.png?v=<hash>.
+        'cover' => [
+            'minutes' => (int) (env('TWENTYONE_STREAM_COVER_MINUTES') ?: 15),
+            'path' => storage_path('app/stream/cover.png'),
+        ],
+
         // Longest wait of the once-a-second database poll (lock or lost server).
         'poll_timeout_ms' => 2000,
 

@@ -16,6 +16,7 @@ use App\Http\Controllers\RobotsController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShareCardController;
 use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\StreamCoverController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
@@ -104,6 +105,8 @@ Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name(
 Route::livewire('live', 'pages::live')->name('live');
 // Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.
 Route::get('stream/status', LiveStatusController::class)->withoutMiddleware('web')->middleware('throttle:live-status')->name('stream.status');
+// Its 30311 picture (StreamCover), the slide the daemon last rendered; public, no session.
+Route::get('stream/cover.png', StreamCoverController::class)->withoutMiddleware('web')->name('stream.cover');
 
 // Daily chess (P5b): challenge a player, your daily games.
 Route::middleware('auth')->group(function () {
