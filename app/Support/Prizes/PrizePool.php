@@ -2,6 +2,7 @@
 
 namespace App\Support\Prizes;
 
+use App\Enums\PayoutStatus;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentSponsor;
@@ -94,6 +95,24 @@ final class PrizePool
         }
 
         return $tournament->prize_target_sats ?? $tournament->pot_balance_sats;
+    }
+
+    /** The prizes paid out so far. */
+    public static function paidSats(Tournament $tournament): int
+    {
+        return (int) $tournament->payouts()->where('status', PayoutStatus::Paid)->sum('amount_sats');
+    }
+
+    /**
+     * What is still to be won: the pot as set less the prizes paid so far
+     * (user, 2026-09-28: „Keine Abhängigkeit zur Wallet Balance. Nur zu dem
+     * was bisher ausgezahlt wurde“); null without a pot.
+     */
+    public function remainingSats(Tournament $tournament): ?int
+    {
+        $pot = $this->potSats($tournament);
+
+        return $pot === null ? null : max(0, $pot - self::paidSats($tournament));
     }
 
     /** The routing-fee reserve on an amount of sats. */

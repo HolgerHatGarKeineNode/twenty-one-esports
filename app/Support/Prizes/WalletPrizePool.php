@@ -38,6 +38,7 @@ final class WalletPrizePool implements TournamentPrizePool
 
         return [
             'sats' => $sats,
+            'left' => (int) $this->pool->remainingSats($tournament),
             'mode' => $tournament->prizeMode(),
             'split' => $this->pool->projection($tournament),
             'sponsors' => $sponsors,

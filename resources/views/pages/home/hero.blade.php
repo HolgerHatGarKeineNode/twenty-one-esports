@@ -37,7 +37,7 @@
             @if ($pot !== null)
                 <span class="inline-flex h-7 items-center gap-1 rounded-tag bg-btc px-2.5 whitespace-nowrap text-on-btc" data-test="hero-pot">
                     <x-icon name="bolt" :size="14" />
-                    {{ __(':sats sats pot', ['sats' => ShareCard::sats($pot['sats'])]) }}
+                    {{ __(':sats of :target sats pot', ['sats' => ShareCard::sats($pot['left'] ?? $pot['sats']), 'target' => ShareCard::sats($pot['sats'])]) }}
                 </span>
             @endif
         </figcaption>

@@ -1,6 +1,7 @@
 {{--
-    The prize pot of a tournament (P9): its wallet's balance in sats, what
-    each place wins (a share of the pot or a fixed amount) and the sponsors.
+    The prize pot of a tournament (P9): the pot as the tournament sets it,
+    what is still to be won of it (less only what was paid out, never the
+    wallet balance, user 2026-09-28), what each place wins and the sponsors.
     Rendered only when the tournament has a pot whose balance was read
     (App\Support\Tournaments\TournamentPrizePool), so every number here is
     the pot's own.
@@ -12,11 +13,7 @@
 @php
     $sats = fn (int $amount): string => \App\Support\Cards\ShareCard::sats($amount);
     $placeLabel = fn (int $place): string => match ($place) { 1 => __('1st place'), 2 => __('2nd place'), 3 => __('3rd place'), default => __(':place. place', ['place' => $place]) };
-    $poolTarget = $pool['target'] ?? null;
-    $poolFixed = ($pool['mode'] ?? 'percent') === 'fixed';
-    $poolHave = $pool['have'] ?? $pool['sats'];
-    $poolAsOf = $pool['as_of'] ?? null;
-    $poolZone = \App\Support\LeagueTime::zone();
+    $poolLeft = $pool['left'] ?? $pool['sats'];
 @endphp
 <section aria-labelledby="pool-h" class="flex flex-col gap-5 px-4 lg:px-12" data-test="prize-pool">
     <h2 id="pool-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Prize pool') }}</h2>
@@ -25,30 +22,10 @@
         <div class="flex min-w-0 flex-col gap-2">
             <p class="m-0 flex flex-col gap-1">
                 <span class="font-display text-[40px] leading-none font-bold text-btc tabular-nums sm:text-[56px]" data-test="pool-sats">{{ $sats($pool['sats']) }}</span>
-                <span class="text-[13px] text-ink-2">
-                    @if ($poolTarget !== null)
-                        {{ __('sats in the pot, funded :have of :target sats for the prizes', ['have' => $sats(min($poolHave, $poolTarget)), 'target' => $sats($poolTarget)]) }}
-                    @else
-                        {{ __('sats in the pot') }}
-                    @endif
-                </span>
+                <span class="text-[13px] text-ink-2" data-test="pool-left">{{ __(':left of :total sats still to be won', ['left' => $sats($poolLeft), 'total' => $sats($pool['sats'])]) }}</span>
             </p>
-            @if ($poolTarget !== null && $poolTarget > 0)
-                <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ min(100, (int) floor(100 * $poolHave / $poolTarget)) }}%"></span></span>
-                @if ($pool['funded'] ?? false)
-                    <span class="inline-flex h-6 items-center gap-1 self-start rounded-xs bg-win-tint px-2 text-xs font-bold text-win" data-test="pool-funded"><x-icon name="check" :size="12" />{{ __('Funded') }}</span>
-                @else
-                    <span class="text-xs text-ink-2" data-test="pool-progress">{{ $poolFixed ? __(':percent % of the prizes', ['percent' => min(100, (int) floor(100 * $poolHave / $poolTarget))]) : __(':percent % of the target', ['percent' => min(100, (int) floor(100 * $poolHave / $poolTarget))]) }}</span>
-                @endif
-            @endif
-            @if ($poolAsOf !== null)
-                <span @class(['text-xs', 'text-ink-3' => ! ($pool['stale'] ?? false), 'text-loss' => $pool['stale'] ?? false]) data-test="pool-as-of">
-                    @if ($pool['stale'] ?? false)
-                        {{ __('Wallet balance as of :time; the wallet has not answered since.', ['time' => $poolAsOf->copy()->timezone($poolZone)->format('Y-m-d H:i')]) }}
-                    @else
-                        {{ __('Wallet balance as of :time.', ['time' => $poolAsOf->copy()->timezone($poolZone)->format('H:i')]) }}
-                    @endif
-                </span>
+            @if ($pool['sats'] > 0)
+                <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ min(100, (int) floor(100 * $poolLeft / $pool['sats'])) }}%"></span></span>
             @endif
         </div>
         @if ($pool['split'] !== [])

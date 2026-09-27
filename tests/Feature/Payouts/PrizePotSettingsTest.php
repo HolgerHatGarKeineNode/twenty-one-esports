@@ -152,10 +152,11 @@ test('the pot shows as set wherever the tournament shows, with the balance time,
     // The pot as the tournament sets it (the target), not the 120 000 the wallet holds (user, 2026-09-28).
     $sats = ShareCard::sats(100_000);
     $this->get(route('tournaments.show', $tournament))->assertOk()
-        ->assertSeeHtml('data-test="pool-sats">'.$sats.'<')->assertSeeHtml('data-test="pool-funded"')
-        ->assertSeeHtml('data-test="pool-as-of"')->assertDontSee('pot@wallet.example')
+        ->assertSeeHtml('data-test="pool-sats">'.$sats.'<')
+        ->assertSee(__(':left of :total sats still to be won', ['left' => $sats, 'total' => $sats]))
+        ->assertDontSeeHtml('data-test="pool-as-of"')->assertDontSee('pot@wallet.example')
         ->assertSeeHtml('data-test="topup-panel"');
-    $this->get(route('tournaments.index'))->assertSeeHtml('data-test="prize-chip"')->assertSee(__(':sats sats pot, funded', ['sats' => $sats]));
+    $this->get(route('tournaments.index'))->assertSeeHtml('data-test="prize-chip"')->assertSee(__(':sats of :target sats pot', ['sats' => $sats, 'target' => $sats]));
     $this->get(route('games.rocket-league'))->assertSeeHtml('data-test="prize-chip"');
 
     // The wallet goes offline: the schedule keeps the last balance and says so.
@@ -165,8 +166,9 @@ test('the pot shows as set wherever the tournament shows, with the balance time,
     $this->artisan('wallet:read-pots')->assertSuccessful();
     $tournament->refresh();
     expect($tournament->pot_balance_sats)->toBe(120_000)->and($tournament->pot_balance_error)->not->toBeNull();
+    // The public pot never depends on the wallet (user, 2026-09-28): the same number, no balance time.
     $this->get(route('tournaments.show', $tournament))->assertSeeHtml('data-test="pool-sats">'.$sats.'<')
-        ->assertSee(__('Wallet balance as of :time; the wallet has not answered since.', ['time' => $tournament->pot_balance_at->copy()->timezone((string) config('esports.preseason.display_timezone'))->format('Y-m-d H:i')]));
+        ->assertDontSee(__('Wallet balance as of :time; the wallet has not answered since.', ['time' => $tournament->pot_balance_at->copy()->timezone((string) config('esports.preseason.display_timezone'))->format('Y-m-d H:i')]));
 
     // Back online with more sats: read on demand, the page follows.
     unset(app(FakeNwcTransport::class)->offline[$own->pubkey]);
@@ -260,7 +262,7 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
         ->and($pool['split'])->toBe([['place' => 1, 'percent' => null, 'sats' => 60_000], ['place' => 2, 'percent' => null, 'sats' => 25_000]])
         ->and($pool['target'])->toBe(85_000)->and($pool['have'])->toBe(49_150)->and($pool['funded'])->toBeFalse();
     $this->get(route('tournaments.show', $tournament))->assertSee(__(':sats sats', ['sats' => ShareCard::sats(60_000)]))
-        ->assertSee(__('sats in the pot, funded :have of :target sats for the prizes', ['have' => ShareCard::sats(49_150), 'target' => ShareCard::sats(85_000)]));
+        ->assertSee(__(':left of :total sats still to be won', ['left' => ShareCard::sats(85_000), 'total' => ShareCard::sats(85_000)]));
     $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot', ['sats' => ShareCard::sats(85_000)]));
     // The TV lobby names each place's fixed sats, not a share of the balance.
     $this->get(route('tournaments.tv', $tournament))->assertOk()->assertSee('data-test="tv-pot"', false)
@@ -272,7 +274,7 @@ test('fixed amounts: each place wins exactly its sats, the pot shows funded X of
     expect(app(PrizePool::class)->funding($tournament->refresh()))->toBe(['goal' => 85_000, 'have' => 99_150, 'funded' => true, 'leftover' => 14_150]);
     Livewire::actingAs($tournament->creator)->test('pages::tournaments.pool', ['tournament' => $tournament])
         ->assertSeeHtml('data-test="pool-leftover"')->assertSee(PreSeason::formatSats(14_150));
-    $this->get(route('tournaments.index'))->assertSee(__(':sats sats pot, funded', ['sats' => ShareCard::sats(85_000)]));
+    $this->get(route('tournaments.index'))->assertSee(__(':sats of :target sats pot', ['sats' => ShareCard::sats(85_000), 'target' => ShareCard::sats(85_000)]));
 });
 
 test('the prize mode switches freely before sign-up closes and is frozen after, percent mode unchanged', function () {

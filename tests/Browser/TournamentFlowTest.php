@@ -451,13 +451,13 @@ test('the prize pot: top-ups by QR code, sponsors, payouts, fixed prizes and the
         $edit['funding'] = $desk->evaluate('() => document.querySelector("[data-test=pot-fixed-funding]")?.innerText ?? null');
         tournamentShot($desk, "p9-pot-edit-{$width}");
 
-        // Where players look: the index with the pot chips, the tournament page with the balance time.
+        // Where players look: the index with the pot chips, the tournament page with what is still to be won.
         $page->goto(ComputeUrl::from(route('tournaments.index')));
         BrowserWait::until($page, '() => document.querySelectorAll("[data-test=prize-chip]").length >= 3', 8_000);
         $index = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-pot-index-{$width}");
         $page->goto(ComputeUrl::from(route('tournaments.show', $walletPot)));
-        BrowserWait::until($page, '() => document.querySelector("[data-test=pool-as-of]") !== null', 8_000);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=pool-left]") !== null', 8_000);
         $page->evaluate('() => document.querySelector("[data-test=prize-pool]").scrollIntoView()');
         $walletShow = $page->evaluate(TOURNAMENT_STATE);
         tournamentShot($page, "p9-pot-show-{$width}");
