@@ -117,11 +117,12 @@
             </span>
         </form>
 
-        <button type="button" class="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] text-ink-2 hover:text-ink lg:hidden"
+        {{-- Below 360 px the label goes to screen readers only: at 320 px in German "Suche" left the chip row 67 px, narrower than the "Schach" chip (73 px). --}}
+        <button type="button" class="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] text-ink-2 hover:text-ink lg:hidden"
                 aria-controls="mobile-search" x-bind:aria-expanded="search.toString()" aria-expanded="false"
-                x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.mobileSearch.focus())">
+                x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.mobileSearch.focus())" data-test="mobile-search-toggle">
             <x-icon name="search" :size="20" />
-            <span>{{ __('Search') }}</span>
+            <span class="max-[359px]:sr-only">{{ __('Search') }}</span>
         </button>
 
         @if ($user)

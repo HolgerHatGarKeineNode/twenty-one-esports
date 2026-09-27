@@ -78,14 +78,14 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('row 1 fits Tournaments with its sign-up count and room for a 90 px LIVE badge at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
+test('row 1 fits Tournaments with its sign-up count and room for the LIVE badge (94 px with its count) at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
     Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDays(2)]);
     $admin = shellAdmin();
     $problems = [];
     $failures = [];
     $sizes = [];
-    // P20 puts a LIVE badge next to Season: a stand-in of its size, so this row keeps room for it.
-    $placeholder = '() => { const season = document.querySelector("[data-test=nav-mining]"); const live = Object.assign(document.createElement("span"), { textContent: "LIVE" }); live.style.cssText = "flex: none; width: 90px; height: 28px; align-self: center"; live.dataset.test = "live-placeholder"; season.after(live); }';
+    // P20 puts a LIVE badge after Clans and Season (64 x 44, 94 x 44 with a count): a stand-in of the wider one, so this row keeps room for it.
+    $placeholder = '() => { const season = document.querySelector("[data-test=nav-mining]"); const live = Object.assign(document.createElement("span"), { textContent: "LIVE" }); live.style.cssText = "flex: none; width: 94px; height: 44px; align-self: center"; live.dataset.test = "live-placeholder"; season.after(live); }';
 
     foreach (['en', 'de'] as $locale) {
         foreach ([1024 => 768, 1280 => 800, 1440 => 900, 1680 => 1050, 1920 => 1080] as $width => $height) {
@@ -111,7 +111,7 @@ test('row 1 fits Tournaments with its sign-up count and room for a 90 px LIVE ba
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('on a phone the active game chip shows whole and no chip label is cut, with each game active, at 320 and 375 px', function () {
+test('on a phone the active game chip shows whole and no chip label is cut, with each game active, at 320 and 375 px, and in German at 320 px for a guest and a player', function () {
     $problems = [];
     $failures = [];
     $pages = [
@@ -120,20 +120,29 @@ test('on a phone the active game chip shows whole and no chip label is cut, with
         'ea-sports-fc-27' => route('games.series', 'ea-sports-fc-27', false),
         'ea-sports-fc-26' => route('games.series', 'ea-sports-fc-26', false),
     ];
+    // The guests first: the pages of one test share their cookies, so a guest after the login would not be one.
+    $runs = [['guest', null, 'en', 375, 667], ['guest', null, 'en', 320, 568], ['guest', null, 'de', 320, 568], ['player', shellPlayer(), 'de', 320, 568]];
 
-    foreach ([375 => 667, 320 => 568] as $width => $height) {
-        $page = shellPage(null, $width, $height);
+    foreach ($runs as [$role, $user, $locale, $width, $height]) {
+        $page = shellPage($user, $width, $height);
+        if ($locale === 'de') {
+            // German "Schach" (73 px) did not fit the 67 px a German guest's chip row had at 320 px.
+            $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+        }
 
         foreach ($pages as $slug => $url) {
             shellOpen($page, $url, $problems);
             $m = $page->evaluate(SHELL_MEASURE);
             $chips = $page->evaluate('() => [...document.querySelectorAll("#game-chips .gchip")].map((c) => `${c.textContent.trim()} ${Math.round(c.getBoundingClientRect().width)}${c.hasAttribute("aria-current") ? " active" : ""}`)');
-            fwrite(STDERR, "\n[shell-chips] {$slug} @{$width}: ".json_encode($chips));
-            if ($m['squeezed'] !== []) {
-                $failures[] = "{$slug} @{$width}: ".json_encode($m['squeezed']);
+            fwrite(STDERR, "\n[shell-chips] {$role} {$locale} {$slug} @{$width}: ".json_encode($chips));
+            if ($m['lang'] !== $locale || $m['squeezed'] !== [] || $m['small'] !== []) {
+                $failures[] = "{$role} {$locale} {$slug} @{$width}: ".json_encode(['lang' => $m['lang'], 'squeezed' => $m['squeezed'], 'small' => $m['small']]);
             }
             if ($width === 375 && $slug === 'rocket-league') {
                 shellShot($page, 'shell-guest-375-chips-rocket-league');
+            }
+            if ($locale === 'de' && $slug === 'chess') {
+                shellShot($page, "shell-{$role}-320-de-chips-chess");
             }
         }
     }
