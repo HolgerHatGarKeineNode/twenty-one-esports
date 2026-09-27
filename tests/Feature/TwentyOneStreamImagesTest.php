@@ -336,10 +336,15 @@ test('the command survives a failing player, removes stale files and runs every 
     Http::fake(['https://cdn.example/good.png' => pictureResponse(streamPicture()), 'https://cdn.example/bad.png' => Http::response('', 500)]);
 
     $exit = Artisan::call('twentyone:stream:images');
+    $output = Artisan::output();
     $event = collect(app(Schedule::class)->events())->first(fn ($event): bool => str_contains((string) $event->command, 'twentyone:stream:images'));
 
     expect($exit)->toBe(0)
-        ->and(Artisan::output())->toContain('Avatars: 1 fetched, 0 fresh, 0 waiting after a failure, 1 failed, 1 without a picture, 1 old file(s) removed.')
+        ->and($output)->toContain('Avatars: 1 fetched, 0 fresh, 0 waiting after a failure, 1 failed, 1 without a picture, 1 old file(s) removed.')
+        ->and($output)->toContain('Avatars failing from cdn.example: 1 player(s), last: ')
+        ->and($output)->not->toContain('good.png')
+        ->and($event?->output)->toBe(storage_path('logs/stream-images.log'))
+        ->and($event?->shouldAppendOutput)->toBeFalse()
         ->and(is_file(StreamImages::avatarFile($good->id, $good->picture)))->toBeTrue()
         ->and(is_file($stale))->toBeFalse()
         ->and($event?->expression)->toBe('*/10 * * * *')

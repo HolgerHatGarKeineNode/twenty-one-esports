@@ -262,7 +262,8 @@ Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlappin
  * avatars older than a day are fetched again, a new picture right away;
  * backdrops only when a cover changed. The daemon reads the files.
  */
-Schedule::command('twentyone:stream:images')->everyTenMinutes()->withoutOverlapping();
+// The last run's output, failing avatar hosts included: prod logs errors only.
+Schedule::command('twentyone:stream:images')->everyTenMinutes()->withoutOverlapping()->sendOutputTo(storage_path('logs/stream-images.log'));
 
 /*
  * Horizon's metrics dashboard stays empty without regular snapshots.

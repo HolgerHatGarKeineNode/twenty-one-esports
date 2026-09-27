@@ -90,6 +90,29 @@ class StreamImageBuilder
     }
 
     /**
+     * The avatars that failed last time, per host: how many players and the
+     * latest reason. Read from the failure markers, so a player stays listed
+     * until a fetch works again; prod logs errors only, this is what shows it.
+     *
+     * @return array<string, array{players: int, reason: string}>
+     */
+    public function avatarFailures(): array
+    {
+        $failures = [];
+
+        foreach (glob(StreamImages::dir().'/avatars/*.failed') ?: [] as $marker) {
+            [$from, $reason] = array_pad(explode("\n", (string) @file_get_contents($marker), 2), 2, '');
+            $host = parse_url($from, PHP_URL_HOST) ?: ($from !== '' ? $from : 'unknown');
+            $failures[$host]['players'] = ($failures[$host]['players'] ?? 0) + 1;
+            $failures[$host]['reason'] = $reason !== '' ? $reason : 'no reason kept';
+        }
+
+        ksort($failures);
+
+        return $failures;
+    }
+
+    /**
      * One player's avatar: 'none' without a picture (the scene draws the
      * Blockpile), 'fresh' when the file is recent, 'waiting' after a recent
      * failure, else 'fetched' or 'failed'. Never throws.
@@ -126,10 +149,13 @@ class StreamImageBuilder
             return 'fetched';
         } catch (Throwable $e) {
             // One line per failure; the URL without its query (it may carry a token).
-            Log::warning('stream avatar of user '.$user->id.' not refreshed from '.(str_starts_with($source, 'public:') ? $source : ImageFetcher::loggable($source)).': '.$e->getMessage());
+            $from = str_starts_with($source, 'public:') ? $source : ImageFetcher::loggable($source);
+            Log::warning('stream avatar of user '.$user->id.' not refreshed from '.$from.': '.$e->getMessage());
 
             try {
+                // The marker keeps where and why, for avatarFailures().
                 File::ensureDirectoryExists(dirname($marker));
+                File::put($marker, $from."\n".$e->getMessage());
                 touch($marker, $now);
             } catch (Throwable) {
                 // Without the marker the next run simply tries again.

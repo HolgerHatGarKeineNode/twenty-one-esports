@@ -34,6 +34,10 @@ class TwentyOneStreamImagesCommand extends Command
             $avatars['fetched'], $avatars['fresh'], $avatars['waiting'], $avatars['failed'], $avatars['none'], $avatars['removed'],
         ));
 
+        foreach ($builder->avatarFailures() as $host => $failure) {
+            $this->warn(sprintf('Avatars failing from %s: %d player(s), last: %s', $host, $failure['players'], $failure['reason']));
+        }
+
         return self::SUCCESS;
     }
 
