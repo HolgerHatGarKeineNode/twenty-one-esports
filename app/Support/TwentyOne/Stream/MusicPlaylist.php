@@ -13,6 +13,9 @@ use Random\Randomizer;
  * two consecutive files never share a title, also across the end of the list,
  * because ffmpeg loops it (`-stream_loop -1`). Each pass plays every file
  * once, in a fresh order.
+ *
+ * Instrumentals (a folder of their own, same naming) alternate with the
+ * vocal tracks: `interleave()` puts one after every vocal track.
  */
 final class MusicPlaylist
 {
@@ -100,6 +103,66 @@ final class MusicPlaylist
         }
 
         return $order;
+    }
+
+    /**
+     * The vocal order with one instrumental after every vocal track (vocal,
+     * instrumental, vocal, …). Instrumentals are drawn from a shuffled bag
+     * that refills when empty, so all of them come round before one repeats.
+     * An instrumental never shares its title with the vocal before or after
+     * it (several exist in both forms: the same tune twice in a row), nor
+     * with the previous instrumental; the list wraps like `order()`.
+     *
+     * @param  list<string>  $vocals  a valid `order()`
+     * @param  list<string>  $instrumentals
+     * @return list<string>
+     *
+     * @throws InvalidArgumentException when an instrumental slot has no candidate at all
+     */
+    public static function interleave(array $vocals, array $instrumentals, Randomizer $random = new Randomizer): array
+    {
+        if ($instrumentals === []) {
+            return $vocals;
+        }
+
+        $count = count($vocals);
+        $bag = [];
+        $previous = null;
+        $list = [];
+
+        foreach ($vocals as $index => $vocal) {
+            $neighbours = [self::title($vocal), self::title($vocals[($index + 1) % $count])];
+            $pick = null;
+
+            // Strict first (not the previous instrumental either), then only the neighbours.
+            foreach ([[...$neighbours, $previous], $neighbours] as $avoid) {
+                foreach ([false, true] as $refill) {
+                    if ($refill || $bag === []) {
+                        $bag = [...$bag, ...$random->shuffleArray($instrumentals)];
+                    }
+
+                    foreach ($bag as $key => $file) {
+                        if (! in_array(self::title($file), $avoid, true)) {
+                            $pick = $file;
+                            unset($bag[$key]);
+                            $bag = array_values($bag);
+
+                            break 3;
+                        }
+                    }
+                }
+            }
+
+            if ($pick === null) {
+                throw new InvalidArgumentException('No instrumental can follow '.basename($vocal).' without repeating a title.');
+            }
+
+            $list[] = $vocal;
+            $list[] = $pick;
+            $previous = self::title($pick);
+        }
+
+        return $list;
     }
 
     /**

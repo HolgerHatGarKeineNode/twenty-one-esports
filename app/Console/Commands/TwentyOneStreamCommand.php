@@ -607,24 +607,33 @@ class TwentyOneStreamCommand extends Command
     private function writeMusicList(): string
     {
         $files = $this->musicFiles();
-        $seconds = max(1, count($files) * self::ASSUMED_TRACK_SECONDS);
+        $instrumentals = $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir'));
+        // With instrumentals every vocal track is followed by one: a pass lasts twice as long.
+        $seconds = max(1, count($files) * self::ASSUMED_TRACK_SECONDS * ($instrumentals === [] ? 1 : 2));
         $passes = (int) ceil(3600 * (int) config('twentyone.stream.music.list_hours', 12) / $seconds);
         $path = rtrim((string) config('twentyone.stream.scene.work_dir'), '/').'/music.ffconcat';
         File::ensureDirectoryExists(dirname($path));
-        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat(MusicPlaylist::order($files, max(1, $passes))));
+        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat(MusicPlaylist::interleave(MusicPlaylist::order($files, max(1, $passes)), $instrumentals)));
 
         return $path;
     }
 
     /**
-     * The music files, without names that carry control characters (they
-     * could not be written into the ffconcat list safely).
+     * The music files of `$dir` (default: the vocal folder), without names
+     * that carry control characters (they could not be written into the
+     * ffconcat list safely).
      *
      * @return list<string>
      */
-    private function musicFiles(): array
+    private function musicFiles(?string $dir = null): array
     {
-        $files = File::glob(rtrim((string) config('twentyone.stream.music.dir'), '/').'/*__v*.m4a');
+        $dir ??= (string) config('twentyone.stream.music.dir');
+
+        if (trim($dir) === '') {
+            return [];
+        }
+
+        $files = File::glob(rtrim($dir, '/').'/*__v*.m4a');
 
         return array_values(array_filter($files, fn (string $file): bool => MusicPlaylist::isSafePath($file)));
     }
@@ -656,9 +665,9 @@ class TwentyOneStreamCommand extends Command
 
         // Both modes play the music; the scene mode can start at any second.
         try {
-            MusicPlaylist::order($this->musicFiles(), 1);
+            MusicPlaylist::interleave(MusicPlaylist::order($this->musicFiles(), 1), $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir')));
         } catch (InvalidArgumentException) {
-            return 'No usable music in '.config('twentyone.stream.music.dir').' (`<title>__v<n>.m4a`, at least two titles, none with more than half the files).';
+            return 'No usable music in '.config('twentyone.stream.music.dir').' (`<title>__v<n>.m4a`, at least two titles, none with more than half the files; instrumentals must not all share one title).';
         }
 
         $rsvg = (string) config('twentyone.stream.scene.rsvg_convert');

@@ -80,3 +80,46 @@ test('the ffconcat list quotes every path for the concat demuxer', function () {
 test('a music path with a control character never reaches the ffconcat list', function () {
     MusicPlaylist::ffconcat(["/music/a__v1.m4a\nfile '/etc/passwd'"]);
 })->throws(InvalidArgumentException::class);
+
+test('instrumentals alternate with the vocal tracks, never next to the same title, and all come round', function () {
+    $instrumentals = ['/music/instrumental/drumnbass__v1.m4a', '/music/instrumental/drumnbass__v2.m4a', '/music/instrumental/drumnbass__v3.m4a', '/music/instrumental/drumnbass__v4.m4a'];
+
+    foreach (['shitcoin-shuffle', 'title-1', 'title-2', 'title-3'] as $title) {
+        $instrumentals[] = "/music/instrumental/{$title}__v1.m4a";
+        $instrumentals[] = "/music/instrumental/{$title}__v2.m4a";
+    }
+
+    foreach (range(1, 100) as $seed) {
+        $random = new Randomizer(new Mt19937($seed));
+        $vocals = MusicPlaylist::order(musicFiles(), 4, $random);
+        $list = MusicPlaylist::interleave($vocals, $instrumentals, $random);
+        $count = count($list);
+
+        expect($count)->toBe(2 * count($vocals))
+            ->and(array_values(array_filter($list, fn (string $file): bool => ! str_contains($file, '/instrumental/'))))->toBe($vocals);
+
+        $played = [];
+
+        foreach ($list as $index => $file) {
+            expect(str_contains($file, '/instrumental/'))->toBe($index % 2 === 1)
+                ->and(MusicPlaylist::title($file))->not->toBe(MusicPlaylist::title($list[($index + 1) % $count]));
+
+            if ($index % 2 === 1) {
+                if ($index >= 3) {
+                    expect(MusicPlaylist::title($file))->not->toBe(MusicPlaylist::title($list[$index - 2]));
+                }
+
+                $played[$file] = ($played[$file] ?? 0) + 1;
+            }
+        }
+
+        expect(count($played))->toBe(count($instrumentals))
+            ->and(max($played) - min($played))->toBeLessThanOrEqual(2);
+    }
+});
+
+test('without instrumentals the vocal order stays as it is', function () {
+    $vocals = MusicPlaylist::order(musicFiles(), 1);
+
+    expect(MusicPlaylist::interleave($vocals, []))->toBe($vocals);
+});

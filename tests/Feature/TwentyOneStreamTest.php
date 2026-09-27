@@ -34,6 +34,7 @@ beforeEach(function () {
         'twentyone.stream.scene.rsvg_convert' => PHP_BINARY,
         'twentyone.stream.scene.work_dir' => $this->dir.'/work',
         'twentyone.stream.music.dir' => $this->dir.'/music',
+        'twentyone.stream.music.instrumental_dir' => $this->dir.'/music/instrumental',
     ]);
 
     File::ensureDirectoryExists($this->dir.'/music');
