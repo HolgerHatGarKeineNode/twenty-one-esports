@@ -58,9 +58,11 @@ final class StreamBotCopy
         ],
         'live_games' => [
             ['🔴 :count games are live right now', '👀 Pick a board and watch: :url'],
+            ['🔴 :count matches live this minute', '👉 Watch: :url'],
         ],
         'live_series' => [
             ['🏁 :game: :home vs :away, best of :best_of', '👉 Follow the match: :url'],
+            ['🏁 :home vs :away in :game, best of :best_of', '👀 Catch it live: :url'],
         ],
 
         // Results and pride.
@@ -78,15 +80,19 @@ final class StreamBotCopy
         ],
         'ladder_top' => [
             ['🪜 Blitz ladder right now', ':podium', '👉 Full ladder: :url'],
+            ['🪜 Where the blitz ladder stands', ':podium', '👉 See it all: :url'],
         ],
         'season_live' => [
             ['⛏️ The season is live: rated wins mine blocks on the league chain', '👉 Watch the chain grow: :url'],
+            ['⛏️ Season is on: every rated win mines a block', '👉 Watch it grow: :url'],
         ],
         'season_countdown' => [
             ['⛏️ Block 0 in :left', '🔓 Then rated play and mining start, until then every game is casual', '👉 :url'],
+            ['⛏️ :left until Block 0 hits', '🔓 Rated play and mining kick in then, casual for now', '👉 :url'],
         ],
         'stats' => [
             ['📊 So far: :players players, :clans clans, :games games played', '👉 Join them: :url'],
+            ['📊 :players players, :clans clans, :games games so far', '👉 Come join in: :url'],
         ],
 
         // What you can do.
@@ -96,27 +102,35 @@ final class StreamBotCopy
         ],
         'daily_chess' => [
             ['📬 No time for blitz? Daily chess: one move a day, whenever it suits you', '👉 Challenge someone: :url'],
+            ['📬 Short on time? Daily chess: one move a day, no rush', '👉 Start a game: :url'],
         ],
         'clan_challenge' => [
             ['🚗 :games: clans challenge clans in best-of series', '👉 Send a challenge: :url'],
+            ['🚗 Clans face off in best-of series across :games', '👉 Challenge one: :url'],
         ],
         'invite_friend' => [
             ['💌 Play a friend: make an invite link in the lobby and send it anywhere', '👉 :url'],
+            ['💌 Got a friend to play? Grab an invite link from the lobby', '👉 :url'],
         ],
         'clans' => [
             ['🛡️ Better together: join a clan or start your own', '👥 :count clans are already in', '👉 :url'],
+            ['🛡️ Solo or squad: join a clan or start one up', '👥 :count clans already here', '👉 :url'],
         ],
         'badges' => [
             ['🎖️ Every rank comes with a badge you can show on your Nostr profile', '👉 Start climbing: :url'],
+            ['🎖️ Climb the ranks, earn a badge for your Nostr profile', '👉 :url'],
         ],
         'all_games' => [
             ['🎮 :games: every game and mode on one page', '👉 :url'],
+            ['🎮 One page, every game and mode: :games', '👉 Check it out: :url'],
         ],
         'login' => [
             ['🔑 Log in with Nostr or Google and you are in', '👉 :url'],
+            ['🔑 Nostr or Google login, takes seconds', '👉 :url'],
         ],
         'zap' => [
             ['⚡ Enjoying the stream? Zap it right here, every sat says thanks', '🌐 More on the site: :url'],
+            ['⚡ Liking the stream? A zap goes a long way', '🌐 :url'],
         ],
     ];
 
