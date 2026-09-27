@@ -2715,7 +2715,7 @@ with the sender, cached). The latency of this path was not measured.
 mute list only after reading the newest version, and never from a stale copy.
 
 **What is stored where.** The app's database stores nothing about chats except each player's mutes
-(see [Lobby and account cards](#lobby-and-account-cards-rev-91)). The league relay stores the
+(see [Lobby and account cards](#lobby-and-account-cards-rev-92)). The league relay stores the
 gift wraps: ciphertext, recipient, a random time. Clients may cache decrypted messages on the device.
 
 ### Lobby and account cards (rev. 9.2)
@@ -2827,27 +2827,80 @@ said.
 
 | who | sees | cannot see |
 |---|---|---|
-| chat relays (production: `wss://nos.lol`, `wss://relay.primal.net`) | per wrap: the recipient `p`, the real arrival time (the `created_at` is random), the size, the sender's IP address; the sender's pubkey only if the relay asks for AUTH, because the client answers it with the sender's key | sender (without AUTH), content, whether it is a card |
+| chat relays (production: `wss://nos.lol`, `wss://relay.primal.net`) | per wrap: the recipient `p`, the real arrival time (the `created_at` is random), the size, the `expiration` (the day a casual room ends, see below), the sender's IP address; the sender's pubkey only if the relay asks for AUTH, because the client answers it with the sender's key | sender (without AUTH), content, whether it is a card |
 | anyone | relay.primal.net served gift wraps to an unauthenticated reader (measured 2026-09-27: `nak req -k 1059 -l 2 wss://relay.primal.net` returned two; its NIP-11 names strfry 1.0.3 without NIP-42). Anyone can list the wraps addressed to a player and, subscribing live, see when they arrive. Two wraps arriving together, one to `p` A (the copy to self) and one to `p` B, tie A and B to a message at that moment. nos.lol answered HTTP 502 at the time; in the P5d smoke test on 2026-09-26 it, too, returned a test wrap by id and by `#p` without AUTH | content |
 | the size | NIP-44 pads, so sizes come in steps. Measured with the app's nostr-tools: a 2-character message wraps to 1284 base64 characters, a 60-character one to 1456, a 120-character one and both example cards above to 1796. A card looks like a medium-length message | that it is a card |
 | the league server | the pairing, the match, the two flags and their times, mutes. It also decides who is in the room: a card goes to the pubkeys the league names as members | content, as long as it names the true opponent and serves an unchanged client script. End-to-end encryption here protects against relays and a curious league, not against a malicious one |
 | nostr-mill for a Google login | everything: its `central` server encrypts the sender's seal from the plaintext rumor and decrypts both layers for a recipient (see Google logins under [Chat](#chat)). If either player of the match signs in with Google, `central` can read the card | the key itself (FROST-sharded) |
-| whoever later gets a player's key | NIP-44 has no forward secrecy: the seal is encrypted between the two players' long-term keys and the wrap to the recipient's long-term key. Whoever stored the wraps (relay.primal.net serves them to anyone) and later obtains either player's key, or `central`'s cooperation for a Google login, reads every card between the two. A lobby password is worthless after the match, so the client proposes a fresh random one per match; an EA ID stays valid and is the real exposure | |
+| whoever later gets a player's key | NIP-44 has no forward secrecy: the seal is encrypted between the two players' long-term keys and the wrap to the recipient's long-term key. Whoever stored the wraps before their expiration (relay.primal.net serves them to anyone) and later obtains either player's key, or `central`'s cooperation for a Google login, reads every card between the two. A lobby password is worthless after the match, so the client proposes a fresh random one per match; an EA ID stays valid and is the real exposure | wraps that honest relays deleted at their expiration |
 
-A NIP-40 `expiration` on the wraps would make honest relays drop them after the match
-(relay.primal.net lists NIP-40), but not copies someone already kept; on card wraps alone it would
-mark them as cards, so it belongs on every wrap of a casual room or on none (see
-[Open points](#open-points)).
+**Expiration.** Every message of a casual 1v1 room, text and cards alike, carries a NIP-40
+`expiration`, the same value on the gift wrap, the seal and the rumor, and on the copy to self:
 
-**The hint.** One sentence, the same for every login, shown above the chat. It must be true for every
-login, including a match where only the opponent signs in with Google:
+- **the wrap**, so that relays supporting NIP-40 stop serving it and delete it;
+- **the seal**, as NIP-17 asks ("This tag SHOULD be included on the `kind:13` seal as well, in case it
+  leaks"). NIP-59 also says "Tags MUST always be empty in a `kind:13`"; the two texts contradict each
+  other, and this NIP follows NIP-17, the one that defines private messages. The app's unwrapping does
+  not look at the seal's tags;
+- **the rumor**, so that clients drop the message after that time: the app hides it, removes it and
+  its cache entry, and other NIP-17 clients that honour NIP-40 do the same.
 
-> Encrypted with the players' Nostr keys: the league server never receives or stores these messages,
-> but if either player signs in with Google, the signing service behind that login can read them.
+Only casual 1v1 rooms carry it; other chats (lineup series, games) stay as they are.
 
-A shorter "End-to-end encrypted over Nostr: the league server never receives or stores these
-messages." is true word for word, but readers take "end-to-end" as "nobody else can read it", which is
-false as soon as one player signs in with Google.
+**Which timestamp.** The match's end is not known when a message is sent, and a wrap cannot be
+re-dated once sent (its key is thrown away). The value therefore comes from the match, not from the
+message:
+
+1. **Anchor** `A`: the time the ready check closes. For an instant match that is `ready_by`, for a
+   scheduled challenge the start plus the 10-minute check-in window. Both are fixed when the match
+   is created, before the room opens.
+2. **Latest regular end** `A + D`, where `D` is the sum of the casual deadlines in `esports.casual`
+   along the longest path without a dispute: lobby shared, joined, report, auto-confirm (105 minutes
+   with the plan's 5 + 10 + 60 + 30).
+3. **`expiration`** = the next 00:00 UTC at or after `max(A + D, now) + 7 days`.
+
+The league computes `A + D` and hands it to both clients with the room's configuration, so both
+sides use the same number and a changed deadline cannot split a room. `now` is the sending client's
+clock.
+
+Why this and not `created_at + 7 days + the longest match`: an expiration at a fixed distance from the
+real send time would publish that time on every wrap, which is exactly what the random wrap
+`created_at` hides. With the anchor, every message of a room carries the same value, and rounding to a
+UTC day makes all casual rooms whose regular end falls on the same day indistinguishable by it.
+`max(…, now)` covers messages written after the regular end (a dispute): they still live at least 7
+days, and they reveal only that they were sent after it, to the day. The cost: a match that ends
+late, by a dispute or an admin decision, keeps its chat for less than 7 days after its final state;
+whatever an admin needs was never readable to the league anyway.
+
+What `expiration` does not do: it is a request to honest relays and clients, not forward secrecy
+(NIP-17 lists "disappearing messages" under "Optional Forward Secrecy"; the keys stay the same, and a
+copy someone kept stays readable with a later key). It also tells relays that a wrap belongs to a
+casual room that ends on that day. NIP-40: "Clients SHOULD NOT send expiration events to relays that
+do not support this NIP", so every relay in `esports.chat.relays` must list `40` in its NIP-11
+`supported_nips` (relay.primal.net does, measured 2026-09-27; nos.lol answered HTTP 502 then and is
+unconfirmed). After the expiration the chat history of the match is gone on the relays and in the
+app's cache.
+
+**The hint.** One sentence, the same for every login, shown above the chat (user decision,
+2026-09-27):
+
+> End-to-end encrypted over Nostr: the league server never receives or stores these messages.
+
+It is true for every login because it speaks about the league server. It does not say that nobody
+else can read the messages: if either player signs in with Google, nostr-mill's `central` can (see
+the table above). It was chosen over a wording that named that signing service.
+
+**Migration.** When the cards are built, the existing chat texts are replaced by the hint (English
+source strings, with their entries in `lang/*.json`):
+
+- `resources/views/pages/matches/⚡room.blade.php` and
+  `resources/views/pages/games/partials/chat-body.blade.php`: "The chat is end-to-end encrypted with
+  your Nostr key. Open it to read and write messages." becomes the hint, followed by "Open it to read
+  and write messages.";
+- `resources/views/pages/admin/⚡dispute.blade.php`: "The chat is end-to-end encrypted between the
+  players (NIP-17). The league cannot read it, so there is no excerpt here." becomes "The chat is
+  end-to-end encrypted over Nostr: the league server never receives or stores it, so there is no
+  excerpt here." (the sentence about screenshots stays).
 
 ## Notifications
 
@@ -3152,7 +3205,7 @@ These stay on the league server, on purpose:
 
 | data | why |
 |---|---|
-| lobby name and password | a secret for the two lineups only; anything on a relay is readable by every reader and cannot be recalled. Casual 1v1 matches share it, and the EA ID, only as an encrypted card in the chat ([Lobby and account cards](#lobby-and-account-cards-rev-91)) |
+| lobby name and password | a secret for the two lineups only; anything on a relay is readable by every reader and cannot be recalled. Casual 1v1 matches share it, and the EA ID, only as an encrypted card in the chat ([Lobby and account cards](#lobby-and-account-cards-rev-92)) |
 | dispute evidence (screenshots of the end screen or the in-game match history) | may show third parties and other personal data; evidence is judged by admins, the verdict is public via `resolution admin` |
 | plaintext of chats and notifications | only on the players' devices; the relay holds encrypted gift wraps (see [Chat](#chat)) |
 | live per-game entries during a series | shown as provisional in the match room; only the final report is signed |
@@ -5631,11 +5684,11 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
 - **Lobby and account cards (rev. 9.2)** are specified, not built, and have no example: they live
-  inside sealed rumors, so there is nothing public to sign and read back. Open: whether every wrap of a
-  casual room carries a NIP-40 `expiration` (drops the EA ID from honest relays after the match, and
-  the chat history with it); who operates nostr-mill's `central`, which decides whether "the
-  league" can read the chats of Google logins; and the games' own length limits for match names,
-  passwords and EA IDs.
+  inside sealed rumors, so there is nothing public to sign and read back. Open: whether nos.lol
+  supports NIP-40 (it must, to stay a chat relay for casual rooms); whether other NIP-17 clients reject
+  a seal with an `expiration` tag, as NIP-59's "Tags MUST always be empty" would allow; who operates
+  nostr-mill's `central`, which decides whether "the league" in the wider sense can read the chats of
+  Google logins; and the games' own length limits for match names, passwords and EA IDs.
 - **Provisional k-factor for Rocket League.** The chess ladders carry `["provisional","5","40"]`. The
   Rocket League examples were signed before that decision and carry `["provisional","5"]` (k 32 all
   season). If season 1 of Rocket League should also use k 40 while provisional, its ladders get the
