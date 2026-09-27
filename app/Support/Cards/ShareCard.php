@@ -11,6 +11,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
 use Illuminate\Support\Facades\App;
@@ -350,7 +351,7 @@ final class ShareCard
             $this->c->rect($x, $y + $row, $w, 4, $this->c->mix($from, $to, $row / $h));
         }
 
-        $name = $chess ? __('Chess') : 'Rocket League';
+        $name = GameNames::game((string) $this->facts['game']);
         $size = $this->c->fitSize($name, 'display', [64, 52, 40], $w - 64);
         $this->c->text($name, 'display', $size, $x + 32, $y + $h - 36, Canvas::INK);
     }
@@ -370,7 +371,7 @@ final class ShareCard
     private function inviteLine(): string
     {
         $f = $this->facts;
-        $game = $f['game'] === 'chess' ? __('Chess').' '.($f['mode'] === 'correspondence' ? __('Daily') : __('Blitz 5+3')) : 'Rocket League '.$f['mode'];
+        $game = GameNames::full((string) $f['game'], (string) $f['mode']);
 
         return __(':game, :format. Starts :date.', ['game' => $game, 'format' => TournamentFormat::from((string) $f['format'])->label(), 'date' => $f['starts']]);
     }

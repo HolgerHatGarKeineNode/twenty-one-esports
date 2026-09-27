@@ -50,7 +50,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $game = __(app(GameRegistry::class)->get($this->game)->name());
-        $mode = $this->game === 'chess' ? __($this->gameMode->name) : $this->gameMode->name;
+        $mode = __($this->gameMode->name);
         $title = __(':game :mode ladder', ['game' => $game, 'mode' => $mode]);
         $view->title($title);
         $replace = ['game' => $game, 'mode' => $mode];
@@ -137,7 +137,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
     #[Computed]
     public function modes(): array
     {
-        return array_values(array_map(fn (GameMode $mode) => [$mode->slug, $this->game === 'chess' ? __($mode->name) : $mode->name],
+        return array_values(array_map(fn (GameMode $mode) => [$mode->slug, __($mode->name)],
             app(GameRegistry::class)->get($this->game)->modes()));
     }
 }; ?>
@@ -145,7 +145,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
 @php
     $registry = app(\App\Games\GameRegistry::class);
     $gameName = __($registry->get($game)->name());
-    $modeName = $game === 'chess' ? __($this->gameMode->name) : $this->gameMode->name;
+    $modeName = __($this->gameMode->name);
     $rows = $this->rows;
     $players = $this->gameMode->rates === 'player';
     $active = $this->activePool;
@@ -155,10 +155,13 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
 
 <div class="flex grow flex-col gap-4 px-4 pb-8 lg:gap-6 lg:px-12" data-test="ladder">
     <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <h1 class="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[26px] font-bold lg:text-[34px]">
-            {{ $gameName }} {{ $modeName }}
-            <span class="font-sans text-xs font-normal text-ink-2">{{ __('Ladder') }}</span>
-        </h1>
+        <div class="flex min-w-0 items-center gap-4">
+            <a href="{{ \App\Support\GameNames::page($game) }}" class="shrink-0" aria-label="{{ $gameName }}"><x-game-cover :game="$game" size="thumb" class="w-24 rounded-md shadow-ring lg:w-32" data-test="ladder-game-cover" /></a>
+            <h1 class="m-0 flex flex-wrap items-baseline gap-x-3 font-display text-[26px] font-bold lg:text-[34px]">
+                {{ $gameName }} {{ $modeName }}
+                <span class="font-sans text-xs font-normal text-ink-2">{{ __('Ladder') }}</span>
+            </h1>
+        </div>
 
         <div class="flex flex-wrap items-center gap-3">
             <nav aria-label="{{ __('Mode') }}" class="flex overflow-hidden rounded-md border border-edge">
@@ -198,7 +201,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                                ? __('The ladder fills with the first rated game after Block 0. Every player starts at :elo Elo. Until then every game is casual and counts for the casual ladder only.', ['elo' => (int) config('season.rating.start')])
                                : __('The ladder fills with the first rated series after Block 0. Every lineup starts at :elo Elo. Until then every match is casual and counts for the casual ladder only.', ['elo' => (int) config('season.rating.start')])">
                 <button type="button" wire:click="pickPool('casual')" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc">{{ __('Show the casual ladder') }}</button>
-                <a href="{{ $game === 'chess' ? route('chess.lobby') : route('games.rocket-league') }}" class="inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Play a casual game') }}</a>
+                <a href="{{ \App\Support\GameNames::page($game) }}" class="inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Play a casual game') }}</a>
             </x-empty-state>
         </section>
     @else
@@ -215,7 +218,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                 <span>{{ $players ? __('Player') : __('Lineup') }}</span>
                 @if ($rated)<span class="hidden lg:block">{{ __('Tier') }}</span>@endif
                 <span class="text-right">{{ __('Elo') }}</span>
-                <span class="hidden text-right lg:block">{{ $this->game === 'chess' ? __('Games') : __('Series played') }}</span>
+                <span class="hidden text-right lg:block">{{ $registry->isSeries($this->game) ? __('Series played') : __('Games') }}</span>
                 <span class="hidden text-right lg:block">{{ $this->gameMode->allowsDraws ? __('W / D / L') : __('W / L') }}</span>
             </div>
 
@@ -256,7 +259,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                 <x-empty-state class="px-2 py-6" :heading="$rated ? __('No rated results yet') : __('No casual results yet')"
                                :text="__('The first finished game opens the table. Every new entry starts at :elo Elo.', ['elo' => (int) config($rated ? 'season.rating.start' : 'season.casual.start')])">
                     {{-- An empty table invites the first game (P16): the page where this game is played. --}}
-                    <a href="{{ $game === 'chess' ? route('chess.lobby') : route('games.rocket-league') }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="ladder-empty-play">{{ $rated ? __('Play a rated game') : __('Play a casual game') }}</a>
+                    <a href="{{ \App\Support\GameNames::page($game) }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="ladder-empty-play">{{ $rated ? __('Play a rated game') : __('Play a casual game') }}</a>
                 </x-empty-state>
             @endforelse
 

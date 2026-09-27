@@ -50,6 +50,7 @@ const NAV_PAGES = [
     'games.index' => ['roles' => NAV_ROLES, 'max' => 1],
     'games.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'games.rocket-league' => ['roles' => NAV_ROLES, 'max' => 1],
+    'games.series' => ['roles' => NAV_ROLES, 'max' => 1],
     'ladder.show' => ['roles' => NAV_ROLES, 'max' => 1],
     'players.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'mining' => ['roles' => NAV_ROLES, 'max' => 1],

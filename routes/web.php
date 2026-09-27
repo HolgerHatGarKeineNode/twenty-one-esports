@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\GameRegistry;
 use App\Http\Controllers\BadgeImageController;
 use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
@@ -76,7 +77,9 @@ Route::middleware('signed:relative')->group(function () {
 
 Route::livewire('clans', 'pages::clans.index')->name('clans.index');
 Route::livewire('clans/{clan}', 'pages::clans.show')->name('clans.show');
-Route::livewire('games/rocket-league', 'pages::games.rocket-league')->name('games.rocket-league');
+// The overview of a series game (Rocket League, EA Sports FC), one page per registry entry.
+Route::livewire('games/rocket-league', 'pages::games.series')->defaults('slug', 'rocket-league')->name('games.rocket-league');
+Route::livewire('games/{slug}', 'pages::games.series')->whereIn('slug', array_keys(app(GameRegistry::class)->series()))->name('games.series');
 
 // Live chess (P5a): the blitz lobby and one game, live or finished.
 Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');

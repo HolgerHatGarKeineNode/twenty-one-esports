@@ -27,6 +27,7 @@
         'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"></path>',
         'chevron-up' => '<path d="m18 15-6-6-6 6"></path>',
+        'soccer' => '<circle cx="12" cy="12" r="9"></circle><path d="m12 7 4 3-1.5 4.5h-5L8 10z"></path><path d="M12 3v4M16 10l4.5-1.5M14.5 14.5l2.5 4M9.5 14.5 7 18.5M8 10 3.5 8.5"></path>',
         'rocket-league' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 3v4l-3.5 2.5M12 7l3.5 2.5M8.5 9.5 7 14l5 3 5-3-1.5-4.5M3.5 10.5 7 14M20.5 10.5 17 14M12 17v4"></path>',
         'award' => '<circle cx="12" cy="9" r="6"></circle><path d="m8.5 14-1.5 8 5-3 5 3-1.5-8"></path>',
         'brush' => '<path d="M3 21c3 0 6-1 6-4a3 3 0 0 0-3-3c-2 0-3 2-3 7z"></path><path d="M20.5 3.5 10 14l-1-1L19.5 2.5z"></path>',

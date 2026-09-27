@@ -38,13 +38,21 @@
             $item(route('games.index'), __('Watch live games'), 'eye', 'games-menu-live', 'mobile-live-games'),
             $item(route('ladder.show', ['chess', 'blitz']), __('Chess ladder'), 'chart-bar'),
             $user ? $item(route('settings.chess'), __('Chess settings'), 'cog-6-tooth', null, 'mobile-chess-settings') : null,
-        ]))],
-        ['Rocket League', array_values(array_filter([
-            $item(route('games.rocket-league'), __('Overview'), 'trophy', 'games-menu-rocket-league', 'mobile-rocket-league'),
-            $item(route('matches.index'), __('Matches'), 'list-bullet'),
-            $user ? $item(route('challenges.create'), __('Challenge a clan'), 'paper-airplane', 'games-menu-challenge-clan', 'mobile-challenge-clan') : null,
-        ]))],
+        ])), 'chess'],
     ];
+
+    // One group per series game of the registry (Rocket League, EA Sports FC 27, EA Sports FC 26); every group heading shows the game's cover.
+    $seriesGames = array_keys(app(\App\Games\GameRegistry::class)->series());
+
+    foreach ($seriesGames as $seriesIndex => $slug) {
+        // The first series game keeps the hooks and links it had before FC joined (P16 tests, the unfiltered match list).
+        $first = $seriesIndex === 0;
+        $games[] = [\App\Support\GameNames::game($slug), array_values(array_filter([
+            $item(\App\Support\GameNames::page($slug), __('Overview'), 'trophy', 'games-menu-'.$slug, 'mobile-'.$slug),
+            $item($first ? route('matches.index') : route('matches.index', ['game' => $slug]), __('Matches'), 'list-bullet'),
+            $user ? $item(route('challenges.create', $first ? [] : ['game' => $slug]), __('Challenge a clan'), 'paper-airplane', $first ? 'games-menu-challenge-clan' : 'games-menu-challenge-clan-'.$slug, $first ? 'mobile-challenge-clan' : 'mobile-challenge-clan-'.$slug) : null,
+        ])), $slug];
+    }
 
     $account = [];
     $clanLink = null;
@@ -110,11 +118,12 @@
             <button type="button" class="flex h-7 cursor-pointer items-center whitespace-nowrap rounded-md bg-btc-chip px-2.5 text-xs text-btc-hi" data-test="games-menu">{{ $section === 'chess' ? __('Chess') : __('All games') }} ▾</button>
 
             <flux:menu>
-                @foreach ($games as $index => [$heading, $links])
+                @foreach ($games as $index => [$heading, $links, $cover])
                     @if ($index > 0)
                         <flux:menu.separator />
                     @endif
-                    <flux:menu.group :heading="$heading">
+                    <flux:menu.group aria-label="{{ $heading }}">
+                        <flux:menu.heading><span class="flex items-center gap-2.5"><x-game-cover :game="$cover" size="thumb" class="w-12 rounded-xs" />{{ $heading }}</span></flux:menu.heading>
                         @foreach ($links as $link)
                             <flux:menu.item :href="$link['href']" :icon="$link['icon']" :data-test="$link['test']">{{ $link['label'] }}</flux:menu.item>
                         @endforeach

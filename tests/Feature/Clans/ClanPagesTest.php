@@ -73,7 +73,9 @@ test('every clan page survives a Livewire roundtrip', function (string $page, Cl
     'create' => ['pages::clans.create', fn () => []],
     'manage' => ['pages::clans.manage', fn ($clan) => ['clan' => $clan]],
     'invite' => ['pages::invites.show', fn ($clan, $invite) => ['invite' => $invite]],
-    'rocket league' => ['pages::games.rocket-league', fn () => []],
+    'rocket league' => ['pages::games.series', fn () => ['slug' => 'rocket-league']],
+    'ea sports fc 27' => ['pages::games.series', fn () => ['slug' => 'ea-sports-fc-27']],
+    'ea sports fc 26' => ['pages::games.series', fn () => ['slug' => 'ea-sports-fc-26']],
 ]);
 
 test('only captains open the manage page, and a tag link finds the clan', function () {

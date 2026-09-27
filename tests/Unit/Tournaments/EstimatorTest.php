@@ -202,7 +202,7 @@ test('the daily round robin with more than 12 games at once is heavy and never r
     expect($row->atOnce)->toBe(31)->and($row->heavy)->toBeTrue()->and($row->fit)->toBe('fits');
 });
 
-test('free for all and leaderboard are disabled with a reason for chess and Rocket League', function (string $game, string $mode, string $who) {
+test('free for all and leaderboard are disabled with a reason for chess and the series games', function (string $game, string $mode, string $who) {
     $profile = GameProfile::for($game, $mode);
     $evaluation = (new Estimator)->evaluate(12, $profile, FormatOptions::defaults($profile), null, 180);
 
@@ -212,7 +212,8 @@ test('free for all and leaderboard are disabled with a reason for chess and Rock
         ->and($evaluation->row(TournamentFormat::Leaderboard)->reason)->toStartWith('Needs a game with a score or time');
 })->with([
     'chess' => ['chess', 'blitz', 'Chess is always one player against one.'],
-    'rocket league' => ['rocket-league', '3v3', 'Rocket League is always one team against one.'],
+    'rocket league' => ['rocket-league', '3v3', 'A series is always one side against the other.'],
+    'ea sports fc' => ['ea-sports-fc-27', '1v1', 'A series is always one side against the other.'],
 ]);
 
 test('small fields disable the formats that need more players', function () {

@@ -18,7 +18,7 @@
 
         return $kept;
     };
-    $gameGroups = array_values(array_filter(array_map(fn (array $group): array => [$group[0], $once($group[1])], $games), fn (array $group): bool => $group[1] !== []));
+    $gameGroups = array_values(array_filter(array_map(fn (array $group): array => [$group[0], $once($group[1]), $group[2] ?? null], $games), fn (array $group): bool => $group[1] !== []));
     $profile = $account[0] ?? null;
     $accountLinks = $once(array_slice($account, 1));
     $row = 'flex min-h-11 min-w-0 items-center gap-2.5 rounded-lg px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink';
@@ -50,9 +50,9 @@
             </ul>
         </nav>
 
-        @foreach ($gameGroups as [$heading, $links])
+        @foreach ($gameGroups as [$heading, $links, $cover])
             <section class="mt-2 border-t border-hairline px-1 pt-2" aria-label="{{ $heading }}">
-                <h2 class="m-0 px-2 pb-1 text-xs font-normal text-ink-3">{{ $heading }}</h2>
+                <h2 class="m-0 flex items-center gap-2.5 px-2 pb-1 text-xs font-normal text-ink-3">@if ($cover)<x-game-cover :game="$cover" size="thumb" class="w-12 rounded-xs" />@endif{{ $heading }}</h2>
                 <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                     @foreach ($links as $link)
                         <li class="min-w-0">

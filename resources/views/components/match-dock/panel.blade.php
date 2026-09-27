@@ -30,7 +30,7 @@
      x-show="open === @js('item:'.$item->key)" x-cloak
      class="dk-panel dk-rise" data-panel="{{ $item->key }}" data-test="dock-panel">
     <div class="flex h-[52px] items-center gap-2 border-b border-hairline pr-1 pl-4">
-        @if ($item->isChess())<x-icon name="chess" :size="16" class="text-ink-2" />@else<span class="dk-slot text-ink-2">RL</span>@endif
+        @if ($item->isChess())<x-icon name="chess" :size="16" class="text-ink-2" />@else<span class="dk-slot text-ink-2">{{ $item->gameMark() }}</span>@endif
         <span class="text-[13px] font-bold whitespace-nowrap">{{ $item->title }}</span>
         @if ($item->number !== '')
             <a href="{{ $item->href }}" class="inline-flex min-h-11 min-w-11 items-center justify-center text-[13px]">{{ $item->number }}</a>

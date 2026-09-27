@@ -2,6 +2,7 @@
 
 namespace App\Support\Badges;
 
+use App\Games\GameRegistry;
 use App\Support\Rating\RankTiers;
 
 /**
@@ -17,7 +18,7 @@ final class BadgeCopy
         return match ($game.'/'.$mode) {
             'chess/blitz' => __('Chess blitz'),
             'chess/correspondence' => __('Chess daily'),
-            default => ($game === 'rocket-league' ? 'Rocket League' : ucfirst($game)).' '.$mode,
+            default => app(GameRegistry::class)->name($game).' '.$mode,
         };
     }
 

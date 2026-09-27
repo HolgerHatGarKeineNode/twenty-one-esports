@@ -13,6 +13,7 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RatingService;
@@ -35,11 +36,11 @@ beforeEach(function () {
  *
  * @return array{0: Lineup, 1: User, 2: TestSigner}
  */
-function seriesLineup(string $mode = '3v3', int $substitutes = 0): array
+function seriesLineup(string $mode = '3v3', int $substitutes = 0, string $game = 'rocket-league'): array
 {
     $signer = new TestSigner;
     $captain = User::factory()->withPubkey($signer->pubkey)->create();
-    $lineup = Lineup::factory()->mode($mode)->ready($substitutes)->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id])->id]);
+    $lineup = Lineup::factory()->game($game, $mode)->ready($substitutes)->create(['clan_id' => Clan::factory()->create(['owner_id' => $captain->id])->id]);
 
     return [$lineup->load('clan', 'seats.user'), $captain, $signer];
 }
@@ -64,11 +65,11 @@ function seriesSigned(TestSigner $signer, array $templates): array
  *
  * @return array{0: SeriesMatch, 1: array, 2: array}
  */
-function acceptedSeries(bool $rated = false, int $bestOf = 3): array
+function acceptedSeries(bool $rated = false, int $bestOf = 3, string $game = 'rocket-league', string $mode = '3v3'): array
 {
     $service = app(SeriesService::class);
-    $a = seriesLineup();
-    $b = seriesLineup();
+    $a = seriesLineup($mode, game: $game);
+    $b = seriesLineup($mode, game: $game);
     $draft = seriesDraft($a[0], $b[0], $rated, $bestOf);
 
     $match = $service->challenge($a[1], $draft, seriesSigned($a[2], $service->prepareChallenge($a[1], $draft)['templates']));
@@ -114,6 +115,80 @@ test('a casual series runs challenge, accept, submit final score, accept result,
         // NIP "Game registry": casual games never produce match-flow events.
         ->and(NostrEvent::query()->count())->toBe(0);
     Queue::assertNothingPushed();
+});
+
+test('an EA Sports FC 1v1 series runs challenge, report and confirm like Rocket League, and moves the two players\' casual Elo', function (string $game, int $bestOf, array $goals, string $winner) {
+    [$match, [, $captainA], [, $captainB]] = acceptedSeries(bestOf: $bestOf, game: $game, mode: '1v1');
+
+    expect($match->game)->toBe($game)
+        ->and($match->best_of)->toBe($bestOf)
+        ->and($match->status)->toBe(SeriesStatus::Accepted);
+
+    enterGames($match, $captainA, $goals);
+    $this->series->report($match, $captainA, []);
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Reported);
+
+    $this->series->respond($match, $captainB, 'confirmed', '', []);
+
+    // 1v1 rates the player (NIP rev. 7.1, as Rocket League 1v1), never the one-seat lineup.
+    $subjects = Rating::query()->where(['pool' => Rating::CASUAL, 'game' => $game, 'mode' => '1v1'])->orderByDesc('rating')->pluck('subject')->all();
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Confirmed)
+        ->and($match->winner)->toBe($winner)
+        ->and($match->result_games)->toHaveCount(count($goals))
+        ->and($subjects)->toBe($winner === 'challenger' ? ['user:'.$captainA->id, 'user:'.$captainB->id] : ['user:'.$captainB->id, 'user:'.$captainA->id])
+        ->and(Rating::query()->where('game', 'rocket-league')->count())->toBe(0)
+        ->and(NostrEvent::query()->count())->toBe(0);
+
+    $this->get(route('matches.show', $match->number))->assertOk()->assertSee(GameNames::game($game))
+        ->assertSee('images/games/'.$game.'-480', false);
+})->with([
+    'FC 27, best of 1' => ['ea-sports-fc-27', 1, [[2, 1]], 'challenger'],
+    'FC 26, best of 3' => ['ea-sports-fc-26', 3, [[0, 1], [3, 2], [1, 4]], 'challenged'],
+]);
+
+test('an EA Sports FC series only takes the lengths and scores of its registry entry', function () {
+    $a = seriesLineup('1v1', game: 'ea-sports-fc-27');
+    $b = seriesLineup('1v1', game: 'ea-sports-fc-27');
+    $rl = seriesLineup('1v1');
+
+    expect(fn () => $this->series->prepareChallenge($a[1], seriesDraft($a[0], $b[0], bestOf: 5)))->toThrow(SeriesRuleViolation::class)
+        // Two games never meet: an FC 1v1 lineup cannot challenge a Rocket League 1v1 lineup.
+        ->and(fn () => $this->series->prepareChallenge($a[1], seriesDraft($a[0], $rl[0], bestOf: 3)))->toThrow(SeriesRuleViolation::class, 'same game and mode');
+
+    [$match, [, $captainA]] = acceptedSeries(bestOf: 3, game: 'ea-sports-fc-27', mode: '1v1');
+    enterGames($match, $captainA, [[1, 0]]);
+
+    expect(fn () => $this->series->report($match, $captainA, []))->toThrow(SeriesRuleViolation::class, 'not finished');
+});
+
+test('a rated EA Sports FC series signs 2150 to 2153 that pass the NIP rules, on the game\'s own ladder', function () {
+    openSeason(['slug' => 'season-1']);
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $this->series = app(SeriesService::class);
+
+    [$match, [, $captainA, $signerA], [, $captainB, $signerB]] = acceptedSeries(rated: true, bestOf: 3, game: 'ea-sports-fc-26', mode: '1v1');
+    enterGames($match, $captainA, [[2, 0], [1, 2], [3, 1]]);
+    $this->series->report($match, $captainA, seriesSigned($signerA, $this->series->prepareReport($match, $captainA)));
+    $this->series->respond($match, $captainB, 'confirmed', '', seriesSigned($signerB, $this->series->prepareResponse($match, $captainB, 'confirmed')));
+
+    $events = NostrEvent::query()->whereIn('kind', [2150, 2151, 2152, 2153])->orderBy('id')->get();
+
+    expect($events->pluck('kind')->all())->toBe([2150, 2151, 2152, 2153])
+        ->and($match->refresh()->status)->toBe(SeriesStatus::Confirmed)
+        ->and($match->ladder_address)->toEndWith(':ea-sports-fc-26/1v1/season-1');
+
+    foreach ($events as $stored) {
+        $event = SignedEvent::fromInput($stored->payload());
+
+        expect($event->hasValidSignature())->toBeTrue()
+            ->and(app(EsportsEventRules::class)->check($event))->toBeNull();
+    }
+
+    expect(SignedEvent::fromInput($events[2]->payload())->tagsNamed('score'))->toBe([['1', 'challenger', '2', '0'], ['2', 'challenged', '1', '2'], ['3', 'challenger', '3', '1']])
+        ->and(Rating::query()->where(['pool' => Rating::RATED, 'game' => 'ea-sports-fc-26', 'mode' => '1v1'])->pluck('subject')->sort()->values()->all())
+        ->toBe(collect(['user:'.$captainA->id, 'user:'.$captainB->id])->sort()->values()->all());
 });
 
 test('a challenge ends declined, withdrawn or expired, each by the right side only', function () {

@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\SeasonChain\LeagueKey;
@@ -119,7 +120,7 @@ final class TournamentPublisher
             ['location', $page],
             ['r', route('rules')],
             ['t', 'esports'],
-            ['t', $profile->isChess() ? 'chess' : 'rocketleague'],
+            ['t', str_replace('-', '', $tournament->game)],
             ['a', Tournament::CALENDAR.':'.$league.':tournaments', ''],
         ];
 
@@ -134,7 +135,7 @@ final class TournamentPublisher
 
     private function summary(Tournament $tournament): string
     {
-        $mode = $tournament->profile()->isChess() ? 'Chess '.($tournament->mode === 'correspondence' ? 'daily' : $tournament->mode) : 'Rocket League '.$tournament->mode;
+        $mode = $tournament->profile()->isChess() ? 'Chess '.($tournament->mode === 'correspondence' ? 'daily' : $tournament->mode) : app(GameRegistry::class)->name($tournament->game).' '.$tournament->mode;
 
         return $mode.', '.strtolower(str_replace('-', ' ', $tournament->format->value)).'.';
     }

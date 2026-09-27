@@ -30,7 +30,7 @@
         <span @class(['truncate', 'font-bold' => $winner === 'b', 'text-ink-2' => $winner === 'w'])>{{ $chessGame->black?->displayName() }}</span>
     </span>
     <span class="flex flex-col leading-tight"><b>{{ $chessGame->result ? str_replace(['1/2', '-'], ['½', '–'], $chessGame->result) : '–' }}</b></span>
-    <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-icon name="chess" :size="14" />{{ $format }}</span>
+    <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-game-cover game="chess" size="thumb" class="w-8 rounded-xs" :title="__('Chess')" data-test="match-row-cover" /><span class="sr-only">{{ __('Chess') }}</span>{{ $format }}</span>
     <span class="max-lg:hidden">
         <span class="inline-flex h-[26px] items-center gap-1.5 rounded-sm px-2.5 text-xs font-bold" style="background: {{ $chip['bg'] }}; color: {{ $chip['color'] }}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $chip['icon'] }}"></path></svg>{{ $chip['label'] }}

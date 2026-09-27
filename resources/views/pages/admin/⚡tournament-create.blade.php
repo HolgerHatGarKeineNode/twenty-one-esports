@@ -3,6 +3,7 @@
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Tournaments\Estimator;
@@ -30,14 +31,24 @@ use Livewire\Component;
  * saves a draft; sign-up, the prize pot and publishing follow in P8b/P9.
  */
 new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
-    /** Estimator profile keys and their game and mode. */
-    public const GAMES = [
-        'blitz' => ['chess', 'blitz'],
-        'daily' => ['chess', 'correspondence'],
-        'rl1' => ['rocket-league', '1v1'],
-        'rl2' => ['rocket-league', '2v2'],
-        'rl3' => ['rocket-league', '3v3'],
-    ];
+    /**
+     * Estimator profile keys and their game and mode, every mode of every
+     * registered game in registry order (`blitz` => [chess, blitz], `rl3` => …).
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function games(): array
+    {
+        $games = [];
+
+        foreach (app(GameRegistry::class)->all() as $game) {
+            foreach ($game->modes() as $mode) {
+                $games[GameProfile::for($game->slug(), $mode->slug)->key] = [$game->slug(), $mode->slug];
+            }
+        }
+
+        return $games;
+    }
 
     public string $name = '';
 
@@ -91,7 +102,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
     public function profile(): GameProfile
     {
-        [$game, $mode] = self::GAMES[$this->game] ?? self::GAMES['blitz'];
+        $games = self::games();
+        [$game, $mode] = $games[$this->game] ?? $games['blitz'];
         $number = fn (string $value): ?float => is_numeric($value) && (float) $value >= 0 && (float) $value <= 1000 ? (float) $value : null;
 
         return GameProfile::for($game, $mode)->withTimes($number($this->gameLength), $number($this->setup), $number($this->break));
@@ -144,7 +156,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
     public function pickGame(string $key): void
     {
-        if (! isset(self::GAMES[$key])) {
+        if (! isset(self::games()[$key])) {
             return;
         }
 

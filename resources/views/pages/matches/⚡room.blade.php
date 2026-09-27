@@ -468,13 +468,14 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
     {{-- Header --}}
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <a href="{{ \App\Support\GameNames::page($m->game) }}" class="shrink-0" title="{{ \App\Support\GameNames::game($m->game) }}" aria-label="{{ \App\Support\GameNames::game($m->game) }}"><x-game-cover :game="$m->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="room-game-cover" /></a>
         <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Match room') }}</span><span class="max-lg:hidden">{{ __('Match') }}</span></h1>
         <span class="font-display text-xl font-bold text-ink-2 max-lg:hidden lg:text-[28px]">{{ $m->label() }}</span>
         <span class="inline-flex h-[26px] items-center rounded-sm bg-btc-chip px-2.5 text-xs font-bold text-btc-hi shadow-[inset_0_0_0_1px_#B9640A]">{{ $m->rated ? __('Rated') : __('Casual') }}</span>
         <span class="grow"></span>
         <span class="inline-flex h-[34px] items-center gap-2 rounded-md px-3.5 text-[13px] font-bold {{ $status[1] }}" data-test="room-status"><span class="size-[7px] animate-live rounded-full bg-current"></span>{{ $status[0] }}</span>
         <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __(':n of 2 checks', ['n' => $checks]) }}</span>
-        <span class="w-full text-[13px] text-ink-2 lg:hidden">{{ __('Match :number, Rocket League', ['number' => $m->label()]) }}</span>
+        <span class="w-full text-[13px] text-ink-2 lg:hidden">{{ __('Match :number, :game', ['number' => $m->label(), 'game' => \App\Support\GameNames::game($m->game)]) }}</span>
     </div>
 
     {{-- Versus --}}
@@ -583,7 +584,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @foreach ([
                 [__('Challenge'), __(':from to :to, :time', ['from' => $m->created_by_id === $viewer->id ? __('you') : $m->challenger_name, 'to' => $m->challenged_name, 'time' => SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i')])],
                 [__('Start'), $m->start_at ? SeriesPresenter::time($m->start_at, $viewer, 'D H:i') : __('one of :n suggested times', ['n' => count($m->proposals)])],
-                [__('Format'), 'Rocket League, '.$m->mode.', BO'.$m->best_of],
+                [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', BO'.$m->best_of],
                 [__('Ladder'), $m->rated ? $m->mode : __('none, casual until Block 0')],
             ] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
@@ -839,7 +840,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <div class="flex flex-col rounded-md px-4 shadow-ring">
                         @foreach ([
                             [__('Match'), $m->label().', '.$m->challenger_name.' vs '.$m->challenged_name.', '.$m->mode],
-                            [__('Match kind'), ($m->rated ? __('Rated') : __('Casual')).', Rocket League '.$m->mode],
+                            [__('Match kind'), ($m->rated ? __('Rated') : __('Casual')).', '.\App\Support\GameNames::game($m->game).' '.$m->mode],
                             [__('Games in this series'), implode(', ', array_map(fn ($g) => $g['challenger'] !== null ? $g['challenger'].' : '.$g['challenged'] : __(':tag win', ['tag' => $m->sideTag($g['winner'])]), $draft['games']))],
                             [__('Played'), implode(', ', array_column(array_filter($draft['roster'], fn ($r) => $r['side'] === ($captainSide ?? 'challenger')), 'name'))],
                             [__('Rating'), $m->rated ? __('with the league record') : __('casual Elo only, no rank')],

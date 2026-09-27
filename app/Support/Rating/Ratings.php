@@ -2,6 +2,7 @@
 
 namespace App\Support\Rating;
 
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\LineupSeat;
 use App\Models\Rating;
@@ -129,26 +130,28 @@ final class Ratings
         $chips = [['label' => __('Chess blitz'), 'rating' => self::headline($user->id, 'chess', 'blitz')]];
 
         $seats = LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')
-            ->whereHas('lineup', fn ($query) => $query->where('game', 'rocket-league'))
-            ->with('lineup')->get()->sortBy(fn (LineupSeat $seat) => $seat->lineup->mode);
+            ->whereHas('lineup', fn ($query) => $query->whereIn('game', array_keys(app(GameRegistry::class)->series())))
+            ->with('lineup')->get()->sortBy(fn (LineupSeat $seat) => [array_search($seat->lineup->game, array_keys(app(GameRegistry::class)->series()), true), $seat->lineup->mode]);
 
         $players = [];
 
         foreach ($seats as $seat) {
+            $game = $seat->lineup->game;
             $mode = $seat->lineup->mode;
-            $pool = self::pool(Ladders::isOpen('rocket-league', $mode));
+            $pool = self::pool(Ladders::isOpen($game, $mode));
+            $label = (app(GameRegistry::class)->find($game)?->assets()->shortLabel ?? $game).' '.$mode;
 
-            // A player ladder (RL 1v1, NIP rev. 7.1) rates the player: one chip, whatever lineups they sit in.
+            // A player ladder (RL and FC 1v1, NIP rev. 7.1) rates the player: one chip, whatever lineups they sit in.
             if ($seat->lineup->gameMode()->rates === 'player') {
-                if (! isset($players[$mode])) {
-                    $players[$mode] = true;
-                    $chips[] = ['label' => 'RL '.$mode, 'rating' => self::forUser($user->id, 'rocket-league', $mode, $pool)];
+                if (! isset($players["{$game}/{$mode}"])) {
+                    $players["{$game}/{$mode}"] = true;
+                    $chips[] = ['label' => $label, 'rating' => self::forUser($user->id, $game, $mode, $pool)];
                 }
 
                 continue;
             }
 
-            $chips[] = ['label' => 'RL '.$mode, 'rating' => self::forLineups([$seat->lineup_id], 'rocket-league', $mode, $pool)[$seat->lineup_id]];
+            $chips[] = ['label' => $label, 'rating' => self::forLineups([$seat->lineup_id], $game, $mode, $pool)[$seat->lineup_id]];
         }
 
         return $chips;

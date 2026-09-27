@@ -26,7 +26,7 @@
                     $label = __($games->find($slot->game)?->name() ?? $slot->game).' · '.__($mode?->name ?? $slot->mode);
                     $start = $event->starts_at->toImmutable()->setTimezone($zone)->locale(app()->getLocale());
                     $live = $event->isLive();
-                    $href = $slot->game === 'chess' ? route('chess.lobby') : route('games.rocket-league');
+                    $href = \App\Support\GameNames::page($slot->game);
                 @endphp
                 <li wire:key="slot-event-{{ $event->id }}">
                     <a href="{{ $href }}" @class(['flex min-h-14 items-center gap-3 rounded-md border px-3 py-2 text-ink hover:text-ink', 'border-btc-ring bg-btc-chip' => $live, 'border-line bg-well' => ! $live]) data-test="weekly-event">

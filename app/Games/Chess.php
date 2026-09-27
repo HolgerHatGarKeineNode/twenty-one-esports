@@ -80,6 +80,6 @@ final class Chess implements Game
 
     public function assets(): GameAssets
     {
-        return new GameAssets('chess', 'var(--color-chess)', 'var(--color-chess-deep)', 'Chess');
+        return new GameAssets('chess', 'var(--color-chess)', 'var(--color-chess-deep)', 'Chess', new GameCover('chess'));
     }
 }

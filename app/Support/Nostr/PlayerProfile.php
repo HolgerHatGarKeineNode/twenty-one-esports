@@ -3,6 +3,7 @@
 namespace App\Support\Nostr;
 
 use App\Enums\ChessGameStatus;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\LineupSeat;
@@ -38,7 +39,8 @@ final readonly class PlayerProfile
         public ?Clan $clan,
         public ?string $clanRole,
         public int $chessGames,
-        public bool $playsRocketLeague,
+        /** @var list<string> names of the series games the player has a lineup seat in */
+        public array $seriesGames,
     ) {}
 
     public static function for(User $user): self
@@ -70,7 +72,9 @@ final readonly class PlayerProfile
                 ->where('status', ChessGameStatus::Finished)
                 ->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
                 ->count(),
-            playsRocketLeague: LineupSeat::query()->where('user_id', $user->id)->exists(),
+            seriesGames: array_values(array_map(fn (string $game): string => app(GameRegistry::class)->name($game),
+                LineupSeat::query()->where('user_id', $user->id)->join('lineups', 'lineups.id', '=', 'lineup_seats.lineup_id')
+                    ->distinct()->orderBy('lineups.game')->pluck('lineups.game')->all())),
         );
     }
 
@@ -95,7 +99,7 @@ final readonly class PlayerProfile
         $text = fn (string $key, array $replace = []): string => is_string($line = __($key, $replace)) ? $line : $key;
         $games = array_values(array_filter([
             $this->chessGames > 0 ? $text('chess') : null,
-            $this->playsRocketLeague ? $text('Rocket League') : null,
+            ...$this->seriesGames,
         ]));
 
         return match (count($games)) {

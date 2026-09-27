@@ -52,36 +52,47 @@ final class GameRegistry
     }
 
     /**
-     * The URL of the game's cover art, or null when the league has none: the
-     * views then draw the game-name tile (pages/tournaments/partials/cover).
+     * The games played as best-of series (Rocket League, EA Sports FC), in
+     * display order: challenges, lineups and the match room serve these.
      *
-     * Interim source: a file the league ships itself, public/images/games/<slug>.<ext>.
-     * The covers in the registry (GameAssets) replace this lookup when they land.
+     * @return array<string, SeriesGame>
      */
-    public function cover(string $game): ?string
+    public function series(): array
     {
-        $path = $this->coverPath($game);
+        return array_filter($this->games, fn (Game $game): bool => $game instanceof SeriesGame);
+    }
 
-        return $path === null ? null : asset(substr($path, strlen(public_path()) + 1));
+    public function isSeries(string $slug): bool
+    {
+        return $this->find($slug) instanceof SeriesGame;
     }
 
     /**
-     * The cover's file on disk (for the server-drawn share cards), or null.
+     * Display name of a game; the slug itself for a game no longer registered.
      */
-    public function coverPath(string $game): ?string
+    public function name(string $slug): string
     {
-        if ($this->find($game) === null) {
-            return null;
-        }
+        return $this->find($slug)?->name() ?? $slug;
+    }
 
-        foreach (['webp', 'jpg', 'png'] as $extension) {
-            $path = public_path("images/games/{$game}.{$extension}");
+    /**
+     * The cover art of a game, or null for an unknown game (views show a fallback).
+     */
+    public function cover(string $slug): ?GameCover
+    {
+        return $this->find($slug)?->assets()->cover;
+    }
 
-            if (is_file($path)) {
-                return $path;
-            }
-        }
+    /**
+     * The largest cover file on disk as JPEG (GD reads it everywhere), for the
+     * server-drawn share cards (ShareCard, the tournament invite card), or null
+     * for an unknown game or a missing file (the card draws its stand-in).
+     */
+    public function coverPath(string $slug): ?string
+    {
+        $cover = $this->cover($slug);
+        $path = $cover === null ? null : public_path($cover->path($cover->largest(), 'jpg'));
 
-        return null;
+        return $path !== null && is_file($path) ? $path : null;
     }
 }

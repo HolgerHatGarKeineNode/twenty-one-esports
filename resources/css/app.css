@@ -93,6 +93,8 @@
     --color-rl-2: #EC4899;
     --color-rl-deep: #C2410C;
     --color-rl-deep-2: #9D174D;
+    --color-fc: #22C55E;
+    --color-fc-deep: #15803D;
 
     /* Flux accent mapped onto the brand orange */
     --color-accent: #F7931A;
@@ -1599,7 +1601,7 @@ select:focus[data-flux-control] {
     animation: tl-poster 0.6s var(--ease-snap) both;
 }
 
-.tl-poster img,
+.tl-poster > picture,
 .tl-poster > span {
     box-shadow: 0 0 0 1px #2A2A30, 0 24px 64px -24px rgba(247, 147, 26, 0.35);
 }

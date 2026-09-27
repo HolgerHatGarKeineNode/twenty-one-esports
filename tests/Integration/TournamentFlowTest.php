@@ -60,8 +60,8 @@ test('a Rocket League 3v3 tournament: creation, clan + solo-pool sign-up, and a 
     $admin = integrationPage($organizer, integrationRoute('admin.tournaments.create'));
     BrowserWait::until($admin, '() => document.querySelector("[data-test=tournament-name]") !== null', 30_000);
     $admin->locator('[data-test=tournament-name]')->fill('Genesis Cup');
-    $admin->locator('[data-test=game-rl] button:has-text("3v3")')->click();
-    BrowserWait::until($admin, '() => document.querySelector("[data-test=game-rl] button[aria-checked=true]")?.textContent.trim() === "3v3"', 30_000);
+    $admin->locator('[data-test=game-rocket-league] button:has-text("3v3")')->click();
+    BrowserWait::until($admin, '() => document.querySelector("[data-test=game-rocket-league] button[aria-checked=true]")?.textContent.trim() === "3v3"', 30_000);
     $admin->locator('[data-test=tournament-create-button]')->click();
     // See the docblock: the create() roundtrip is asynchronous to click().
     BrowserWait::until($admin, '() => location.pathname === "/admin/tournaments"', 30_000);

@@ -5,6 +5,7 @@ namespace App\Support\Invites;
 use App\Enums\InviteLinkType;
 use App\Models\InviteLink;
 use App\Models\Lineup;
+use App\Support\GameNames;
 
 /**
  * The words of one invite (InviteLanding.dc.html, ShareCards "Invite cards"):
@@ -43,7 +44,7 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __(':name challenges you to blitz chess', ['name' => $this->inviterName()]),
             InviteLinkType::Daily => __(':name challenges you to daily chess', ['name' => $this->inviterName()]),
-            InviteLinkType::Series => __(':clan challenges your team to Rocket League', ['clan' => $this->clanName()]),
+            InviteLinkType::Series => __(':clan challenges your team to :game', ['clan' => $this->clanName(), 'game' => $this->seriesGame()]),
             InviteLinkType::Clan => __(':name invites you to join :clan', ['name' => $this->inviterName(), 'clan' => $this->clanName()]),
         };
     }
@@ -66,7 +67,7 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Chess blitz, 5+3'),
             InviteLinkType::Daily => __('Daily chess, 1 move a day'),
-            InviteLinkType::Series => __('Rocket League, :mode', ['mode' => (string) $this->link->option('mode')]),
+            InviteLinkType::Series => __(':game, :mode', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode')]),
             InviteLinkType::Clan => __('Clan invite'),
         };
     }
@@ -87,9 +88,15 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('5+3 chess, casual. Tap to take the seat.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual.'),
-            InviteLinkType::Series => __('Rocket League :mode, best of :bo.', ['mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
+            InviteLinkType::Series => __(':game :mode, best of :bo.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join. A captain confirms.'),
         };
+    }
+
+    /** The game of a series link ("Rocket League", "EA Sports FC 27"). */
+    private function seriesGame(): string
+    {
+        return GameNames::game((string) $this->link->option('game'));
     }
 
     /** Page title and og:title. */
@@ -104,7 +111,7 @@ final class InviteCopy
         return match ($this->link->type) {
             InviteLinkType::Blitz => __('Blitz chess 5+3, casual. Log in with Google or Nostr and you land right at the board.'),
             InviteLinkType::Daily => __('Daily chess, one move a day, casual. Log in with Google or Nostr and you land right in the game.'),
-            InviteLinkType::Series => __('Rocket League :mode, best of :bo, casual. Take the challenge with your team.', ['mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
+            InviteLinkType::Series => __(':game :mode, best of :bo, casual. Take the challenge with your team.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join :clan on TWENTY ONE esports. A captain confirms your request.', ['clan' => $this->clanName()]),
         };
     }

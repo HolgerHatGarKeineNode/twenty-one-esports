@@ -2,11 +2,13 @@
 
 use App\Enums\InviteLinkType;
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
+use App\Support\GameNames;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -14,6 +16,7 @@ use App\Support\Series\ChallengeDraft;
 use App\Support\Series\Ladders;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use App\Support\Tournaments\GameProfile;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -37,6 +40,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
 
     #[Url(as: 'to', except: null)]
     public ?int $opponentId = null;
+
+    /** Preselects a lineup of this game (the "Challenge a clan" button of a game page). */
+    #[Url(as: 'game', except: null)]
+    public ?string $game = null;
 
     public bool $rated = false;
 
@@ -67,8 +74,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
         $mine = $this->myLineups;
 
         if ($this->lineupId === null || ! $mine->contains('id', $this->lineupId)) {
-            $this->lineupId = $mine->first(fn (Lineup $lineup) => $lineup->mode === '3v3')?->id ?? $mine->first()?->id;
+            $this->lineupId = $mine->firstWhere('game', $this->game)?->id ?? $mine->first()?->id;
         }
+
+        $this->fitBestOf();
     }
 
     public function pickLineup(int $id): void
@@ -76,6 +85,17 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
         $this->lineupId = $id;
         $this->opponentId = null;
         unset($this->lineup, $this->opponents);
+        $this->fitBestOf();
+    }
+
+    /** Keeps the series length one the picked lineup's mode allows (RL Bo3/Bo5, FC Bo1/Bo3). */
+    private function fitBestOf(): void
+    {
+        $allowed = $this->lineup?->gameMode()->bestOf ?? [];
+
+        if ($allowed !== [] && ! in_array($this->bestOf, $allowed, true)) {
+            $this->bestOf = in_array(3, $allowed, true) ? 3 : $allowed[0];
+        }
     }
 
     public function pickOpponent(int $id): void
@@ -255,7 +275,8 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     }
 
     /**
-     * The player's Rocket League lineups they captain.
+     * The player's lineups of every series game they captain, in registry
+     * order, the biggest mode first.
      *
      * @return Collection<int, Lineup>
      */
@@ -269,11 +290,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
             return collect();
         }
 
+        $games = array_keys(app(GameRegistry::class)->series());
+
         return Lineup::query()->with(['clan', 'seats.user.clanMember'])
-            ->where('clan_id', $clanId)->where('game', 'rocket-league')
+            ->where('clan_id', $clanId)->whereIn('game', $games)
             ->get()
             ->filter(fn (Lineup $lineup) => $lineup->isActingCaptain($user))
-            ->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, ['3v3', '2v2', '1v1'], true))
+            ->sortBy([fn (Lineup $a, Lineup $b) => array_search($a->game, $games, true) <=> array_search($b->game, $games, true), fn (Lineup $a, Lineup $b) => $b->gameMode()->teamSize <=> $a->gameMode()->teamSize])
             ->values();
     }
 
@@ -349,18 +372,29 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $card = 'rounded-lg bg-card px-4 py-5 lg:px-6';
     $choice = 'flex min-h-[88px] cursor-pointer flex-col gap-1.5 rounded-lg border bg-ground px-5 py-4 text-left lg:px-12';
     $steps = [__('Lineup'), __('Opponent'), __('Rated or casual'), __('Times'), __('Send')];
+    $headGame = $lineup?->game ?? $mine->first()?->game ?? $game;
+    $gameName = $headGame === null ? '' : GameNames::game($headGame);
+    $bestOfs = $lineup?->gameMode()->bestOf ?? [3, 5];
+    $minutes = fn (int $bo): int => $lineup === null ? 0 : (int) (ceil(GameProfile::for($lineup->game, $lineup->mode)->slot($bo) / 5) * 5);
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="challenge-create" x-data="{ step: 1 }">
-    <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Challenge a clan') }}</span><span class="max-lg:hidden">{{ __('New challenge') }}</span></h1>
-        <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __('Rocket League ladder, Pre-Season') }}</span>
-        <span class="text-[13px] leading-normal text-ink-2 lg:hidden">{{ __('Rocket League. Pick your lineup and an opponent, then send it.') }}</span>
+    <div class="flex items-center gap-4">
+        @if ($headGame !== null)
+            <x-game-cover :game="$headGame" size="thumb" class="w-24 rounded-md shadow-ring lg:w-32" data-test="challenge-game-cover" />
+        @endif
+        <div class="flex min-w-0 flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
+            <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Challenge a clan') }}</span><span class="max-lg:hidden">{{ __('New challenge') }}</span></h1>
+            @if ($headGame !== null)
+                <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __(':game ladder, Pre-Season', ['game' => $gameName]) }}</span>
+                <span class="text-[13px] leading-normal text-ink-2 lg:hidden">{{ __(':game. Pick your lineup and an opponent, then send it.', ['game' => $gameName]) }}</span>
+            @endif
+        </div>
     </div>
 
     @if ($mine->isEmpty())
         <div class="{{ $card }}" data-test="no-lineup">
-            <x-empty-state :heading="$me->clanMember ? __('You captain no Rocket League lineup') : __('You aren\'t in a clan yet')"
+            <x-empty-state :heading="$me->clanMember ? __('You captain no lineup yet') : __('You aren\'t in a clan yet')"
                            :text="$me->clanMember ? __('Only a lineup\'s captain sends challenges. Ask your captain, or set up a lineup.') : __('Start a clan and invite your friends, or accept an invite. Invites show up here as soon as a captain sends one.')">
                 @if ($me->clanMember)
                     <x-button :href="route('clans.show', $me->clanMember->clan)">{{ __('Open your clan') }}</x-button>
@@ -387,7 +421,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                         <b class="text-[15px]" :class="step >= {{ $n }} ? 'text-ink' : 'text-ink-3'">{{ $label }}</b>
                         <span x-show="step > {{ $n }}" class="text-xs text-ink-2">
                             @switch($n)
-                                @case(1){{ $lineup ? $lineup->mode.', '.implode(', ', array_map(fn ($s) => $s->user->displayName(), $lineup->activeSeats())) : '' }}@break
+                                @case(1){{ $lineup ? GameNames::game($lineup->game).' '.$lineup->mode.', '.implode(', ', array_map(fn ($s) => $s->user->displayName(), $lineup->activeSeats())) : '' }}@break
                                 @case(2){{ $picked ? $picked['lineup']->clan->name : '' }}@break
                                 @case(3){{ ($rated ? __('Rated') : __('Casual')).', BO'.$bestOf }}@break
                                 @case(4){{ $now ? __('Challenge now') : trans_choice(':count suggestion|:count suggestions', count($times)) }}@break
@@ -428,7 +462,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                         @endif
                     </div>
                     <div class="mt-3 grid grid-cols-2 gap-3 lg:hidden" role="radiogroup" aria-label="{{ __('Format') }}">
-                        @foreach ([3, 5] as $bo)
+                        @foreach ($bestOfs as $bo)
                             <button type="button" role="radio" wire:click="$set('bestOf', {{ $bo }})" aria-checked="{{ $bestOf === $bo ? 'true' : 'false' }}"
                                     @class(['flex min-h-14 cursor-pointer flex-col justify-center rounded-lg border bg-ground px-5 text-left', 'border-btc bg-btc-press' => $bestOf === $bo, 'border-line' => $bestOf !== $bo])>
                                 <b class="text-[15px]">Bo{{ $bo }}</b><span class="text-xs text-ink-2">{{ __('first to :n wins', ['n' => intdiv($bo, 2) + 1]) }}</span>
@@ -438,14 +472,22 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 </section>
 
                 {{-- Your lineup --}}
-                <section aria-labelledby="lu-h" class="{{ $card }} flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between" :class="step === 1 ? '' : 'max-lg:hidden'">
+                <section aria-labelledby="lu-h" class="{{ $card }} flex flex-col gap-3" :class="step === 1 ? '' : 'max-lg:hidden'">
                     <h2 id="lu-h" class="m-0 text-[15px] font-bold">{{ __('Your lineup') }}</h2>
-                    <div role="radiogroup" aria-labelledby="lu-h" class="grid grid-cols-3 gap-3 lg:w-[536px]">
-                        @foreach ($mine as $option)
-                            <button type="button" role="radio" wire:click="pickLineup({{ $option->id }})" aria-checked="{{ $lineupId === $option->id ? 'true' : 'false' }}" data-test="lineup-{{ $option->mode }}"
-                                    @class(['flex h-[52px] cursor-pointer flex-col items-center justify-center rounded-md border bg-ground text-[13px] text-ink', 'border-btc' => $lineupId === $option->id, 'border-line' => $lineupId !== $option->id])>
-                                <span><b>{{ $option->mode }}</b> <span class="text-ink-2">{{ $option->isReady() ? __('ready') : __('incomplete') }}</span></span>
-                            </button>
+                    <div role="radiogroup" aria-labelledby="lu-h" class="flex flex-col gap-3">
+                        @foreach ($mine->groupBy('game') as $lineupGame => $options)
+                            <div class="grid grid-cols-[64px_minmax(0,1fr)] items-center gap-3 lg:grid-cols-[88px_160px_minmax(0,1fr)]" data-test="lineup-game-{{ $lineupGame }}">
+                                <x-game-cover :game="$lineupGame" size="thumb" class="w-16 rounded-sm lg:w-[88px]" />
+                                <b class="text-[13px] max-lg:hidden">{{ GameNames::game($lineupGame) }}</b>
+                                <div class="grid grid-cols-3 gap-2 max-lg:col-start-2">
+                                    @foreach ($options as $option)
+                                        <button type="button" role="radio" wire:click="pickLineup({{ $option->id }})" aria-checked="{{ $lineupId === $option->id ? 'true' : 'false' }}" aria-label="{{ GameNames::game($option->game) }} {{ $option->mode }}" data-test="lineup-{{ $option->game }}-{{ $option->mode }}"
+                                                @class(['flex h-[52px] cursor-pointer flex-col items-center justify-center rounded-md border bg-ground text-[13px] text-ink', 'border-btc' => $lineupId === $option->id, 'border-line' => $lineupId !== $option->id])>
+                                            <b>{{ $option->mode }}</b><span class="text-xs text-ink-2">{{ $option->isReady() ? __('ready') : __('incomplete') }}</span>
+                                        </button>
+                                    @endforeach
+                                </div>
+                            </div>
                         @endforeach
                     </div>
                 </section>
@@ -481,7 +523,8 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 <section aria-labelledby="fmt-h" class="{{ $card }} max-lg:hidden">
                     <h2 id="fmt-h" class="m-0 pb-3 text-[15px] font-bold">{{ __('Format') }}</h2>
                     <div role="radiogroup" aria-labelledby="fmt-h" class="grid grid-cols-2 gap-3">
-                        @foreach ([3 => __('First to 2 games, up to 3 games, about 30 min'), 5 => __('First to 3 games, up to 5 games, about 50 min')] as $bo => $text)
+                        @foreach ($bestOfs as $bo)
+                            @php($text = $bo === 1 ? __('One game, about :minutes min', ['minutes' => $minutes($bo)]) : __('First to :wins games, up to :bo games, about :minutes min', ['wins' => intdiv($bo, 2) + 1, 'bo' => $bo, 'minutes' => $minutes($bo)]))
                             <button type="button" role="radio" wire:click="$set('bestOf', {{ $bo }})" aria-checked="{{ $bestOf === $bo ? 'true' : 'false' }}" data-test="bo-{{ $bo }}"
                                     @class([$choice, 'border-btc bg-btc-press' => $bestOf === $bo, 'border-line' => $bestOf !== $bo])>
                                 <b class="font-display text-xl">{{ __('Best of :n', ['n' => $bo]) }}</b><span class="text-[13px] text-ink-2">{{ $text }}</span>
@@ -536,6 +579,7 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                 <div class="flex flex-col">
                     @foreach ([
                         [__('Match kind'), $rated ? __('Rated') : __('Casual')],
+                        [__('Game title'), $lineup ? GameNames::game($lineup->game) : '–'],
                         [__('Lineup'), $lineup ? $lineup->clan->name.' '.$lineup->mode : '–'],
                         [__('Opponent'), $picked ? $picked['lineup']->clan->name.' '.$picked['lineup']->mode : '–'],
                         [__('Format'), __('Best of :n', ['n' => $bestOf])],

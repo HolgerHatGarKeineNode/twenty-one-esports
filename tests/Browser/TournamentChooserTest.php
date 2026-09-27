@@ -147,7 +147,7 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
         chooserShot($page, "p8a-chooser-blitz-12-{$width}");
 
         // Rocket League 3v3: a format that ends with a final.
-        $page->locator('[data-test=game-rl] button:has-text("3v3")')->click();
+        $page->locator('[data-test=game-rocket-league] button:has-text("3v3")')->click();
         chooserWait($page, 'single-elimination');
         BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-summary]")?.textContent.includes("teams")', 8_000);
         $rl = $page->evaluate(CHOOSER_STATE);
@@ -161,7 +161,7 @@ test('the chooser recommends live at 375 and 1440 px, through island requests on
             ->and($rl['name'])->toBe('Single Elimination')
             ->and($rl['ffaDisabled'])->toBeTrue()
             ->and($rl['ffaVisible'])->toBeTrue()
-            ->and($rl['ffaReason'])->toBe('Not available for this game. Needs 3 or more players in one match. Rocket League is always one team against one.')
+            ->and($rl['ffaReason'])->toBe('Not available for this game. Needs 3 or more players in one match. A series is always one side against the other.')
             ->and($rl['summary'])->toContain('Single Elimination, 12 teams')
             // Nothing outside the islands was re-rendered, and no response carried the whole component.
             ->and($rl['marker'])->toBe('kept')

@@ -11,6 +11,7 @@ use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\RatedChess;
+use App\Support\GameNames;
 use Carbon\CarbonImmutable;
 
 /**
@@ -28,13 +29,15 @@ final class ChainOverview
 {
     public function __construct(private SeasonChains $chains, private GameRegistry $games) {}
 
-    /** "Chess blitz", "Chess daily", "Rocket League 3v3". */
+    /** "Chess blitz", "Chess daily", "Rocket League 3v3", "EA Sports FC 27 1v1". */
     public static function keyLabel(string $key): string
     {
+        [$game, $mode] = array_pad(explode('/', $key, 2), 2, null);
+
         return match ($key) {
             'chess/blitz' => __('Chess blitz'),
             'chess/correspondence' => __('Chess daily'),
-            default => str_starts_with($key, 'rocket-league/') ? 'Rocket League '.substr($key, strlen('rocket-league/')) : $key,
+            default => $mode !== null && app(GameRegistry::class)->find($game) !== null ? app(GameRegistry::class)->name($game).' '.$mode : $key,
         };
     }
 
@@ -50,7 +53,7 @@ final class ChainOverview
 
     public static function gameLabel(string $game): string
     {
-        return $game === 'chess' ? __('Chess') : ($game === 'rocket-league' ? 'Rocket League' : $game);
+        return GameNames::game($game);
     }
 
     /** Why a win did not mine, in plain words (the reason codes of ConsensusRules). */

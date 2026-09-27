@@ -66,7 +66,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         }
 
         $locale = app()->getLocale();
-        $title = $tournament->name.' · '.($tournament->game === 'chess' ? __('Chess tournament') : __('Rocket League tournament'));
+        $title = $tournament->name.' · '.__(':game tournament', ['game' => \App\Support\GameNames::game($tournament->game)]);
         $view->title($title);
 
         $meta = app(PageMeta::class)
@@ -95,7 +95,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $teams = $tournament->profile()->entersTeams();
 
         $description = __(':game tournament (:mode), :format, for :who, :where, starting :date.', [
-            'game' => $tournament->game === 'chess' ? __('Chess') : 'Rocket League',
+            'game' => \App\Support\GameNames::game($tournament->game),
             'mode' => $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode),
             'format' => $tournament->format->label(),
             'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
@@ -212,7 +212,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $yourSeed = $landing->yourSeed();
     $champion = $this->champion;
     $pageUrl = route('tournaments.show', $tournament);
-    $gameLine = ($chess ? __('Chess') : 'Rocket League').' '.($tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode));
+    $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
     $at = fn (\Carbon\CarbonInterface $moment, string $format = 'D Y-m-d H:i'): string => $moment->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat($format);
     $poll = in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && $published;
 
@@ -302,7 +302,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <span class="inline-flex h-8 items-center gap-2 rounded-sm bg-btc-chip px-3 font-bold text-btc-hi" data-test="tournament-status">
                         <span @class(['size-1.5 rounded-full bg-btc', 'animate-live' => in_array($cta, ['open', 'live'], true)])></span>{{ $status->label() }}
                     </span>
-                    <span class="inline-flex h-8 items-center gap-1.5 rounded-sm bg-raised px-3 text-ink-2"><x-icon :name="$chess ? 'pawn' : 'rocket-league'" :size="14" />{{ $gameLine }}</span>
+                    <span class="inline-flex h-8 items-center gap-1.5 rounded-sm bg-raised px-3 text-ink-2"><x-icon :name="$chess ? 'pawn' : (app(\App\Games\GameRegistry::class)->find($tournament->game)?->assets()->icon ?? 'trophy')" :size="14" />{{ $gameLine }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->format->label() }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->on_site ? __('On site') : __('Online') }}</span>
                 </div>

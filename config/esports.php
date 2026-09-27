@@ -1,6 +1,8 @@
 <?php
 
 use App\Games\Chess;
+use App\Games\EaSportsFc26;
+use App\Games\EaSportsFc27;
 use App\Games\RocketLeague;
 
 return [
@@ -121,6 +123,8 @@ return [
     'games' => [
         Chess::class,
         RocketLeague::class,
+        EaSportsFc27::class,
+        EaSportsFc26::class,
     ],
 
     /*

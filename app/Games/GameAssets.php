@@ -3,9 +3,8 @@
 namespace App\Games;
 
 /**
- * How a game shows up: icon (x-icon name), colour tokens from app.css and an
- * optional logo. Logos are added in the imagery pass; until then `logo` is null
- * and views leave an <img> slot.
+ * How a game shows up: icon (x-icon name), colour tokens from app.css and
+ * its cover art (<x-game-cover>).
  */
 final readonly class GameAssets
 {
@@ -14,6 +13,6 @@ final readonly class GameAssets
         public string $colour,
         public string $colourDeep,
         public string $shortLabel,
-        public ?string $logo = null,
+        public ?GameCover $cover = null,
     ) {}
 }

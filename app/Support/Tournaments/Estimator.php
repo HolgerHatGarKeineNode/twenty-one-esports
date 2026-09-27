@@ -12,7 +12,8 @@ use App\Enums\TournamentFormat;
  *
  * One deviation, a decision of the user from 2026-09-26 that came after the
  * worked examples: for Rocket League a format that ends in a final comes
- * before "most guaranteed games" (chess keeps the documented order).
+ * before "most guaranteed games" (chess keeps the documented order). Since
+ * EA Sports FC joined (2026-09-27) this holds for every series game.
  */
 final class Estimator
 {
@@ -259,10 +260,10 @@ final class Estimator
         return match (true) {
             $format === TournamentFormat::FreeForAll => $profile->isChess()
                 ? 'Needs 3 or more players in one match. Chess is always one player against one.'
-                : 'Needs 3 or more players in one match. Rocket League is always one team against one.',
+                : 'Needs 3 or more players in one match. A series is always one side against the other.',
             $format === TournamentFormat::Leaderboard => $profile->isChess()
                 ? 'Needs a game with a score or time you play alone, like a time trial. Chess games are won against an opponent.'
-                : 'Needs a game with a score or time you play alone, like a time trial. A Rocket League series is won against another team.',
+                : 'Needs a game with a score or time you play alone, like a time trial. A series is won against another side.',
             $format === TournamentFormat::Swiss && $n < 4 => 'Needs at least 4 players.',
             $format === TournamentFormat::TwoStage && $n < 6 => 'Needs at least 6 players for two groups.',
             $format === TournamentFormat::DoubleElimination && $n < 3 => 'Needs at least 3 players.',
@@ -359,8 +360,8 @@ final class Estimator
     /**
      * Every format for N participants in `$window` (the game's unit).
      * Recommendation among the enabled formats that fit: most guaranteed
-     * games, then a format that ends in a final, then the shortest (Rocket
-     * League: the final first). Nothing fits: the shortest, the "too many at
+     * games, then a format that ends in a final, then the shortest (series
+     * games: the final first). Nothing fits: the shortest, the "too many at
      * once" ones last.
      */
     public function evaluate(int $n, GameProfile $profile, FormatOptions $options, ?int $stations, float $window): Evaluation
@@ -402,7 +403,7 @@ final class Estimator
 
         $enabled = array_values(array_filter($rows, fn (EstimateRow $row): bool => $row->enabled));
         $fitting = array_values(array_filter($enabled, fn (EstimateRow $row): bool => $row->fit === 'fits' && ! $row->heavy));
-        $finalFirst = $profile->isRocketLeague();
+        $finalFirst = $profile->isSeries();
         $recommended = null;
         $nothingFits = false;
 

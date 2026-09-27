@@ -4,9 +4,11 @@ namespace App\Support\Series;
 
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
 use App\Support\Rating\Ratings;
@@ -270,11 +272,13 @@ final class SeriesPresenter
             },
         };
         $played = count($match->currentGames());
+        $short = app(GameRegistry::class)->find($match->game)?->assets()->shortLabel ?? $match->game;
 
         return [
             'height' => $match->label(),
             'game' => 'rl',
-            'mode' => 'RL '.$match->mode,
+            'slot' => mb_substr($short, 0, 2),
+            'mode' => $short.' '.$match->mode,
             'score' => $state === 'next' ? 'BO'.$match->best_of : $score['text'],
             'word' => false,
             'who' => $who,
@@ -282,8 +286,8 @@ final class SeriesPresenter
             'a' => $match->challenger_tag,
             'b' => __('vs :name', ['name' => $match->challenged_tag]),
             'href' => route('matches.show', $match),
-            'aria' => __(':number, Rocket League :mode best of :bo, :status, :a vs :b', [
-                'number' => $match->label(), 'mode' => $match->mode, 'bo' => $match->best_of,
+            'aria' => __(':number, :game :mode best of :bo, :status, :a vs :b', [
+                'number' => $match->label(), 'game' => GameNames::game($match->game), 'mode' => $match->mode, 'bo' => $match->best_of,
                 'status' => self::chip($match)['label'], 'a' => $match->challenger_name, 'b' => $match->challenged_name,
             ]),
             'level' => $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%'),

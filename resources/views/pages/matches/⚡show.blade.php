@@ -52,7 +52,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $title = $series.': '.$match->challenger_name.' vs '.$match->challenged_name;
         $view->title($title);
 
-        $description = __('Rocket League :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
+        $description = __(':game :mode series, best of :best_of, between :challenger and :challenged in the TWENTY ONE esports league.', [
+            'game' => \App\Support\GameNames::game($match->game),
             'mode' => $match->mode, 'best_of' => $match->best_of, 'challenger' => $match->challenger_name, 'challenged' => $match->challenged_name,
         ]);
 
@@ -136,8 +137,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
 <div class="flex grow flex-col gap-6 px-4 pt-6 pb-10 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-10" data-test="match-detail">
     <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+        <a href="{{ \App\Support\GameNames::page($match->game) }}" class="shrink-0" aria-label="{{ \App\Support\GameNames::game($match->game) }}"><x-game-cover :game="$match->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="match-game-cover" /></a>
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Series :number', ['number' => $match->label()]) }}</h1>
-        <span class="text-[13px] text-ink-2">Rocket League · {{ $match->challenger_name }} vs {{ $match->challenged_name }}</span>
+        <span class="text-[13px] text-ink-2">{{ \App\Support\GameNames::game($match->game) }} · {{ $match->challenger_name }} vs {{ $match->challenged_name }}</span>
         <button type="button" x-data="{ copied: false }" x-on:click="navigator.clipboard?.writeText(window.location.href); copied = true; setTimeout(() => copied = false, 1500)"
                 :aria-label="copied ? @js(__('Link copied')) : @js(__('Copy link'))" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2">
             <x-icon name="copy" :size="16" />
@@ -163,7 +165,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @foreach ([
                 [__('Challenge sent'), SeriesPresenter::time($match->created_at ?? now(), $viewer).($match->answered_at && $match->start_at ? ', '.__('accepted :time', ['time' => SeriesPresenter::time($match->answered_at, $viewer, 'H:i')]) : '')],
                 [__('Played'), $match->start_at ? SeriesPresenter::time($match->start_at, $viewer).($match->finished_at ? ' · '.__('result :time', ['time' => SeriesPresenter::time($match->finished_at, $viewer, 'H:i')]) : '') : __('not yet')],
-                [__('Format'), 'Rocket League · '.$match->mode.' · BO'.$match->best_of],
+                [__('Format'), \App\Support\GameNames::game($match->game).' · '.$match->mode.' · BO'.$match->best_of],
                 [__('Lobby'), __('Hosted by :clan, lineups only', ['clan' => $match->challenger_name])],
             ] as [$key, $value])
                 <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-4 border-b border-hairline py-2 text-[13px] last:border-0 lg:grid-cols-[180px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>

@@ -183,7 +183,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $countdown = $landing->countdown($zone);
     $lineup = $this->lineups->firstWhere('id', $this->lineupId);
     $at = fn (\Carbon\CarbonInterface $moment): string => $moment->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat('D Y-m-d H:i');
-    $gameLine = ($tournament->game === 'chess' ? __('Chess') : 'Rocket League').' '.($tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode));
+    $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
 
     // The arena row: who is in (their pictures), then the seat that is yours.
     $others = array_values(array_filter($landing->roster(), fn (array $row): bool => ! $row['you']));

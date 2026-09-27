@@ -37,6 +37,12 @@ class LineupFactory extends Factory
         return $this->state(['mode' => $mode]);
     }
 
+    /** A lineup of another series game of the registry (EA Sports FC 27, …). */
+    public function game(string $game, string $mode): static
+    {
+        return $this->state(['game' => $game, 'mode' => $mode]);
+    }
+
     public function ready(int $substitutes = 0): static
     {
         return $this->afterCreating(function (Lineup $lineup) use ($substitutes): void {

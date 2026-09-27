@@ -95,7 +95,7 @@ test('Rocket League 3v3 recommends a format with a final and disables free for a
 
     expect($evaluation->recommended)->toBe(TournamentFormat::SingleElimination)
         ->and($page->instance()->format)->toBe(TournamentFormat::SingleElimination)
-        ->and($evaluation->row(TournamentFormat::FreeForAll)->reason)->toBe('Needs 3 or more players in one match. Rocket League is always one team against one.')
+        ->and($evaluation->row(TournamentFormat::FreeForAll)->reason)->toBe('Needs 3 or more players in one match. A series is always one side against the other.')
         ->and($page->get('window'))->toBe(180);
 });
 
@@ -269,4 +269,32 @@ test('the public tournaments page links admins and organizers to creating one, a
         ->assertDontSee('data-test="index-new-tournament"', false);
     auth()->logout();
     $this->get(route('tournaments.index'))->assertOk()->assertDontSee('data-test="index-new-tournament"', false);
+});
+
+test('an EA Sports FC tournament is created in the chooser: cover and modes offered, Bo1 rounds and a Bo3 final, about 15 min a game', function () {
+    $page = Livewire::actingAs(tournamentAdmin())->test('pages::admin.tournament-create')
+        ->assertSeeHtml('data-test="game-ea-sports-fc-27"')
+        ->assertSeeHtml('images/games/ea-sports-fc-27-480.webp')
+        ->assertSeeHtml('images/games/ea-sports-fc-26-480.webp')
+        ->set('name', 'Kick-off Cup')
+        ->call('pickGame', 'ea-sports-fc-27/1v1')
+        ->set('players', '8');
+
+    $profile = $page->instance()->profile();
+
+    expect([$profile->game, $profile->mode, $profile->gameLength, $profile->bestOf, $profile->finalBestOf, $profile->bestOfOptions, $profile->entersTeams()])
+        ->toBe(['ea-sports-fc-27', '1v1', 15.0, 1, 3, [1, 3], false])
+        // A series game recommends a format that ends in a final, like Rocket League.
+        ->and($page->instance()->evaluation->recommended?->hasFinal())->toBeTrue();
+
+    $page->call('pickGame', 'ea-sports-fc-27/2v2');
+
+    expect($page->instance()->profile()->entersTeams())->toBeTrue();
+
+    $page->call('pickGame', 'ea-sports-fc-27/1v1')->call('create')->assertHasNoErrors();
+
+    $tournament = Tournament::query()->sole();
+
+    expect([$tournament->game, $tournament->mode, $tournament->formatOptions()->bestOf, $tournament->formatOptions()->finalBestOf])
+        ->toBe(['ea-sports-fc-27', '1v1', 1, 3]);
 });

@@ -15,7 +15,7 @@
             @if ($item->isChess())
                 <x-icon name="chess" :size="12" />
             @else
-                <span class="dk-slot">RL</span>
+                <span class="dk-slot">{{ $item->gameMark() }}</span>
             @endif
         </span>
     @endif

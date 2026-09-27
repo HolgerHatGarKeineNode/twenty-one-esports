@@ -1258,7 +1258,7 @@ final class SeriesService
             $this->notifier->send($seat->user, NotificationKind::Challenge, new Notice(
                 __('New challenge from :clan', ['clan' => $match->challenger_name], $locale),
                 __(':mode, best of :bo, match :number. Answer by :time.', [
-                    'mode' => 'Rocket League '.$match->mode,
+                    'mode' => $this->games->name($match->game).' '.$match->mode,
                     'bo' => $match->best_of,
                     'number' => $match->label(),
                     'time' => $match->respond_by->copy()->timezone($seat->user->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i'),

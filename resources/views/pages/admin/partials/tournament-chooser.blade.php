@@ -1,9 +1,12 @@
 @php
     use App\Enums\TournamentFormat;
     use App\Enums\TournamentResultsMode;
+    use App\Games\GameRegistry;
+    use App\Support\GameNames;
     use App\Support\Tournaments\Estimator;
     use App\Support\Tournaments\FormatCopy;
     use App\Support\Tournaments\FormatOptions;
+    use App\Support\Tournaments\GameProfile;
     use App\Support\Tournaments\Preview;
 
     /*
@@ -97,8 +100,8 @@
         : ($site ? __('Allow more time or add boards.') : __('Allow more time.')));
     $recommendedWhy = $recommended === null ? '' : ($evaluation->nothingFits
         ? __('Nothing fits into :window. This is the shortest: :duration.', ['window' => $duration($window), 'duration' => $duration($recommended->total())]).' '.$lever
-        : ($profile->isRocketLeague() && $recommended->format->hasFinal()
-            // Rocket League recommends a format with a final first (user, 2026-09-26), so the reason names it.
+        : ($profile->isSeries() && $recommended->format->hasFinal()
+            // Series games recommend a format with a final first (user, 2026-09-26, for Rocket League), so the reason names it.
             ? ($teams
                 ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
                 : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
@@ -148,7 +151,7 @@
     $assumption = $daily
         ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
         : ($series
-            ? __('One Rocket League game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
+            ? __('One :game game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['game' => GameNames::game($profile->game), 'minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
             : __('One Blitz 5+3 game: up to :minutes min, including pairing. :break min between rounds.', ['minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0]));
 
     $tieBreakLabels = [
@@ -176,16 +179,17 @@
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.8fr)_minmax(0,1.35fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
             <span class="flex flex-col gap-1.5">
                 <span id="game-l" class="text-xs text-ink-2">{{ __('Game, mode') }}</span>
-                <span class="flex items-center gap-2">
-                    <span class="w-[104px] shrink-0 text-xs text-ink-3">{{ __('Chess') }}</span>
-                    <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-chess"
-                        :options="[['blitz', __('Blitz 5+3')], ['daily', __('Daily')]]" />
-                </span>
-                <span class="flex items-center gap-2">
-                    <span class="w-[104px] shrink-0 text-xs text-ink-3">{{ __('Rocket League') }}</span>
-                    <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-rl"
-                        :options="[['rl1', '1v1'], ['rl2', '2v2'], ['rl3', '3v3']]" />
-                </span>
+                {{-- One row per registered game: its cover, its name and one button per mode (registry order). --}}
+                @foreach (app(GameRegistry::class)->all() as $pickGame => $pickDefinition)
+                    <span class="flex items-center gap-2" data-test="game-row-{{ $pickGame }}">
+                        <span class="flex w-[104px] shrink-0 items-center gap-2 text-xs text-ink-3">
+                            <x-game-cover :game="$pickGame" size="thumb" class="w-10 rounded-xs" />
+                            <span class="min-w-0 leading-tight">{{ GameNames::game($pickGame) }}</span>
+                        </span>
+                        <x-tournaments.segmented labelledby="game-l" method="pickGame" :current="$this->game" class="grow" data-test="game-{{ $pickGame }}"
+                            :options="array_values(array_map(fn ($pickMode) => [GameProfile::for($pickGame, $pickMode->slug)->key, __($pickMode->name)], $pickDefinition->modes()))" />
+                    </span>
+                @endforeach
             </span>
 
             <span class="flex flex-col gap-1.5">

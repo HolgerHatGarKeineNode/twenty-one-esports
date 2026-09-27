@@ -2,8 +2,11 @@
 
 use App\Games\GameRegistry;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
+use App\Support\GameNames;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Clans\ClanStats;
 use App\Support\PageMeta;
@@ -13,18 +16,37 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 /*
- * Rocket League game page, 1:1 from RocketLeague.dc.html. The modes and
- * best-of options come from the game registry and the clan list is real.
- * Series, results, open challenges and series per week are real (P6a).
- * PLACEHOLDER until later phases: Hashrate (P7), the next tournament (P8)
- * and the block strip feed (P7).
+ * The page of a series game (Rocket League, EA Sports FC), 1:1 from
+ * RocketLeague.dc.html, one per registry entry (`games/{slug}`). The modes
+ * and best-of options come from the game registry and the clan list is real.
+ * Series, results, open challenges, series per week and the next tournament
+ * are those of this game; the clan Hashrate and the series share count
+ * every game (a clan's points are not split by game).
  * The "what a series is worth" numbers are the Elo formula (K 32) itself.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
+    public string $slug = '';
+
+    public function mount(string $slug): void
+    {
+        abort_unless(app(GameRegistry::class)->isSeries($slug), 404);
+
+        $this->slug = $slug;
+    }
+
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title(__('Rocket League'));
-        app(PageMeta::class)->describe(__('Rocket League'), __('Rocket League in the TWENTY ONE esports league: clan lineups play series in 1v1, 2v2 and 3v3, with Elo per lineup, the latest results and open challenges.'));
+        $game = GameNames::game($this->slug);
+        $modes = implode(', ', array_keys(app(GameRegistry::class)->get($this->slug)->modes()));
+        $view->title($game);
+        app(PageMeta::class)->describe($game, __(':game in the TWENTY ONE esports league: clan lineups play series in :modes, with Elo per lineup, the latest results and open challenges.', ['game' => $game, 'modes' => $modes]));
+    }
+
+    #[Computed]
+    public function nextTournament(): ?Tournament
+    {
+        return Tournament::query()->where('game', $this->slug)->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+            ->orderBy('signup_closes_at')->first();
     }
 
     /**
@@ -58,7 +80,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     #[Computed]
     public function series(): array
     {
-        $done = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES);
+        $done = SeriesMatch::query()->where('game', $this->slug)->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES);
         $wins = (clone $done)->get()->countBy(fn (SeriesMatch $match) => $match->sideName((string) $match->winner))->sortDesc();
         $top = $wins->take(5)->map(fn (int $count, string $clan) => [$clan, $count])->values()->all();
 
@@ -67,13 +89,13 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         }
 
         $since = now()->startOfWeek()->subWeeks(11);
-        $perWeek = SeriesMatch::query()->whereNotNull('start_at')->where('start_at', '>=', $since)->pluck('start_at')
+        $perWeek = SeriesMatch::query()->where('game', $this->slug)->whereNotNull('start_at')->where('start_at', '>=', $since)->pluck('start_at')
             ->countBy(fn ($start) => (int) floor($since->diffInWeeks($start)));
 
         return [
             'wins' => $top,
             'recent' => (clone $done)->orderByDesc('finished_at')->limit(6)->get()->all(),
-            'open' => SeriesMatch::query()->with('challengerLineup.clan')->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])->orderBy('respond_by')->limit(5)->get()->all(),
+            'open' => SeriesMatch::query()->where('game', $this->slug)->with('challengerLineup.clan')->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted])->orderBy('respond_by')->limit(5)->get()->all(),
             'weeks' => array_map(fn (int $week) => (int) ($perWeek[$week] ?? 0), range(0, 11)),
         ];
     }
@@ -92,7 +114,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 }; ?>
 
 @php
-    $modes = app(GameRegistry::class)->get('rocket-league')->modes();
+    $modes = app(GameRegistry::class)->get($this->slug)->modes();
+    $gameName = GameNames::game($this->slug);
+    $bestOf = array_values(array_unique(array_merge(...array_values(array_map(fn ($mode) => $mode->bestOf, $modes)))));
+    $next = $this->nextTournament;
     $rows = $this->hashrate;
     $rl = $rows->sortByDesc('rl')->values();
     $rlTotal = $rl->sum('rl');
@@ -107,7 +132,19 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $winTotal = max(1, (int) collect($wins)->sum(1));
 @endphp
 
-<div class="flex grow flex-col">
+<div class="flex grow flex-col" data-test="game-page" data-game="{{ $slug }}">
+    <div class="flex flex-col gap-4 px-4 pt-6 pb-4 sm:flex-row sm:items-center lg:px-12 lg:pt-8">
+        <x-game-cover :game="$slug" size="header" class="w-full rounded-lg shadow-ring sm:w-[320px] lg:w-[400px]" />
+        <div class="flex min-w-0 flex-col gap-2">
+            <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ $gameName }}</h1>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
+            <div class="flex flex-wrap gap-2">
+                @auth<x-button :href="route('challenges.create', ['game' => $slug])" data-test="game-page-challenge">{{ __('Challenge a clan') }}</x-button>@endauth
+                <x-button variant="secondary" :href="route('ladder.show', [$slug, array_key_first($modes)])">{{ __('Ladder') }}</x-button>
+                <x-button variant="quiet" :href="route('matches.index', ['game' => $slug])">{{ __('Matches') }}</x-button>
+            </div>
+        </div>
+    </div>
 
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-2 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Clan Hashrate, last 7 days (P7) --}}
@@ -130,10 +167,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @endforelse
         </section>
 
-        {{-- Rocket League share (P7) --}}
+        {{-- Series share (P7): every series game, a clan's points are not split by game --}}
         <section aria-labelledby="rl-share" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 id="rl-share" class="m-0 text-[15px] font-bold">{{ __('Rocket League share') }}</h2><span class="text-xs text-ink-3">{!! __('last 7 days, <b class="text-ink">:rl</b> of :total points', ['rl' => $rlTotal, 'total' => $weekTotal]) !!}</span></span>
-            <div role="img" aria-label="{{ __('Rocket League Hashrate per clan, last 7 days') }}" class="flex h-[180px] items-end gap-1.5 border-b border-line lg:gap-2">
+            <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h2 id="rl-share" class="m-0 text-[15px] font-bold">{{ __('Series share') }}</h2><span class="text-xs text-ink-3">{!! __('last 7 days, <b class="text-ink">:rl</b> of :total points', ['rl' => $rlTotal, 'total' => $weekTotal]) !!}</span></span>
+            <div role="img" aria-label="{{ __('Series Hashrate per clan, last 7 days') }}" class="flex h-[180px] items-end gap-1.5 border-b border-line lg:gap-2">
                 @foreach ($rl as $index => $row)
                     <span class="flex h-full min-w-0 flex-1 flex-col justify-end gap-1" title="{{ $row['clan']->name }}: {{ $row['rl'] }}">
                         <span class="flex min-w-0 items-center gap-1 text-[10px] text-ink-2 lg:text-[11px]"><x-clan-tag :clan="$row['clan']" size="sm" compact /><span class="truncate">{{ $row['rl'] }}</span></span>
@@ -142,7 +179,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 @endforeach
             </div>
             <span class="flex justify-between text-[11px] text-ink-3"><span>{{ __('per clan, most first') }}</span><span>{{ __('the rest came from chess') }}</span></span>
-            <p class="m-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Every rated game a clan player plays counts for their clan: win 3, draw 2, loss 1. A Rocket League series counts once per player, and a won team match or series adds 5. Casual games don\'t count.') }} <a href="{{ route('rules') }}">{{ __('How points are counted') }}</a></p>
+            <p class="m-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Every rated game a clan player plays counts for their clan: win 3, draw 2, loss 1. A series counts once per player, and a won team match or series adds 5. Casual games don\'t count.') }} <a href="{{ route('rules') }}">{{ __('How points are counted') }}</a></p>
         </section>
 
         {{-- What a series is worth: the Elo formula itself (K 32) --}}
@@ -161,19 +198,17 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     </div>
                 @endforeach
             </div>
-            <p class="m-0 text-xs text-ink-3">{{ __('Modes: :modes · best of 3 or 5', ['modes' => implode(', ', array_keys($modes))]) }}</p>
+            <p class="m-0 text-xs text-ink-3">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
         </section>
 
-        {{-- Next tournament (P8) --}}
+        {{-- Next tournament of this game open for sign-up (P8) --}}
         <section aria-labelledby="rl-cup" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
             <span class="flex items-baseline justify-between"><h2 id="rl-cup" class="m-0 text-[15px] font-bold">{{ __('Next tournament') }}</h2><a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All tournaments') }}</a></span>
-            <span class="flex flex-wrap items-baseline justify-between gap-2"><b class="font-display text-lg">Halving Cup</b><span class="text-xs text-ink-2">{{ __(':t of :n teams, :s solo players', ['t' => 5, 'n' => 8, 's' => 7]) }}</span></span>
-            <span class="block h-6 rounded-sm bg-raised"><span class="block h-6 animate-fill rounded-sm bg-[linear-gradient(90deg,#B9640A,#F7931A)]" style="width: 62.5%"></span></span>
-            <div class="grid grid-cols-2 gap-3 text-center lg:grid-cols-4">
-                @foreach ([['Oct 3', __('Cup night, 20:00'), 'text-ink'], ['3v3', __('Double Elimination'), 'text-ink'], ['315 000', __('sats, members\' prize pool'), 'text-bolt'], ['Oct 1', __('Entries close, 20:00'), 'text-ink']] as [$value, $label, $colour])
-                    <span class="flex flex-col gap-1"><b class="text-lg {{ $colour }}">{{ $value }}</b><span class="text-[11px] text-ink-2">{{ $label }}</span></span>
-                @endforeach
-            </div>
+            @if ($next)
+                <a href="{{ route('tournaments.show', $next) }}" class="flex flex-wrap items-baseline justify-between gap-2 text-ink hover:text-ink" data-test="game-next-tournament"><b class="font-display text-lg">{{ $next->name }}</b><span class="text-xs text-ink-2">{{ GameNames::mode($next->game, $next->mode) }} · {{ $next->format->label() }}</span></a>
+            @else
+                <p class="m-0 text-[13px] text-ink-2">{{ __('No :game tournament is open for sign-up right now.', ['game' => $gameName]) }}</p>
+            @endif
             <p class="m-0 text-xs leading-[1.6] text-ink-2">{{ __('Captains enter a lineup, solo players get drawn into mix teams. Clan lineup matches count for Elo; mix teams play without Elo.') }}</p>
         </section>
 

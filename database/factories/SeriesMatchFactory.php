@@ -32,7 +32,7 @@ class SeriesMatchFactory extends Factory
                 'used_at' => now(),
             ])->id,
             'created_by_id' => fn (array $attributes) => $lineup('challenger_lineup_id')($attributes)->clan->owner_id,
-            'game' => 'rocket-league',
+            'game' => fn (array $attributes) => $lineup('challenger_lineup_id')($attributes)->game,
             'mode' => fn (array $attributes) => $lineup('challenger_lineup_id')($attributes)->mode,
             'best_of' => 3,
             'rated' => false,

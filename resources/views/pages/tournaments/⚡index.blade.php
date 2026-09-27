@@ -24,7 +24,7 @@ use Livewire\Component;
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
-        app(PageMeta::class)->describe(__('Tournaments'), __('Chess and Rocket League tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.'));
+        app(PageMeta::class)->describe(__('Tournaments'), __(':games tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys(app(\App\Games\GameRegistry::class)->all())))]));
     }
 
     /**
@@ -56,7 +56,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     ];
     $next = $this->next;
     $places = $next === null ? null : app(TournamentSignups::class)->places($next);
-    $modeLabel = fn (Tournament $t): string => ($t->game === 'chess' ? __('Chess') : 'Rocket League').' '.($t->mode === 'correspondence' ? __('Daily') : ($t->mode === 'blitz' ? __('Blitz 5+3') : $t->mode));
+    $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="tournaments-index">
@@ -86,6 +86,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
 
     @if ($next !== null)
         <section aria-labelledby="next-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:flex-row lg:gap-8 lg:px-6" data-test="next-tournament">
+            <x-game-cover :game="$next->game" size="card" class="w-full rounded-md sm:w-[280px] lg:self-center" data-test="next-tournament-cover" />
             <div class="flex min-w-0 grow flex-col gap-2">
                 <span class="text-xs text-ink-2">{{ __('Next tournament') }}</span>
                 <h2 id="next-h" class="m-0 font-display text-[26px] font-bold break-words"><a href="{{ route('tournaments.show', $next) }}" class="text-ink hover:text-ink">{{ $next->name }}</a></h2>
@@ -112,7 +113,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             <ul class="m-0 flex list-none flex-col p-0">
                 @foreach ($this->tournaments as $tournament)
                     <li class="flex flex-col gap-1 border-t border-hairline py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-4" wire:key="t-{{ $tournament->id }}" data-test="tournament-item">
-                        <a href="{{ route('tournaments.show', $tournament) }}" class="min-w-0 font-bold sm:w-[34%] sm:truncate">{{ $tournament->name }}</a>
+                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold sm:w-[34%]"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>
                         <span class="text-ink-2 sm:w-[18%]">{{ $tournament->starts_at->copy()->timezone($zone)->format('Y-m-d') }}</span>
                         <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
                         <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>

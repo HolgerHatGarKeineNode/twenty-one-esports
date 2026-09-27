@@ -65,8 +65,12 @@ const SHARE_BAD_RESPONSES = <<<'JS'
 
 const SHARE_NO_OVERFLOW = '() => document.documentElement.scrollWidth <= document.documentElement.clientWidth';
 
-/** Every image on the page loaded (a card or badge that failed to render has naturalWidth 0). */
-const SHARE_IMAGES_LOADED = '() => [...document.images].filter((i) => i.loading !== "lazy" || i.getBoundingClientRect().top < innerHeight).every((i) => i.complete && i.naturalWidth > 0)';
+/**
+ * Every image on the page loaded (a card or badge that failed to render has naturalWidth 0).
+ * A lazy image in a closed menu (the game covers of the games menu) never loads until the menu
+ * opens, so a lazy image counts only when it is visible and above the fold.
+ */
+const SHARE_IMAGES_LOADED = '() => [...document.images].filter((i) => i.loading !== "lazy" || (i.checkVisibility() && i.getBoundingClientRect().top < innerHeight)).every((i) => i.complete && i.naturalWidth > 0)';
 
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));

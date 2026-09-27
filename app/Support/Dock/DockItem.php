@@ -2,6 +2,7 @@
 
 namespace App\Support\Dock;
 
+use App\Games\GameRegistry;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
@@ -56,6 +57,14 @@ final readonly class DockItem
     public function isChess(): bool
     {
         return in_array($this->kind, ['blitz', 'daily', 'blitz_invite', 'daily_challenge'], true);
+    }
+
+    /** The two-letter game mark of a non-chess item: RL, FC. */
+    public function gameMark(): string
+    {
+        $short = $this->model instanceof SeriesMatch ? app(GameRegistry::class)->find($this->model->game)?->assets()->shortLabel : null;
+
+        return mb_substr($short ?? 'RL', 0, 2);
     }
 
     public function isLive(): bool

@@ -21,7 +21,8 @@ results, tournaments before Block 0, and no blocks from tournaments; **revision 
 director forfeits unrated, disinterested directors, Rocket League 1v1 as a player ladder;
 **revision 8** (2026-09-26): rank badges from rated ladders only, the badge artwork URL, the profile
 badge list written by the app, share posts; **revision 8.1** (2026-09-27): rated Rocket League
-series in tournaments whose players report, with the pairing challenge signed by the league). Not
+series in tournaments whose players report, with the pairing challenge signed by the league;
+**revision 8.2** (2026-09-27): EA Sports FC 26 and 27 in the game registry). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
@@ -49,6 +50,15 @@ adopts revision 8. The rules marked "rev. 8.1" concern tournaments only; like th
 apply to every tournament whose first `31923` version the league signs after it adopts revision 8.1.
 A tournament published earlier keeps what its `content` said about rating: under revision 7 the
 Rocket League series of a tournament whose players report were casual, and they stay casual.
+
+### Changelog of revision 8.2 (2026-09-27)
+
+- **Game registry** ([Game registry](#game-registry)): two more series games, `ea-sports-fc-26` and
+  `ea-sports-fc-27` (one entry per yearly edition; editions never meet on one ladder). Modes `1v1`
+  (`rates` `player`, as [Rocket League 1v1](#rocket-league-1v1-rev-71)) and `2v2` (`rates` `lineup`),
+  `bo` 1 or 3, goals per game in `score` tags, no draws and no flags. Ladder `d` values follow the
+  usual form, e.g. `ea-sports-fc-26/1v1/<season>`, `ea-sports-fc-27/2v2/<season>`. No event, tag or
+  rule changes; a league adds the games with its next ladder versions.
 
 ### Changelog of revision 8.1 (2026-09-27)
 
@@ -513,19 +523,19 @@ The league defines its games in code. This NIP needs the following fields per mo
 tag name in the "ladder" column are also published in every ladder of the mode, so that the ladder
 describes itself.
 
-| field | ladder | chess | Rocket League |
-|---|---|---|---|
-| game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` |
-| rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) |
-| time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none |
-| variant | `variant` | `standard` | none |
-| rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes |
-| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 |
-| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 |
-| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) |
-| draws | | yes, a game can end `1/2-1/2` | no |
-| result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) |
-| moves on Nostr | | correspondence only; blitz moves stay on the league server | none |
+| field | ladder | chess | Rocket League | EA Sports FC (rev. 8.2) |
+|---|---|---|---|---|
+| game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` | `ea-sports-fc-26`, `ea-sports-fc-27`: `1v1`, `2v2`; ladder `d` e.g. `ea-sports-fc-26/1v1/<season>` |
+| rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) | `player` for `1v1` (as Rocket League 1v1), `lineup` for `2v2` |
+| time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none | none |
+| variant | `variant` | `standard` | none | none |
+| rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes | yes |
+| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 | `bo` 1 or 3 |
+| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 | 1, 2 |
+| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) | as Rocket League |
+| draws | | yes, a game can end `1/2-1/2` | no | no; a game level after extra time is decided on penalties in the game and reported with its winner and points unknown |
+| result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) | `score` tags in the report (2152), no flags |
+| moves on Nostr | | correspondence only; blitz moves stay on the league server | none | none |
 
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
 games never produce match-flow events; a player may still publish the finished game as a plain

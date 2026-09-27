@@ -2,9 +2,11 @@
 
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Support\GameNames;
 use App\Support\PageMeta;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,7 +29,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Matches'));
-        app(PageMeta::class)->describe(__('Matches'), __('Every Rocket League series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.'));
+        app(PageMeta::class)->describe(__('Matches'), __('Every series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.'));
     }
 
     use WithPagination;
@@ -56,7 +58,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
     public function pickGame(string $game): void
     {
-        $this->game = in_array($game, ['all', 'chess', 'rocket-league'], true) ? $game : 'all';
+        $this->game = $game === 'all' || app(GameRegistry::class)->find($game) !== null ? $game : 'all';
         $this->resetPage();
     }
 
@@ -92,6 +94,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $clan = $this->selectedClan;
 
         return $query
+            ->when($this->game !== 'all', fn (Builder $query) => $query->where('game', $this->game))
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereIn('challenger_lineup_id', $clan->lineups()->select('id'))
                 ->orWhereIn('challenged_lineup_id', $clan->lineups()->select('id'))))
@@ -137,7 +140,15 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
      */
     private function listsChess(string $status): bool
     {
-        return $this->game !== 'rocket-league' && $this->chessStatuses($status) !== [];
+        return ($this->game === 'all' || ! app(GameRegistry::class)->isSeries($this->game)) && $this->chessStatuses($status) !== [];
+    }
+
+    /**
+     * Whether series (Rocket League, EA Sports FC) show under the game filter.
+     */
+    private function listsSeries(): bool
+    {
+        return $this->game === 'all' || app(GameRegistry::class)->isSeries($this->game);
     }
 
     /**
@@ -152,9 +163,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $perPage = 20;
         $page = $this->getPage();
         $take = $page * $perPage;
-        $series = $this->game === 'chess' ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
+        $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
-        $total = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
+        $total = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
             + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0);
 
         $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
@@ -177,7 +188,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
         foreach (array_keys($this->statusFilters()) as $status) {
             if ($status !== 'all') {
-                $counts[$status] = ($this->game === 'chess' ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
+                $counts[$status] = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
                     + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0);
             }
         }
@@ -191,7 +202,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     #[Computed]
     public function clans(): Collection
     {
-        return Clan::query()->whereHas('lineups', fn (Builder $query) => $query->where('game', 'rocket-league'))->orderBy('name')->get();
+        return Clan::query()->whereHas('lineups', fn (Builder $query) => $query->whereIn('game', array_keys(app(GameRegistry::class)->series())))->orderBy('name')->get();
     }
 
     /**
@@ -232,11 +243,21 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
             <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-3">
                 <div class="flex items-center gap-2">
-                    <span id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</span>
-                    <div role="group" aria-labelledby="f-game" class="flex overflow-hidden rounded-md border border-line">
-                        @foreach (['all' => __('All'), 'chess' => __('Chess'), 'rocket-league' => 'Rocket League'] as $key => $label)
-                            <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}"
-                                    @class([$filterBtn, 'border-l border-line' => ! $loop->first, 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])>{{ $label }}</button>
+                    <label for="f-game-select" id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</label>
+                    {{-- Below sm a select (five buttons do not fit a phone), from sm the buttons: short labels (RL, FC27) below xl. --}}
+                    <select id="f-game-select" wire:change="pickGame($event.target.value)" data-test="game-filter-select"
+                            class="h-11 w-[200px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden">
+                        <option value="all" @selected($game === 'all')>{{ __('All') }}</option>
+                        @foreach (app(GameRegistry::class)->all() as $key => $option)
+                            <option value="{{ $key }}" @selected($game === $key)>{{ GameNames::game($key) }}</option>
+                        @endforeach
+                    </select>
+                    <div role="group" aria-labelledby="f-game" class="flex max-w-full overflow-hidden rounded-md border border-line max-sm:hidden">
+                        <button type="button" wire:click="pickGame('all')" aria-pressed="{{ $game === 'all' ? 'true' : 'false' }}" data-test="game-all"
+                                @class([$filterBtn, 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
+                        @foreach (app(GameRegistry::class)->all() as $key => $option)
+                            <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}" aria-label="{{ GameNames::game($key) }}"
+                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-sm:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
                         @endforeach
                     </div>
                 </div>
@@ -294,7 +315,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                         </span>
                     </span>
                     <span class="flex flex-col leading-tight lg:order-none"><b>{{ $score['text'] }}</b>@if ($score['sub'] !== '')<span class="text-[11px] text-btc-hi">{{ $score['sub'] }}</span>@endif</span>
-                    <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-icon name="rocket-league" :size="14" />{{ SeriesPresenter::format($match) }}@if (! $match->rated)<span class="ml-1 rounded-xs border border-line px-1 text-[10px] lg:hidden">{{ __('casual') }}</span>@endif</span>
+                    <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-game-cover :game="$match->game" size="thumb" class="w-8 rounded-xs" title="{{ GameNames::game($match->game) }}" data-test="match-row-cover" /><span class="sr-only">{{ GameNames::game($match->game) }}</span>{{ SeriesPresenter::format($match) }}@if (! $match->rated)<span class="ml-1 rounded-xs border border-line px-1 text-[10px] lg:hidden">{{ __('casual') }}</span>@endif</span>
                     <span class="max-lg:hidden">
                         <span class="inline-flex h-[26px] items-center gap-1.5 rounded-sm px-2.5 text-xs font-bold" style="background: {{ $chip['bg'] }}; color: {{ $chip['color'] }}">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $chip['icon'] }}"></path></svg>{{ $chip['label'] }}
@@ -308,13 +329,13 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 </a>
             @empty
                 <div class="px-2 py-6">
-                    @if ($game === 'chess')
+                    @if ($game !== 'all' && ! app(GameRegistry::class)->isSeries($game))
                         <x-empty-state :heading="__('No games yet')" :text="__('The first chess game opens the list.')">
                             <x-button :href="route('chess.lobby')">{{ __('Play chess') }}</x-button>
                         </x-empty-state>
                     @else
                         <x-empty-state :heading="__('No matches yet')" :text="__('The first challenge opens the list.')">
-                            @auth<x-button :href="route('challenges.create')">{{ __('Challenge a clan') }}</x-button>@endauth
+                            @auth<x-button :href="route('challenges.create', $game === 'all' ? [] : ['game' => $game])">{{ __('Challenge a clan') }}</x-button>@endauth
                         </x-empty-state>
                     @endif
                 </div>

@@ -424,7 +424,7 @@ final class InviteLinks
             $this->notifier->send($inviter, NotificationKind::InviteLinkTaken, new Notice(
                 __(':clan took your challenge link', ['clan' => $made->challenged_name], $locale),
                 __(':mode, best of :bo, match :number, starts :time.', [
-                    'mode' => 'Rocket League '.$made->mode,
+                    'mode' => app(GameRegistry::class)->name($made->game).' '.$made->mode,
                     'bo' => $made->best_of,
                     'number' => $made->label(),
                     'time' => $made->start_at?->copy()->timezone($inviter->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i') ?? '',

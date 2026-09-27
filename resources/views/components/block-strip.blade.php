@@ -47,7 +47,7 @@
                                 @if ($block['state'] === 'live')
                                     <span class="bs-fill" aria-hidden="true"></span>
                                 @endif
-                                <span class="bs-r1">{!! $block['game'] === 'chess' ? $knight : $rlSlot !!}{{ $block['mode'] }}</span>
+                                <span class="bs-r1">{!! $block['game'] === 'chess' ? $knight : (isset($block['slot']) ? '<span class="bs-logo bs-slot" aria-hidden="true">'.e($block['slot']).'</span>' : $rlSlot) !!}{{ $block['mode'] }}</span>
                                 <span @class(['bs-score', 'bs-score--word' => $block['word']])>{{ $block['score'] }}</span>
                                 <span class="bs-who">{{ $block['who'] }}</span>
                                 <span class="bs-when">

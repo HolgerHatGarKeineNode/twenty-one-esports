@@ -193,7 +193,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
-                @foreach ([[__('Pairing'), $case->challenger_name.' : '.$case->challenged_name], [__('Format'), 'Rocket League, '.$case->mode.', Bo'.$case->best_of], [__('Played'), $case->start_at ? SeriesPresenter::time($case->start_at, $viewer) : '–']] as [$key, $v])
+                @foreach ([[__('Pairing'), $case->challenger_name.' : '.$case->challenged_name], [__('Format'), \App\Support\GameNames::game($case->game).', '.$case->mode.', Bo'.$case->best_of], [__('Played'), $case->start_at ? SeriesPresenter::time($case->start_at, $viewer) : '–']] as [$key, $v])
                     <div class="grid min-h-11 grid-cols-[120px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-[13px] last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $v }}</span></div>
                 @endforeach
             </div>

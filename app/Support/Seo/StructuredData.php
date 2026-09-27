@@ -8,6 +8,7 @@ use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Support\GameNames;
 use App\Support\Nostr\PlayerProfile;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -114,7 +115,7 @@ final class StructuredData
         return self::sportsEvent(
             name: __('Series :number', ['number' => $match->label()]).': '.$match->challenger_name.' vs '.$match->challenged_name,
             url: $url,
-            sport: 'Rocket League',
+            sport: GameNames::game($match->game),
             start: $match->start_at,
             end: $match->finished_at,
             cancelled: in_array($match->status, [SeriesStatus::Declined, SeriesStatus::Withdrawn, SeriesStatus::Expired], true),
@@ -188,7 +189,7 @@ final class StructuredData
         return self::sportsEvent(
             name: $tournament->name,
             url: $url,
-            sport: $tournament->game === 'chess' ? __('Chess') : 'Rocket League',
+            sport: GameNames::game($tournament->game),
             start: $tournament->starts_at,
             end: $end,
             cancelled: $tournament->status === TournamentStatus::Cancelled,

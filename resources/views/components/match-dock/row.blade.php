@@ -15,7 +15,7 @@
             <span class="flex min-w-0 grow flex-col gap-0.5">
                 <span @class(['dk-name', 'text-ink' => $item->needsYou, 'text-ink-2' => ! $item->needsYou])>{{ $item->name }}</span>
                 <span class="dk-line text-ink-2">
-                    @if ($item->isChess())<x-icon name="chess" :size="14" />@else<span class="dk-slot">RL</span>@endif
+                    @if ($item->isChess())<x-icon name="chess" :size="14" />@else<span class="dk-slot">{{ $item->gameMark() }}</span>@endif
                     <span class="truncate">{{ $item->line }}</span>
                 </span>
                 <span @class(['truncate text-xs', 'text-loss' => $urgent, 'text-ink' => ! $urgent && $item->needsYou, 'text-ink-2' => ! $urgent && ! $item->needsYou])

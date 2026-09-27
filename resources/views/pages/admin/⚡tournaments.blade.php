@@ -150,7 +150,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                         <a href="{{ route('tournaments.show', $tournament) }}" class="font-bold">{{ $tournament->name }}</a>
                                         <span class="block text-xs text-ink-3">{{ __('by :name', ['name' => $tournament->creator?->displayName() ?? __('a former player')]) }}</span>
                                     </td>
-                                    <td class="py-2.5 pr-3">{{ $tournament->game === 'chess' ? __('Chess') : __('Rocket League') }} {{ $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode) }}</td>
+                                    <td class="py-2.5 pr-3">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}</td>
                                     <td class="py-2.5 pr-3 whitespace-nowrap">{{ $tournament->starts_at->format('Y-m-d H:i') }}</td>
                                     <td class="py-2.5 pr-3">{{ $tournament->format->label() }}
                                         <span class="block text-xs text-ink-3">{{ __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $tournament->profile())]) }}</span>
