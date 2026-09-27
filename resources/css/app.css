@@ -2178,6 +2178,111 @@ select:focus[data-flux-control] {
     }
 }
 
+/*
+ * Home as the league's hub (pages/home.blade.php, 2026-09-27). The one
+ * loud moment is the hero's seats: every taken seat is the face of whoever
+ * took it, and they drop in, best seed first, while the number counts up;
+ * the open seats stay dashed. Nothing else on home moves on load. The
+ * stage is a band flush under the header (the sweep's flush opt-out).
+ */
+.hh-stage {
+    background: linear-gradient(180deg, var(--color-bar), var(--color-ground));
+    border-bottom: 1px solid var(--color-hairline);
+}
+
+.hh-cover > picture,
+.hh-cover > span {
+    box-shadow: 0 0 0 1px #2A2A30, 0 24px 64px -24px rgba(247, 147, 26, 0.35);
+}
+
+.hh-seats {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 4px;
+}
+
+.hh-seat {
+    position: relative;
+    display: block;
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: var(--radius-tag);
+}
+
+.hh-seat > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* A taken seat: the face, standing on the orange edge of a mined block. */
+.hh-seat.is-taken {
+    background: var(--color-raised);
+    animation: hh-seat 0.3s var(--ease-pop) both;
+    animation-delay: calc(150ms + var(--i, 0) * 40ms);
+}
+
+.hh-seat.is-taken::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 3px;
+    background: var(--color-btc);
+}
+
+.hh-seat.is-you {
+    outline: 2px solid var(--color-win);
+    outline-offset: 1px;
+}
+
+.hh-seat.is-open {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--color-dash);
+    color: var(--color-ink-3);
+}
+
+/* The first open seat is the way in: a control, so its edge carries 3:1. */
+.hh-seat.is-open:has(a) {
+    border-color: var(--color-edge);
+}
+
+.hh-seat.is-open:has(a:hover) {
+    border-color: var(--color-btc);
+}
+
+@keyframes hh-seat {
+    from { transform: translateY(-10px) scale(0.85); opacity: 0; }
+}
+
+@media (width >= 64rem) {
+    .hh-seats {
+        gap: 6px;
+    }
+}
+
+/* The Block 0 cube in miniature, for the strip under the hero: it waits still. */
+.b0-mini {
+    --b: 36px;
+    --t: 7px;
+    --s: 6px;
+    --g-big: 15px;
+    display: block;
+    flex-shrink: 0;
+    padding: 7px 0 0 6px;
+}
+
+.b0-mini .g0.is-wait {
+    animation: none;
+}
+
+/* A game tile: the cover over the game's colour edge. */
+.hh-tile {
+    border-bottom: 3px solid var(--game, var(--color-line));
+}
+
 /* Motion is decoration here, never information: switch it all off on request. */
 @media (prefers-reduced-motion: reduce) {
     *,

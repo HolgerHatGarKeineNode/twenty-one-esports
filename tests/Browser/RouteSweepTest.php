@@ -495,8 +495,8 @@ const SWEEP_PAGE_SIDE = [375 => 16, 1024 => 16, 1440 => 16];
 /**
  * Pages whose design starts flush under the header on purpose, by the path
  * the browser lands on (a redirect such as locale/{locale} is judged by its
- * target): only the pre-launch home, which opens with its full-bleed Block 0
- * bar (MainPrelaunch.dc.html, MobileHomePrelaunch.dc.html). The layout opt-out
+ * target): only home, which opens with its full-bleed stage (the next
+ * tournament or the games, pages/home.blade.php). The layout opt-out
  * is `<x-layouts::app flush>`. The NIP-05 JSON endpoint has no header at all
  * and is not a page.
  *
@@ -731,8 +731,7 @@ test('positive control: the sweep fails on an injected JS error', function () {
 });
 
 test('positive control: the top-gap probe measures a page that starts flush', function () {
-    // The pre-launch home is the one opt-out: its Block 0 bar sits directly
-    // under the header. The probe must report that as ~0px, or a page that
+    // Home is the one opt-out: its stage band sits directly under the header. The probe must report that as ~0px, or a page that
     // loses its spacing would pass unnoticed.
     $page = freshSweepPage(route('home'));
     $page->setViewportSize(375, 800);
@@ -740,7 +739,7 @@ test('positive control: the top-gap probe measures a page that starts flush', fu
     $data = $page->evaluate(SWEEP_GAP_SCRIPT);
 
     expect($data['gap'])->toBeLessThan(SWEEP_PAGE_TOP[375])
-        ->and($data['first'])->toContain('prelaunch-bar');
+        ->and($data['first'])->toContain('home-stage');
 });
 
 test('positive control: the sweep fails on an injected 500', function () {
