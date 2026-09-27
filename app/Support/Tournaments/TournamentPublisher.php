@@ -209,11 +209,13 @@ final class TournamentPublisher
         $end = $tournament->pool_closed_at?->getTimestamp()
             ?? $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60));
         $page = route('tournaments.show', $tournament);
+        // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
+        $calledOff = $tournament->status === TournamentStatus::Cancelled;
 
         $tags = [
             ['d', (string) $tournament->slug],
-            ['title', $tournament->name],
-            ['summary', $this->summary($tournament)],
+            ['title', ($calledOff ? 'Called off: ' : '').$tournament->name],
+            ['summary', ($calledOff ? 'Called off. ' : '').$this->summary($tournament)],
             ['start', (string) $start],
             ['end', (string) $end],
             ...array_map(fn (int $day): array => ['D', (string) $day], range(intdiv($start, 86400), intdiv(max($start, $end - 1), 86400))),
@@ -236,7 +238,7 @@ final class TournamentPublisher
             $tags[] = ['zap', $pool, (string) (config('esports.relays')[0] ?? ''), '1'];
         }
 
-        $tags[] = ['alt', 'Tournament: '.$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
+        $tags[] = ['alt', ($calledOff ? 'Called off tournament: ' : 'Tournament: ').$tournament->name.', '.$tournament->starts_at->utc()->format('Y-m-d H:i').' UTC'];
 
         return $tags;
     }
@@ -281,6 +283,11 @@ final class TournamentPublisher
         $description = trim((string) $tournament->description);
 
         // The organizer's own words come first, as their own paragraph; the rules follow unchanged.
-        return $description === '' ? $rules : $description."\n\n".$rules;
+        $content = $description === '' ? $rules : $description."\n\n".$rules;
+
+        // Called off (P18): said first, in the league's words; the organizer's typed reason stays league data.
+        return $tournament->status === TournamentStatus::Cancelled
+            ? "This tournament was called off by the league. Its open matches are closed, and nothing is rated after the call-off.\n\n".$content
+            : $content;
     }
 }

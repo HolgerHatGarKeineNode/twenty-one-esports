@@ -4,11 +4,13 @@ namespace App\Support\Rating;
 
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
+use App\Enums\TournamentStatus;
 use App\Jobs\SyncRankBadges;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Engagement\ResultEngagement;
 use App\Support\SeasonChain\GatePin;
@@ -58,7 +60,7 @@ final class RatingService
             default => null,
         };
 
-        if ($score === null) {
+        if ($score === null || self::inCalledOffTournament($game->tournament_match_id)) {
             return false;
         }
 
@@ -85,7 +87,8 @@ final class RatingService
      */
     public function applySeries(SeriesMatch $match): bool
     {
-        if (! $match->status->hasResult() || $match->resolution === SeriesResolution::Void || ! in_array($match->winner, SeriesMatch::SIDES, true)) {
+        if (! $match->status->hasResult() || $match->resolution === SeriesResolution::Void || ! in_array($match->winner, SeriesMatch::SIDES, true)
+            || self::inCalledOffTournament($match->tournament_match_id)) {
             return false;
         }
 
@@ -113,6 +116,16 @@ final class RatingService
             self::entity($subjects['challenged'], $match->challenged_lineup_id),
             $match->winner === 'challenger' ? 1.0 : 0.0, RatingChange::SERIES, $match->id, $match->number,
         );
+    }
+
+    /**
+     * Nothing of a called-off tournament is rated any more (P18,
+     * TournamentControl::abort()), whatever still ends after the call-off.
+     */
+    private static function inCalledOffTournament(?int $tournamentMatchId): bool
+    {
+        return $tournamentMatchId !== null && TournamentMatch::query()->whereKey($tournamentMatchId)
+            ->whereHas('tournament', fn ($query) => $query->where('status', TournamentStatus::Cancelled))->exists();
     }
 
     /**

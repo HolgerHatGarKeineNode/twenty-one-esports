@@ -7,8 +7,10 @@
 @php
     $done = $box['status'] === 'done';
     $skipped = $box['status'] === 'skipped';
+    // Held (P18): played before a correction changed its sides; it waits for the organizer or an admin.
+    $held = $box['held'] ?? false;
     // Up now: both sides are known and the match is waiting for its result.
-    $live = $box['status'] === 'ready' && $box['bracket'] !== 'bye' && collect($box['sides'])->every(fn (array $side): bool => $side['known']);
+    $live = ! $held && $box['status'] === 'ready' && $box['bracket'] !== 'bye' && collect($box['sides'])->every(fn (array $side): bool => $side['known']);
 @endphp
 <div @class([
         'relative flex min-w-0 flex-col gap-1 rounded-md px-3 py-2.5 text-[13px]',
@@ -16,7 +18,7 @@
         'bg-card shadow-[inset_0_0_0_1px_#F7931A]' => $done,
         'tl-live bg-btc-chip shadow-[inset_0_0_0_2px_#F7931A]' => $live,
         'opacity-50' => $skipped,
-    ]) data-test="match-box" data-status="{{ $box['status'] }}" @if ($live) data-live @endif>
+    ]) data-test="match-box" data-key="{{ $box['key'] }}" data-status="{{ $box['status'] }}" @if ($live) data-live @endif>
     <span class="flex items-center justify-between gap-2 text-[11px] text-ink-3">
         <span>
             @if ($box['number'])
@@ -30,6 +32,8 @@
                 {{ __('not needed') }}
             @elseif ($done)
                 {{ __('done') }}
+            @elseif ($held)
+                <span class="font-bold text-loss" data-test="held">{{ __('on hold') }}</span>
             @elseif ($live)
                 <span class="inline-flex items-center gap-1.5 font-bold text-btc-hi"><span class="size-1.5 animate-live rounded-full bg-btc"></span>{{ __('Up now') }}</span>
             @elseif ($box['status'] === 'ready')

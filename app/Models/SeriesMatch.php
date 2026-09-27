@@ -75,7 +75,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $tournament_match_id the tournament match this series plays (P8b)
  * @property int $tournament_attempt 1, or the replay number after an admin voided the series before (P18)
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
- * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock); null = none run by the league
+ * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int, pauses?: list<array{0: int, 1: int}>}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock; `pauses`: the tournament's pauses while the series ran, unix seconds from and to, {@see pausedAfter()}); null = none run by the league
  * @property Carbon|null $overdue_at when the league moved it to the admin queue: nobody reported by the report deadline (P18)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -290,16 +290,34 @@ class SeriesMatch extends Model
             return null;
         }
 
-        return isset($this->deadlines['report_minutes'])
+        $due = isset($this->deadlines['report_minutes'])
             ? $this->start_at->copy()->addMinutes((int) $this->deadlines['report_minutes'])
             : $this->start_at->copy()->addHours((int) ($this->deadlines['report_hours'] ?? config('esports.tournaments.report_hours', 2)));
+
+        return $due->addSeconds($this->pausedAfter($this->start_at));
     }
 
     /** When a reported no-show the other side did not answer becomes a forfeit; null without one. */
     public function noshowForfeitAt(): ?CarbonInterface
     {
         return $this->deadlines === null || $this->noshow_reported_at === null ? null
-            : $this->noshow_reported_at->copy()->addMinutes((int) $this->responseMinutes());
+            : $this->noshow_reported_at->copy()->addMinutes((int) $this->responseMinutes())->addSeconds($this->pausedAfter($this->noshow_reported_at));
+    }
+
+    /**
+     * Seconds the tournament was paused after `$since` (P18,
+     * TournamentControl): a deadline that runs from `$since` moves back by
+     * as much, so the time of a pause never counts against a side.
+     */
+    public function pausedAfter(CarbonInterface $since): int
+    {
+        $seconds = 0;
+
+        foreach ($this->deadlines['pauses'] ?? [] as [$from, $to]) {
+            $seconds += max(0, (int) $to - max($since->getTimestamp(), (int) $from));
+        }
+
+        return $seconds;
     }
 
     /** When the open report is confirmed by the league; null without one. */
@@ -309,7 +327,7 @@ class SeriesMatch extends Model
 
         return $this->deadlines === null || $this->status !== SeriesStatus::Reported || $report === null || $report->status !== ReportStatus::Open || $report->created_at === null
             ? null
-            : $report->created_at->copy()->addMinutes((int) $this->responseMinutes());
+            : $report->created_at->copy()->addMinutes((int) $this->responseMinutes())->addSeconds($this->pausedAfter($report->created_at));
     }
 
     /**

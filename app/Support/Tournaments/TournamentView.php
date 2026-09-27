@@ -226,7 +226,9 @@ final class TournamentView
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)
                 : ($match->chessGame !== null ? route('games.show', $match->chessGame) : null),
-            'director' => $match->isDirectorResult() ? self::marker((array) $result) : null,
+            // A result set on the tournament control (P18) is marked like a director's.
+            'director' => $match->isDirectorResult() || ($result['by'] ?? null) === 'control' ? self::marker((array) $result) : null,
+            'held' => $match->held !== null,
             'if_needed' => $match->if_needed,
         ];
     }
@@ -235,11 +237,21 @@ final class TournamentView
      * The public marker of a director result (TOURNAMENT-FORMATS.md, section 7).
      *
      * @param  array<string, mixed>  $result
-     * @return array{corrected: bool, lines: list<string>}
+     * @return array{corrected: bool, control: bool, lines: list<string>}
      */
     public static function marker(array $result): array
     {
         $at = fn (?string $time): string => $time === null ? '' : Carbon::parse($time)->timezone((string) config('esports.preseason.display_timezone'))->format('H:i');
+        // Set or corrected on the tournament control (P18): by the organizer or an admin, unrated.
+        if (($result['by'] ?? null) === 'control') {
+            $who = $result['corrected'] ?? $result;
+            $line = isset($result['corrected'])
+                ? __('Corrected by :name at :time, was :old.', ['name' => (string) ($who['name'] ?? '?'), 'time' => $at($who['at'] ?? null), 'old' => (string) ($result['was'] ?? '')])
+                : __('Set by :name at :time.', ['name' => (string) ($who['name'] ?? '?'), 'time' => $at($who['at'] ?? null)]);
+
+            return ['corrected' => isset($result['corrected']), 'control' => true, 'lines' => [$line, __('Decided by the organizer or an admin; unrated.')]];
+        }
+
         $lines = [__('Entered by :name at :time.', ['name' => (string) ($result['name'] ?? '?'), 'time' => $at($result['at'] ?? null)])];
 
         if (isset($result['corrected'])) {
@@ -248,7 +260,7 @@ final class TournamentView
 
         $lines[] = __('Not confirmed by the players.');
 
-        return ['corrected' => isset($result['corrected']), 'lines' => $lines];
+        return ['corrected' => isset($result['corrected']), 'control' => false, 'lines' => $lines];
     }
 
     /**

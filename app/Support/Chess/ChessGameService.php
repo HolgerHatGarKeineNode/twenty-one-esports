@@ -413,6 +413,48 @@ final class ChessGameService
         });
     }
 
+    /**
+     * The league ends a live tournament game without a result (P18,
+     * TournamentControl): a round restart, a correction that changed its
+     * pairing, or the tournament called off. Nothing is rated or attested,
+     * and the bracket does not hear about it: the caller moves it.
+     *
+     * @throws ChessRuleViolation when the game is over already
+     */
+    public function void(ChessGame $game): ChessGame
+    {
+        return $this->change($game, function (ChessGame $game, int $now): void {
+            if ($game->tournament_match_id === null) {
+                throw new ChessRuleViolation('not_a_tournament_game');
+            }
+
+            $this->end($game, ChessGameStatus::Aborted, null, ChessEndReason::Voided, $now);
+        });
+    }
+
+    /**
+     * The league decides a live tournament game (P18, TournamentControl: an
+     * organizer or admin set its result). Unrated like the league's other
+     * decisions; attested as a director result (`admin`, or `forfeit` when
+     * the tournament match says so). The bracket does not hear about it:
+     * the caller has stored the result and moves it.
+     *
+     * @param  '1-0'|'0-1'|'1/2-1/2'  $result
+     *
+     * @throws ChessRuleViolation when the game is over already
+     */
+    public function adjudicate(ChessGame $game, string $result): ChessGame
+    {
+        return $this->change($game, function (ChessGame $game, int $now) use ($result): void {
+            if ($game->tournament_match_id === null) {
+                throw new ChessRuleViolation('not_a_tournament_game');
+            }
+
+            $this->end($game, ChessGameStatus::Finished, $result, ChessEndReason::Director, $now);
+            $this->chains->attestChessGame($game);
+        });
+    }
+
     /* ---------- Opponent disconnected (ChessOverlays) ------------------------------------------------------- */
 
     /**

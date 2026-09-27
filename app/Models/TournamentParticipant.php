@@ -26,18 +26,26 @@ use Illuminate\Support\Carbon;
  * @property list<int>|null $members user ids
  * @property int|null $tournament_signup_id
  * @property int|null $draw_position
+ * @property Carbon|null $disqualified_at set when an organizer or admin disqualified the entry (P18): it loses its remaining matches by forfeit
+ * @property int|null $disqualified_by_id
+ * @property string|null $disqualification_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tournament $tournament
  * @property-read User|null $user
  * @property-read Lineup|null $lineup
  */
-#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'rating', 'seed', 'group', 'members', 'tournament_signup_id', 'draw_position'])]
+#[Fillable(['tournament_id', 'user_id', 'lineup_id', 'name', 'rating', 'seed', 'group', 'members', 'tournament_signup_id', 'draw_position', 'disqualified_at', 'disqualified_by_id', 'disqualification_reason'])]
 class TournamentParticipant extends Model
 {
     protected function casts(): array
     {
-        return ['rating' => 'integer', 'seed' => 'integer', 'group' => 'integer', 'members' => 'array', 'draw_position' => 'integer'];
+        return ['rating' => 'integer', 'seed' => 'integer', 'group' => 'integer', 'members' => 'array', 'draw_position' => 'integer', 'disqualified_at' => 'datetime'];
+    }
+
+    public function isDisqualified(): bool
+    {
+        return $this->disqualified_at !== null;
     }
 
     public function isMixTeam(): bool

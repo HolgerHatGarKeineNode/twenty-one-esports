@@ -9,6 +9,9 @@ namespace App\Enums;
  * opponent stayed disconnected past the claim timeout (ChessOverlays).
  * `Forfeit` (P18): a tournament game the league decided against a side that
  * missed its first move or withdrew (account deleted); it moves no Elo.
+ * `Voided` (P18): a tournament game an organizer or admin voided (a round
+ * restart, a correction that changed its pairing, the tournament called
+ * off); no result, nothing rated, attested or moved in the bracket.
  */
 enum ChessEndReason: string
 {
@@ -24,6 +27,7 @@ enum ChessEndReason: string
     case Abandoned = 'abandoned';
     case Director = 'director';
     case Forfeit = 'forfeit';
+    case Voided = 'voided';
 
     /**
      * English label; views translate it.
@@ -43,6 +47,7 @@ enum ChessEndReason: string
             self::Abandoned => 'Opponent left',
             self::Director => 'Entered by the tournament director',
             self::Forfeit => 'Forfeit',
+            self::Voided => 'Voided by the league',
         };
     }
 }

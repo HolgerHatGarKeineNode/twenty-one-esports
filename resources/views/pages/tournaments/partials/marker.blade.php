@@ -8,7 +8,7 @@
 <details class="group text-xs" data-test="director-marker">
     <summary class="inline-flex min-h-6 cursor-pointer items-center gap-1.5 rounded-xs border border-line px-2 text-ink-2">
         <x-icon name="shield-check" :size="12" />
-        {{ __('Entered by the tournament director') }}{{ $marker['corrected'] ? ', '.__('corrected') : '' }}
+        {{ ($marker['control'] ?? false) ? __('Set by the league') : __('Entered by the tournament director') }}{{ $marker['corrected'] ? ', '.__('corrected') : '' }}
     </summary>
     <div class="mt-1.5 flex flex-col gap-0.5 rounded-sm bg-ground px-2.5 py-2 leading-normal text-ink-2">
         @foreach ($marker['lines'] as $line)

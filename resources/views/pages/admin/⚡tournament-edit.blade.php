@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 
 /*
  * Editing a tournament: admins on every tournament, an organizer on their
@@ -345,6 +346,16 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $this->forget();
     }
 
+    /**
+     * The control section (P18) changed the tournament: status and log follow.
+     */
+    #[On('tournament-controlled')]
+    public function controlled(): void
+    {
+        $this->tournament->refresh();
+        $this->forget();
+    }
+
     private function forget(): void
     {
         unset($this->incompatible, $this->signups, $this->members, $this->seeds, $this->bans, $this->log, $this->evaluation, $this->format, $this->directors);
@@ -384,6 +395,13 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'blocked' => __('blocked a player'),
         'unblocked' => __('unblocked a player'),
         'reconfirm' => __('asked the entries to confirm again'),
+        'result' => __('set a result'),
+        'disqualified' => __('disqualified an entry'),
+        'paused' => __('paused the tournament'),
+        'resumed' => __('resumed the tournament after'),
+        'round_restarted' => __('restarted a round'),
+        'aborted' => __('called the tournament off'),
+        'messaged' => __('wrote to all players'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',
@@ -398,6 +416,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'stations' => __('Stations'), 'times' => __('Planning times'), 'ladder' => __('Ladder'),
         'checkin_minutes' => __('Chess: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
         'report_hours' => __('Series: result due (hours after the start)'), 'response_minutes' => __('Series: answer within (minutes)'),
+        'result' => __('Result'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
     ];
 @endphp
 
@@ -490,6 +509,11 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             </div>
 
             @include('pages.admin.partials.prize-pot', ['potTournament' => $tournament, 'potSave' => 'savePotSettings'])
+        @endif
+
+        @if ($tournament->status !== TournamentStatus::Draft)
+            {{-- Control over the running tournament (P18): results, disqualifications, pause, restarts, call-off, messages. --}}
+            <livewire:tournament-control :tournament="$tournament" :wire:key="'control-'.$tournament->id" />
         @endif
 
         <section id="signups" aria-labelledby="signups-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="moderation">

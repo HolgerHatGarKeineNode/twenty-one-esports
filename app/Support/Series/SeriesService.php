@@ -1205,6 +1205,38 @@ final class SeriesService
     }
 
     /**
+     * The league closes a running tournament series on an organizer's or an
+     * admin's word (P18, TournamentControl): `void` (no result: a round
+     * restart, a pairing a correction changed, the tournament called off)
+     * or the result they set (resolution `admin`, `forfeit` for a no-show).
+     * Unrated like the league's other decisions, and attested as they are.
+     * The reason is public, as an admin's. Once only: false when the series
+     * is no longer running (it ended, or a concurrent request closed it).
+     *
+     * @param  array{resolution: SeriesResolution, winner: string, games: list<array<string, mixed>>|null}  $decision
+     */
+    public function leagueClose(SeriesMatch $match, array $decision, string $reason, ?User $by): bool
+    {
+        $match = $this->fresh($match);
+
+        if (! $match->status->isRunning()) {
+            return false;
+        }
+
+        $result = $decision['resolution'] === SeriesResolution::Admin;
+
+        return $this->leagueDecides($match, $match->status, [
+            'resolution' => $decision['resolution'],
+            'winner' => $decision['winner'],
+            'result_games' => $decision['games'] === null ? null : json_encode($decision['games']),
+            // As an admin decision: a result names who played by the latest report; forfeit and void name nobody.
+            'resolved_roster' => $result && $match->latestReport !== null ? json_encode($match->latestReport->roster) : null,
+            'resolution_reason' => mb_substr($reason, 0, 500),
+            'resolved_by_id' => $by?->id,
+        ]);
+    }
+
+    /**
      * The league decides a series at a deadline, exactly once: the update
      * only takes the row while it is still in `$from`, so a concurrent run
      * (or an admin or a player who acted first) leaves it untouched and this

@@ -96,11 +96,12 @@ final class TournamentRunner
 
             $this->applyState($locked);
 
-            if (! $locked->isDirectorMode()) {
-                while ($this->forfeitWithdrawn($locked)) {
-                    $this->applyState($locked);
-                }
+            // A disqualified entry loses in director mode too (P18); a withdrawn one only where the players report.
+            while ($this->forfeitWithdrawn($locked)) {
+                $this->applyState($locked);
+            }
 
+            if (! $locked->isDirectorMode()) {
                 $this->closeCompleteRounds($locked);
             }
 
@@ -146,6 +147,12 @@ final class TournamentRunner
 
     private function closeCompleteRounds(Tournament $tournament): void
     {
+        // A closed round whose match a correction or a restart opened again (P18) is open again until it is decided.
+        TournamentRound::query()->where('status', 'closed')
+            ->whereHas('stage', fn ($query) => $query->where('tournament_id', $tournament->id))
+            ->whereHas('matches', fn ($query) => $query->whereNotIn('status', ['done', 'skipped']))
+            ->update(['status' => 'open', 'closed_at' => null]);
+
         foreach ($this->openRounds($tournament) as $round) {
             if ($this->isRoundComplete($round)) {
                 $round->forceFill(['status' => 'closed', 'closed_at' => now()])->save();
@@ -320,7 +327,8 @@ final class TournamentRunner
         $series = SeriesMatch::query()->with('tournamentMatch.tournament')->find($seriesMatchId);
         $match = $series?->tournamentMatch;
 
-        if ($series === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null) {
+        // A series the league voided or superseded (P18, TournamentControl) decides nothing here any more.
+        if ($series === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $match->isReplaced($series->id)) {
             return;
         }
 
@@ -359,7 +367,7 @@ final class TournamentRunner
         $game = ChessGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($chessGameId);
         $match = $game?->tournamentMatch;
 
-        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== ChessGameStatus::Finished) {
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== ChessGameStatus::Finished || $match->isReplaced($game->id)) {
             return;
         }
 
@@ -408,7 +416,7 @@ final class TournamentRunner
         $game = ChessGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($chessGameId);
         $match = $game?->tournamentMatch;
 
-        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== ChessGameStatus::Aborted) {
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== ChessGameStatus::Aborted || $match->isReplaced($game->id)) {
             return;
         }
 
@@ -419,16 +427,18 @@ final class TournamentRunner
         $this->sync($match->tournament);
     }
 
-    /** Knockout draws of a chess match so far. */
+    /** Knockout draws of a chess match so far (since the league last voided or superseded its games, P18). */
     public static function drawnGames(TournamentMatch $match): int
     {
-        return ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Finished)->where('result', '1/2-1/2')->count();
+        return ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', ChessGameStatus::Finished)->where('result', '1/2-1/2')->count();
     }
 
-    /** Games of a chess match aborted because both sides missed the first move (players cannot abort one). */
+    /** Games of a chess match aborted because both sides missed the first move (players cannot abort one; the league's voids do not count). */
     public static function abortedGames(TournamentMatch $match): int
     {
-        return ChessGame::query()->where('tournament_match_id', $match->id)->where('status', ChessGameStatus::Aborted)->count();
+        return ChessGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', ChessGameStatus::Aborted)->count();
     }
 
     public static function drawnReplays(): int
@@ -453,6 +463,16 @@ final class TournamentRunner
     }
 
     /**
+     * Whether this entry loses every match it would still play by forfeit:
+     * disqualified (P18, both results modes), or withdrawn where the players
+     * report.
+     */
+    private static function isOut(Tournament $tournament, ?TournamentParticipant $participant): bool
+    {
+        return $participant !== null && ($participant->isDisqualified() || (! $tournament->isDirectorMode() && self::isWithdrawn($participant)));
+    }
+
+    /**
      * Decide every ready match with a withdrawn side (players mode): the
      * other side wins by forfeit, and when both are withdrawn the double
      * no-show rule applies. A match already under way is left to its normal
@@ -473,34 +493,38 @@ final class TournamentRunner
                 continue;
             }
 
-            $gone = [self::isWithdrawn($match->slots[0]->participant), self::isWithdrawn($match->slots[1]->participant)];
+            $gone = [self::isOut($tournament, $match->slots[0]->participant), self::isOut($tournament, $match->slots[1]->participant)];
 
             if (! $gone[0] && ! $gone[1]) {
                 continue;
             }
 
-            if ($match->chessGame !== null && $match->chessGame->status === ChessGameStatus::Active) {
+            if ($match->chessGame !== null && $match->chessGame->status === ChessGameStatus::Active && ! $match->isReplaced($match->chessGame->id)) {
                 continue;
             }
 
-            $series = $match->seriesMatch;
+            // The current series: the latest attempt, unless the league voided or superseded it (P18).
+            $series = $match->seriesMatch !== null && ! $match->isReplaced($match->seriesMatch->id) ? $match->seriesMatch : null;
 
             if ($series !== null && $series->resolution !== SeriesResolution::Void && $series->status !== SeriesStatus::Accepted) {
                 continue;
             }
 
+            $disqualified = ($match->slots[0]->participant?->isDisqualified() ?? false) || ($match->slots[1]->participant?->isDisqualified() ?? false);
             $result = $gone[0] && $gone[1] ? $this->doubleNoShow($match) : [
                 'winner' => $gone[0] ? 1 : 0,
                 'games_won' => $gone[0] ? [0.0, 1.0] : [1.0, 0.0],
                 'points' => [],
                 'forfeit' => true,
-                'decided' => 'withdrawn',
+                'decided' => $disqualified ? 'disqualified' : 'withdrawn',
                 'label' => __('forfeit'),
                 'by' => 'league',
             ];
 
             if ($series !== null && $series->status === SeriesStatus::Accepted) {
-                $this->forfeitSeries($series, $result['winner']);
+                $this->forfeitSeries($series, $result['winner'], $disqualified
+                    ? 'Disqualified from the tournament by its organizer or an admin.'
+                    : 'Withdrawn from the tournament: no player of the side has an account any more.');
                 $result['number'] = $series->number;
             }
 
@@ -516,13 +540,13 @@ final class TournamentRunner
      * as a forfeit: unrated like a director forfeit (no rating change, so the
      * attestation carries `forfeit` and no `elo`), void when both withdrew.
      */
-    private function forfeitSeries(SeriesMatch $series, ?int $winner): void
+    private function forfeitSeries(SeriesMatch $series, ?int $winner, string $reason): void
     {
         $series->forceFill([
             'status' => SeriesStatus::Resolved,
             'resolution' => $winner === null ? SeriesResolution::Void : SeriesResolution::Forfeit,
             'winner' => $winner === null ? 'none' : ($winner === 0 ? 'challenger' : 'challenged'),
-            'resolution_reason' => 'Withdrawn from the tournament: no player of the side has an account any more.',
+            'resolution_reason' => $reason,
             'finished_at' => now(),
         ])->save();
 
@@ -807,6 +831,21 @@ final class TournamentRunner
     }
 
     /**
+     * A result typed on the director desk or the tournament control (P18),
+     * in the stored shape without who entered it: the input as enterResult()
+     * reads it, checked the same way.
+     *
+     * @param  array<string, mixed>  $input
+     * @return array<string, mixed>
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function parseResult(Tournament $tournament, TournamentMatch $match, array $input): array
+    {
+        return $tournament->profile()->isChess() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
+    }
+
+    /**
      * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
@@ -927,11 +966,14 @@ final class TournamentRunner
     }
 
     /**
+     * Write a match's result (the caller moves the bracket, sync()).
+     *
      * @param  array<string, mixed>  $result
      */
-    private function store(TournamentMatch $match, array $result): void
+    public function store(TournamentMatch $match, array $result): void
     {
-        TournamentMatch::query()->whereKey($match->id)->update(['result' => json_encode($result), 'status' => 'done']);
+        // A decided match is no longer held (P18: a held match is decided by a result or a restart).
+        TournamentMatch::query()->whereKey($match->id)->update(['result' => json_encode($result), 'status' => 'done', 'held' => null]);
         $match->refresh();
     }
 }

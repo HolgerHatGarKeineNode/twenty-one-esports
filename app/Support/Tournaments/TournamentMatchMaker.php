@@ -84,12 +84,14 @@ final class TournamentMatchMaker
      */
     public function startReady(Tournament $tournament): void
     {
-        if ($tournament->status !== TournamentStatus::Running) {
+        // Paused (P18): nothing new starts until it is resumed.
+        if ($tournament->status !== TournamentStatus::Running || $tournament->isPaused()) {
             return;
         }
 
+        // A held match (P18) waits for an organizer's or admin's decision.
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
-            ->where('bracket', '!=', 'bye')->whereNull('result')
+            ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')
             ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
         $current = TournamentRunner::currentRound($tournament);
 
@@ -117,9 +119,10 @@ final class TournamentMatchMaker
                     continue;
                 }
 
-                // No series yet, or the last one was voided by an admin: it is played again (P18). The
-                // attempt follows from the series seen here, so a concurrent run hits the unique index.
-                if ($match->seriesMatch === null || $match->seriesMatch->resolution === SeriesResolution::Void) {
+                // No series yet, or the last one was voided by an admin or the league, or superseded by a
+                // correction: it is played again (P18). The attempt follows from the series seen here, so a
+                // concurrent run hits the unique index.
+                if ($match->seriesMatch === null || $match->seriesMatch->resolution === SeriesResolution::Void || $match->isReplaced($match->seriesMatch->id)) {
                     DB::transaction(fn () => $this->createSeries($tournament, $match, $a, $b, ($match->seriesMatch->tournament_attempt ?? 0) + 1));
                 }
             } catch (UniqueConstraintViolationException) {
@@ -164,7 +167,8 @@ final class TournamentMatchMaker
         $game = $match->chessGame;
 
         return match (true) {
-            $game === null => true,
+            // None yet, or the last one was voided or superseded by the league (P18).
+            $game === null, $match->isReplaced($game->id) => true,
             $game->status === ChessGameStatus::Aborted => TournamentRunner::abortedGames($match) <= TournamentRunner::firstMoveRestarts(),
             $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays(),
             default => false,
@@ -208,7 +212,7 @@ final class TournamentMatchMaker
 
         // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart after both
         // sides missed the first move keeps them.
-        $last = $match->chessGame;
+        $last = $match->chessGame !== null && ! $match->isReplaced($match->chessGame->id) ? $match->chessGame : null;
         $swap = $last !== null && ($last->status === ChessGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
         [$white, $black] = $swap ? [$second, $first] : [$first, $second];
 

@@ -116,7 +116,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 ? __('Sign-up is open until :date.', ['date' => $date($tournament->signup_closes_at)])
                 : __('Sign-up has closed. The draw follows.'),
             TournamentStatus::Drawing => __('Sign-up has closed. The draw follows.'),
-            TournamentStatus::Running => __('The tournament is running.'),
+            TournamentStatus::Running => $tournament->isPaused() ? __('The tournament is paused: no match starts and no deadline runs until it goes on.') : __('The tournament is running.'),
             TournamentStatus::Finished => $champion === null ? __('The tournament has finished.') : __('Finished. Winner: :name.', ['name' => $champion->name]),
             TournamentStatus::Cancelled => __('The tournament was called off.'),
             TournamentStatus::Draft => '',

@@ -25,6 +25,8 @@ use Throwable;
  * 3. A series nobody reported by its report deadline: the admin queue.
  * 4. A report the other side did not answer: confirmed by the league (unrated).
  *
+ * Steps 2 to 4 skip a paused tournament (P18, TournamentControl).
+ *
  * The chess check-in (a missed first move) needs nothing here: the game's own
  * deadline ends it (CheckChessClock, and `chess:check-clocks` every ten
  * seconds), with the tournament's window pinned on the game.
@@ -92,14 +94,17 @@ final class TournamentScheduler
     }
 
     /**
-     * Series of running players-mode tournaments with league deadlines.
+     * Series of running players-mode tournaments with league deadlines. A
+     * paused tournament's are left alone (P18): its deadlines move by the
+     * pause once it is resumed (SeriesMatch::pausedAfter()).
      *
      * @return Builder<SeriesMatch>
      */
     private function timed(): Builder
     {
         return SeriesMatch::query()->whereNotNull('deadlines')
-            ->whereHas('tournamentMatch.tournament', fn ($query) => $query->where('status', TournamentStatus::Running)->where('results_mode', TournamentResultsMode::Players));
+            ->whereHas('tournamentMatch.tournament', fn ($query) => $query->where('status', TournamentStatus::Running)
+                ->where('results_mode', TournamentResultsMode::Players)->whereNull('paused_at'));
     }
 
     /**

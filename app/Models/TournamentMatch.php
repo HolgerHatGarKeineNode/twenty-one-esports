@@ -38,6 +38,8 @@ use Illuminate\Support\Carbon;
  * @property string $status waiting|ready|done|skipped
  * @property array<string, mixed>|null $result
  * @property array{gate?: array<string, mixed>|null, clans?: array<string, string>, ladder?: string|null}|null $pairing what the league read at the pairing of a director chess match (the ladder since P8c)
+ * @property array{was: array<string, mixed>, reason: string, at: string, user_id: int|null, name: string}|null $held a played result set aside after a correction it depended on (P18, TournamentControl); the match waits for a decision
+ * @property int|null $replaced_through the last series or chess game of this match that no longer counts (voided or superseded by the league, P18); only a newer one is played
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentRound $round
@@ -46,12 +48,12 @@ use Illuminate\Support\Carbon;
  * @property-read SeriesMatch|null $seriesMatch
  * @property-read ChessGame|null $chessGame
  */
-#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing'])]
+#[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through'])]
 class TournamentMatch extends Model
 {
     protected function casts(): array
     {
-        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array'];
+        return ['group' => 'integer', 'position' => 'integer', 'if_needed' => 'boolean', 'result' => 'array', 'pairing' => 'array', 'held' => 'array', 'replaced_through' => 'integer'];
     }
 
     /**
@@ -106,6 +108,15 @@ class TournamentMatch extends Model
             isset($result['ranks']) ? array_values(array_map(intval(...), (array) $result['ranks'])) : null,
             (bool) ($result['double_loss'] ?? false),
         );
+    }
+
+    /**
+     * Whether a series or chess game (by id) is one the league voided or
+     * superseded for this match (P18): its end moves nothing here.
+     */
+    public function isReplaced(?int $id): bool
+    {
+        return $id !== null && $this->replaced_through !== null && $id <= $this->replaced_through;
     }
 
     public function isDirectorResult(): bool

@@ -271,6 +271,9 @@ return [
     | (GameProfile::longestPlay()) and `grace_minutes`, and the other side
     | answers within `response_minutes`. The tournament's own values still win.
     |
+    | messages_per_hour: how many messages an organizer or admin may send to
+    | all players of one tournament per hour (P18, TournamentControl::message()).
+    |
     */
 
     'tournaments' => [
@@ -281,6 +284,7 @@ return [
         'report_hours' => 2,
         'response_minutes' => 30,
         'round_clock' => ['noshow_minutes' => 15, 'grace_minutes' => 5, 'response_minutes' => 10],
+        'messages_per_hour' => 5,
     ],
 
     /*

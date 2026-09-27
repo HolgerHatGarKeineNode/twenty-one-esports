@@ -38,7 +38,7 @@
 #   5: NavigationCrawlTest (the P16 walk for guest, player and captain)
 #   6: NavigationMenusTest, NavigationCrawlStaffTest, InvitePlacementTest (P16 menus and context actions; the walk for organizer and admin)
 #   7: TournamentLandingTest, PlayerPickerTest, ShellNavigationWidthsTest (the shell at six widths per role, German at the desktop widths)
-#   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46)
+#   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest, TournamentControlTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46; the P18 control)
 #   9: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK)
 # Measured 2026-09-27, every shard in parallel: origin/master (7 shards) ran
 # 69-82 s in shards 1-4 already; a 10-shard split only raised the host load
@@ -178,7 +178,7 @@ SHARD_FILES=(
     "tests/Browser/NavigationCrawlTest.php"
     "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php"
     "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php"
-    "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php"
+    "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php tests/Browser/TournamentControlTest.php"
     "tests/Browser/TournamentTvTest.php"
 )
 

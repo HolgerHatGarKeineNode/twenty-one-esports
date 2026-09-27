@@ -78,6 +78,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $pot_balance_sats last balance read from the own wallet
  * @property Carbon|null $pot_balance_at when that balance was read
  * @property string|null $pot_balance_error why the latest read failed (the last good value stays)
+ * @property Carbon|null $paused_at set while an organizer or admin paused the running tournament (P18, TournamentControl)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -96,7 +97,7 @@ use Illuminate\Support\Carbon;
     'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address',
     'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes',
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
-    'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error'])]
+    'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at'])]
 #[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
@@ -144,6 +145,7 @@ class Tournament extends Model
             'pot_nwc_uri' => 'encrypted',
             'pot_balance_sats' => 'integer',
             'pot_balance_at' => 'datetime',
+            'paused_at' => 'datetime',
         ];
     }
 
@@ -364,6 +366,15 @@ class Tournament extends Model
         return $this->ladder_address !== null && Ladders::address($this->game, $this->mode) === $this->ladder_address
             ? $this->ladder_address
             : null;
+    }
+
+    /**
+     * Paused by an organizer or admin (P18): no deadline runs and no new
+     * match starts until it is resumed (TournamentControl).
+     */
+    public function isPaused(): bool
+    {
+        return $this->paused_at !== null;
     }
 
     public function isDirectorMode(): bool

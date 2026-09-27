@@ -14,14 +14,18 @@ use LogicException;
  * `League` lines (an entry dropped at sign-up close for want of one) are
  * history only: nothing writes them since re-confirmation was dropped.
  * `subject` is the entry or player it concerns, `details` the changed
- * fields (`field => [old, new]`) of an edit. Append-only, like the director
- * log: a row is never changed or deleted.
+ * fields (`field => [old, new]`) of an edit. Since P18 slice 4 it also
+ * carries the control of a running tournament (TournamentControl): a result
+ * set or corrected, a disqualification, a pause and its end, a round
+ * restart, the call-off and a message to all players (its text in
+ * `reason`). Append-only, like the director log: a row is never changed or
+ * deleted.
  *
  * @property int $id
  * @property int $tournament_id
  * @property int|null $user_id
  * @property string $user_name
- * @property 'edited'|'removed'|'blocked'|'unblocked'|'reconfirm' $action
+ * @property 'edited'|'removed'|'blocked'|'unblocked'|'reconfirm'|'result'|'disqualified'|'paused'|'resumed'|'round_restarted'|'aborted'|'messaged' $action
  * @property int|null $tournament_signup_id
  * @property string|null $subject
  * @property string|null $reason
