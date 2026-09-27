@@ -235,7 +235,8 @@ return [
         | brand cover into `<dir>/backdrops`. The daemon only reads those files,
         | never the network, and keeps at most `memory_entries` data URIs for
         | `memory_seconds`. A remote picture is fetched over https only, from a
-        | public address, pinned, without redirects, within `fetch_seconds` and
+        | public address, pinned, following at most 3 redirects (each checked
+        | and pinned like the first), within `fetch_seconds` for all hops and
         | `max_bytes`; a failed fetch waits `retry_seconds` before the next try.
         */
         'images' => [
@@ -244,7 +245,7 @@ return [
             'refresh_seconds' => 86400,
             'retry_seconds' => 3600,
             'fetch_seconds' => 5,
-            'max_bytes' => 2 * 1024 * 1024,
+            'max_bytes' => 8 * 1024 * 1024,
             'max_side' => 4096,
             'memory_entries' => 500,
             'memory_seconds' => 600,

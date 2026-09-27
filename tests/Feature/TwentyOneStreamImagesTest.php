@@ -110,7 +110,7 @@ function avatarRed(string $path): int
     return (imagecolorat($image, 64, 64) >> 16) & 0xFF;
 }
 
-test('a picture is fetched from the pinned address, without redirects, and redrawn as a 128 px JPEG', function () {
+test('a picture is fetched from the pinned address, curl following no redirect itself, and redrawn as a 128 px JPEG', function () {
     $user = User::factory()->create(['picture' => 'https://cdn.example/me.png?token=secret']);
     $options = [];
     Http::fake(function (Request $request, array $sent) use (&$options) {
@@ -129,7 +129,8 @@ test('a picture is fetched from the pinned address, without redirects, and redra
         ->and($options['curl'][CURLOPT_RESOLVE])->toBe(['cdn.example:443:93.184.215.14'])
         ->and($options['curl'][CURLOPT_PROTOCOLS])->toBe(CURLPROTO_HTTPS)
         ->and($options['allow_redirects'])->toBeFalse()
-        ->and($options['timeout'])->toBe(5);
+        ->and($options['timeout'])->toBeGreaterThan(4.9)->toBeLessThanOrEqual(5)
+        ->and($options['curl'][CURLOPT_TIMEOUT_MS])->toBeGreaterThan(4900)->toBeLessThanOrEqual(5000);
 });
 
 test('a picture pointing inside the network is refused before any request', function (string $url, array $dns = []) {
@@ -155,18 +156,19 @@ test('a picture pointing inside the network is refused before any request', func
     'a decimal IPv4 form' => ['https://2130706433/me.png', ['2130706433' => ['93.184.215.14']]],
 ]);
 
-test('a redirect is not followed, so one to a private address never happens', function () {
+test('a redirect to a private address is refused before it is requested', function () {
     Http::fake([
-        'https://cdn.example/*' => Http::response('', 302, ['Location' => 'https://10.0.0.1/me.png']),
+        'https://cdn.example/*' => Http::response('', 302, ['Location' => 'https://10.0.0.1/me.png?token=secret']),
         // Where the redirect points: it would deliver a picture, if it were followed.
         'https://10.0.0.1/*' => pictureResponse(streamPicture()),
     ]);
 
-    expect(fn () => app(ImageFetcher::class)->fetch('https://cdn.example/me.png'))->toThrow(StreamImageFailed::class, 'status 302');
+    expect(fn () => app(ImageFetcher::class)->fetch('https://cdn.example/me.png'))
+        ->toThrow(StreamImageFailed::class, 'redirect to https://10.0.0.1/me.png refused: address 10.0.0.1 is not public');
     Http::assertSentCount(1);
 });
 
-test('a body past 2 MB is cut off while streaming, and a larger announced length is refused', function () {
+test('a body past 8 MiB is cut off while streaming, and a larger announced length is refused', function () {
     $pulled = 0;
     $endless = new PumpStream(function () use (&$pulled): string|false {
         if ($pulled >= 50 * 1024 * 1024) {
@@ -178,12 +180,12 @@ test('a body past 2 MB is cut off while streaming, and a larger announced length
         return str_repeat('x', 65536);
     });
     Http::fake(['https://cdn.example/endless.png' => Http::response($endless, 200, ['Content-Type' => 'image/png']),
-        'https://cdn.example/announced.png' => Http::response('small', 200, ['Content-Type' => 'image/png', 'Content-Length' => (string) (3 * 1024 * 1024)])]);
+        'https://cdn.example/announced.png' => Http::response('small', 200, ['Content-Type' => 'image/png', 'Content-Length' => (string) (9 * 1024 * 1024)])]);
     $fetcher = app(ImageFetcher::class);
 
-    expect(fn () => $fetcher->fetch('https://cdn.example/endless.png'))->toThrow(StreamImageFailed::class, 'larger than 2097152 bytes')
-        ->and($pulled)->toBeLessThanOrEqual(2 * 1024 * 1024 + 2 * 65536)
-        ->and(fn () => $fetcher->fetch('https://cdn.example/announced.png'))->toThrow(StreamImageFailed::class, 'larger than 2097152 bytes');
+    expect(fn () => $fetcher->fetch('https://cdn.example/endless.png'))->toThrow(StreamImageFailed::class, 'larger than 8388608 bytes')
+        ->and($pulled)->toBeLessThanOrEqual(8 * 1024 * 1024 + 2 * 65536)
+        ->and(fn () => $fetcher->fetch('https://cdn.example/announced.png'))->toThrow(StreamImageFailed::class, 'larger than 8388608 bytes');
 });
 
 test('an answer that is not an image is refused, whatever its bytes', function () {
@@ -550,9 +552,9 @@ function localImageFetcher(int $port, string $caFile, bool $pin = true): ImageFe
             return in_array($address, ['127.0.0.1', '127.0.0.2'], true);
         }
 
-        protected function curlOptions(string $host, string $address, int $seconds, int $maxBytes): array
+        protected function curlOptions(string $host, string $address, int $timeoutMs, int $maxBytes): array
         {
-            $options = parent::curlOptions($host, $address, $seconds, $maxBytes);
+            $options = parent::curlOptions($host, $address, $timeoutMs, $maxBytes);
 
             if (! $this->pin) {
                 unset($options[CURLOPT_RESOLVE]);
@@ -643,16 +645,95 @@ test('a server that trickles its body is cut off at the total deadline', functio
         ->and($elapsed)->toBeLessThan(7.0);
 });
 
-test('curl itself stops a body past 2 MB that announces no length', function () {
+test('a 3 MB picture that announces no length loads, and curl itself stops one of 9 MB', function () {
     Http::preventStrayRequests(false);
     streamImageHosts(['big.invalid' => ['127.0.0.1']]);
-    [$server, $port, $dir] = httpsImageServer('big', 'big.invalid');
+    [$server, $port, $dir] = httpsImageServer('big:'.(3 * 1024 * 1024), 'big.invalid');
+    $bytes = localImageFetcher($port, $dir.'/ca.pem')->fetch("https://big.invalid:{$port}/me.png");
+    stopHttpsImageServer($server, $dir);
+    [$server, $port, $dir] = httpsImageServer('big:'.(9 * 1024 * 1024), 'big.invalid');
 
     $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://big.invalid:{$port}/me.png");
 
     // Aborted in transfer by the progress callback, not only refused after reading it all.
-    expect($fetch)->toThrow(StreamImageFailed::class, 'Callback aborted');
+    expect(strlen($bytes))->toBe(3 * 1024 * 1024)
+        ->and($fetch)->toThrow(StreamImageFailed::class, 'Callback aborted');
     stopHttpsImageServer($server, $dir);
+});
+
+/**
+ * The requests a fake-https-image server saw: "<Host> <path>" each.
+ *
+ * @return list<string>
+ */
+function httpsImageRequests(string $dir): array
+{
+    return is_file($dir.'/connections') ? array_values(array_filter(explode("\n", (string) file_get_contents($dir.'/connections')))) : [];
+}
+
+test('a redirect is followed to another public host, pinned there too, a relative Location resolved against the URL that sent it', function () {
+    Http::preventStrayRequests(false);
+    // Names no DNS knows: only a pin per hop can take the connection to the server.
+    streamImageHosts(['first.invalid' => ['127.0.0.1'], 'second.invalid' => ['127.0.0.1']]);
+    [$server, $port, $dir] = httpsImageServer('redirect:0:302:/hop.png?token=secret|redirect:0:301:https://second.invalid:{port}/me.png|image', 'first.invalid,second.invalid');
+
+    $bytes = localImageFetcher($port, $dir.'/ca.pem')->fetch("https://first.invalid:{$port}/me.png");
+    $requests = httpsImageRequests($dir);
+    stopHttpsImageServer($server, $dir);
+
+    expect(getimagesizefromstring($bytes)[0])->toBe(1)
+        ->and($requests)->toBe(["first.invalid:{$port} /me.png", "first.invalid:{$port} /hop.png?token=secret", "second.invalid:{$port} /me.png"]);
+});
+
+test('a redirect is checked like the first URL before it is requested: a private address, http', function (string $location, string $refusal) {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['first.invalid' => ['127.0.0.1'], 'second.invalid' => ['127.0.0.1'], 'inside.invalid' => ['127.0.0.3']]);
+    [$server, $port, $dir] = httpsImageServer('redirect:0:302:'.$location.'|image', 'first.invalid,second.invalid,inside.invalid');
+
+    $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://first.invalid:{$port}/me.png");
+
+    expect($fetch)->toThrow(StreamImageFailed::class, str_replace('{port}', (string) $port, $refusal))
+        ->and(httpsImageRequests($dir))->toBe(["first.invalid:{$port} /me.png"]);
+    stopHttpsImageServer($server, $dir);
+})->with([
+    'a name with a private address' => ['https://inside.invalid:{port}/me.png', 'redirect to https://inside.invalid:{port}/me.png refused: inside.invalid resolves to 127.0.0.3, which is not public'],
+    'http' => ['http://second.invalid:{port}/me.png', 'redirect to http://second.invalid:{port}/me.png refused: not an https URL'],
+]);
+
+test('more than three redirects are refused, a loop ends there too', function () {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['loop.invalid' => ['127.0.0.1']]);
+    [$server, $port, $dir] = httpsImageServer(implode('|', array_fill(0, 4, 'redirect:0:302:/me.png')).'|image', 'loop.invalid');
+
+    $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://loop.invalid:{$port}/me.png");
+
+    expect($fetch)->toThrow(StreamImageFailed::class, 'more than 3 redirects')
+        ->and(httpsImageRequests($dir))->toHaveCount(4);
+    stopHttpsImageServer($server, $dir);
+});
+
+test('the total deadline spans the redirects: a slow redirect leaves the next hop only the rest', function () {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['slow.invalid' => ['127.0.0.1'], 'second.invalid' => ['127.0.0.1']]);
+    [$server, $port, $dir] = httpsImageServer('redirect:3:302:https://second.invalid:{port}/me.png|trickle', 'slow.invalid,second.invalid');
+    $started = microtime(true);
+
+    try {
+        localImageFetcher($port, $dir.'/ca.pem')->fetch("https://slow.invalid:{$port}/me.png");
+        $failed = false;
+    } catch (StreamImageFailed) {
+        $failed = true;
+    }
+
+    $elapsed = microtime(true) - $started;
+    $requests = httpsImageRequests($dir);
+    stopHttpsImageServer($server, $dir);
+
+    // 5 s in all (fetch_seconds); a deadline per hop would end after 3 + 5 s.
+    expect($failed)->toBeTrue()
+        ->and($requests)->toHaveCount(2)
+        ->and($elapsed)->toBeGreaterThan(4.5)
+        ->and($elapsed)->toBeLessThan(6.5);
 });
 
 test('every taken seat of a lineup shows its clan logo on the seat map', function () {

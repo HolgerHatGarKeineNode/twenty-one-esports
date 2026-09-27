@@ -5,6 +5,8 @@ namespace App\Support\TwentyOne\Stream;
 use App\Support\Nostr\HostResolver;
 use App\Support\Nostr\Nip05Verifier;
 use GuzzleHttp\Handler\CurlHandler;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Http\Client\Factory;
 use Throwable;
 
@@ -22,10 +24,14 @@ use Throwable;
  *     hand a `stream` request to its StreamHandler, which ignores every
  *     curl option, the pin included (security audit 2026-09-27: the guard
  *     saw 8.8.8.8, the connection went to 127.0.0.1);
- *   - redirects are not followed (a 3xx is a failure); `fetch_seconds` is a
- *     hard total for the whole transfer (CURLOPT_TIMEOUT_MS), so a server
- *     that trickles bytes cannot hold the run; curl aborts past `max_bytes`
- *     (progress callback) and the body is checked again after;
+ *   - at most MAX_REDIRECTS redirects are followed, by this class and not
+ *     by curl: every hop's Location (resolved against the URL it came from)
+ *     passes all of the checks above again and gets its own pin, before any
+ *     request goes there (Blossom hosts such as blossom.primal.net answer a
+ *     302 to their CDN); `fetch_seconds` is a hard total across all hops
+ *     (CURLOPT_TIMEOUT_MS of what is left), so a server that trickles bytes
+ *     or a chain of slow redirects cannot hold the run; curl aborts past
+ *     `max_bytes` (progress callback) and the body is checked again after;
  *   - the answer must be a 200 with an `image/*` content type.
  *
  * Every refusal throws StreamImageFailed with a reason that names the host,
@@ -33,6 +39,9 @@ use Throwable;
  */
 class ImageFetcher
 {
+    /** Redirects followed at most; one more is a failure (a loop ends here too). */
+    public const MAX_REDIRECTS = 3;
+
     public function __construct(private Factory $http, private HostResolver $resolver) {}
 
     /**
@@ -42,36 +51,49 @@ class ImageFetcher
      */
     public function fetch(string $url): string
     {
-        $parts = parse_url($url);
-
-        if (! is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || ! isset($parts['host']) || $parts['host'] === '') {
-            throw new StreamImageFailed('not an https URL');
-        }
-
-        if (isset($parts['user']) || isset($parts['pass']) || (isset($parts['port']) && $parts['port'] !== $this->port())) {
-            throw new StreamImageFailed('user info or a port other than '.$this->port());
-        }
-
-        $host = strtolower($parts['host']);
-        $address = $this->publicAddress($host);
-        $maxBytes = max(1, (int) config('twentyone.stream.images.max_bytes', 2 * 1024 * 1024));
+        $maxBytes = max(1, (int) config('twentyone.stream.images.max_bytes', 8 * 1024 * 1024));
         $seconds = max(1, (int) config('twentyone.stream.images.fetch_seconds', 5));
+        $deadline = microtime(true) + $seconds;
 
-        try {
-            $response = $this->http
-                ->setHandler(new CurlHandler)
-                ->withHeaders(['Accept' => 'image/*'])
-                ->connectTimeout(min(3, $seconds))
-                ->timeout($seconds)
-                ->withoutRedirecting()
-                ->withOptions(['curl' => $this->curlOptions($host, $address, $seconds, $maxBytes)])
-                ->get($url);
-        } catch (Throwable $e) {
-            throw new StreamImageFailed('request failed ('.self::withoutQuery($e->getMessage()).')', previous: $e);
+        for ($hop = 0; ; $hop++) {
+            try {
+                [$host, $address] = $this->target($url);
+            } catch (StreamImageFailed $e) {
+                throw $hop === 0 ? $e : new StreamImageFailed('redirect to '.self::loggable($url).' refused: '.$e->getMessage());
+            }
+
+            $leftMs = (int) floor(($deadline - microtime(true)) * 1000);
+
+            if ($leftMs < 1) {
+                throw new StreamImageFailed('no time left for redirect '.$hop.' after '.$seconds.' s');
+            }
+
+            try {
+                $response = $this->http
+                    ->setHandler(new CurlHandler)
+                    ->withHeaders(['Accept' => 'image/*'])
+                    ->connectTimeout(min(3000, $leftMs) / 1000)
+                    ->timeout($leftMs / 1000)
+                    ->withoutRedirecting()
+                    ->withOptions(['curl' => $this->curlOptions($host, $address, $leftMs, $maxBytes)])
+                    ->get($url);
+            } catch (Throwable $e) {
+                throw new StreamImageFailed('request failed ('.self::withoutQuery($e->getMessage()).')', previous: $e);
+            }
+
+            if (! in_array($response->status(), [301, 302, 303, 307, 308], true)) {
+                break;
+            }
+
+            if ($hop >= self::MAX_REDIRECTS) {
+                throw new StreamImageFailed('more than '.self::MAX_REDIRECTS.' redirects');
+            }
+
+            $url = $this->location($url, $response->header('Location'));
         }
 
         if ($response->status() !== 200) {
-            throw new StreamImageFailed('status '.$response->status().($response->redirect() ? ' (redirects are not followed)' : ''));
+            throw new StreamImageFailed('status '.$response->status());
         }
 
         $type = strtolower(trim(explode(';', $response->header('Content-Type'))[0]));
@@ -107,17 +129,61 @@ class ImageFetcher
     }
 
     /**
-     * The curl options of one fetch: https only, the pin (an IP literal is its
-     * own pin), a hard total deadline, and an abort past `$maxBytes`.
+     * The checks of one URL (the first or a redirect's): https, no user info,
+     * the one port, a public address to pin; [lower-case host, address].
+     *
+     * @return array{0: string, 1: string}
+     *
+     * @throws StreamImageFailed
+     */
+    private function target(string $url): array
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || ! isset($parts['host']) || $parts['host'] === '') {
+            throw new StreamImageFailed('not an https URL');
+        }
+
+        if (isset($parts['user']) || isset($parts['pass']) || (isset($parts['port']) && $parts['port'] !== $this->port())) {
+            throw new StreamImageFailed('user info or a port other than '.$this->port());
+        }
+
+        $host = strtolower($parts['host']);
+
+        return [$host, $this->publicAddress($host)];
+    }
+
+    /**
+     * A redirect's target: its Location resolved against the URL that answered.
+     *
+     * @throws StreamImageFailed
+     */
+    private function location(string $from, string $location): string
+    {
+        if (trim($location) === '') {
+            throw new StreamImageFailed('a redirect without a Location');
+        }
+
+        try {
+            return (string) UriResolver::resolve(new Uri($from), new Uri(trim($location)));
+        } catch (Throwable) {
+            throw new StreamImageFailed('a redirect to an unparsable Location');
+        }
+    }
+
+    /**
+     * The curl options of one request: https only, the pin (an IP literal is
+     * its own pin), what is left of the total deadline, and an abort past
+     * `$maxBytes`.
      *
      * @return array<int, mixed>
      */
-    protected function curlOptions(string $host, string $address, int $seconds, int $maxBytes): array
+    protected function curlOptions(string $host, string $address, int $timeoutMs, int $maxBytes): array
     {
         $curl = [
             CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_TIMEOUT_MS => $seconds * 1000,
-            CURLOPT_CONNECTTIMEOUT_MS => min(3, $seconds) * 1000,
+            CURLOPT_TIMEOUT_MS => $timeoutMs,
+            CURLOPT_CONNECTTIMEOUT_MS => min(3000, $timeoutMs),
             CURLOPT_NOPROGRESS => false,
             // Non-zero aborts the transfer: the body is past the cap.
             CURLOPT_PROGRESSFUNCTION => fn ($handle, $downloadTotal, $downloaded): int => $downloaded > $maxBytes || $downloadTotal > $maxBytes ? 1 : 0,

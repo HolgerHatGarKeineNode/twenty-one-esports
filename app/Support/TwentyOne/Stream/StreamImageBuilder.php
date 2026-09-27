@@ -354,7 +354,7 @@ class StreamImageBuilder
             throw new StreamImageFailed('the uploaded file is missing');
         }
 
-        if (strlen($bytes) > (int) config('twentyone.stream.images.max_bytes', 2 * 1024 * 1024)) {
+        if (strlen($bytes) > (int) config('twentyone.stream.images.max_bytes', 8 * 1024 * 1024)) {
             throw new StreamImageFailed('the uploaded file is too large');
         }
 
