@@ -2,16 +2,10 @@
 
 use App\Games\GameRegistry;
 use App\Models\Admin;
-use App\Models\ChessGame;
-use App\Models\Lineup;
-use App\Models\SeriesMatch;
 use App\Models\User;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
-use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
-use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 use Tests\Support\FakeGame;
 
@@ -25,7 +19,7 @@ pest()->group('browser');
 | Row 1 (game tabs, the hub, Clans, Season, search, account, Admin), row 2
 | (the context bar of the active game), the game hub, and below lg the game
 | chips, the tab bar and the More sheet (components/shell/). Measured with
-| real rects: no sideways scroll at 375, 768, 1024, 1280 and 1440 px, the
+| real rects (every width and role: ShellNavigationWidthsTest): the
 | chrome height, tap targets, the hub with 4 games and with 12 (FakeGame, a
 | test-only registry), the match dock above the tab bar. Every visited page
 | keeps a clean console and no response >= 400 (BrowserConsole), with its
@@ -37,166 +31,6 @@ pest()->group('browser');
 
 beforeEach(function () {
     Http::fake(fn () => Http::response([]));
-});
-
-/** Rects of the chrome: header rows, tab bar, sideways scroll and every control under 44 px (below lg) or 24 px (from lg). */
-const SHELL_MEASURE = <<<'JS'
-    () => {
-        const rect = (el) => { if (!el || !el.checkVisibility({ checkVisibilityCSS: true })) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), height: Math.round(r.height), width: Math.round(r.width) }; };
-        const header = document.querySelector('body > header');
-        const rows = [...header.children].filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && getComputedStyle(el).position === 'static');
-        const desktop = window.innerWidth >= 1024;
-        const min = desktop ? 24 : 44;
-        const small = [];
-        for (const root of [header, document.getElementById('mobile-nav')]) {
-            for (const el of root.querySelectorAll('a[href], button, input:not([type=hidden])')) {
-                if (!el.checkVisibility({ checkVisibilityCSS: true }) || el.closest('#bell-panel')) continue;
-                const r = el.getBoundingClientRect();
-                if (r.width === 0 || r.height === 0) continue;
-                if (Math.round(r.height) < min || Math.round(r.width) < min) small.push(`${(el.dataset.test || el.textContent.trim().replace(/\s+/g, ' ').slice(0, 30) || el.tagName)} ${Math.round(r.width)}x${Math.round(r.height)}`);
-            }
-        }
-        const tabs = [...document.querySelectorAll('.gtab:not(.gtab-hub)')].filter((el) => el.checkVisibility({ checkVisibilityCSS: true })).map((el) => el.dataset.test.replace('game-tab-', '') + ':' + el.querySelector(getComputedStyle(el.querySelector('.gtab-full')).display === 'none' ? '.gtab-short' : '.gtab-full').textContent.trim());
-        // Squeezed, not scrolled: a row whose content is wider than its box, a label cut short.
-        const squeezed = [...document.querySelectorAll('[data-test=game-tabs], [data-test=context-bar], [data-test=tab-bar] ul, [data-test=tab-bar] .tab span, .nav-link, .ctx-link')]
-            .filter((el) => el.checkVisibility({ checkVisibilityCSS: true }) && el.scrollWidth > el.clientWidth + 1)
-            .map((el) => `${el.dataset.test || el.className.split(' ')[0] || el.tagName} ${el.scrollWidth}>${el.clientWidth}`);
-        const nav = document.querySelector('[data-test=game-tabs]');
-        const search = document.querySelector('[data-test=site-search-form]');
-        if (nav && search && nav.checkVisibility() && search.checkVisibility()) {
-            const last = [...nav.children].filter((el) => el.checkVisibility()).pop();
-            if (last && last.getBoundingClientRect().right > search.getBoundingClientRect().left) squeezed.push(`row 1 runs under the search: ${Math.round(last.getBoundingClientRect().right)} > ${Math.round(search.getBoundingClientRect().left)}`);
-        }
-        return {
-            squeezed,
-            width: window.innerWidth,
-            scroll: document.documentElement.scrollWidth,
-            client: document.documentElement.clientWidth,
-            header: rect(header),
-            rows: rows.map((el) => (el.dataset.test || el.tagName.toLowerCase()) + ' ' + Math.round(el.getBoundingClientRect().height)),
-            tabbar: rect(document.querySelector('[data-test=tab-bar]')),
-            tabs,
-            small,
-            lang: document.documentElement.lang,
-        };
-    }
-    JS;
-
-/** Every finite animation finished (a sheet measured mid-rise is 24 px off), then two frames. */
-const SHELL_SETTLE = '() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null))).then(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))))';
-
-function shellPage(?User $user, int $width, int $height = 900): Page
-{
-    $page = visit($user === null ? BrowserLogin::LANDING : BrowserLogin::url($user))->page();
-    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
-    $page->setViewportSize($width, $height);
-
-    return $page;
-}
-
-/**
- * @param  list<string>  $problems
- */
-function shellOpen(Page $page, string $url, array &$problems): void
-{
-    $page->goto(ComputeUrl::from($url));
-    BrowserWait::until($page, '() => document.readyState === "complete" && !!window.Alpine', 10_000);
-    $page->evaluate(SHELL_SETTLE);
-
-    foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
-        $problems[] = "{$url}: {$problem}";
-    }
-}
-
-function shellShot(Page $page, string $name): void
-{
-    $dir = getenv('SHELL_SHOTS');
-
-    if (! is_string($dir) || $dir === '') {
-        return;
-    }
-
-    File::ensureDirectoryExists($dir);
-    $page->evaluate(SHELL_SETTLE);
-    // The viewport, not the full page: a full-page shot paints the fixed tab bar in the middle of a long page.
-    $page->screenshot(false, $name);
-    // Pest clears tests/Browser/Screenshots on every run: move the file out at once.
-    File::move(base_path('tests/Browser/Screenshots/'.$name.'.png'), $dir.'/'.$name.'.png');
-}
-
-/**
- * A player whose last match was Rocket League, the one before chess, and an
- * open daily game (so the match dock shows).
- */
-function shellPlayer(): User
-{
-    $lineup = Lineup::factory()->mode('3v3')->ready()->create();
-    $player = $lineup->clan->owner;
-    $player->forceFill(['name' => 'Pia Player'])->save();
-    ChessGame::factory()->daily()->create(['white_id' => $player->id, 'created_at' => now()->subDays(2)]);
-    SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $lineup->id, 'challenged_lineup_id' => Lineup::factory()->mode('3v3')->ready()->create()->id, 'created_at' => now()->subDay()]);
-
-    return $player;
-}
-
-function shellAdmin(): User
-{
-    $admin = User::factory()->create(['name' => 'Ada Admin']);
-    Admin::query()->create(['pubkey' => $admin->pubkey]);
-
-    return $admin;
-}
-
-test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 375 and 768 px, for guest, player and admin', function () {
-    $users = ['guest' => null, 'player' => shellPlayer(), 'admin' => shellAdmin()];
-    $problems = [];
-    $failures = [];
-
-    foreach ($users as $role => $user) {
-        foreach ([1440 => 900, 1280 => 800, 1024 => 768, 768 => 1024, 375 => 667, 320 => 568] as $width => $height) {
-            $page = shellPage($user, $width, $height);
-            shellOpen($page, '/rules', $problems);
-            $m = $page->evaluate(SHELL_MEASURE);
-            fwrite(STDERR, "\n[shell] {$role} @{$width}: ".json_encode($m));
-
-            if ($m['scroll'] > $m['client']) {
-                $failures[] = "{$role} @{$width}: document {$m['scroll']} px wide in {$m['client']} px";
-            }
-            if ($m['squeezed'] !== []) {
-                $failures[] = "{$role} @{$width}: squeezed ".json_encode($m['squeezed']);
-            }
-            if ($m['small'] !== []) {
-                $failures[] = "{$role} @{$width}: small targets ".json_encode($m['small']);
-            }
-            if ($width >= 1024) {
-                // Row 1 (64) and row 2 (48); a guest's "New here?" strip comes on top until dismissed.
-                $rows = array_sum(array_map(fn (string $row): int => (int) substr(strrchr($row, ' '), 1), array_filter($m['rows'], fn (string $row) => ! str_starts_with($row, 'first-steps'))));
-                expect($rows)->toBeLessThanOrEqual(112, "{$role} @{$width}: chrome rows ".json_encode($m['rows']));
-                expect($m['tabbar'])->toBeNull();
-            } else {
-                expect($m['tabbar'])->not->toBeNull()
-                    ->and($m['tabbar']['bottom'])->toBe($height)
-                    ->and($m['tabbar']['height'])->toBe(64);
-            }
-            if (in_array($width, [375, 1440], true) || ($width === 1024 && $role === 'admin')) {
-                shellShot($page, "shell-{$role}-{$width}-closed");
-            }
-        }
-    }
-
-    // German labels run longer ("Einstellungen", "Herausfordern"): the tightest desktop widths once more, as the admin.
-    foreach ([1024 => 768, 1280 => 800] as $width => $height) {
-        $page = shellPage($users['admin'], $width, $height);
-        $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
-        shellOpen($page, '/rules', $problems);
-        $m = $page->evaluate(SHELL_MEASURE);
-        fwrite(STDERR, "\n[shell] admin de @{$width}: ".json_encode($m));
-        expect($m['lang'])->toBe('de')
-            ->and($m['scroll'])->toBeLessThanOrEqual($m['client'])
-            ->and($m['squeezed'])->toBe([]);
-    }
-
-    expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
 test('the game hub opens with a click, filters and toggles, pins your games in order and closes with Esc, focus back on its button', function () {

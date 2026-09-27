@@ -38,7 +38,7 @@
         depends on the width (app.css `.gtab`), so 1024 px never overflows.
     --}}
     <div class="flex h-14 items-center gap-1 border-b border-hairline pr-2 pl-4 lg:h-16 lg:gap-2 lg:px-6 xl:px-8">
-        <a href="{{ route('home') }}" class="flex min-h-11 min-w-0 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
+        <a href="{{ route('home') }}" class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
             {{-- The word mark gives its room to the game tabs on desktop until the widest tier. --}}
@@ -164,18 +164,18 @@
         </button>
     </nav>
 
-    {{-- Row 2 (from lg): the context bar of the active game. Icons and full labels from xl; short labels at lg. --}}
+    {{-- Row 2 (from lg): the context bar of the active game. Icons and full labels from 90rem; short labels below (German ran 69 px past 1280 with full labels). --}}
     <nav class="ctx hidden h-12 items-center gap-1 border-b border-hairline px-6 lg:flex xl:px-8" style="--game: {{ $active['colour'] }}" aria-label="{{ $active['name'] }}" data-test="context-bar" data-game="{{ $active['slug'] }}">
         <span class="ctx-name">{{ $active['name'] }}</span>
         @foreach ($active['actions'] as $link)
             <a href="{{ $link['href'] }}" @if ($link['href'] === $current) aria-current="page" @endif class="ctx-link" data-test="ctx-{{ $link['key'] }}">
-                <x-icon :name="$link['icon']" :size="16" class="max-xl:hidden" />
-                <span class="xl:hidden">{{ $link['short'] }}</span><span class="max-xl:hidden">{{ $link['label'] }}</span>
+                <x-icon :name="$link['icon']" :size="16" class="max-[90rem]:hidden" />
+                <span class="min-[90rem]:hidden">{{ $link['short'] }}</span><span class="max-[90rem]:hidden">{{ $link['label'] }}</span>
             </a>
         @endforeach
         <span class="mx-2 h-5 w-px bg-line" aria-hidden="true"></span>
         <a href="{{ route('tournaments.index') }}" @if ($section === 'tournaments') aria-current="page" @endif class="ctx-link" data-test="ctx-tournaments">
-            <x-icon name="tournaments" :size="16" class="max-xl:hidden" />{{ __('Tournaments') }}
+            <x-icon name="tournaments" :size="16" class="max-[90rem]:hidden" />{{ __('Tournaments') }}
         </a>
     </nav>
 

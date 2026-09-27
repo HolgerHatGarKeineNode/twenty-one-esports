@@ -27,6 +27,7 @@ pest()->tia()->defaultBranch('master');
 require_once __DIR__.'/Support/tournaments.php';
 require_once __DIR__.'/Support/shares.php';
 require_once __DIR__.'/Support/navigation.php';
+require_once __DIR__.'/Support/shell.php';
 require_once __DIR__.'/Integration/Support/helpers.php';
 
 pest()->extend(TestCase::class)

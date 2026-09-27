@@ -31,15 +31,19 @@
 # Files are grouped by measured wall time (per-test durations captured with a
 # temporary beforeEach/afterEach timer on this machine — RouteSweepTest alone
 # is heavier than any other file, so it gets its own shard):
-#   1: RouteSweepTest, NotificationDmPagesTest, PlayerPickerTest (~29s + ~6s + picker)
+#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest (~26s + clan logos)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest (~27s + P8b + ladder + covers)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest
-#   5: NavigationCrawlTest (~47s, the P16 walk per role and width)
-#   6: NavigationMenusTest (~17s, P16 menus and context actions), InvitePlacementTest, TournamentTimeTest (the when block, the admin preview)
-#   7: TournamentLandingTest (the tournament page and sign-up at three widths)
-#   8: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK)
-#   9: ShellNavigationTest (header concept B: rows, game hub, phone bars and /play at five widths)
+#   5: NavigationCrawlTest (the P16 walk for guest, player and captain)
+#   6: NavigationMenusTest, NavigationCrawlStaffTest, InvitePlacementTest (P16 menus and context actions; the walk for organizer and admin)
+#   7: TournamentLandingTest, PlayerPickerTest, ShellNavigationWidthsTest (the shell at six widths per role, German at the desktop widths)
+#   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46)
+#   9: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK)
+# Measured 2026-09-27, every shard in parallel: origin/master (7 shards) ran
+# 69-82 s in shards 1-4 already; a 10-shard split only raised the host load
+# (37 on 24 cores) and with it every shard. The crawl of five roles took 71 s
+# alone (54 s before header concept B), so it is split by role.
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
 # instead.
@@ -167,15 +171,15 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
-    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/PlayerPickerTest.php"
+    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"
     "tests/Browser/NavigationCrawlTest.php"
-    "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentTimeTest.php"
-    "tests/Browser/TournamentLandingTest.php tests/Browser/BunkerSessionTest.php"
+    "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php"
+    "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php"
+    "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php"
     "tests/Browser/TournamentTvTest.php"
-    "tests/Browser/ShellNavigationTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

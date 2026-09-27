@@ -363,6 +363,55 @@ function navCrawl(Page $page, array $widths, int $maxDepth = 3): array
     return ['routes' => $routes, 'chrome' => $chrome, 'problems' => $problems, 'pages' => $opened];
 }
 
+/**
+ * The walk of tests/Browser/NavigationCrawlTest.php for some of the roles
+ * (the roles are split over two files so each stays inside one shard's
+ * minute). NAV_INVENTORY=<file> writes the inventory of these roles, with
+ * the first role in the file name.
+ *
+ * @param  list<string>  $roles
+ * @return list<string> failures
+ */
+function navCrawlRoles(array $roles): array
+{
+    $world = navWorld();
+    $inventory = [];
+    $failures = [];
+
+    foreach ($roles as $role) {
+        $started = microtime(true);
+        $crawl = navCrawl(navPage($world['users'][$role]), array_keys(NAV_VIEWS));
+        $inventory[$role] = $crawl['routes'];
+        fwrite(STDERR, sprintf("\n[nav-crawl] %s: %d pages opened, routes per width %s, %.1f s", $role, $crawl['pages'],
+            json_encode(array_map('count', $crawl['routes'])), microtime(true) - $started));
+
+        foreach ($crawl['problems'] as $problem) {
+            $failures[] = "{$role}: {$problem}";
+        }
+
+        foreach ($crawl['routes'] as $width => $routes) {
+            foreach (NAV_PAGES as $name => $rule) {
+                if (! in_array($role, $rule['roles'], true)) {
+                    continue;
+                }
+                $depth = $routes[$name]['depth'] ?? null;
+                if ($depth === null) {
+                    $failures[] = "{$role} @{$width}px: {$name} is an orphan (not reached within 3 clicks)";
+                } elseif ($depth > $rule['max']) {
+                    $failures[] = "{$role} @{$width}px: {$name} takes {$depth} clicks, at most {$rule['max']} allowed";
+                }
+            }
+        }
+    }
+
+    $file = getenv('NAV_INVENTORY');
+    if (is_string($file) && $file !== '') {
+        File::put(preg_replace('/(\.json)?$/', '-'.$roles[0].'$1', $file, 1), json_encode($inventory, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    return $failures;
+}
+
 function navShot(Page $page, string $name): void
 {
     $dir = getenv('NAV_SHOTS');

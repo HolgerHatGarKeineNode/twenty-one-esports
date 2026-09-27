@@ -1,6 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
@@ -51,10 +50,9 @@ beforeEach(function () {
     });
 });
 
-test('every page a role needs is at most two clicks from the chrome or its overview, at every width, and every crawled page is clean', function () {
-    $world = navWorld();
-    $inventory = [];
-    $failures = [];
+test('every page a guest, player or captain needs is at most two clicks from the chrome or its overview, at every width, and every crawled page is clean', function () {
+    // Organizer and admin walk in NavigationCrawlStaffTest: all five roles in one file took 71 s, over one shard's minute.
+    $failures = navCrawlRoles(['guest', 'player', 'captain']);
 
     // A route that is neither in the inventory nor excluded fails: every new page says who needs it.
     $known = array_merge(array_keys(NAV_PAGES), array_keys(NAV_NOT_PAGES));
@@ -71,37 +69,6 @@ test('every page a role needs is at most two clicks from the chrome or its overv
         if (! in_array($name, $known, true)) {
             $failures[] = "route {$name} ({$route->uri()}) is not in NAV_PAGES or NAV_NOT_PAGES";
         }
-    }
-
-    foreach ($world['users'] as $role => $user) {
-        $started = microtime(true);
-        $crawl = navCrawl(navPage($user), array_keys(NAV_VIEWS));
-        $inventory[$role] = $crawl['routes'];
-        fwrite(STDERR, sprintf("\n[nav-crawl] %s: %d pages opened, routes per width %s, %.1f s", $role, $crawl['pages'],
-            json_encode(array_map('count', $crawl['routes'])), microtime(true) - $started));
-
-        foreach ($crawl['problems'] as $problem) {
-            $failures[] = "{$role}: {$problem}";
-        }
-
-        foreach ($crawl['routes'] as $width => $routes) {
-            foreach (NAV_PAGES as $name => $rule) {
-                if (! in_array($role, $rule['roles'], true)) {
-                    continue;
-                }
-                $depth = $routes[$name]['depth'] ?? null;
-                if ($depth === null) {
-                    $failures[] = "{$role} @{$width}px: {$name} is an orphan (not reached within 3 clicks)";
-                } elseif ($depth > $rule['max']) {
-                    $failures[] = "{$role} @{$width}px: {$name} takes {$depth} clicks, at most {$rule['max']} allowed";
-                }
-            }
-        }
-    }
-
-    $file = getenv('NAV_INVENTORY');
-    if (is_string($file) && $file !== '') {
-        File::put($file, json_encode($inventory, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
     expect($failures)->toBe([]);
