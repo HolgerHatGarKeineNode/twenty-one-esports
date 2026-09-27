@@ -1,0 +1,261 @@
+<?php
+
+namespace App\Support\Series;
+
+use App\Enums\ChessInviteStatus;
+use App\Enums\Platform;
+use App\Events\SeriesInviteChanged;
+use App\Models\SeriesInvite;
+use App\Models\SeriesMatch;
+use App\Models\SeriesQueueEntry;
+use App\Models\User;
+use App\Support\Chess\Broadcasts;
+use App\Support\Notifications\CasualNotifications;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * A direct casual 1v1 invite (P23), as the blitz invite (ChessInvites):
+ *
+ * - only a player whose "Looking to play" is `<game>/1v1` can be invited
+ *   (`not_looking`), read fresh in the invite's transaction;
+ * - one open invite per inviter: a new one withdraws the previous, and an
+ *   inviter leaves the queue (one intent at a time);
+ * - open for `esports.casual.invite_seconds`, then simply past its time;
+ * - an invite to a player who is searching the same game on a platform
+ *   that fits starts the match at once, as a found match;
+ * - accept and decline race on the invite row: each is a conditional
+ *   update on `pending`, so exactly one of them wins, and a stale copy
+ *   never overwrites the winner.
+ *
+ * The inviter gives their platform and crossplay when inviting, the invitee
+ * when accepting; platforms that cannot play each other are refused
+ * (`platforms_incompatible`). The accepted invite starts the ready check.
+ */
+final class CasualInvites
+{
+    public function __construct(private CasualMatches $matches, private CasualNotifications $notifications) {}
+
+    /**
+     * Returns the invite; its `series_match_id` is set when the invitee was
+     * searching and the match has already been made.
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function invite(User $inviter, User $invitee, string $game, Platform $platform, bool $crossplay): SeriesInvite
+    {
+        if ($inviter->is($invitee)) {
+            throw CasualMatches::refuse('invite_self');
+        }
+
+        $this->matches->assertGame($game);
+        $this->matches->assertMayPlay($inviter);
+
+        $previous = $this->outgoing($inviter);
+        $mode = CasualMatches::mode();
+
+        $invite = DB::transaction(function () use ($inviter, $invitee, $game, $mode, $platform, $crossplay, $previous): SeriesInvite|string {
+            $looking = User::query()->whereKey($invitee->id)->lockForUpdate()->value('looking_to_play');
+
+            if ($looking !== $game.'/'.$mode) {
+                return 'not_looking';
+            }
+
+            if ($previous !== null) {
+                SeriesInvite::query()->whereKey($previous->id)->where('status', ChessInviteStatus::Pending)->update(['status' => ChessInviteStatus::Withdrawn, 'updated_at' => now()]);
+            }
+
+            SeriesQueueEntry::query()->where('user_id', $inviter->id)->delete();
+
+            return SeriesInvite::query()->create([
+                'inviter_id' => $inviter->id,
+                'invitee_id' => $invitee->id,
+                'game' => $game,
+                'mode' => $mode,
+                'platform' => $platform,
+                'crossplay' => $crossplay,
+                'status' => ChessInviteStatus::Pending,
+                'expires_at' => now()->addSeconds((int) config('esports.casual.invite_seconds')),
+            ]);
+        });
+
+        if (is_string($invite)) {
+            throw CasualMatches::refuse($invite, ['name' => $invitee->displayName()]);
+        }
+
+        if ($previous !== null) {
+            $this->announce($previous->refresh());
+        }
+
+        $this->announce($invite);
+
+        try {
+            $this->answer($invite, $invitee, null, null, searchingOnly: true);
+
+            return $invite->refresh();
+        } catch (SeriesRuleViolation) {
+            // Not searching (the usual case), or on a platform that does not fit: an ordinary open invite.
+        }
+
+        $this->notifications->inviteReceived($invite);
+
+        return $invite;
+    }
+
+    /**
+     * @throws SeriesRuleViolation
+     */
+    public function accept(SeriesInvite $invite, User $invitee, Platform $platform, bool $crossplay): SeriesMatch
+    {
+        return $this->answer($invite, $invitee, $platform, $crossplay, searchingOnly: false);
+    }
+
+    /**
+     * Makes the invite's match. `searchingOnly`: only if the invitee is in
+     * the queue for the invite's game, with the platform they search on. A
+     * refusal is returned from the transaction rather than thrown, so a
+     * withdrawal made on the way still commits.
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function answer(SeriesInvite $invite, User $invitee, ?Platform $platform, ?bool $crossplay, bool $searchingOnly): SeriesMatch
+    {
+        $result = DB::transaction(function () use ($invite, $invitee, $platform, $crossplay, $searchingOnly): SeriesMatch|string {
+            $invite = SeriesInvite::query()->with('inviter')->lockForUpdate()->findOrFail($invite->id);
+
+            if ($invite->invitee_id !== $invitee->id || ! $invite->isOpen()) {
+                return 'invite_closed';
+            }
+
+            if ($searchingOnly) {
+                $entry = SeriesQueueEntry::query()->where('user_id', $invitee->id)->where('game', $invite->game)->where('mode', $invite->mode)->first();
+
+                if ($entry === null) {
+                    return 'not_searching';
+                }
+
+                [$platform, $crossplay] = [$entry->platform, $entry->crossplay];
+            }
+
+            if ($platform === null || $crossplay === null) {
+                return 'platforms_incompatible';
+            }
+
+            if ($this->matches->lockedUntil($invitee) !== null) {
+                return 'queue_locked';
+            }
+
+            if ($this->matches->busyReason($invite->inviter) !== null) {
+                SeriesInvite::query()->whereKey($invite->id)->where('status', ChessInviteStatus::Pending)->update(['status' => ChessInviteStatus::Withdrawn, 'updated_at' => now()]);
+                $this->announce($invite->refresh());
+
+                return 'opponent_playing';
+            }
+
+            if ($this->matches->busyReason($invitee) !== null) {
+                return 'accept_while_playing';
+            }
+
+            if (! CasualMatches::compatible($invite->game, $invite->platform, $invite->crossplay, $platform, $crossplay)) {
+                return 'platforms_incompatible';
+            }
+
+            // The race with a decline or a withdrawal: only a still pending, unexpired row is taken.
+            $taken = SeriesInvite::query()->whereKey($invite->id)->where('status', ChessInviteStatus::Pending)->where('expires_at', '>', now())
+                ->update(['status' => ChessInviteStatus::Accepted, 'updated_at' => now()]);
+
+            if ($taken !== 1) {
+                return 'invite_closed';
+            }
+
+            SeriesQueueEntry::query()->whereIn('user_id', [$invite->inviter_id, $invitee->id])->delete();
+
+            $match = $this->matches->create($invite->inviter, $invitee, $invite->game, SeriesMatch::ORIGIN_INVITE, [
+                'challenger' => ['platform' => $invite->platform->value, 'crossplay' => $invite->crossplay],
+                'challenged' => ['platform' => $platform->value, 'crossplay' => $crossplay],
+            ], $invite->inviter);
+
+            $invite->forceFill(['series_match_id' => $match->id])->save();
+            $this->announce($invite->refresh());
+
+            return $match;
+        });
+
+        return $result instanceof SeriesMatch ? $result : throw CasualMatches::refuse($result);
+    }
+
+    /**
+     * The invitee declines, or the inviter withdraws. Only a still pending
+     * row changes: an accept that committed in the meantime stays.
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function close(SeriesInvite $invite, User $user): void
+    {
+        $status = match ($user->id) {
+            $invite->invitee_id => ChessInviteStatus::Declined,
+            $invite->inviter_id => ChessInviteStatus::Withdrawn,
+            default => throw CasualMatches::refuse('invite_closed'),
+        };
+
+        $closed = SeriesInvite::query()->whereKey($invite->id)->where('status', ChessInviteStatus::Pending)
+            ->update(['status' => $status, 'updated_at' => now()]);
+
+        $invite->refresh();
+
+        if ($closed === 1) {
+            $this->announce($invite);
+        }
+    }
+
+    /**
+     * "Looking to play" no longer names the invites' game: every open invite
+     * to this player is declined.
+     */
+    public function declineAll(User $invitee): void
+    {
+        foreach ($this->incoming($invitee) as $invite) {
+            $this->close($invite, $invitee);
+        }
+    }
+
+    /** One intent at a time: the player searches or plays something else now. */
+    public function withdrawOutgoing(User $inviter): void
+    {
+        $invite = $this->outgoing($inviter);
+
+        if ($invite !== null) {
+            $this->close($invite, $inviter);
+        }
+    }
+
+    public function outgoing(User $inviter): ?SeriesInvite
+    {
+        return SeriesInvite::query()
+            ->where('inviter_id', $inviter->id)
+            ->where('status', ChessInviteStatus::Pending)
+            ->where('expires_at', '>', now())
+            ->with('invitee')
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * @return Collection<int, SeriesInvite>
+     */
+    public function incoming(User $invitee): Collection
+    {
+        return SeriesInvite::query()
+            ->where('invitee_id', $invitee->id)
+            ->where('status', ChessInviteStatus::Pending)
+            ->where('expires_at', '>', now())
+            ->with('inviter')
+            ->latest('id')
+            ->get();
+    }
+
+    private function announce(SeriesInvite $invite): void
+    {
+        Broadcasts::send(new SeriesInviteChanged($invite->id, $invite->status->value, $invite->inviter_id, $invite->invitee_id));
+    }
+}

@@ -25,6 +25,7 @@ use Tests\TestCase;
 pest()->tia()->defaultBranch('master');
 
 require_once __DIR__.'/Support/tournaments.php';
+require_once __DIR__.'/Support/casual.php';
 require_once __DIR__.'/Support/wallet.php';
 require_once __DIR__.'/Support/shares.php';
 require_once __DIR__.'/Support/navigation.php';

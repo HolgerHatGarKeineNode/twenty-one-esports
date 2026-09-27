@@ -27,6 +27,12 @@ enum NotificationKind: string
     case InviteLinkTaken = 'invite_link_taken';
     case TournamentEntryRemoved = 'tournament_entry_removed';
     case TournamentNews = 'tournament_news';
+    case CasualMatchFound = 'casual_match_found';
+    case CasualInvite = 'casual_invite';
+    case CasualLobbyShared = 'casual_lobby_shared';
+    case CasualNoShow = 'casual_noshow';
+    case CasualReport = 'casual_report';
+    case CasualResult = 'casual_result';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -34,7 +40,7 @@ enum NotificationKind: string
      */
     public function redirects(): bool
     {
-        return in_array($this, [self::MatchFound, self::InviteAccepted], true);
+        return in_array($this, [self::MatchFound, self::InviteAccepted, self::CasualMatchFound], true);
     }
 
     /**
@@ -45,7 +51,7 @@ enum NotificationKind: string
      */
     public function dmByDefault(): bool
     {
-        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews], true);
+        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport], true);
     }
 
     /**
@@ -55,8 +61,9 @@ enum NotificationKind: string
     public function tone(): string
     {
         return match ($this) {
-            self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken => 'challenge',
-            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews => 'confirmed',
+            self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
+            self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport => 'challenge',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -69,7 +76,7 @@ enum NotificationKind: string
     public function sound(): string
     {
         return match ($this) {
-            self::MatchFound, self::InviteAccepted => 'matchFound',
+            self::MatchFound, self::InviteAccepted, self::CasualMatchFound => 'matchFound',
             self::GameStarted => 'gameStart',
             self::OpponentResigned => 'win',
             default => 'ping',
@@ -99,6 +106,12 @@ enum NotificationKind: string
             self::InviteLinkTaken => ['Invite link taken', 'someone took the invite link you shared'],
             self::TournamentEntryRemoved => ['Tournament entry removed', 'an organizer removed your entry from a tournament'],
             self::TournamentNews => ['Tournament news', 'a tournament you play in was paused, resumed or called off, or its organizer wrote to all players'],
+            self::CasualMatchFound => ['1v1 opponent found', 'the casual 1v1 queue paired you, press Ready'],
+            self::CasualInvite => ['1v1 invite', 'a player invites you to a casual 1v1'],
+            self::CasualLobbyShared => ['1v1 lobby shared', 'your opponent shared the game lobby in the match chat'],
+            self::CasualNoShow => ['1v1 no-show claimed', 'your opponent says you did not show up; contest it in time'],
+            self::CasualReport => ['1v1 result to confirm', 'your opponent reported the result of your casual 1v1'],
+            self::CasualResult => ['1v1 result', 'a casual 1v1 of yours ended'],
         };
     }
 

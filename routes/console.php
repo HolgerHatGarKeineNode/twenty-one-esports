@@ -14,6 +14,7 @@ use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
+use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentScheduler;
@@ -222,6 +223,20 @@ Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
 })->purpose('Move tournaments on and apply their due deadlines');
 
 Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
+ * The casual 1v1 clock (P23, CasualScheduler): a ready check that ran out
+ * (void, the ready player back to the front of the queue), an uncontested
+ * no-show claim (forfeit), a match nobody reported (void) and a report
+ * nobody answered (confirmed), each once.
+ */
+Artisan::command('casual:tick', function (CasualScheduler $scheduler) {
+    $done = $scheduler->tick();
+
+    $this->info("Voided {$done['unready']} unready and {$done['unreported']} unreported match(es), forfeited {$done['forfeited']} no-show(s), confirmed {$done['confirmed']} unanswered report(s).");
+})->purpose('Apply the due deadlines of casual 1v1 matches');
+
+Schedule::command('casual:tick')->everyMinute()->withoutOverlapping()->onOneServer();
 
 /*
  * Weekly events (P10): every active weekly slot gets its dated events for the

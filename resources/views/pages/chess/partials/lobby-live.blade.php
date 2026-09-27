@@ -52,11 +52,11 @@
             <h3 id="online-h" tabindex="-1" class="m-0 flex items-center gap-2 text-[15px] font-bold"><span class="size-2 rounded-full bg-win" aria-hidden="true"></span>{{ __('Online now') }} <b class="text-ink-2" x-show="connection === 'connected'" x-text="others.length" data-test="online-count"></b></h3>
             @auth
                 {{-- The page's own state (chessLobby.looking): a Livewire render never touches it. --}}
-                <button type="button" wire:ignore x-on:click="toggleLooking()" role="switch" aria-checked="{{ $user->looking_to_play ? 'true' : 'false' }}" x-bind:aria-checked="looking ? 'true' : 'false'" data-test="looking-toggle"
+                <button type="button" wire:ignore x-on:click="toggleLooking()" role="switch" aria-checked="{{ $user->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}" x-bind:aria-checked="looking ? 'true' : 'false'" data-test="looking-toggle"
                         class="flex h-11 cursor-pointer items-center gap-2.5 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
                     <span class="relative h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none" x-bind:class="looking ? 'bg-btc' : 'bg-raised shadow-ring'"><span class="absolute top-0.5 size-4 rounded-full bg-ink transition-all motion-reduce:transition-none" x-bind:class="looking ? 'left-[18px]' : 'left-0.5'"></span></span>
                     {{ __('Looking to play') }}
-                    <b class="min-w-7 text-left" x-bind:class="looking ? 'text-win' : 'text-ink-2'" x-text="looking ? @js(__('On')) : @js(__('Off'))" data-test="looking-state">{{ $user->looking_to_play ? __('On') : __('Off') }}</b>
+                    <b class="min-w-7 text-left" x-bind:class="looking ? 'text-win' : 'text-ink-2'" x-text="looking ? @js(__('On')) : @js(__('Off'))" data-test="looking-state">{{ $user->looking_to_play === 'chess/blitz' ? __('On') : __('Off') }}</b>
                 </button>
             @endauth
         </span>
@@ -80,7 +80,7 @@
                             <b class="min-w-0 truncate" x-text="m.name"></b>
                         </a>
                         <span class="shrink-0 text-xs text-ink-2 max-sm:hidden" x-show="m.elo" data-test="online-elo"><span x-text="m.elo"></span><span class="text-ink-3" x-show="m.provisional"> · {{ __('provisional') }}</span></span>
-                        <span x-show="m.looking" class="shrink-0 rounded-xs bg-win-tint px-1.5 py-0.5 text-[11px] font-bold text-win shadow-ring-win">{{ __('looking: Blitz 5+3') }}</span>
+                        <span x-show="m.looking === 'chess/blitz'" class="shrink-0 rounded-xs bg-win-tint px-1.5 py-0.5 text-[11px] font-bold text-win shadow-ring-win">{{ __('looking: Blitz 5+3') }}</span>
                         @if (! $active)
                             <template x-if="invited(m)">
                                 <span class="flex shrink-0 items-center gap-1 text-[13px]" data-test="invited">
@@ -89,7 +89,7 @@
                                 </span>
                             </template>
                             {{-- Only a player who is looking can be invited (ChessInvites::invite refuses the rest). --}}
-                            <template x-if="! invited(m) && m.looking">
+                            <template x-if="! invited(m) && m.looking === 'chess/blitz'">
                                 <button type="button" x-on:click="$wire.invite(m.id)" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
                             </template>
                         @endif

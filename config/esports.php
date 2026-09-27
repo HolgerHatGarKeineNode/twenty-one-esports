@@ -233,6 +233,59 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Casual 1v1 without a clan (P23, App\Support\Series\CasualMatches)
+    |--------------------------------------------------------------------------
+    |
+    | games: the games with an instant casual 1v1 (queue, direct invite);
+    | `looking_to_play` takes `<game>/1v1` for each. Always unrated.
+    |
+    | Two players pair on the same platform, or on two platforms when both
+    | allow crossplay; `crossplay_excluded` lists the platforms of a game
+    | that never play cross-platform (EA FC on Switch).
+    |
+    | ready_seconds: both players press Ready this long after the pairing;
+    | a miss voids the match (not a no-show). invite_seconds: how long a
+    | direct invite stays open.
+    |
+    | The deadlines below are pinned on the match at the pairing, so a later
+    | change reaches only later matches. `casual:tick` applies them every
+    | minute:
+    |
+    | - lobby_minutes: the host shares the lobby this long after the start;
+    |   after that the guest may claim a no-show;
+    | - join_minutes: the guest joins this long after the lobby was shared;
+    |   after that the host may claim a no-show;
+    | - contest_minutes: a no-show claim the accused side did not contest by
+    |   then is a forfeit;
+    | - report_minutes: nobody reported this long after the start: void;
+    | - confirm_minutes: a report the other side did not answer by then is
+    |   confirmed by the league.
+    |
+    | lock: `noshows` forfeited no-shows within `window_hours` lock the player
+    | out of casual play (queue, invites) for `minutes` from the last one.
+    |
+    */
+
+    'casual' => [
+        'games' => ['rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27'],
+        'mode' => '1v1',
+        'crossplay_excluded' => ['ea-sports-fc-26' => ['switch'], 'ea-sports-fc-27' => ['switch']],
+        'ready_seconds' => (int) env('ESPORTS_CASUAL_READY_SECONDS', 60),
+        'invite_seconds' => (int) env('ESPORTS_CASUAL_INVITE_SECONDS', 120),
+        'lobby_minutes' => (int) env('ESPORTS_CASUAL_LOBBY_MINUTES', 5),
+        'join_minutes' => (int) env('ESPORTS_CASUAL_JOIN_MINUTES', 10),
+        'contest_minutes' => (int) env('ESPORTS_CASUAL_CONTEST_MINUTES', 5),
+        'report_minutes' => (int) env('ESPORTS_CASUAL_REPORT_MINUTES', 60),
+        'confirm_minutes' => (int) env('ESPORTS_CASUAL_CONFIRM_MINUTES', 30),
+        'lock' => [
+            'noshows' => (int) env('ESPORTS_CASUAL_LOCK_NOSHOWS', 2),
+            'window_hours' => (int) env('ESPORTS_CASUAL_LOCK_WINDOW_HOURS', 24),
+            'minutes' => (int) env('ESPORTS_CASUAL_LOCK_MINUTES', 30),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tournaments in players mode (P18, "nothing hangs")
     |--------------------------------------------------------------------------
     |

@@ -77,6 +77,15 @@ use Illuminate\Support\Carbon;
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
  * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int, pauses?: list<array{0: int, 1: int}>}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock; `pauses`: the tournament's pauses while the series ran, unix seconds from and to, {@see pausedAfter()}); null = none run by the league
  * @property Carbon|null $overdue_at when the league moved it to the admin queue: nobody reported by the report deadline (P18)
+ * @property string|null $origin a casual 1v1 without a clan (P23): `queue` or `invite`; null for every other series
+ * @property string|null $host_side the side that opens the game lobby (casual 1v1), drawn at the pairing
+ * @property Carbon|null $ready_by the ready check of a casual 1v1 ends then
+ * @property Carbon|null $ready_at_challenger
+ * @property Carbon|null $ready_at_challenged
+ * @property Carbon|null $lobby_shared_at the host shared the lobby in the match chat (only the flag, never the lobby)
+ * @property Carbon|null $joined_at the guest joined the host's lobby
+ * @property Carbon|null $noshow_contested_at the accused side answered a casual no-show claim
+ * @property array{ready_seconds?: int, lobby_minutes?: int, join_minutes?: int, contest_minutes?: int, report_minutes?: int, confirm_minutes?: int, queue?: array<string, array{platform: string, crossplay: bool}>}|null $casual the casual deadlines pinned at the pairing, and each side's queue choice
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Lineup|null $challengerLineup
@@ -99,6 +108,7 @@ use Illuminate\Support\Carbon;
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
     'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'tournament_attempt', 'sides',
     'deadlines', 'overdue_at',
+    'origin', 'host_side', 'ready_by', 'ready_at_challenger', 'ready_at_challenged', 'lobby_shared_at', 'joined_at', 'noshow_contested_at', 'casual',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -145,6 +155,13 @@ class SeriesMatch extends Model
             'sides' => 'array',
             'deadlines' => 'array',
             'overdue_at' => 'datetime',
+            'ready_by' => 'datetime',
+            'ready_at_challenger' => 'datetime',
+            'ready_at_challenged' => 'datetime',
+            'lobby_shared_at' => 'datetime',
+            'joined_at' => 'datetime',
+            'noshow_contested_at' => 'datetime',
+            'casual' => 'array',
         ];
     }
 
@@ -370,6 +387,130 @@ class SeriesMatch extends Model
 
         return $at === null || $report === null ? null
             : ['kind' => 'response', 'at' => $at, 'side' => $report->side === 'challenger' ? 'challenged' : 'challenger'];
+    }
+
+    /* ---------- Casual 1v1 (P23, App\Support\Series\CasualMatches) -------------------------------------------- */
+
+    public const ORIGIN_QUEUE = 'queue';
+
+    public const ORIGIN_INVITE = 'invite';
+
+    /** A casual 1v1 without a clan, from the queue or a direct invite. */
+    public function isCasualPairing(): bool
+    {
+        return $this->origin !== null;
+    }
+
+    /**
+     * A casual deadline in the unit its key names: the value pinned at the
+     * pairing, else `esports.casual.<key>`.
+     */
+    public function casualSetting(string $key): int
+    {
+        return (int) ($this->casual[$key] ?? config('esports.casual.'.$key));
+    }
+
+    public function readyAt(string $side): ?CarbonInterface
+    {
+        return $side === 'challenger' ? $this->ready_at_challenger : $this->ready_at_challenged;
+    }
+
+    /** Still in the ready check: paired, not started. */
+    public function awaitsReady(): bool
+    {
+        return $this->isCasualPairing() && $this->status === SeriesStatus::Accepted && $this->start_at === null;
+    }
+
+    /** The host shares the lobby by then; afterwards the guest may claim a no-show. */
+    public function casualLobbyDueAt(): ?CarbonInterface
+    {
+        return $this->start_at?->copy()->addMinutes($this->casualSetting('lobby_minutes'));
+    }
+
+    /** The guest joins by then; afterwards the host may claim a no-show. */
+    public function casualJoinDueAt(): ?CarbonInterface
+    {
+        return $this->lobby_shared_at?->copy()->addMinutes($this->casualSetting('join_minutes'));
+    }
+
+    /** The accused side contests a no-show claim by then, else it is a forfeit. */
+    public function casualContestDueAt(): ?CarbonInterface
+    {
+        return $this->noshow_reported_at?->copy()->addMinutes($this->casualSetting('contest_minutes'));
+    }
+
+    /** Nobody reported by then: the match is void. */
+    public function casualReportDueAt(): ?CarbonInterface
+    {
+        return $this->start_at?->copy()->addMinutes($this->casualSetting('report_minutes'));
+    }
+
+    /** The open report is confirmed by the league then; null without one. */
+    public function casualConfirmDueAt(): ?CarbonInterface
+    {
+        $report = $this->latestReport;
+
+        return $this->status !== SeriesStatus::Reported || $report === null || $report->status !== ReportStatus::Open || $report->created_at === null
+            ? null
+            : $report->created_at->copy()->addMinutes($this->casualSetting('confirm_minutes'));
+    }
+
+    /**
+     * The next casual deadline, for the countdown of the room (slice S3),
+     * and the side it runs against (null: either or both):
+     *
+     * - `ready`: both press Ready, else the match is void;
+     * - `contest`: a no-show was claimed; the accused side contests or loses;
+     * - `lobby`: the host shares the lobby, else the guest may claim a no-show;
+     * - `join`: the guest joins, else the host may claim a no-show;
+     * - `report`: someone reports the result, else the match is void;
+     * - `confirm`: the other side answers the report, else the league confirms it.
+     *
+     * @return array{kind: 'ready'|'contest'|'lobby'|'join'|'report'|'confirm', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
+     */
+    public function casualNextDeadline(): ?array
+    {
+        if (! $this->isCasualPairing()) {
+            return null;
+        }
+
+        if ($this->status === SeriesStatus::Reported) {
+            $at = $this->casualConfirmDueAt();
+            $side = $this->latestReport?->side;
+
+            return $at === null || $side === null ? null : ['kind' => 'confirm', 'at' => $at, 'side' => $side === 'challenger' ? 'challenged' : 'challenger'];
+        }
+
+        if ($this->status !== SeriesStatus::Accepted) {
+            return null;
+        }
+
+        if ($this->start_at === null) {
+            return $this->ready_by === null ? null : ['kind' => 'ready', 'at' => $this->ready_by, 'side' => null];
+        }
+
+        $host = $this->host_side === 'challenged' ? 'challenged' : 'challenger';
+        $guest = $host === 'challenger' ? 'challenged' : 'challenger';
+
+        if ($this->noshow_reported_at !== null && ($at = $this->casualContestDueAt()) !== null) {
+            return ['kind' => 'contest', 'at' => $at, 'side' => $this->noshow_side === 'challenger' ? 'challenged' : 'challenger'];
+        }
+
+        $lobbyDue = $this->casualLobbyDueAt();
+
+        if ($this->lobby_shared_at === null && $lobbyDue !== null && $lobbyDue->isFuture()) {
+            return ['kind' => 'lobby', 'at' => $lobbyDue, 'side' => $host];
+        }
+
+        $joinDue = $this->casualJoinDueAt();
+
+        if ($this->joined_at === null && $joinDue !== null && $joinDue->isFuture()) {
+            return ['kind' => 'join', 'at' => $joinDue, 'side' => $guest];
+        }
+
+        $at = $this->casualReportDueAt();
+
+        return $at === null ? null : ['kind' => 'report', 'at' => $at, 'side' => null];
     }
 
     /**

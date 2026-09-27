@@ -21,6 +21,7 @@ use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Opponents;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Series\CasualInvites;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -217,19 +218,23 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             return false;
         }
 
-        $wanted = $looking ? 'chess/blitz' : null;
+        // The switch here is blitz only: off leaves a casual 1v1 choice (P23, `<game>/1v1`) alone, on replaces it.
+        $previous = $user->looking_to_play;
+        $wanted = $looking ? 'chess/blitz' : ($previous === 'chess/blitz' ? null : $previous);
 
-        if ($user->looking_to_play !== $wanted) {
+        if ($previous !== $wanted) {
             $user->forceFill(['looking_to_play' => $wanted])->save();
             Broadcasts::send(new LookingToPlayChanged($user->id, $user->looking_to_play));
 
             // Off means no blitz invites: the ones still open are declined, never delivered later.
             if ($wanted === null) {
                 app(ChessInvites::class)->declineAll($user);
+            } else {
+                app(CasualInvites::class)->declineAll($user);
             }
         }
 
-        return $user->looking_to_play !== null;
+        return $user->looking_to_play === 'chess/blitz';
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -467,7 +472,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $active = $this->activeGame;
 @endphp
 
-<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play !== null ? 'true' : 'false' }}">
+<div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
     <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg; from lg the header's chess bar names the page. --}}
         <div class="flex items-baseline justify-between gap-3 lg:hidden">

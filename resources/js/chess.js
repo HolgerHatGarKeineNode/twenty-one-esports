@@ -924,7 +924,8 @@ document.addEventListener('alpine:init', () => {
         get others() {
             return this.online
                 .filter((m) => m.id !== config.userId)
-                .sort((a, b) => (b.looking ? 1 : 0) - (a.looking ? 1 : 0) || a.name.localeCompare(b.name));
+                // Blitz only: a casual 1v1 choice (P23, `<game>/1v1`) is not a blitz opponent.
+                .sort((a, b) => (b.looking === 'chess/blitz' ? 1 : 0) - (a.looking === 'chess/blitz' ? 1 : 0) || a.name.localeCompare(b.name));
         },
 
         since(ms) {

@@ -26,6 +26,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Nostr\SignedEventGate;
+use App\Support\Notifications\CasualNotifications;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Rating\RatingService;
@@ -73,6 +74,7 @@ final class SeriesService
         private RatingService $ratings,
         private SeasonChains $chains,
         private RatedTrustGate $trustGate,
+        private CasualNotifications $casualNotifications,
     ) {}
 
     /* ---------- Challenge (2150) ------------------------------------------------------------------------------ */
@@ -436,6 +438,11 @@ final class SeriesService
             throw new SeriesRuleViolation('not_captain', __('Only a captain can change the lobby.'));
         }
 
+        // A casual 1v1 (P23) never stores its lobby: it is shared in the encrypted match chat.
+        if ($match->isCasualPairing()) {
+            throw CasualMatches::refuse('casual_match');
+        }
+
         if (! $match->status->isRunning()) {
             throw new SeriesRuleViolation('not_running', __('The lobby opens once the challenge is accepted.'));
         }
@@ -674,6 +681,11 @@ final class SeriesService
             throw new SeriesRuleViolation('not_captain', __('Only a captain can report a no-show.'));
         }
 
+        // A casual 1v1 (P23) has its own no-show deadlines (CasualMatches::claimNoShow()).
+        if ($match->isCasualPairing()) {
+            throw CasualMatches::refuse('casual_match');
+        }
+
         $from = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
 
         if ($match->status !== SeriesStatus::Accepted || $from === null || $from->isFuture()) {
@@ -758,7 +770,7 @@ final class SeriesService
             // Sent after the commit (Broadcasts), like every series change.
             $this->broadcastChange($match);
 
-            return SeriesReport::query()->create([
+            $report = SeriesReport::query()->create([
                 'series_match_id' => $match->id,
                 'user_id' => $user->id,
                 'side' => $plan['side'],
@@ -767,6 +779,13 @@ final class SeriesService
                 'status' => ReportStatus::Open,
                 'event_id' => $stored[0]->id ?? null,
             ]);
+
+            // A casual 1v1 (P23) runs on short deadlines: the other player hears of it at once.
+            if ($match->isCasualPairing()) {
+                $this->casualNotifications->reportToConfirm($match->refresh());
+            }
+
+            return $report;
         });
     }
 
@@ -902,6 +921,7 @@ final class SeriesService
 
         $match->refresh();
         $this->broadcastChange($match);
+        $this->notifyCasualResult($match);
     }
 
     /**
@@ -1019,6 +1039,7 @@ final class SeriesService
         });
 
         $this->broadcastChange($match);
+        $this->notifyCasualResult($match);
     }
 
     /**
@@ -1226,9 +1247,14 @@ final class SeriesService
      * The reason is public, as an admin's. Once only: false when the series
      * is no longer running (it ended, or a concurrent request closed it).
      *
+     * A deadline's own check (`$stillDue`, the casual 1v1 scheduler of
+     * P23) runs on the series as it is inside the decision's transaction,
+     * as for the tournament deadlines ({@see leagueDecides()}).
+     *
      * @param  array{resolution: SeriesResolution, winner: string, games: list<array<string, mixed>>|null}  $decision
+     * @param  (Closure(SeriesMatch): bool)|null  $stillDue
      */
-    public function leagueClose(SeriesMatch $match, array $decision, string $reason, ?User $by): bool
+    public function leagueClose(SeriesMatch $match, array $decision, string $reason, ?User $by, ?Closure $stillDue = null): bool
     {
         $match = $this->fresh($match);
 
@@ -1246,7 +1272,7 @@ final class SeriesService
             'resolved_roster' => $result && $match->latestReport !== null ? json_encode($match->latestReport->roster) : null,
             'resolution_reason' => mb_substr($reason, 0, 500),
             'resolved_by_id' => $by?->id,
-        ]);
+        ], $stillDue);
     }
 
     /**
@@ -1299,9 +1325,24 @@ final class SeriesService
 
         if ($decided) {
             $this->broadcastChange($match);
+            $this->notifyCasualResult($match);
         }
 
         return $decided;
+    }
+
+    /**
+     * Both players of a casual 1v1 (P23) hear of its result, however it
+     * came about: confirmed, decided by an admin, or by the league at a
+     * deadline.
+     */
+    private function notifyCasualResult(SeriesMatch $match): void
+    {
+        $match = SeriesMatch::query()->find($match->id);
+
+        if ($match !== null && $match->isCasualPairing() && $match->status->hasResult()) {
+            $this->casualNotifications->result($match);
+        }
     }
 
     /**

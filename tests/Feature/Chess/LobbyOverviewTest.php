@@ -233,10 +233,10 @@ test('turning "Looking to play" off declines the blitz invites still open to tha
         ->and(app(ChessInvites::class)->incoming($bert))->toHaveCount(0);
 });
 
-test('the online list offers Invite only on the rows of players who are looking', function () {
+test('the online list offers Invite only on the rows of players who are looking for blitz', function () {
     $html = $this->actingAs(User::factory()->create())->get(route('chess.lobby'))->assertOk()->getContent();
 
-    expect($html)->toContain('<template x-if="! invited(m) && m.looking">');
+    expect($html)->toContain('<template x-if="! invited(m) && m.looking === \'chess/blitz\'">');
 });
 
 /** The element carrying data-test="$hook", up to its closing tag (tiles nest no element of their own kind). */
