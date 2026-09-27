@@ -177,3 +177,49 @@ test('the edit page and its moderation list stay clean at 375 and 1440 px, and a
 
     fwrite(STDERR, "\n[tournament-edit] ".json_encode($measured)."\n");
 });
+
+test('a running tournament takes a new deadline on the edit page, with a clean console at 375 and 1440 px', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $tournament = openTournament(['name' => 'Rocket Sunday Munich'], rocketLeague: true);
+    $tournament->forceFill(['status' => TournamentStatus::Running])->save();
+
+    $url = route('admin.tournaments.edit', $tournament);
+    $page = visit(BrowserLogin::url($admin))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $measured = [];
+
+    foreach ([[375, 812], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from($url));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-deadlines]") !== null', 10_000);
+        editShot($page, "tournament-deadlines-{$width}");
+        $state = editState($page);
+        $measured[$width] = [$state['overflow'], $page->evaluate('() => { const r = document.querySelector("[data-test=tournament-deadlines]").getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }')];
+
+        expect($state['overflow'])->toBeLessThanOrEqual(0)
+            ->and($state['errors'])->toBe([])
+            ->and($state['bad'])->toBe([]);
+    }
+
+    $page->locator('[data-test=deadline-response_minutes]')->fill('45');
+    $page->locator('[data-test=edit-save]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=edit-notice]") !== null', 10_000);
+    $saved = editState($page);
+
+    expect($tournament->refresh()->response_minutes)->toBe(45)
+        ->and($page->evaluate('() => document.querySelector("[data-test=deadline-response_minutes]").value'))->toBe('45')
+        ->and($saved['log'])->toContain('Series: answer within (minutes): — → 45')
+        ->and($saved['log'])->toContain('running matches keep theirs')
+        ->and($saved['errors'])->toBe([])
+        ->and($saved['bad'])->toBe([]);
+
+    // Positive control: a thrown error and a broken image on this very page are caught.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("positive control"); }); const img = new Image(); img.src = "/__missing-positive-control.png"; document.body.append(img); }');
+    BrowserWait::until($page, '() => window.__errors.length >= 2', 10_000);
+
+    expect(implode("\n", editState($page)['errors']))->toContain('positive control');
+
+    fwrite(STDERR, "\n[tournament-deadlines] ".json_encode($measured)."\n");
+});

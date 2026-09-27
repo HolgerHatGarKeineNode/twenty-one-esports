@@ -75,6 +75,8 @@ use Illuminate\Support\Carbon;
  * @property int|null $tournament_match_id the tournament match this series plays (P8b)
  * @property int $tournament_attempt 1, or the replay number after an admin voided the series before (P18)
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
+ * @property array{noshow_minutes: int, report_hours: int, response_minutes: int}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18); null = none run by the league
+ * @property Carbon|null $overdue_at when the league moved it to the admin queue: nobody reported by the report deadline (P18)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Lineup|null $challengerLineup
@@ -96,6 +98,7 @@ use Illuminate\Support\Carbon;
     'live_games', 'rosters', 'noshow_side', 'noshow_reported_at', 'new_report_requested_at',
     'result_games', 'winner', 'resolution', 'resolution_reason', 'resolved_by_id', 'finished_at',
     'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'tournament_attempt', 'sides',
+    'deadlines', 'overdue_at',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -140,6 +143,8 @@ class SeriesMatch extends Model
             'resolution' => SeriesResolution::class,
             'finished_at' => 'datetime',
             'sides' => 'array',
+            'deadlines' => 'array',
+            'overdue_at' => 'datetime',
         ];
     }
 
@@ -230,8 +235,9 @@ class SeriesMatch extends Model
 
     /**
      * The admins' open cases (the disputes queue): a disputed series, a
-     * reported no-show, and a report nobody confirmed or disputed for
-     * `esports.tournaments.unanswered_report_hours` (P18).
+     * reported no-show, a report nobody confirmed or disputed for
+     * `esports.tournaments.unanswered_report_hours` (P18), and a tournament
+     * series nobody reported by its report deadline (P18, `overdue_at`).
      *
      * @param  Builder<SeriesMatch>  $query
      */
@@ -241,6 +247,7 @@ class SeriesMatch extends Model
         $query->where(fn (Builder $query) => $query
             ->where('status', SeriesStatus::Disputed)
             ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('noshow_reported_at'))
+            ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Accepted)->whereNotNull('overdue_at'))
             ->orWhere(fn (Builder $query) => $query->where('status', SeriesStatus::Reported)
                 ->whereHas('latestReport', fn (Builder $report) => $report->where('created_at', '<=', self::unansweredSince()))));
     }
@@ -257,6 +264,89 @@ class SeriesMatch extends Model
         return $this->status === SeriesStatus::Reported
             && $this->latestReport?->created_at !== null
             && $this->latestReport->created_at->lte(self::unansweredSince());
+    }
+
+    /* ---------- Tournament deadlines (P18, slice 2) ------------------------------------------------------------ */
+
+    /**
+     * How long after the start a captain may report a no-show: the pinned
+     * tournament value, else `esports.series.noshow_minutes`.
+     */
+    public function noshowMinutes(): int
+    {
+        return (int) ($this->deadlines['noshow_minutes'] ?? config('esports.series.noshow_minutes', 15));
+    }
+
+    /** How long the other side has to answer a report or a reported no-show; null without league deadlines. */
+    public function responseMinutes(): ?int
+    {
+        return $this->deadlines === null ? null : (int) $this->deadlines['response_minutes'];
+    }
+
+    /** When a series nobody reported joins the admin queue; null without league deadlines. */
+    public function reportDueAt(): ?CarbonInterface
+    {
+        return $this->deadlines === null || $this->start_at === null ? null
+            : $this->start_at->copy()->addHours((int) $this->deadlines['report_hours']);
+    }
+
+    /** When a reported no-show the other side did not answer becomes a forfeit; null without one. */
+    public function noshowForfeitAt(): ?CarbonInterface
+    {
+        return $this->deadlines === null || $this->noshow_reported_at === null ? null
+            : $this->noshow_reported_at->copy()->addMinutes((int) $this->responseMinutes());
+    }
+
+    /** When the open report is confirmed by the league; null without one. */
+    public function responseDueAt(): ?CarbonInterface
+    {
+        $report = $this->latestReport;
+
+        return $this->deadlines === null || $this->status !== SeriesStatus::Reported || $report === null || $report->status !== ReportStatus::Open || $report->created_at === null
+            ? null
+            : $report->created_at->copy()->addMinutes((int) $this->responseMinutes());
+    }
+
+    /**
+     * The next deadline the league acts on (the countdown of P18 slice 4 and
+     * the TV of P19), and the side it runs against:
+     *
+     * - `report`: nobody reported yet; either side may (`side` null). At the
+     *   deadline the series joins the admin queue;
+     * - `noshow`: a no-show was reported; the reported side has to enter a
+     *   game or report, else it loses by forfeit;
+     * - `response`: a result was reported; the other side has to answer,
+     *   else the league confirms it.
+     *
+     * Null when none runs: no league deadlines (a ladder series, a director
+     * tournament), a decided series, or one waiting for an admin.
+     *
+     * @return array{kind: 'report'|'noshow'|'response', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
+     */
+    public function nextDeadline(): ?array
+    {
+        if ($this->deadlines === null) {
+            return null;
+        }
+
+        if ($this->status === SeriesStatus::Accepted && $this->noshow_reported_at !== null) {
+            $at = $this->noshowForfeitAt();
+            $side = $this->noshow_side === 'challenger' ? 'challenged' : 'challenger';
+
+            return $at === null ? null : ['kind' => 'noshow', 'at' => $at, 'side' => $side];
+        }
+
+        if ($this->status === SeriesStatus::Accepted && $this->overdue_at === null) {
+            $at = $this->reportDueAt();
+
+            return $at === null ? null : ['kind' => 'report', 'at' => $at, 'side' => null];
+        }
+
+        $at = $this->responseDueAt();
+        $report = $this->latestReport;
+
+        return $at === null || $report === null ? null
+            : ['kind' => 'response', 'at' => $at, 'side' => $report->side === 'challenger' ? 'challenged' : 'challenger'];
     }
 
     /**

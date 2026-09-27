@@ -11,6 +11,7 @@ use App\Support\Series\Ladders;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentDeadlines;
 use Database\Factories\TournamentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -58,6 +59,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $draw_event_id the league's 2155 (only with a solo pool)
  * @property Carbon|null $draw_committed_at when the draw committed to `draw_height`
  * @property string|null $ladder_address the ladder frozen with the first 31923 version; null = unrated (NIP rev. 7)
+ * @property int|null $checkin_minutes the tournament's own deadlines (P18); null = the league default ({@see TournamentDeadlines})
+ * @property int|null $noshow_minutes
+ * @property int|null $report_hours
+ * @property int|null $response_minutes
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -71,7 +76,8 @@ use Illuminate\Support\Carbon;
  * @property-read NostrEvent|null $drawEvent
  */
 #[Fillable(['name', 'description', 'game', 'mode', 'format', 'options', 'capacity', 'starts_at', 'time_window', 'on_site', 'stations', 'times', 'results_mode', 'status', 'seed', 'created_by_id',
-    'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address'])]
+    'slug', 'signup_closes_at', 'published_at', 'event_id', 'draw_height', 'draw_hash', 'draw_event_id', 'draw_committed_at', 'ladder_address',
+    'checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes'])]
 class Tournament extends Model
 {
     /** @use HasFactory<TournamentFactory> */
@@ -103,6 +109,10 @@ class Tournament extends Model
             'published_at' => 'datetime',
             'draw_height' => 'integer',
             'draw_committed_at' => 'datetime',
+            'checkin_minutes' => 'integer',
+            'noshow_minutes' => 'integer',
+            'report_hours' => 'integer',
+            'response_minutes' => 'integer',
         ];
     }
 

@@ -653,8 +653,11 @@ final class SeriesService
     }
 
     /**
-     * "Opponent didn't show": from `noshow_minutes` after the start, while no
-     * game is entered and nobody reported. An admin decides (forfeit/void).
+     * "Opponent didn't show": from `noshow_minutes` after the start (a
+     * tournament's own, pinned at the pairing), while no game is entered and
+     * nobody reported. An admin decides (forfeit/void); in a players-mode
+     * tournament the league forfeits it once the other side let the response
+     * deadline pass ({@see forfeitNoShow()}).
      */
     public function reportNoShow(SeriesMatch $match, User $user): void
     {
@@ -666,10 +669,10 @@ final class SeriesService
             throw new SeriesRuleViolation('not_captain', __('Only a captain can report a no-show.'));
         }
 
-        $from = $match->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
+        $from = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
 
         if ($match->status !== SeriesStatus::Accepted || $from === null || $from->isFuture()) {
-            throw new SeriesRuleViolation('noshow_early', __('A no-show can be reported :minutes minutes after the start.', ['minutes' => (int) config('esports.series.noshow_minutes', 15)]));
+            throw new SeriesRuleViolation('noshow_early', __('A no-show can be reported :minutes minutes after the start.', ['minutes' => $match->noshowMinutes()]));
         }
 
         if ($match->currentGames() !== [] || $match->noshow_reported_at !== null) {
@@ -1118,8 +1121,123 @@ final class SeriesService
     public static function isOpenCase(SeriesMatch $match): bool
     {
         return $match->status === SeriesStatus::Disputed
-            || ($match->status === SeriesStatus::Accepted && $match->noshow_reported_at !== null)
+            || ($match->status === SeriesStatus::Accepted && ($match->noshow_reported_at !== null || $match->overdue_at !== null))
             || $match->isUnansweredReport();
+    }
+
+    /* ---------- Tournament deadlines (P18, slice 2; TournamentScheduler) -------------------------------------- */
+
+    /**
+     * A tournament series nobody reported by its report deadline joins the
+     * admin queue (`overdue_at`, SeriesMatch::openCase()). Set once: the
+     * update only takes a row still accepted, without a no-show and not yet
+     * overdue, so a second run finds nothing. True if this call moved it.
+     */
+    public function markOverdue(SeriesMatch $match): bool
+    {
+        $due = $match->reportDueAt();
+
+        if ($due === null || $due->isFuture() || self::isDirectorEntered($match)) {
+            return false;
+        }
+
+        $updated = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)
+            ->whereNull('noshow_reported_at')->whereNull('overdue_at')
+            ->update(['overdue_at' => now()]);
+
+        if ($updated === 1) {
+            $this->broadcastChange($match);
+        }
+
+        return $updated === 1;
+    }
+
+    /**
+     * A reported no-show the other side did not answer (no game entered, no
+     * report) by the response deadline: the league forfeits the series to
+     * the side that showed up, unrated (P18: the league's own decisions move
+     * no Elo; a rated series is attested as `forfeit` without `elo`).
+     */
+    public function forfeitNoShow(SeriesMatch $match): bool
+    {
+        $match = $this->fresh($match);
+        $due = $match->noshowForfeitAt();
+
+        if ($due === null || $due->isFuture() || $match->status !== SeriesStatus::Accepted || $match->currentGames() !== []
+            || self::isDirectorEntered($match) || ! in_array($match->noshow_side, SeriesMatch::SIDES, true)) {
+            return false;
+        }
+
+        return $this->leagueDecides($match, SeriesStatus::Accepted, [
+            'resolution' => SeriesResolution::Forfeit,
+            'winner' => $match->noshow_side,
+            'result_games' => null,
+            'resolved_roster' => null,
+            'resolution_reason' => 'No-show reported; the other side did not answer within '.$match->responseMinutes().' minutes.',
+        ]);
+    }
+
+    /**
+     * A report the other side did not answer by the response deadline: the
+     * league confirms it, unrated (CEO default P18: silence earns no Elo).
+     * The result is the league's decision (resolution `admin`) with the
+     * report's games and roster; the report itself stays as sent.
+     */
+    public function autoConfirm(SeriesMatch $match): bool
+    {
+        $match = $this->fresh($match);
+        $due = $match->responseDueAt();
+        $report = $match->latestReport;
+
+        if ($due === null || $due->isFuture() || $report === null || self::isDirectorEntered($match)) {
+            return false;
+        }
+
+        $wins = $report->score();
+
+        return $this->leagueDecides($match, SeriesStatus::Reported, [
+            'resolution' => SeriesResolution::Admin,
+            'winner' => $wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged',
+            'result_games' => json_encode($report->games),
+            'resolved_roster' => json_encode($report->roster),
+            'resolution_reason' => 'Report not answered within '.$match->responseMinutes().' minutes; confirmed by the league, unrated.',
+        ]);
+    }
+
+    /**
+     * The league decides a series at a deadline, exactly once: the update
+     * only takes the row while it is still in `$from`, so a concurrent run
+     * (or an admin or a player who acted first) leaves it untouched and this
+     * returns false. No rating change; the attestation and the bracket follow
+     * as for any result.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private function leagueDecides(SeriesMatch $match, SeriesStatus $from, array $values): bool
+    {
+        $decided = DB::transaction(function () use ($match, $from, $values): bool {
+            $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $from)
+                ->update($values + ['status' => SeriesStatus::Resolved, 'resolved_by_id' => null, 'finished_at' => now()]);
+
+            if ($updated !== 1) {
+                return false;
+            }
+
+            $this->chains->attestSeries(SeriesMatch::query()->findOrFail($match->id));
+
+            if ($match->tournament_match_id !== null) {
+                $id = $match->id;
+                DB::afterCommit(fn () => app(TournamentRunner::class)->seriesFinished($id));
+            }
+
+            return true;
+        });
+
+        if ($decided) {
+            $this->broadcastChange($match);
+        }
+
+        return $decided;
     }
 
     /**

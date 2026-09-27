@@ -387,7 +387,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     private function fingerprint(): string
     {
         $match = $this->fresh();
-        $noshowFrom = $match->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
+        $noshowFrom = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
 
         return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error]));
     }
@@ -436,7 +436,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $toAnswer = ! $directorEntered && $m->status === SeriesStatus::Reported && $report?->status === ReportStatus::Open && $captainSide !== null && $captainSide !== $report->side;
     $playing = count(array_filter($this->sheet, fn ($g) => $g['winner'] !== null));
     $captainOf = fn (string $side) => $m->lineup($side)?->clan?->owner?->displayName() ?? '';
-    $noshowFrom = $m->start_at?->copy()->addMinutes((int) config('esports.series.noshow_minutes', 15));
+    $noshowFrom = $m->start_at?->copy()->addMinutes($m->noshowMinutes());
     $checks = ($report !== null && $report->status !== ReportStatus::Superseded ? 1 : 0) + ($m->status->hasResult() ? 1 : 0);
     $status = match ($m->status) {
         SeriesStatus::Open => [__('Waiting for an answer'), 'bg-btc-press text-btc-hi'],
@@ -742,7 +742,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @if ($m->status === SeriesStatus::Accepted && $noshowFrom)
                 <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3">
                     <b class="text-[13px]">{{ __('Opponent not in the lobby?') }}</b>
-                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('From :time, :minutes minutes after start, you can report it. An admin checks and scores the match as a forfeit.', ['time' => SeriesPresenter::time($noshowFrom, $viewer, 'H:i'), 'minutes' => (int) config('esports.series.noshow_minutes', 15)]) }}</p>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('From :time, :minutes minutes after start, you can report it. An admin checks and scores the match as a forfeit.', ['time' => SeriesPresenter::time($noshowFrom, $viewer, 'H:i'), 'minutes' => $m->noshowMinutes()]) }}</p>
                     <span class="flex flex-wrap items-center gap-3">
                         <x-button variant="secondary" icon="user" wire:click="reportNoShow" class="disabled:cursor-not-allowed disabled:opacity-50" :disabled="$captainSide === null || $noshowFrom->isFuture() || $games !== [] || $m->noshow_reported_at !== null" data-test="report-noshow">{{ __('Opponent didn\'t show') }}</x-button>
                         <span class="text-xs text-ink-3">{{ $m->noshow_reported_at ? __('reported, an admin decides') : ($games !== [] ? __('not needed, games are entered') : '') }}</span>

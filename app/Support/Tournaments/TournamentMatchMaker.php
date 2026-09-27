@@ -265,6 +265,8 @@ final class TournamentMatchMaker
             'tournament_match_id' => $match->id,
             'tournament_attempt' => $attempt,
             'sides' => $sides === [] ? null : $sides,
+            // The league runs the deadlines where the players report; pinned now, so a later edit reaches only later pairings (P18).
+            'deadlines' => $tournament->isDirectorMode() ? null : TournamentDeadlines::forSeries($tournament),
         ]);
 
         if ($league !== null && $pin !== null) {

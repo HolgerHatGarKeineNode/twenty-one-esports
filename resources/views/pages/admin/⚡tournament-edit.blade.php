@@ -104,6 +104,10 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $this->resultsMode = $tournament->results_mode->value;
         $this->directorIds = array_values(array_map(intval(...), $tournament->directors()->pluck('users.id')->all()));
         $this->confirmRemoval = false;
+
+        foreach (self::DEADLINE_FIELDS as $property => $column) {
+            $this->{$property} = $tournament->{$column} === null ? '' : (string) $tournament->{$column};
+        }
     }
 
     /**
@@ -181,6 +185,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             'description' => ['nullable', 'string', 'max:1000'],
             'date' => ['required', 'date_format:Y-m-d'],
             'time' => ['required', 'date_format:H:i'],
+            ...$this->deadlineRules(),
             ...($beforeDraw ? [
                 'players' => ['required', 'integer', 'between:2,64'],
                 'stations' => ['integer', 'between:1,32'],
@@ -196,6 +201,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             'name' => trim($this->name),
             'description' => trim($this->description) === '' ? null : trim($this->description),
             'starts_at' => CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $zone)->utc(),
+            ...$this->chosenDeadlines(),
         ];
 
         if ($beforeDraw) {
@@ -365,6 +371,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'results_mode' => __('Results'), 'directors' => __('Tournament directors'), 'game' => __('Game'), 'mode' => __('Mode'),
         'format' => __('Format'), 'options' => __('Format options'), 'time_window' => __('Time you have'), 'on_site' => __('On site'),
         'stations' => __('Stations'), 'times' => __('Planning times'), 'ladder' => __('Ladder'),
+        'checkin_minutes' => __('Chess: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
+        'report_hours' => __('Series: result due (hours after the start)'), 'response_minutes' => __('Series: answer within (minutes)'),
     ];
 @endphp
 
@@ -440,6 +448,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                     ]) }}</p>
                 </section>
             @endif
+
+            @include('pages.admin.partials.tournament-deadlines')
 
             <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:flex-row lg:items-center lg:gap-4 lg:px-6 lg:py-5">
                 @island(name: 'summary')
@@ -552,7 +562,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 <div class="flex flex-col gap-1 border-t border-hairline pt-2 text-xs leading-normal" wire:key="log-{{ $entry->id }}">
                     <span class="[overflow-wrap:anywhere]"><span class="text-ink-3">{{ $entry->created_at->copy()->timezone($zone)->format('Y-m-d H:i') }}</span>
                         <b>{{ $entry->user_name }}</b> {{ $actions[$entry->action] ?? $entry->action }}@if ($entry->subject): <b>{{ $entry->subject }}</b>@endif
-                        @if ($entry->reason) <span class="text-ink-2">— {{ $entry->reason }}</span>@endif</span>
+                        @if ($entry->reason) <span class="text-ink-2">— {{ $entry->reason === TournamentEditor::DEADLINES_AHEAD ? __($entry->reason) : $entry->reason }}</span>@endif</span>
                     @foreach ($entry->details ?? [] as $key => [$old, $new])
                         <span class="text-ink-2 [overflow-wrap:anywhere]">{{ $fields[$key] ?? $key }}: {{ $shown($old) }} → {{ $shown($new) }}</span>
                     @endforeach

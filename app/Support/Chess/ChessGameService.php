@@ -23,6 +23,7 @@ use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -75,11 +76,15 @@ final class ChessGameService
         $daily = $mode === ChessGame::CORRESPONDENCE;
         // A rated game is pinned to the ladder open when it starts (a tournament's frozen ladder),
         // and counts only while that ladder is still open (NIP rule 16): never on a later season's.
+        $tournament = $tournamentMatchId === null ? null : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament;
         $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
             ? Ladders::address('chess', $mode)
-            : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
+            : $tournament?->openLadder());
+        // The tournament's check-in window, pinned for this game (P18): an edit later reaches only later games.
+        $firstMoveSeconds = $tournamentMatchId === null ? null
+            : ($tournament === null ? intdiv($this->tournamentFirstMoveMs($mode), 1000) : TournamentDeadlines::checkinSeconds($tournament));
 
-        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $ladder, $tournamentMatchId, $tournamentGame): ChessGame {
+        $game = DB::transaction(function () use ($white, $black, $mode, $rematchOf, $initialMs, $incrementMs, $daily, $ratedGate, $ladder, $tournamentMatchId, $tournamentGame, $firstMoveSeconds): ChessGame {
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
@@ -104,7 +109,8 @@ final class ChessGameService
                 'white_ms' => $initialMs,
                 'black_ms' => $initialMs,
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + ($tournamentMatchId !== null ? $this->tournamentFirstMoveMs($mode) : ($daily ? $initialMs : $this->firstMoveMs())),
+                'deadline_ms' => $now + ($firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : ($daily ? $initialMs : $this->firstMoveMs())),
+                'first_move_seconds' => $firstMoveSeconds,
                 'rematch_of_id' => $rematchOf?->id,
                 'tournament_match_id' => $tournamentMatchId,
                 'tournament_game' => $tournamentGame,
@@ -244,7 +250,9 @@ final class ChessGameService
             $game->deadline_ms = match (true) {
                 $game->isCorrespondence() => $now + $game->initial_ms,
                 $game->clocksRunning() => $now + ($game->turn() === 'w' ? $game->white_ms : $game->black_ms),
-                default => $now + ($game->tournament_match_id !== null ? $this->tournamentFirstMoveMs($game->mode) : $this->firstMoveMs()),
+                default => $now + ($game->tournament_match_id !== null
+                    ? ($game->first_move_seconds !== null ? $game->first_move_seconds * 1000 : $this->tournamentFirstMoveMs($game->mode))
+                    : $this->firstMoveMs()),
             };
 
             $outcome = ChessRules::outcome($chess, [$game->startFen(), ...$fens, $fen]);
@@ -985,8 +993,10 @@ final class ChessGameService
     }
 
     /**
-     * The first-move window of a tournament game (P18): 5 minutes in blitz,
-     * a day in daily chess, by default.
+     * The league's first-move window of a tournament game (P18): 5 minutes in
+     * blitz, a day in daily chess. A tournament may set its own
+     * (TournamentDeadlines), pinned on the game at its start; this is the
+     * fallback for a game started before that column existed.
      */
     private function tournamentFirstMoveMs(string $mode): int
     {

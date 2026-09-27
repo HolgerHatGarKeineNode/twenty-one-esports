@@ -68,6 +68,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'gameLength' => ['nullable', 'numeric', 'between:0.5,1000'],
             'setup' => ['nullable', 'numeric', 'between:0,1000'],
             'break' => ['nullable', 'numeric', 'between:0,1000'],
+            ...$this->deadlineRules(),
         ]);
 
         // Typed in the zone the show and edit pages display (the player's, else the league's); stored as UTC.
@@ -105,6 +106,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             'results_mode' => TournamentResultsMode::from($this->resultsMode),
             'status' => TournamentStatus::Draft,
             'created_by_id' => auth()->id(),
+            ...$this->chosenDeadlines(),
         ]);
 
         if ($tournament->results_mode === TournamentResultsMode::Director) {
@@ -167,6 +169,8 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         @island(name: 'chooser')
             @include('pages.admin.partials.tournament-chooser')
         @endisland
+
+        @include('pages.admin.partials.tournament-deadlines')
 
         <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:flex-row lg:items-center lg:gap-4 lg:px-6 lg:py-5">
             @island(name: 'summary')

@@ -332,14 +332,17 @@ final class TournamentRunner
 
         $score = SeriesMatch::seriesScore($series->result_games);
         $goals = $this->goals($series->result_games ?? []);
+        // A forfeit has no games to count (P18); a decision nobody made by hand is the league's (a deadline).
+        $forfeit = $series->resolution === SeriesResolution::Forfeit;
 
         $this->store($match, [
             'winner' => $series->winner === 'challenger' ? 0 : 1,
-            'games_won' => [(float) $score['challenger'], (float) $score['challenged']],
+            'games_won' => $forfeit ? ($series->winner === 'challenger' ? [1.0, 0.0] : [0.0, 1.0]) : [(float) $score['challenger'], (float) $score['challenged']],
             'points' => $goals,
             'games' => $series->result_games ?? [],
-            'label' => $score['challenger'].' : '.$score['challenged'],
-            'by' => 'players',
+            'forfeit' => $forfeit,
+            'label' => $forfeit ? __('forfeit') : $score['challenger'].' : '.$score['challenged'],
+            'by' => $series->resolution !== SeriesResolution::Confirmed && $series->resolved_by_id === null ? 'league' : 'players',
             'number' => $series->number,
         ]);
 

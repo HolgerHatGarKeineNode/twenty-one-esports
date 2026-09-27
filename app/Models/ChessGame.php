@@ -60,6 +60,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $black_gone_ms
  * @property Carbon|null $white_seen_at when White first opened the board of a tournament game (P18)
  * @property Carbon|null $black_seen_at when Black first opened the board of a tournament game (P18)
+ * @property int|null $first_move_seconds the first-move window of a tournament game, pinned at its start (P18, TournamentDeadlines)
  * @property 'dm'|'push'|'here'|null $white_notify
  * @property 'dm'|'push'|'here'|null $black_notify
  * @property bool $white_remind
@@ -76,7 +77,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
-    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at'])]
+    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at', 'first_move_seconds'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */
@@ -123,6 +124,7 @@ class ChessGame extends Model
             'black_gone_ms' => 'integer',
             'white_seen_at' => 'datetime',
             'black_seen_at' => 'datetime',
+            'first_move_seconds' => 'integer',
             'white_remind' => 'boolean',
             'black_remind' => 'boolean',
         ];

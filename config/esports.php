@@ -252,6 +252,17 @@ return [
     | unanswered_report_hours: a series report nobody confirmed or disputed
     | for this long joins the admin queue as "unanswered report".
     |
+    | Deadlines per tournament (slice 2, App\Support\Tournaments\TournamentDeadlines):
+    | each tournament may set its own; these are the defaults. The check-in
+    | window of chess is `first_move_seconds`, the no-show wait of a series
+    | `series.noshow_minutes`. report_hours: a tournament series nobody
+    | reported this long after its start joins the admin queue.
+    | response_minutes: a tournament series report the other side did not
+    | answer for this long is confirmed by the league, unrated (CEO default);
+    | a reported no-show the other side did not answer for this long is a
+    | forfeit, unrated. Ladder series outside tournaments keep
+    | `unanswered_report_hours`. The `tournaments:tick` command applies them.
+    |
     */
 
     'tournaments' => [
@@ -259,6 +270,8 @@ return [
         'first_move_restarts' => 1,
         'drawn_replays' => 2,
         'unanswered_report_hours' => 2,
+        'report_hours' => 2,
+        'response_minutes' => 30,
     ],
 
     /*

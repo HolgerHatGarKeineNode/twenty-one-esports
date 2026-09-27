@@ -30,7 +30,7 @@ use Throwable;
  *
  * Fewer than two entries after the close calls the tournament off. Fail
  * closed: without the league key or a readable block nothing moves; the
- * scheduler tries again (`tournaments:advance`).
+ * scheduler tries again (`tournaments:tick`).
  */
 final class TournamentDraws
 {

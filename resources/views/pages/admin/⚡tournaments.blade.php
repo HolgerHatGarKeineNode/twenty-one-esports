@@ -5,6 +5,7 @@ use App\Models\TournamentOrganizer;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Tournaments\Estimator;
+use App\Support\Tournaments\TournamentScheduler;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
@@ -26,6 +27,17 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
     public function mount(): void
     {
         Gate::authorize('create-tournaments');
+    }
+
+    /**
+     * The tournament clock's heartbeat (P18): a warning when it is stale.
+     *
+     * @return array{last_run_at: \Carbon\CarbonImmutable|null, stale: bool}
+     */
+    #[Computed]
+    public function scheduler(): array
+    {
+        return TournamentScheduler::health();
     }
 
     #[Computed]
@@ -120,6 +132,15 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
 
         @if (session('status'))
             <p class="m-0 rounded-md bg-win-tint px-4 py-3 text-[13px] text-win shadow-[inset_0_0_0_1px_#1F5A34]" role="status" data-test="tournaments-notice">{{ session('status') }}</p>
+        @endif
+
+        @if ($this->scheduler['stale'])
+            <p class="m-0 rounded-md px-4 py-3 text-[13px] leading-normal text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="scheduler-stale">
+                <b>{{ __('The tournament clock is not running.') }}</b>
+                {{ $this->scheduler['last_run_at'] === null
+                    ? __('It has not run yet: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute.')
+                    : __('Its last run was :ago: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute again.', ['ago' => $this->scheduler['last_run_at']->diffForHumans()]) }}
+            </p>
         @endif
 
         <section aria-labelledby="list-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">

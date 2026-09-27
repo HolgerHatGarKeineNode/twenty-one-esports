@@ -3172,5 +3172,22 @@
     "asked the entries to confirm again": "hat die Anmeldungen um eine neue Bestätigung gebeten",
     "Too many changes in a row. Wait a few seconds and save again.": "Zu viele Änderungen hintereinander. Warte ein paar Sekunden und speichere noch einmal.",
     "Keep the description to 1000 characters.": "Halte die Beschreibung bei höchstens 1000 Zeichen.",
-    "Description": "Beschreibung"
+    "Description": "Beschreibung",
+    "Keep each deadline within its range, or leave it empty for the league default.": "Halte jede Frist in ihrem Bereich oder lass das Feld leer für den Liga-Standard.",
+    "Chess: first move within (minutes)": "Schach: erster Zug innerhalb von (Minuten)",
+    "A player who misses it loses by forfeit.": "Wer ihn verpasst, verliert kampflos.",
+    "Series: no-show report after (minutes)": "Serie: Nichterscheinen melden nach (Minuten)",
+    "From the start until a captain can report the other side missing.": "Ab dem Start, bis ein Captain die andere Seite als nicht erschienen melden kann.",
+    "Series: result due (hours after the start)": "Serie: Ergebnis fällig (Stunden nach dem Start)",
+    "Nobody reported by then: the match goes to the admin queue.": "Hat bis dahin niemand gemeldet, geht das Match in die Admin-Warteschlange.",
+    "Series: answer within (minutes)": "Serie: Antwort innerhalb von (Minuten)",
+    "An unanswered result is confirmed unrated; an unanswered no-show is a forfeit.": "Ein unbeantwortetes Ergebnis wird ungewertet bestätigt; ein unbeantwortetes Nichterscheinen wird kampflos gewertet.",
+    "Deadlines": "Fristen",
+    "The league applies them when the players report their results. Leave a field empty for the league default. A change while the tournament runs applies to matches paired from then on.": "Die Liga wendet sie an, wenn die Spieler ihre Ergebnisse selbst melden. Lass ein Feld leer für den Liga-Standard. Eine Änderung während des Turniers gilt für Matches, die ab dann gepaart werden.",
+    ":min to :max, default :default.": ":min bis :max, Standard :default.",
+    "Report overdue": "Meldung überfällig",
+    "The tournament clock is not running.": "Die Turnier-Uhr läuft nicht.",
+    "It has not run yet: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute.": "Sie ist noch nie gelaufen: Keine Anmeldung schließt, keine Auslosung läuft und keine Frist greift, bis der Scheduler `tournaments:tick` jede Minute ausführt.",
+    "Its last run was :ago: no sign-up closes, no draw runs and no deadline is applied until the scheduler runs `tournaments:tick` every minute again.": "Ihr letzter Lauf war :ago: Keine Anmeldung schließt, keine Auslosung läuft und keine Frist greift, bis der Scheduler `tournaments:tick` wieder jede Minute ausführt.",
+    "Deadline changes apply to matches paired from now on; running matches keep theirs.": "Friständerungen gelten für Matches, die ab jetzt gepaart werden; laufende Matches behalten ihre."
 }

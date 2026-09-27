@@ -42,8 +42,13 @@ use Illuminate\Support\Facades\Gate;
  *   none, so the tournament is unrated for its whole run (fail closed, NIP
  *   "Tournaments", rev. 8.1).
  *
- * From the draw on (draw pending, running) only the name, the description
- * and the start change: the draw committed to a Bitcoin block with these entries and this
+ * The deadlines (TournamentDeadlines) change in every state until the end:
+ * an edit while the tournament runs reaches only the matches paired after
+ * it (a series and a chess game pin theirs at the pairing), and its log
+ * line says so. They are not published and ask nobody to re-confirm.
+ *
+ * From the draw on (draw pending, running) only the name, the description,
+ * the deadlines and the start change: the draw committed to a Bitcoin block with these entries and this
  * format, so the format, game and capacity are locked. There is no redo of
  * the draw: the league would pick among block hashes it has seen, which is
  * exactly what the commitment rules out (NIP "Tournament Draw"). A finished
@@ -58,7 +63,13 @@ use Illuminate\Support\Facades\Gate;
 final class TournamentEditor
 {
     /** Fields that may still change after the draw. */
-    public const AFTER_DRAW = ['name', 'description', 'starts_at'];
+    public const AFTER_DRAW = ['name', 'description', 'starts_at', ...self::DEADLINES];
+
+    /** The tournament's own deadlines (P18); null = the league default. */
+    public const DEADLINES = ['checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes'];
+
+    /** The moderation log's note on a deadline edit while the tournament runs. */
+    public const DEADLINES_AHEAD = 'Deadline changes apply to matches paired from now on; running matches keep theirs.';
 
     /** Why a lineup is removed by a game correction (English key, translated for each player). */
     public const GAME_CORRECTED = 'The game or mode of the tournament was corrected.';
@@ -66,7 +77,7 @@ final class TournamentEditor
     public function __construct(private TournamentPublisher $publisher, private TournamentModeration $moderation) {}
 
     /**
-     * @param  array{name?: string, description?: string|null, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null}  $changes
+     * @param  array{name?: string, description?: string|null, checkin_minutes?: int|null, noshow_minutes?: int|null, report_hours?: int|null, response_minutes?: int|null, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null}  $changes
      * @return list<string> the fields that changed
      *
      * @throws TournamentRuleViolation
@@ -131,10 +142,12 @@ final class TournamentEditor
                 $details['ladder'] = [$oldLadder, $locked->ladder_address];
             }
 
-            $this->moderation->log($locked, $actor, 'edited', details: $details);
+            $deadlinesAhead = $locked->status === TournamentStatus::Running && array_intersect(array_keys($details), self::DEADLINES) !== [];
+            $this->moderation->log($locked, $actor, 'edited', reason: $deadlinesAhead ? self::DEADLINES_AHEAD : null, details: $details);
             $removed = $this->moderation->removeLocked($locked, $actor, $incompatible, self::GAME_CORRECTED);
 
-            if ($locked->status !== TournamentStatus::Draft) {
+            // The deadlines are not part of the published tournament: a change of only them publishes nothing.
+            if ($locked->status !== TournamentStatus::Draft && array_diff(array_keys($details), self::DEADLINES) !== []) {
                 $this->publisher->republish($locked);
             }
 
@@ -239,6 +252,14 @@ final class TournamentEditor
         if ($tournament->status === TournamentStatus::Signup && (isset($diff['signup_closes_at']) || isset($diff['starts_at']))
             && ($closesAt === null || ! $closesAt->isFuture() || $closesAt->greaterThan($startsAt))) {
             throw new TournamentRuleViolation('deadline', __('Sign-up has to close in the future, at the latest when the tournament starts.'));
+        }
+
+        foreach (TournamentDeadlines::BOUNDS as $field => [$min, $max]) {
+            $value = $changes[$field] ?? null;
+
+            if (isset($diff[$field]) && $value !== null && ($value < $min || $value > $max)) {
+                throw new TournamentRuleViolation('deadline_bounds', __('Keep each deadline within its range, or leave it empty for the league default.'));
+            }
         }
 
         if (isset($diff['capacity']) && ((int) $changes['capacity'] < 2 || (int) $changes['capacity'] > 64)) {

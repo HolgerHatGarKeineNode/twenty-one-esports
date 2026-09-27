@@ -16,6 +16,7 @@ use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -199,7 +200,8 @@ Schedule::command('series:expire-challenges')->everyMinute()->withoutOverlapping
  * Tournaments (P8b): close sign-ups whose deadline passed (the draw commits
  * to the next Bitcoin block), draw once that block is mined, and start the
  * normal matches of every ready tournament match that has none yet (a chess
- * player who was busy in another game gets theirs on a later run).
+ * player who was busy in another game gets theirs on a later run). The
+ * scheduler runs this as the first step of `tournaments:tick`.
  */
 Artisan::command('tournaments:advance', function (TournamentDraws $draws) {
     $done = $draws->advanceDue();
@@ -207,7 +209,19 @@ Artisan::command('tournaments:advance', function (TournamentDraws $draws) {
     $this->info("Closed {$done['closed']} sign-up(s), drew {$done['drawn']} tournament(s).");
 })->purpose('Close tournament sign-ups, draw from the Bitcoin block, start ready matches');
 
-Schedule::command('tournaments:advance')->everyMinute()->withoutOverlapping();
+/*
+ * The tournament clock (P18, TournamentScheduler): `tournaments:advance`,
+ * then the deadlines that are due (no-show forfeit, report overdue to the
+ * admin queue, auto-confirm), each once; ends with the heartbeat the admin
+ * pages check (TournamentScheduler::health()).
+ */
+Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
+    $done = $scheduler->tick();
+
+    $this->info("Closed {$done['closed']} sign-up(s), drew {$done['drawn']} tournament(s), forfeited {$done['forfeited']} no-show(s), moved {$done['overdue']} overdue series to the admin queue, confirmed {$done['confirmed']} unanswered report(s).");
+})->purpose('Move tournaments on and apply their due deadlines');
+
+Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
 
 /*
  * Weekly events (P10): every active weekly slot gets its dated events for the

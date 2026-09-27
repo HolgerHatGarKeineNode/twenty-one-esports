@@ -9,6 +9,7 @@ use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentGames;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
@@ -61,6 +62,27 @@ abstract class TournamentFormatChooser extends Component
     public ?int $directorId = null;
 
     public string $directorError = '';
+
+    /**
+     * The tournament's own deadlines as typed (P18,
+     * pages/admin/partials/tournament-deadlines.blade.php); '' = the league
+     * default ({@see TournamentDeadlines}).
+     */
+    public string $checkinMinutes = '';
+
+    public string $noshowMinutes = '';
+
+    public string $reportHours = '';
+
+    public string $responseMinutes = '';
+
+    /** Form property => tournament column of each deadline. */
+    public const DEADLINE_FIELDS = [
+        'checkinMinutes' => 'checkin_minutes',
+        'noshowMinutes' => 'noshow_minutes',
+        'reportHours' => 'report_hours',
+        'responseMinutes' => 'response_minutes',
+    ];
 
     /**
      * Who directs without being named: the creator of the tournament.
@@ -361,6 +383,40 @@ abstract class TournamentFormatChooser extends Component
     protected function chosenFormatRuns(): bool
     {
         return $this->evaluation->row($this->format)->enabled && in_array($this->window, array_column($this->windows(), 0), true);
+    }
+
+    /**
+     * The rules of the deadline fields: empty, or a whole number in range.
+     *
+     * @return array<string, list<string>>
+     */
+    protected function deadlineRules(): array
+    {
+        $rules = [];
+
+        foreach (self::DEADLINE_FIELDS as $property => $column) {
+            [$min, $max] = TournamentDeadlines::BOUNDS[$column];
+            $rules[$property] = ['nullable', 'integer', "between:{$min},{$max}"];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * The deadlines to store, by column; null = the league default.
+     *
+     * @return array{checkin_minutes: int|null, noshow_minutes: int|null, report_hours: int|null, response_minutes: int|null}
+     */
+    protected function chosenDeadlines(): array
+    {
+        $value = fn (string $typed): ?int => trim($typed) === '' ? null : (int) $typed;
+
+        return [
+            'checkin_minutes' => $value($this->checkinMinutes),
+            'noshow_minutes' => $value($this->noshowMinutes),
+            'report_hours' => $value($this->reportHours),
+            'response_minutes' => $value($this->responseMinutes),
+        ];
     }
 
     /**
