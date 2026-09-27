@@ -107,6 +107,16 @@ test('row 1 fits Tournaments with its sign-up count and room for the LIVE badge 
         }
     }
 
+    // Phones: the Tournaments tab carries the dot, inside its icon's box (a dot past the edge made the label's span scroll).
+    $page = shellPage($admin, 375, 667);
+    // The pages of one test share their cookies: back to English after the German run.
+    $page->goto(ComputeUrl::from(route('locale.switch', 'en', false)));
+    shellOpen($page, '/rules', $problems);
+    $dot = $page->evaluate('() => { const d = document.querySelector("[data-test=tab-tournaments-dot]"); const t = document.querySelector("[data-test=tab-tournaments]"); if (!d || !d.checkVisibility()) return null; const r = d.getBoundingClientRect(); const b = t.getBoundingClientRect(); return { dot: [Math.round(r.width), Math.round(r.height)], inside: r.left >= b.left && r.right <= b.right && r.top >= b.top, name: t.getAttribute("aria-label"), squeezed: ('.SHELL_MEASURE.')().squeezed }; }');
+    fwrite(STDERR, "\n[shell-tournaments] 375 tab dot ".json_encode($dot));
+    expect($dot)->toMatchArray(['dot' => [8, 8], 'inside' => true, 'name' => 'Tournaments, 2 open for sign-up', 'squeezed' => []]);
+    shellShot($page, 'shell-admin-375-tournaments-dot');
+
     fwrite(STDERR, "\n[shell-tournaments] ".json_encode($sizes));
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
