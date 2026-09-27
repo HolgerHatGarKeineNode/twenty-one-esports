@@ -25,6 +25,7 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\Series\CasualMatches;
 use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentRunner;
@@ -67,6 +68,12 @@ final class ChessGameService
 
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
+    /** The refusal for a player whose casual 1v1 (P23) is running. */
+    public static function casualPlaying(): ChessRuleViolation
+    {
+        return new ChessRuleViolation('casual_playing', __('Finish your casual 1v1 first.'));
+    }
+
     /**
      * A rated game comes with the trust gate the league pinned at the pairing
      * (RatedChess, P7d); without one the game is casual.
@@ -91,6 +98,11 @@ final class ChessGameService
             foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new ChessRuleViolation('already_playing', "{$player->id} already plays a live game.");
+                }
+
+                // One live game at a time across games (P23): a running casual 1v1 counts too.
+                if (CasualMatches::runningMatchOf($player) !== null) {
+                    throw self::casualPlaying();
                 }
             }
 

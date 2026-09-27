@@ -33,6 +33,7 @@ enum NotificationKind: string
     case CasualNoShow = 'casual_noshow';
     case CasualReport = 'casual_report';
     case CasualResult = 'casual_result';
+    case CasualOpponentJoined = 'casual_opponent_joined';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -63,7 +64,7 @@ enum NotificationKind: string
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
             self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport => 'challenge',
-            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult => 'confirmed',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -112,6 +113,7 @@ enum NotificationKind: string
             self::CasualNoShow => ['1v1 no-show claimed', 'your opponent says you did not show up; contest it in time'],
             self::CasualReport => ['1v1 result to confirm', 'your opponent reported the result of your casual 1v1'],
             self::CasualResult => ['1v1 result', 'a casual 1v1 of yours ended'],
+            self::CasualOpponentJoined => ['1v1 opponent joined', 'your opponent joined the lobby you shared'],
         };
     }
 

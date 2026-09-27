@@ -11,6 +11,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
+use App\Support\Series\CasualMatches;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -54,6 +55,10 @@ final class ChessInvites
 
         if ($this->games->activeGameOf($inviter) !== null) {
             throw new ChessRuleViolation('already_playing');
+        }
+
+        if (CasualMatches::runningMatchOf($inviter) !== null) {
+            throw ChessGameService::casualPlaying();
         }
 
         $previous = $this->outgoing($inviter);
@@ -156,7 +161,7 @@ final class ChessInvites
 
             $live = $invite->mode !== ChessGame::CORRESPONDENCE;
 
-            if ($live && $this->games->activeGameOf($invite->inviter) !== null) {
+            if ($live && ($this->games->activeGameOf($invite->inviter) !== null || CasualMatches::runningMatchOf($invite->inviter) !== null)) {
                 $invite->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
                 $this->announce($invite);
 
@@ -165,6 +170,10 @@ final class ChessInvites
 
             if ($live && $this->games->activeGameOf($invitee) !== null) {
                 return 'accept_while_playing';
+            }
+
+            if ($live && CasualMatches::runningMatchOf($invitee) !== null) {
+                return 'casual_playing';
             }
 
             // Accepted before the game starts, so the start's withdrawal of

@@ -476,6 +476,8 @@ final class SeriesService
             throw new SeriesRuleViolation('not_captain', __('Only a captain can enter the score.'));
         }
 
+        $this->assertNoCasualClaim($match);
+
         if (! in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true)) {
             throw new SeriesRuleViolation('sheet_closed', __('The score cannot be changed right now.'));
         }
@@ -758,6 +760,8 @@ final class SeriesService
 
         return $this->persist($events, function (array $stored) use ($match, $user, $plan): SeriesReport {
             $updated = SeriesMatch::query()->whereKey($match->id)->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Disputed])
+                // A casual no-show claim that came in meanwhile is answered first (P23).
+                ->where(fn (Builder $query) => $query->whereNull('origin')->orWhereNull('noshow_reported_at'))
                 ->update(['status' => SeriesStatus::Reported, 'new_report_requested_at' => null]);
 
             if ($updated !== 1) {
@@ -801,6 +805,8 @@ final class SeriesService
         if ($side === null) {
             throw new SeriesRuleViolation('not_captain', __('Only a captain can submit the final score.'));
         }
+
+        $this->assertNoCasualClaim($match);
 
         if (! in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true)) {
             throw new SeriesRuleViolation('not_reportable', __('A result cannot be submitted right now.'));
@@ -1120,6 +1126,19 @@ final class SeriesService
         }
     }
 
+    /**
+     * A pending casual no-show claim (P23) is answered by contesting it:
+     * the accused side neither scores nor reports around it.
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function assertNoCasualClaim(SeriesMatch $match): void
+    {
+        if ($match->isCasualPairing() && $match->noshow_reported_at !== null) {
+            throw CasualMatches::refuse('noshow_pending');
+        }
+    }
+
     public static function isDirectorEntered(SeriesMatch $match): bool
     {
         return $match->tournament_match_id !== null
@@ -1385,6 +1404,11 @@ final class SeriesService
      */
     public static function isDecidable(SeriesMatch $match): bool
     {
+        // A casual 1v1 (P23) runs on the players and its clock; an admin steps in only once it is disputed.
+        if ($match->isCasualPairing()) {
+            return $match->status === SeriesStatus::Disputed;
+        }
+
         return self::isOpenCase($match)
             || $match->status === SeriesStatus::Reported
             || ($match->status === SeriesStatus::Accepted && $match->tournament_match_id !== null && ! self::isDirectorEntered($match));

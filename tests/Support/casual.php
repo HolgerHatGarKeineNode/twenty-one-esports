@@ -11,6 +11,7 @@ use App\Enums\SeriesStatus;
 use App\Events\UserNotified;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Chess\ChessRuleViolation;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\CasualQueue;
 use App\Support\Series\SeriesRuleViolation;
@@ -80,4 +81,16 @@ function casualAlerts(): array
 function casualSideOf(SeriesMatch $match, User $user): string
 {
     return $match->isRosterSideMember('challenger', $user) ? 'challenger' : 'challenged';
+}
+
+/** The `reason` of the ChessRuleViolation the action throws, null if none. */
+function casualChessRefusal(Closure $action): ?string
+{
+    try {
+        $action();
+    } catch (ChessRuleViolation $refused) {
+        return $refused->reason;
+    }
+
+    return null;
 }

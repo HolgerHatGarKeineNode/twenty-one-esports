@@ -7,6 +7,7 @@ use App\Events\SeriesMatchChanged;
 use App\Events\UserNotified;
 use App\Jobs\PublishNostrEvent;
 use App\Jobs\SendNostrDm;
+use App\Models\Admin;
 use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
@@ -228,4 +229,62 @@ test('a casual no-show claim never reaches the admin queue, while a series no-sh
 
     expect(SeriesMatch::query()->openCase()->pluck('id')->all())->toBe([$series->id])
         ->and($match->refresh()->resolution)->toBe(SeriesResolution::Forfeit);
+});
+
+test('a pending no-show claim is answered by contesting it, not by scoring or reporting around it', function () {
+    [$match, $host, $guest] = casualStarted();
+    $matches = app(CasualMatches::class);
+    $series = app(SeriesService::class);
+
+    // The reviewer's repro: the guest claims, the accused host reports a win instead of contesting.
+    $this->travel(5)->minutes();
+    $matches->claimNoShow($match, $guest);
+
+    expect(casualRefusal(fn () => $series->saveLiveGame($match, $host, 0, 3, 0, null)))->toBe('noshow_pending')
+        ->and(casualRefusal(fn () => $series->report($match, $host, [])))->toBe('noshow_pending')
+        ->and($match->refresh()->status)->toBe(SeriesStatus::Accepted)
+        ->and($match->live_games)->toBeNull();
+
+    $matches->contestNoShow($match, $host);
+    $series->saveLiveGame($match, $host, 0, 3, 0, null);
+    $series->report($match, $host, []);
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Reported);
+});
+
+test('an admin decides a casual match only once it is disputed', function () {
+    [$match, $host, $guest] = casualStarted();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $series = app(SeriesService::class);
+
+    $series->saveLiveGame($match, $guest, 0, 2, 1, null);
+    $series->report($match, $guest, []);
+
+    expect(SeriesService::isDecidable($match->refresh()))->toBeFalse()
+        ->and(casualRefusal(fn () => $series->decide($match, $admin, ['type' => 'void'], 'Not needed.')))->toBe('not_open_case');
+
+    $series->respond($match, $host, 'disputed', 'The score was 1:2.', []);
+
+    expect(SeriesService::isDecidable($match->refresh()))->toBeTrue();
+
+    $series->decide($match, $admin, ['type' => 'void'], 'Both sides disagree on the score.');
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Resolved)
+        ->and($match->resolution)->toBe(SeriesResolution::Void);
+});
+
+test('the host hears when the guest joined the lobby, in the app only by default', function () {
+    Event::fake([UserNotified::class]);
+    Queue::fake([SendNostrDm::class, PublishNostrEvent::class]);
+    config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
+    [$match, $host, $guest] = casualStarted();
+    $matches = app(CasualMatches::class);
+
+    $matches->shareLobby($match, $host);
+    $matches->markJoined($match, $guest);
+
+    expect(casualAlerts())->toContain([$host->id, 'casual_opponent_joined'])
+        ->and(casualAlerts())->not->toContain([$guest->id, 'casual_opponent_joined'])
+        ->and(Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($host))->count())->toBe(0);
 });

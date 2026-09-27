@@ -6,6 +6,7 @@ use App\Enums\SeriesStatus;
 use App\Events\ChessGameStarted;
 use App\Events\SeriesMatchChanged;
 use App\Events\UserNotified;
+use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
@@ -228,4 +229,42 @@ test('a daily chess game leaves the casual queue and invites alone', function ()
 
     expect(SeriesQueueEntry::query()->count())->toBe(1)
         ->and($sent->refresh()->status)->toBe(ChessInviteStatus::Pending);
+});
+
+test('a player in a running casual 1v1 starts no live chess game', function () {
+    Event::fake([ChessGameStarted::class]);
+    [$match, $host, $guest] = casualStarted();
+    $other = User::factory()->create(['looking_to_play' => 'chess/blitz']);
+    $host->forceFill(['looking_to_play' => 'chess/blitz'])->save();
+
+    // The reviewer's repro: someone waits in the blitz queue, the casual player joins it.
+    app(ChessQueue::class)->join($other);
+    $chessInvites = app(ChessInvites::class);
+
+    expect(casualChessRefusal(fn () => app(ChessQueue::class)->join($host)))->toBe('casual_playing')
+        ->and(casualChessRefusal(fn () => $chessInvites->invite($guest, $other)))->toBe('casual_playing')
+        ->and(casualChessRefusal(fn () => $chessInvites->accept($chessInvites->invite($other, $host), $host)))->toBe('casual_playing')
+        ->and(casualChessRefusal(fn () => app(ChessGameService::class)->start($other, $guest, 'blitz')))->toBe('casual_playing')
+        ->and(ChessGame::query()->count())->toBe(0);
+
+    // A daily game is no live game: it may start.
+    expect(app(ChessGameService::class)->start($other, $guest, 'correspondence'))->toBeInstanceOf(ChessGame::class);
+});
+
+test('a casual pairing takes both players out of the blitz queue, and a blitz search skips a player in a casual 1v1', function () {
+    Event::fake([ChessGameStarted::class]);
+    [$anna, $bert] = User::factory()->count(2)->create(['looking_to_play' => 'rocket-league/1v1']);
+    ChessQueueEntry::query()->create(['user_id' => $anna->id, 'mode' => 'blitz', 'rated' => false, 'rating' => 1000, 'joined_at' => now()]);
+
+    $invites = app(CasualInvites::class);
+    $invites->accept($invites->invite($bert, $anna, 'rocket-league', Platform::Pc, true), $anna, Platform::Pc, true);
+
+    expect(ChessQueueEntry::query()->where('user_id', $anna->id)->exists())->toBeFalse();
+
+    // A stale blitz entry of a casual player (written around the pairing) is dropped, never paired.
+    ChessQueueEntry::query()->create(['user_id' => $anna->id, 'mode' => 'blitz', 'rated' => false, 'rating' => 1000, 'joined_at' => now()->subMinute()]);
+
+    expect(app(ChessQueue::class)->join(User::factory()->create()))->toBeNull()
+        ->and(ChessQueueEntry::query()->where('user_id', $anna->id)->exists())->toBeFalse()
+        ->and(ChessGame::query()->count())->toBe(0);
 });

@@ -3767,5 +3767,10 @@
     "A no-show can be claimed only after your opponent missed their deadline.": "Ein Nichterscheinen kannst du erst melden, wenn dein Gegner seine Frist verpasst hat.",
     "There is no no-show claim to contest.": "Es gibt keine Meldung eines Nichterscheinens, der du widersprechen kannst.",
     "The time to contest has run out.": "Die Zeit zum Widersprechen ist abgelaufen.",
-    "Casual 1v1 matches share the lobby in the match chat, and no-shows go by their own deadlines.": "Casual-1v1-Matches teilen die Lobby im Match-Chat, und für Nichterscheinen gelten eigene Fristen."
+    "Casual 1v1 matches share the lobby in the match chat, and no-shows go by their own deadlines.": "Casual-1v1-Matches teilen die Lobby im Match-Chat, und für Nichterscheinen gelten eigene Fristen.",
+    "Finish your casual 1v1 first.": "Beende zuerst dein Casual-1v1.",
+    "1v1 opponent joined": "1v1-Gegner beigetreten",
+    "your opponent joined the lobby you shared": "dein Gegner ist der Lobby beigetreten, die du geteilt hast",
+    ":name joined your lobby": ":name ist deiner Lobby beigetreten",
+    "Match :number: start the game.": "Match :number: Starte das Spiel."
 }

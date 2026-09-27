@@ -7,6 +7,7 @@ use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Events\SeriesMatchChanged;
 use App\Games\GameRegistry;
+use App\Models\ChessQueueEntry;
 use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
 use App\Models\User;
@@ -122,6 +123,16 @@ final class CasualMatches
      */
     public function activeMatchOf(User $user): ?SeriesMatch
     {
+        return self::runningMatchOf($user);
+    }
+
+    /**
+     * {@see activeMatchOf()} for the chess side, which cannot take this
+     * class as a dependency (it depends on ChessGameService): a player in a
+     * running casual 1v1 starts no live chess game (`casual_playing`).
+     */
+    public static function runningMatchOf(User $user): ?SeriesMatch
+    {
         return self::playedBy(SeriesMatch::query()->whereNotNull('origin'), $user)
             ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported])
             ->latest('id')
@@ -219,6 +230,9 @@ final class CasualMatches
                 'queue' => $choices,
             ],
         ]);
+
+        // One intent at a time: a paired player stops searching blitz.
+        ChessQueueEntry::query()->whereIn('user_id', [$challenger->id, $challenged->id])->delete();
 
         $this->notifications->matchFound($match);
         $this->announce($match);
@@ -344,6 +358,7 @@ final class CasualMatches
             throw self::refuse($match->noshow_reported_at !== null ? 'noshow_pending' : 'changed');
         }
 
+        $this->notifications->opponentJoined($match);
         $this->announce($match);
 
         return $match;

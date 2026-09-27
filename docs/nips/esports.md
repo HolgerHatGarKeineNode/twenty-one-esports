@@ -2712,8 +2712,9 @@ deadlines for the lobby, joining, no-shows, the report and its answer. Casual ga
 match-flow events ("Game registry"), so none of this is on Nostr except the notifications, which are
 ordinary notification DMs as above:
 
-- **Opponent found** (ready check), **1v1 invite**, **lobby shared**, **no-show claimed against
-  you**, **result to confirm** and **result**, each its own opt-in type.
+- **Opponent found** (ready check), **1v1 invite**, **lobby shared**, **opponent joined** (to the
+  host), **no-show claimed against you**, **result to confirm** and **result**, each its own opt-in
+  type.
 - By default only **no-show claimed** and **result to confirm** go out as a DM: both run on a
   deadline an offline player has to act on (five and thirty minutes by default).
 - **Never the lobby.** The DM says that the lobby was shared, never its name, password or an EA ID;

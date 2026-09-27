@@ -449,6 +449,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
                 'rated_not_open', 'not_looking' => $violation->getMessage(),
+                'casual_playing' => __('Finish your casual 1v1 first.'),
                 'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };

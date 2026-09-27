@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Collection;
  * - casual_match_found: the queue or an invite paired you, press Ready
  * - casual_invite: a player invites you
  * - casual_lobby_shared: the host shared the lobby, join it
+ * - casual_opponent_joined: the guest joined the lobby the host shared
  * - casual_noshow: the opponent claims you did not show, contest in time
  * - casual_report: the opponent reported the result, confirm or dispute
  * - casual_result: the match ended (confirmed, decided, forfeit, void)
@@ -80,6 +81,22 @@ final class CasualNotifications
                 route('matches.room', $match),
                 $match->number,
                 __('Join', [], $locale),
+            ));
+        }
+    }
+
+    public function opponentJoined(SeriesMatch $match): void
+    {
+        $host = $match->host_side === 'challenged' ? 'challenged' : 'challenger';
+
+        foreach ($this->players($match, $host) as $player) {
+            $locale = $this->locale($player);
+
+            $this->notifier->send($player, NotificationKind::CasualOpponentJoined, new Notice(
+                __(':name joined your lobby', ['name' => $match->sideName(SeriesMatch::otherSide($host))], $locale),
+                __('Match :number: start the game.', ['number' => $match->label()], $locale),
+                route('matches.room', $match),
+                $match->number,
             ));
         }
     }

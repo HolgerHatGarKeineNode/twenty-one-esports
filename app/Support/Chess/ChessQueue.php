@@ -8,6 +8,7 @@ use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
+use App\Support\Series\CasualMatches;
 use Carbon\CarbonInterface;
 
 /**
@@ -43,6 +44,10 @@ final class ChessQueue
     {
         if ($this->games->activeGameOf($user) !== null) {
             throw new ChessRuleViolation('already_playing');
+        }
+
+        if (CasualMatches::runningMatchOf($user) !== null) {
+            throw ChessGameService::casualPlaying();
         }
 
         // Rated (P7d): only while the season is live, trust ranks exist and the player is Trusted.
@@ -163,6 +168,13 @@ final class ChessQueue
                 ->get();
 
             foreach ($candidates as $candidate) {
+                // In a casual 1v1 by now (P23): that player stops searching blitz.
+                if (CasualMatches::runningMatchOf($candidate->user) !== null) {
+                    $candidate->delete();
+
+                    continue;
+                }
+
                 $distance = abs($entry->rating - $candidate->rating);
 
                 if ($distance > min($this->range($entry, $now), $this->range($candidate, $now))) {
