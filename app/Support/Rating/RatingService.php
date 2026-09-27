@@ -91,6 +91,12 @@ final class RatingService
             return false;
         }
 
+        // A tournament match is rated on the tournament's frozen ladder only, never on a later one
+        // (NIP "Tournaments": "A match is never rated on any other ladder").
+        if ($match->rated && $match->tournament_match_id !== null && $match->ladder_address !== Ladders::address($match->game, $match->mode)) {
+            return false;
+        }
+
         return $this->apply(
             (bool) $match->rated, $match->game, $match->mode,
             self::entity($subjects['challenger'], $match->challenger_lineup_id),

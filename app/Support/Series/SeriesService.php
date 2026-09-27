@@ -1108,8 +1108,11 @@ final class SeriesService
         }
 
         $clanIds = array_filter([$match->challengerLineup?->clan_id, $match->challengedLineup?->clan_id]);
+        // A side without a lineup (a tournament's RL 1v1 player) counts with its player's clan at the pairing.
+        $ownClan = $admin->clanMember !== null && (in_array($admin->clanMember->clan_id, $clanIds, true)
+            || in_array($admin->clanMember->clan->address(), array_values($match->clans_at_accept ?? []), true));
 
-        if ($admin->clanMember !== null && in_array($admin->clanMember->clan_id, $clanIds, true)) {
+        if ($ownClan) {
             throw new SeriesRuleViolation('own_clan', __('You cannot decide a case involving your own clan.'));
         }
 

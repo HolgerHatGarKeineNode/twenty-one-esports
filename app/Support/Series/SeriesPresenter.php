@@ -220,15 +220,22 @@ final class SeriesPresenter
         }
 
         $report = $match->latestReport;
+        // A tournament pairing has no answer (NIP rev. 8.1): the pairing is the accept.
+        $accepted = $match->tournament_match_id !== null
+            ? [__('Accepted'), __('by the league\'s pairing')]
+            : [__('Accepted'), $event($match->answerEvent, '2151', __('waiting for the answer'))];
 
         return [
             [__('Challenge'), $event($match->challengeEvent, '2150', '–')],
-            [__('Accepted'), $event($match->answerEvent, '2151', __('waiting for the answer'))],
+            $accepted,
             [__('Result report'), $event($report?->event, '2152', __('once submitted'))],
             [__('Result response'), $event($report?->responseEvent, '2153', __('waiting for the other captain'))],
             [__('League record'), __('pending · kind 2154')],
-            [__(':clan lineup', ['clan' => $match->challenger_name]), $lineup($match->challenger_lineup_address)],
-            [__(':clan lineup', ['clan' => $match->challenged_name]), $lineup($match->challenged_lineup_address)],
+            // A 1v1 player side has no lineup (rev. 7.1).
+            ...array_values(array_filter([
+                $match->challenger_lineup_address === '' ? null : [__(':clan lineup', ['clan' => $match->challenger_name]), $lineup($match->challenger_lineup_address)],
+                $match->challenged_lineup_address === '' ? null : [__(':clan lineup', ['clan' => $match->challenged_name]), $lineup($match->challenged_lineup_address)],
+            ])),
         ];
     }
 

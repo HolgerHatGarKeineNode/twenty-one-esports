@@ -72,7 +72,8 @@ final class SeasonChains
         $live = Seasons::live();
         $ladder = Ladders::address($match->game, $match->mode);
 
-        if ($live === null || $ladder === null) {
+        // A tournament match belongs to the tournament's frozen ladder only (NIP "Tournaments").
+        if ($live === null || $ladder === null || ($match->tournament_match_id !== null && $match->ladder_address !== $ladder)) {
             return null;
         }
 
@@ -614,12 +615,19 @@ final class SeasonChains
 
         $subjects = self::subjects($match);
         $entities = [];
+        // A player subject (`user:<id>`) is named by its pubkey, as on a player ladder: the one the
+        // counted roster or the pin recorded, so a deleted account keeps its entity (F3 class).
+        $pubkeys = [];
+        $pinnedSides = GatePin::fromArray($match->gate_at_accept)->sides ?? [];
+
+        foreach ([...($pinnedSides['challenger'] ?? []), ...($pinnedSides['challenged'] ?? []), ...$this->roster($match)] as $entry) {
+            $pubkeys[(int) $entry['user_id']] = (string) $entry['pubkey'];
+        }
 
         foreach (['challenger' => $match->challenger_lineup_address, 'challenged' => $match->challenged_lineup_address] as $side => $address) {
-            // A player subject (`user:<id>`) is named by its pubkey, as on a player ladder.
-            $entities[$subjects[$side]] = str_starts_with($subjects[$side], 'user:')
-                ? (string) User::query()->whereKey((int) substr($subjects[$side], 5))->value('pubkey')
-                : $address;
+            $userId = str_starts_with($subjects[$side], 'user:') ? (int) substr($subjects[$side], 5) : null;
+            $entities[$subjects[$side]] = $userId === null ? $address
+                : ($pubkeys[$userId] ?? (string) User::query()->whereKey($userId)->value('pubkey'));
         }
         $changes = RatingChange::query()->with('rating')->where('source', RatingChange::SERIES)->where('source_id', $match->id)->orderBy('id')->get();
 

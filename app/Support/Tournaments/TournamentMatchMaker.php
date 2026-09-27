@@ -20,7 +20,9 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\RatedChess;
 use App\Support\SeasonChain\GatePin;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\Series\SeriesEvents;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -36,12 +38,23 @@ use Illuminate\Support\Facades\DB;
  * league-made pairing skips the mutual opponent listing, not the rank (NIP
  * "Trust", item 4). Otherwise it is casual and moves the casual Elo.
  *
- * Limits of this phase, stated in the report: a Rocket League series of a
- * tournament where the players report results is always casual (its rated
- * form needs the captains' signed 2150/2151, which the room does not ask for
- * yet); a series with a roster side (a mix team, an RL 1v1 player) is
- * unrated (NIP: mix teams are unrated). In director mode a series is rated
- * when the gate passes: its result is the league's (resolution `admin`).
+ * A Rocket League series is rated under the same gate in both results
+ * modes; a mix team (a roster side of several players) is never rated (NIP:
+ * mix teams are unrated), an RL 1v1 player is (rev. 7.1, a player ladder).
+ * The rated subjects are pinned at the pairing (`rated_subjects`,
+ * `gate_at_accept`, `clans_at_accept`), so a lineup or an account gone
+ * later is still rated (security gate F3).
+ *
+ * - Director mode: the result is the league's (resolution `admin`), entered
+ *   by a disinterested director (TournamentInterest); nothing is signed.
+ * - Players mode (NIP rev. 8.1): the league key signs the challenge (2150,
+ *   `pairing` `tournament`) at the pairing, the players' sign-up consent
+ *   (22150) being their agreement; no answer follows. The captains then
+ *   report (2152) and the other side confirms (2153) as in a ladder series,
+ *   and a dispute goes to an admin. A pairing whose two sides share a clan
+ *   stays casual (NIP state machine: a challenge needs different clans; the
+ *   confirmation would come from the same party). Without the league key or
+ *   the tournament's address no challenge can be signed: casual.
  *
  * Chess in director mode is played over the board: no game is started; the
  * finished game record is written when the round closes (TournamentRunner).
@@ -183,11 +196,19 @@ final class TournamentMatchMaker
         // The number is recorded for a player who still has an account (a mix team can lose some).
         $numberOwner = User::query()->whereIn('id', [...$a->memberIds(), ...$b->memberIds()])->orderBy('id')->value('id')
             ?? throw new TournamentRuleViolation('no_players', "Tournament match {$match->id} has no player with an account left.");
-        // Rated only in director mode for now: a rated series reported by the players needs the
-        // captains' signed 2150/2151 in the room (P8c). RL 1v1 entries are rated as players.
+        // RL 1v1 entries are rated as players (rev. 7.1), team modes as lineups; a mix team never.
         $players = $this->singlePlayers($tournament, $a, $b, $lineups);
-        $pin = ! $tournament->isDirectorMode() ? null
-            : ($players === null ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : $this->playersPin($tournament, $players[0], $players[1], $lineups));
+        $pin = $players === null ? $this->seriesPin($tournament, $lineups[0], $lineups[1]) : $this->playersPin($tournament, $players[0], $players[1], $lineups);
+        $clans = $pin === null ? null : ($players === null ? $this->clans($lineups[0], $lineups[1]) : RatedChess::clans($players[0], $players[1]));
+        // Players mode signs a league challenge (rev. 8.1); it needs the league key, the published
+        // tournament and two sides of different clans. Otherwise the pairing is casual.
+        $league = $pin !== null && ! $tournament->isDirectorMode() ? LeagueKey::fromConfig() : null;
+
+        if (! $tournament->isDirectorMode() && ($league === null || $tournament->address() === null || self::sharesClan($clans ?? [], $players, $lineups))) {
+            $pin = null;
+            $clans = null;
+        }
+
         $now = now();
 
         $sides = [];
@@ -198,7 +219,7 @@ final class TournamentMatchMaker
             }
         }
 
-        return SeriesMatch::query()->create([
+        $series = SeriesMatch::query()->create([
             'number' => MatchNumber::query()->create(['user_id' => $numberOwner, 'used_at' => $now])->id,
             'game' => $tournament->game,
             'mode' => $tournament->mode,
@@ -218,7 +239,7 @@ final class TournamentMatchMaker
             'respond_by' => $now,
             'start_at' => $now,
             'answered_at' => $now,
-            'clans_at_accept' => $pin === null ? null : ($players === null ? $this->clans($lineups[0], $lineups[1]) : RatedChess::clans($players[0], $players[1])),
+            'clans_at_accept' => $clans,
             'gate_at_accept' => $pin?->toArray(),
             'rated_subjects' => match (true) {
                 $pin === null => null,
@@ -228,6 +249,37 @@ final class TournamentMatchMaker
             'tournament_match_id' => $match->id,
             'sides' => $sides === [] ? null : $sides,
         ]);
+
+        if ($league !== null && $pin !== null) {
+            $template = SeriesEvents::tournamentChallenge($series, $tournament, [
+                'challenger' => $lineups[0] === null && $players !== null ? $players[0]->pubkey : null,
+                'challenged' => $lineups[1] === null && $players !== null ? $players[1]->pubkey : null,
+            ], array_values(array_filter([$lineups[0]?->clan->owner_pubkey, $lineups[1]?->clan->owner_pubkey])), $now->getTimestamp());
+            $event = $league->publish($template['kind'], $template['tags'], $template['content'], $template['created_at']);
+            $series->forceFill(['challenge_event_id' => $event->id])->save();
+        }
+
+        return $series;
+    }
+
+    /**
+     * Whether a player of one side was, at the pairing, in the clan of a
+     * player of the other (or of the other side's lineup).
+     *
+     * @param  array<string, string>  $clans  pubkey => clan address at the pairing
+     * @param  array{0: User, 1: User}|null  $players
+     * @param  array{0: Lineup|null, 1: Lineup|null}  $lineups
+     */
+    private static function sharesClan(array $clans, ?array $players, array $lineups): bool
+    {
+        $sideClans = [];
+
+        foreach ([0, 1] as $index) {
+            $pubkeys = $players !== null ? [$players[$index]->pubkey] : array_map(fn (LineupSeat $seat): string => $seat->user->pubkey, $lineups[$index]?->activeSeats() ?? []);
+            $sideClans[$index] = array_filter([$lineups[$index]?->clan->address(), ...array_map(fn (string $pubkey): ?string => $clans[$pubkey] ?? null, $pubkeys)]);
+        }
+
+        return array_intersect($sideClans[0], $sideClans[1]) !== [];
     }
 
     /**

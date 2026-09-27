@@ -144,7 +144,7 @@ test('publishing freezes the open ladder, says whether matches are rated, and li
         ->and($ratedEvent['tags'])->toContain(['a', $rated->ladder_address, ''])
         ->and($ratedEvent['content'])->toContain('rated on the ladder')
         ->and(collect($ratedEvent['tags'])->where(0, 'D')->pluck(1)->values()->all())->toBe([(string) intdiv($rated->starts_at->getTimestamp(), 86400), (string) (intdiv($rated->starts_at->getTimestamp(), 86400) + 1)])
-        ->and($rl->event->payload()['content'])->toContain('casual for now');
+        ->and($rl->event->payload()['content'])->toContain('the league signs the pairing, and the rating counts once the other side confirms')->not->toContain('not rated yet');
 });
 
 test('a tournament published before Block 0 stays unrated, even once a ladder opens', function () {

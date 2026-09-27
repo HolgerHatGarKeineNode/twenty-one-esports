@@ -4,6 +4,7 @@ namespace App\Support\Series;
 
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 
 /**
  * The unsigned match-flow events of a RATED series (docs/nips/esports.md,
@@ -54,6 +55,62 @@ final class SeriesEvents
         $tags[] = ['alt', "Esports challenge: match #{$match->number}, best of {$match->best_of}, {$match->game} {$match->mode}"];
 
         return self::template(self::CHALLENGE, $tags, (string) $match->message);
+    }
+
+    /**
+     * The challenge of a rated tournament pairing whose players report the
+     * results (NIP rev. 8.1, "Tournament pairings"): signed by the LEAGUE
+     * key, because the league made the pairing and the sign-up consent
+     * (22150) is each side's agreement to play it. `pairing` `tournament`,
+     * the tournament `a`, one `start` at the pairing and no `respond_by`:
+     * no answer (2151) follows, the pairing is the accept. Report and
+     * response reference it by `e` like any challenge.
+     *
+     * A lineup side is its lineup `a` with its role; a player side (RL 1v1,
+     * rev. 7.1) is `["p", pubkey, "", side]`. The clan owners of lineup sides
+     * get a plain `p`, so their clients can subscribe with `#p`.
+     *
+     * @param  array{challenger: string|null, challenged: string|null}  $playerSides  pubkey of each player side, null for a lineup side
+     * @param  list<string>  $notify  pubkeys of the lineup sides' clan owners
+     * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
+     */
+    public static function tournamentChallenge(SeriesMatch $match, Tournament $tournament, array $playerSides, array $notify, int $pairedAt): array
+    {
+        $tags = [...self::pairedSides($match, $playerSides), ['a', (string) $match->ladder_address, ''], ['a', (string) $tournament->address(), '']];
+
+        if ($tournament->drawEvent !== null) {
+            $tags[] = ['e', $tournament->drawEvent->event_id, '', $tournament->drawEvent->pubkey];
+        }
+
+        foreach (array_values(array_unique(array_diff($notify, array_filter($playerSides)))) as $pubkey) {
+            $tags[] = ['p', $pubkey];
+        }
+
+        $tags[] = ['pairing', 'tournament'];
+        $tags[] = ['bo', (string) $match->best_of];
+        $tags[] = ['start', (string) $pairedAt];
+        $tags[] = ['match', (string) $match->number];
+        $tags[] = ['alt', "Esports tournament pairing: match #{$match->number}, best of {$match->best_of}, {$match->game} {$match->mode}, {$tournament->name}"];
+
+        return self::template(self::CHALLENGE, $tags, '', $pairedAt);
+    }
+
+    /**
+     * The two sides of a tournament pairing: a lineup `a` with its role, or
+     * a 1v1 player side's `p` with its side.
+     *
+     * @param  array{challenger: string|null, challenged: string|null}  $playerSides
+     * @return list<list<string>>
+     */
+    private static function pairedSides(SeriesMatch $match, array $playerSides): array
+    {
+        $tags = [];
+
+        foreach (['challenger' => $match->challenger_lineup_address, 'challenged' => $match->challenged_lineup_address] as $side => $address) {
+            $tags[] = $address !== '' ? ['a', $address, '', $side] : ['p', (string) $playerSides[$side], '', $side];
+        }
+
+        return $tags;
     }
 
     /**
@@ -132,26 +189,38 @@ final class SeriesEvents
     }
 
     /**
-     * The three `a` references every event after the challenge copies
-     * (both lineups and the ladder, without roles).
+     * The `a` references every event after the challenge copies, without
+     * roles: the lineups (a 1v1 player side has none, rev. 7.1), the ladder,
+     * and the tournament of a tournament pairing (rev. 4).
      *
      * @return list<list<string>>
      */
     private static function references(SeriesMatch $match): array
     {
-        return [
-            ['a', $match->challenger_lineup_address, ''],
-            ['a', $match->challenged_lineup_address, ''],
-            ['a', (string) $match->ladder_address, ''],
-        ];
+        $references = [];
+
+        foreach ([$match->challenger_lineup_address, $match->challenged_lineup_address] as $address) {
+            if ($address !== '') {
+                $references[] = ['a', $address, ''];
+            }
+        }
+
+        $references[] = ['a', (string) $match->ladder_address, ''];
+        $tournament = $match->tournament_match_id === null ? null : $match->tournamentMatch?->tournament?->address();
+
+        if ($tournament !== null) {
+            $references[] = ['a', $tournament, ''];
+        }
+
+        return $references;
     }
 
     /**
      * @param  list<list<string>>  $tags
      * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
      */
-    private static function template(int $kind, array $tags, string $content): array
+    private static function template(int $kind, array $tags, string $content, ?int $createdAt = null): array
     {
-        return ['kind' => $kind, 'tags' => $tags, 'content' => $content, 'created_at' => now()->getTimestamp()];
+        return ['kind' => $kind, 'tags' => $tags, 'content' => $content, 'created_at' => $createdAt ?? now()->getTimestamp()];
     }
 }

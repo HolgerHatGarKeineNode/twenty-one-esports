@@ -336,7 +336,7 @@ final class EsportsEventRules
 
         $mode = $ladder === null ? null : $this->ladderMode($ladder);
 
-        if ($mode === null || count($event->tagsNamed('e')) !== 1 || count($event->tagsNamed('a')) !== 3) {
+        if ($mode === null || count($event->tagsNamed('e')) !== 1 || ! self::copiedReferences($event)) {
             return 'report_references';
         }
 
@@ -404,7 +404,7 @@ final class EsportsEventRules
 
     /**
      * Rule 14, structure: `e` report and `e` challenge, a known `status`,
-     * three `a` references.
+     * the `a` references of the challenge.
      */
     private function response(SignedEvent $event): ?string
     {
@@ -412,7 +412,34 @@ final class EsportsEventRules
             return 'response_status';
         }
 
-        return count($event->tagsNamed('a')) === 3 ? null : 'response_a';
+        return self::copiedReferences($event) ? null : 'response_a';
+    }
+
+    /**
+     * The `a` references a report or response copies from its challenge
+     * (rules 13 and 14): exactly one ladder, one or two lineups (a 1v1
+     * player side has none, rev. 7.1), at most one tournament (rev. 4), all
+     * without role, and nothing else. A ladder series has three; a
+     * tournament pairing adds the tournament, and a player side (only in a
+     * tournament) drops its lineup.
+     */
+    private static function copiedReferences(SignedEvent $event): bool
+    {
+        $counts = [Ladders::KIND => 0, Lineup::KIND => 0, Tournament::CALENDAR_EVENT => 0];
+
+        foreach ($event->tagsNamed('a') as $a) {
+            $kind = (int) explode(':', $a[0] ?? '', 2)[0];
+
+            if (! isset($counts[$kind]) || ($a[2] ?? '') !== '') {
+                return false;
+            }
+
+            $counts[$kind]++;
+        }
+
+        return $counts[Ladders::KIND] === 1 && $counts[Lineup::KIND] <= 2 && $counts[Tournament::CALENDAR_EVENT] <= 1
+            // A side without a lineup exists only in a tournament.
+            && ($counts[Lineup::KIND] === 2 || $counts[Tournament::CALENDAR_EVENT] === 1);
     }
 
     /**

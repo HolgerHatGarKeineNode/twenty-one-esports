@@ -154,7 +154,7 @@ final class TournamentPublisher
             : 'Players report results and the other side accepts them.';
         $lines[] = match (true) {
             $tournament->ladder_address === null => 'The matches are unrated: no ladder was open when the tournament was published, so they are casual for its whole run.',
-            ! $profile->isChess() && ! $tournament->isDirectorMode() => 'The matches are casual for now: Rocket League series reported by the players are not rated yet.',
+            ! $profile->isChess() && ! $tournament->isDirectorMode() => 'A series is rated on the ladder named here if, at its pairing, that ladder is open, the trust gate passes and the two sides are not of one clan; the league signs the pairing, and the rating counts once the other side confirms the result or an admin decides a dispute. Mix teams play casual.',
             default => 'Matches are rated on the ladder named here while it is open and the trust gate passes; otherwise casual.',
         };
         $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';

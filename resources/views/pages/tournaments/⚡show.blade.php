@@ -213,7 +213,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         [__('Rated'), match (true) {
             $tournament->status === TournamentStatus::Draft => __('decided when it is published'),
             $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
-            ! $profile->isChess() && ! $tournament->isDirectorMode() => __('not yet: series reported by the players are casual for now'),
+            ! $profile->isChess() && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
             default => __('yes, on its ladder while that is open and the trust gate passes'),
         }],
         [__('Season chain'), __('separate: tournament matches never mine season blocks')],
