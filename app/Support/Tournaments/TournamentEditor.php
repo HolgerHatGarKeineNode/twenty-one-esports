@@ -65,6 +65,14 @@ final class TournamentEditor
     /** Fields that may still change after the draw. */
     public const AFTER_DRAW = ['name', 'description', 'starts_at', ...self::DEADLINES];
 
+    /**
+     * Fields an organizer or admin may change on a casual cup (P25): its
+     * game, mode, format, series lengths, capacity, name (its number),
+     * results mode and times belong to the league's cup series and keep it
+     * casual, so nothing else changes.
+     */
+    public const CUP_EDITABLE = ['description', 'director_ids', ...self::DEADLINES];
+
     /** The tournament's own deadlines (P18); null = the league default. */
     public const DEADLINES = ['checkin_minutes', 'noshow_minutes', 'report_hours', 'response_minutes'];
 
@@ -216,6 +224,10 @@ final class TournamentEditor
     {
         if (in_array($tournament->status, [TournamentStatus::Finished, TournamentStatus::Cancelled], true)) {
             throw new TournamentRuleViolation('ended', __('This tournament has ended; it can no longer be changed.'));
+        }
+
+        if ($tournament->isCasualCup() && array_diff(array_keys($diff), self::CUP_EDITABLE) !== []) {
+            throw new TournamentRuleViolation('casual_cup', __('This is one of the league\'s casual cups: its game, format, places, name and schedule are set by the league and stay casual. Only the description, the directors and the deadlines can change.'));
         }
 
         if (! $tournament->isBeforeDraw() && array_diff(array_keys($diff), self::AFTER_DRAW) !== []) {

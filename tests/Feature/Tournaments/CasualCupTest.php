@@ -4,6 +4,7 @@ use App\Enums\ChessGameStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\NostrEvent;
@@ -21,6 +22,8 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentDraws;
+use App\Support\Tournaments\TournamentEditor;
+use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
 use Carbon\CarbonImmutable;
@@ -166,6 +169,31 @@ test('the next cup opens a day after the last final, and a called-off cup gives 
         ->and(Tournament::query()->where('cup_series', 'chess')->count())->toBe(3);
 });
 
+test('an admin edit never changes what makes a cup: game, mode, format, capacity, name or rating stay; the description may change', function (array $change) {
+    cupTick();
+    $cup = openCup();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $before = $cup->only(['name', 'game', 'mode', 'format', 'capacity', 'ladder_address', 'cup_number', 'options', 'results_mode']);
+    $editor = app(TournamentEditor::class);
+
+    expect(fn () => $editor->update($cup, $admin, $change))->toThrow(fn (TournamentRuleViolation $violation) => expect($violation->reason)->toBe('casual_cup'))
+        ->and($cup->refresh()->only(array_keys($before)))->toBe($before);
+
+    $editor->update($cup, $admin, ['description' => 'Bring a clock.']);
+
+    expect($cup->refresh()->description)->toBe('Bring a clock.')
+        ->and($cup->ladder_address)->toBeNull();
+})->with([
+    'game and mode' => [['game' => 'rocket-league', 'mode' => '1v1']],
+    'mode' => [['mode' => 'correspondence']],
+    'format' => [['format' => TournamentFormat::SingleElimination]],
+    'best of' => [['options' => ['bestOf' => 1, 'finalBestOf' => 1, 'grandFinal' => 'reset']]],
+    'capacity' => [['capacity' => 8]],
+    'name (the number)' => [['name' => 'Chess Casual Cup #7']],
+    'results mode' => [['results_mode' => TournamentResultsMode::Director]],
+]);
+
 /* ---------- Sign-up ----------------------------------------------------------------------------------------- */
 
 test('a full cup closes sign-up at once and commits its draw', function () {
@@ -268,6 +296,21 @@ test('round 1 opens with a 48 h window; nothing starts before the auto slot, the
         ->and($cup->refresh()->starts_at->equalTo(now()))->toBeTrue()
         ->and(ChessGame::query()->count())->toBe(0);
 
+    // Each of the four players hears once that their match is open: whom, until when, and the auto slot.
+    foreach (openCupMatches($cup) as $match) {
+        foreach ([0, 1] as $side) {
+            $player = matchPlayers($match)[$side];
+            $opponent = $match->slots[1 - $side]->participant->name;
+            $notices = $player->notifications()->get()->pluck('data');
+
+            expect($notices)->toHaveCount(1)
+                ->and($notices[0]['title'])->toBe('Chess Casual Cup #1: your match is open')
+                ->and($notices[0]['body'])->toContain($opponent)
+                ->and($notices[0]['body'])->toContain('Tue 6 Oct, 20:00')
+                ->and($notices[0]['url'])->toBe(route('tournaments.show', $cup));
+        }
+    }
+
     $this->travelTo($slot->subMinute());
     cupTick();
     expect(ChessGame::query()->count())->toBe(0);
@@ -275,6 +318,18 @@ test('round 1 opens with a 48 h window; nothing starts before the auto slot, the
     $this->travelTo($slot);
     cupTick();
     expect(ChessGame::query()->whereNotNull('tournament_match_id')->count())->toBe(2);
+
+    // Started while the players may be away: both of every game are told, with their colour and the game link.
+    foreach (ChessGame::query()->whereNotNull('tournament_match_id')->get() as $game) {
+        foreach (['White' => $game->white, 'Black' => $game->black] as $color => $player) {
+            $started = $player->notifications()->get()->pluck('data')->firstWhere('title', 'Chess Casual Cup #1: your game is on');
+
+            expect($started)->not->toBeNull()
+                ->and($started['body'])->toContain("You play {$color} against {$game->opponentOf($player)->displayName()}")
+                ->and($started['url'])->toBe(route('games.show', $game))
+                ->and($started['match'])->toBe($game->id);
+        }
+    }
 });
 
 test('"Play your cup match": the opponent accepts and the match game starts with the bracket colours', function () {

@@ -3792,5 +3792,6 @@
     "Open your game": "Zu deiner Partie",
     ":name is ready: play now": ":name ist bereit: jetzt spielen",
     "Invite sent. Waiting for :name to accept.": "Einladung gesendet. Warte, bis :name annimmt.",
-    "Play your cup match": "Cup-Match spielen"
+    "Play your cup match": "Cup-Match spielen",
+    "This is one of the league's casual cups: its game, format, places, name and schedule are set by the league and stay casual. Only the description, the directors and the deadlines can change.": "Das ist einer der Casual Cups der Liga: Spiel, Format, Plätze, Name und Zeitplan legt die Liga fest, und er bleibt casual. Ändern lassen sich nur die Beschreibung, die Turnierleiter und die Fristen."
 }
