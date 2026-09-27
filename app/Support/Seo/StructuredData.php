@@ -4,10 +4,13 @@ namespace App\Support\Seo;
 
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Support\Nostr\PlayerProfile;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Carbon;
 
 /**
  * schema.org nodes for the JSON-LD graph of a page (P14), built only from
@@ -148,13 +151,61 @@ final class StructuredData
     }
 
     /**
-     * An online SportsEvent organized by the league. The building block of
-     * series() and chessGame(), and the hook for the tournament pages (P8b).
+     * A published tournament. It starts at `starts_at`; its end is known only
+     * once it is finished (the last result entered), a planned end would be a
+     * guess. A finished tournament stays EventScheduled: schema.org has no
+     * "completed" status, a past endDate says it. An on-site tournament has no
+     * stored venue, so it names no location rather than a wrong one. The
+     * competitors are the drawn participants (players, lineups, mix teams).
+     *
+     * @return array<string, mixed>
+     */
+    public static function tournament(Tournament $tournament, string $url): array
+    {
+        $competitors = [];
+
+        foreach ($tournament->participants()->with(['user', 'lineup.clan'])->orderByRaw('seed is null')->orderBy('seed')->orderBy('id')->get() as $participant) {
+            $team = $participant->lineup_id !== null || $participant->isMixTeam();
+            $clan = $participant->lineup?->clan;
+            $competitors[] = array_filter([
+                '@type' => $team ? 'SportsTeam' : 'Person',
+                'name' => $participant->name,
+                'url' => match (true) {
+                    $clan !== null => route('clans.show', $clan),
+                    ! $team && $participant->user !== null => route('players.show', $participant->user->npub),
+                    default => null,
+                },
+            ], fn (mixed $value): bool => $value !== null);
+        }
+
+        $end = null;
+
+        if ($tournament->status === TournamentStatus::Finished) {
+            $last = $tournament->matches()->where('status', 'done')->max('updated_at');
+            $end = is_string($last) ? Carbon::parse($last) : null;
+        }
+
+        return self::sportsEvent(
+            name: $tournament->name,
+            url: $url,
+            sport: $tournament->game === 'chess' ? __('Chess') : 'Rocket League',
+            start: $tournament->starts_at,
+            end: $end,
+            cancelled: $tournament->status === TournamentStatus::Cancelled,
+            competitors: $competitors,
+            online: ! $tournament->on_site,
+        );
+    }
+
+    /**
+     * A SportsEvent organized by the league, online unless $online is false
+     * (then without a location: the league stores no venue). The building
+     * block of series(), chessGame() and tournament().
      *
      * @param  list<array<string, mixed>>  $competitors  SportsTeam or Person nodes
      * @return array<string, mixed>
      */
-    public static function sportsEvent(string $name, string $url, string $sport, ?CarbonInterface $start, ?CarbonInterface $end, bool $cancelled, array $competitors): array
+    public static function sportsEvent(string $name, string $url, string $sport, ?CarbonInterface $start, ?CarbonInterface $end, bool $cancelled, array $competitors, bool $online = true): array
     {
         return array_filter([
             '@type' => 'SportsEvent',
@@ -164,8 +215,8 @@ final class StructuredData
             'startDate' => $start?->toIso8601String(),
             'endDate' => $end?->toIso8601String(),
             'eventStatus' => $cancelled ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
-            'eventAttendanceMode' => 'https://schema.org/OnlineEventAttendanceMode',
-            'location' => ['@type' => 'VirtualLocation', 'url' => $url],
+            'eventAttendanceMode' => $online ? 'https://schema.org/OnlineEventAttendanceMode' : 'https://schema.org/OfflineEventAttendanceMode',
+            'location' => $online ? ['@type' => 'VirtualLocation', 'url' => $url] : null,
             'organizer' => ['@id' => self::organizationId()],
             'competitor' => $competitors === [] ? null : $competitors,
         ], fn (mixed $value): bool => $value !== null);

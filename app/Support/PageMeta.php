@@ -22,9 +22,8 @@ use App\Support\Seo\SearchIndexing;
  * gets the canonical URL, the hreflang alternates and the preview tags.
  *
  * Structured data: a page adds its JSON-LD nodes with addStructuredData();
- * the Organization node is printed on every page by the head itself. The
- * tournament pages (P8b) hook in here the same way, e.g. with
- * App\Support\Seo\StructuredData::sportsEvent().
+ * the Organization node is printed on every page by the head itself. A
+ * published tournament adds App\Support\Seo\StructuredData::tournament().
  */
 final class PageMeta
 {

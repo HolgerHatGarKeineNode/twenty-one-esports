@@ -2,12 +2,19 @@
 
 use App\Enums\InviteLinkType;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
+use App\Models\TournamentRound;
+use App\Models\TournamentStage;
 use App\Models\User;
 use App\Support\Invites\InviteLinks;
+use App\Support\Seo\StructuredData;
 
 /*
 |--------------------------------------------------------------------------
@@ -47,7 +54,19 @@ function publicPages(): array
         'chess ladder' => fn () => [route('ladder.show', ['chess', 'blitz']), []],
         'rocket league ladder' => fn () => [route('ladder.show', ['rocket-league', '2v2']), []],
         'player' => fn () => [route('players.show', User::factory()->create(['name' => 'satoshi'])->npub), ['ProfilePage']],
+        'tournaments' => fn () => [route('tournaments.index'), []],
+        'tournament' => fn () => [route('tournaments.show', publishedTournament()), ['SportsEvent', 'BreadcrumbList']],
     ];
+}
+
+/**
+ * A tournament the league published (TournamentPublisher sets status and published_at together).
+ *
+ * @param  array<string, mixed>  $attributes
+ */
+function publishedTournament(array $attributes = []): Tournament
+{
+    return Tournament::factory()->signup()->create(['published_at' => now(), 'signup_closes_at' => now()->addDays(3), ...$attributes]);
 }
 
 /**
@@ -132,6 +151,18 @@ test('private and unfinished pages are noindex and name no canonical', function 
     'own page' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('dashboard')),
     'settings' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('gaming.edit')),
     'new clan' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('clans.create')),
+    'draft tournament' => function ($test) {
+        $draft = Tournament::factory()->create();
+
+        return $test->actingAs($draft->creator)->get(route('tournaments.show', $draft));
+    },
+    'unpublished tournament' => fn ($test) => $test->get(route('tournaments.show', Tournament::factory()->signup()->create())),
+    'tournament sign-up' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('tournaments.signup', publishedTournament())),
+    'director desk' => function ($test) {
+        $tournament = publishedTournament(['status' => TournamentStatus::Running]);
+
+        return $test->actingAs($tournament->creator)->get(route('tournaments.director', $tournament));
+    },
     'admin' => function ($test) {
         $admin = User::factory()->create();
         Admin::query()->create(['pubkey' => $admin->pubkey]);
@@ -275,3 +306,80 @@ test('outside production, or on another host, every page is noindex', function (
     'interim domain' => ['production', 'esports-twentyone.on-forge.com'],
     'staging environment' => ['staging', 'localhost'],
 ]);
+
+test('a tournament is titled and described from its data in english and german', function () {
+    $tournament = publishedTournament(['name' => 'Blitz Night Berlin', 'starts_at' => '2026-10-03 17:00:00', 'signup_closes_at' => '2026-10-03 16:00:00']);
+    $this->travelTo('2026-09-27 12:00:00');
+    $url = route('tournaments.show', $tournament);
+
+    $en = $this->get($url)->assertOk()->getContent();
+    $de = $this->get($url.'?lang=de')->assertOk()->getContent();
+
+    expect(titleOf($en))->toBe('Blitz Night Berlin · Chess tournament – TWENTY ONE esports')
+        ->and(titleOf($de))->toBe('Blitz Night Berlin · Schachturnier – TWENTY ONE esports')
+        ->and(descriptionOf($en))->toBe('Chess tournament (Blitz 5+3), Swiss, for 12 players, online, starting 2026-10-03 19:00 CEST. Sign-up is open until 2026-10-03 18:00 CEST.')
+        ->and(descriptionOf($de))->toBe('Turnier in Schach (Blitz 5+3), Swiss, für 12 Spieler, online, Beginn 2026-10-03 19:00 CEST. Die Anmeldung ist offen bis 2026-10-03 18:00 CEST.');
+});
+
+test('a tournament is a SportsEvent whose status follows the tournament', function (TournamentStatus $status, string $eventStatus) {
+    $tournament = publishedTournament(['status' => $status]);
+    $url = route('tournaments.show', $tournament);
+
+    [, $event, $breadcrumbs] = jsonLdGraph($this->get($url)->assertOk()->getContent());
+
+    expect($event)->toMatchArray([
+        '@type' => 'SportsEvent',
+        'name' => $tournament->name,
+        'url' => $url,
+        'sport' => 'Chess',
+        'startDate' => $tournament->starts_at->toIso8601String(),
+        'eventStatus' => $eventStatus,
+        'eventAttendanceMode' => 'https://schema.org/OnlineEventAttendanceMode',
+        'location' => ['@type' => 'VirtualLocation', 'url' => $url],
+        'organizer' => ['@id' => route('home').'#organization'],
+    ])
+        ->and(array_column($breadcrumbs['itemListElement'], 'item'))->toBe([route('home').'/', route('tournaments.index'), $url]);
+})->with([
+    'sign-up' => [TournamentStatus::Signup, 'https://schema.org/EventScheduled'],
+    'running' => [TournamentStatus::Running, 'https://schema.org/EventScheduled'],
+    'finished' => [TournamentStatus::Finished, 'https://schema.org/EventScheduled'],
+    'called off' => [TournamentStatus::Cancelled, 'https://schema.org/EventCancelled'],
+]);
+
+test('a tournament names its drawn participants as competitors', function () {
+    $tournament = publishedTournament(['status' => TournamentStatus::Running]);
+    $player = User::factory()->create(['name' => 'hal']);
+    TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => 'hal', 'rating' => 1200, 'seed' => 1, 'members' => [$player->id]]);
+    TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'name' => 'Mix Team 1', 'rating' => 1000, 'seed' => 2, 'draw_position' => 1]);
+
+    $event = jsonLdGraph($this->get(route('tournaments.show', $tournament))->getContent())[1];
+
+    expect($event['competitor'])->toBe([
+        ['@type' => 'Person', 'name' => 'hal', 'url' => route('players.show', $player->npub)],
+        ['@type' => 'SportsTeam', 'name' => 'Mix Team 1'],
+    ]);
+});
+
+test('an on-site tournament is an offline event without a made-up venue', function () {
+    $event = jsonLdGraph($this->get(route('tournaments.show', publishedTournament(['on_site' => true, 'stations' => 4])))->getContent())[1];
+
+    expect($event['eventAttendanceMode'])->toBe('https://schema.org/OfflineEventAttendanceMode')
+        ->and($event)->not->toHaveKey('location');
+});
+
+test('a finished tournament ends with its last result, a running one names no end', function () {
+    $tournament = publishedTournament(['status' => TournamentStatus::Running]);
+    $stage = TournamentStage::query()->create(['tournament_id' => $tournament->id, 'number' => 1, 'format' => 'swiss', 'status' => 'running']);
+    $round = TournamentRound::query()->create(['tournament_stage_id' => $stage->id, 'number' => 1, 'status' => 'closed']);
+
+    foreach (['2026-10-03 20:10:00', '2026-10-03 21:45:00'] as $position => $doneAt) {
+        TournamentMatch::query()->create(['tournament_id' => $tournament->id, 'tournament_round_id' => $round->id, 'key' => "r1m{$position}",
+            'bracket' => 'main', 'position' => $position, 'if_needed' => false, 'status' => 'done'])->forceFill(['updated_at' => $doneAt])->saveQuietly();
+    }
+
+    expect(StructuredData::tournament($tournament, 'https://example.org'))->not->toHaveKey('endDate');
+
+    $tournament->forceFill(['status' => TournamentStatus::Finished])->save();
+
+    expect(StructuredData::tournament($tournament, 'https://example.org')['endDate'])->toBe('2026-10-03T21:45:00+00:00');
+});

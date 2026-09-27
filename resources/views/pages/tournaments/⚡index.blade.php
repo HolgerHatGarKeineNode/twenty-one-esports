@@ -3,6 +3,7 @@
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Support\PageMeta;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\FormatCopy;
 use App\Support\Tournaments\TournamentSignups;
@@ -21,6 +22,11 @@ use Livewire\Component;
  * tournaments never mine).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        app(PageMeta::class)->describe(__('Tournaments'), __('Chess and Rocket League tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.'));
+    }
+
     /**
      * @return Collection<int, Tournament>
      */

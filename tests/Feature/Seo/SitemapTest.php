@@ -2,10 +2,12 @@
 
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Http\Controllers\RobotsController;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Seo\Sitemap;
 
@@ -64,7 +66,7 @@ test('the fixed pages come in both languages with their alternates', function ()
     $locs = sitemapLocs($xml);
 
     expect($locs)->toContain(route('home').'/', route('home').'/?lang=de', route('clans.index'), route('clans.index').'?lang=de',
-        route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'),
+        route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'), route('tournaments.index'), route('tournaments.index').'?lang=de',
         route('ladder.show', ['chess', 'blitz']), route('ladder.show', ['rocket-league', '3v3']))
         ->and($xml)->toContain('<xhtml:link rel="alternate" hreflang="x-default" href="'.route('clans.index').'"/>');
 });
@@ -90,6 +92,37 @@ test('players, clans, played series and finished chess games are listed with las
         ->and($matches)->not->toContain(route('matches.show', $open->number), route('matches.show', $withdrawn->number))
         ->and($games)->toBe([route('games.show', $finished), route('games.show', $finished).'?lang=de'])
         ->and($games)->not->toContain(route('games.show', $live), route('games.show', $aborted));
+});
+
+test('published tournaments are listed with lastmod, drafts and unpublished ones never', function () {
+    $published = Tournament::factory()->signup()->create(['published_at' => now(), 'updated_at' => '2026-09-21 08:30:00']);
+    $calledOff = Tournament::factory()->create(['status' => TournamentStatus::Cancelled, 'published_at' => now()]);
+    $draft = Tournament::factory()->create();
+    $unpublished = Tournament::factory()->signup()->create();
+
+    expect(sitemapLocs($this->get('/sitemap.xml')->getContent()))->toContain(route('sitemap.section', ['tournaments', 1]));
+
+    $xml = $this->get(route('sitemap.section', ['tournaments', 1]))->assertOk()->assertHeader('Content-Type', 'application/xml; charset=UTF-8')->getContent();
+
+    // Well-formed XML in the sitemap namespace, every <url> with its <loc>.
+    $document = new DOMDocument;
+    expect($document->loadXML($xml, LIBXML_NONET))->toBeTrue()
+        ->and($document->documentElement->namespaceURI)->toBe('http://www.sitemaps.org/schemas/sitemap/0.9')
+        ->and($document->getElementsByTagName('url')->length)->toBe($document->getElementsByTagName('loc')->length);
+
+    expect(sitemapLocs($xml))->toBe([
+        route('tournaments.show', $published), route('tournaments.show', $published).'?lang=de',
+        route('tournaments.show', $calledOff), route('tournaments.show', $calledOff).'?lang=de',
+    ])
+        ->and(sitemapLocs($xml))->not->toContain(route('tournaments.show', $draft), route('tournaments.show', $unpublished))
+        ->and($xml)->toContain('<lastmod>2026-09-21T08:30:00+00:00</lastmod>');
+});
+
+test('without a published tournament there is no tournaments file', function () {
+    Tournament::factory()->create();
+
+    expect(sitemapLocs($this->get('/sitemap.xml')->getContent()))->not->toContain(route('sitemap.section', ['tournaments', 1]));
+    $this->get(route('sitemap.section', ['tournaments', 1]))->assertNotFound();
 });
 
 test('no private page is ever listed', function () {

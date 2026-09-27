@@ -2986,5 +2986,18 @@
     "Browse the clans": "Clans ansehen",
     "See the ladder": "Zur Ladder",
     "There is no match #:number yet.": "Ein Match #:number gibt es noch nicht.",
-    "See all matches": "Alle Matches ansehen"
+    "See all matches": "Alle Matches ansehen",
+    "Each shows in the bell and on the page you are on. Daily-chess and clan notifications also go out by browser push and Nostr DM, as switched on above.": "Alles erscheint in der Glocke und auf der Seite, auf der du gerade bist. Fernschach- und Clan-Benachrichtigungen gehen außerdem per Browser-Push und Nostr-DM raus, wie oben eingeschaltet.",
+    "npub or hex public key": "npub oder Hex-Public-Key",
+    "Pre-Season: :n points.": "Pre-Season: :n Punkte.",
+    "Chess tournament": "Schachturnier",
+    "Rocket League tournament": "Rocket-League-Turnier",
+    ":game tournament (:mode), :format, for :who, :where, starting :date.": "Turnier in :game (:mode), :format, für :who, :where, Beginn :date.",
+    "on site": "vor Ort",
+    "Sign-up is open until :date.": "Die Anmeldung ist offen bis :date.",
+    "The tournament is running.": "Das Turnier läuft.",
+    "The tournament has finished.": "Das Turnier ist beendet.",
+    "Finished. Winner: :name.": "Beendet. Sieger: :name.",
+    "The tournament was called off.": "Das Turnier wurde abgesagt.",
+    "Chess and Rocket League tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.": "Schach- und Rocket-League-Turniere der TWENTY ONE esports Liga: offene Anmeldungen, laufende Brackets und Ergebnisse, ausgelost aus einem Bitcoin-Block, den jeder nachprüfen kann."
 }

@@ -4,10 +4,12 @@ namespace App\Support\Seo;
 
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,22 +23,22 @@ use InvalidArgumentException;
  * with its hreflang alternates, so a file holds PER_FILE times the number of
  * locales <url> entries (well under the protocol's 50,000).
  *
- *   pages     the fixed public pages and every ladder
+ *   pages     the fixed public pages (the tournament list among them) and every ladder
  *   players   every player page
  *   clans     every clan page
  *   matches   Rocket League series that were accepted (scheduled, played or
  *             decided); open, declined, withdrawn and expired challenges are
  *             left out: no series was ever played there
  *   games     finished chess games (live ones change every move, aborted ones never started)
- *
- * The tournament pages (P8b) are not listed yet: they join as their own
- * section once they describe themselves.
+ *   tournaments  published tournaments, whatever became of them since (a
+ *             called-off one keeps its page); drafts never, like their pages
+ *             (pages/tournaments/show), which describe themselves only once published
  */
 final class Sitemap
 {
     public const PER_FILE = 1000;
 
-    public const SECTIONS = ['pages', 'players', 'clans', 'matches', 'games'];
+    public const SECTIONS = ['pages', 'players', 'clans', 'matches', 'games', 'tournaments'];
 
     /** Series statuses from the accept on. */
     public const LISTED_SERIES = [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed, SeriesStatus::Confirmed, SeriesStatus::Resolved];
@@ -52,7 +54,7 @@ final class Sitemap
     {
         $files = ['pages' => 1];
 
-        foreach (['players', 'clans', 'matches', 'games'] as $section) {
+        foreach (['players', 'clans', 'matches', 'games', 'tournaments'] as $section) {
             $files[$section] = (int) ceil($this->query($section)->count() / $this->perFile);
         }
 
@@ -95,7 +97,7 @@ final class Sitemap
      */
     private function fixedPages(): array
     {
-        $urls = [route('home'), route('clans.index'), route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining')];
+        $urls = [route('home'), route('clans.index'), route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'), route('tournaments.index')];
 
         foreach (app(GameRegistry::class)->all() as $game) {
             foreach ($game->modes() as $mode) {
@@ -116,6 +118,7 @@ final class Sitemap
             'clans' => Clan::query()->select(['id', 'slug', 'updated_at']),
             'matches' => SeriesMatch::query()->select(['id', 'number', 'updated_at'])->whereIn('status', self::LISTED_SERIES),
             'games' => ChessGame::query()->select(['id', 'updated_at'])->where('status', ChessGameStatus::Finished),
+            'tournaments' => Tournament::query()->select(['id', 'updated_at'])->where('status', '!=', TournamentStatus::Draft)->whereNotNull('published_at'),
             default => throw new InvalidArgumentException("Unknown sitemap section [{$section}]."),
         };
     }
@@ -127,6 +130,7 @@ final class Sitemap
             'clans' => route('clans.show', $row->getAttribute('slug')),
             'matches' => route('matches.show', $row->getAttribute('number')),
             'games' => route('games.show', $row->getKey()),
+            'tournaments' => route('tournaments.show', $row->getKey()),
             default => throw new InvalidArgumentException("Unknown sitemap section [{$section}]."),
         };
     }

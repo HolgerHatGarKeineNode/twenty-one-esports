@@ -4,8 +4,12 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
+use App\Support\PageMeta;
+use App\Support\Seo\LocalizedUrls;
+use App\Support\Seo\StructuredData;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
+use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentSignups;
@@ -45,7 +49,62 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title($this->tournament->name);
+        $tournament = $this->tournament;
+
+        // Only a published tournament is public (TournamentPublisher sets both); a draft stays noindex.
+        // The first title() call wins (Livewire merges page params first-come), so each branch sets it once.
+        if ($tournament->status === TournamentStatus::Draft || $tournament->published_at === null) {
+            $view->title($tournament->name);
+
+            return;
+        }
+
+        $locale = app()->getLocale();
+        $title = $tournament->name.' · '.($tournament->game === 'chess' ? __('Chess tournament') : __('Rocket League tournament'));
+        $view->title($title);
+
+        app(PageMeta::class)
+            ->describe($title, $this->description())
+            ->addStructuredData(StructuredData::tournament($tournament, LocalizedUrls::for($locale)))
+            ->addStructuredData(StructuredData::breadcrumbs([
+                [__('Home'), LocalizedUrls::for($locale, route('home'))],
+                [__('Tournaments'), LocalizedUrls::for($locale, route('tournaments.index'))],
+                [$tournament->name, LocalizedUrls::for($locale, route('tournaments.show', $tournament))],
+            ]));
+    }
+
+    /**
+     * The search and preview description: game, mode, format, size, place,
+     * start and where the tournament stands, in the display time zone.
+     */
+    private function description(): string
+    {
+        $tournament = $this->tournament;
+        $zone = (string) config('esports.preseason.display_timezone');
+        $date = fn (\Carbon\CarbonInterface $at): string => $at->copy()->timezone($zone)->format('Y-m-d H:i T');
+        $teams = $tournament->profile()->entersTeams();
+
+        $description = __(':game tournament (:mode), :format, for :who, :where, starting :date.', [
+            'game' => $tournament->game === 'chess' ? __('Chess') : 'Rocket League',
+            'mode' => $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode),
+            'format' => $tournament->format->label(),
+            'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
+            'where' => $tournament->on_site ? __('on site') : __('online'),
+            'date' => $date($tournament->starts_at),
+        ]);
+
+        $champion = $tournament->status === TournamentStatus::Finished ? app(TournamentChampion::class)->of($tournament) : null;
+
+        return $description.' '.match ($tournament->status) {
+            TournamentStatus::Signup => $tournament->isSignupOpen() && $tournament->signup_closes_at !== null
+                ? __('Sign-up is open until :date.', ['date' => $date($tournament->signup_closes_at)])
+                : __('Sign-up has closed. The draw follows.'),
+            TournamentStatus::Drawing => __('Sign-up has closed. The draw follows.'),
+            TournamentStatus::Running => __('The tournament is running.'),
+            TournamentStatus::Finished => $champion === null ? __('The tournament has finished.') : __('Finished. Winner: :name.', ['name' => $champion->name]),
+            TournamentStatus::Cancelled => __('The tournament was called off.'),
+            TournamentStatus::Draft => '',
+        };
     }
 
     #[Computed]
