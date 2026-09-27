@@ -224,6 +224,14 @@ test('a player seated after the accept is refused on a rated roster and left off
 
 test('a rated pairing moves the rated Elo at most daily_pair_limit times a UTC day', function () {
     config(['season.rating.daily_pair_limit' => 2]);
+    // Pin the loop to a fixed hour of a UTC day. Each gateAccepted()/gateFinish() round trip
+    // drifts the clock forward by roughly 1h40m (see gateDraft's addHour() + gateAccepted's
+    // addMinutes(40)), so three rounds move it ~5h. Starting close to UTC midnight would let
+    // the third confirmation land on the next day, where RatingService::pairCapReached()
+    // (`created_at >= now()->utc()->startOfDay()`) resets by design and lets a 3rd move
+    // through -- exactly what happened running this suite at 19:17 UTC on 2026-09-27, where the
+    // loop's drift crossed 2026-09-28 00:00 UTC on the last iteration.
+    test()->travelTo(now()->utc()->addDay()->startOfDay()->addHours(2));
     [$a, $b] = [gateLineup(), gateLineup()];
     app()->instance(TrustFacts::class, gateFacts());
 
