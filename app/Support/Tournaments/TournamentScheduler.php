@@ -68,13 +68,21 @@ final class TournamentScheduler
     /**
      * The scheduler's heartbeat, read-only: when the last tick finished and
      * whether that is too long ago. No heartbeat at all (never ran, cache
-     * cleared) counts as stale.
+     * cleared) counts as stale, and so does a cache that cannot be read: the
+     * page that shows this warning must never fail on the very fault it warns
+     * about.
      *
      * @return array{last_run_at: CarbonImmutable|null, stale: bool}
      */
     public static function health(): array
     {
-        $stamp = Cache::get(self::HEARTBEAT);
+        try {
+            $stamp = Cache::get(self::HEARTBEAT);
+        } catch (Throwable $e) {
+            report($e);
+            $stamp = null;
+        }
+
         $lastRunAt = is_int($stamp) ? CarbonImmutable::createFromTimestamp($stamp) : null;
 
         return [

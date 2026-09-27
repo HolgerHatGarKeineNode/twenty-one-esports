@@ -25,6 +25,7 @@ use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -365,4 +366,10 @@ test('a stale or missing heartbeat shows the warning on the tournaments page, a 
 
     $this->travel(1)->minutes();
     $page()->assertSee('data-test="scheduler-stale"', false)->assertSee('Its last run was');
+});
+
+test('an unreadable cache counts as a stale heartbeat instead of failing the page', function () {
+    Cache::shouldReceive('get')->with('tournaments:tick:last-run-at')->andThrow(new RuntimeException('cache down'));
+
+    expect(TournamentScheduler::health())->toBe(['last_run_at' => null, 'stale' => true]);
 });
