@@ -25,6 +25,13 @@ test('the card rules hold in the client: build, parse, validation, newest wins, 
         ->and($run->output())->toContain('ℹ pass 11')->toContain('ℹ skipped 0');
 });
 
+test('the room chat and the game chat keep separate caches, and neither holds a card or breaks on the other\'s entries', function () {
+    $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/chatCache.test.mjs']);
+
+    expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
+        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
+});
+
 test('the guest\'s "seen" needs the host\'s "shared" first, and only a player of the match sets either', function () {
     [$match, $host, $guest] = casualStarted('rocket-league');
     $matches = app(CasualMatches::class);

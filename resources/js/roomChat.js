@@ -21,24 +21,15 @@
  *     is opened again from the relays after a reload.
  */
 import { SimplePool } from 'nostr-tools/pool';
-import { HOST_CARD, accountTags, cacheEntry, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
+import { loadCache, roomEntry, saveCache } from './chatCache.js';
+import { HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
 import { canEncrypt, chatSince, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
-const CACHE_PREFIX = 'esports.chat.cache.';
-const CACHE_LIMIT = 500;
 
 /** The guest asks again this often when its "seen" beat the host's "shared" to the league. */
 const SEEN_RETRIES = [1000, 2000, 4000, 8000, 16000];
-
-function readJson(key, fallback) {
-    try {
-        return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
-    } catch {
-        return fallback;
-    }
-}
 
 function writeJson(key, value) {
     try {
@@ -114,20 +105,10 @@ export function roomChat(config) {
 
         start() {
             this.status = 'live';
-            this.cache = readJson(CACHE_PREFIX + config.me, {});
-            const now = nowSeconds();
-            let pruned = false;
-
-            for (const [id, entry] of Object.entries(this.cache)) {
-                if (entry && !entry.stub && isExpired(entry, now)) {
-                    this.cache[id] = null;
-                    pruned = true;
-                } else if (entry && !entry.stub) {
-                    this.rumors.push(entry);
-                }
-            }
-
-            if (pruned) writeJson(CACHE_PREFIX + config.me, this.cache);
+            // The room's own cache (resources/js/chatCache.js): checked on load, expired entries pruned, cards only as stubs.
+            const { cache, rumors } = loadCache('room', config.me);
+            this.cache = cache;
+            this.rumors.push(...rumors);
 
             this.pool = new SimplePool();
             this.sub = this.pool.subscribe(
@@ -155,12 +136,9 @@ export function roomChat(config) {
                 }
             }
 
-            this.cache[wrap.id] = cacheEntry(rumor);
+            this.cache[wrap.id] = roomEntry(rumor);
             if (rumor !== null && this.cache[wrap.id] !== null) this.add(rumor);
-
-            const ids = Object.keys(this.cache);
-            if (ids.length > CACHE_LIMIT) ids.slice(0, ids.length - CACHE_LIMIT).forEach((id) => delete this.cache[id]);
-            writeJson(CACHE_PREFIX + config.me, this.cache);
+            saveCache('room', config.me, this.cache);
         },
 
         add(rumor) {

@@ -105,6 +105,19 @@ export class UnwrapError extends Error {
 }
 
 /**
+ * A kind-14 rumor as the chats may hold it: every field of the right type,
+ * every tag an array of strings. Checked on every opened wrap and on every
+ * cache entry, so a malformed tag (`[null]`) can neither break the message
+ * filters below nor sit in a cache and break the chat after each reload.
+ */
+export function isRumor(value) {
+    return value !== null && typeof value === 'object'
+        && typeof value.id === 'string' && typeof value.pubkey === 'string' && Number.isSafeInteger(value.created_at)
+        && value.kind === 14 && typeof value.content === 'string'
+        && Array.isArray(value.tags) && value.tags.every((tag) => Array.isArray(tag) && tag.every((part) => typeof part === 'string'));
+}
+
+/**
  * Open a gift wrap addressed to `me` and return the rumor. Throws
  * UnwrapError for anything that is not a valid message, above all when the
  * seal's key is not the rumor's author: without this check anyone can write
@@ -138,7 +151,7 @@ export async function unwrapMessage(signer, wrap, me) {
         throw new UnwrapError('sender_mismatch');
     }
 
-    if (rumor.kind !== 14 || typeof rumor.content !== 'string' || !Array.isArray(rumor.tags) || getEventHash(rumor) !== rumor.id) {
+    if (!isRumor(rumor) || getEventHash(rumor) !== rumor.id) {
         throw new UnwrapError('rumor');
     }
 
@@ -194,7 +207,7 @@ export function roomMessages(rumors, { me, members, match, muted = [] }) {
 
     return rumors
         .filter((rumor) => {
-            if (seen.has(rumor.id)) return false;
+            if (!isRumor(rumor) || seen.has(rumor.id)) return false;
             seen.add(rumor.id);
             const recipients = rumor.tags.filter((t) => t[0] === 'p').map((t) => t[1]);
             const forMatch = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));
@@ -217,7 +230,7 @@ export function gameMessages(rumors, { me, opponent, match, muted = [] }) {
 
     return rumors
         .filter((rumor) => {
-            if (seen.has(rumor.id)) return false;
+            if (!isRumor(rumor) || seen.has(rumor.id)) return false;
             seen.add(rumor.id);
             const recipient = rumor.tags.find((t) => t[0] === 'p')?.[1];
             const forGame = rumor.tags.some((t) => t[0] === 'match' && t[1] === String(match));

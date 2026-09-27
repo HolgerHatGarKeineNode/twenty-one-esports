@@ -161,14 +161,13 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
             ->and($expiration % 86400)->toBe(0)
             ->and($expiration)->toBeGreaterThanOrEqual((int) $match->casualChatExpiresFrom()?->addDays(7)->getTimestamp());
 
-        // Neither browser keeps the card: a stub marks the wrap, nothing of the lobby is stored.
-        $storage = fn (Page $page, User $user) => $page->evaluate('() => localStorage.getItem('.json_encode('esports.chat.cache.'.$user->pubkey).')');
-        BrowserWait::until($hostPage, '() => (localStorage.getItem('.json_encode('esports.chat.cache.'.$host->pubkey).') ?? "").includes("stub")', 10_000);
+        // Neither browser keeps the card: a stub marks the wrap in the room's own cache, and nothing of the lobby is stored under any key.
+        $storage = '() => Object.keys(localStorage).map((key) => key + "=" + localStorage.getItem(key)).join("\\n")';
+        BrowserWait::until($hostPage, '() => (localStorage.getItem('.json_encode('esports.chat.cache.room.'.$host->pubkey).') ?? "").includes("stub")', 10_000);
 
         foreach ([[$guestPage, $guest], [$hostPage, $host]] as [$page, $user]) {
-            $cached = (string) $storage($page, $user);
-            expect($cached)->toContain('"stub":true')
-                ->not->toContain('sats')->not->toContain($password)->not->toContain('lobby');
+            expect($page->evaluate('() => localStorage.getItem('.json_encode('esports.chat.cache.room.'.$user->pubkey).')'))->toContain('"stub":true')
+                ->and($page->evaluate($storage))->not->toContain('sats')->not->toContain($password)->not->toContain('lobby-');
         }
 
         // After a reload the card is opened again from the relay.

@@ -9,6 +9,9 @@
  * - A signer without NIP-44 gets the fallback message instead of a chat.
  * - Decrypted messages are cached on this device per wrap id, so a reload
  *   does not ask the signer to decrypt everything again (NIP-17 allows it).
+ *   The cache is the game chat's own (resources/js/chatCache.js): text
+ *   messages only; a lobby or account card of a match room, which this
+ *   subscription receives as well, is stored as null and never shown here.
  * - Mute is for oneself: kept in localStorage and on the account
  *   (Livewire `setMuted`), and muted messages are simply not shown.
  * - Reads back to the game's start (`config.since`, unix seconds), not just
@@ -16,22 +19,12 @@
  *   back after three days still gets the messages from day one (P5d).
  */
 import { SimplePool } from 'nostr-tools/pool';
+import { entryFor, loadCache, saveCache } from './chatCache.js';
+import { isExpired } from './lobbyCards.js';
 import { canEncrypt, chatSince, gameMessages, unwrapMessage, wrapMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
-const CACHE_PREFIX = 'esports.chat.cache.';
-const CACHE_LIMIT = 500;
-
-function readJson(key, fallback) {
-    try {
-        const value = JSON.parse(localStorage.getItem(key) ?? 'null');
-
-        return value ?? fallback;
-    } catch {
-        return fallback;
-    }
-}
 
 function writeJson(key, value) {
     try {
@@ -101,11 +94,9 @@ export function gameChat(config) {
 
         start() {
             this.status = 'live';
-            this.cache = readJson(CACHE_PREFIX + config.me, {});
-
-            for (const rumor of Object.values(this.cache)) {
-                if (rumor) this.rumors.push(rumor);
-            }
+            const { cache, rumors } = loadCache('game', config.me);
+            this.cache = cache;
+            this.rumors.push(...rumors);
 
             this.pool = new SimplePool();
             this.sub = this.pool.subscribe(
@@ -122,17 +113,21 @@ export function gameChat(config) {
         async receive(wrap) {
             if (Object.hasOwn(this.cache, wrap.id)) return;
 
-            try {
-                this.cache[wrap.id] = await unwrapMessage(window.nostr, wrap, config.me);
-                this.add(this.cache[wrap.id]);
-            } catch {
-                // Not for us, not valid, or a forged sender: never shown.
-                this.cache[wrap.id] = null;
+            let rumor = null;
+
+            if (!isExpired(wrap)) {
+                try {
+                    rumor = await unwrapMessage(window.nostr, wrap, config.me);
+                } catch {
+                    // Not for us, not valid, or a forged sender: never shown.
+                    rumor = null;
+                }
             }
 
-            const ids = Object.keys(this.cache);
-            if (ids.length > CACHE_LIMIT) ids.slice(0, ids.length - CACHE_LIMIT).forEach((id) => delete this.cache[id]);
-            writeJson(CACHE_PREFIX + config.me, this.cache);
+            // A card of a match room is no game message: null, never its tags or content.
+            this.cache[wrap.id] = entryFor('game', rumor);
+            if (this.cache[wrap.id] !== null) this.add(this.cache[wrap.id]);
+            saveCache('game', config.me, this.cache);
         },
 
         add(rumor) {
@@ -140,8 +135,9 @@ export function gameChat(config) {
         },
 
         get messages() {
+            const now = Math.floor(Date.now() / 1000);
             // Spectators have no chat of their own, only the server lines.
-            const own = !config.opponent ? [] : gameMessages(this.rumors, { me: config.me, opponent: config.opponent.pubkey, match: config.match, muted: this.muted }).map((rumor) => ({
+            const own = !config.opponent ? [] : gameMessages(this.rumors.filter((r) => !isExpired(r, now)), { me: config.me, opponent: config.opponent.pubkey, match: config.match, muted: this.muted }).map((rumor) => ({
                 id: rumor.id,
                 at: rumor.created_at * 1000,
                 from: rumor.pubkey === config.me ? 'me' : 'them',
