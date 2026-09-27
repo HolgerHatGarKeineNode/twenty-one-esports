@@ -1,7 +1,5 @@
 <?php
 
-use App\Enums\TournamentFormat;
-use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Clan;
 use App\Models\Lineup;
@@ -9,9 +7,6 @@ use App\Models\Tournament;
 use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
-use App\Models\User;
-use App\Support\Tournaments\FormatOptions;
-use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentPublisher;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Gate;
@@ -33,60 +28,17 @@ pest()->group('integration');
 | checked against the relay: kind, tags (entrants, draw height, teams,
 | format), signature.
 |
-| CREATION IS NOT DRIVEN THROUGH THE ADMIN UI — see the finding below.
-| The rest of the flow (sign-up, draw, relay verification) is real UI /
-| real stack throughout.
-|
-| Finding, reported rather than papered over (mandate boundary: a test
-| does not silently patch app code, and this needed more than the one
-| measurement a found bug otherwise gets because every earlier reading
-| pointed at a different, real bug that had to be ruled out first):
-| resources/views/pages/admin/⚡tournament-create.blade.php's
-| `[data-test=tournament-create-button]` (`wire:click="create"`) does not
-| fire the Livewire action when clicked through Playwright against
-| Stack's real server. Measured 2026-09-27, in this order, each ruling out
-| one candidate cause: (1) Gate::forUser($organizer)->allows(
-| 'create-tournaments') is true in this same process; (2) no validation
-| error renders (`[role=alert]`, `.text-loss`) and the button is not
-| disabled; (3) exactly one element matches the selector and it carries
-| `wire:click="create"`; (4) a window.fetch/XHR interceptor installed
-| before the click recorded ZERO requests after it — the click never
-| reaches the server at all; (5) a window.onerror/console.error/
-| unhandledrejection collector installed from page load recorded nothing.
-| The button sits far down a long page (~2260px at the default desktop
-| viewport); scrollIntoViewIfNeeded() before the click made no difference.
-| Not reproduced over plain HTTP (a GET of the rendered page and the Gate
-| check both behave correctly), so this is specific to driving THIS one
-| button through a real browser — worth a look by whoever owns that page,
-| not something to keep guessing at from here. Diagnosis so far: ~1 hour.
+| Creation is driven through the admin UI's real "Create tournament"
+| button. click() returns once the browser has dispatched the event; the
+| Livewire roundtrip it starts (the POST to Livewire's update route, then the redirect
+| to admin.tournaments) finishes asynchronously, against a server in a
+| separate process. Anything read straight after click() — the URL, the
+| DB row, a fetch interceptor that records on response — therefore still
+| sees the old state; the test waits for the redirect first. Measured
+| 2026-09-27: read immediately, 5/5 clicks showed no resolved request, the
+| old URL and no row; after waiting for the redirect, 5/5 had the row.
 |
 */
-
-/** A published RL 3v3 tournament with the SAME shape the admin create page's own create() would produce. */
-function openRocketLeagueTournament(string $name, User $organizer): Tournament
-{
-    $profile = GameProfile::for('rocket-league', '3v3');
-    $tournament = Tournament::query()->create([
-        'name' => $name,
-        'game' => $profile->game,
-        'mode' => $profile->mode,
-        'format' => TournamentFormat::SingleElimination,
-        'options' => FormatOptions::defaults($profile)->toArray(),
-        'capacity' => 12,
-        'starts_at' => now()->addWeek(),
-        'time_window' => 180,
-        'on_site' => false,
-        'stations' => null,
-        'results_mode' => TournamentResultsMode::Players,
-        'status' => TournamentStatus::Draft,
-        'created_by_id' => $organizer->id,
-    ]);
-
-    // This test process writes directly here (not through the real app
-    // server/queue worker) — see Stack::retryOnLock()'s own docblock for why
-    // that specific combination needs a retry, not a longer PRAGMA wait.
-    return Stack::retryOnLock(fn () => app(TournamentPublisher::class)->publish($tournament, $organizer, CarbonImmutable::now()->addMinutes(2)));
-}
 
 test('a Rocket League 3v3 tournament: creation, clan + solo-pool sign-up, and a blockhash draw verified on the relay', function () {
     // Pest\Browser\Support\BrowserTestIdentifier scans THIS closure's own
@@ -103,16 +55,28 @@ test('a Rocket League 3v3 tournament: creation, clan + solo-pool sign-up, and a 
     TournamentOrganizer::query()->create(['pubkey' => $organizer->pubkey]);
     expect(Gate::forUser($organizer)->allows('create-tournaments'))->toBeTrue();
 
-    // The admin create page itself DOES render correctly for this organizer
-    // (see the finding above for what does not work): kept as a real,
-    // narrower check that the page and its form are reachable and usable,
-    // short of the one button.
+    // The organizer creates the tournament through the admin UI: an RL 3v3
+    // draft for the default 12 teams, in the recommended format.
     $admin = integrationPage($organizer, integrationRoute('admin.tournaments.create'));
     BrowserWait::until($admin, '() => document.querySelector("[data-test=tournament-name]") !== null', 30_000);
-    $admin->locator('[data-test=tournament-name]')->fill('Genesis Cup (admin form check)');
-    expect($admin->evaluate('() => document.querySelector("[data-test=tournament-name]")?.value'))->toBe('Genesis Cup (admin form check)');
+    $admin->locator('[data-test=tournament-name]')->fill('Genesis Cup');
+    $admin->locator('[data-test=game-rl] button:has-text("3v3")')->click();
+    BrowserWait::until($admin, '() => document.querySelector("[data-test=game-rl] button[aria-checked=true]")?.textContent.trim() === "3v3"', 30_000);
+    $admin->locator('[data-test=tournament-create-button]')->click();
+    // See the docblock: the create() roundtrip is asynchronous to click().
+    BrowserWait::until($admin, '() => location.pathname === "/admin/tournaments"', 30_000);
 
-    $tournament = openRocketLeagueTournament('Genesis Cup', $organizer);
+    $tournament = Tournament::query()->where('name', 'Genesis Cup')->sole();
+    expect($tournament->game)->toBe('rocket-league')
+        ->and($tournament->mode)->toBe('3v3')
+        ->and($tournament->status)->toBe(TournamentStatus::Draft)
+        ->and($tournament->created_by_id)->toBe($organizer->id);
+
+    // Publishing is not part of this flow's UI coverage. This test process
+    // writes directly here (not through the real app server/queue worker) —
+    // see Stack::retryOnLock()'s own docblock for why that specific
+    // combination needs a retry, not a longer PRAGMA wait.
+    $tournament = Stack::retryOnLock(fn () => app(TournamentPublisher::class)->publish($tournament, $organizer, CarbonImmutable::now()->addMinutes(2)));
 
     // A clan's Ready lineup signs up.
     [$captain] = integrationPlayer('rl-captain');
