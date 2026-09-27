@@ -128,22 +128,24 @@ Sources: live page https://esports.einundzwanzig.space/tournaments/1 (read 2026-
 "players are seeded by Elo ... The hash of the next Bitcoin block seeds the bracket",
 "Report your series; the other side confirms it"); `app/Support/Tournaments/DrawOrder.php:5-10`.
 "Open to everyone": `login.blade.php:56` ("ladders, clans, challenges, tournaments").
-Report + confirm is the path for series games (the live tournament is one); a chess
-tournament's games run on the site with a clock instead (`⚡show.blade.php:270`), so the
-beat-4 mock shows a series score and names no game. No prizes, no pot, no dates.
+Beat 4 holds for every tournament: series games are reported and confirmed, chess games
+run on the site with a clock, in director mode the directors enter the result, and all three
+branches end in "Winners move on" (`⚡show.blade.php:268-270`). So beat 4 names no game, no
+way of reporting and no score; the mock shows the round-1 pairs from beat 3 settling and the
+winners advancing to the semifinal. No prizes, no pot, no dates.
 
 **DE**
 1. (3s) Turniere. Offen für jeden. — *Turnierkarte, die Plätze füllen sich*
 2. (3s) Anmelden mit deinem Nostr-Schlüssel — *Anmelden, Bestätigung, „ist dabei“*
 3. (3s) Nach Elo gesetzt, per Bitcoin-Block gelost — *Block-Hash rastet ein, Setzliste wird Runde 1*
-4. (3s) Du meldest, dein Gegner bestätigt. — *Match gemeldet, Gegner bestätigt, Sieger zieht weiter*
+4. (3s) Ergebnis steht. Sieger rückt vor. — *Runde 1 entscheidet sich Paarung für Paarung, die Sieger ziehen ins Halbfinale*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
 1. (3s) Tournaments. Open to everyone. — *tournament card, spots filling up*
 2. (3s) Sign up with your Nostr key — *sign up, confirm, "is in"*
 3. (3s) Seeded by Elo, drawn by a Bitcoin block — *block hash locks in, seeds become round 1*
-4. (3s) You report. Your opponent confirms. — *match reported, opponent confirms, winner moves on*
+4. (3s) Result's in. The winner moves on. — *round 1 settles pair by pair, the winners move into the semifinal*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---
