@@ -47,6 +47,7 @@ use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRunner;
+use Carbon\CarbonImmutable;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
@@ -127,6 +128,38 @@ function gateFinish(SeriesMatch $match, array $a, array $b, ?Closure $beforeConf
     $service->respond($match, $b[1], 'confirmed', '', $b[2]->signTemplates($service->prepareResponse($match, $b[1], 'confirmed')));
 
     return $match->refresh();
+}
+
+/**
+ * The next UTC instant at $hour:$minute strictly after "now" (never today's
+ * already-past occurrence) — always after the season's genesis_at, which
+ * openSeason() (called from this file's beforeEach, at the real current
+ * moment) pins to "now minus one hour" before any of this ever runs.
+ */
+function nextUtcTime(int $hour, int $minute): CarbonImmutable
+{
+    $today = CarbonImmutable::now('UTC')->setTime($hour, $minute, 0);
+
+    return $today->isFuture() ? $today : $today->addDay();
+}
+
+/**
+ * The next Europe/Berlin DST transition (spring forward or fall back), as
+ * its UTC instant — a defensive case: this file's day-cap logic is pure
+ * UTC and must not care about Berlin's clock at all, DST or not.
+ */
+function nextBerlinDstTransition(): CarbonImmutable
+{
+    $from = CarbonImmutable::now('UTC');
+    $transitions = (new DateTimeZone('Europe/Berlin'))->getTransitions($from->getTimestamp(), $from->addYears(2)->getTimestamp());
+
+    foreach ($transitions as $transition) {
+        if ($transition['ts'] > CarbonImmutable::now('UTC')->getTimestamp()) {
+            return CarbonImmutable::createFromTimestamp($transition['ts'], 'UTC');
+        }
+    }
+
+    throw new RuntimeException('No upcoming Europe/Berlin DST transition found in the next two years.');
 }
 
 function gateRefusal(Closure $action): ?string
@@ -222,28 +255,62 @@ test('a player seated after the accept is refused on a rated roster and left off
         ->not->toContain($late->pubkey);
 });
 
-test('a rated pairing moves the rated Elo at most daily_pair_limit times a UTC day', function () {
+/*
+ * Regression (2026-09-27): this failed deterministically at 19:08 UTC ("3 is
+ * identical to 2"), reproduced 3/3, and again on a commit before P20 — so it
+ * depended on the time of day the suite happened to run, not on that change.
+ *
+ * Root cause was this test's own clock, not RatingService::pairCapReached()
+ * (app/Support/Rating/RatingService.php:319-334): that check is
+ * `now()->utc()->startOfDay()`, a correct UTC-day boundary — app.timezone is
+ * already UTC (config/app.php:68), so there is no Berlin/UTC storage
+ * mismatch to correct there. gateAccepted() (line ~105 above) advances the
+ * test clock by ~1h40m every time it runs (gateDraft()'s `now()->addHour()`
+ * plus the 40-minute travel into the match); called 3x in a loop with
+ * nothing resetting the clock between iterations, that drift compounds to
+ * ~5 hours by the third match. Whether those three timestamps land on one or
+ * two different UTC calendar days depended entirely on the real wall-clock
+ * moment the suite happened to run — at 19:08 UTC the third match landed
+ * after midnight, on a fresh UTC day with a fresh cap, so all three moved
+ * rating (3, not the intended 2).
+ *
+ * There is no exploit here beyond what any calendar-day quota already
+ * accepts (a pairing timed at 23:59 and 00:01 legitimately gets two days'
+ * allowance) — pairCapReached() enforces exactly "at most the limit, per UTC
+ * day" as documented, nothing more. The fix pins the clock instead of
+ * relying on whatever real time the suite happens to run at, and computes
+ * the expected number of moves the same way the limiter does — per UTC day,
+ * summed — so a start time that legitimately splits the three matches
+ * across two UTC days (21:30 UTC below) is asserted correctly instead of
+ * assumed away.
+ */
+test('a rated pairing moves the rated Elo at most daily_pair_limit times a UTC day', function (CarbonImmutable $anchor) {
     config(['season.rating.daily_pair_limit' => 2]);
-    // Pin the loop to a fixed hour of a UTC day. Each gateAccepted()/gateFinish() round trip
-    // drifts the clock forward by roughly 1h40m (see gateDraft's addHour() + gateAccepted's
-    // addMinutes(40)), so three rounds move it ~5h. Starting close to UTC midnight would let
-    // the third confirmation land on the next day, where RatingService::pairCapReached()
-    // (`created_at >= now()->utc()->startOfDay()`) resets by design and lets a 3rd move
-    // through -- exactly what happened running this suite at 19:17 UTC on 2026-09-27, where the
-    // loop's drift crossed 2026-09-28 00:00 UTC on the last iteration.
-    test()->travelTo(now()->utc()->addDay()->startOfDay()->addHours(2));
+    test()->travelTo($anchor);
+
     [$a, $b] = [gateLineup(), gateLineup()];
     app()->instance(TrustFacts::class, gateFacts());
 
+    $days = [];
+
     foreach (range(1, 3) as $ignored) {
         gateFinish(gateAccepted($a, $b), $a, $b);
+        $days[] = now()->utc()->toDateString();
     }
 
+    // Same rule as pairCapReached(): per UTC calendar day, at most the limit.
+    $expectedMoved = (int) collect($days)->countBy()->map(fn (int $count): int => min($count, 2))->sum();
     $moved = RatingChange::query()->distinct()->count('source_id');
 
     expect(SeriesMatch::query()->where('status', SeriesStatus::Confirmed)->count())->toBe(3)
-        ->and($moved)->toBe(2);
-});
+        ->and($moved)->toBe($expectedMoved);
+})->with([
+    '00:30 UTC' => [nextUtcTime(0, 30)],
+    '12:00 UTC' => [nextUtcTime(12, 0)],
+    '21:30 UTC (the reported failure: the third match lands on the next UTC day)' => [nextUtcTime(21, 30)],
+    '23:30 UTC' => [nextUtcTime(23, 30)],
+    'a Europe/Berlin DST transition (UTC math must not care)' => [nextBerlinDstTransition()],
+]);
 
 test('regression (audit F1): two sock-puppet lineups cannot farm rated Elo after Block 0', function () {
     // The audit: two fresh accounts with RL 1v1 lineups, six rated series, Elo 1000 -> 1090,
