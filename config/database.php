@@ -38,7 +38,13 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
+            // Unset (SQLite's own default, 0: fail immediately on
+            // SQLITE_BUSY) everywhere DB_BUSY_TIMEOUT is not set — only
+            // tests/Integration/Support/Stack.php sets it, for its own real,
+            // separate app server/queue-worker/artisan processes sharing one
+            // SQLite file (P15; a real multi-writer setup, unlike the
+            // :memory: default suite).
+            'busy_timeout' => env('DB_BUSY_TIMEOUT'),
             'journal_mode' => null,
             'synchronous' => null,
             'transaction_mode' => 'DEFERRED',

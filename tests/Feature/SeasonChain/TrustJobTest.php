@@ -780,3 +780,43 @@ test('the league admins are anchors too', function () {
     expect($run->anchors)->toBe(2)
         ->and(array_map(rankOf(...), ['carol', 'dave', 'frank']))->toBe([100, 100, 46]);
 });
+
+test('regression (parallel CPU load flake): a relay that answers CLOSED just past relay_timeout_seconds is still read as refused, not as a timeout', function () {
+    // A relay's answer that is only a little late (host scheduling jitter under
+    // `--parallel`, not an actually slow or hung relay) must not be missed: RelayReader's
+    // grace window is what tells the two apart. relay_timeout_seconds is set short so the
+    // scenario is deterministic and fast, not dependent on real host load.
+    config(['esports.relay_timeout_seconds' => 1]);
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), runTwice(...));
+    Log::spy();
+
+    withRelay(
+        [...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)],
+        fn () => app(TrustJob::class)->run(),
+        ['max_filters' => 3, 'advertised_max_filters' => 10, 'eose_delay_ms' => 1150]
+    );
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => $message === 'Relay refused a read' && str_contains($context['reason'], 'too many filters'));
+    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46);
+});
+
+test('a relay hung well past relay_timeout_seconds and its grace window still fails as a timeout, never as CLOSED', function () {
+    // The grace window in RelayReader must stay bounded: a relay that never answers has to
+    // keep timing out, just up to GRACE_SECONDS later, not be waited for indefinitely.
+    config(['esports.relay_timeout_seconds' => 1]);
+    payMembers(['alice', 'carol']);
+    $at = now()->subMinutes(10)->getTimestamp();
+    withRelay(seasonThreeEvents($at), runTwice(...));
+    Log::spy();
+
+    withRelay(
+        [...seasonThreeEvents($at), leagueReport('carol', pk('bob'), $at + 30)],
+        fn () => app(TrustJob::class)->run(),
+        ['max_filters' => 3, 'advertised_max_filters' => 10, 'eose_delay_ms' => 3000]
+    );
+
+    Log::shouldHaveReceived('warning')->withArgs(fn (string $message, array $context): bool => str_contains($message, 'timed out') || str_contains($message, 'over its time budget'));
+    expect(rankOf('bob'))->toBe(100)->and(rankOf('frank'))->toBe(46);
+});

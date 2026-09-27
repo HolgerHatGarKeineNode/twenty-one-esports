@@ -20,11 +20,15 @@
         <testsuite name="Browser">
             <directory>tests/Browser</directory>
         </testsuite>
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>
             <group>browser</group>
             <group>relay</group>
+            <group>integration</group>
         </exclude>
     </groups>
     <source>

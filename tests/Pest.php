@@ -6,6 +6,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\SeasonChains;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Vite;
+use Tests\Integration\Support\Stack;
 use Tests\Support\BrowserAssets;
 use Tests\Support\TestSigner;
 use Tests\TestCase;
@@ -26,6 +27,7 @@ pest()->tia()->defaultBranch('master');
 require_once __DIR__.'/Support/tournaments.php';
 require_once __DIR__.'/Support/shares.php';
 require_once __DIR__.'/Support/navigation.php';
+require_once __DIR__.'/Integration/Support/helpers.php';
 
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
@@ -62,6 +64,20 @@ pest()->extend(TestCase::class)
     })
     ->group('browser')
     ->in('Browser');
+
+/*
+| P15: a separate, expensive suite against the real stack (app server,
+| Reverb, queue, a local `nak serve` relay) — never `--parallel`/TIA/
+| pre-commit, started only by `composer test:integration`. No
+| RefreshDatabase: Tests\Integration\Support\Stack owns one real SQLite
+| file per run (fresh on every boot()) that the app server, the queue
+| worker and this test process all share; attach() points this process's
+| own DB/cache connections at it before each test.
+*/
+pest()->extend(TestCase::class)
+    ->beforeEach(fn () => Stack::instance()->boot()->attach())
+    ->group('integration')
+    ->in('Integration');
 
 /*
 |--------------------------------------------------------------------------

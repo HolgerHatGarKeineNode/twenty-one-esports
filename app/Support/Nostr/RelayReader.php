@@ -40,6 +40,18 @@ class RelayReader
     /** Fewer filters per REQ than this, and the relay is not read (round 4). */
     public const MIN_FILTERS = 5;
 
+    /**
+     * A one-time, bounded extension past the REQ deadline: a busy host can
+     * preempt *this* process for longer than `relay_timeout_seconds` between
+     * sending the REQ and the next `receive()` call, so the deadline is
+     * already gone before the loop even checks the socket again — even
+     * though the relay answered in time and its frame has been sitting,
+     * unread, in the socket buffer the whole while. Not counted against
+     * `relay_timeout_seconds`/`relay_fetch_budget_seconds`: a relay that is
+     * genuinely slow or hung still times out, just up to this much later.
+     */
+    private const GRACE_SECONDS = 0.5;
+
     /** @var array<string, int<1, 10>> relay => filters per REQ, from its NIP-11 document */
     private array $maxFilters = [];
 
@@ -146,12 +158,33 @@ class RelayReader
                 $deadline = min(microtime(true) + $timeout, $budget);
                 $subscription = 'read-'.bin2hex(random_bytes(4));
                 $complete = false;
+                $graceUsed = false;
                 $client->setTimeout(max(0.05, $deadline - microtime(true)));
                 $client->text((string) json_encode(['REQ', $subscription, ...$chunk], JSON_UNESCAPED_SLASHES));
 
-                while (($left = $deadline - microtime(true)) > 0) {
-                    $client->setTimeout(max(0.05, $left));
-                    $frame = $client->receive();
+                while (($left = $deadline - microtime(true)) > 0 || ! $graceUsed) {
+                    $client->setTimeout(max(0.05, $left > 0 ? $left : self::GRACE_SECONDS));
+
+                    try {
+                        $frame = $client->receive();
+                    } catch (ConnectionTimeoutException $timeout) {
+                        // The socket's own wait, not our loop condition, is what just
+                        // expired: it can happen only because the relay's or this
+                        // process's answer was not scheduled by the OS in time under
+                        // host load, not because the relay never intended to answer.
+                        // One short, bounded extension (never counted against
+                        // relay_timeout_seconds/relay_fetch_budget_seconds) tells the
+                        // two apart; a relay that is genuinely slow or hung still
+                        // times out here, just up to GRACE_SECONDS later.
+                        if ($graceUsed) {
+                            throw $timeout;
+                        }
+
+                        $graceUsed = true;
+                        $deadline = microtime(true) + self::GRACE_SECONDS;
+
+                        continue;
+                    }
 
                     if (! $frame instanceof Text) {
                         continue;

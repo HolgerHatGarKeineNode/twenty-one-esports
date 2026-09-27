@@ -78,6 +78,10 @@
             "Composer\\Config::disableProcessTimeout",
             "bash scripts/test-browser.sh"
         ],
+        "test:integration": [
+            "Composer\\Config::disableProcessTimeout",
+            "vendor/bin/pest --group=integration --no-tia"
+        ],
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
