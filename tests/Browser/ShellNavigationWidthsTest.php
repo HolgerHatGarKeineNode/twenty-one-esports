@@ -1,6 +1,9 @@
 <?php
 
 use App\Models\Tournament;
+use App\Support\TwentyOne\LiveStatus;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Support\ComputeUrl;
 
@@ -78,27 +81,36 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('row 1 fits Tournaments with its sign-up count and room for the LIVE badge (94 px with its count) at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
+test('row 1 fits Tournaments with its sign-up count and the LIVE badge with a three-digit count at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
     Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDays(2)]);
     $admin = shellAdmin();
     $problems = [];
     $failures = [];
     $sizes = [];
-    // P20 puts a LIVE badge after Clans and Season (64 x 44, 94 x 44 with a count): a stand-in of the wider one, so this row keeps room for it.
-    $placeholder = '() => { const season = document.querySelector("[data-test=nav-mining]"); const live = Object.assign(document.createElement("span"), { textContent: "LIVE" }); live.style.cssText = "flex: none; width: 94px; height: 44px; align-self: center"; live.dataset.test = "live-placeholder"; season.after(live); }';
+    // The stream on air with a three-digit count (P20): the real LIVE badge after Clans and Season, at its widest.
+    $hls = sys_get_temp_dir().'/esports-shell-live-'.getmypid().'-'.bin2hex(random_bytes(3));
+    File::ensureDirectoryExists($hls);
+    config(['twentyone.stream.hls_dir' => $hls, 'twentyone.stream.public_url' => '/__test/live/stream.m3u8']);
+    Cache::put(LiveStatus::ANNOUNCED_KEY, ['viewers' => 128], 3600);
+    $onAir = function () use ($hls): void {
+        file_put_contents($hls.'/stream.m3u8', "#EXTM3U\n");
+        Cache::forget(LiveStatus::CACHE_KEY);
+    };
+    $liveBadge = '() => { const b = [...document.querySelectorAll("[data-test=live-badge]")].find((el) => el.checkVisibility()); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), !!b.closest("[data-test=game-tabs]")]; }';
 
     foreach (['en', 'de'] as $locale) {
         foreach ([1024 => 768, 1280 => 800, 1440 => 900, 1680 => 1050, 1920 => 1080] as $width => $height) {
+            $onAir();
             $page = shellPage($admin, $width, $height);
             if ($locale === 'de') {
                 $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
             }
             shellOpen($page, '/rules', $problems);
-            $page->evaluate($placeholder);
             $m = $page->evaluate(SHELL_MEASURE);
+            $live = $page->evaluate($liveBadge);
             $badge = $page->evaluate('() => { const el = document.querySelector("[data-test=tournaments-open]"); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("")]; }');
-            $sizes["{$locale}@{$width}"] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge];
-            if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $badge === null || $badge[2] !== '2') {
+            $sizes["{$locale}@{$width}"] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge, 'live' => $live];
+            if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $badge === null || $badge[2] !== '2' || $live === null || $live[2] !== true) {
                 $failures[] = "{$locale} @{$width}: ".json_encode($sizes["{$locale}@{$width}"]);
             }
             if ($locale === 'en' && in_array($width, [1024, 1440], true)) {
@@ -118,6 +130,7 @@ test('row 1 fits Tournaments with its sign-up count and room for the LIVE badge 
     shellShot($page, 'shell-admin-375-tournaments-dot');
 
     fwrite(STDERR, "\n[shell-tournaments] ".json_encode($sizes));
+    File::deleteDirectory($hls);
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
