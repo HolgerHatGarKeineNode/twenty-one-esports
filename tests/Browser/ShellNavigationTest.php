@@ -45,7 +45,7 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
 
     $page->locator('[data-test=games-menu]')->click();
     BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility() && document.activeElement?.id === "hub-filter"', 5_000);
-    expect($page->evaluate('() => [...document.querySelectorAll("[data-test=hub-section-yours] [data-test^=hub-game-]")].map((el) => el.dataset.test)'))
+    expect($page->evaluate('() => [...document.querySelectorAll("[data-test^=hub-game-]:has([data-test=hub-yours])")].map((el) => el.dataset.test)'))
         ->toBe(['hub-game-rocket-league', 'hub-game-chess']);
     $hub = $page->evaluate('() => { const r = document.getElementById("game-hub").getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.left), Math.round(r.right)]; }');
     fwrite(STDERR, "\n[shell-hub] 4 games @1440 top/height/left/right ".json_encode($hub));
@@ -82,6 +82,62 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     expect($problems)->toBe([]);
 });
 
+/**
+ * The open hub: its rect, whether the tile list scrolls, how much of the
+ * panel's inner width the first row of cards spans, how many cards that row
+ * holds and how tall they are, and where the filter row sits.
+ */
+const HUB_MEASURE = <<<'JS'
+    () => {
+        const hub = document.getElementById('game-hub');
+        const r = hub.getBoundingClientRect();
+        const list = hub.querySelector('[x-ref=hubTiles]');
+        const cards = [...hub.querySelectorAll('[data-test^=hub-game-]')].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect());
+        const top = Math.min(...cards.map((c) => c.top));
+        const row = cards.filter((c) => Math.abs(c.top - top) < 2);
+        const span = Math.max(...row.map((c) => c.right)) - Math.min(...row.map((c) => c.left));
+        return {
+            top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), width: Math.round(r.width),
+            scrollHeight: list.scrollHeight, clientHeight: list.clientHeight,
+            fill: Math.round((span / hub.clientWidth) * 1000) / 1000,
+            columns: row.length,
+            heights: [...new Set(row.map((c) => Math.round(c.height)))],
+            filterTop: Math.round(hub.querySelector('#hub-filter').getBoundingClientRect().top),
+        };
+    }
+    JS;
+
+test('the hub spends its width on one card grid and does not scroll with 4 games at 1280, 1440 and 1920 px', function () {
+    $player = shellPlayer();
+    $problems = [];
+    $sizes = [];
+
+    foreach ([1280 => 800, 1440 => 900, 1920 => 1080] as $width => $height) {
+        $page = shellPage($player, $width, $height);
+        shellOpen($page, '/clans', $problems);
+        $page->locator('[data-test=games-menu]')->click();
+        BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
+        $page->evaluate(SHELL_SETTLE);
+        $m = $sizes[$width] = $page->evaluate(HUB_MEASURE);
+        shellShot($page, "shell-player-{$width}-hub");
+
+        expect($m['scrollHeight'])->toBeLessThanOrEqual($m['clientHeight'], "inner scroll @{$width}: ".json_encode($m))
+            ->and($m['bottom'])->toBeLessThanOrEqual($height)
+            ->and($m['fill'])->toBeGreaterThanOrEqual(0.9, "first row fill @{$width}: ".json_encode($m))
+            ->and($m['columns'])->toBe(4)
+            ->and($m['heights'])->toHaveCount(1);
+    }
+
+    // Your games first, marked; each card leads with its primary action.
+    expect($page->evaluate('() => [...document.querySelectorAll("#game-hub [data-test^=hub-game-]")].map((el) => el.dataset.test.replace("hub-game-", "") + (el.querySelector("[data-test=hub-yours]") ? "*" : ""))'))
+        ->toBe(['rocket-league*', 'chess*', 'ea-sports-fc-27', 'ea-sports-fc-26'])
+        ->and($page->evaluate('() => ["chess", "rocket-league"].map((slug) => document.querySelector(`[data-test=hub-game-${slug}] .hub-action`).innerText.trim())'))
+        ->toBe(['Play blitz', 'Challenge a clan']);
+
+    fwrite(STDERR, "\n[shell-hub-grid] ".json_encode($sizes));
+    expect($problems)->toBe([]);
+});
+
 test('row 2 follows the game of the page, and a page of every game keeps the game opened last', function () {
     $player = User::factory()->create();
     $problems = [];
@@ -109,12 +165,14 @@ test('row 2 follows the game of the page, and a page of every game keeps the gam
     expect($problems)->toBe([]);
 });
 
-test('the hub with 12 games (a test-only registry): a fixed height that scrolls, at 1440 and 375 px', function () {
+test('the hub with 8 and 12 games (a test-only registry): 8 fit without scrolling, 12 scroll under a filter row that stays, at 1440 and 375 px', function () {
     $admin = shellAdmin();
     $problems = [];
     $sizes = [];
 
-    foreach ([4, 12] as $count) {
+    foreach ([4, 8, 12] as $count) {
+        // FakeGame::registry() builds on the bound registry: the real one each time, not the last fake.
+        app()->forgetInstance(GameRegistry::class);
         app()->instance(GameRegistry::class, FakeGame::registry($count));
 
         foreach ([1440 => 900, 375 => 667] as $width => $height) {
@@ -123,18 +181,29 @@ test('the hub with 12 games (a test-only registry): a fixed height that scrolls,
             $page->locator($width === 1440 ? '[data-test=games-menu]' : '[data-test=mobile-games-menu]')->click();
             BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
             $page->evaluate(SHELL_SETTLE);
-            $sizes["{$count}@{$width}"] = $page->evaluate('() => { const hub = document.getElementById("game-hub"); const r = hub.getBoundingClientRect(); const list = hub.querySelector("[x-ref=hubTiles]"); return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), scrolls: list.scrollHeight > list.clientHeight, tiles: hub.querySelectorAll("[data-test^=hub-game-]").length, tabbarTop: Math.round(document.querySelector("[data-test=tab-bar]").getBoundingClientRect().top) }; }');
-            expect($sizes["{$count}@{$width}"]['tiles'])->toBe($count)
-                ->and($sizes["{$count}@{$width}"]['bottom'])->toBeLessThanOrEqual($width === 375 ? $sizes["{$count}@{$width}"]['tabbarTop'] : $height);
+            $m = $page->evaluate(HUB_MEASURE);
+            $m['tiles'] = $page->evaluate('() => document.querySelectorAll("#game-hub [data-test^=hub-game-]").length');
+            $m['tabbarTop'] = $page->evaluate('() => Math.round(document.querySelector("[data-test=tab-bar]").getBoundingClientRect().top)');
+            expect($m['tiles'])->toBe($count)
+                ->and($m['bottom'])->toBeLessThanOrEqual($width === 375 ? $m['tabbarTop'] : $height);
             shellShot($page, "shell-admin-{$width}-hub-{$count}games");
+
+            // Scrolled to its end, the list leaves the filter row where it was.
+            if ($m['scrollHeight'] > $m['clientHeight']) {
+                $page->evaluate('() => { const list = document.querySelector("#game-hub [x-ref=hubTiles]"); list.scrollTop = list.scrollHeight; }');
+                $m['filterTopScrolled'] = $page->evaluate('() => Math.round(document.getElementById("hub-filter").getBoundingClientRect().top)');
+                expect($m['filterTopScrolled'])->toBe($m['filterTop']);
+            }
+            $sizes["{$count}@{$width}"] = $m;
         }
     }
 
     app()->forgetInstance(GameRegistry::class);
     fwrite(STDERR, "\n[shell-hub] ".json_encode($sizes));
 
-    expect($sizes['12@1440']['scrolls'])->toBeTrue()
-        ->and($sizes['12@375']['scrolls'])->toBeTrue()
+    expect($sizes['8@1440']['scrollHeight'])->toBeLessThanOrEqual($sizes['8@1440']['clientHeight'])
+        ->and($sizes['12@1440']['scrollHeight'])->toBeGreaterThan($sizes['12@1440']['clientHeight'])
+        ->and($sizes['12@375']['scrollHeight'])->toBeGreaterThan($sizes['12@375']['clientHeight'])
         ->and($problems)->toBe([]);
 });
 

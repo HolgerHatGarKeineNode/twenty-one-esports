@@ -2014,10 +2014,21 @@ select:focus[data-flux-control] {
         color: var(--color-ink);
     }
 
+    /* One card per game: cover, name and modes, then its links in two columns. Cards of a grid row share their height. */
+    .hub-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        padding: 4px;
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-card);
+    }
+
     .hub-tile-main {
         display: block;
         padding: 4px;
-        border-radius: var(--radius-card);
+        border-radius: var(--radius-control);
         color: var(--color-ink);
     }
 
@@ -2026,23 +2037,66 @@ select:focus[data-flux-control] {
         color: var(--color-ink);
     }
 
-    .hub-tile-main > :first-child {
+    /* The game's colour under its cover: the one accent each card carries. */
+    .hub-cover {
+        position: relative;
+        display: block;
         border-bottom: 3px solid var(--game, var(--color-edge));
+    }
+
+    .hub-yours {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        padding: 0 6px;
+        border-radius: var(--radius-tag);
+        background: color-mix(in srgb, var(--color-ground) 85%, transparent);
+        color: var(--color-ink);
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 20px;
     }
 
     .hub-action {
         display: flex;
+        flex: 1;
         align-items: center;
+        gap: 8px;
+        min-width: 0;
         min-height: 32px;
-        padding: 0 4px;
+        padding: 4px 8px;
         border-radius: var(--radius-tag);
         color: var(--color-ink-2);
         font-size: 13px;
+        line-height: 1.25;
     }
 
     .hub-action:hover {
         background: var(--color-row-hover);
         color: var(--color-ink);
+    }
+
+    /* The game's first move (Play blitz, Challenge a clan): first, and the only filled link of the card. */
+    .hub-action-primary,
+    .hub-action-primary:hover {
+        background: var(--color-raised);
+        color: var(--color-ink);
+        font-weight: 700;
+    }
+
+    /* Phones, one card per row: the cover shrinks to a thumbnail beside the name, so four games fit the sheet. */
+    @media (width < 40rem) {
+        .hub-tile-main {
+            display: grid;
+            grid-template-columns: 96px minmax(0, 1fr);
+            align-items: center;
+            gap: 12px;
+        }
+
+        .hub-yours {
+            top: 4px;
+            left: 4px;
+        }
     }
 
     .tab {

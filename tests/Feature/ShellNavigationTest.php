@@ -23,7 +23,7 @@ test('your games come first, by the last match, then the registry order; guests 
 
     $this->actingAs($player)->get('/clans')->assertOk()
         ->assertSeeInOrder(['data-test="game-tab-rocket-league"', 'data-test="game-tab-chess"'], false)
-        ->assertSeeInOrder(['data-test="hub-section-yours"', 'data-test="hub-game-rocket-league"', 'data-test="hub-game-chess"', 'data-test="hub-section-others"'], false);
+        ->assertSeeInOrder(['data-test="hub-game-rocket-league"', 'data-test="hub-yours"', 'data-test="hub-game-chess"', 'data-test="hub-yours"', 'data-test="hub-game-ea-sports-fc-27"'], false);
 
     auth()->logout();
     expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe($registryOrder);

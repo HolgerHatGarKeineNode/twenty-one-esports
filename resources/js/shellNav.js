@@ -67,10 +67,6 @@ export function shellHeader() {
             return (this.kind === 'all' || tile.dataset.kinds.split(' ').includes(this.kind)) && (query === '' || tile.dataset.name.includes(query));
         },
 
-        sectionShows(section) {
-            return [...section.querySelectorAll('[data-kinds]')].some((tile) => this.shows(tile));
-        },
-
         anyShown() {
             return [...(this.$refs.hubTiles?.querySelectorAll('[data-kinds]') ?? [])].some((tile) => this.shows(tile));
         },
