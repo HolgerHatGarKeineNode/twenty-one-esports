@@ -155,6 +155,19 @@ return [
             // Renders failing for this many wall-clock seconds in a row send the stream back to the loop.
             'render_failure_seconds' => 10,
         ],
+
+        /*
+        | Numbers the teaser scenes show (StreamStats): counted at most every
+        | `cache_seconds`; "games today" starts at midnight in `timezone` (the
+        | app itself runs in UTC); the clan spotlight moves on every
+        | `clan_spotlight_seconds`.
+        */
+        'stats' => [
+            'cache_seconds' => 15,
+            'timezone' => 'Europe/Berlin',
+            'ladder_rows' => 4,
+            'clan_spotlight_seconds' => 600,
+        ],
     ],
 
 ];
