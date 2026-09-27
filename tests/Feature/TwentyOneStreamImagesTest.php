@@ -154,6 +154,10 @@ test('a picture pointing inside the network is refused before any request', func
     'a short IPv4 form' => ['https://127.1/me.png', ['127.1' => ['93.184.215.14']]],
     'a hex IPv4 form' => ['https://0x7f000001/me.png', ['0x7f000001' => ['93.184.215.14']]],
     'a decimal IPv4 form' => ['https://2130706433/me.png', ['2130706433' => ['93.184.215.14']]],
+    // curl rewrites these names itself, so the pin would no longer match what it connects to.
+    'an IDN name' => ['https://bücher.example/me.png', ['bücher.example' => ['93.184.215.14']]],
+    'a percent-escaped name' => ['https://cdn%2eexample/me.png', ['cdn%2eexample' => ['93.184.215.14']]],
+    'a trailing dot' => ['https://cdn.example./me.png', ['cdn.example.' => ['93.184.215.14']]],
 ]);
 
 test('a redirect to a private address is refused before it is requested', function () {

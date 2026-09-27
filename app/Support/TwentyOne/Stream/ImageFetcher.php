@@ -251,6 +251,13 @@ class ImageFetcher
             throw new StreamImageFailed('host '.$literal.' ends in a number but is no plain IP address');
         }
 
+        // Only plain ASCII labels: curl rewrites IDN, percent-escapes and a trailing dot on its
+        // own, and a host it rewrites no longer matches the CURLOPT_RESOLVE pin, so curl would
+        // resolve it again itself, past the guard.
+        if (preg_match('/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/', $literal) !== 1) {
+            throw new StreamImageFailed('host '.$literal.' is no plain ASCII name');
+        }
+
         $addresses = $this->resolver->addresses($host);
 
         if ($addresses === []) {
