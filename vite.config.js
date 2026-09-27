@@ -17,16 +17,16 @@ export default defineConfig({
             ],
             refresh: true,
             fonts: [
+                // Metric-matched fallbacks (fontaine) hold the layout still while the
+                // webfont loads, instead of shifting when it swaps in (font-display: swap).
                 google('Unbounded', {
                     weights: [500, 700, 800],
                     variable: '--font-face-display',
-                    optimizedFallbacks: false,
                     subsets: ['latin', 'latin-ext'],
                 }),
                 google('JetBrains Mono', {
                     weights: [400, 500, 700],
                     variable: '--font-face-mono',
-                    optimizedFallbacks: false,
                     subsets: ['latin', 'latin-ext'],
                 }),
             ],
