@@ -44,6 +44,7 @@ const NAV_VIEWS = [1440 => 900, 1024 => 768, 375 => 667];
 const NAV_PAGES = [
     'home' => ['roles' => NAV_ROLES, 'max' => 1],
     'login' => ['roles' => ['guest'], 'max' => 1],
+    'play' => ['roles' => NAV_ROLES, 'max' => 1],
     'chess.lobby' => ['roles' => NAV_ROLES, 'max' => 1],
     'chess.challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'me.correspondence' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
@@ -134,7 +135,8 @@ const NAV_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/', 
 
 /**
  * Every link a person can reach on the page: visible, or behind a visible
- * opener (a Flux dropdown, the mobile menu or search, a <details>). A GET
+ * opener (a shell panel with `data-nav-panel` and the buttons that control
+ * it, a Flux dropdown, the mobile menu or search, a <details>). A GET
  * form (the site search) counts as a link to its action, reachable when its
  * field is. `chrome` is true outside <main>.
  */
@@ -142,6 +144,9 @@ const NAV_LINKS_SCRIPT = <<<'JS'
     () => {
         const visible = (el) => !!el && el.checkVisibility({ checkVisibilityCSS: true });
         const opener = (a) => {
+            // A shell panel (the game hub, the phone's More sheet) opens from any visible button that controls it.
+            const panel = a.closest('[data-nav-panel][id]');
+            if (panel) return [...document.querySelectorAll(`[aria-controls="${panel.id}"]`)].some(visible) ? panel.id : null;
             const drop = a.closest('ui-dropdown');
             if (drop) return visible(drop.querySelector('button')) ? 'menu' : null;
             if (a.closest('#mobile-nav')) return visible(document.querySelector('[aria-controls=mobile-nav]')) ? 'mobile-menu' : null;

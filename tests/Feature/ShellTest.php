@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\SeriesStatus;
 use App\Models\Admin;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use Illuminate\Support\Js;
 
@@ -34,20 +36,22 @@ test('unknown pages answer 404 in the visitor locale', function () {
         ->assertSee('Seite nicht gefunden');
 });
 
-test('the admin navigation item is hidden for guests', function () {
+test('the labelled Admin item is hidden for guests', function () {
     $this->get('/')
         ->assertOk()
-        ->assertDontSee('aria-label="Admin"', false);
+        ->assertDontSee('data-test="account-admin"', false);
 });
 
-test('the admin navigation item shows for admins', function () {
+test('the labelled Admin item shows for admins, with its open cases', function () {
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    SeriesMatch::factory()->accepted()->count(2)->create(['status' => SeriesStatus::Disputed]);
 
     $this->actingAs($admin)
         ->get('/')
         ->assertOk()
-        ->assertSee('aria-label="Admin"', false);
+        ->assertSeeInOrder(['data-test="account-admin"', 'Admin', 'data-test="admin-count"', '2', 'open cases'], false);
 });
 
 test('the styleguide is not reachable in production', function () {

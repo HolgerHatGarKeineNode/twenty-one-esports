@@ -210,9 +210,9 @@ new class extends Component {
             @endteleport
         @endif
 
-        {{-- Phones and tablets (MobileMatchDock.dc.html): the bar, or a tab on the page's own bottom bar. --}}
+        {{-- Phones and tablets (MobileMatchDock.dc.html): the bar, 16 px above the shell's tab bar (--tabbar-h), or a tab on the page's own bottom bar. --}}
         <button type="button" @class([
-                    'fixed inset-x-4 bottom-4 z-[35] flex h-14 cursor-pointer items-center gap-3 rounded-xl border-0 bg-card pr-3 pl-4 text-left lg:hidden',
+                    'fixed inset-x-4 bottom-[calc(var(--tabbar-h)+1rem)] z-[35] flex h-14 cursor-pointer items-center gap-3 rounded-xl border-0 bg-card pr-3 pl-4 text-left lg:hidden',
                     'shadow-[inset_3px_0_0_var(--color-btc),0_0_0_1px_var(--color-line),0_16px_32px_rgba(10,10,11,.8)]' => $counts['need'] > 0,
                     'shadow-[inset_3px_0_0_var(--color-line),0_0_0_1px_var(--color-line),0_16px_32px_rgba(10,10,11,.8)]' => $counts['need'] === 0,
                 ])

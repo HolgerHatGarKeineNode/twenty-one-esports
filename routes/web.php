@@ -19,6 +19,7 @@ use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
 use App\Models\InviteLink;
 use App\Support\Seo\Sitemap;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'pages.home')->name('home');
@@ -28,8 +29,18 @@ Route::get('locale/{locale}', SwitchLocaleController::class)
     ->name('locale.switch');
 
 Route::middleware('guest')->group(function () {
-    Route::view('login', 'pages.auth.login')->name('login');
+    // "Start playing" (the header, for guests) logs in and then opens the chess lobby: `then=play` sets where the login lands.
+    Route::get('login', function (Request $request) {
+        if ($request->query('then') === 'play') {
+            $request->session()->put('url.intended', route('chess.lobby'));
+        }
+
+        return view('pages.auth.login');
+    })->name('login');
 });
+
+// Every registered game with its cover, modes and actions ("All games and modes", the game hub's last link). Public.
+Route::view('play', 'pages.play')->name('play');
 
 Route::middleware('auth')->group(function () {
     Route::view('me', 'pages.coming-soon', ['page' => 'Your page', 'section' => null])->name('dashboard');

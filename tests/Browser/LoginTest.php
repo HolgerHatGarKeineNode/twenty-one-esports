@@ -87,8 +87,9 @@ test('nostr login: the button lands on home, the chip shows the name and short n
     $chip = $page->locator('[data-test="account-chip"]');
     $chipText = $chip->textContent();
 
+    // The chip reads "You" with the name for screen readers; name and short npub are its tooltip (header concept B).
     expect($chipText)->toContain($user->displayName())
-        ->toContain($user->shortNpub());
+        ->and($chip->getAttribute('title'))->toContain($user->displayName())->toContain($user->shortNpub());
 
     // Log out: open the chip's dropdown, then the "Log out" menu item. Flux
     // menu items are ARIA menuitems, not buttons, even though the

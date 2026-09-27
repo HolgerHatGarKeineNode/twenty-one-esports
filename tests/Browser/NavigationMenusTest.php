@@ -137,11 +137,15 @@ test('context actions sit on the page where they are looked for, at 375 and 1440
         $admin = navPage($users['admin'], $width);
         navOpen($admin, '/clans', $problems);
         if ($width === 375) {
-            $admin->locator('[aria-controls=mobile-nav]')->click();
-            BrowserWait::until($admin, '() => document.getElementById("mobile-nav").checkVisibility()', 5_000);
-            $panel = $admin->evaluate('() => { const r = document.getElementById("mobile-nav").getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), document.getElementById("mobile-nav").scrollHeight]; }');
-            fwrite(STDERR, "\n[nav-menu] 375px admin menu top/bottom/scrollHeight ".json_encode($panel));
-            expect($panel[1])->toBeLessThanOrEqual(667);
+            // The More sheet of the tab bar (header concept B): it ends on the tab bar and scrolls inside if it must.
+            $admin->locator('[data-test=tab-more]')->click();
+            BrowserWait::until($admin, '() => document.getElementById("more-sheet").checkVisibility()', 5_000);
+            // Measured after its 220 ms rise, not in the middle of it.
+            $admin->evaluate('() => Promise.all(document.getElementById("more-sheet").getAnimations().map((a) => a.finished)).then(() => true)');
+            $panel = $admin->evaluate('() => { const r = document.getElementById("more-sheet").getBoundingClientRect(); return [Math.round(r.top), Math.round(r.bottom), document.getElementById("more-sheet").scrollHeight, Math.round(document.querySelector("[data-test=tab-bar]").getBoundingClientRect().top)]; }');
+            fwrite(STDERR, "\n[nav-menu] 375px admin More sheet top/bottom/scrollHeight/tab bar top ".json_encode($panel));
+            expect($panel[0])->toBeGreaterThanOrEqual(0)
+                ->and($panel[1])->toBe($panel[3]);
             navShot($admin, 'p16-mobile-menu-admin-375');
         } else {
             $admin->locator('[data-test=games-menu]')->click();

@@ -195,7 +195,8 @@ test('two players chat in a daily game through a relay, and on a phone the chat 
         BrowserWait::until($pageA, '() => [...document.querySelectorAll("#sheet-body [data-test=chat-messages] li[data-from=them]")].some((li) => li.offsetParent !== null && li.innerText.includes("after work"))', 5_000);
 
         expect($desktop)->toBe(['scrollY' => 0, 'lastMove' => true, 'chatInput' => true])
-            ->and($phone)->toBe(['sheetTop' => 740, 'sheetBottom' => 812, 'barBottom' => 740, 'overflow' => 0])
+            // The shell's tab bar (64 px) owns the bottom edge below lg: the sheet and the bar sit on top of it.
+            ->and($phone)->toBe(['sheetTop' => 676, 'sheetBottom' => 748, 'barBottom' => 676, 'overflow' => 0])
             ->and(ChatMute::query()->where('user_id', $bert->id)->pluck('muted_pubkey')->all())->toBe([$anna->pubkey])
             ->and(NostrEvent::query()->count())->toBe(0)
             ->and($pageA->evaluate('() => window.__errors'))->toBe([])

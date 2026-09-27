@@ -12,6 +12,7 @@ import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
 import playerPicker from './playerPicker.js';
+import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
 import './nostrSign.js';
 import './badgeShare.js';
 import './captured.js';
@@ -31,6 +32,10 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('matchDock', matchDock);
     // The player picker combobox, <x-player-picker>.
     window.Alpine.data('playerPicker', playerPicker);
+    // The shell navigation: header and game hub, the phone's More sheet, the guests' first steps.
+    window.Alpine.data('shellHeader', shellHeader);
+    window.Alpine.data('shellSheet', shellSheet);
+    window.Alpine.data('firstSteps', firstSteps);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.
