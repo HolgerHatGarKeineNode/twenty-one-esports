@@ -288,6 +288,7 @@ test('the calendar writer waits for the next second instead of signing ahead of 
 });
 
 test('an organizer saves one change every two seconds, across his tournaments too', function () {
+    $this->freezeTime();
     $first = openTournament();
     $second = openTournament(['created_by_id' => $first->created_by_id]);
 
@@ -305,6 +306,7 @@ test('an organizer saves one change every two seconds, across his tournaments to
 });
 
 test('the edit page saves one change per tournament every two seconds', function () {
+    $this->freezeTime();
     $tournament = openTournament();
     $page = Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament]);
 
