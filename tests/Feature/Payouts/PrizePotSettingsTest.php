@@ -157,7 +157,8 @@ test('the pot shows as set wherever the tournament shows, with the balance time,
         ->assertDontSeeHtml('data-test="pool-as-of"')->assertDontSee('pot@wallet.example')
         ->assertSeeHtml('data-test="topup-panel"');
     $this->get(route('tournaments.index'))->assertSeeHtml('data-test="prize-chip"')->assertSee(__(':sats of :target sats pot', ['sats' => $sats, 'target' => $sats]));
-    $this->get(route('games.rocket-league'))->assertSeeHtml('data-test="prize-chip"');
+    // The game page's poster shows the pot as its big number (user, 2026-09-28), not as a chip.
+    $this->get(route('games.rocket-league'))->assertSeeHtml('data-test="next-tournament-pot"')->assertSeeHtml('>'.$sats.'</span>');
 
     // The wallet goes offline: the schedule keeps the last balance and says so.
     app(FakeNwcTransport::class)->offline[$own->pubkey] = true;
