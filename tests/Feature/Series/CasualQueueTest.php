@@ -117,18 +117,18 @@ test('a live chess game or a running casual 1v1 refuses to join', function () {
 test('two forfeited no-shows within a day lock a player out of casual play for 30 minutes', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
     $queue = app(CasualQueue::class);
-    casualNoShowLoss($anna, now()->subHours(25));
-    casualNoShowLoss($anna, now()->subHours(3));
+    casualNoShowLoss($anna, now()->subHours(25), $bert);
+    casualNoShowLoss($anna, now()->subHours(3), $bert);
 
     // The first of the two is older than 24 h: one no-show counts, no lock.
     expect(casualRefusal(fn () => $queue->join($anna, 'rocket-league', Platform::Pc)))->toBeNull();
     $queue->leave($anna);
 
-    casualNoShowLoss($anna, now()->subMinutes(10));
+    casualNoShowLoss($anna, now()->subMinutes(10), $bert);
 
     expect(casualRefusal(fn () => $queue->join($anna, 'rocket-league', Platform::Pc)))->toBe('queue_locked')
         ->and(casualRefusal(fn () => app(CasualInvites::class)->invite($anna, $bert, 'rocket-league', Platform::Pc, true)))->toBe('queue_locked')
-        // The winner of those matches is not locked.
+        // Bert won those matches by forfeit: the winner is not locked.
         ->and(casualRefusal(fn () => $queue->join($bert, 'rocket-league', Platform::Pc)))->toBeNull();
 
     $this->travel(20)->minutes();

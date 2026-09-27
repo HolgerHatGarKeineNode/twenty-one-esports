@@ -47,10 +47,10 @@ function casualStarted(string $game = 'ea-sports-fc-26'): array
     return $match->host_side === 'challenger' ? [$match, $anna, $bert] : [$match, $bert, $anna];
 }
 
-/** A casual match this player lost by a no-show forfeit, finished at `$at`. */
-function casualNoShowLoss(User $loser, DateTimeInterface $at): SeriesMatch
+/** A casual match this player lost to `$winner` by a no-show forfeit, finished at `$at`. */
+function casualNoShowLoss(User $loser, DateTimeInterface $at, ?User $winner = null): SeriesMatch
 {
-    $match = app(CasualMatches::class)->create(User::factory()->create(), $loser, 'rocket-league', SeriesMatch::ORIGIN_QUEUE, []);
+    $match = app(CasualMatches::class)->create($winner ?? User::factory()->create(), $loser, 'rocket-league', SeriesMatch::ORIGIN_QUEUE, []);
     $match->forceFill(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Forfeit, 'winner' => 'challenger', 'finished_at' => $at])->save();
 
     return $match;
