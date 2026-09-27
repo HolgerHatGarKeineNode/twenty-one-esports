@@ -46,7 +46,19 @@ final class PotBalances
             return false;
         }
 
-        $tournament->forceFill(['pot_balance_sats' => $sats, 'pot_balance_at' => now(), 'pot_balance_error' => null])->save();
+        $fill = ['pot_balance_sats' => $sats, 'pot_balance_at' => now(), 'pot_balance_error' => null];
+
+        // Top-ups switch on by themselves once the connection may make and look up
+        // invoices (a permission added in the wallet later), without a new save.
+        if ($tournament->pot_can_receive !== true) {
+            $methods = $wallet->methods();
+
+            if ($methods !== null) {
+                $fill['pot_can_receive'] = in_array('make_invoice', $methods, true) && in_array('lookup_invoice', $methods, true);
+            }
+        }
+
+        $tournament->forceFill($fill)->save();
 
         return true;
     }

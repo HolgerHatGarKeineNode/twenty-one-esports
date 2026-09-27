@@ -20,6 +20,7 @@ use App\Models\TournamentModerationEntry;
 use App\Models\TournamentOrganizer;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentResultEntry;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Payouts\TournamentPlacements;
@@ -619,6 +620,14 @@ test('calling a tournament off voids its open series, rates nothing after and pu
 });
 
 /* ---------- 6. Messages ------------------------------------------------------------------------------------ */
+
+test('the only player writing to all players is told there is nobody else yet, not that nobody plays', function () {
+    $tournament = Tournament::factory()->signup()->create(['signup_closes_at' => now()->addDay()]);
+    $admin = ctlAdmin();
+    TournamentSignup::query()->create(['tournament_id' => $tournament->id, 'user_id' => $admin->id, 'name' => $admin->displayName(), 'members' => [$admin->id]]);
+
+    expect(fn () => ctl()->message($tournament, $admin, 'Test'))->toThrow(TournamentRuleViolation::class, 'You are the only player so far');
+});
 
 test('a message reaches every player once, in the bell, and is rate limited', function () {
     config(['esports.tournaments.messages_per_hour' => 2]);

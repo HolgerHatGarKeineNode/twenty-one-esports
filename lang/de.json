@@ -3715,5 +3715,6 @@
     "Warning: the wallet holds :balance sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still save; top up the wallet before the payouts.": "Warnung: Die Wallet hält :balance Sats, :missing Sats weniger, als die festen Preise mit der Gebührenreserve brauchen (:need Sats). Speichern geht trotzdem; lade die Wallet vor den Auszahlungen auf.",
     "Warning: the pot holds :have sats, :missing sats less than the fixed prizes need with the fee reserve (:need sats). You can still approve; a payment the wallet cannot make fails and can be retried after a top-up.": "Warnung: Der Topf hält :have Sats, :missing Sats weniger, als die festen Preise mit der Gebührenreserve brauchen (:need Sats). Freigeben geht trotzdem; eine Zahlung, die die Wallet nicht leisten kann, schlägt fehl und kann nach dem Aufladen wiederholt werden.",
     "Balance could not be read; you can still approve, the admin is responsible.": "Der Kontostand konnte nicht gelesen werden; Freigeben geht trotzdem, die Verantwortung liegt beim Admin.",
-    ":left of :total sats still to be won": ":left von :total sats noch zu gewinnen"
+    ":left of :total sats still to be won": ":left von :total sats noch zu gewinnen",
+    "You are the only player so far, so there is nobody else to write to yet.": "Du bist bisher der einzige Spieler, es gibt also noch niemanden, dem du schreiben kannst."
 }

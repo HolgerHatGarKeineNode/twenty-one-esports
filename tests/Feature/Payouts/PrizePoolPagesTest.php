@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\Payouts\PayoutApproval;
 use App\Support\PreSeason;
+use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PotTopUps;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -72,6 +73,12 @@ test('top-ups are hidden when the pot’s connection may not make invoices', fun
         ->assertDontSeeHtml('data-test="topup"')
         ->call('topUp')->assertHasErrors('topup');
     expect(IncomingPayment::query()->count())->toBe(0);
+
+    // The organizer allows receiving in the wallet later: the next balance read turns top-ups on, no new save needed.
+    $pot->payMethods = ['pay_invoice', 'get_balance', 'get_info', 'make_invoice', 'lookup_invoice'];
+    expect(app(PotBalances::class)->read($tournament->refresh()))->toBeTrue()
+        ->and($tournament->refresh()->pot_can_receive)->toBeTrue();
+    Livewire::test('tournament-pool', ['tournament' => $tournament])->assertDontSeeHtml('data-test="topup-off"');
 });
 
 test('the organizer sets the prizes and a sponsor whose invoice comes from the pot’s wallet and whose logo shows once paid', function () {

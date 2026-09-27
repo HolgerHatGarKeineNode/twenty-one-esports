@@ -733,10 +733,13 @@ final class TournamentControl
                 ]));
             }
 
-            $recipients = array_values(array_diff($this->players($locked), [$actor->id]));
+            $players = $this->players($locked);
+            $recipients = array_values(array_diff($players, [$actor->id]));
 
             if ($recipients === []) {
-                throw new TournamentRuleViolation('nobody', __('Nobody plays in this tournament yet.'));
+                throw new TournamentRuleViolation('nobody', $players === []
+                    ? __('Nobody plays in this tournament yet.')
+                    : __('You are the only player so far, so there is nobody else to write to yet.'));
             }
 
             RateLimiter::hit($throttle, 3600);
