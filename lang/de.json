@@ -3224,5 +3224,19 @@
     ":min to :max; empty: :minutes min after the start of the match.": ":min bis :max; leer: :minutes Min. nach dem Start des Matches.",
     "Round times": "Rundenzeiten",
     "Stage :stage": "Phase :stage",
-    "Round :number: :measured (estimate :estimate)": "Runde :number: :measured (Schätzung :estimate)"
+    "Round :number: :measured (estimate :estimate)": "Runde :number: :measured (Schätzung :estimate)",
+    "CET": "MEZ",
+    "CEST": "MESZ",
+    "Europe/Berlin": "Europa/Berlin",
+    "Enter a date and a time.": "Gib ein Datum und eine Uhrzeit ein.",
+    ":time does not exist in :city on :date: the clocks jump forward an hour. Pick another time.": ":time gibt es in :city am :date nicht: Die Uhren springen eine Stunde vor. Wähle eine andere Uhrzeit.",
+    ":time happens twice in :city on :date: the clocks go back an hour. Pick another time.": ":time gibt es in :city am :date zweimal: Die Uhren werden eine Stunde zurückgestellt. Wähle eine andere Uhrzeit.",
+    "Time zone: :zone (:abbreviation, :offset)": "Zeitzone: :zone (:abbreviation, :offset)",
+    "starts in :d d :h h": "startet in :d T :h Std",
+    "starts in :h h :m min": "startet in :h Std :m Min",
+    "starts in :m min": "startet in :m Min",
+    "starts in under a minute": "startet in weniger als einer Minute",
+    "In your time: :time": "In deiner Zeit: :time",
+    "Sign-up until :time": "Anmeldung bis :time",
+    "Add to calendar": "Zum Kalender hinzufügen"
 }

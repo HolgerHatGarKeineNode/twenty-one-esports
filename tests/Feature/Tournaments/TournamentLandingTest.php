@@ -168,13 +168,13 @@ test('the create form stores a description, trimmed, and nothing when it is left
     $organizer = organizer();
 
     Livewire\Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
-        ->set('name', 'Halving Cup')->set('description', '  Bring your own controller.  ')->set('date', now()->addWeek()->format('Y-m-d'))
+        ->set('name', 'Halving Cup')->set('description', '  Bring your own controller.  ')->set('startsAt', now()->addWeek()->format('Y-m-d').'T19:00')
         ->call('create')->assertHasNoErrors();
     Livewire\Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
-        ->set('name', 'Quiet Cup')->set('date', now()->addWeek()->format('Y-m-d'))
+        ->set('name', 'Quiet Cup')->set('startsAt', now()->addWeek()->format('Y-m-d').'T19:00')
         ->call('create')->assertHasNoErrors();
     Livewire\Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
-        ->set('name', 'Long Cup')->set('description', str_repeat('a', 1001))->set('date', now()->addWeek()->format('Y-m-d'))
+        ->set('name', 'Long Cup')->set('description', str_repeat('a', 1001))->set('startsAt', now()->addWeek()->format('Y-m-d').'T19:00')
         ->call('create')->assertHasErrors(['description' => 'max']);
 
     expect(Tournament::query()->where('name', 'Halving Cup')->value('description'))->toBe('Bring your own controller.')

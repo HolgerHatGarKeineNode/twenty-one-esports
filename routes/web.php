@@ -15,6 +15,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShareCardController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SwitchLocaleController;
+use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
 use App\Models\InviteLink;
 use App\Support\Seo\Sitemap;
@@ -121,6 +122,7 @@ Route::livewire('matches/{match}', 'pages::matches.show')->whereNumber('match')-
 Route::livewire('tournaments', 'pages::tournaments.index')->name('tournaments.index');
 Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNumber('tournament')->name('tournaments.show');
 Route::livewire('tournaments/{tournament}/draw', 'pages::tournaments.draw')->whereNumber('tournament')->name('tournaments.draw');
+Route::get('tournaments/{tournament}/calendar.ics', TournamentCalendarController::class)->whereNumber('tournament')->name('tournaments.calendar');
 Route::middleware('auth')->group(function () {
     Route::livewire('tournaments/{tournament}/signup', 'pages::tournaments.signup')->whereNumber('tournament')->name('tournaments.signup');
     Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')

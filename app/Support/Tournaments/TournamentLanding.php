@@ -9,6 +9,7 @@ use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Rating\Ratings;
 use App\Support\Tournaments\Engine\BracketBuilder;
 use App\Support\Tournaments\Engine\BracketMatch;
@@ -158,7 +159,7 @@ final class TournamentLanding
      *
      * @return array{ms: int, label: string, text: string, when: string}|null
      */
-    public function countdown(string $zone): ?array
+    public function countdown(): ?array
     {
         $deadline = $this->deadline();
 
@@ -173,8 +174,44 @@ final class TournamentLanding
             'ms' => (int) $deadline['at']->getTimestampMs(),
             'label' => $deadline['kind'] === 'signup' ? __('Sign-up closes in') : __('Starts in'),
             'text' => ($days > 0 ? trans_choice(':count day|:count days', $days).' ' : '').sprintf('%02d:%02d:%02d', intdiv($seconds % 86400, 3600), intdiv($seconds % 3600, 60), $seconds % 60),
-            'when' => $deadline['at']->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat('D Y-m-d H:i'),
+            'when' => LeagueTime::stamp($deadline['at']),
         ];
+    }
+
+    /**
+     * How long until the start, coarse ("starts in 5 d 3 h"), while the start
+     * is ahead and nothing has been played; the page script
+     * (resources/js/tournamentLanding.js, startsIn) keeps it current.
+     *
+     * @return array{ms: int, text: string}|null
+     */
+    public function startsIn(): ?array
+    {
+        $tournament = $this->tournament;
+
+        if (! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Signup, TournamentStatus::Drawing], true) || ! $tournament->starts_at->isFuture()) {
+            return null;
+        }
+
+        return [
+            'ms' => (int) $tournament->starts_at->getTimestampMs(),
+            'text' => self::startsInText((int) now()->diffInSeconds($tournament->starts_at, false)),
+        ];
+    }
+
+    /** "starts in 5 d 3 h", "starts in 3 h 20 min", "starts in 12 min", "starts in under a minute". */
+    public static function startsInText(int $seconds): string
+    {
+        $days = intdiv(max(0, $seconds), 86400);
+        $hours = intdiv(max(0, $seconds) % 86400, 3600);
+        $minutes = intdiv(max(0, $seconds) % 3600, 60);
+
+        return match (true) {
+            $days > 0 => __('starts in :d d :h h', ['d' => $days, 'h' => $hours]),
+            $hours > 0 => __('starts in :h h :m min', ['h' => $hours, 'm' => $minutes]),
+            $minutes > 0 => __('starts in :m min', ['m' => $minutes]),
+            default => __('starts in under a minute'),
+        };
     }
 
     /**

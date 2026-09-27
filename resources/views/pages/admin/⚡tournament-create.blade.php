@@ -5,8 +5,8 @@ use App\Enums\TournamentStatus;
 use App\Livewire\TournamentFormatChooser;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Tournaments\FormatOptions;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -29,24 +29,15 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
 
     public string $description = '';
 
-    public string $date = '';
-
-    public string $time = '19:00';
+    /** The start as `Y-m-d\TH:i` in the league's zone (LeagueTime). */
+    public string $startsAt = '';
 
     public function mount(): void
     {
         Gate::authorize('create-tournaments');
 
-        $this->date = now()->addWeek()->timezone($this->zone())->format('Y-m-d');
+        $this->startsAt = now()->addWeek()->timezone(LeagueTime::zone())->format('Y-m-d').'T19:00';
         $this->options = FormatOptions::defaults($this->profile())->toArray();
-    }
-
-    /**
-     * The zone date and time are entered in: the one the tournament pages show them in.
-     */
-    private function zone(): string
-    {
-        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     }
 
     public function chooserCreator(): ?User
@@ -61,8 +52,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         $this->validate([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'date' => ['required', 'date_format:Y-m-d'],
-            'time' => ['required', 'date_format:H:i'],
+            'startsAt' => ['required', LeagueTime::rule()],
             'players' => ['required', 'integer', 'between:2,64'],
             'stations' => ['integer', 'between:1,32'],
             'gameLength' => ['nullable', 'numeric', 'between:0.5,1000'],
@@ -71,11 +61,11 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
             ...$this->deadlineRules(),
         ]);
 
-        // Typed in the zone the show and edit pages display (the player's, else the league's); stored as UTC.
-        $startsAt = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $this->zone())?->utc();
+        // Typed in the league's zone, whoever types it (the admin's own zone never applies); stored as UTC.
+        $startsAt = LeagueTime::parse($this->startsAt);
 
-        if ($startsAt === null || $startsAt->isPast()) {
-            $this->addError('date', __('Pick a start in the future.'));
+        if ($startsAt->isPast()) {
+            $this->addError('startsAt', __('Pick a start in the future.'));
 
             return;
         }
@@ -145,17 +135,7 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
                        class="h-11 w-full rounded-md border border-edge bg-ground px-3 text-[13px] text-ink">
                 @error('name')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
             </label>
-            <label class="flex min-w-0 flex-col gap-1.5 text-xs text-ink-2">
-                {{ __('Date') }}
-                <input type="date" wire:model="date" class="h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink [color-scheme:dark]">
-                @error('date')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-            </label>
-            <label class="flex min-w-0 flex-col gap-1.5 text-xs text-ink-2">
-                {{ __('Starts') }}
-                <input type="time" wire:model="time" class="h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink [color-scheme:dark]">
-                @error('time')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-            </label>
-            <span class="col-span-2 text-xs text-ink-3 lg:col-span-3">{{ __('Times in :zone.', ['zone' => (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'))]) }}</span>
+            <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="create-starts-at" class="col-span-2" />
             <label class="col-span-2 flex flex-col gap-1.5 text-xs text-ink-2 lg:col-span-3">
                 {{ __('Description (optional)') }}
                 <textarea wire:model="description" maxlength="1000" rows="3" data-test="tournament-description"

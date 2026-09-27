@@ -105,6 +105,7 @@ const NAV_NOT_PAGES = [
     'admin.disputes.evidence' => 'file: a dispute screenshot, linked from the dispute page',
     'nostr.nip05' => 'JSON for Nostr clients',
     'robots' => 'file for crawlers',
+    'tournaments.calendar' => 'file: the calendar download, linked from the tournament page',
     'sitemap' => 'file for crawlers',
     'sitemap.section' => 'file for crawlers',
     'avatars.generated' => 'image',

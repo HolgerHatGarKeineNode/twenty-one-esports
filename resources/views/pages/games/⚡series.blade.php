@@ -209,6 +209,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <span class="flex items-baseline justify-between"><h2 id="rl-cup" class="m-0 text-[15px] font-bold">{{ __('Next tournament') }}</h2><a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All tournaments') }}</a></span>
             @if ($next)
                 <a href="{{ route('tournaments.show', $next) }}" class="flex flex-wrap items-baseline justify-between gap-2 text-ink hover:text-ink" data-test="game-next-tournament"><b class="font-display text-lg">{{ $next->name }}</b><span class="text-xs text-ink-2">{{ GameNames::mode($next->game, $next->mode) }} · {{ $next->format->label() }}</span></a>
+                <x-league-time :at="$next->starts_at" class="text-[13px] text-ink" data-test="game-next-tournament-start" />
             @else
                 <p class="m-0 text-[13px] text-ink-2">{{ __('No :game tournament is open for sign-up right now.', ['game' => $gameName]) }}</p>
             @endif

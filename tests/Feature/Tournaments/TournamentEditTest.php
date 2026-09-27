@@ -12,6 +12,7 @@ use App\Models\Tournament;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -350,17 +351,17 @@ test('start times are typed and shown in the display zone and stored as UTC, acr
     $organizer = organizer();
 
     Livewire::actingAs($organizer)->test('pages::admin.tournament-create')
-        ->set('name', 'Zone Cup')->set('date', $date)->set('time', '19:00')
+        ->set('name', 'Zone Cup')->set('startsAt', "{$date}T19:00")
         ->call('create')->assertHasNoErrors();
 
     $tournament = Tournament::query()->where('name', 'Zone Cup')->sole();
 
     expect($tournament->starts_at->utc()->format('Y-m-d H:i'))->toBe($utc);
 
-    $this->actingAs($organizer)->get(route('tournaments.show', $tournament))->assertSee("{$date} 19:00");
+    $this->actingAs($organizer)->get(route('tournaments.show', $tournament))->assertSee(LeagueTime::stamp($tournament->starts_at));
 
     Livewire::actingAs($organizer)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
-        ->assertSet('date', $date)->assertSet('time', '19:00')
+        ->assertSet('startsAt', "{$date}T19:00")
         ->call('save')
         ->assertSet('error', '')
         ->assertSet('notice', __('Nothing changed.'));

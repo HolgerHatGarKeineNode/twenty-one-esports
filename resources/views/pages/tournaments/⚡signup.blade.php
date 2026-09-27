@@ -173,16 +173,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 @php
     $tournament = $this->tournament;
     $me = auth()->user();
-    $zone = (string) ($me->timezone ?? config('esports.preseason.display_timezone'));
     $teams = $tournament->profile()->entersTeams();
     $open = $tournament->isSignupOpen();
     $entry = $this->entry;
     $landing = new \App\Support\Tournaments\TournamentLanding($tournament, $me);
     $places = $landing->places();
     $left = $landing->openSeats();
-    $countdown = $landing->countdown($zone);
+    $countdown = $landing->countdown();
     $lineup = $this->lineups->firstWhere('id', $this->lineupId);
-    $at = fn (\Carbon\CarbonInterface $moment): string => $moment->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat('D Y-m-d H:i');
+    $at = fn (\Carbon\CarbonInterface $moment): string => \App\Support\LeagueTime::stamp($moment);
     $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
 
     // The arena row: who is in (their pictures), then the seat that is yours.

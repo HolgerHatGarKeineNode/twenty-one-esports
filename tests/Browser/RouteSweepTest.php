@@ -75,6 +75,16 @@ const SWEEP_VENDOR_PREFIXES = ['flux/', 'livewire-', 'storage/', 'broadcasting/'
 const SWEEP_CRAWLER_FILES = ['robots', 'sitemap', 'sitemap.section'];
 
 /**
+ * Downloads, not pages: a browser saves them instead of showing them. The
+ * tournament calendar file is checked in tests/Feature/Tournaments/
+ * TournamentTimeZoneTest and fetched from its link in tests/Browser/
+ * TournamentTimeTest.
+ *
+ * @var list<string>
+ */
+const SWEEP_DOWNLOADS = ['tournaments.calendar'];
+
+/**
  * JSON endpoints, not pages: the player picker's suggestions
  * (tests/Feature/PlayerPickerTest, tests/Browser/PlayerPickerTest).
  *
@@ -93,6 +103,7 @@ function sweepRoutes(array $bound = []): array
         ->filter(fn (RoutingRoute $route) => in_array('GET', $route->methods(), true))
         ->reject(fn (RoutingRoute $route) => $route->uri() === 'up')
         ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_CRAWLER_FILES, true))
+        ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_DOWNLOADS, true))
         ->reject(fn (RoutingRoute $route) => in_array($route->getName(), SWEEP_JSON_ENDPOINTS, true))
         ->reject(function (RoutingRoute $route) {
             foreach (SWEEP_VENDOR_PREFIXES as $prefix) {

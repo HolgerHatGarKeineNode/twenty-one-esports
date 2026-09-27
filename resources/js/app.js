@@ -17,6 +17,7 @@ import './badgeShare.js';
 import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';
+import './leagueTime.js';
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {

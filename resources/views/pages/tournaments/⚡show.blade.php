@@ -5,6 +5,7 @@ use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Support\Cards\ShareCard;
+use App\Support\LeagueTime;
 use App\Support\PageMeta;
 use App\Support\Seo\LocalizedUrls;
 use App\Support\Seo\StructuredData;
@@ -17,7 +18,6 @@ use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentView;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -50,7 +50,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         abort_unless($tournament->isVisibleTo(auth()->user()), 404);
 
         $this->tournament = $tournament;
-        $this->closesAt = $tournament->starts_at->copy()->subHour()->timezone($this->zone())->format('Y-m-d\TH:i');
+        $this->closesAt = LeagueTime::input($tournament->starts_at->copy()->subHour());
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -137,19 +137,15 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $this->error = '';
 
         try {
-            $closes = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $this->closesAt, $this->zone());
-        } catch (\Throwable) {
-            $closes = null;
-        }
-
-        if (! $closes instanceof CarbonImmutable) {
-            $this->error = __('Pick the date and time sign-up closes.');
+            $closes = LeagueTime::parse($this->closesAt);
+        } catch (\InvalidArgumentException $invalid) {
+            $this->error = $this->closesAt === '' ? __('Pick the date and time sign-up closes.') : $invalid->getMessage();
 
             return;
         }
 
         try {
-            $this->tournament = app(TournamentPublisher::class)->publish($this->tournament, $user, $closes->utc());
+            $this->tournament = app(TournamentPublisher::class)->publish($this->tournament, $user, $closes);
         } catch (TournamentRuleViolation $violation) {
             $this->error = $violation->getMessage();
         }
@@ -186,11 +182,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             ? (new TournamentView($this->tournament))->stages()
             : [];
     }
-
-    private function zone(): string
-    {
-        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
-    }
 }; ?>
 
 @php
@@ -213,7 +204,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $champion = $this->champion;
     $pageUrl = route('tournaments.show', $tournament);
     $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
-    $at = fn (\Carbon\CarbonInterface $moment, string $format = 'D Y-m-d H:i'): string => $moment->copy()->timezone($zone)->locale(app()->getLocale())->translatedFormat($format);
+    $at = fn (\Carbon\CarbonInterface $moment): string => LeagueTime::stamp($moment);
     $poll = in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && $published;
 
     // Who is in, for the line under the button: the two best seeds by name, the rest counted.
@@ -226,7 +217,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     };
     $faces = array_values(array_filter(array_map(fn (array $row) => $row['users'][0] ?? null, array_slice($roster, 0, 5))));
 
-    $countdown = $landing->countdown($zone);
+    $countdown = $landing->countdown();
 
     $shareText = $status === TournamentStatus::Signup && $tournament->isSignupOpen()
         ? __('Play :tournament with me on TWENTY ONE Esports: :game, :spots.', ['tournament' => $tournament->name, 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $open)])
@@ -312,6 +303,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </div>
 
                 <h1 id="t-name" class="m-0 font-display text-[32px] leading-[1.08] font-bold break-words sm:text-[44px] xl:text-[56px]">{{ $tournament->name }}</h1>
+
+                @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
 
                 @if (filled($tournament->description))
                     <p class="m-0 max-w-[60ch] text-[15px] leading-relaxed whitespace-pre-line text-ink-2" data-test="tournament-description">{{ $tournament->description }}</p>
@@ -441,10 +434,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <form wire:submit="publish" class="mx-4 flex flex-col gap-3 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="publish-form">
             <h2 class="m-0 text-[15px] font-bold">{{ __('Publish and open sign-up') }}</h2>
             <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The league publishes the tournament to its calendar on Nostr. Players can sign up until the time you pick; then the draw runs from the next Bitcoin block.') }}</p>
-            <label class="flex flex-col gap-1.5 text-xs text-ink-2 sm:max-w-[320px]">
-                {{ __('Sign-up closes') }}
-                <input type="datetime-local" wire:model="closesAt" class="h-11 rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="closes-at">
-            </label>
+            <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="closes-at" class="sm:max-w-[400px]" />
             @if ($error !== '')
                 <p class="m-0 text-[13px] text-loss" role="alert">{{ $error }}</p>
             @endif

@@ -48,7 +48,6 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
 
 @php
     $live = Seasons::isLive();
-    $zone = (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     $counts = [
         [__('Open for sign-up'), $this->tournaments->where('status', TournamentStatus::Signup)->count()],
         [__('Running'), $this->tournaments->whereIn('status', [TournamentStatus::Drawing, TournamentStatus::Running])->count()],
@@ -90,7 +89,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             <div class="flex min-w-0 grow flex-col gap-2">
                 <span class="text-xs text-ink-2">{{ __('Next tournament') }}</span>
                 <h2 id="next-h" class="m-0 font-display text-[26px] font-bold break-words"><a href="{{ route('tournaments.show', $next) }}" class="text-ink hover:text-ink">{{ $next->name }}</a></h2>
-                <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · {{ $next->starts_at->copy()->timezone($zone)->format('D Y-m-d H:i') }}@if (($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($next, $zone)) !== null) · <span data-test="open-end">{{ $openEnd }}</span>@endif</p>
+                <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · <x-league-time :at="$next->starts_at" data-test="next-tournament-start" />@if (($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($next, $zone)) !== null) · <span data-test="open-end">{{ $openEnd }}</span>@endif</p>
                 <div class="flex flex-col gap-1.5 pt-2">
                     <span class="text-[13px]">{{ __(':taken of :places places taken', ['taken' => $places['taken'], 'places' => $places['places']]) }}</span>
                     <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $places['places'] > 0 ? min(100, (int) round(100 * $places['taken'] / $places['places'])) : 0 }}%"></span></span>
@@ -98,7 +97,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             </div>
             <div class="flex shrink-0 flex-col gap-3 lg:w-[320px]">
                 <span class="text-xs text-ink-2">{{ __('Registration closes') }}</span>
-                <span class="font-display text-xl font-bold">{{ $next->signup_closes_at->copy()->timezone($zone)->format('D H:i') }}</span>
+                <x-league-time :at="$next->signup_closes_at" class="font-display text-xl font-bold" />
                 <span class="text-xs text-ink-3">{{ $next->signup_closes_at->diffForHumans() }}</span>
                 <x-button :href="auth()->check() ? route('tournaments.signup', $next) : route('login')" data-test="register">{{ __('Register') }}</x-button>
             </div>
@@ -113,8 +112,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             <ul class="m-0 flex list-none flex-col p-0">
                 @foreach ($this->tournaments as $tournament)
                     <li class="flex flex-col gap-1 border-t border-hairline py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-4" wire:key="t-{{ $tournament->id }}" data-test="tournament-item">
-                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold sm:w-[34%]"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>
-                        <span class="text-ink-2 sm:w-[18%]">{{ $tournament->starts_at->copy()->timezone($zone)->format('Y-m-d') }}</span>
+                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold sm:w-[30%]"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>
+                        <x-league-time :at="$tournament->starts_at" class="text-ink-2 sm:w-[22%]" />
                         <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
                         <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>
                         <span class="inline-flex h-6 items-center self-start rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi sm:self-auto">{{ $tournament->status->label() }}</span>

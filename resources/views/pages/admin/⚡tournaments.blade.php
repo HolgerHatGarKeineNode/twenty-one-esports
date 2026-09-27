@@ -174,7 +174,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                         <span class="block text-xs text-ink-3">{{ __('by :name', ['name' => $tournament->creator?->displayName() ?? __('a former player')]) }}</span>
                                     </td>
                                     <td class="py-2.5 pr-3">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}</td>
-                                    <td class="py-2.5 pr-3 whitespace-nowrap">{{ $tournament->starts_at->format('Y-m-d H:i') }}</td>
+                                    <td class="py-2.5 pr-3 whitespace-nowrap"><x-league-time :at="$tournament->starts_at" /></td>
                                     <td class="py-2.5 pr-3">{{ $tournament->format->label() }}
                                         <span class="block text-xs text-ink-3">{{ __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $tournament->profile())]) }}</span>
                                     </td>

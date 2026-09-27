@@ -175,13 +175,13 @@ test('switching back to players drops the named directors', function () {
 
 test('a name, a start in the future and a valid count are required', function () {
     Livewire::actingAs(tournamentAdmin())->test('pages::admin.tournament-create')
-        ->set('date', now()->subDay()->format('Y-m-d'))
+        ->set('startsAt', now()->subDay()->format('Y-m-d').'T19:00')
         ->call('create')
         ->assertHasErrors(['name'])
         ->set('name', 'Too late')
         ->call('create')
-        ->assertHasErrors(['date'])
-        ->set('date', now()->addDay()->format('Y-m-d'))
+        ->assertHasErrors(['startsAt'])
+        ->set('startsAt', now()->addDay()->format('Y-m-d').'T19:00')
         ->set('players', 'many')
         ->call('create')
         ->assertHasErrors(['players']);

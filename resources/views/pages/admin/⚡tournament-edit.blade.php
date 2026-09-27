@@ -8,11 +8,11 @@ use App\Models\TournamentBan;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentGames;
 use App\Support\Tournaments\TournamentModeration;
 use App\Support\Tournaments\TournamentRuleViolation;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
@@ -39,11 +39,10 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
     public string $description = '';
 
-    public string $date = '';
+    /** The start as `Y-m-d\TH:i` in the league's zone (LeagueTime). */
+    public string $startsAt = '';
 
-    public string $time = '';
-
-    /** Sign-up close as `Y-m-d\TH:i` in the viewer's zone; only while sign-up is open. */
+    /** Sign-up close as `Y-m-d\TH:i` in the league's zone; only while sign-up is open. */
     public string $closesAt = '';
 
     /** Remove the lineups a game or mode correction no longer fits. */
@@ -83,14 +82,13 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
     private function fillFromTournament(): void
     {
         $tournament = $this->tournament;
-        $zone = $this->zone();
         $times = $tournament->times ?? [];
 
         $this->name = $tournament->name;
         $this->description = (string) $tournament->description;
-        $this->date = $tournament->starts_at->copy()->timezone($zone)->format('Y-m-d');
-        $this->time = $tournament->starts_at->copy()->timezone($zone)->format('H:i');
-        $this->closesAt = $tournament->signup_closes_at?->copy()->timezone($zone)->format('Y-m-d\TH:i') ?? '';
+        // Stored UTC, shown and typed in the league's zone; an unchanged value saves back its stored instant.
+        $this->startsAt = LeagueTime::input($tournament->starts_at);
+        $this->closesAt = LeagueTime::input($tournament->signup_closes_at);
         $this->game = TournamentGames::keyOf($tournament->game, $tournament->mode) ?? 'blitz';
         $this->players = (string) $tournament->capacity;
         $this->window = $tournament->time_window;
@@ -183,8 +181,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $this->validate([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'date' => ['required', 'date_format:Y-m-d'],
-            'time' => ['required', 'date_format:H:i'],
+            'startsAt' => ['required', LeagueTime::rule($tournament->starts_at)],
             ...$this->deadlineRules(),
             ...($beforeDraw ? [
                 'players' => ['required', 'integer', 'between:2,64'],
@@ -193,14 +190,13 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 'setup' => ['nullable', 'numeric', 'between:0,1000'],
                 'break' => ['nullable', 'numeric', 'between:0,1000'],
             ] : []),
-            ...($tournament->status === TournamentStatus::Signup ? ['closesAt' => ['required', 'date_format:Y-m-d\TH:i']] : []),
+            ...($tournament->status === TournamentStatus::Signup ? ['closesAt' => ['required', LeagueTime::rule($tournament->signup_closes_at)]] : []),
         ]);
 
-        $zone = $this->zone();
         $changes = [
             'name' => trim($this->name),
             'description' => trim($this->description) === '' ? null : trim($this->description),
-            'starts_at' => CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $zone)->utc(),
+            'starts_at' => LeagueTime::parse($this->startsAt, $tournament->starts_at),
             ...$this->chosenDeadlines(),
         ];
 
@@ -230,7 +226,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             }
 
             if ($tournament->status === TournamentStatus::Signup) {
-                $changes['signup_closes_at'] = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $this->closesAt, $zone)->utc();
+                $changes['signup_closes_at'] = LeagueTime::parse($this->closesAt, $tournament->signup_closes_at);
             }
         }
 
@@ -337,11 +333,6 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
         return $user;
     }
-
-    private function zone(): string
-    {
-        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
-    }
 }; ?>
 
 @php
@@ -404,31 +395,17 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         @if ($ended)
             <p class="m-0 rounded-lg bg-card px-4 py-4 text-[13px] text-ink-2" data-test="edit-ended">{{ __('This tournament has ended; it can no longer be changed.') }}</p>
         @else
-            <section aria-label="{{ __('Basics') }}" class="grid grid-cols-2 gap-3 rounded-lg bg-card p-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)] lg:gap-4 lg:px-6 lg:py-5">
+            <section aria-label="{{ __('Basics') }}" class="grid grid-cols-2 gap-3 rounded-lg bg-card p-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_minmax(0,1.5fr)] lg:gap-4 lg:px-6 lg:py-5">
                 <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 lg:col-span-1">
                     {{ __('Name') }}
                     <input wire:model="name" maxlength="80" data-test="edit-name" class="{{ $field }}">
                     @error('name')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
                 </label>
-                <label class="flex min-w-0 flex-col gap-1.5 text-xs text-ink-2">
-                    {{ __('Date') }}
-                    <input type="date" wire:model="date" class="{{ $field }} [color-scheme:dark]" data-test="edit-date">
-                    @error('date')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-                </label>
-                <label class="flex min-w-0 flex-col gap-1.5 text-xs text-ink-2">
-                    {{ __('Starts') }}
-                    <input type="time" wire:model="time" class="{{ $field }} [color-scheme:dark]" data-test="edit-time">
-                    @error('time')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-                </label>
+                <x-berlin-datetime-input model="startsAt" :label="__('Starts')" :value="$startsAt" test="edit-starts-at" class="col-span-2 lg:col-span-1" />
                 @if ($tournament->status === TournamentStatus::Signup)
-                    <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 lg:col-span-1">
-                        {{ __('Sign-up closes') }}
-                        <input type="datetime-local" wire:model="closesAt" class="{{ $field }} [color-scheme:dark]" data-test="edit-closes-at">
-                        @error('closesAt')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
-                    </label>
+                    <x-berlin-datetime-input model="closesAt" :label="__('Sign-up closes')" :value="$closesAt" test="edit-closes-at" class="col-span-2 lg:col-span-1" />
                 @endif
-                <span class="col-span-2 text-xs text-ink-3 lg:col-span-4">{{ __('Times in :zone.', ['zone' => $zone]) }}</span>
-                <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 lg:col-span-4">
+                <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 lg:col-span-3">
                     {{ __('Description (optional)') }}
                     <textarea wire:model="description" maxlength="1000" rows="3" data-test="edit-description"
                               class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>

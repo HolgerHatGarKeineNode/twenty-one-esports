@@ -36,7 +36,7 @@
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest (~27s + P8b + ladder + covers)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest
 #   5: NavigationCrawlTest (~47s, the P16 walk per role and width)
-#   6: NavigationMenusTest (~17s, P16 menus and context actions)
+#   6: NavigationMenusTest (~17s, P16 menus and context actions), InvitePlacementTest, TournamentTimeTest (the when block, the admin preview)
 #   7: TournamentLandingTest (the tournament page and sign-up at three widths)
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
@@ -68,7 +68,7 @@ SHARD_FILES=(
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"
     "tests/Browser/NavigationCrawlTest.php"
-    "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php"
+    "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentTimeTest.php"
     "tests/Browser/TournamentLandingTest.php"
 )
 
