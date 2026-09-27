@@ -25,14 +25,15 @@ series in tournaments whose players report, with the pairing challenge signed by
 **revision 8.2** (2026-09-27): EA Sports FC 26 and 27 in the game registry;
 **revision 9** (2026-09-27): the prize pool of a tournament as the league runs it, to the Payout
 `2157` of every winner; **revision 9.1** (2026-09-27): every pot is the tournament's own wallet,
-top-ups as plain invoices, fixed prizes per place). Not
+top-ups as plain invoices, fixed prizes per place; **revision 9.2** (2026-09-27): lobby and account
+cards in the match-room chat of casual 1v1 matches, a chat convention without a new kind). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1 and 9 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1 and 9.2 (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -2713,8 +2714,140 @@ with the sender, cached). The latency of this path was not measured.
 (kind `10000`, private entries encrypted to oneself). As with the opponent list, the app writes a
 mute list only after reading the newest version, and never from a stale copy.
 
-**What is stored where.** The app's database stores nothing about chats. The league relay stores the
+**What is stored where.** The app's database stores nothing about chats except each player's mutes
+(see [Lobby and account cards](#lobby-and-account-cards-rev-91)). The league relay stores the
 gift wraps: ciphertext, recipient, a random time. Clients may cache decrypted messages on the device.
+
+### Lobby and account cards (rev. 9.2)
+
+Casual 1v1 matches (Rocket League, EA Sports FC 26 and 27) have no lobby form on the server. What one
+player needs to find the other in the game travels only as a **card**: a chat message as above with a
+few extra tags, which the app draws as a card. The league server never receives the data and stores
+none; it learns only that a card was sent. Lineup series keep the server-side lobby form for now.
+
+**What is shared.**
+
+- **Rocket League:** the host creates a private match and shares its name and password (lobby card).
+  Rocket League plays across platforms, so no account ID is exchanged.
+- **EA Sports FC:** there is no lobby password; a friendly needs both players to be friends by EA ID.
+  The host shares their EA ID (account card), the guest sends a friend request, the host accepts and
+  sends the Play-a-Friend invite. The request shows the guest's EA ID to the host anyway, so one card
+  is enough; the guest may send their own. The friendship outlives the match, and the app says so
+  before the card is sent.
+
+In both games the host shares and the guest acts, so the lobby deadline has one owner.
+
+**The rumor.** A card is a kind `14` rumor, sealed and wrapped like every chat message, to each member
+of the room and once to the sender. In a casual 1v1 room that is the opponent only; the client refuses
+to send a card in a 1v1 match whose room names more than one other member. The kind stays `14` on
+purpose: other NIP-17 clients show it as a message, and the app's unwrapping accepts kind `14` only. A
+new rumor kind would be dropped or shown as unknown elsewhere.
+
+| tag | value | card | rule |
+|---|---|---|---|
+| `p` | each recipient (NIP-17) | both | as for every chat message |
+| `match` | the league match number | both | as for every chat message |
+| `lobby` | game from the [registry](#game-registry): `rocket-league` | lobby | marks a lobby card |
+| `lobby-name` | name of the private match | lobby | with `lobby-password`; both absent = lobby closed |
+| `lobby-password` | password of the private match | lobby | with `lobby-name` |
+| `account` | service from the app's gamer tag list: `ea` | account | marks an account card |
+| `account-id` | the player's ID on that service | account | absent = ID withdrawn |
+
+A rumor carries at most one marker (`lobby` or `account`) and each data tag at most once; a rumor that
+breaks this is a plain message. The tags are inside the seal, as private as `content`.
+
+**`content` is the fallback.** The sending client writes plain English text generated from the tags,
+so any NIP-17 client shows something usable:
+
+```
+Rocket League private match
+Name: sats4you
+Password: k7m2q9
+(lobby card for match 1234)
+```
+
+```
+EA ID: Satoshi_21
+(add me as a friend for match 1234)
+```
+
+A withdrawal reads `Lobby closed (match 1234)` or `EA ID withdrawn (match 1234)`.
+
+**Rendering.** The app draws a card from the tags only, never from `content`, with a copy button per
+field and the values as text (never as HTML). A card is valid when its marker names a known game or
+service and every data value has 1 to 64 characters without control characters (the games' own
+length limits were not checked). An invalid card is shown as a plain message with its `content`, as
+other clients show it. A reply written in another NIP-17 client carries no `match` tag and does not
+appear in the room, like every message without one.
+
+**The newest card wins.** Per author, match and marker (`lobby` with its game, `account` with its
+service) only the card with the greatest `created_at` is open; on equal `created_at` the lowest `id`
+wins, as NIP-01 decides for replaceable events. Older cards collapse to "replaced". A withdrawal
+supersedes like any card and shows "Lobby closed" or "EA ID withdrawn". Only cards from room members
+count, and a card dated more than 10 minutes ahead of the reader's clock is shown as a plain message,
+so a skewed clock cannot keep a stale lobby open. Both sides' cards are drawn; which side is the host
+is the league's match state, not a property of the card.
+
+**Telling the league.** Once a chat relay answered `OK true` for the wrap to the opponent (not merely
+for the copy to self), the host's client calls one action without arguments, and the league sets
+`lobby_shared_at` if the caller holds the host seat of an open casual match. The call carries no
+content, no event id, no wrap id and no size. When the guest's client opens a valid card from the host
+for this match, it sets `lobby_seen_at` the same way.
+
+- **What the flags tell the league:** that the host's client published a card and when, that the
+  guest's client opened one and when, and with that, that both have a working NIP-44 signer. Nothing
+  about the content. The league already knows the pairing and the match times.
+- **What they cannot prove:** a client can set the flag without sending, or send a wrong password; the
+  league can check neither. A dispute about the lobby is settled like a no-show claim: claim, contest
+  window, screenshots. Proving a message's content to an admin would need the recipient to hand over
+  the pair's NIP-44 conversation key, which opens every message between the two; the app offers no
+  such step.
+
+**Cards are not cached.** The room chat keeps decrypted messages in the browser's local storage (up
+to 500 entries per player). Cards are kept there as a stub without tags or `content` and are opened
+again from the relays after a reload; otherwise a lobby password and an EA ID would sit in plain text
+on the device, readable by anyone with the device and by any script running on the app's origin.
+
+**No NIP-44 signer, no card.** The casual queue and the ready check require a signer that can encrypt
+with NIP-44; a player without one cannot join and is told why. There is no fallback: not NIP-04
+(deprecated, and sender, recipient and time are public), not the league (it would read the data), not
+a plain message. If the host's signer fails during the match (extension locked, bunker unreachable),
+"Can't share, swap host" hands the host seat to the guest before the lobby deadline, instead of a
+no-show.
+
+**Mute and abuse.** A mute hides a player's messages; muting the opponent of an open 1v1 would also
+hide the lobby. A card from a muted member of an open match therefore collapses to "Lobby card from a
+muted player", opened on a click, while the text messages stay hidden. A card holds only short,
+validated fields drawn as text, and a flood of cards shows as one open card per author and marker.
+Unlike the NIP-51 list described under [Chat](#chat), the app today stores mutes in its database, one
+row per muter and muted pubkey (and in local storage): the league knows who muted whom, not what was
+said.
+
+**What others can see.**
+
+| who | sees | cannot see |
+|---|---|---|
+| chat relays (production: `wss://nos.lol`, `wss://relay.primal.net`) | per wrap: the recipient `p`, the real arrival time (the `created_at` is random), the size, the sender's IP address; the sender's pubkey only if the relay asks for AUTH, because the client answers it with the sender's key | sender (without AUTH), content, whether it is a card |
+| anyone | relay.primal.net served gift wraps to an unauthenticated reader (measured 2026-09-27: `nak req -k 1059 -l 2 wss://relay.primal.net` returned two; its NIP-11 names strfry 1.0.3 without NIP-42). Anyone can list the wraps addressed to a player and, subscribing live, see when they arrive. Two wraps arriving together, one to `p` A (the copy to self) and one to `p` B, tie A and B to a message at that moment. nos.lol answered HTTP 502 at the time; in the P5d smoke test on 2026-09-26 it, too, returned a test wrap by id and by `#p` without AUTH | content |
+| the size | NIP-44 pads, so sizes come in steps. Measured with the app's nostr-tools: a 2-character message wraps to 1284 base64 characters, a 60-character one to 1456, a 120-character one and both example cards above to 1796. A card looks like a medium-length message | that it is a card |
+| the league server | the pairing, the match, the two flags and their times, mutes. It also decides who is in the room: a card goes to the pubkeys the league names as members | content, as long as it names the true opponent and serves an unchanged client script. End-to-end encryption here protects against relays and a curious league, not against a malicious one |
+| nostr-mill for a Google login | everything: its `central` server encrypts the sender's seal from the plaintext rumor and decrypts both layers for a recipient (see Google logins under [Chat](#chat)). If either player of the match signs in with Google, `central` can read the card | the key itself (FROST-sharded) |
+| whoever later gets a player's key | NIP-44 has no forward secrecy: the seal is encrypted between the two players' long-term keys and the wrap to the recipient's long-term key. Whoever stored the wraps (relay.primal.net serves them to anyone) and later obtains either player's key, or `central`'s cooperation for a Google login, reads every card between the two. A lobby password is worthless after the match, so the client proposes a fresh random one per match; an EA ID stays valid and is the real exposure | |
+
+A NIP-40 `expiration` on the wraps would make honest relays drop them after the match
+(relay.primal.net lists NIP-40), but not copies someone already kept; on card wraps alone it would
+mark them as cards, so it belongs on every wrap of a casual room or on none (see
+[Open points](#open-points)).
+
+**The hint.** One sentence, the same for every login, shown above the chat. It must be true for every
+login, including a match where only the opponent signs in with Google:
+
+> Encrypted with the players' Nostr keys: the league server never receives or stores these messages,
+> but if either player signs in with Google, the signing service behind that login can read them.
+
+A shorter "End-to-end encrypted over Nostr: the league server never receives or stores these
+messages." is true word for word, but readers take "end-to-end" as "nobody else can read it", which is
+false as soon as one player signs in with Google.
 
 ## Notifications
 
@@ -3019,7 +3152,7 @@ These stay on the league server, on purpose:
 
 | data | why |
 |---|---|
-| lobby name and password | a secret for the two lineups only; anything on a relay is readable by every reader and cannot be recalled |
+| lobby name and password | a secret for the two lineups only; anything on a relay is readable by every reader and cannot be recalled. Casual 1v1 matches share it, and the EA ID, only as an encrypted card in the chat ([Lobby and account cards](#lobby-and-account-cards-rev-91)) |
 | dispute evidence (screenshots of the end screen or the in-game match history) | may show third parties and other personal data; evidence is judged by admins, the verdict is public via `resolution admin` |
 | plaintext of chats and notifications | only on the players' devices; the relay holds encrypted gift wraps (see [Chat](#chat)) |
 | live per-game entries during a series | shown as provisional in the match room; only the final report is signed |
@@ -5497,6 +5630,12 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   allowlist; a separate tournament key would keep the league key narrower but split the authority
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
+- **Lobby and account cards (rev. 9.2)** are specified, not built, and have no example: they live
+  inside sealed rumors, so there is nothing public to sign and read back. Open: whether every wrap of a
+  casual room carries a NIP-40 `expiration` (drops the EA ID from honest relays after the match, and
+  the chat history with it); who operates nostr-mill's `central`, which decides whether "the
+  league" can read the chats of Google logins; and the games' own length limits for match names,
+  passwords and EA IDs.
 - **Provisional k-factor for Rocket League.** The chess ladders carry `["provisional","5","40"]`. The
   Rocket League examples were signed before that decision and carry `["provisional","5"]` (k 32 all
   season). If season 1 of Rocket League should also use k 40 while provisional, its ladders get the
