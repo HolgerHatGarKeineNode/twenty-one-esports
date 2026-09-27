@@ -7,6 +7,7 @@ use App\Enums\NotificationKind;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentStatus;
 use App\Events\SeriesMatchChanged;
 use App\Games\GameRegistry;
 use App\Jobs\PublishNostrEvent;
@@ -17,6 +18,8 @@ use App\Models\MatchNumber;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\SeriesReport;
+use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Nostr\NostrKeys;
@@ -31,6 +34,8 @@ use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\TournamentRunner;
+use Closure;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 
@@ -1135,15 +1140,23 @@ final class SeriesService
      */
     public function markOverdue(SeriesMatch $match): bool
     {
-        $due = $match->reportDueAt();
-
-        if ($due === null || $due->isFuture() || self::isDirectorEntered($match)) {
+        if (self::isDirectorEntered($match)) {
             return false;
         }
 
-        $updated = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)
-            ->whereNull('noshow_reported_at')->whereNull('overdue_at')
-            ->update(['overdue_at' => now()]);
+        $updated = DB::transaction(function () use ($match): int {
+            // Re-read under the tournament's lock: a pause, or a resume that moved the deadline, after the tick read the series wins.
+            $locked = $this->lockForDeadline($match);
+            $due = $locked?->reportDueAt();
+
+            if ($due === null || $due->isFuture()) {
+                return 0;
+            }
+
+            return self::notPaused(SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)
+                ->whereNull('noshow_reported_at')->whereNull('overdue_at'))
+                ->update(['overdue_at' => now()]);
+        });
 
         if ($updated === 1) {
             $this->broadcastChange($match);
@@ -1174,7 +1187,7 @@ final class SeriesService
             'result_games' => null,
             'resolved_roster' => null,
             'resolution_reason' => 'No-show reported; the other side did not answer within '.$match->responseMinutes().' minutes.',
-        ]);
+        ], fn (SeriesMatch $locked): bool => $locked->noshowForfeitAt()?->isPast() ?? false);
     }
 
     /**
@@ -1201,7 +1214,7 @@ final class SeriesService
             'result_games' => json_encode($report->games),
             'resolved_roster' => json_encode($report->roster),
             'resolution_reason' => 'Report not answered within '.$match->responseMinutes().' minutes; confirmed by the league, unrated.',
-        ]);
+        ], fn (SeriesMatch $locked): bool => $locked->responseDueAt()?->isPast() ?? false);
     }
 
     /**
@@ -1243,13 +1256,32 @@ final class SeriesService
      * returns false. No rating change; the attestation and the bracket follow
      * as for any result.
      *
+     * A deadline (`$stillDue`, the tick) is re-checked on the series as it
+     * is under the tournament's lock, and never applied while the
+     * tournament is paused (P18): the tick read its batch before, and a
+     * pause or a resume may have come in between. An organizer's or
+     * admin's own decision (leagueClose()) passes no deadline and works in
+     * a pause too.
+     *
      * @param  array<string, mixed>  $values
+     * @param  (Closure(SeriesMatch): bool)|null  $stillDue
      */
-    private function leagueDecides(SeriesMatch $match, SeriesStatus $from, array $values): bool
+    private function leagueDecides(SeriesMatch $match, SeriesStatus $from, array $values, ?Closure $stillDue = null): bool
     {
-        $decided = DB::transaction(function () use ($match, $from, $values): bool {
-            $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $from)
-                ->update($values + ['status' => SeriesStatus::Resolved, 'resolved_by_id' => null, 'finished_at' => now()]);
+        $decided = DB::transaction(function () use ($match, $from, $values, $stillDue): bool {
+            $query = SeriesMatch::query()->whereKey($match->id)->where('status', $from);
+
+            if ($stillDue !== null) {
+                $locked = $this->lockForDeadline($match);
+
+                if ($locked === null || ! $stillDue($locked)) {
+                    return false;
+                }
+
+                $query = self::notPaused($query);
+            }
+
+            $updated = $query->update($values + ['status' => SeriesStatus::Resolved, 'resolved_by_id' => null, 'finished_at' => now()]);
 
             if ($updated !== 1) {
                 return false;
@@ -1270,6 +1302,39 @@ final class SeriesService
         }
 
         return $decided;
+    }
+
+    /**
+     * Inside a deadline's transaction: lock the tournament row (the lock
+     * TournamentControl's pause() and resume() take) and then the series
+     * row, both read anew. Null when the tournament is paused or no longer
+     * running: no deadline applies now.
+     */
+    private function lockForDeadline(SeriesMatch $match): ?SeriesMatch
+    {
+        if ($match->tournament_match_id !== null) {
+            $tournament = Tournament::query()->whereKey(TournamentMatch::query()->whereKey($match->tournament_match_id)->select('tournament_id'))
+                ->lockForUpdate()->first();
+
+            if ($tournament === null || $tournament->status !== TournamentStatus::Running || $tournament->isPaused()) {
+                return null;
+            }
+        }
+
+        return SeriesMatch::query()->with('latestReport')->lockForUpdate()->find($match->id);
+    }
+
+    /**
+     * The guarded update of a deadline takes only a series whose tournament
+     * is not paused, read at the update itself (P18).
+     *
+     * @param  Builder<SeriesMatch>  $query
+     * @return Builder<SeriesMatch>
+     */
+    private static function notPaused(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query) => $query->whereNull('tournament_match_id')
+            ->orWhereHas('tournamentMatch.tournament', fn (Builder $tournament) => $tournament->whereNull('paused_at')));
     }
 
     /**

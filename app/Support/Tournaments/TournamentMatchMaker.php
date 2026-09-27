@@ -100,37 +100,73 @@ final class TournamentMatchMaker
                 continue;
             }
 
-            [$a, $b] = [$match->slots[0]->participant ?? null, $match->slots[1]->participant ?? null];
+            try {
+                // Each start under the tournament's lock (the one TournamentControl's pause takes), with the
+                // tournament and the match read anew: a pause, a correction or a restart after the list was
+                // read wins (P18). Null = paused or no longer running: nothing more starts.
+                $go = DB::transaction(fn (): ?bool => $this->startLocked($tournament, $match));
+            } catch (UniqueConstraintViolationException) {
+                // A concurrent run started this match first: it has its series or game.
+                continue;
+            } catch (TournamentRuleViolation $violation) {
+                report($violation);
 
-            if ($a === null || $b === null || self::waitsForEarlierRound($tournament, $match)) {
                 continue;
             }
 
-            TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
-
-            try {
-                if ($tournament->profile()->isChess()) {
-                    if ($tournament->isDirectorMode()) {
-                        $this->pinPairing($tournament, $match, $a, $b);
-                    } elseif (self::needsGame($match)) {
-                        $this->startGame($tournament, $match, $a, $b);
-                    }
-
-                    continue;
-                }
-
-                // No series yet, or the last one was voided by an admin or the league, or superseded by a
-                // correction: it is played again (P18). The attempt follows from the series seen here, so a
-                // concurrent run hits the unique index.
-                if ($match->seriesMatch === null || $match->seriesMatch->resolution === SeriesResolution::Void || $match->isReplaced($match->seriesMatch->id)) {
-                    DB::transaction(fn () => $this->createSeries($tournament, $match, $a, $b, ($match->seriesMatch->tournament_attempt ?? 0) + 1));
-                }
-            } catch (UniqueConstraintViolationException) {
-                // A concurrent run started this match first: it has its series or game.
-            } catch (TournamentRuleViolation $violation) {
-                report($violation);
+            if ($go === null) {
+                return;
             }
         }
+    }
+
+    /**
+     * Start one match inside startReady()'s transaction. Null when the
+     * tournament is paused or no longer running, false when the match
+     * cannot start now, true when it started.
+     *
+     * @throws TournamentRuleViolation
+     */
+    private function startLocked(Tournament $tournament, TournamentMatch $match): ?bool
+    {
+        $locked = Tournament::query()->lockForUpdate()->find($tournament->id);
+
+        if ($locked === null || $locked->status !== TournamentStatus::Running || $locked->isPaused()) {
+            return null;
+        }
+
+        $match->refresh();
+
+        if ($match->status !== 'ready' || $match->result !== null || $match->held !== null) {
+            return false;
+        }
+
+        [$a, $b] = [$match->slots[0]->participant ?? null, $match->slots[1]->participant ?? null];
+
+        if ($a === null || $b === null || self::waitsForEarlierRound($tournament, $match)) {
+            return false;
+        }
+
+        TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
+
+        if ($tournament->profile()->isChess()) {
+            if ($tournament->isDirectorMode()) {
+                $this->pinPairing($tournament, $match, $a, $b);
+            } elseif (self::needsGame($match)) {
+                $this->startGame($tournament, $match, $a, $b);
+            }
+
+            return true;
+        }
+
+        // No series yet, or the last one was voided by an admin or the league, or superseded by a
+        // correction: it is played again (P18). The attempt follows from the series seen here, so a
+        // concurrent run hits the unique index.
+        if ($match->seriesMatch === null || $match->seriesMatch->resolution === SeriesResolution::Void || $match->isReplaced($match->seriesMatch->id)) {
+            $this->createSeries($tournament, $match, $a, $b, ($match->seriesMatch->tournament_attempt ?? 0) + 1);
+        }
+
+        return true;
     }
 
     /**

@@ -30,6 +30,7 @@ use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentControl;
+use App\Support\Tournaments\TournamentMatchMaker;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
@@ -432,6 +433,70 @@ test('while paused the tick applies no deadline, and on resume every deadline mo
 
     Event::assertDispatched(TournamentChanged::class, fn (TournamentChanged $event): bool => $event->reason === 'paused');
     Event::assertDispatched(TournamentChanged::class, fn (TournamentChanged $event): bool => $event->reason === 'resumed');
+});
+
+/*
+ * The tick reads its batch first and applies each deadline after: a pause
+ * that lands in between must still win (review of 723e62f, TOCTOU). Each
+ * transition gets the series as read before the pause.
+ */
+test('a deadline transition on a series read before the pause is not applied', function (string $transition) {
+    $this->freezeSecond();
+    $tournament = ctlKnockout(2);
+    $admin = ctlAdmin();
+    $match = ctlMatch($tournament, 1);
+    $series = ctlSeries($match);
+    $service = app(SeriesService::class);
+    // A no-show can be reported 15 min after the start; its answer, like a report's, is due 30 min later.
+    $this->travel(20)->minutes();
+
+    match ($transition) {
+        'forfeitNoShow' => $service->reportNoShow($series, ctlPlayer($match, 0)),
+        'autoConfirm' => (function () use ($series, $match, $service): void {
+            $winner = ctlPlayer($match, 0);
+            $challenger = $series->captainSideOf($winner) === 'challenger';
+
+            foreach (range(0, intdiv($series->best_of, 2)) as $index) {
+                $service->saveLiveGame($series, $winner, $index, $challenger ? 3 : 1, $challenger ? 1 : 3, null);
+            }
+
+            $service->report($series, $winner, []);
+        })(),
+        default => null,
+    };
+
+    // The tick has read this series; now the pause comes in and lasts three hours, past every original deadline.
+    $this->travel(10)->minutes();
+    $read = SeriesMatch::query()->with('latestReport')->findOrFail($series->id);
+    ctl()->pause($tournament, $admin, 'Power cut');
+    $this->travel(3)->hours();
+
+    expect($service->{$transition}($read))->toBeFalse()
+        ->and($series->refresh()->status)->toBe($transition === 'autoConfirm' ? SeriesStatus::Reported : SeriesStatus::Accepted)
+        ->and($series->overdue_at)->toBeNull()
+        ->and($series->resolution)->toBeNull();
+
+    // Resumed: the deadline, moved by the pause, has not passed yet; the stale read does not apply it either.
+    ctl()->resume($tournament, $admin);
+
+    expect($service->{$transition}($read))->toBeFalse()
+        ->and($series->refresh()->status)->toBe($transition === 'autoConfirm' ? SeriesStatus::Reported : SeriesStatus::Accepted)
+        ->and($series->overdue_at)->toBeNull();
+})->with(['markOverdue', 'forfeitNoShow', 'autoConfirm']);
+
+test('startReady on a tournament read before the pause starts nothing', function () {
+    $tournament = ctlKnockout();
+    $stale = Tournament::query()->findOrFail($tournament->id);
+    ctl()->pause($tournament, ctlAdmin());
+    ctlWin(ctlMatch($tournament, 1, 1), 0);
+    ctlWin(ctlMatch($tournament, 1, 2), 0);
+    $final = ctlMatch($tournament, 2);
+
+    expect($stale->isPaused())->toBeFalse()->and($final->status)->toBe('ready');
+
+    app(TournamentMatchMaker::class)->startReady($stale);
+
+    expect(SeriesMatch::query()->where('tournament_match_id', $final->id)->exists())->toBeFalse();
 });
 
 test('while paused no match starts; resuming starts the ready ones', function () {
