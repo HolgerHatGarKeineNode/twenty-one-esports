@@ -68,7 +68,7 @@ SHARD_FILES=(
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php"
     "tests/Browser/NavigationCrawlTest.php"
-    "tests/Browser/NavigationMenusTest.php"
+    "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php"
     "tests/Browser/TournamentLandingTest.php"
 )
 

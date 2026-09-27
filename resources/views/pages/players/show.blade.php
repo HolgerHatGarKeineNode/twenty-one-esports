@@ -122,6 +122,11 @@
             </div>
         </section>
 
+        {{-- On the own page: bring a friend (a daily chess link, the one every player can make) --}}
+        @if ($isMe)
+            <div class="mx-4 lg:mx-0"><livewire:invite-link place="profile" /></div>
+        @endif
+
         {{-- Rank badges (P11): the NIP-58 badges of this player; on the own page "Show on my Nostr profile" and the way to the share cards. --}}
         <div class="mx-4 lg:mx-0">
             <livewire:rank-badges :player="$user" />

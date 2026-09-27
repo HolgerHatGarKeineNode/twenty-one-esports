@@ -254,6 +254,9 @@
     @endif
 
     <div class="grid grow grid-cols-1 content-start gap-4 px-4 pt-7 pb-6 lg:grid-cols-12 lg:gap-5 lg:px-12 lg:pt-14 lg:pb-12">
+        {{-- Bring a friend: right under the head, before the season's fine print --}}
+        <div class="lg:col-span-12"><livewire:invite-link place="home" /></div>
+
         @if ($pot && $liveSeason === null)
             <section aria-labelledby="pot-h" class="pl-card lg:col-span-5" data-test="pot">
                 <h2 id="pot-h" class="pl-h2">{{ __('The pot') }}</h2>
@@ -383,6 +386,8 @@
                     </div>
                 </div>
             </div>
+            {{-- The next tournament of any game open for sign-up; nothing when none is open. --}}
+            <x-next-tournament heading-id="home-cup-h" />
         </section>
     </div>
 </x-layouts::app>

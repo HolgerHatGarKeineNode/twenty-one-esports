@@ -1,12 +1,9 @@
 <?php
 
-use App\Enums\InviteLinkType;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
-use App\Support\Invites\InviteLinkRefused;
-use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -36,14 +33,6 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
     public string $message = '';
 
     public string $error = '';
-
-    /** Invite by link (P6b): the game, who may use it, how long it works. */
-
-    public string $linkUses = 'once';
-
-    public int $linkHours = 48;
-
-    public string $linkError = '';
 
     public function pick(int $id): void
     {
@@ -84,25 +73,6 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
 
         session()->flash('status', __('Challenge sent to :name. They have :hours h to accept.', ['name' => $challenge->challenged->displayName(), 'hours' => (int) config('esports.chess.challenge_hours')]));
         $this->redirectRoute('me.correspondence');
-    }
-
-    /**
-     * A link anyone can take (P6b): whoever opens it and accepts plays you.
-     * Daily only: a blitz link would need both players online at the same
-     * moment, which a shared link can't promise. Uses the colour picked above.
-     */
-    public function createLink(InviteLinks $links): void
-    {
-        $this->linkError = '';
-        try {
-            $link = $links->create($this->user(), InviteLinkType::Daily, ['uses' => $this->linkUses, 'hours' => $this->linkHours, 'color' => $this->color]);
-        } catch (InviteLinkRefused $refused) {
-            $this->linkError = $refused->getMessage();
-
-            return;
-        }
-
-        $this->redirectRoute('invites.link', $link);
     }
 
     /**
@@ -262,41 +232,10 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
                 @error('message')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             </section>
 
-            {{-- Invite by link (P6b, States.dc.html "Invite a friend") --}}
-            <section aria-labelledby="link-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="invite-by-link">
-                <span class="flex flex-col gap-1">
-                    <h2 id="link-h" class="m-0 text-[15px] font-bold">{{ __('Invite a friend by link') }}</h2>
-                    <span class="text-xs leading-normal text-ink-2">{{ __('Whoever opens the link and accepts, plays you. Share it on Signal, Telegram or Nostr; your friend logs in with Google or Nostr and lands right in the game.') }}</span>
-                </span>
-                @php($expiry = InviteLinkType::Daily->expiryChoices())
-                <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <div class="flex flex-col gap-2">
-                        <span id="lu-h" class="text-xs text-ink-2">{{ __('Who can use it') }}</span>
-                        <div role="radiogroup" aria-labelledby="lu-h" class="grid grid-cols-2 gap-2">
-                            @foreach (['once' => __('Once'), 'several' => __('Several times')] as $value => $label)
-                                <button type="button" role="radio" wire:click="$set('linkUses', '{{ $value }}')" aria-checked="{{ $linkUses === $value ? 'true' : 'false' }}" data-test="link-uses-{{ $value }}"
-                                        @class(['h-12 cursor-pointer rounded-md border bg-ground text-[13px] text-ink', 'border-btc' => $linkUses === $value, 'border-line' => $linkUses !== $value])>{{ $label }}</button>
-                            @endforeach
-                        </div>
-                    </div>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-xs text-ink-2">{{ __('Link works for') }}</span>
-                        <select wire:model.number="linkHours" data-test="link-hours" class="h-12 w-full rounded-lg border border-edge bg-ground px-3 text-[13px] text-ink">
-                            @foreach ($expiry as $hours)
-                                <option value="{{ $hours }}">{{ $hours >= 168 ? trans_choice(':count day|:count days', intdiv($hours, 24)) : trans_choice(':count hour|:count hours', $hours) }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                </div>
-                <span class="text-xs leading-normal text-ink-2">{{ $linkUses === 'once' ? __('Once: the first friend who accepts plays, then the link closes.') : __('Several times: every friend who accepts gets their own game with you.') }} {{ __('Casual, and invites never count toward ratings or rewards.') }}</span>
-                <div class="flex flex-wrap items-center gap-3">
-                    <button type="button" wire:click="createLink" wire:loading.attr="disabled" data-test="create-link"
-                            class="btn-p inline-flex h-12 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-sm font-bold text-on-btc disabled:opacity-70">
-                        <x-icon name="link" :size="16" />{{ __('Create invite link') }}
-                    </button>
-                    @if ($linkError)<p class="m-0 text-[13px] text-loss" role="alert">{{ $linkError }}</p>@endif
-                </div>
-            </section>
+            {{-- Invite by link (P6b): the shared module, open, with the colour picked above --}}
+            <div id="invite-by-link" data-test="invite-by-link">
+                <livewire:invite-link place="challenge" :compact="false" :color="$color" />
+            </div>
         </div>
 
         {{-- Summary --}}

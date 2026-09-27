@@ -261,6 +261,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component {
                     {{-- An empty table invites the first game (P16): the page where this game is played. --}}
                     <a href="{{ \App\Support\GameNames::page($game) }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="ladder-empty-play">{{ $rated ? __('Play a rated game') : __('Play a casual game') }}</a>
                 </x-empty-state>
+                {{-- An empty table fills faster with friends: the invite of this game (chess: a daily link, series: the clan's join link). --}}
+                <div class="px-2 pb-2" data-test="ladder-empty-invite"><livewire:invite-link :game="$game" place="ladder" :wire:key="'invite-ladder-'.$game.'-'.$mode" /></div>
             @endforelse
 
             @if (! $rated && config('season.casual.daily_pair_limit') !== null)

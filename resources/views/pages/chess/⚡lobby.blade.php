@@ -429,6 +429,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             </div>
         @endforeach
 
+        {{-- Invite a friend by link: the lobby's second way to play, next to "Find opponent" --}}
+        <div class="lg:col-span-3"><livewire:invite-link place="lobby" /></div>
+
         {{-- Find opponent --}}
         <section aria-labelledby="find-h" class="flex flex-col gap-4 lg:rounded-lg lg:bg-card lg:px-6 lg:py-5" data-test="find-opponent" x-data="{ rated: false }">
             <span class="flex items-baseline justify-between gap-3 max-lg:sr-only"><h2 id="find-h" class="m-0 text-[15px] font-bold">{{ __('Find opponent') }}</h2><span class="text-xs text-ink-2">{{ __('Blitz 5+3, live') }}</span></span>
@@ -650,6 +653,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             <p class="m-0 text-[13px] leading-normal text-ink-2">{{ Ladders::isOpen('chess', 'blitz') ? __('Rank, Elo and results of every blitz player.') : __('Every casual blitz game counts here. The rated ladder starts at Block 0.') }}</p>
             <x-button variant="quiet" :href="route('ladder.show', ['chess', 'blitz'])" class="self-start" data-test="lobby-ladder-link">{{ __('Open the blitz ladder') }}</x-button>
         </section>
+
+        {{-- The next chess tournament open for sign-up; nothing when none is open. --}}
+        <x-next-tournament game="chess" heading-id="lobby-cup-h" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
         <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:col-span-3 lg:px-6" />

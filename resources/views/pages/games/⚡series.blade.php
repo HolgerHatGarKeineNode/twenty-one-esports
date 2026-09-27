@@ -146,6 +146,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         </div>
     </div>
 
+    {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups) --}}
+    <div class="px-4 pb-4 lg:px-12 lg:pb-5"><livewire:invite-link :game="$slug" place="game" /></div>
+
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-6 lg:grid-cols-2 lg:gap-5 lg:px-12 lg:pb-10">
         {{-- Clan Hashrate, last 7 days (P7) --}}
         <section aria-labelledby="rl-hr" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">

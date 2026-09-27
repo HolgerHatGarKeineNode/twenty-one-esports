@@ -549,6 +549,19 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <a href="{{ route('matches.show', $m) }}" class="inline-flex min-h-11 items-center">{{ __('Open the match page') }}</a>
             </span>
         </section>
+
+        {{-- The next series: a captain challenges the same lineup again (the challenge form, prefilled) --}}
+        @php($ownLineup = $captainSide !== null ? $m->lineup($captainSide) : null)
+        @php($theirLineup = $captainSide !== null ? $m->lineup(SeriesMatch::otherSide($captainSide)) : null)
+        @if ($ownLineup !== null && $theirLineup !== null)
+            <section aria-labelledby="again-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="series-again">
+                <span class="flex min-w-0 grow flex-col gap-1">
+                    <h2 id="again-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ __('Another series') }}</h2>
+                    <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge :clan to the next series: same lineups, new times.', ['clan' => $m->sideName(SeriesMatch::otherSide($captainSide))]) }}</span>
+                </span>
+                <x-button :href="route('challenges.create', ['lineup' => $ownLineup->id, 'to' => $theirLineup->id, 'game' => $m->game])" icon="retry" class="shrink-0" data-test="series-challenge-again">{{ __('Challenge again') }}</x-button>
+            </section>
+        @endif
     @endif
 
     {{-- Challenge, still open: answer, withdraw or wait --}}

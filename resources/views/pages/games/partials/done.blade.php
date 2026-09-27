@@ -84,6 +84,26 @@
         </div>
     </section>
 
+    {{-- Play again (players only): the same opponent as a daily challenge, the next blitz pairing, or a friend by link --}}
+    @if (! $aborted && ($color ?? null) !== null)
+        @php($rival = $players[$color === 'w' ? 'b' : 'w']['user'])
+        <section aria-labelledby="again-h" class="flex flex-col gap-3" data-test="play-again">
+            <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 sm:flex-row sm:items-center sm:gap-6 lg:px-6">
+                <span class="flex min-w-0 grow flex-col gap-1">
+                    <h2 id="again-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ __('Another game') }}</h2>
+                    <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge :name to a rematch as daily chess, one move a day.', ['name' => $rival->displayName()]) }}</span>
+                </span>
+                <span class="flex shrink-0 flex-wrap gap-2">
+                    <x-button :href="route('chess.challenge', ['to' => $rival->npub])" icon="retry" data-test="challenge-again">{{ __('Challenge again') }}</x-button>
+                    @unless ($daily)
+                        <x-button variant="quiet" :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="done-find-next">{{ __('Find next opponent') }}</x-button>
+                    @endunless
+                </span>
+            </div>
+            <livewire:invite-link place="game-done" wire:key="invite-game-done" />
+        </section>
+    @endif
+
     {{-- Deadline missed (ChessStates) --}}
     @if ($missedDeadline && $color !== null)
         @php($lost = $color !== $winner)

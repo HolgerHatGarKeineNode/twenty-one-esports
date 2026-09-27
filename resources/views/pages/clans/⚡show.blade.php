@@ -214,6 +214,9 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         @endif
     </div>
 
+    {{-- A captain's join link, at the top of the own clan (renders nothing for anyone else) --}}
+    <livewire:invite-link :clan-id="$clan->id" place="clan" />
+
     {{-- Players and lineup numbers --}}
     <div class="grid grid-cols-1 gap-6 rounded-lg bg-card px-4 pt-2 pb-4 lg:grid-cols-2 lg:gap-12 lg:px-6">
         <div class="flex flex-col">
