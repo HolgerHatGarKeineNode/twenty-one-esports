@@ -66,6 +66,7 @@ const NAV_PAGES = [
     'tournaments.index' => ['roles' => NAV_ROLES, 'max' => 1],
     'tournaments.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'tournaments.draw' => ['roles' => NAV_ROLES, 'max' => 3],
+    'tournaments.tv' => ['roles' => NAV_ROLES, 'max' => 3],
     'tournaments.signup' => ['roles' => ['player', 'captain'], 'max' => 3],
     'tournaments.director' => ['roles' => ['organizer', 'admin'], 'max' => 3],
     'admin.tournaments' => ['roles' => ['organizer', 'admin'], 'max' => 1],

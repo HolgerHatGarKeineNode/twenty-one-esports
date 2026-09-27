@@ -38,6 +38,7 @@
 #   5: NavigationCrawlTest (~47s, the P16 walk per role and width)
 #   6: NavigationMenusTest (~17s, P16 menus and context actions), InvitePlacementTest, TournamentTimeTest (the when block, the admin preview)
 #   7: TournamentLandingTest (the tournament page and sign-up at three widths)
+#   8: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK)
 # A file added to tests/Browser/ and not added to SHARD_FILES below would
 # silently never run — the check after the array definition fails loudly
 # instead.
@@ -172,6 +173,7 @@ SHARD_FILES=(
     "tests/Browser/NavigationCrawlTest.php"
     "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentTimeTest.php"
     "tests/Browser/TournamentLandingTest.php tests/Browser/BunkerSessionTest.php"
+    "tests/Browser/TournamentTvTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

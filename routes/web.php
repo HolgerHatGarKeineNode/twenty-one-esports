@@ -123,6 +123,8 @@ Route::livewire('tournaments', 'pages::tournaments.index')->name('tournaments.in
 Route::livewire('tournaments/{tournament}', 'pages::tournaments.show')->whereNumber('tournament')->name('tournaments.show');
 Route::livewire('tournaments/{tournament}/draw', 'pages::tournaments.draw')->whereNumber('tournament')->name('tournaments.draw');
 Route::get('tournaments/{tournament}/calendar.ics', TournamentCalendarController::class)->whereNumber('tournament')->name('tournaments.calendar');
+// The TV view (P19): full screen, no site around it, for a big screen or a stream.
+Route::livewire('tournaments/{tournament}/tv', 'pages::tournaments.tv')->whereNumber('tournament')->name('tournaments.tv');
 Route::middleware('auth')->group(function () {
     Route::livewire('tournaments/{tournament}/signup', 'pages::tournaments.signup')->whereNumber('tournament')->name('tournaments.signup');
     Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')

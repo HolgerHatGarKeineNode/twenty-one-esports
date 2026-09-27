@@ -35,8 +35,9 @@ use Livewire\Component;
  * its manager publishes it here. Sign-up itself is its own page.
  *
  * While sign-up, the draw or the matches move, the page polls every 15
- * seconds (there is no tournament channel on Reverb); a new entry drops into
- * the grid when it arrives.
+ * seconds (only the TV view, pages::tournaments.tv, listens on the
+ * tournament's Reverb channel); a new entry drops into the grid when it
+ * arrives.
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public Tournament $tournament;
@@ -543,16 +544,19 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <span class="inline-flex h-6 items-center rounded-xs border border-dashed border-edge px-2 text-[11px] text-ink-2" data-test="projected-chip">{{ __('Projected') }}</span>
                 @endif
             </span>
-            @if ($drawn)
-                <span class="flex flex-wrap gap-2">
-                    @if ($tournament->draw_hash)
-                        <x-button variant="quiet" :href="route('tournaments.draw', $tournament)" icon="shield-check">{{ __('The draw') }}</x-button>
-                    @endif
-                    @if ($this->canDirect && $tournament->isDirectorMode())
-                        <x-button variant="secondary" :href="route('tournaments.director', $tournament)" data-test="to-director">{{ __('Director desk') }}</x-button>
-                    @endif
-                </span>
-            @endif
+            <span class="flex flex-wrap items-center gap-2">
+                @if ($published && $status !== TournamentStatus::Cancelled)
+                    {{-- The TV view (P19): the bracket full screen, live, for a big screen or a stream. --}}
+                    <span class="text-xs text-ink-3 max-sm:hidden" id="tv-hint">{{ __('Full screen for a TV or a stream') }}</span>
+                    <x-button variant="quiet" :href="route('tournaments.tv', $tournament)" icon="eye" data-test="to-tv" aria-describedby="tv-hint">{{ __('TV view') }}</x-button>
+                @endif
+                @if ($drawn && $tournament->draw_hash)
+                    <x-button variant="quiet" :href="route('tournaments.draw', $tournament)" icon="shield-check">{{ __('The draw') }}</x-button>
+                @endif
+                @if ($drawn && $this->canDirect && $tournament->isDirectorMode())
+                    <x-button variant="secondary" :href="route('tournaments.director', $tournament)" data-test="to-director">{{ __('Director desk') }}</x-button>
+                @endif
+            </span>
         </div>
 
         @if ($drawn)

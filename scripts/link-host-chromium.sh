@@ -103,6 +103,11 @@ if [ "$(systemd-detect-virt 2>/dev/null || echo none)" != "none" ]; then
     LAUNCH_FLAGS="--disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
 fi
 
+# Opt-in extras for one run, e.g. the TV soak test's forced GC:
+# CHROMIUM_EXTRA_FLAGS="--js-flags=--expose-gc --enable-precise-memory-info". Every run rewrites
+# the shim, so the next run without the variable is back to the plain flags.
+LAUNCH_FLAGS="$LAUNCH_FLAGS ${CHROMIUM_EXTRA_FLAGS:-}"
+
 # A SHIM, NOT A SYMLINK, whenever flags are involved: Pest sends Playwright a fixed launch
 # options object with no `args` and no `executablePath`, so there is no other place to put them.
 # Where no flags are needed this still writes a shim — one shape to reason about, and `exec`

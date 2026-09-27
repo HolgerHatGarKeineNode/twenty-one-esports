@@ -8,6 +8,7 @@ use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Events\TournamentChanged;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
@@ -18,6 +19,7 @@ use App\Models\TournamentResultEntry;
 use App\Models\TournamentRound;
 use App\Models\TournamentStage;
 use App\Models\User;
+use App\Support\Chess\Broadcasts;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\SeriesService;
@@ -76,9 +78,10 @@ final class TournamentRunner
      * Bring the stored bracket in line with the results: fill the slots,
      * set every match's status, close complete rounds (players mode), pair
      * the next Swiss round, end the tournament once nothing is left, then
-     * start the normal matches of whatever became ready.
+     * start the normal matches of whatever became ready. The TV view hears
+     * about it after the commit (TournamentChanged, `$reason` says what moved).
      */
-    public function sync(Tournament $tournament): void
+    public function sync(Tournament $tournament, string $reason = 'bracket'): void
     {
         if ($tournament->status !== TournamentStatus::Running) {
             return;
@@ -111,6 +114,8 @@ final class TournamentRunner
         });
 
         $this->maker->startReady($tournament->refresh());
+
+        Broadcasts::send(new TournamentChanged($tournament->id, $reason));
     }
 
     private function applyState(Tournament $tournament): void
@@ -578,7 +583,7 @@ final class TournamentRunner
      */
     public function enterResult(TournamentMatch $match, User $director, array $input): void
     {
-        DB::transaction(function () use ($match, $director, $input): void {
+        $changed = DB::transaction(function () use ($match, $director, $input): bool {
             $tournament = Tournament::query()->lockForUpdate()->findOrFail($match->tournament_id);
             $match = TournamentMatch::query()->with(['round.stage', 'slots.participant'])->lockForUpdate()->findOrFail($match->id);
 
@@ -603,7 +608,7 @@ final class TournamentRunner
             $previous = $match->isDirectorResult() ? $match->result : null;
 
             if ($previous !== null && $previous['label'] === $result['label'] && ($previous['games'] ?? null) === ($result['games'] ?? null)) {
-                return;
+                return false;
             }
 
             $now = now();
@@ -625,7 +630,13 @@ final class TournamentRunner
             ]);
 
             $this->applyState($tournament);
+
+            return true;
         });
+
+        if ($changed) {
+            Broadcasts::send(new TournamentChanged($match->tournament_id, 'result'));
+        }
     }
 
     /**
@@ -665,7 +676,7 @@ final class TournamentRunner
             }
         });
 
-        $this->sync($tournament->refresh());
+        $this->sync($tournament->refresh(), 'round');
     }
 
     /**

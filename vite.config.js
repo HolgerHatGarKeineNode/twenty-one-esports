@@ -8,6 +8,7 @@ export default defineConfig({
         laravel({
             input: [
                 'resources/css/app.css',
+                'resources/css/tv.css',
                 'resources/js/app.js',
                 'resources/js/echo.js',
                 'resources/js/chess.js',
