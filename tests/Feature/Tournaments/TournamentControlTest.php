@@ -22,6 +22,7 @@ use App\Models\TournamentParticipant;
 use App\Models\TournamentResultEntry;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Payouts\TournamentPlacements;
 use App\Support\Rating\RatingService;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
@@ -309,6 +310,33 @@ test('Swiss, director mode: a correction of a closed round keeps the next round\
         ->and(TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNotNull('held')->exists())->toBeFalse()
         ->and(RatingChange::query()->count())->toBe($ratings)
         ->and(TournamentRunner::currentRound($tournament->refresh())?->id)->toBe($second->id);
+});
+
+test('a correction before the payouts are approved moves the places they are paid for', function () {
+    $tournament = ctlKnockout(2);
+    $match = ctlMatch($tournament, 1);
+    ctlWin($match, 0);
+    $first = fn (): array => app(TournamentPlacements::class)->of($tournament->refresh())[0]['participants'];
+
+    expect($first())->toBe([$match->slots[0]->tournament_participant_id]);
+
+    ctl()->setResult($tournament, ctlAdmin(), $match->id, ctlSweep($match, 1), 'Wrong winner reported');
+
+    expect($tournament->refresh()->status)->toBe(TournamentStatus::Finished)
+        ->and($first())->toBe([$match->slots[1]->tournament_participant_id]);
+});
+
+test('once the payouts are approved a result can no longer be corrected', function () {
+    $tournament = ctlKnockout(2);
+    $admin = ctlAdmin();
+    $match = ctlMatch($tournament, 1);
+    ctlWin($match, 0);
+    $tournament->refresh()->forceFill(['payouts_approved_at' => now(), 'payouts_approved_by_id' => $admin->id])->save();
+
+    expect(fn () => ctl()->setResult($tournament, $admin, $match->id, ctlSweep($match, 1), 'Wrong winner'))
+        ->toThrow(TournamentRuleViolation::class, 'The payouts of this tournament are approved')
+        ->and(ctlMatch($tournament, 1)->result['winner'])->toBe(0)
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
 });
 
 test('an interested organizer cannot set the result of their own match', function () {

@@ -3572,5 +3572,6 @@
     "The pause is over: matches start again, and every running deadline moved by the length of the pause.": "Die Pause ist vorbei: Matches starten wieder, und jede laufende Frist hat sich um die Dauer der Pause verschoben.",
     "Voided by the league": "Von der Liga annulliert",
     "Tournament news": "Turnier-Neuigkeiten",
-    "a tournament you play in was paused, resumed or called off, or its organizer wrote to all players": "ein Turnier, in dem du spielst, wurde pausiert, fortgesetzt oder abgesagt, oder sein Veranstalter hat allen Spielern geschrieben"
+    "a tournament you play in was paused, resumed or called off, or its organizer wrote to all players": "ein Turnier, in dem du spielst, wurde pausiert, fortgesetzt oder abgesagt, oder sein Veranstalter hat allen Spielern geschrieben",
+    "The payouts of this tournament are approved, so its results can no longer change: the places they were paid for are final. Correct it with the league directly if a payout was wrong.": "Die Auszahlungen dieses Turniers sind freigegeben, seine Ergebnisse können sich nicht mehr ändern: die ausgezahlten Plätze sind endgültig. War eine Auszahlung falsch, kläre das direkt mit der Liga."
 }

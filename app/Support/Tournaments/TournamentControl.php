@@ -36,7 +36,9 @@ use Illuminate\Support\Facades\RateLimiter;
  *
  * 1. **Set or correct a match result**, also after it was confirmed. Not in
  *    a match they have an interest in (TournamentInterest; an admin only
- *    with their own stake). In director mode a match of the open round
+ *    with their own stake). Also on a finished tournament until its
+ *    payouts are approved (P9): the places are read from the bracket, so
+ *    they follow the correction; after the approval it is refused. In director mode a match of the open round
  *    goes through the director desk's own path (rated when the round
  *    closes). Everywhere else the result is the league's decision and
  *    **unrated**: the rating code has no revert (RatingService only
@@ -113,6 +115,12 @@ final class TournamentControl
 
         $changed = DB::transaction(function () use ($tournament, $actor, $matchId, $input, $reason): bool {
             $locked = $this->lock($tournament, [TournamentStatus::Running, TournamentStatus::Finished]);
+
+            // The places are read from the bracket until the payouts are approved (P9); after that they are money.
+            if ($locked->payouts_approved_at !== null) {
+                throw new TournamentRuleViolation('payouts_approved', __('The payouts of this tournament are approved, so its results can no longer change: the places they were paid for are final. Correct it with the league directly if a payout was wrong.'));
+            }
+
             $match = TournamentMatch::query()->where('tournament_id', $locked->id)->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])
                 ->lockForUpdate()->findOrFail($matchId);
 
