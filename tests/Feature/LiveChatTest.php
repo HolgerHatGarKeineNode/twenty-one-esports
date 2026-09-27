@@ -40,6 +40,25 @@ test('the chat reads and posts under the stream address on the stream relays plu
         ->and($chat['avatarUrl'])->toContain(StreamChat::AVATAR_PLACEHOLDER);
 });
 
+test('a zap must pay the stream key through the stream lud16\'s LNURL, unless another recipient is configured', function () {
+    config(['twentyone.nostr.lud16' => 'TheBen@GetAlby.com']);
+    $chat = StreamChat::current()->config(null);
+
+    [$hrp, $data] = \BitWasp\Bech32\decodeRaw($chat['zapLnurl']);
+    $url = implode('', array_map('chr', \BitWasp\Bech32\convertBits($data, count($data), 5, 8, false)));
+
+    expect($chat['zapRecipient'])->toBe($this->stream->pubkey)
+        ->and($hrp)->toBe('lnurl')
+        ->and($chat['zapLnurl'])->toBe(strtolower($chat['zapLnurl']))
+        ->and($url)->toBe('https://getalby.com/.well-known/lnurlp/theben');
+
+    $other = new TestSigner;
+    config(['esports.stream_chat.zap_recipient' => NostrKeys::hexToNpub($other->pubkey), 'twentyone.nostr.lud16' => 'not an address']);
+    $chat = StreamChat::current()->config(null);
+    expect($chat['zapRecipient'])->toBe($other->pubkey)
+        ->and($chat['zapLnurl'])->toBeNull();
+});
+
 test('set chat relays replace the stream relays, an empty setting switches the chat off, and junk is dropped', function () {
     config(['esports.stream_chat.relays' => ['wss://own.example', 'https://not-a-relay.example', 'wss://own.example']]);
     expect(StreamChat::current()->relays)->toBe(['wss://own.example']);

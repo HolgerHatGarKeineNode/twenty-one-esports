@@ -801,6 +801,11 @@ return [
     | https://getalby.com/.well-known/lnurlp/theben on 2026-09-28. Any other
     | signer's receipt is dropped: anyone can publish a 9735.
     |
+    | `zap_recipient`: whom a stream zap pays (hex or npub); unset = the
+    | stream key. Receipt and request must both carry it as `p`, and a
+    | request's `lnurl` must be the one of `twentyone.nostr.lud16`: that
+    | signer also signs receipts for everybody else's zaps.
+    |
     */
 
     'stream_chat' => [
@@ -811,6 +816,7 @@ return [
             'ESPORTS_STREAM_ZAP_SIGNERS',
             '79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432',
         ))))),
+        'zap_recipient' => env('ESPORTS_STREAM_ZAP_RECIPIENT'),
         // Characters one message may have, and the pause between two posts of one browser.
         'max_length' => 280,
         'cooldown_ms' => 2000,

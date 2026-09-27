@@ -14,5 +14,5 @@ test('stream chat: messages, zaps, emoji tags, send rules and muted runs', funct
         ->run(['node', '--test', 'tests/js/streamChat.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 12')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 18')->toContain('ℹ skipped 0');
 });

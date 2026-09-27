@@ -10,6 +10,9 @@ use App\Support\StreamBot\StreamCoordinates;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 
+use function BitWasp\Bech32\convertBits;
+use function BitWasp\Bech32\encode;
+
 /**
  * What the /live page hands its chat (P24, resources/js/liveChat.js): the
  * stream's NIP-53 address, the relays to read and post on, who the bot is,
@@ -71,6 +74,38 @@ final readonly class StreamChat
     }
 
     /**
+     * Whom a zap of the stream pays: `esports.stream_chat.zap_recipient`
+     * (hex or npub) when set, else the stream key (the 30311's host). A
+     * receipt and its request must both name it as `p`.
+     */
+    public function zapRecipient(): string
+    {
+        $configured = config('esports.stream_chat.zap_recipient');
+        $hex = is_string($configured) && trim($configured) !== '' ? NostrKeys::toHex(trim($configured)) : null;
+
+        return $hex ?? $this->stream->pubkey;
+    }
+
+    /**
+     * The recipient's LNURL (LUD-01, lowercase bech32 `lnurl`) from the stream's
+     * lud16 (`twentyone.nostr.lud16`, LUD-16: `https://<domain>/.well-known/lnurlp/<user>`).
+     * A zap request that names an `lnurl` must name this one. Null without a lud16.
+     */
+    public static function zapLnurl(): ?string
+    {
+        $lud16 = config('twentyone.nostr.lud16');
+
+        if (! is_string($lud16) || preg_match('/^([a-z0-9._+-]+)@([a-z0-9.-]+\.[a-z]{2,})$/i', trim($lud16), $parts) !== 1) {
+            return null;
+        }
+
+        $url = 'https://'.strtolower($parts[2]).'/.well-known/lnurlp/'.strtolower($parts[1]);
+        $bytes = array_values(unpack('C*', $url) ?: []);
+
+        return encode('lnurl', convertBits($bytes, count($bytes), 8, 5, true));
+    }
+
+    /**
      * The config for liveChat() in the browser.
      *
      * @return array<string, mixed>
@@ -88,6 +123,8 @@ final readonly class StreamChat
             'emojiRelays' => RelayPublisher::relayUrls([...$profileRelays, ...$this->relays]),
             'bot' => self::botPubkey(),
             'zapSigners' => self::zapSigners(),
+            'zapRecipient' => $this->zapRecipient(),
+            'zapLnurl' => self::zapLnurl(),
             'me' => $viewer?->pubkey,
             'meName' => $viewer?->displayName(),
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],

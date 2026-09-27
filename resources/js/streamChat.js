@@ -4,9 +4,18 @@
  *
  * - which relay events are chat messages of this stream (NIP-53 kind 1311
  *   with the stream's `a` address) and which are zaps of it (NIP-57 kind
- *   9735 signed by a known LNURL server, its zap request valid, the invoice
- *   amount equal to the requested one);
- * - how a message's text splits into text, links and NIP-30 custom emoji;
+ *   9735 signed by a known LNURL server, for the stream's recipient and
+ *   LNURL, its zap request valid, the invoice amount equal to the requested
+ *   one);
+ * - how a message's text splits into text, links and NIP-30 custom emoji,
+ *   within fixed bounds: a message from a relay is anybody's input, and one
+ *   63 KB event of `:a:` repeated with one emoji tag froze the tab for 7.2 s
+ *   with 85 000 DOM nodes (security review of P24). So the text is clipped
+ *   to MAX_CHARS code points before it is read, a message has at most
+ *   MAX_TOKENS tokens and MAX_EMOJI images, and every URL is at most
+ *   MAX_URL long;
+ * - who gets the bot mark: only the configured bot key; a profile that says
+ *   `bot: true` about itself gets its npub shown instead (it could be anyone);
  * - which `emoji` tags a text to be sent needs (from the final text, never
  *   from a list of what the picker inserted);
  * - the send rules: not empty, at most `maxLength` characters, one message
@@ -18,6 +27,21 @@ import { verifyEvent } from 'nostr-tools/pure';
 export const KIND_CHAT = 1311;
 export const KIND_ZAP = 9735;
 export const KIND_ZAP_REQUEST = 9734;
+
+/** Code points of a received message (or zap comment) that are read at all: four times what this page lets anyone send. */
+export const MAX_CHARS = 4 * 280;
+
+/** Tokens (text, link, emoji) one message renders; the rest stays plain text in the last one. */
+export const MAX_TOKENS = 64;
+
+/** Emoji images one message renders; further shortcodes stay text. */
+export const MAX_EMOJI = 20;
+
+/** `emoji` tags of one event that are looked at. */
+export const MAX_EMOJI_TAGS = 100;
+
+/** Longest URL taken from anybody's event (picture, emoji, link target). */
+export const MAX_URL = 2048;
 
 /** NIP-30: alphanumeric characters and underscores between colons. */
 const SHORTCODE = /:(\w+):/g;
@@ -40,7 +64,27 @@ function tagValues(event, name) {
 }
 
 export function isHttps(url) {
-    return typeof url === 'string' && /^https:\/\/[^\s]+$/i.test(url);
+    return typeof url === 'string' && url.length <= MAX_URL && /^https:\/\/[^\s]+$/i.test(url);
+}
+
+/**
+ * The first `max` code points of a text, and whether there was more. Walks
+ * only as far as it needs to: a 63 KB string is never spread into an array.
+ */
+export function clip(text, max = MAX_CHARS) {
+    const value = String(text ?? '');
+    // At most `max` UTF-16 units are at most `max` code points.
+    if (value.length <= max) return { text: value, clipped: false };
+
+    let count = 0;
+    let end = 0;
+    for (const character of value) {
+        if (count === max) return { text: value.slice(0, end), clipped: true };
+        count += 1;
+        end += character.length;
+    }
+
+    return { text: value, clipped: false };
 }
 
 /** A kind 1311 of this stream: the `a` tag names its 30311 address. */
@@ -68,14 +112,18 @@ export function bolt11Msats(invoice) {
 
 /**
  * A zap of this stream as the chat shows it, or null when it does not count:
- * receipt kind 9735 signed by one of `signers`, carrying the stream's `a`; its
- * `description` a validly signed kind-9734 zap request for the same address;
- * an invoice amount that, when the request names one, is exactly that amount.
+ * receipt kind 9735 signed by one of `signers`, carrying the stream's `a` and
+ * the stream's zap `recipient` as `p`; its `description` a validly signed
+ * kind-9734 zap request for the same address and the same `p`, whose
+ * `lnurl` (when it has one) is the recipient's `lnurl`; an invoice amount
+ * that, when the request names one, is exactly that amount. Without a
+ * recipient nothing counts: a receipt the signer made for someone else's
+ * zap must not show as a zap of this stream.
  *
  * @returns {{ id: string, pubkey: string, created_at: number, sats: number, comment: string } | null}
  */
-export function parseZap(receipt, { address, signers = [], verify = verifiedAfresh } = {}) {
-    if (receipt?.kind !== KIND_ZAP || !signers.includes(receipt.pubkey) || !tagValues(receipt, 'a').includes(address)) {
+export function parseZap(receipt, { address, signers = [], recipient = null, lnurl = null, verify = verifiedAfresh } = {}) {
+    if (receipt?.kind !== KIND_ZAP || !recipient || !signers.includes(receipt.pubkey) || !tagValues(receipt, 'a').includes(address) || !tagValues(receipt, 'p').includes(recipient)) {
         return null;
     }
 
@@ -86,7 +134,16 @@ export function parseZap(receipt, { address, signers = [], verify = verifiedAfre
         return null;
     }
 
-    if (request?.kind !== KIND_ZAP_REQUEST || !tagValues(request, 'a').includes(address) || !verify(request)) {
+    if (request?.kind !== KIND_ZAP_REQUEST || !tagValues(request, 'a').includes(address) || !tagValues(request, 'p').includes(recipient)) {
+        return null;
+    }
+
+    const asksLnurl = tagValues(request, 'lnurl')[0];
+    if (asksLnurl !== undefined && (!lnurl || String(asksLnurl).toLowerCase() !== String(lnurl).toLowerCase())) {
+        return null;
+    }
+
+    if (!verify(request)) {
         return null;
     }
 
@@ -101,15 +158,18 @@ export function parseZap(receipt, { address, signers = [], verify = verifiedAfre
         pubkey: request.pubkey,
         created_at: receipt.created_at,
         sats: Number(msats / 1000n),
-        comment: typeof request.content === 'string' ? request.content : '',
+        comment: typeof request.content === 'string' ? clip(request.content).text : '',
     };
 }
 
 /** `shortcode -> https URL` of a message's own `emoji` tags (NIP-30); other URLs are dropped. */
 export function emojiMap(tags) {
     const map = new Map();
+    let seen = 0;
     for (const tag of tags ?? []) {
-        if (Array.isArray(tag) && tag[0] === 'emoji' && /^\w+$/.test(tag[1] ?? '') && isHttps(tag[2]) && !map.has(tag[1])) {
+        if (!Array.isArray(tag) || tag[0] !== 'emoji') continue;
+        if (++seen > MAX_EMOJI_TAGS) break;
+        if (/^\w+$/.test(tag[1] ?? '') && isHttps(tag[2]) && !map.has(tag[1])) {
             map.set(tag[1], tag[2]);
         }
     }
@@ -117,16 +177,24 @@ export function emojiMap(tags) {
     return map;
 }
 
-function splitEmoji(text, emoji, tokens) {
+function splitEmoji(text, emoji, tokens, budget) {
     let last = 0;
     for (const match of text.matchAll(SHORTCODE)) {
+        if (budget.emoji <= 0) break;
         const url = emoji.get(match[1]);
         if (!url) continue;
         if (match.index > last) tokens.push({ type: 'text', value: text.slice(last, match.index) });
         tokens.push({ type: 'emoji', value: match[1], url });
+        budget.emoji -= 1;
         last = match.index + match[0].length;
     }
     if (last < text.length) tokens.push({ type: 'text', value: text.slice(last) });
+}
+
+function tokenText(token) {
+    if (token.type === 'emoji') return ':' + token.value + ':';
+
+    return token.type === 'link' ? token.url : token.value;
 }
 
 /**
@@ -135,33 +203,53 @@ function splitEmoji(text, emoji, tokens) {
  * message's own tags give an https image). Text stays text: the page renders
  * it with x-text, never as HTML.
  *
+ * Bounded whatever comes in: the first `maxChars` code points only (a clipped
+ * text ends in "…"), at most `maxEmoji` images, at most `maxTokens` tokens
+ * (what is beyond folds into the last one as plain text), links of at most
+ * MAX_URL characters.
+ *
  * @returns {Array<{ type: 'text'|'link'|'emoji', value: string, url?: string }>}
  */
-export function tokenize(content, tags = []) {
-    const text = String(content ?? '');
+export function tokenize(content, tags = [], { maxChars = MAX_CHARS, maxTokens = MAX_TOKENS, maxEmoji = MAX_EMOJI } = {}) {
+    const { text: body, clipped } = clip(content, maxChars);
+    const text = clipped ? body + '…' : body;
     const emoji = emojiMap(tags);
+    const budget = { emoji: maxEmoji };
     const tokens = [];
     let last = 0;
 
     for (const match of text.matchAll(LINK)) {
         const url = match[0].replace(LINK_TAIL, '');
-        if (match.index > last) splitEmoji(text.slice(last, match.index), emoji, tokens);
+        if (url.length > MAX_URL) continue;
+        if (match.index > last) splitEmoji(text.slice(last, match.index), emoji, tokens, budget);
         tokens.push({ type: 'link', value: url.replace(/^https?:\/\//i, ''), url });
         last = match.index + url.length;
     }
-    if (last < text.length) splitEmoji(text.slice(last), emoji, tokens);
+    if (last < text.length) splitEmoji(text.slice(last), emoji, tokens, budget);
 
     // Neighbouring text pieces merge back into one.
-    return tokens.reduce((merged, token) => {
-        const previous = merged[merged.length - 1];
+    const merged = tokens.reduce((list, token) => {
+        const previous = list[list.length - 1];
         if (token.type === 'text' && previous?.type === 'text') {
             previous.value += token.value;
         } else {
-            merged.push({ ...token });
+            list.push({ ...token });
         }
 
-        return merged;
+        return list;
     }, []);
+
+    if (merged.length > maxTokens) {
+        const tail = merged.splice(maxTokens - 1).map(tokenText).join('');
+        const previous = merged[merged.length - 1];
+        if (previous?.type === 'text') {
+            previous.value += tail;
+        } else {
+            merged.push({ type: 'text', value: tail });
+        }
+    }
+
+    return merged;
 }
 
 /**
@@ -270,9 +358,12 @@ export function displayRows(items, { muted = [], revealed = [] } = {}) {
  * whether it says it is a bot (NIP-24 `bot`). Null when the content is not JSON.
  */
 export function profileOf(event) {
+    // A kind 0 is a few hundred bytes; one of 64 KB is not parsed at all.
+    if (typeof event?.content !== 'string' || event.content.length > 65_536) return null;
+
     let data;
     try {
-        data = JSON.parse(event?.content ?? '');
+        data = JSON.parse(event.content);
     } catch {
         return null;
     }
@@ -286,6 +377,37 @@ export function profileOf(event) {
         bot: data.bot === true,
         at: event.created_at ?? 0,
     };
+}
+
+/**
+ * The mark a message author gets: `bot` for the configured bot key only;
+ * `self` for a profile that calls itself a bot (anyone can: its npub is
+ * shown next to the name instead of a badge); null otherwise.
+ */
+export function botMark(pubkey, { bot = null, profile = null } = {}) {
+    if (bot && pubkey === bot) return 'bot';
+
+    return profile?.bot === true ? 'self' : null;
+}
+
+/**
+ * The profile cache as it may go to localStorage: newest seen first, at most
+ * `maxCount` entries and `maxBytes` of JSON; the oldest go first. A profile
+ * can hold at most a 48-character name and a 2048-character picture URL, so
+ * the cap is about size, not trust.
+ */
+export function boundProfiles(store, { maxBytes = 256 * 1024, maxCount = 400 } = {}) {
+    const kept = {};
+    let bytes = 2;
+    const entries = Object.entries(store ?? {}).sort(([, a], [, b]) => (b?.seen ?? 0) - (a?.seen ?? 0)).slice(0, maxCount);
+    for (const [pubkey, profile] of entries) {
+        const size = JSON.stringify(pubkey).length + JSON.stringify(profile).length + 2;
+        if (bytes + size > maxBytes) break;
+        kept[pubkey] = profile;
+        bytes += size;
+    }
+
+    return kept;
 }
 
 /** The first 8 characters of an npub-like label for a pubkey without a profile. */

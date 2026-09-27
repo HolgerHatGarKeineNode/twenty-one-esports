@@ -21,12 +21,11 @@ import { knownCustomEmojis, loadEmojiGroups, loadRecentEmojis, loadUserCustomEmo
 import { ensureSigner } from './nostrSign.js';
 import { newest, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
-import { displayRows, formatSats, insertSorted, isStreamMessage, length, messageTemplate, parseZap, profileOf, sendBlocker, tokenize } from './streamChat.js';
+import { botMark, boundProfiles, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, parseZap, profileOf, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 const PROFILES_KEY = 'esports.livechat.profiles';
 const PROFILE_TTL_MS = 6 * 60 * 60 * 1000;
-const PROFILE_CACHE_MAX = 400;
 const KEEP = 200;
 const BOTTOM_SLACK = 48;
 const AVATAR_PLACEHOLDER = '0'.repeat(64);
@@ -47,10 +46,15 @@ function writeJson(key, value) {
     }
 }
 
+/** The cached profiles still fresh, each checked again: the stored copy is only as good as whoever wrote it. */
 function cachedProfiles() {
     const now = Date.now();
+    const stored = readJson(PROFILES_KEY, {});
 
-    return Object.fromEntries(Object.entries(readJson(PROFILES_KEY, {})).filter(([, profile]) => profile && now - (profile.seen ?? 0) < PROFILE_TTL_MS));
+    return Object.fromEntries(Object.entries(stored && typeof stored === 'object' ? stored : {}).filter(([pubkey, profile]) => /^[0-9a-f]{64}$/.test(pubkey)
+        && profile && now - (profile.seen ?? 0) < PROFILE_TTL_MS
+        && (profile.picture === null || isHttps(profile.picture))
+        && (profile.name === null || (typeof profile.name === 'string' && profile.name.length <= 96))));
 }
 
 export function liveChat(config) {
@@ -139,7 +143,7 @@ export function liveChat(config) {
                     tokens: tokenize(event.content, event.tags),
                 };
             } else {
-                const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [] });
+                const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [], recipient: config.zapRecipient ?? null, lnurl: config.zapLnurl ?? null });
                 if (zap) item = { type: 'zap', ...zap, tokens: tokenize(zap.comment, []) };
             }
             if (!item) return;
@@ -259,8 +263,8 @@ export function liveChat(config) {
                 this.profiles[pubkey] = { ...profile, seen: Date.now() };
                 store[pubkey] = this.profiles[pubkey];
             }
-            const keep = Object.entries(store).sort(([, a], [, b]) => (b.seen ?? 0) - (a.seen ?? 0)).slice(0, PROFILE_CACHE_MAX);
-            writeJson(PROFILES_KEY, Object.fromEntries(keep));
+            // Newest first, at most 400 people and 256 KB: localStorage is shared with the rest of the site.
+            writeJson(PROFILES_KEY, boundProfiles(store));
         },
 
         nameOf(pubkey) {
@@ -282,8 +286,24 @@ export function liveChat(config) {
             return (config.avatarUrl ?? '').replace(AVATAR_PLACEHOLDER, pubkey);
         },
 
+        /** The bot badge: the configured bot key only. */
         isBot(pubkey) {
-            return (config.bot && pubkey === config.bot) || this.profiles[pubkey]?.bot === true;
+            return botMark(pubkey, { bot: config.bot, profile: this.profiles[pubkey] }) === 'bot';
+        },
+
+        /** A profile that calls itself a bot shows its npub next to the name, not a badge: anyone can say so. */
+        selfBot(pubkey) {
+            return botMark(pubkey, { bot: config.bot, profile: this.profiles[pubkey] }) === 'self';
+        },
+
+        shortNpub(pubkey) {
+            try {
+                const npub = npubEncode(pubkey);
+
+                return npub.slice(0, 10) + '…' + npub.slice(-4);
+            } catch {
+                return '';
+            }
         },
 
         time(seconds) {

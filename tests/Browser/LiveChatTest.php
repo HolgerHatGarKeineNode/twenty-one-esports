@@ -190,6 +190,10 @@ test('a player posts a picked custom emoji through her signer, another player an
         // Another stream's chat and a forged zap never show.
         $spammer->sign(1311, [['a', '30311:'.$this->streamKey->pubkey.':other', '', 'root']], 'wrong stream', $now - 30),
         $spammer->sign(9735, [['a', $this->address], ['bolt11', 'lnbc10m1pjtest'], ['description', (string) json_encode($zapRequest)]], '', $now - 20),
+        // The real LNURL server's receipt for a zap to someone else, with the stream's a tag copied on: not a zap of the stream.
+        $lnurl->sign(9735, [['p', $spammer->pubkey], ['a', $this->address], ['bolt11', 'lnbc10m1pjtest'], ['description', (string) json_encode($spammer->sign(9734, [['a', $this->address], ['p', $spammer->pubkey], ['amount', '1000000000']], 'fake big zap', $now - 16))]], '', $now - 15),
+        // The spammer's profile claims to be the league's bot.
+        $spammer->sign(0, [], (string) json_encode(['display_name' => 'TWENTY ONE Bot', 'bot' => true]), $now - 3600),
     ]);
 
     try {
@@ -206,11 +210,18 @@ test('a player posts a picked custom emoji through her signer, another player an
             ->and(count($guest->evaluate(P24_TEXTS)))->toBe(19)
             ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-zap]").innerText.replace(/\s+/g, " ").trim()'))->toContain('21 sats')->toContain('love the music')
             ->and($guest->evaluate('() => [...document.querySelectorAll("[data-test=live-chat-message]")].slice(-3).map((el) => !!el.querySelector("[data-test=live-chat-bot]")?.checkVisibility())'))->toBe([true, false, false])
+            ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-zap]").innerText'))->not->toContain('fake big zap')
             ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-text] a[href]")?.getAttribute("href")'))->toBe('https://esports.example/ladder')
             // A guest reads and gets a way in, no form, no emoji button.
             ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-guest] a")?.getAttribute("href")'))->toEndWith('/login?then=live')
             ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-form]")'))->toBeNull()
             ->and($guest->evaluate('() => document.querySelector("[data-test=live-chat-emoji]")'))->toBeNull();
+
+        // The look-alike: its own name, no badge, its npub beside the name.
+        $lookAlike = '[data-test=live-chat-message][data-pubkey="'.$spammer->pubkey.'"]';
+        BrowserWait::until($guest, '() => document.querySelector('.json_encode($lookAlike).')?.innerText.includes("TWENTY ONE Bot")', 5_000);
+        expect($guest->evaluate('() => document.querySelector('.json_encode($lookAlike.' [data-test=live-chat-bot]').').checkVisibility()'))->toBeFalse()
+            ->and($guest->evaluate('() => document.querySelector('.json_encode($lookAlike.' [data-test=live-chat-npub]').').innerText'))->toStartWith('npub1')->toContain('…');
 
         // Anna picks her custom emoji from the picker (a pointer device): her 10030 -> the 30030 set.
         // The Unicode set is not loaded with the page, only when the picker opens (its own JSON asset).
@@ -285,6 +296,37 @@ test('a player posts a picked custom emoji through her signer, another player an
         foreach ([$pageA, $pageB, $guest] as $page) {
             expect(p24Errors($page))->toBe([]);
         }
+    } finally {
+        $relay->stop(1);
+        $images->stop(1);
+        @unlink($seed);
+    }
+});
+
+test('the auditor\'s 63 KB message renders bounded and keeps the main thread under 200 ms', function () {
+    [$images, $imageBase] = p24Images();
+    $attacker = new TestSigner;
+    $payload = $attacker->sign(1311, [['a', $this->address, '', 'root'], ['emoji', 'a', $imageBase.'/a.png']], str_repeat(':a:', 21_000));
+    [$relay, $url, $seed] = p24Relay([]);
+
+    try {
+        $page = p24Page(null, 1440, 900);
+        p24Live($page);
+        $page->evaluate('() => { window.__long = []; new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__long.push(Math.round(e.duration)))).observe({ type: "longtask" }); }');
+
+        // Published while the page listens: the receive path, not the first load, takes it.
+        $page->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $payload]);
+        BrowserWait::until($page, '() => { const imgs = [...document.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
+        Execution::instance()->wait(0.5);
+
+        $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=live-chat-message]").closest("li"); return { longTasks: window.__long, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }');
+        fwrite(STDERR, "\n[p24 payload] ".json_encode($measured)."\n");
+
+        expect(max([0, ...$measured['longTasks']]))->toBeLessThan(200)
+            ->and($measured['images'])->toBe(20)
+            ->and($measured['nodes'])->toBeLessThan(400)
+            ->and($measured['chars'])->toBeLessThanOrEqual(4 * 280 + 1)
+            ->and(p24Errors($page))->toBe([]);
     } finally {
         $relay->stop(1);
         $images->stop(1);
@@ -389,8 +431,9 @@ function p24Conversation(string $address, string $imageBase, TestSigner $bot, Te
     }
 
     $events[] = $bot->sign(1311, [$root], 'The RL cup starts at 20:00. Sign up: https://esports.einundzwanzig.space/tournaments', $now - 1900);
-    $request = $people[2][0]->sign(9734, [['a', $address], ['amount', '2100000']], 'for the music', $now - 900);
-    $events[] = $lnurl->sign(9735, [['a', $address], ['bolt11', 'lnbc21u1pjtest'], ['description', (string) json_encode($request)]], '', $now - 890);
+    $recipient = explode(':', $address)[1];
+    $request = $people[2][0]->sign(9734, [['a', $address], ['p', $recipient], ['amount', '2100000']], 'for the music', $now - 900);
+    $events[] = $lnurl->sign(9735, [['p', $recipient], ['a', $address], ['bolt11', 'lnbc21u1pjtest'], ['description', (string) json_encode($request)]], '', $now - 890);
 
     return $events;
 }

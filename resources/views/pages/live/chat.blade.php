@@ -72,6 +72,8 @@
                                                 class="min-h-6 min-w-0 cursor-pointer truncate text-left text-xs font-bold disabled:cursor-default"
                                                 :class="row.item.pubkey === me ? 'text-btc-hi' : 'text-ink-2 hover:text-ink'" x-text="nameOf(row.item.pubkey)"></button>
                                         <span x-show="isBot(row.item.pubkey)" class="shrink-0 rounded-tag px-1 text-[11px] leading-4 text-proof shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" data-test="live-chat-bot" x-text="t.bot"></span>
+                                        {{-- Calls itself a bot: no badge (anyone can say so), its key instead, so a look-alike of ours is told apart. --}}
+                                        <span x-show="selfBot(row.item.pubkey)" class="min-w-0 shrink truncate text-[11px] text-ink-3" data-test="live-chat-npub" x-text="shortNpub(row.item.pubkey)"></span>
                                         <time class="ml-auto shrink-0 text-[11px] text-ink-3 tabular-nums" :datetime="new Date(row.item.created_at * 1000).toISOString()" x-text="time(row.item.created_at)"></time>
                                     </span>
                                     <p class="m-0 text-sm leading-normal break-words text-ink" data-test="live-chat-text">
