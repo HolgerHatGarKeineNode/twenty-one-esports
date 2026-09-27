@@ -6,8 +6,9 @@ use App\Models\ChatMute;
 use App\Models\LineupSeat;
 use App\Models\SeriesMatch;
 use App\Models\User;
-use App\Support\Rating\Ratings;
 use App\Support\Nostr\RejectedEvent;
+use App\Support\Rating\Ratings;
+use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
@@ -29,7 +30,8 @@ use Livewire\WithFileUploads;
  * Signed steps go through nostrAction (resources/js/nostrSign.js): for a
  * casual match every prepare returns no template and nothing is signed.
  */
-new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/js/matchRoom.js']])] class extends Component {
+new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/js/matchRoom.js']])] class extends Component
+{
     use WithFileUploads;
 
     public SeriesMatch $match;
@@ -100,6 +102,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {
         $this->shown = $this->fingerprint();
         $this->renderedAt = now()->getTimestamp();
+
+        // The chat sits in wire:ignore: hand it the casual state (host, flags) on every render.
+        if (($state = $this->casualState()) !== null) {
+            $this->dispatch('casual-room', state: $state);
+        }
     }
 
     /** Rebuild the sheet from the stored live games. */
@@ -239,6 +246,105 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
     }
 
+    /* Casual 1v1 (P23): the steps of the room, each a CasualMatches action. */
+
+    public function casualReady(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->ready($this->match, $this->user()));
+    }
+
+    public function casualJoined(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->markJoined($this->match, $this->user()));
+    }
+
+    public function casualSwapHost(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->swapHost($this->match, $this->user()));
+    }
+
+    public function casualClaimNoShow(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->claimNoShow($this->match, $this->user()));
+    }
+
+    public function casualContestNoShow(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->contestNoShow($this->match, $this->user()));
+    }
+
+    /**
+     * The host's chat got `OK true` for the card's wrap to the opponent
+     * (resources/js/roomChat.js). No arguments: the league learns that a
+     * card went out, nothing about it (NIP "Telling the league").
+     *
+     * @return array{ok: bool, reason?: string, message?: string}
+     */
+    public function casualLobbyShared(): array
+    {
+        return $this->flag(fn () => app(CasualMatches::class)->shareLobby($this->match, $this->user()));
+    }
+
+    /**
+     * The guest's chat opened a valid card from the host. Same shape as
+     * casualLobbyShared(); `no_lobby_yet` makes the chat ask again.
+     *
+     * @return array{ok: bool, reason?: string, message?: string}
+     */
+    public function casualLobbySeen(): array
+    {
+        return $this->flag(fn () => app(CasualMatches::class)->seeLobby($this->match, $this->user()));
+    }
+
+    /**
+     * A flag from the chat: answered to the chat, not on the room's error line.
+     *
+     * @param  callable(): SeriesMatch  $action
+     * @return array{ok: bool, reason?: string, message?: string}
+     */
+    private function flag(callable $action): array
+    {
+        try {
+            $action();
+
+            return ['ok' => true];
+        } catch (SeriesRuleViolation $refused) {
+            return ['ok' => false, 'reason' => $refused->reason, 'message' => $refused->getMessage()];
+        } finally {
+            $this->forget();
+        }
+    }
+
+    /**
+     * What the chat of a casual 1v1 needs from the league, null in any other
+     * room: the host, the two flags, whether the match runs, and `A + D` for
+     * the NIP-40 expiration (SeriesMatch::casualChatExpiresFrom()).
+     *
+     * @return array{game: string, isHost: bool, hostPubkey: string|null, started: bool, open: bool, shared: bool, seen: bool, expiresFrom: int|null}|null
+     */
+    private function casualState(): ?array
+    {
+        $match = $this->fresh();
+
+        if (! $match->isCasualPairing()) {
+            return null;
+        }
+
+        $mySide = $match->participantSideOf($this->user());
+        $hostId = $match->rosterSide((string) $match->host_side)[0] ?? null;
+
+        return [
+            'game' => $match->game,
+            'isHost' => $mySide !== null && $mySide === $match->host_side,
+            'hostPubkey' => $hostId === null ? null : User::query()->whereKey($hostId)->value('pubkey'),
+            'started' => $match->status === SeriesStatus::Accepted && $match->start_at !== null,
+            'open' => ! $match->status->hasResult(),
+            'shared' => $match->lobby_shared_at !== null,
+            'seen' => $match->lobby_seen_at !== null,
+            'expiresFrom' => $match->casualChatExpiresFrom()?->getTimestamp(),
+        ];
+    }
+
     public function setMuted(string $pubkey, bool $mute): bool
     {
         $user = $this->user();
@@ -321,9 +427,20 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             }
         }
 
+        $casual = $this->casualState();
+
+        if ($casual !== null) {
+            $casual += [
+                // Prefills of the composer, for this player only: a lobby name, and the EA ID from the private gamer tags.
+                'lobbyName' => 'e21-'.$match->number,
+                'eaId' => (string) ($this->user()->gamer_tags['ea'] ?? ''),
+            ];
+        }
+
         return [
             'me' => $this->user()->pubkey,
             'members' => array_values($members),
+            'casual' => $casual,
             'match' => $match->number,
             // A series runs for days: the chat reads back to the challenge (gameChat.js does the same per game).
             'since' => $match->created_at?->getTimestamp(),
@@ -336,6 +453,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 'noSigner' => __('No Nostr signer found. Install a Nostr browser extension or use a remote signer.'),
                 'notSent' => __('The message did not reach any relay. Please try again.'),
                 'failed' => __('That did not work. Please try again.'),
+                'copy' => __('Copy'),
+                'lobbyTitle' => __('Rocket League private match'),
+                'accountTitle' => __('EA ID for a friend request'),
+                'cardName' => __('Name'),
+                'cardPassword' => __('Password'),
+                'cardEaId' => __('EA ID'),
+                'cardReplaced' => __('Replaced by a newer card'),
+                'lobbyClosed' => __('Lobby closed'),
+                'accountWithdrawn' => __('EA ID withdrawn'),
+                'cardNotSent' => __('The card did not reach your opponent\'s relays. Please try again.'),
+                'cardInvalid' => __('Every field needs 1 to 64 characters, without line breaks.'),
+                'cardOneOpponent' => __('A card goes to exactly one opponent, and this room has more players.'),
             ],
         ];
     }
@@ -454,6 +583,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         ! $m->status->hasResult() && $games !== [] ? __('provisional') : null,
         $m->status === SeriesStatus::Accepted && ! $m->start_at?->isFuture() ? __('game :n playing', ['n' => min($m->best_of, $playing + 1)]) : null,
     ]));
+    // A casual 1v1 (P23): the steps and the chat come first, with the lobby as a card in the chat.
+    $casual = $m->isCasualPairing();
+    $casualFirst = $casual && ! $m->status->hasResult();
     $steps = [
         [__('Challenge'), SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i'), __('sent by :clan', ['clan' => $m->challenger_name]), true],
         [__('Accepted'), $m->answered_at && $m->start_at ? SeriesPresenter::time($m->answered_at, $viewer, 'D H:i') : '', $m->answered_at && $m->start_at ? __('by :clan', ['clan' => $m->challenged_name]) : __('waiting'), $m->start_at !== null],
@@ -467,7 +599,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      x-init="setInterval(() => { if (! document.activeElement?.matches('input, textarea, select') && ! submit) $wire.sync() }, 8000)">
 
     {{-- Header --}}
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div @class(['flex flex-wrap items-center gap-x-3 gap-y-2', '-order-2' => $casualFirst])>
         <a href="{{ \App\Support\GameNames::page($m->game) }}" class="shrink-0" title="{{ \App\Support\GameNames::game($m->game) }}" aria-label="{{ \App\Support\GameNames::game($m->game) }}"><x-game-cover :game="$m->game" size="thumb" class="w-16 rounded-sm shadow-ring lg:w-24" data-test="room-game-cover" /></a>
         <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]"><span class="lg:hidden">{{ __('Match room') }}</span><span class="max-lg:hidden">{{ __('Match') }}</span></h1>
         <span class="font-display text-xl font-bold text-ink-2 max-lg:hidden lg:text-[28px]">{{ $m->label() }}</span>
@@ -479,7 +611,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     </div>
 
     {{-- Versus --}}
-    <section aria-label="{{ __('Series') }}" class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg px-4 py-4 lg:grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] lg:px-8 lg:py-5" style="background: linear-gradient(90deg, #1E1A12, #121215 38%, #121215 62%, #17171B)">
+    <section aria-label="{{ __('Series') }}" @class(['grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg px-4 py-4 lg:grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] lg:px-8 lg:py-5', '-order-2' => $casualFirst]) style="background: linear-gradient(90deg, #1E1A12, #121215 38%, #121215 62%, #17171B)">
         @foreach (['challenger', 'score', 'challenged'] as $cell)
             @if ($cell === 'score')
                 <span class="flex flex-col items-center gap-1 text-center">
@@ -523,7 +655,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     </section>
 
     @if ($error)
-        <p class="m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert" data-test="room-error">{{ $error }}</p>
+        <p @class(['m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss', '-order-2' => $casualFirst]) role="alert" data-test="room-error">{{ $error }}</p>
     @endif
 
     {{-- Win moment (Overlays.dc.html "Win, once the other captain accepts") --}}
@@ -719,7 +851,10 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     </div>
 
     {{-- Lobby + Chat --}}
-    <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <div @class(['grid grid-cols-1 gap-5 lg:grid-cols-2', '-order-1' => $casualFirst])>
+        @if ($casual)
+            @include('pages.matches.partials.casual-steps')
+        @else
         <section aria-labelledby="lobby-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="lobby">
             <span class="flex items-baseline justify-between"><h2 id="lobby-h" class="m-0 text-[15px] font-bold">{{ __('Private lobby') }}</h2><span class="text-xs text-ink-2">{{ __('host :clan', ['clan' => $m->challenger_name]) }}</span></span>
             @if ($editLobby)
@@ -763,29 +898,53 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 </div>
             @endif
         </section>
+        @endif
 
-        <section aria-labelledby="chat-h" class="flex min-h-[420px] flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" data-test="room-chat" wire:ignore>
-            <span class="flex items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ __('private to both lineups') }}</span></span>
+        <section aria-labelledby="chat-h" class="flex min-h-[420px] flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" data-test="room-chat" wire:ignore>
+            <span class="flex items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ $casual ? __('private to both players') : __('private to both lineups') }}</span></span>
+            <p x-show="status === 'live'" class="m-0 border-b border-hairline px-4 py-2 text-xs leading-normal text-ink-2 lg:px-6" data-test="chat-hint">{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }}</p>
             <ol aria-live="polite" class="m-0 flex min-h-0 grow list-none flex-col justify-end gap-3 overflow-y-auto px-4 py-3 text-[13px] leading-normal lg:px-6" data-test="chat-messages">
                 <template x-for="m in messages" :key="m.id">
-                    <li class="flex max-w-[80%] flex-col gap-1 rounded-md px-3 py-2" :class="m.from === 'me' ? 'self-end bg-btc-press' : 'self-start bg-well'" :data-from="m.from">
+                    <li class="flex max-w-[85%] flex-col gap-1 rounded-md px-3 py-2" :class="[m.from === 'me' ? 'self-end bg-btc-press' : 'self-start bg-well', m.card && ! m.mutedCard && m.card.state === 'open' ? 'w-[260px] shadow-[inset_0_0_0_1px_#B9640A]' : '']" :data-from="m.from">
                         <span class="flex items-center gap-2 text-[11px]" :class="m.from === 'me' ? 'text-btc-hi' : 'text-ink-2'">
                             <span x-text="m.name + ', ' + time(m.at)"></span>
-                            <button type="button" x-show="m.from !== 'me'" x-on:click="toggleMute(m.pubkey)" class="btn-w inline-flex h-6 cursor-pointer items-center rounded-sm border border-line bg-transparent px-2 text-[10px] text-ink-2" x-text="t.mute"></button>
+                            <button type="button" x-show="m.from !== 'me'" x-on:click="toggleMute(m.pubkey)" class="btn-w inline-flex h-6 cursor-pointer items-center rounded-sm border border-line bg-transparent px-2 text-[10px] text-ink-2" x-text="isMuted(m.pubkey) ? t.muted : t.mute"></button>
                         </span>
-                        <span class="break-words" x-text="m.text"></span>
+                        {{-- A card is drawn from its tags, as text; never from `content`, never as HTML (NIP "Rendering"). --}}
+                        <template x-if="m.card && m.mutedCard">
+                            <button type="button" x-on:click="reveal(m.id)" class="btn-w inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-transparent px-3 text-left text-xs text-ink-2" data-test="muted-card"><x-icon name="mute" :size="14" />{{ __('Lobby card from a muted player') }}</button>
+                        </template>
+                        <template x-if="m.card && ! m.mutedCard">
+                            <div class="flex flex-col gap-1" data-test="chat-card" :data-kind="m.card.kind" :data-state="m.card.state">
+                                <b class="flex items-center gap-1.5 text-[13px]"><x-icon name="key" :size="14" class="shrink-0" /><span x-text="m.card.title"></span></b>
+                                <template x-for="f in (m.card.state === 'open' ? m.card.fields : [])" :key="f.label">
+                                    <span class="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 text-[13px]">
+                                        <span class="text-ink-2" x-text="f.label"></span>
+                                        <b class="font-mono break-all" x-text="f.value" data-test="card-value"></b>
+                                        <button type="button" x-on:click="copy(f.value)" :aria-label="t.copy + ': ' + f.label" class="btn-w inline-flex size-11 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent text-ink-2"><x-icon name="copy" :size="16" /></button>
+                                    </span>
+                                </template>
+                                <span x-show="m.card.note" class="text-xs text-ink-2" x-text="m.card.note"></span>
+                            </div>
+                        </template>
+                        <template x-if="! m.card">
+                            <span class="break-words" x-text="m.text"></span>
+                        </template>
                     </li>
                 </template>
                 <li x-show="status === 'live' && messages.length === 0" class="text-ink-3">{{ __('No messages yet. Say hello.') }}</li>
                 <li x-show="status === 'starting'" class="text-ink-3">{{ __('Connecting to the chat …') }}</li>
                 <li x-show="status === 'needs-signer'" class="flex flex-col items-start gap-2 text-ink-2">
-                    <span>{{ __('The chat is end-to-end encrypted with your Nostr key. Open it to read and write messages.') }}</span>
+                    <span>{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }} {{ __('Open it to read and write messages.') }}</span>
                     <x-button variant="quiet" icon="chat" x-on:click="connect()">{{ __('Open chat') }}</x-button>
                 </li>
                 <li x-show="status === 'no-nip44'" class="text-ink-2">{{ __('Your signer cannot encrypt messages (NIP-44), so the chat is off. A Nostr extension or signer app with NIP-44 turns it on; the match itself works as usual.') }}</li>
                 <li x-show="status === 'no-relays'" class="text-ink-2">{{ __('The chat has no relay here, so it is off.') }}</li>
                 <li x-show="error" class="text-loss" role="alert" x-text="error"></li>
             </ol>
+            @if ($casual)
+                @include('pages.matches.partials.card-composer')
+            @endif
             <form x-show="status === 'live'" x-on:submit.prevent="send()" class="flex gap-2 border-t border-hairline px-4 pt-3 pb-4 lg:px-6">
                 <label for="roomchat" class="sr-only">{{ __('Message to both lineups') }}</label>
                 <input id="roomchat" x-model="input" placeholder="{{ __('Message') }}" autocomplete="off" maxlength="500" class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">

@@ -11,7 +11,7 @@
     <li x-show="status === 'live' && messages.length === 0" class="text-ink-3">{{ __('No messages yet. Say hello.') }}</li>
     <li x-show="status === 'starting'" class="text-ink-3">{{ __('Connecting to the chat …') }}</li>
     <li x-show="status === 'needs-signer'" class="flex flex-col items-start gap-2 text-ink-2">
-        <span>{{ __('The chat is end-to-end encrypted with your Nostr key. Open it to read and write messages.') }}</span>
+        <span>{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }} {{ __('Open it to read and write messages.') }}</span>
         <x-button variant="quiet" icon="chat" x-on:click="connect()" data-test="chat-connect">{{ __('Open chat') }}</x-button>
     </li>
     <li x-show="status === 'no-nip44'" class="text-ink-2" data-test="chat-no-nip44">{{ __('Your signer cannot encrypt messages (NIP-44), so the chat is off. A Nostr extension or signer app with NIP-44 turns it on; the game itself works as usual.') }}</li>

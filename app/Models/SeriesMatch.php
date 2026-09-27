@@ -85,6 +85,8 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $lobby_shared_at the host shared the lobby in the match chat (only the flag, never the lobby)
  * @property Carbon|null $joined_at the guest joined the host's lobby
  * @property Carbon|null $noshow_contested_at the accused side answered a casual no-show claim
+ * @property Carbon|null $lobby_seen_at the guest's client opened a valid lobby or account card from the host (P23 S2; only the flag)
+ * @property Carbon|null $host_swapped_at the host handed the host seat to the guest before sharing; the lobby deadline runs from then
  * @property array{ready_seconds?: int, lobby_minutes?: int, join_minutes?: int, contest_minutes?: int, report_minutes?: int, confirm_minutes?: int, queue?: array<string, array{platform: string, crossplay: bool}>}|null $casual the casual deadlines pinned at the pairing, and each side's queue choice
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -109,6 +111,7 @@ use Illuminate\Support\Carbon;
     'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'tournament_attempt', 'sides',
     'deadlines', 'overdue_at',
     'origin', 'host_side', 'ready_by', 'ready_at_challenger', 'ready_at_challenged', 'lobby_shared_at', 'joined_at', 'noshow_contested_at', 'casual',
+    'lobby_seen_at', 'host_swapped_at',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -162,6 +165,8 @@ class SeriesMatch extends Model
             'joined_at' => 'datetime',
             'noshow_contested_at' => 'datetime',
             'casual' => 'array',
+            'lobby_seen_at' => 'datetime',
+            'host_swapped_at' => 'datetime',
         ];
     }
 
@@ -422,10 +427,36 @@ class SeriesMatch extends Model
         return $this->isCasualPairing() && $this->status === SeriesStatus::Accepted && $this->start_at === null;
     }
 
-    /** The host shares the lobby by then; afterwards the guest may claim a no-show. */
+    /**
+     * The host shares the lobby by then; afterwards the guest may claim a
+     * no-show. A swapped host (CasualMatches::swapHost()) gets the
+     * full time again, from the swap.
+     */
     public function casualLobbyDueAt(): ?CarbonInterface
     {
-        return $this->start_at?->copy()->addMinutes($this->casualSetting('lobby_minutes'));
+        return ($this->host_swapped_at ?? $this->start_at)?->copy()->addMinutes($this->casualSetting('lobby_minutes'));
+    }
+
+    /**
+     * `A + D` of the NIP's "Expiration" (Lobby and account cards): the
+     * latest regular end of a casual 1v1, the anchor of the NIP-40
+     * `expiration` on every message of its room. `A` is the close of the
+     * ready check (`ready_by`; a scheduled match: its start plus the
+     * 10-minute check-in), `D` the pinned deadlines along the longest path
+     * without a dispute: lobby, join, report, confirm. Both are fixed at the
+     * pairing, so both clients get the same value for the whole match; a
+     * host swap does not move it. Null for every other series.
+     */
+    public function casualChatExpiresFrom(): ?CarbonInterface
+    {
+        if (! $this->isCasualPairing()) {
+            return null;
+        }
+
+        $anchor = $this->ready_by ?? $this->start_at?->copy()->addMinutes(10);
+        $minutes = $this->casualSetting('lobby_minutes') + $this->casualSetting('join_minutes') + $this->casualSetting('report_minutes') + $this->casualSetting('confirm_minutes');
+
+        return $anchor?->copy()->addMinutes($minutes);
     }
 
     /** The guest joins by then; afterwards the host may claim a no-show. */

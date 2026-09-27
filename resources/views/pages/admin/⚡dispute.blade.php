@@ -23,7 +23,8 @@ use Livewire\Component;
  * NIP-17, end-to-end encrypted between the players; the league cannot read
  * it and stores none (NIP "Chat"), so there is nothing to excerpt.
  */
-new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
+new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
+{
     public SeriesMatch $match;
 
     /** `report:<id>`, `result`, `void`, `forfeit:<side>` */
@@ -250,7 +251,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 </section>
                 <section aria-labelledby="mc-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6">
                     <h2 id="mc-h" class="m-0 text-[15px] font-bold">{{ __('Match chat') }}</h2>
-                    <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('The chat is end-to-end encrypted between the players (NIP-17). The league cannot read it, so there is no excerpt here. Ask the captains for screenshots instead.') }}</p>
+                    <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('The chat is end-to-end encrypted over Nostr: the league server never receives or stores it, so there is no excerpt here. Ask the captains for screenshots instead.') }}</p>
                 </section>
             </div>
 

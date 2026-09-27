@@ -53,17 +53,26 @@ export function makeRumor({ sender, recipient, content, match, now = Math.floor(
     return { ...rumor, id: getEventHash(rumor) };
 }
 
-async function seal(signer, rumor, recipient, now) {
-    const content = await signer.nip44.encrypt(recipient, JSON.stringify(rumor));
-
-    return signer.signEvent({ kind: 13, created_at: randomPast(now), tags: [], content });
+/**
+ * NIP-40 `expiration` on the seal and the wrap of a casual 1v1 room (NIP
+ * "Lobby and account cards", Expiration): the seal as NIP-17 asks, although
+ * NIP-59 wants its tags empty; the wrap so relays drop it. Null: no tag.
+ */
+function expirationTags(expiration) {
+    return expiration == null ? [] : [['expiration', String(expiration)]];
 }
 
-function giftWrap(sealed, recipient, now) {
+async function seal(signer, rumor, recipient, now, expiration = null) {
+    const content = await signer.nip44.encrypt(recipient, JSON.stringify(rumor));
+
+    return signer.signEvent({ kind: 13, created_at: randomPast(now), tags: expirationTags(expiration), content });
+}
+
+function giftWrap(sealed, recipient, now, expiration = null) {
     const key = generateSecretKey();
     const content = nip44.encrypt(JSON.stringify(sealed), nip44.getConversationKey(key, recipient));
 
-    return finalizeEvent({ kind: 1059, created_at: randomPast(now), tags: [['p', recipient]], content }, key);
+    return finalizeEvent({ kind: 1059, created_at: randomPast(now), tags: [['p', recipient], ...expirationTags(expiration)], content }, key);
 }
 
 /**
@@ -139,14 +148,16 @@ export async function unwrapMessage(signer, wrap, me) {
 /**
  * The unsigned kind-14 message to a group (NIP-17 chat room: the author plus
  * the `p` set), here the players of both lineups of a series. `match` is the
- * league match number.
+ * league match number. `tags` are extra tags (a lobby or account card,
+ * resources/js/lobbyCards.js); `expiration` the NIP-40 time of a casual 1v1
+ * room, or null.
  */
-export function makeGroupRumor({ sender, recipients, content, match, now = Math.floor(Date.now() / 1000) }) {
+export function makeGroupRumor({ sender, recipients, content, match, tags = [], expiration = null, now = Math.floor(Date.now() / 1000) }) {
     const rumor = {
         pubkey: sender,
         created_at: now,
         kind: 14,
-        tags: [...recipients.filter((p) => p !== sender).map((p) => ['p', p]), ['match', String(match)]],
+        tags: [...recipients.filter((p) => p !== sender).map((p) => ['p', p]), ['match', String(match)], ...tags, ...expirationTags(expiration)],
         content,
     };
 
@@ -156,17 +167,19 @@ export function makeGroupRumor({ sender, recipients, content, match, now = Math.
 /**
  * One group message: the same rumor sealed and wrapped to every member
  * separately, and once to the sender (NIP-17 "publish to each receiver").
+ * `wraps[i]` goes to `targets[i]`; the copy to self is the last one. With
+ * `expiration`, the rumor, every seal and every wrap carry the same value.
  */
-export async function wrapGroupMessage(signer, { sender, recipients, content, match, now = Math.floor(Date.now() / 1000) }) {
-    const rumor = makeGroupRumor({ sender, recipients, content, match, now });
+export async function wrapGroupMessage(signer, { sender, recipients, content, match, tags = [], expiration = null, now = Math.floor(Date.now() / 1000) }) {
+    const rumor = makeGroupRumor({ sender, recipients, content, match, tags, expiration, now });
     const targets = [...new Set([...recipients.filter((p) => p !== sender), sender])];
     const wraps = [];
 
     for (const target of targets) {
-        wraps.push(giftWrap(await seal(signer, rumor, target, now), target, now));
+        wraps.push(giftWrap(await seal(signer, rumor, target, now, expiration), target, now, expiration));
     }
 
-    return { rumor, wraps };
+    return { rumor, wraps, targets };
 }
 
 /**

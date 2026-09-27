@@ -30,9 +30,11 @@ use Illuminate\Support\Facades\DB;
  *          -> guest joins (`joined_at`, by `join_minutes`)
  *          -> report (by `report_minutes`) -> confirm (by `confirm_minutes`)
  *
- * The server stores only the two flags, never the lobby: it travels in the
- * end-to-end encrypted match chat (slice S2). The host side is drawn at the
- * pairing.
+ * The server stores only flags, never the lobby: it travels in the
+ * end-to-end encrypted match chat as a card (slice S2), and the guest's
+ * client reports that it opened one (`lobby_seen_at`). The host side is
+ * drawn at the pairing; a host whose signer fails hands it to the guest
+ * once, before sharing ({@see swapHost()}).
  *
  * No-show: once the host let the lobby deadline pass the guest may claim a
  * no-show, once the guest let the join deadline pass the host may. One
@@ -364,6 +366,98 @@ final class CasualMatches
         return $match;
     }
 
+    /**
+     * The guest's client opened a valid card from the host (NIP "Lobby and
+     * account cards", `lobby_seen_at`). Only the flag is stored: the call
+     * carries nothing about the card. Needs the host's flag first, so the
+     * two land in their order; the client asks again if it came too early.
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function seeLobby(SeriesMatch $match, User $user): SeriesMatch
+    {
+        $match = $match->fresh() ?? $match;
+        $side = $this->sideOf($match, $user);
+        $this->assertStarted($match);
+
+        if ($side === $match->host_side) {
+            throw self::refuse('not_guest');
+        }
+
+        if ($match->lobby_shared_at === null) {
+            throw self::refuse('no_lobby_yet');
+        }
+
+        if ($match->lobby_seen_at !== null) {
+            return $match;
+        }
+
+        $marked = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)->where('host_side', $match->host_side)
+            ->whereNotNull('lobby_shared_at')->whereNull('lobby_seen_at')
+            ->update(['lobby_seen_at' => now()]);
+
+        $match->refresh();
+
+        if ($marked !== 1) {
+            throw self::refuse('changed');
+        }
+
+        $this->announce($match);
+
+        return $match;
+    }
+
+    /**
+     * "Can't share, swap host": the host's signer failed (extension locked,
+     * bunker unreachable), so the host seat goes to the guest instead of a
+     * no-show. Only the host, only before the lobby is shared and before its
+     * deadline, once per match; the new host gets the full lobby time again
+     * (SeriesMatch::casualLobbyDueAt()).
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function swapHost(SeriesMatch $match, User $user): SeriesMatch
+    {
+        $match = $match->fresh() ?? $match;
+        $side = $this->sideOf($match, $user);
+        $this->assertStarted($match);
+
+        if ($side !== $match->host_side) {
+            throw self::refuse('not_host');
+        }
+
+        if ($match->lobby_shared_at !== null) {
+            throw self::refuse('lobby_shared');
+        }
+
+        if ($match->host_swapped_at !== null) {
+            throw self::refuse('swapped_once');
+        }
+
+        if ($match->noshow_reported_at !== null) {
+            throw self::refuse('noshow_pending');
+        }
+
+        if ($match->casualLobbyDueAt()?->isFuture() !== true) {
+            throw self::refuse('swap_late');
+        }
+
+        $swapped = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)->where('host_side', $side)
+            ->whereNull('lobby_shared_at')->whereNull('host_swapped_at')->whereNull('noshow_reported_at')
+            ->where('start_at', '>', now()->subMinutes($match->casualSetting('lobby_minutes')))
+            ->update(['host_side' => SeriesMatch::otherSide($side), 'host_swapped_at' => now(), 'lobby_seen_at' => null]);
+
+        $match->refresh();
+
+        if ($swapped !== 1) {
+            throw self::refuse('changed');
+        }
+
+        $this->announce($match);
+
+        return $match;
+    }
+
     /* ---------- No-show ------------------------------------------------------------------------------------- */
 
     /**
@@ -512,6 +606,9 @@ final class CasualMatches
             'not_host' => __('Only the host shares the lobby.'),
             'not_guest' => __('Only the guest joins the lobby.'),
             'no_lobby_yet' => __('The host has not shared the lobby yet.'),
+            'lobby_shared' => __('The lobby is shared already, so the host stays.'),
+            'swapped_once' => __('The host was swapped once already in this match.'),
+            'swap_late' => __('The time to share the lobby is over, so the host can no longer be swapped.'),
             'noshow_pending' => __('A no-show was claimed; answer it first.'),
             'noshow_once' => __('A no-show was claimed in this match already.'),
             'noshow_early' => __('A no-show can be claimed only after your opponent missed their deadline.'),

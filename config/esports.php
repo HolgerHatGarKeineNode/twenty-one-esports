@@ -97,7 +97,10 @@ return [
     | Gamer tags
     |--------------------------------------------------------------------------
     |
-    | The account names a player can list on the gaming profile.
+    | The account names a player can list on the gaming profile. They stay
+    | private: the only place they leave the settings is the player's own
+    | card composer in a casual 1v1 room (`ea`: the EA ID an account card
+    | prefills, NIP "Lobby and account cards"), sent end-to-end encrypted.
     |
     */
 
@@ -107,6 +110,7 @@ return [
         'psn' => 'PlayStation Network',
         'xbox' => 'Xbox',
         'nintendo' => 'Nintendo',
+        'ea' => 'EA ID',
     ],
 
     /*
