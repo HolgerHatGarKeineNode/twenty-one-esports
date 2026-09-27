@@ -213,8 +213,11 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
     $slide = app(TournamentSlides::class)->data($tournament->refresh(), (int) now()->getTimestampMs());
 
     $svgs = [];
+    $watched = [];
     foreach (RotationPlanner::VIEWS as $scene => $view) {
-        $svgs[$scene] = $renderer->svg($source->rotation($scene, $game->id, $games, $more, (int) now()->getTimestampMs(), $stats, $slide), $view);
+        $data = $source->rotation($scene, $game->id, $games, $more, (int) now()->getTimestampMs(), $stats, $slide);
+        $svgs[$scene] = $renderer->svg($data, $view);
+        $watched[$scene] = $renderer->svg([...$data, 'viewers' => 1234], $view);
     }
 
     expect($source->moves($game->refresh()))->toBe(['e4', 'e5', 'Nf3'])
@@ -227,6 +230,9 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
         ->and($svgs['ta1'].$svgs['tb1'].$svgs['tc1'])->toContain($slide['countdown'])
         ->and($svgs['ta2'].$svgs['tb2'].$svgs['tc2'])->toContain('Seed &lt;b&gt;one')
         ->and(implode('', $svgs))->not->toContain('<b>one')
+        // The live viewer count on every slide, and nothing while the count is off.
+        ->and(array_keys(array_filter($watched, fn (string $svg): bool => ! str_contains($svg, '1,234') || ! str_contains($svg, 'watching'))))->toBe([])
+        ->and(implode('', $svgs))->not->toContain('watching')
         // The QR codes are drawn (their module path), never the address as text.
         ->and($svgs['a5'])->toContain('<path style="stroke:#17120a"')
         ->and($svgs['c5'])->toContain('<path style="stroke:#17120a"')
