@@ -1106,6 +1106,12 @@ with the entry, and the withdrawal next to it, at least until the tournament's p
 ([Payout](#payout-2157)). That is the evidence if an entrant later says they never entered, or never
 pulled out. The draw (`2155`) is the only public trace of the entries.
 
+Rev. 8.1: when a version changes what an entrant agreed to (who enters results, the directors, game or
+mode, format) while entries exist, the league asks each entry for a new `signup` consent with the same
+entrants and `e` to the current version, signed by the same kind of author. It keeps both consents; an
+entry without a consent to the current version when sign-up closes is not drawn. Removals by the
+organizer and these re-confirmations are league data and are not published.
+
 **Why not NIP-98 (`27235`).** NIP-98 "defines an ephemeral event used to authorize requests to HTTP
 servers": its `u` "MUST be exactly the same as the absolute request URL" and its `content` "SHOULD be
 empty". A consent authorises no request (the sign-up is not a request to the URL it would name) and its

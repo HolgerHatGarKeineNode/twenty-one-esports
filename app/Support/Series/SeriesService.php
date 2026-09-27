@@ -574,13 +574,23 @@ final class SeriesService
      * deleted after the accept cannot shrink the side (security re-check,
      * F2). The seats are not stored; a deleted account keeps its pinned name.
      * A rated match pinned before the sides were stored falls back to the
-     * eligible active seats.
+     * eligible active seats. In a tournament a lineup's seats are only the
+     * players its entry fielded, without blocked ones.
      *
      * @return list<LineupSeat>
      */
     public function rosterChoices(SeriesMatch $match, string $side): array
     {
-        $seats = $match->lineup($side)?->activeSeats() ?? self::rosterSideSeats($match, $side);
+        $lineup = $match->lineup($side);
+        $seats = $lineup?->activeSeats() ?? self::rosterSideSeats($match, $side);
+        $tournament = $match->tournament_match_id === null ? null : $match->tournamentMatch?->tournament;
+
+        // A tournament lineup plays with the players its entry fielded, never a blocked one (Tournament::entryPlayersOf).
+        if ($lineup !== null && $tournament !== null) {
+            $entry = $tournament->entryPlayersOf($lineup->id) ?? [];
+            $seats = array_values(array_filter($seats, fn (LineupSeat $seat): bool => in_array($seat->user_id, $entry, true)));
+        }
+
         $pinned = $match->rated ? (GatePin::fromArray($match->gate_at_accept)->sides[$side] ?? null) : null;
 
         if ($pinned === null) {

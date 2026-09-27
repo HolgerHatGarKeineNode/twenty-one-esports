@@ -15,6 +15,7 @@ use App\Support\Tournaments\TournamentRuleViolation;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 
@@ -222,12 +223,25 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             }
         }
 
+        // One saved change per tournament every 2 s: each one signs new versions of the 31923 and the shared calendar.
+        $throttle = 'tournament-edit:'.$tournament->id;
+
+        if (RateLimiter::tooManyAttempts($throttle, 1)) {
+            $this->error = __('Saved a moment ago. Wait :seconds s and save again.', ['seconds' => max(1, RateLimiter::availableIn($throttle))]);
+
+            return;
+        }
+
         try {
             $changed = app(TournamentEditor::class)->update($tournament, $this->user(), $changes, $this->confirmRemoval);
         } catch (TournamentRuleViolation $violation) {
             $this->error = $violation->getMessage();
 
             return;
+        }
+
+        if ($changed !== []) {
+            RateLimiter::hit($throttle, 2);
         }
 
         $this->tournament = $tournament->refresh();
@@ -329,6 +343,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'removed' => __('removed an entry'),
         'blocked' => __('blocked a player'),
         'unblocked' => __('unblocked a player'),
+        'reconfirm' => __('asked the entries to confirm again'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',
@@ -450,6 +465,9 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                 <p class="m-0 text-[13px] text-ink-2">{{ __('Nobody has signed up yet.') }}</p>
             @else
                 <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Removing an entry frees its places and tells its players why. Their signed sign-up stays on record; nothing is published.') }}</p>
+                @if ($this->signups->contains(fn ($signup) => $signup->needsReconfirm()))
+                    <p class="m-0 text-xs leading-normal text-btc-hi" data-test="reconfirm-note">{{ __('The rules changed after these sign-ups. Entries marked “needs re-confirm” are dropped at sign-up close unless their players confirm again.') }}</p>
+                @endif
                 @if ($moderationError !== '')
                     <p class="m-0 text-[13px] text-loss" role="alert" data-test="moderation-error">{{ $moderationError }}</p>
                 @endif
@@ -465,6 +483,11 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                                         <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-raised px-1.5 text-[10px] text-ink-2">{{ $teams ? __('solo') : __('player') }}</span>
                                     @endif
                                     <b class="min-w-0 truncate">{{ $signup->name }}</b>
+                                    @if ($signup->needsReconfirm())
+                                        <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-btc-chip px-1.5 text-[10px] font-bold text-btc-hi" data-test="needs-reconfirm">{{ __('needs re-confirm') }}</span>
+                                    @elseif ($signup->reconfirm_event_id)
+                                        <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-win-tint px-1.5 text-[10px] text-win" data-test="reconfirmed">{{ __('re-confirmed') }}</span>
+                                    @endif
                                 </span>
                                 <x-button variant="secondary" wire:click="startRemove({{ $signup->id }})" class="h-9 px-3 lg:order-last" data-test="remove-{{ $signup->id }}">{{ __('Remove') }}</x-button>
                                 <span class="col-span-2 min-w-0 text-xs text-ink-2 [overflow-wrap:anywhere] lg:col-span-1">

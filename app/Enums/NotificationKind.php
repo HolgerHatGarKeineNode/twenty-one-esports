@@ -26,6 +26,7 @@ enum NotificationKind: string
     case ClanJoinAnswer = 'clan_join_answer';
     case InviteLinkTaken = 'invite_link_taken';
     case TournamentEntryRemoved = 'tournament_entry_removed';
+    case TournamentRulesChanged = 'tournament_rules_changed';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -44,7 +45,7 @@ enum NotificationKind: string
      */
     public function dmByDefault(): bool
     {
-        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest], true);
+        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentRulesChanged], true);
     }
 
     /**
@@ -56,6 +57,7 @@ enum NotificationKind: string
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken => 'challenge',
             self::ClanJoinAnswer, self::TournamentEntryRemoved => 'confirmed',
+            self::TournamentRulesChanged => 'challenge',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -97,6 +99,7 @@ enum NotificationKind: string
             self::ClanJoinAnswer => ['Clan join answer', 'a clan answered your join request'],
             self::InviteLinkTaken => ['Invite link taken', 'someone took the invite link you shared'],
             self::TournamentEntryRemoved => ['Tournament entry removed', 'an organizer removed your entry from a tournament'],
+            self::TournamentRulesChanged => ['Tournament rules changed', 'confirm your entry again after a tournament changed its rules'],
         };
     }
 

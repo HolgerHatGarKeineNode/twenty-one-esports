@@ -364,7 +364,11 @@ final class TournamentMatchMaker
             return null;
         }
 
-        $players = array_values(array_unique(array_map(fn (LineupSeat $seat): string => $seat->user->pubkey, [...$a->activeSeats(), ...$b->activeSeats()])));
+        // Only the players each entry fielded at sign-up, never a blocked one (Tournament::entryPlayersOf).
+        $entry = [$a->id => $tournament->entryPlayersOf($a->id) ?? [], $b->id => $tournament->entryPlayersOf($b->id) ?? []];
+        $seats = fn (Lineup $lineup): array => array_values(array_filter($lineup->activeSeats(),
+            fn (LineupSeat $seat): bool => in_array($seat->user_id, $entry[$lineup->id], true)));
+        $players = array_values(array_unique(array_map(fn (LineupSeat $seat): string => $seat->user->pubkey, [...$seats($a), ...$seats($b)])));
         $pin = $this->gate->pin($players, [$a->clan->owner_pubkey, $b->clan->owner_pubkey]);
 
         foreach ($pin->gatekeepers as $gatekeeper) {
@@ -379,7 +383,7 @@ final class TournamentMatchMaker
 
         $entries = fn (Lineup $lineup): array => array_values(array_map(
             fn (LineupSeat $seat): array => ['user_id' => $seat->user_id, 'pubkey' => $seat->user->pubkey, 'name' => $seat->user->displayName(), 'role' => $seat->role->value],
-            array_filter($lineup->activeSeats(), fn (LineupSeat $seat): bool => $pin->isEligible($seat->user->pubkey)),
+            array_filter($seats($lineup), fn (LineupSeat $seat): bool => $pin->isEligible($seat->user->pubkey)),
         ));
 
         return $pin->withSides(['challenger' => $entries($a), 'challenged' => $entries($b)]);

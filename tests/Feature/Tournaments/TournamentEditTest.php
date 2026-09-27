@@ -296,12 +296,14 @@ test('a game correction lists the lineups it no longer fits and removes them onl
 
     expect($tournament->refresh()->mode)->toBe('2v2')
         ->and($lineupSignup->refresh()->removed_at)->not->toBeNull()
-        ->and($lineupSignup->removal_reason)->toBe(__('The game or mode of the tournament was corrected.'))
+        ->and($lineupSignup->removal_reason)->toBe(TournamentEditor::GAME_CORRECTED)
         ->and($soloSignup->refresh()->removed_at)->toBeNull()
         ->and($captain->notifications()->sole()->data['kind'])->toBe(NotificationKind::TournamentEntryRemoved->value)
         ->and(User::query()->find($lineupSignup->members[1])->notifications()->count())->toBe(1)
-        ->and($solo->notifications()->count())->toBe(0)
-        ->and(TournamentModerationEntry::query()->pluck('action')->sort()->values()->all())->toBe(['edited', 'removed']);
+        // The solo entry stays, and is asked to confirm the new rules (its consent named the 3v3 version).
+        ->and($soloSignup->needsReconfirm())->toBeTrue()
+        ->and($solo->notifications()->sole()->data['kind'])->toBe(NotificationKind::TournamentRulesChanged->value)
+        ->and(TournamentModerationEntry::query()->pluck('action')->sort()->values()->all())->toBe(['edited', 'reconfirm', 'removed']);
 });
 
 test('a game correction re-derives the ladder from the first publish time: the new game\'s ladder while one was open then', function () {

@@ -9,7 +9,9 @@ use LogicException;
 
 /**
  * One line of a tournament's moderation log: who edited the tournament,
- * removed an entry, or blocked or unblocked a player, when, and why.
+ * removed an entry, or blocked or unblocked a player, when, and why; a
+ * rules change that asks the entries for a new consent (`reconfirm`). An
+ * entry the league dropped at sign-up close is logged by `League` (no user).
  * `subject` is the entry or player it concerns, `details` the changed
  * fields (`field => [old, new]`) of an edit. Append-only, like the director
  * log: a row is never changed or deleted.
@@ -18,7 +20,7 @@ use LogicException;
  * @property int $tournament_id
  * @property int|null $user_id
  * @property string $user_name
- * @property 'edited'|'removed'|'blocked'|'unblocked' $action
+ * @property 'edited'|'removed'|'blocked'|'unblocked'|'reconfirm' $action
  * @property int|null $tournament_signup_id
  * @property string|null $subject
  * @property string|null $reason

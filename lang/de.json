@@ -3167,5 +3167,22 @@
     "Give a reason of 3 to 500 characters. The player reads it.": "Gib einen Grund mit 3 bis 500 Zeichen an. Der Spieler liest ihn.",
     "A player here is blocked from this tournament by its organizer.": "Ein Spieler hier ist vom Veranstalter für dieses Turnier gesperrt.",
     "Tournament entry removed": "Turnieranmeldung entfernt",
-    "an organizer removed your entry from a tournament": "ein Veranstalter hat deine Anmeldung zu einem Turnier entfernt"
+    "an organizer removed your entry from a tournament": "ein Veranstalter hat deine Anmeldung zu einem Turnier entfernt",
+    "Saved a moment ago. Wait :seconds s and save again.": "Gerade erst gespeichert. Warte :seconds s und speichere noch einmal.",
+    "asked the entries to confirm again": "hat die Anmeldungen um eine neue Bestätigung gebeten",
+    "The rules changed after these sign-ups. Entries marked “needs re-confirm” are dropped at sign-up close unless their players confirm again.": "Die Regeln haben sich nach diesen Anmeldungen geändert. Anmeldungen mit „neu bestätigen“ fallen bei Anmeldeschluss weg, wenn ihre Spieler nicht neu bestätigen.",
+    "needs re-confirm": "neu bestätigen",
+    "re-confirmed": "neu bestätigt",
+    "The rules of :tournament changed": "Die Regeln von :tournament haben sich geändert",
+    "Changed: :fields. Confirm your entry again before sign-up closes, or it is dropped.": "Geändert: :fields. Bestätige deine Anmeldung vor Anmeldeschluss neu, sonst fällt sie weg.",
+    "Your entry does not need a new confirmation.": "Deine Anmeldung braucht keine neue Bestätigung.",
+    "Only a captain of the lineup can confirm it again.": "Nur ein Captain des Lineups kann es neu bestätigen.",
+    "Too many changes in a row. Wait a few seconds and save again.": "Zu viele Änderungen hintereinander. Warte ein paar Sekunden und speichere noch einmal.",
+    "The rules changed after you signed up": "Die Regeln haben sich nach deiner Anmeldung geändert",
+    "Read the tournament page, then confirm your entry for the current rules. An entry not confirmed by sign-up close is dropped.": "Lies die Turnierseite und bestätige deine Anmeldung dann für die aktuellen Regeln. Eine Anmeldung ohne Bestätigung bis Anmeldeschluss fällt weg.",
+    "Confirm my entry": "Anmeldung bestätigen",
+    "Your captain confirms the lineup.": "Dein Captain bestätigt das Lineup.",
+    "Tournament rules changed": "Turnierregeln geändert",
+    "confirm your entry again after a tournament changed its rules": "bestätige deine Anmeldung neu, nachdem ein Turnier seine Regeln geändert hat",
+    "The entry was not confirmed again after the rules changed.": "Die Anmeldung wurde nach der Regeländerung nicht neu bestätigt."
 }

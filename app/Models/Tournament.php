@@ -250,6 +250,29 @@ class Tournament extends Model
     }
 
     /**
+     * The players a clan lineup's entry may field in this tournament: the
+     * members its captain entered (the players its sign-up consent names),
+     * without anyone blocked for this tournament. Today's seats of the
+     * lineup are not the entry: a player who joined the lineup after the
+     * sign-up, or was blocked, never plays for it here. Null when the
+     * lineup has no participant here.
+     *
+     * @return list<int>|null
+     */
+    public function entryPlayersOf(int $lineupId): ?array
+    {
+        $participant = $this->participants()->where('lineup_id', $lineupId)->first();
+
+        if ($participant === null) {
+            return null;
+        }
+
+        $blocked = $this->bans()->pluck('user_id')->map(intval(...))->all();
+
+        return array_values(array_diff($participant->memberIds(), $blocked));
+    }
+
+    /**
      * The ladder a match paired now is rated on: the frozen ladder, while that
      * same ladder is still open (NIP rev. 7 "Rated or unrated"); else null.
      */

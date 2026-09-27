@@ -171,7 +171,8 @@ final class TournamentSignups
             throw new TournamentRuleViolation('member_solo', __(':name of your clan is signed up solo. One entry per person: they have to pull out first.', ['name' => $soloClanMember->name]));
         }
 
-        $this->assertNotBlocked($tournament, [$captain->id, ...$ids]);
+        // Every active seat, not only the players listed: a lineup plays from its seats.
+        $this->assertNotBlocked($tournament, [$captain->id, ...$ids, ...array_map(fn (LineupSeat $seat): int => $seat->user_id, $lineup->activeSeats())]);
         $this->assertNotEntered($tournament, $ids);
         $this->assertCapacity($tournament, $tournament->teamSize());
 
@@ -229,6 +230,61 @@ final class TournamentSignups
 
         if (! $signup->isSolo() && ! ($signup->lineup?->isActingCaptain($user) ?? false)) {
             throw new TournamentRuleViolation('not_captain', __('Only a captain of the lineup can pull it out.'));
+        }
+
+        return $signup;
+    }
+
+    /* ---------- Re-confirm ------------------------------------------------------------------------------------ */
+
+    /**
+     * After a rules change (TournamentEditor) an entry waits for a new
+     * consent against the current version, signed like the sign-up: by the
+     * solo player or an acting captain of the lineup.
+     *
+     * @return list<array<string, mixed>>
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function prepareReconfirm(Tournament $tournament, User $user): array
+    {
+        return [$this->reconfirmation($tournament, $this->reconfirmPlan($tournament, $user))];
+    }
+
+    /**
+     * @param  list<mixed>  $signed
+     *
+     * @throws TournamentRuleViolation|RejectedEvent
+     */
+    public function reconfirm(Tournament $tournament, User $user, array $signed): void
+    {
+        DB::transaction(function () use ($tournament, $user, $signed): void {
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
+            $signup = $this->reconfirmPlan($locked, $user);
+            $event = $this->verify($signed, $this->reconfirmation($locked, $signup), $user);
+            $stored = NostrEvent::fromSigned($event);
+
+            $updated = TournamentSignup::query()->whereKey($signup->id)->active()->whereNotNull('reconfirm_since')
+                ->update(['reconfirm_since' => null, 'reconfirm_event_id' => $stored->id]);
+
+            if ($updated !== 1) {
+                throw new TournamentRuleViolation('not_needed', __('Your entry does not need a new confirmation.'));
+            }
+        });
+    }
+
+    private function reconfirmPlan(Tournament $tournament, User $user): TournamentSignup
+    {
+        $this->assertOpen($tournament);
+        $signup = $this->entryOf($tournament, $user)
+            ?? throw new TournamentRuleViolation('not_entered', __('You are not signed up.'));
+
+        if (! $signup->isSolo() && ! ($signup->lineup?->isActingCaptain($user) ?? false)) {
+            throw new TournamentRuleViolation('not_captain', __('Only a captain of the lineup can confirm it again.'));
+        }
+
+        if (! $signup->needsReconfirm()) {
+            throw new TournamentRuleViolation('not_needed', __('Your entry does not need a new confirmation.'));
         }
 
         return $signup;
@@ -331,8 +387,37 @@ final class TournamentSignups
      */
     private function withdrawal(Tournament $tournament, TournamentSignup $signup): array
     {
-        $signed = $signup->event?->payload()
-            ?? throw new TournamentRuleViolation('not_entered', __('You are not signed up.'));
+        [$pubkeys, $lineup, $event] = $this->entrantsOf($signup);
+
+        return $this->consent($tournament, 'withdraw', $pubkeys, $lineup, $event->event_id);
+    }
+
+    /**
+     * A new sign-up consent of the same entrants against the current version.
+     *
+     * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
+     */
+    private function reconfirmation(Tournament $tournament, TournamentSignup $signup): array
+    {
+        [$pubkeys, $lineup] = $this->entrantsOf($signup);
+
+        return $this->consent($tournament, 'signup', $pubkeys, $lineup, $this->version($tournament));
+    }
+
+    /**
+     * The entrant `p` and lineup `a` of the entry's sign-up consent.
+     *
+     * @return array{0: list<string>, 1: string|null, 2: NostrEvent}
+     */
+    private function entrantsOf(TournamentSignup $signup): array
+    {
+        $event = $signup->event;
+        $signed = $event?->payload();
+
+        if ($event === null || $signed === null) {
+            throw new TournamentRuleViolation('not_entered', __('You are not signed up.'));
+        }
+
         $pubkeys = [];
         $lineup = null;
 
@@ -344,7 +429,7 @@ final class TournamentSignups
             }
         }
 
-        return $this->consent($tournament, 'withdraw', $pubkeys, $lineup, $signup->event->event_id);
+        return [$pubkeys, $lineup, $event];
     }
 
     /**
