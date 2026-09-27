@@ -77,6 +77,10 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     // "/" jumps to the search field from anywhere but a field.
     $page->evaluate('() => document.activeElement.blur()');
     $page->locator('body')->press('/');
+    // The keydown handler binds on mount; under host load, press() can land
+    // before it is bound (or before focus() settles), reading an empty
+    // activeElement.id if the check runs only once. Poll the real condition.
+    BrowserWait::until($page, '() => document.activeElement?.id === "site-search"', 5_000);
     expect($page->evaluate('() => document.activeElement?.id'))->toBe('site-search');
 
     expect($problems)->toBe([]);
