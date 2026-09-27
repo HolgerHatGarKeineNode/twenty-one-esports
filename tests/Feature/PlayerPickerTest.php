@@ -228,7 +228,8 @@ test('the admins page takes a picked key, with or without an account, and refuse
     Admin::query()->create(['pubkey' => $admin->pubkey]);
     User::factory()->create(['name' => 'nonce_nick']);
     $stranger = pickerStrangerKey();
-    $broken = Str::substr(NostrKeys::hexToNpub($stranger), 0, -1).'x';
+    $npubOfStranger = NostrKeys::hexToNpub($stranger);
+    $broken = Str::substr($npubOfStranger, 0, -1).(Str::substr($npubOfStranger, -1) === 'x' ? 'q' : 'x');
 
     Livewire::actingAs($admin)->test('pages::admin.admins')
         ->call('add')
