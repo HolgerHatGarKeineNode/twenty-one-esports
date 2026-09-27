@@ -259,11 +259,30 @@ class TournamentSlides
     private function cover(string $slug): ?string
     {
         if (! array_key_exists($slug, self::$covers)) {
-            $path = $this->games->coverPath($slug);
-            $bytes = $path === null ? false : file_get_contents($path);
-            self::$covers[$slug] = $bytes === false ? null : 'data:image/jpeg;base64,'.base64_encode($bytes);
+            self::$covers[$slug] = self::coverUri($this->games->coverPath($slug));
         }
 
         return self::$covers[$slug];
+    }
+
+    /**
+     * A JPEG file as a data URI; null when there is none or it cannot be read.
+     * A file that exists but is unreadable makes file_get_contents throw (the
+     * framework turns the warning into an ErrorException): that must cost this
+     * one cover, not every tournament's slides.
+     */
+    public static function coverUri(?string $path): ?string
+    {
+        if ($path === null) {
+            return null;
+        }
+
+        try {
+            $bytes = file_get_contents($path);
+        } catch (Throwable) {
+            return null;
+        }
+
+        return $bytes === false || $bytes === '' ? null : 'data:image/jpeg;base64,'.base64_encode($bytes);
     }
 }

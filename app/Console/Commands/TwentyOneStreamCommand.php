@@ -108,6 +108,9 @@ class TwentyOneStreamCommand extends Command
     /** Whether the upcoming tournaments could not be read on the last poll (logged once per series). */
     private bool $tournamentsFailing = false;
 
+    /** Whether the tournament slides could not be built on the last frame (logged once per series). */
+    private bool $tournamentFramesFailing = false;
+
     /** @var list<string> run ids of the encoders this process started */
     private array $runIds = [];
 
@@ -143,6 +146,7 @@ class TwentyOneStreamCommand extends Command
         $this->runIds = [];
         $this->rotationFailing = false;
         $this->tournamentsFailing = false;
+        $this->tournamentFramesFailing = false;
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -579,11 +583,14 @@ class TwentyOneStreamCommand extends Command
     private function tournamentFrames(TournamentSlides $slides, array $snapshots, int $nowMs): array
     {
         try {
-            return $slides->frames($snapshots, $nowMs);
+            $frames = $slides->frames($snapshots, $nowMs);
+            $this->tournamentFramesFailing = false;
+
+            return $frames;
         } catch (Throwable $e) {
-            if (! $this->tournamentsFailing) {
+            if (! $this->tournamentFramesFailing) {
                 $this->log('tournament slides not built, the rotation goes on without them: '.$this->describe($e));
-                $this->tournamentsFailing = true;
+                $this->tournamentFramesFailing = true;
             }
 
             return [];

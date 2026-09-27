@@ -161,3 +161,18 @@ test('all() reads the database once per cache period, ticks from the frame clock
         ->and($queries)->toBe(0)
         ->and($slides->all($closesMs))->toBe([]);
 });
+
+test('a cover file that cannot be read costs only the cover, not the slides', function () {
+    $file = tempnam(sys_get_temp_dir(), 'cover');
+    file_put_contents($file, "\xFF\xD8\xFFjpeg");
+
+    expect(TournamentSlides::coverUri($file))->toBe('data:image/jpeg;base64,'.base64_encode("\xFF\xD8\xFFjpeg"));
+
+    chmod($file, 0);
+
+    expect(TournamentSlides::coverUri($file))->toBeNull()
+        ->and(TournamentSlides::coverUri(null))->toBeNull();
+
+    chmod($file, 0600);
+    unlink($file);
+})->skip(fn (): bool => function_exists('posix_geteuid') && posix_geteuid() === 0, 'root reads any file');
