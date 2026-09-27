@@ -179,6 +179,12 @@ class ImageFetcher
             return $literal;
         }
 
+        // A host whose last label is a number (`127.1`, `0x7f000001`, `2130706433`) is no name for
+        // the guard but an IPv4 address for curl, which would skip the pin (WHATWG "ends in a number").
+        if (preg_match('/(?:^|\.)(?:0x[0-9a-f]*|[0-9]+)\.?$/i', $literal) === 1) {
+            throw new StreamImageFailed('host '.$literal.' ends in a number but is no plain IP address');
+        }
+
         $addresses = $this->resolver->addresses($host);
 
         if ($addresses === []) {

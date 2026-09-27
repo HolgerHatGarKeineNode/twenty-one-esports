@@ -148,6 +148,10 @@ test('a picture pointing inside the network is refused before any request', func
     'a name that does not resolve' => ['https://nowhere.example/me.png'],
     'another port' => ['https://cdn.example:8443/me.png'],
     'user info' => ['https://user:pass@cdn.example/me.png'],
+    // curl reads these as 127.0.0.1 and would skip the pin, whatever the guard's DNS says.
+    'a short IPv4 form' => ['https://127.1/me.png', ['127.1' => ['93.184.215.14']]],
+    'a hex IPv4 form' => ['https://0x7f000001/me.png', ['0x7f000001' => ['93.184.215.14']]],
+    'a decimal IPv4 form' => ['https://2130706433/me.png', ['2130706433' => ['93.184.215.14']]],
 ]);
 
 test('a redirect is not followed, so one to a private address never happens', function () {
