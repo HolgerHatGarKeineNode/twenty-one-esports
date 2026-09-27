@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use swentel\nostr\Encryption\Nip44;
 use Symfony\Component\Mime\MimeTypes;
+use Tests\Support\LiveStreamFixture;
 use Tests\Support\TestSigner;
 
 /*
@@ -100,6 +101,30 @@ Route::prefix('__test')->name('testing.')->group(function () {
 
         return response()->json(['result' => $request->json('op') === 'encrypt' ? Nip44::encrypt($text, $key) : Nip44::decrypt($text, $key)]);
     })->name('nostr-nip44')->withoutMiddleware(ValidateCsrfToken::class);
+
+    // A local live HLS stream for the live player's browser test (P20,
+    // Tests\Support\LiveStreamFixture): a moving playlist window over
+    // ffmpeg-made fMP4 segments. String bodies, as for the assets below.
+    Route::get('live/{file}', function (string $file) {
+        abort_unless(app()->environment('testing'), 404);
+
+        if ($file === 'stream.m3u8') {
+            // A stream that went away: the player's recovery is measured against this.
+            abort_if(Cache::get(LiveStreamFixture::DOWN_KEY) === true, 404);
+            $start = Cache::get(LiveStreamFixture::START_KEY);
+
+            if (! is_float($start) && ! is_int($start)) {
+                Cache::forever(LiveStreamFixture::START_KEY, $start = microtime(true));
+            }
+
+            return response(LiveStreamFixture::playlist(microtime(true) - $start), 200, ['Content-Type' => 'application/vnd.apple.mpegurl', 'Cache-Control' => 'no-cache']);
+        }
+
+        $path = LiveStreamFixture::dir().'/'.$file;
+        abort_unless(is_file($path), 404);
+
+        return response((string) file_get_contents($path), 200, ['Content-Type' => str_ends_with($file, '.m4s') ? 'video/iso.segment' : 'video/mp4']);
+    })->where('file', 'stream\.m3u8|init\.mp4|seg-[0-9]{1,3}\.m4s')->name('live')->withoutMiddleware('web');
 
     // The built assets, with a cache lifetime. The browser tests' in-process
     // server sends public/build/* with no caching headers at all, so every

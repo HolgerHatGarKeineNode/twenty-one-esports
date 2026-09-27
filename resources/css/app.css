@@ -84,6 +84,15 @@
     --color-toast-challenge: #17140F;
     --color-toast-neutral: #14131A;
 
+    /*
+     * On air (P20): the stream's tally light. Red means exactly one thing on
+     * this site, "the stream is live", and never stands without the word LIVE.
+     * #FF3B3B on bar #111114: 5.3:1.
+     */
+    --color-live: #FF3B3B;
+    --color-live-tint: #221213;
+    --color-live-ring: #4A1D20;
+
     /* Games: colour nuance plus logo, never colour alone */
     --color-chess: #22D3EE;
     --color-chess-2: #0D9488;
@@ -2281,6 +2290,70 @@ select:focus[data-flux-control] {
 /* A game tile: the cover over the game's colour edge. */
 .hh-tile {
     border-bottom: 3px solid var(--game, var(--color-line));
+}
+
+/*
+ * The live stream (P20): the tally dot of <x-live-badge> and the floating
+ * player. The dot itself never moves; a ring leaves it like a signal leaves
+ * an antenna. With reduced motion the ring is gone (opacity 0 is its resting
+ * state) and a steady dot remains.
+ */
+.on-air {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-live);
+}
+
+.on-air::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--color-live);
+    opacity: 0;
+    animation: on-air 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes on-air {
+    0% { transform: scale(1); opacity: 0.8; }
+    70%, 100% { transform: scale(2.8); opacity: 0; }
+}
+
+/* The mini player's control buttons: 44 px targets, quiet until hovered. */
+.live-ctl {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-control);
+    color: var(--color-ink-2);
+    cursor: pointer;
+    transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+
+.live-ctl:hover {
+    background: var(--color-row-hover);
+    color: var(--color-ink);
+}
+
+.live-ctl[aria-pressed="true"] {
+    color: var(--color-btc);
+}
+
+/* The mini player opens out of its tab (the one motion that answers a click). */
+.live-rise {
+    animation: live-rise 0.2s var(--ease-snap) both;
+}
+
+@keyframes live-rise {
+    from { transform: translateY(8px); opacity: 0; }
+    to { transform: none; opacity: 1; }
 }
 
 /* Motion is decoration here, never information: switch it all off on request. */

@@ -24,6 +24,8 @@ use Livewire\Component;
  * The page the player is on is read once, at mount: its game or series never
  * has a tab, and on a game page the dock moves out of the bottom edge into a
  * button in the title row (from lg) or onto the page's own bottom bar.
+ * Its floating bars carry `data-live-floor`: the live player (P20,
+ * resources/js/livePlayer.js) lifts itself above them.
  */
 new class extends Component {
     /** Tabs that fit next to the handle: three from lg, four from xl. */
@@ -114,7 +116,7 @@ new class extends Component {
 
         {{-- Desktop bar (MatchDock.dc.html) --}}
         @unless ($gamePage)
-            <section aria-label="{{ __('Your open matches') }}" class="fixed right-6 bottom-4 z-[35] hidden lg:block" data-test="match-dock"
+            <section aria-label="{{ __('Your open matches') }}" class="fixed right-6 bottom-4 z-[35] hidden lg:block" data-test="match-dock" data-live-floor
                      x-ref="bar" x-on:mouseenter="inside = true" x-on:mouseleave="inside = false; flush()" x-on:focusin="inside = true" x-on:focusout="leaveFocus($event)"
                      x-on:click.outside="open !== 'slot' && close(false)" x-on:keydown.left="step(-1, $event)" x-on:keydown.right="step(1, $event)">
                 <div class="absolute bottom-16" x-bind:style="{ left: panelLeft + 'px' }">
@@ -216,7 +218,7 @@ new class extends Component {
                     'shadow-[inset_3px_0_0_var(--color-btc),0_0_0_1px_var(--color-line),0_16px_32px_rgba(10,10,11,.8)]' => $counts['need'] > 0,
                     'shadow-[inset_3px_0_0_var(--color-line),0_0_0_1px_var(--color-line),0_16px_32px_rgba(10,10,11,.8)]' => $counts['need'] === 0,
                 ])
-                x-show="! pageBar && ! keyboard" x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-test="dock-mobile-bar">
+                x-show="! pageBar && ! keyboard" x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-test="dock-mobile-bar" data-live-floor>
             <span class="sr-only">{{ __('Your open matches') }}: </span>
             <x-match-dock.cube :grey="$counts['need'] === 0" :size="18" />
             <span @class(['shrink-0 font-display text-lg font-bold', 'text-btc' => $counts['need'] > 0, 'text-ink-2' => $counts['need'] === 0])>{{ $handleNumber }}</span>
@@ -228,7 +230,7 @@ new class extends Component {
         </button>
         <button type="button" class="fixed left-4 z-[35] flex h-11 cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-bar px-3 text-xs whitespace-nowrap text-btc shadow-[0_-1px_0_var(--color-line),-1px_0_0_var(--color-line),1px_0_0_var(--color-line),inset_0_3px_0_var(--color-btc)] lg:hidden"
                 x-show="pageBar && ! keyboard && ! chatOpen" x-cloak x-bind:style="pageBar && { bottom: pageBar + 'px' }"
-                x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-test="dock-bar-tab">
+                x-on:click="toggle('sheet', $el)" x-bind:aria-expanded="(open === 'sheet').toString()" aria-expanded="false" aria-haspopup="dialog" data-test="dock-bar-tab" data-live-floor>
             <x-match-dock.cube :grey="$counts['need'] === 0" />
             <b @class(['font-display text-[15px]', 'text-ink-2' => $counts['need'] === 0])>{{ $handleNumber }}</b><span class="text-ink-2">{{ $needLabel }}</span><span class="sr-only">, {{ trans_choice(':count open match|:count open matches', $counts['open']) }}</span>
             <x-icon name="chevron-up" :size="16" class="text-ink-2" />

@@ -63,6 +63,11 @@
         'chat-sheet' => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
         'bell' => '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path>',
         'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
+        // The live stream's player (P20): sound on, full page, fold to the tab, play.
+        'volume' => '<path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path>',
+        'expand' => '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>',
+        'minimize' => '<path d="M5 19h14"></path>',
+        'play' => '<path d="M7 4v16l13-8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),
     };
 @endphp

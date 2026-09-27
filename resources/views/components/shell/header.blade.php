@@ -104,7 +104,12 @@
                     @endif
                 </a>
             @endforeach
+            {{-- The stream (P20): its LIVE badge on air, a quiet "Live" link like its neighbours off air. --}}
+            <x-live-badge class="flex self-center" off-air />
         </nav>
+
+        {{-- The live stream's tally light (P20) on a tablet; from lg it sits next to Season, on phones in More (the top bar has no room: the game chips). --}}
+        <x-live-badge class="hidden md:flex lg:hidden" />
 
         {{-- The site search (P16, SearchController): Enter opens the results, a match number the match. "/" focuses it. --}}
         <form method="GET" action="{{ route('search') }}" role="search" class="hidden w-40 shrink-0 lg:block xl:w-44" data-test="site-search-form">

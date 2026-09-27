@@ -49,6 +49,7 @@ const NAV_PAGES = [
     'chess.challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'me.correspondence' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'games.index' => ['roles' => NAV_ROLES, 'max' => 1],
+    'live' => ['roles' => NAV_ROLES, 'max' => 1],
     'games.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'games.rocket-league' => ['roles' => NAV_ROLES, 'max' => 1],
     'games.series' => ['roles' => NAV_ROLES, 'max' => 1],

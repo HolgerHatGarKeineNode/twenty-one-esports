@@ -4,11 +4,12 @@
     Phones and tablets (below lg, header concept B): the tab bar of the active
     game at the bottom edge (Play, Matches, Ladder, then Tournaments and More)
     and the More sheet above it. More holds the account, the pages of every
-    game (Clans, Season, Watch live, Rules, Admin) and the other games. The
+    game (Clans, Season, Watch live, Rules, Live stream, Admin) and the other games. The
     links are the header's own lists (App\Support\Navigation\ShellNavigation),
     so no page is desktop-only (P16). The tab bar reserves its height in
     --tabbar-h (app.css): the page, the match dock and bottom bars of a page
-    sit above it.
+    sit above it, and the live player (P20) above whatever is highest
+    (`data-live-floor`).
 --}}
 @php
     $current = request()->fullUrl();
@@ -31,7 +32,10 @@
         [...$community[1], 'icon' => 'mining', 'test' => 'mobile-season'],
         ['key' => 'watch', 'href' => route('games.index'), 'label' => __('Watch live'), 'icon' => 'eye', 'test' => 'mobile-live-games'],
         ['key' => 'rules', 'href' => route('rules'), 'label' => __('Rules'), 'icon' => 'list', 'test' => 'mobile-rules'],
+        // The 24/7 stream (P20): on phones the header has no room for its badge, so its tally dot shows here.
+        ['key' => 'live', 'href' => route('live'), 'label' => __('Live stream'), 'icon' => 'play', 'test' => 'mobile-live'],
     ];
+    $onAir = \App\Support\TwentyOne\LiveStatus::current()->live;
     $otherGames = array_values(array_filter($games, fn (array $game): bool => $game['slug'] !== $active['slug']));
     $row = 'flex min-h-11 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink';
 @endphp
@@ -96,6 +100,9 @@
                                 @if ($link['key'] === 'mining' && $seasonTag)
                                     <span class="nav-tag">{{ $seasonTag }}</span>
                                 @endif
+                                @if ($link['key'] === 'live' && $onAir)
+                                    <span class="flex items-center gap-1.5" data-test="mobile-live-on-air"><span class="on-air" aria-hidden="true"></span><span class="font-display text-[10px] leading-none font-extrabold tracking-[0.06em]">LIVE</span></span>
+                                @endif
                             </span>
                         </a>
                     </li>
@@ -132,7 +139,7 @@
     </div>
 
     {{-- The tab bar: the active game's own tabs, labelled, 64 px plus the safe-area inset. --}}
-    <nav class="tabbar fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-bar pb-[env(safe-area-inset-bottom)]" style="--game: {{ $active['colour'] }}" aria-label="{{ __('Main navigation') }}" data-test="tab-bar">
+    <nav class="tabbar fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-bar pb-[env(safe-area-inset-bottom)]" style="--game: {{ $active['colour'] }}" aria-label="{{ __('Main navigation') }}" data-test="tab-bar" data-live-floor>
         <ul class="m-0 flex list-none p-0">
             @foreach ($tabs as $tab)
                 <li class="flex-auto">

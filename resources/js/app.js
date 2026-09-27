@@ -13,6 +13,7 @@ import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
+import { livePlayer, liveStage } from './livePlayer.js';
 import './nostrSign.js';
 import './badgeShare.js';
 import './captured.js';
@@ -36,6 +37,9 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('shellHeader', shellHeader);
     window.Alpine.data('shellSheet', shellSheet);
     window.Alpine.data('firstSteps', firstSteps);
+    // The live stream (P20): the floating player and the big one on /live; hls.js loads on first play.
+    window.Alpine.data('livePlayer', livePlayer);
+    window.Alpine.data('liveStage', liveStage);
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.

@@ -32,6 +32,9 @@
 
         <x-shell.footer />
 
+        {{-- The live stream (P20): a floating player at the bottom left while it is on air. --}}
+        <x-live-player />
+
         {{-- The match dock (P5f): open matches at the bottom of every page of a logged-in player. --}}
         @auth
             <livewire:match-dock />

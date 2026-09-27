@@ -1,0 +1,241 @@
+<?php
+
+use App\Enums\ChessGameStatus;
+use App\Enums\TournamentStatus;
+use App\Models\ChessGame;
+use App\Models\Tournament;
+use App\Support\PageMeta;
+use App\Support\TwentyOne\LiveStatus;
+use Illuminate\Database\Eloquent\Collection;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
+
+/*
+ * The live stream page (P20, /live): the league's self-hosted 24/7 stream
+ * in a big player, and around it what is on it right now: the running chess
+ * games (the queries of the live games page), the running tournaments with
+ * their bracket and TV view, sharing, and the zap QR code of the stream
+ * scenes (never a Lightning address as text). Off air, the stage says so and
+ * names the next tournament if one is scheduled.
+ *
+ * The stage is wire:ignore'd: the 30-second poll refreshes the lists and the
+ * viewer count without touching the player. The floating player
+ * (<x-live-player>) is not rendered here.
+ */
+new #[Layout('layouts::app')] class extends Component {
+    public const GAMES = 8;
+
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title(__('Live stream'));
+        app(PageMeta::class)->describe(__('Live stream'), __('Watch the TWENTY ONE esports stream: the league\'s live chess games and tournaments, with music, around the clock. No login needed.'));
+    }
+
+    #[Computed]
+    public function status(): LiveStatus
+    {
+        return LiveStatus::current();
+    }
+
+    /**
+     * Blitz first (it moves), then daily games by their latest move.
+     *
+     * @return Collection<int, ChessGame>
+     */
+    #[Computed]
+    public function games(): Collection
+    {
+        $blitz = ChessGame::query()->live()->where('status', ChessGameStatus::Active)->with(['white', 'black'])->latest('id')->limit(self::GAMES)->get();
+        $daily = ChessGame::query()->daily()->where('status', ChessGameStatus::Active)->with(['white', 'black'])->latest('updated_at')->latest('id')->limit(self::GAMES)->get();
+
+        return $blitz->concat($daily)->take(self::GAMES);
+    }
+
+    /**
+     * @return Collection<int, Tournament>
+     */
+    #[Computed]
+    public function tournaments(): Collection
+    {
+        return Tournament::query()->where('status', TournamentStatus::Running)->orderBy('starts_at')->limit(4)->get();
+    }
+
+    /**
+     * The next tournament that has a start time, for the off-air stage.
+     */
+    #[Computed]
+    public function next(): ?Tournament
+    {
+        return Tournament::query()->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])
+            ->whereNotNull('starts_at')->where('starts_at', '>', now())->orderBy('starts_at')->first();
+    }
+
+    /**
+     * The zap QR code the stream scenes show (resources/stream/qr), as an image; null without one.
+     */
+    #[Computed]
+    public function zapQr(): ?string
+    {
+        $path = resource_path('stream/qr/lnurl.svg');
+        $svg = is_file($path) ? @file_get_contents($path) : false;
+
+        return is_string($svg) && str_contains($svg, '<svg') ? 'data:image/svg+xml;base64,'.base64_encode($svg) : null;
+    }
+}; ?>
+
+@php
+    $status = $this->status;
+    $games = $this->games;
+    $pageUrl = route('live');
+    $shareText = __('Live now on TWENTY ONE esports: chess, tournaments and music.');
+    $stage = [
+        'live' => $status->live,
+        'url' => LiveStatus::playlistUrl(),
+        'labels' => [
+            'loading' => __('Tuning in…'),
+            'retrying' => __('Signal lost. Reconnecting…'),
+            'ended' => __('The stream went off air.'),
+            'unsupported' => __('This browser cannot play the stream.'),
+        ],
+    ];
+@endphp
+
+<div class="flex flex-col gap-5 px-4 pb-8 lg:gap-6 lg:px-12" wire:poll.30s.visible data-test="live-page" data-live="{{ $status->live ? '1' : '0' }}">
+    <div class="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+        <div class="flex max-w-[76ch] flex-col gap-1.5">
+            <h1 class="m-0 font-display text-2xl leading-tight font-bold lg:text-[28px]">{{ __('Live stream') }}</h1>
+            <p class="m-0 text-[13px] leading-5 text-ink-2">{{ __('The league\'s live chess games and tournaments, with music, around the clock.') }}</p>
+        </div>
+        {{-- On air: the tally light, not over the picture (the stream's own scenes carry their marks there). --}}
+        @if ($status->live)
+            <p class="m-0 flex items-center gap-3 text-[13px] text-ink-2">
+                <span class="flex h-7 items-center gap-1.5 rounded-control bg-live-tint px-2 shadow-[inset_0_0_0_1px_var(--color-live-ring)]">
+                    <span class="on-air" aria-hidden="true"></span>
+                    <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em] text-ink">LIVE</span>
+                </span>
+                @if ($status->viewers !== null)
+                    <span data-test="live-viewers"><b class="font-display text-base text-ink tabular-nums">{{ $status->viewers }}</b> {{ trans_choice('watching now|watching now', $status->viewers) }}</span>
+                @endif
+            </p>
+        @endif
+    </div>
+
+    <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
+        <div class="flex min-w-0 flex-col gap-4">
+            {{-- The stage: edge to edge on a phone, a framed screen from sm. --}}
+            <div class="-mx-4 sm:mx-0" wire:ignore>
+                @if ($status->live)
+                    <div x-data="liveStage(@js($stage))" data-live-stage class="flex flex-col gap-2">
+                        <div class="relative aspect-video overflow-hidden bg-black sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]">
+                            <video x-ref="video" class="size-full object-contain" controls playsinline muted autoplay preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-stage-video"></video>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[rgba(10,10,11,.72)] p-4 text-center text-[13px] text-ink-2"
+                                 x-show="status !== 'playing' && status !== 'idle'" x-cloak role="status" data-test="live-stage-status">
+                                <span x-text="statusText"></span>
+                                <x-button variant="quiet" x-show="status === 'ended'" x-on:click="retry()">{{ __('Try again') }}</x-button>
+                            </div>
+                        </div>
+                        <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-xs text-ink-2 sm:px-0" x-show="miniClosed" x-cloak data-test="live-mini-off">
+                            {{ __('The mini player is switched off on the other pages.') }}
+                            <button type="button" class="inline-flex min-h-11 cursor-pointer items-center text-btc underline decoration-btc/40 underline-offset-2 hover:text-btc-hi sm:min-h-6" x-on:click="showMiniPlayer()">{{ __('Switch it back on') }}</button>
+                        </p>
+                    </div>
+                @else
+                    <div class="flex aspect-video flex-col items-center justify-center gap-3 bg-bar px-6 text-center sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]" data-test="live-offline">
+                        <span class="flex h-7 items-center gap-2 rounded-control bg-well px-2.5 text-ink-2">
+                            <span class="inline-block size-2 rounded-full bg-edge" aria-hidden="true"></span>
+                            <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em]">{{ __('Off air') }}</span>
+                        </span>
+                        <p class="m-0 max-w-[44ch] font-display text-base leading-snug font-bold sm:text-xl">{{ __('The stream is off air right now.') }}</p>
+                        @if ($this->next)
+                            <p class="m-0 max-w-[52ch] text-[13px] leading-5 text-ink-2" data-test="live-offline-next">
+                                {{ __('Next up:') }} <a href="{{ route('tournaments.show', $this->next) }}">{{ $this->next->name }}</a>, <x-league-time :at="$this->next->starts_at" />
+                            </p>
+                        @else
+                            <p class="m-0 max-w-[52ch] text-[13px] leading-5 text-ink-2">{{ __('The games go on meanwhile: every running chess game can be watched on the site.') }}</p>
+                        @endif
+                        <x-button variant="quiet" icon="eye" :href="route('games.index')">{{ __('Watch live games') }}</x-button>
+                    </div>
+                @endif
+            </div>
+
+            @if ($status->live && $status->title !== null)
+                <p class="m-0 text-[13px] leading-5 text-ink" data-test="live-title">{{ $status->title }}</p>
+            @endif
+
+            {{-- Share: the page link, the system share sheet (else the clipboard), Telegram. --}}
+            <div class="flex flex-col gap-2" data-test="live-share"
+                 x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($pageUrl), text: @js($shareText),
+                           async copy(hint = '') { try { await navigator.clipboard.writeText(this.url); this.copied = true; this.hint = hint; setTimeout(() => { this.copied = false; this.hint = ''; }, 2500); } catch (e) { this.hint = @js(__('Copy did not work here. Select the link and copy it.')); } },
+                           async share(hint) { if (this.canShare) { try { await navigator.share({ title: document.title, text: this.text, url: this.url }); return; } catch (e) { if (e?.name === 'AbortError') return; } } await this.copy(hint); } }">
+                <span class="text-xs text-ink-2">{{ __('Bring your friends to the stream') }}</span>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" x-on:click="copy()" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink">
+                        <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy link'))">{{ __('Copy link') }}</span>
+                    </button>
+                    <button type="button" x-on:click="share(@js(__('Link copied. Paste it into a note in your Nostr app.')))" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink"><x-icon name="chat" :size="16" />Nostr</button>
+                    <a href="https://t.me/share/url?url={{ urlencode($pageUrl) }}&amp;text={{ urlencode($shareText) }}" target="_blank" rel="noopener noreferrer"
+                       class="btn-w inline-flex h-11 items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink hover:text-ink"><x-icon name="send" :size="16" />Telegram</a>
+                </div>
+                <span class="text-xs text-win" role="status" x-show="hint" x-text="hint" x-cloak></span>
+            </div>
+        </div>
+
+        {{-- The programme next to the screen: what is on it, one panel. --}}
+        <aside class="flex flex-col rounded-lg bg-card" aria-label="{{ __('On the stream') }}">
+            <section aria-labelledby="live-now-h" class="flex flex-col gap-2 px-4 py-4 lg:px-5" data-test="live-now">
+                <span class="flex items-baseline justify-between gap-3">
+                    <h2 id="live-now-h" class="m-0 text-[15px] font-bold">{{ __('Live now') }}</h2>
+                    <a href="{{ route('games.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All live games') }}</a>
+                </span>
+                @if ($games->isEmpty())
+                    <p class="m-0 text-[13px] leading-5 text-ink-2">
+                        {{ $status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
+                        <a href="{{ route('chess.lobby') }}">{{ __('Play blitz') }}</a>
+                    </p>
+                @else
+                    <ul class="m-0 flex list-none flex-col p-0">
+                        @foreach ($games as $game)
+                            <li wire:key="live-game-{{ $game->id }}" class="border-t border-hairline first:border-0" data-test="live-now-game">
+                                <a href="{{ route('games.show', $game) }}" class="flex min-h-12 items-center gap-3 py-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
+                                    <span class="flex min-w-0 grow flex-col gap-1">
+                                        <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->white" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->white->displayName() }}</span></span>
+                                        <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->black" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->black->displayName() }}</span></span>
+                                    </span>
+                                    <span class="shrink-0 text-right text-xs text-ink-2">{{ $game->isCorrespondence() ? __('Daily') : __('Blitz') }}<br>{{ __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                                </a>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </section>
+
+            @if ($this->tournaments->isNotEmpty())
+                <section aria-labelledby="live-tournaments-h" class="flex flex-col gap-2 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-tournaments">
+                    <h2 id="live-tournaments-h" class="m-0 text-[15px] font-bold">{{ __('Tournaments running') }}</h2>
+                    <ul class="m-0 flex list-none flex-col gap-3 p-0">
+                        @foreach ($this->tournaments as $tournament)
+                            <li wire:key="live-tournament-{{ $tournament->id }}" class="flex flex-col gap-1">
+                                <b class="text-[13px] break-words">{{ $tournament->name }}</b>
+                                <span class="flex flex-wrap gap-x-4 text-xs">
+                                    <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6">{{ __('Bracket') }}</a>
+                                    <a href="{{ route('tournaments.tv', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6" data-test="live-tournament-tv">{{ __('TV view') }}</a>
+                                </span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </section>
+            @endif
+
+            @if ($this->zapQr)
+                <section aria-labelledby="live-zap-h" class="flex items-center gap-4 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-zap">
+                    <img src="{{ $this->zapQr }}" width="112" height="112" alt="{{ __('QR code to zap the stream') }}" class="size-28 shrink-0 rounded-sm bg-white p-2 [image-rendering:pixelated]">
+                    <div class="flex min-w-0 flex-col gap-1">
+                        <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
+                        <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
+                    </div>
+                </section>
+            @endif
+        </aside>
+    </div>
+</div>

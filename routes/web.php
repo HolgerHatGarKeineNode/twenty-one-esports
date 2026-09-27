@@ -99,6 +99,8 @@ Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');
 // Every live chess game, for guests too (P10, spectating).
 Route::livewire('games', 'pages::games.index')->name('games.index');
 Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
+// The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
+Route::livewire('live', 'pages::live')->name('live');
 
 // Daily chess (P5b): challenge a player, your daily games.
 Route::middleware('auth')->group(function () {
