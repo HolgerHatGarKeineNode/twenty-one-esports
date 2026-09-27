@@ -165,6 +165,7 @@ test('daily games are exempt from one live game at a time: several at once, besi
     [$anna, , $bert] = dailyPlayers();
     $carl = User::factory()->create();
     $live = ChessGame::factory()->create(['white_id' => $anna->id]);
+    $anna->forceFill(['looking_to_play' => 'chess/blitz'])->save();
     $invite = app(ChessInvites::class)->invite($carl, $anna);
     app(ChessQueue::class)->join($carl);
     $games = app(ChessGameService::class);

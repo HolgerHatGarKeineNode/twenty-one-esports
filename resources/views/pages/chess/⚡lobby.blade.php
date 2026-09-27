@@ -1,11 +1,14 @@
 <?php
 
 use App\Enums\ChessGameStatus;
+use App\Enums\TournamentStatus;
 use App\Events\LookingToPlayChanged;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\ChessQueueEntry;
+use App\Models\Rating;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
@@ -15,6 +18,7 @@ use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Chess\RatedChess;
 use App\Support\PageMeta;
+use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Opponents;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
@@ -52,6 +56,16 @@ use Livewire\Component;
  * offered, trust ranks computed, a Trusted account) and they list each
  * other with at least one player; otherwise the page says why. The choice
  * is the page's (Alpine `rated`) and travels with "Find opponent".
+ *
+ * Lobby v2 (2026-09-27): the first viewport shows every way to play as a
+ * row of tiles (partials/lobby-play), after the Lichess quick-pairing pools
+ * and Chess.com's mode tiles: Blitz 5+3 and the invite link open their
+ * panel in place under the tiles, Daily chess and Tournaments lead into
+ * their flow, "Challenge a player" goes to the online list, Team match is
+ * "soon". Under the tiles the player's own business and the live lobby:
+ * Your games | Live now (boards, who is online, "Looking to play") | the
+ * blitz ladder's top five. Explanations sit behind the panel's "?"
+ * (progressive disclosure), never in the first viewport.
  */
 new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
@@ -208,6 +222,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         if ($user->looking_to_play !== $wanted) {
             $user->forceFill(['looking_to_play' => $wanted])->save();
             Broadcasts::send(new LookingToPlayChanged($user->id, $user->looking_to_play));
+
+            // Off means no blitz invites: the ones still open are declined, never delivered later.
+            if ($wanted === null) {
+                app(ChessInvites::class)->declineAll($user);
+            }
         }
 
         return $user->looking_to_play !== null;
@@ -267,6 +286,25 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         return ChessGame::query()->live()->where('status', ChessGameStatus::Active)->with(['white', 'black'])->latest('id')->limit(3)->get();
     }
 
+    /** Every running live game, not only the three boards shown. */
+    #[Computed]
+    public function liveCount(): int
+    {
+        return ChessGame::query()->live()->where('status', ChessGameStatus::Active)->count();
+    }
+
+    /**
+     * Both players' ratings of each live board, from the game's own ladder
+     * (the old boards printed the queue's start rating for everyone).
+     *
+     * @return array<int, array{w: array<string, mixed>, b: array<string, mixed>}>
+     */
+    #[Computed]
+    public function liveRatings(): array
+    {
+        return $this->liveGames->mapWithKeys(fn (ChessGame $game): array => [$game->id => Ratings::forChessGame($game)])->all();
+    }
+
     /**
      * @return Collection<int, ChessGame>
      */
@@ -275,9 +313,54 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     {
         $user = auth()->user();
 
-        return $user instanceof User
-            ? ChessGame::query()->daily()->playedBy($user)->where('status', ChessGameStatus::Active)->with(['white', 'black'])->orderBy('deadline_ms')->get()
-            : collect();
+        if (! $user instanceof User) {
+            return collect();
+        }
+
+        // The games waiting for this player's move first, each group by its deadline.
+        return ChessGame::query()->daily()->playedBy($user)->where('status', ChessGameStatus::Active)->with(['white', 'black'])->orderBy('deadline_ms')->get()
+            ->sortBy(fn (ChessGame $game): int => $game->turn() === $game->colorOf($user) ? 0 : 1)
+            ->values();
+    }
+
+    /** How many daily games wait for this player's move (the Daily chess tile). */
+    #[Computed]
+    public function yourMove(): int
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? $this->dailyGames->filter(fn (ChessGame $game): bool => $game->turn() === $game->colorOf($user))->count() : 0;
+    }
+
+    /**
+     * The next chess tournament open for sign-up, the same pick as
+     * <x-next-tournament game="chess">: its tile shows name and closing time.
+     */
+    #[Computed]
+    public function nextTournament(): ?Tournament
+    {
+        return Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
+            ->where('game', 'chess')->orderBy('signup_closes_at')->first();
+    }
+
+    /**
+     * The blitz ladder's top five, from the view the ladder page opens on:
+     * rated once it has a result, casual before (ladder/⚡show activePool()).
+     *
+     * @return array{pool: string, rows: Collection<int, Rating>}
+     */
+    #[Computed]
+    public function ladderTop(): array
+    {
+        $season = Ratings::season(Rating::RATED, 'chess', 'blitz');
+        $top = fn (string $pool, string $season): Collection => Rating::query()
+            ->where(['pool' => $pool, 'season' => $season, 'game' => 'chess', 'mode' => 'blitz'])
+            ->where('results', '>', 0)->whereNotNull('user_id')->with('user')
+            ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')->limit(5)->get();
+
+        $rated = $season !== null ? $top(Rating::RATED, $season) : collect();
+
+        return $rated->isNotEmpty() ? ['pool' => Rating::RATED, 'rows' => $rated] : ['pool' => Rating::CASUAL, 'rows' => $top(Rating::CASUAL, '')];
     }
 
     /**
@@ -360,7 +443,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'accept_while_playing' => __('You are in a live game. One live game at a time: finish it, then accept the invite.'),
                 'challenge_closed' => __('That challenge is no longer open.'),
                 'invite_self' => __('You cannot invite yourself.'),
-                'rated_not_open' => $violation->getMessage(),
+                'rated_not_open', 'not_looking' => $violation->getMessage(),
                 'lost_race' => __('Someone else answered first. Please try again.'),
                 default => __('That did not work, please try again.'),
             };
@@ -379,297 +462,59 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
 @php
     $user = auth()->user();
-    $range = config('esports.chess.queue.range');
-    $rating = (int) config('esports.chess.queue.start_rating');
-    $ownBlitz = \App\Support\Rating\Ratings::headline($user?->id, 'chess', 'blitz');
-    $dailyPool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
     $entry = $this->entry;
     $outgoing = $this->outgoing;
     $active = $this->activeGame;
 @endphp
 
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play !== null ? 'true' : 'false' }}">
-
-    <div class="grid grid-cols-1 gap-4 px-4 pb-8 lg:grid-cols-3 lg:gap-5 lg:px-12 lg:pb-10">
-        {{-- Mobile title (MobileChessLobby) --}}
-        <div class="flex flex-col gap-1 lg:hidden">
-            <h1 class="m-0 font-display text-[28px] font-bold">{{ __('Chess') }}</h1>
-            @auth<x-rating :rating="$ownBlitz" :label="__('Blitz')" class="text-[13px] text-ink-2" />@endauth
+    <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
+        {{-- The title below lg; from lg the header's chess bar names the page. --}}
+        <div class="flex items-baseline justify-between gap-3 lg:hidden">
+            <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ __('Chess') }}</h1>
+            @auth<x-rating :rating="\App\Support\Rating\Ratings::headline($user->id, 'chess', 'blitz')" :label="__('Blitz')" class="text-[13px] text-ink-2" />@endauth
         </div>
         <h1 class="sr-only max-lg:hidden">{{ __('Chess') }}</h1>
 
-        @if ($error)
-            <p role="alert" class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss lg:col-span-3">{{ $error }}</p>
-        @endif
-
-        @if ($notice)
-            <p role="status" class="m-0 rounded-lg bg-card px-4 py-3 text-[13px] leading-normal text-ink-2 shadow-ring lg:col-span-3" data-test="lobby-notice">{{ $notice }}</p>
-        @endif
-
-        @if ($active)
-            <a href="{{ route('games.show', $active) }}" class="flex items-center gap-3 rounded-lg bg-btc-press px-4 py-3 text-[13px] font-bold text-btc-hi hover:text-btc-hi lg:col-span-3" data-test="resume-game">
-                <span class="size-2 animate-live rounded-full bg-btc-hi"></span>{{ __('You are in a live game (:number). Back to the board', ['number' => $active->number()]) }} →
-            </a>
-        @endif
-
-        {{-- Invites received (ChessOverlays "Daily challenge received", as a blitz invite) --}}
-        @foreach ($this->incoming as $invite)
-            <div wire:key="invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-ring lg:col-span-3 lg:flex-row lg:items-center lg:px-6" data-test="incoming-invite">
-                <span class="flex min-w-0 grow items-center gap-3">
-                    <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
-                    <span class="flex min-w-0 flex-col gap-0.5">
-                        <b class="text-base">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
-                        <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
-                    </span>
-                </span>
-                <span class="grid grid-cols-2 gap-2 lg:flex">
-                    <x-button variant="quiet" wire:click="declineInvite({{ $invite->id }})" data-test="decline-invite">{{ __('Decline') }}</x-button>
-                    <x-button icon="shield-check" wire:click="acceptInvite({{ $invite->id }})" data-test="accept-invite">{{ __('Accept') }}</x-button>
-                </span>
-            </div>
-        @endforeach
-
-        {{-- Invite a friend by link: the lobby's second way to play, next to "Find opponent" --}}
-        <div class="lg:col-span-3"><livewire:invite-link place="lobby" /></div>
-
-        {{-- Find opponent --}}
-        <section aria-labelledby="find-h" class="flex flex-col gap-4 lg:rounded-lg lg:bg-card lg:px-6 lg:py-5" data-test="find-opponent" x-data="{ rated: false }">
-            <span class="flex items-baseline justify-between gap-3 max-lg:sr-only"><h2 id="find-h" class="m-0 text-[15px] font-bold">{{ __('Find opponent') }}</h2><span class="text-xs text-ink-2">{{ __('Blitz 5+3, live') }}</span></span>
-
-            @if ($entry)
-                {{-- ChessStates "Finding opponent" --}}
-                <div data-check-at="{{ $this->checkAt }}" role="status" aria-live="polite" class="flex flex-col items-center gap-4 rounded-lg bg-ground p-4 shadow-ring-hairline" data-test="searching">
-                    <div class="cube mt-4 flex size-[124px] flex-col items-center justify-between bg-[linear-gradient(180deg,#2A1F0E,#17120A)] px-2 py-2.5 text-center" aria-hidden="true">
-                        <span class="text-[13px] font-bold">~{{ $entry->rating }} Elo</span>
-                        <span class="text-[11px] text-btc-hi">{{ $entry->rating - app(ChessQueue::class)->range($entry) }} – {{ $entry->rating + app(ChessQueue::class)->range($entry) }}</span>
-                        <span class="text-base font-bold">5+3</span>
-                        <span class="text-[11px] text-ink-2" data-test="searching-kind">{{ $entry->rated ? __('Blitz · rated') : __('Blitz · casual') }}</span>
-                        <span class="text-[11px]" x-text="since({{ $entry->joined_at->getTimestampMs() }})"></span>
-                    </div>
-                    <span class="font-display text-lg font-bold">{{ __('Finding opponent … 5+3') }}</span>
-                    <span class="block h-1 w-full max-w-[420px] overflow-hidden rounded-xs bg-raised"><span class="sweep block h-1 w-2/5 rounded-xs bg-btc"></span></span>
-                    <span class="text-[13px] leading-normal text-ink-2">
-                        {{ trans_choice(':count player searching right now.|:count players searching right now.', $this->searching) }}
-                        {{ __('Your range: ±:range around :rating, it opens by :step every :seconds s. As soon as someone fits, the game starts, no extra click.', ['range' => app(ChessQueue::class)->range($entry), 'rating' => $entry->rating, 'step' => $range['step'], 'seconds' => $range['every_seconds']]) }}
-                    </span>
-                    {{-- P5c: asked once per browser, when the player joins the queue; the browser's own prompt only after "Allow". --}}
-                    <div x-show="askNotify" x-cloak class="flex flex-col gap-2.5 self-stretch rounded-md bg-toast-challenge p-3 text-left shadow-ring-btc" data-test="notify-prompt">
-                        <span class="flex items-start gap-2.5 text-[13px]"><x-icon name="bell" :size="16" class="mt-0.5 shrink-0 text-btc" /><span><b>{{ __('Hear about it in another tab?') }}</b> <span class="text-ink-2">{{ __('A desktop notification when an opponent is found, while this tab is in the background.') }}</span></span></span>
-                        <span class="grid grid-cols-2 gap-2">
-                            <x-button variant="quiet" x-on:click="answerNotify(false)" data-test="notify-prompt-no">{{ __('Not now') }}</x-button>
-                            <x-button icon="bell" x-on:click="answerNotify(true)" data-test="notify-prompt-allow">{{ __('Allow') }}</x-button>
-                        </span>
-                    </div>
-                    <span class="flex flex-wrap items-center gap-3 self-stretch">
-                        <x-button variant="quiet" wire:click="cancelSearch" class="grow" data-test="cancel-search">{{ __('Cancel') }}</x-button>
-                        <a href="{{ route('chess.challenge') }}" class="text-[13px] text-ink">{{ __('Play daily chess instead') }}</a>
-                    </span>
-                </div>
-            @elseif ($outgoing)
-                {{-- ChessStates "Waiting for a friend" --}}
-                <div data-check-at="{{ $this->checkAt }}" class="flex flex-col gap-3.5 rounded-lg bg-ground p-5 shadow-ring-hairline" data-test="waiting-for-friend">
-                    <span class="flex items-center gap-3"><span aria-hidden="true" class="block size-5 shrink-0 animate-spin rounded-full border-2 border-line border-t-btc"></span><b class="text-base">{{ __('Waiting for :name', ['name' => $outgoing->invitee->displayName()]) }}</b></span>
-                    <div class="flex flex-col">
-                        <div class="grid h-9 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Time control') }}</span><span>{{ __('Blitz 5+3, colours at random') }}</span></div>
-                        <div class="grid h-9 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Friend') }}</span><span>{{ __('online when invited') }}</span></div>
-                        <div class="grid h-9 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Open for') }}</span><span role="timer" x-text="since({{ $outgoing->created_at?->getTimestampMs() ?? 0 }})"></span></div>
-                    </div>
-                    <span class="flex gap-2.5">
-                        <button type="button" wire:click="withdrawInvite" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Withdraw') }}</button>
-                    </span>
-                </div>
-            @else
-                <div class="flex items-center justify-between gap-3 rounded-lg bg-ground px-4 py-4 shadow-ring-hairline max-lg:hidden">
-                    <span class="flex flex-col gap-1.5">
-                        <span class="flex items-center gap-2 text-[13px]"><span class="size-2 rounded-full bg-win"></span>{{ __('players searching now') }}</span>
-                        <span class="text-xs text-ink-2">{{ __('your range right now') }}</span>
-                    </span>
-                    <span class="flex flex-col items-end gap-1"><b class="font-display text-[28px] leading-none">{{ $this->searching }}</b><b class="text-[13px]">±{{ $range['initial'] }}</b></span>
-                </div>
-
-                {{-- Casual / Rated (P7e): Rated only while rated chess is open for this player; else the reason --}}
-                @php($ratedRefusal = $this->ratedRefusal)
-                <div role="radiogroup" aria-label="{{ __('Game kind') }}" class="grid grid-cols-2 gap-1 rounded-lg bg-ground p-1 shadow-ring" data-test="game-kind" data-rated-open="{{ $ratedRefusal === null ? 'true' : 'false' }}">
-                    <button type="button" role="radio" aria-checked="true" x-bind:aria-checked="rated ? 'false' : 'true'" x-on:click="rated = false" data-test="kind-casual"
-                            class="flex min-h-11 cursor-pointer flex-col items-start justify-center gap-0.5 rounded-md bg-raised px-3.5 py-2 text-left text-ink shadow-[inset_0_-2px_0_#F7931A]"
-                            x-bind:class="rated ? 'bg-transparent! shadow-none!' : ''">
-                        <b class="text-[13px] text-btc-hi" x-bind:class="rated ? 'text-ink!' : ''">{{ __('Casual') }}</b><span class="text-[11px] text-ink-2">{{ __('casual Elo only') }}</span>
-                    </button>
-                    <button type="button" role="radio" aria-checked="false" x-bind:aria-checked="rated ? 'true' : 'false'" x-on:click="rated = true" data-test="kind-rated"
-                            @disabled($ratedRefusal !== null) aria-describedby="kind-why"
-                            class="flex min-h-11 cursor-pointer flex-col items-start justify-center gap-0.5 rounded-md px-3.5 py-2 text-left text-ink disabled:cursor-not-allowed disabled:opacity-60"
-                            x-bind:class="rated ? 'bg-raised shadow-[inset_0_-2px_0_#F7931A]' : ''">
-                        <b class="text-[13px]" x-bind:class="rated ? 'text-btc-hi' : ''">{{ __('Rated') }}</b><span class="text-[11px] text-ink-2">{{ $ratedRefusal === null ? __('counts for Elo') : (Ladders::isOpen('chess', 'blitz') ? __('not open for you yet') : __('from Block 0')) }}</span>
-                    </button>
-                </div>
-                <p id="kind-why" class="m-0 text-[13px] leading-normal text-ink-2" data-test="kind-why">
-                    @if ($ratedRefusal !== null)
-                        {{ $ratedRefusal }}
-                    @else
-                        <span x-show="! rated">{{ __('Casual pairs you with anyone online and moves only your casual Elo.') }}</span>
-                        <span x-show="rated" x-cloak>{{ trans_choice('Rated pairs you only with a Trusted player you list each other with (you have :count).|Rated pairs you only with Trusted players you list each other with (you have :count).', $this->mutualOpponents) }}</span>
-                    @endif
-                </p>
-
-                <div class="flex flex-col gap-2 max-lg:hidden">
-                    <span class="text-[13px] text-ink-2">{{ __('Opponent strength') }}</span>
-                    <span class="flex h-11 items-center rounded-lg border border-edge bg-ground px-3.5 text-sm">{{ __('±:range around :rating, wider every :seconds s', ['range' => $range['initial'], 'rating' => $rating, 'seconds' => $range['every_seconds']]) }}</span>
-                </div>
-
-                @auth
-                    <button type="button" x-on:click="joinQueue(rated)" data-test="find-opponent-button"
-                            class="btn-p flex min-h-14 cursor-pointer items-center justify-between gap-3 rounded-md bg-btc px-4 py-2 text-left text-on-btc lg:justify-center lg:gap-2">
-                        <span class="flex flex-col gap-0.5">
-                            <span class="flex items-center gap-2 font-display text-lg font-bold lg:font-mono lg:text-base"><x-icon name="pawn" :size="18" class="max-lg:hidden" />{{ __('Find opponent') }}<span class="max-lg:hidden">· {{ __('Blitz 5+3') }}</span></span>
-                            <span class="text-xs lg:hidden">{{ __('Blitz 5+3') }} · {{ trans_choice(':count searching|:count searching', $this->searching) }}</span>
-                        </span>
-                        <span class="text-xs font-bold lg:hidden">{{ __('Join queue') }}</span>
-                    </button>
-                @else
-                    <x-button :href="route('login')" class="min-h-14">{{ __('Log in to play') }}</x-button>
-                @endauth
-                <p class="m-0 text-[13px] leading-normal text-ink-2 max-lg:hidden">{{ __('You join the queue and can cancel any time. The game starts as soon as someone in your range is found.') }}</p>
-
-                <div class="grid grid-cols-2 gap-2">
-                    <a href="{{ route('chess.challenge') }}" class="btn-w flex min-h-11 flex-col items-center justify-center rounded-md border border-line bg-well px-2 py-2 text-center text-[13px] text-ink hover:text-ink" data-test="daily-challenge-button">{{ __('Daily challenge') }}</a>
-                    <span class="flex min-h-11 flex-col items-center justify-center rounded-md border border-line bg-well px-2 py-2 text-center text-[13px] text-ink-3 max-lg:hidden" aria-disabled="true">{{ __('Team match') }}<span class="text-[11px]">{{ __('coming soon') }}</span></span>
-                    <a href="#online-h" class="btn-w flex min-h-11 flex-col items-center justify-center rounded-md border border-line bg-well px-2 py-2 text-center text-[13px] text-ink hover:text-ink lg:col-span-2 lg:px-4">{{ __('Invite a friend who is online') }}</a>
-                </div>
-            @endif
-        </section>
-
-        {{-- Now playing + Online now --}}
-        <div class="flex flex-col gap-4 lg:col-span-2 lg:gap-5">
-            <section aria-labelledby="now-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="now-playing">
-                <span class="flex items-baseline justify-between gap-3"><h2 id="now-h" class="m-0 text-[15px] font-bold">{{ __('Now playing') }}</h2><span class="flex items-baseline gap-3 text-xs text-ink-2">{{ trans_choice(':count live blitz board|:count live blitz boards', $this->liveGames->count()) }}<a href="{{ route('games.index') }}" class="text-ink" data-test="all-live-games">{{ __('All live games') }}</a></span></span>
-                @if ($this->liveGames->isEmpty())
-                    <p class="m-0 text-[13px] text-ink-2">{{ __('No live game right now. Find an opponent and yours shows up here.') }}</p>
-                @else
-                    <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                        @foreach ($this->liveGames as $live)
-                            <div wire:key="live-{{ $live->id }}" class="flex flex-col gap-2.5 border-b border-hairline pb-3 lg:border-0 lg:pb-0">
-                                <span class="flex items-center gap-2 text-[13px]"><x-player-link :user="$live->black" class="flex min-w-0 items-center gap-2"><x-avatar :user="$live->black" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->black->displayName() }}</b></x-player-link><span class="text-ink-2">{{ $rating }}</span></span>
-                                <div class="hidden justify-center py-2 lg:flex" x-data="{ cells: window.chessBoardCells(@js($live->fen), { noCoords: true }), boardLabel: @js(__('Live board of :number', ['number' => $live->number()])) }">
-                                    <x-chess.board class="mt-4 mr-4 max-w-40" />
-                                </div>
-                                <span class="flex items-center gap-2 text-[13px]"><x-player-link :user="$live->white" class="flex min-w-0 items-center gap-2"><x-avatar :user="$live->white" :size="18" class="rounded-sm" /><b class="truncate">{{ $live->white->displayName() }}</b></x-player-link><span class="text-ink-2">{{ $rating }}</span></span>
-                                <span class="text-xs text-ink-2">{{ __('move :n', ['n' => intdiv($live->ply, 2) + 1]) }} · {{ $live->number() }}</span>
-                                <x-button variant="quiet" icon="eye" :href="route('games.show', $live)">{{ __('Watch') }}</x-button>
-                            </div>
-                        @endforeach
-                    </div>
+        @if ($error || $notice || $this->incoming->isNotEmpty())
+            <div class="flex flex-col gap-2 empty:hidden">
+                @if ($error)
+                    <p role="alert" class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss">{{ $error }}</p>
                 @endif
-            </section>
 
-            {{-- Online now: presence channel `online` (no artboard yet, built in the lobby's panel style) --}}
-            <section aria-labelledby="online-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="online-now">
-                <span class="flex flex-wrap items-center justify-between gap-3">
-                    <h2 id="online-h" class="m-0 flex items-center gap-2 text-[15px] font-bold"><span class="size-2 rounded-full bg-win"></span>{{ __('Online now') }} <span class="font-normal text-ink-2" x-show="connection === 'connected'" x-text="others.length"></span></h2>
-                    @auth
-                        {{-- The page's own state (chessLobby.looking): a Livewire render never touches it. --}}
-                        <button type="button" wire:ignore x-on:click="toggleLooking()" role="switch" aria-checked="{{ $user->looking_to_play ? 'true' : 'false' }}" x-bind:aria-checked="looking ? 'true' : 'false'" data-test="looking-toggle"
-                                class="flex h-11 cursor-pointer items-center gap-2.5 rounded-md border border-line bg-well px-3 text-[13px] text-ink">
-                            <span class="relative h-5 w-9 shrink-0 rounded-full transition-colors" x-bind:class="looking ? 'bg-btc' : 'bg-raised shadow-ring'"><span class="absolute top-0.5 size-4 rounded-full bg-ink transition-all" x-bind:class="looking ? 'left-[18px]' : 'left-0.5'"></span></span>
-                            {{ __('Looking to play') }}
-                            <b class="min-w-7 text-left" x-bind:class="looking ? 'text-win' : 'text-ink-2'" x-text="looking ? @js(__('On')) : @js(__('Off'))" data-test="looking-state">{{ $user->looking_to_play ? __('On') : __('Off') }}</b>
-                        </button>
-                    @endauth
-                </span>
-                @auth
-                    <p x-show="lookingFailed" x-cloak role="alert" class="m-0 text-[13px] text-loss" data-test="looking-failed">{{ __('That did not save. The switch is back where it was, please try again.') }}</p>
-                @endauth
-                @guest
-                    <p class="m-0 text-[13px] text-ink-2">{{ __('Log in to see who is online and to invite a friend.') }}</p>
-                @else
-                    <p class="m-0 text-[13px] text-ink-2" x-show="connection !== 'connected'">{{ __('The online list needs the live connection. Connecting …') }}</p>
-                    <p class="m-0 text-[13px] text-ink-2" x-show="connection === 'connected' && others.length === 0">{{ __('Nobody else is online right now.') }}</p>
-                    <ul class="m-0 flex list-none flex-col p-0" x-show="others.length > 0">
-                        <template x-for="m in others" :key="m.id">
-                            <li class="flex min-h-12 items-center gap-3 border-b border-hairline text-[13px] last:border-0" data-test="online-player">
-                                {{-- Picture or Blockpile (P10a); the name opens the player card (resources/js/profiles.js). --}}
-                                <a :href="@js(url('players')) + '/' + m.npub" :data-player-card="m.npub" :data-pubkey="m.pubkey" :data-player-name="m.name" aria-haspopup="dialog"
-                                   class="flex min-h-11 min-w-0 grow items-center gap-3 text-ink hover:text-ink" data-test="online-player-link">
-                                    <img :src="m.avatar || m.generated" :data-fallback="m.generated" width="24" height="24" loading="lazy" referrerpolicy="no-referrer"
-                                         :alt="(m.avatar ? @js(__(':name avatar')) : @js(__(':name avatar, generated'))).replace(':name', m.name)"
-                                         x-on:error.once="$el.src = m.generated; $el.alt = @js(__(':name avatar, generated')).replace(':name', m.name)" class="block size-6 shrink-0 rounded-sm bg-raised object-cover">
-                                    <b class="min-w-0 truncate" x-text="m.name"></b>
-                                </a>
-                                <span class="shrink-0 text-xs text-ink-2" x-show="m.elo" data-test="online-elo"><span x-text="m.elo"></span><span class="text-ink-3" x-show="m.provisional"> · {{ __('provisional') }}</span></span>
-                                <span x-show="m.looking" class="rounded-sm bg-[#122016] px-2 py-0.5 text-[11px] font-bold text-win">{{ __('looking: Blitz 5+3') }}</span>
-                                @if (! $active)
-                                    <template x-if="invited(m)">
-                                        <span class="flex shrink-0 items-center gap-1 text-[13px]" data-test="invited">
-                                            <span class="text-ink-2">{{ __('Invited') }} ·</span>
-                                            <button type="button" x-on:click="$wire.withdrawInvite()" class="inline-flex h-11 cursor-pointer items-center rounded-md px-2 text-[13px] text-loss" data-test="withdraw-invite">{{ __('Withdraw') }}</button>
-                                        </span>
-                                    </template>
-                                    <template x-if="! invited(m)">
-                                        <button type="button" x-on:click="$wire.invite(m.id)" class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center rounded-md border border-line bg-well px-3 text-[13px] text-ink" data-test="invite">{{ __('Invite') }}</button>
-                                    </template>
-                                @endif
-                            </li>
-                        </template>
-                    </ul>
-                @endguest
-            </section>
-        </div>
+                @if ($notice)
+                    <p role="status" class="m-0 rounded-lg bg-card px-4 py-3 text-[13px] leading-normal text-ink-2 shadow-ring" data-test="lobby-notice">{{ $notice }}</p>
+                @endif
 
-        {{-- Your daily games (ChessLobby row 2) --}}
-        <section aria-labelledby="daily-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="lobby-daily">
-            <span class="flex items-baseline justify-between gap-3"><h2 id="daily-h" class="m-0 text-[15px] font-bold">{{ __('Your daily games') }}</h2>@auth<a href="{{ route('me.correspondence') }}" class="text-xs text-ink">{{ __('All :count', ['count' => $this->dailyGames->count()]) }}</a>@endauth</span>
-            @guest
-                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Log in to play daily chess: one move a day, at your pace.') }}</p>
-            @else
-                @foreach ($this->dailyChallenges->take(2) as $challenge)
-                    <div wire:key="dc-{{ $challenge->id }}" class="flex flex-col gap-2 border-b border-hairline pb-3">
-                        <span class="flex items-baseline justify-between gap-2 text-[13px]"><b class="truncate">{{ $challenge->challenger->displayName() }}</b><span class="text-xs text-btc-hi">{{ __('challenges you') }}</span></span>
-                        <span class="text-xs text-ink-2">{{ __('Daily chess · Casual · you play :color', ['color' => match ($challenge->color) { 'white' => __('Black'), 'black' => __('White'), default => __('a random colour') }]) }}</span>
-                        <span class="grid grid-cols-2 gap-2">
-                            <x-button icon="shield-check" wire:click="acceptDailyChallenge({{ $challenge->id }})">{{ __('Accept') }}</x-button>
-                            <x-button variant="quiet" wire:click="declineDailyChallenge({{ $challenge->id }})">{{ __('Decline') }}</x-button>
+                {{-- Blitz invites received: they expire in minutes, so they come before everything else. --}}
+                @foreach ($this->incoming as $invite)
+                    <div wire:key="invite-{{ $invite->id }}" class="flex flex-col gap-3 rounded-lg bg-card p-3 shadow-ring-btc lg:flex-row lg:items-center lg:px-4" data-test="incoming-invite">
+                        <span class="flex min-w-0 grow items-center gap-3">
+                            <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
+                            <span class="flex min-w-0 flex-col gap-0.5">
+                                <b class="text-[15px]">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
+                                <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
+                            </span>
+                        </span>
+                        <span class="grid grid-cols-2 gap-2 lg:flex">
+                            <x-button variant="quiet" wire:click="declineInvite({{ $invite->id }})" data-test="decline-invite">{{ __('Decline') }}</x-button>
+                            <x-button icon="shield-check" wire:click="acceptInvite({{ $invite->id }})" data-test="accept-invite">{{ __('Accept') }}</x-button>
                         </span>
                     </div>
                 @endforeach
-                @forelse ($this->dailyGames->take(5) as $daily)
-                    @php($opp = $daily->opponentOf($user))
-                    @php($mine = $daily->turn() === $daily->colorOf($user))
-                    @php($left = intdiv(max(0, (int) $daily->deadline_ms - (int) now()->getTimestampMs()), 60_000))
-                    <a wire:key="dg-{{ $daily->id }}" href="{{ route('games.show', $daily) }}" class="flex flex-col gap-1 border-b border-hairline pb-2.5 text-ink last:border-0 hover:text-ink">
-                        <span class="flex items-center justify-between gap-2 text-[13px]"><span class="truncate">{{ $opp?->displayName() }} <span class="text-ink-2" data-test="daily-opponent-elo">{{ \App\Support\Rating\Ratings::forUser($opp?->id, 'chess', 'correspondence', $dailyPool)['rating'] }}</span></span>@if ($mine)<span class="rounded-sm bg-btc px-1.5 py-0.5 text-[11px] font-bold text-on-btc">{{ __('Your move') }}</span>@else<span class="text-[11px] text-ink-3">{{ __('Their move') }}</span>@endif</span>
-                        <span class="flex justify-between gap-2 text-xs text-ink-2"><span>{{ __('You play :color', ['color' => $daily->colorOf($user) === 'w' ? __('White') : __('Black')]) }}</span><span>{{ $mine ? __(':h h :m min left', ['h' => intdiv($left, 60), 'm' => str_pad((string) ($left % 60), 2, '0', STR_PAD_LEFT)]) : __('move :n', ['n' => intdiv($daily->ply, 2) + 1]) }}</span></span>
-                    </a>
-                @empty
-                    @if ($this->dailyChallenges->isEmpty())
-                        <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('No daily game yet. One move a day, at your pace.') }}</p>
-                    @endif
-                @endforelse
-                <x-button variant="quiet" :href="route('chess.challenge')" class="self-start">{{ __('Daily challenge') }}</x-button>
-            @endguest
-        </section>
+            </div>
+        @endif
 
-        {{-- The blitz ladder: lands on the view with rows (casual before Block 0). --}}
-        <section aria-labelledby="ladder-card-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="lobby-ladder">
-            <span class="flex items-baseline justify-between gap-3"><h2 id="ladder-card-h" class="m-0 text-[15px] font-bold">{{ __('Blitz ladder') }}</h2><span class="text-xs text-ink-2">{{ Ladders::isOpen('chess', 'blitz') ? __('rated season') : __('casual until Block 0') }}</span></span>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ Ladders::isOpen('chess', 'blitz') ? __('Rank, Elo and results of every blitz player.') : __('Every casual blitz game counts here. The rated ladder starts at Block 0.') }}</p>
-            <x-button variant="quiet" :href="route('ladder.show', ['chess', 'blitz'])" class="self-start" data-test="lobby-ladder-link">{{ __('Open the blitz ladder') }}</x-button>
-        </section>
+        @include('pages.chess.partials.lobby-play', ['user' => $user, 'entry' => $entry, 'outgoing' => $outgoing])
 
-        {{-- The next chess tournament open for sign-up; nothing when none is open. --}}
-        <x-next-tournament game="chess" heading-id="lobby-cup-h" />
+        {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">
+            @include('pages.chess.partials.lobby-games', ['user' => $user, 'active' => $active])
+            @include('pages.chess.partials.lobby-live', ['user' => $user, 'active' => $active])
+            @include('pages.chess.partials.lobby-ladder')
+        </div>
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
-        <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:col-span-3 lg:px-6" />
-
-        {{-- Later phases keep their places (ChessLobby row 2) --}}
-        @foreach ([[__('Clan Hashrate'), __('Rated games of clan players count for their clan from Block 0.')]] as [$heading, $text])
-            <section class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 max-lg:hidden lg:px-6">
-                <span class="flex items-baseline justify-between gap-3"><h2 class="m-0 text-[15px] font-bold">{{ $heading }}</h2><span class="rounded-sm bg-btc-tint px-2 py-0.5 text-[11px] font-bold text-btc">{{ __('coming soon') }}</span></span>
-                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ $text }}</p>
-            </section>
-        @endforeach
-        <section class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 max-lg:hidden lg:col-span-3 lg:px-6">
-            <span class="flex items-baseline justify-between gap-3"><h2 class="m-0 text-[15px] font-bold">{{ __('Team matches in progress') }}</h2><span class="rounded-sm bg-btc-tint px-2 py-0.5 text-[11px] font-bold text-btc">{{ __('coming soon') }}</span></span>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Clan team matches over several boards follow after the live blitz core.') }}</p>
-        </section>
+        <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:px-6" />
     </div>
 </div>

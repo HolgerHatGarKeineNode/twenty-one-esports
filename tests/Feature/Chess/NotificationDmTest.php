@@ -193,7 +193,7 @@ test('a blitz "your move" never becomes a DM, whatever the player chose', functi
 
 test('a blitz pairing and a blitz invite stay in the app: no DM, even with DMs switched on', function () {
     $anna = User::factory()->create(['chess_settings' => ['dm' => true]]);
-    $bert = User::factory()->create(['chess_settings' => ['dm' => true]]);
+    $bert = User::factory()->lookingToPlay()->create(['chess_settings' => ['dm' => true]]);
 
     app(ChessInvites::class)->invite($anna, $bert);
     app(ChessNotifications::class)->matchFound(app(ChessGameService::class)->start($anna, $bert));

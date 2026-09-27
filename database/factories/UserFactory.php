@@ -39,6 +39,15 @@ class UserFactory extends Factory
         ]);
     }
 
+    /**
+     * "Looking to play" on for blitz chess: only such a player can be sent a
+     * blitz invite (App\Support\Chess\ChessInvites::invite).
+     */
+    public function lookingToPlay(): static
+    {
+        return $this->state(fn (array $attributes) => ['looking_to_play' => 'chess/blitz']);
+    }
+
     public function member(): static
     {
         return $this->state(fn (array $attributes) => [

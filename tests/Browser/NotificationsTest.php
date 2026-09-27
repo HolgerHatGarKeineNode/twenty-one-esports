@@ -7,6 +7,7 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\ChessLobby;
 
 pest()->group('browser');
 
@@ -121,6 +122,7 @@ function notifyPage(User $user, string $to, bool $notificationsAllowed = false):
 function pairedWhileAway(User $anna, User $bert, bool $notificationsAllowed): array
 {
     $pageA = notifyPage($anna, '/chess', $notificationsAllowed);
+    ChessLobby::openBlitz($pageA);
     $pageA->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
 
@@ -129,6 +131,7 @@ function pairedWhileAway(User $anna, User $bert, bool $notificationsAllowed): ar
     $pageA->evaluate('() => { window.__hidden = true; }');
 
     $pageB = notifyPage($bert, '/chess');
+    ChessLobby::openBlitz($pageB);
     $pageB->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageB, '() => location.pathname.startsWith("/games/")', 10_000);
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=toast-countdown]") !== null', 5_000);
@@ -143,6 +146,7 @@ test('a player waiting on another page hears, sees and is taken to the game the 
 
     // Anna joins the queue; the one-time question about desktop notifications comes with it.
     $pageA = notifyPage($anna, '/chess');
+    ChessLobby::openBlitz($pageA);
     $pageA->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=notify-prompt]")?.offsetParent !== null', 5_000);
@@ -156,6 +160,7 @@ test('a player waiting on another page hears, sees and is taken to the game the 
     $titleBefore = $pageA->evaluate('() => document.title');
 
     $pageB = notifyPage($bert, '/chess');
+    ChessLobby::openBlitz($pageB);
     $pageB->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageB, '() => location.pathname.startsWith("/games/")', 10_000);
     $game = ChessGame::query()->sole();

@@ -11,6 +11,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\ChessLobby;
 
 pest()->group('browser');
 
@@ -110,10 +111,12 @@ test('two players find each other, play over Reverb, survive a reload and end by
     BrowserWait::until($pageB, '() => [...document.querySelectorAll("[data-test=online-player]")].some((li) => li.innerText.includes('.json_encode($anna->displayName()).'))', 10_000);
 
     // Queue: Anna searches, Bert searches, both land on the same game.
+    ChessLobby::openBlitz($pageA);
     $pageA->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
     expect($pageA->evaluate('() => [...document.querySelectorAll("*")].some((el) => [...el.attributes].some((a) => a.name.startsWith("wire:poll")))'))->toBeFalse()
         ->and($pageA->evaluate('() => window.__errors'))->toBe([]);
+    ChessLobby::openBlitz($pageB);
     $pageB->locator('[data-test=find-opponent-button]')->click();
 
     // Anna waited: the pairing reaches her by push on her own channel. The
@@ -261,12 +264,15 @@ function rowOf(User $user): string
 }
 
 test('a player who searches and is invited lands in the inviter\'s game at once', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    // Only a player who is looking can be invited (ChessInvites::invite): Bert is.
+    $anna = User::factory()->create();
+    $bert = User::factory()->lookingToPlay()->create();
 
     $pageA = blitzPage($anna, '/chess');
     $pageB = blitzPage($bert, '/chess');
     BrowserWait::until($pageA, listsPlayer($bert), 10_000);
 
+    ChessLobby::openBlitz($pageB);
     $pageB->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($pageB, '() => document.querySelector("[data-test=searching]") !== null', 10_000);
 
@@ -284,7 +290,9 @@ test('a player who searches and is invited lands in the inviter\'s game at once'
 });
 
 test('the lobby switch answers every click, the online list holds still, and an invite shows on its row', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    // Bert is looking, so Anna's list offers "Invite" on his row (ChessInvites::invite).
+    $anna = User::factory()->create();
+    $bert = User::factory()->lookingToPlay()->create();
 
     $pageA = blitzPage($anna, '/chess');
     $pageB = blitzPage($bert, '/chess');

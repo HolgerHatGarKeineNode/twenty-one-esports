@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserWait;
+use Tests\Support\ChessLobby;
 
 pest()->group('browser');
 
@@ -17,9 +18,11 @@ pest()->group('browser');
 | "Invite a friend by link" at the top of the pages (engagement placement)
 |--------------------------------------------------------------------------
 |
-| /chess at 375 x 667 and 1440 x 900: the module's box lies inside the first
-| viewport, next to "Find opponent", and making a link from there lands on
-| its share page with the link shown. The series game page (a captain's join
+| /chess at 375 x 667 and 1440 x 900 (lobby v2): the module is the panel of
+| the "Invite a friend" tile. The tile and "Find opponent" (the Blitz
+| tile's panel) take a tap at their centre above the tab bar; one tap on
+| the tile puts the module's box inside the first viewport, and making a
+| link from there lands on its share page with the link shown. The series game page (a captain's join
 | link) and a finished game (play again) at both widths.
 |
 | Collected on every page: console.error, uncaught errors, rejected promises,
@@ -135,6 +138,21 @@ function inviteInFirstViewport(Page $page, string $label): array
     return $box;
 }
 
+/**
+ * The element's box ends above the tab bar and a tap at its centre reaches it.
+ */
+function inviteHitAboveFloor(Page $page, string $selector, string $label): void
+{
+    $hit = $page->evaluate('(selector) => { const el = document.querySelector(selector); const r = el.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), hit: !!top && (top === el || el.contains(top)), over: top ? (top.dataset?.test || top.closest("[data-test]")?.dataset.test || top.tagName) : null }; }', $selector);
+    $floor = $page->evaluate(INVITE_FLOOR);
+    fwrite(STDERR, "\n[invite] {$label}: ".json_encode($hit + ['floor' => $floor])."\n");
+
+    expect($hit['top'])->toBeGreaterThanOrEqual(0)
+        ->and($hit['bottom'])->toBeLessThanOrEqual($floor)
+        ->and($hit['hit'])->toBeTrue("{$label}: the centre of {$selector} is covered by {$hit['over']}");
+}
+
 function inviteClean(Page $page, string $label): void
 {
     $sizes = $page->evaluate('() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]');
@@ -155,10 +173,18 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
     foreach ([[375, 667], [1440, 900]] as [$width, $height]) {
         $page = invitePage($player, route('chess.lobby', absolute: false), $width, $height);
         BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]") !== null', 10_000);
+
+        // Both tiles, and "Find opponent" in the Blitz panel, above the tab bar and not covered.
+        foreach (['[data-test=play-blitz]', '[data-test=play-invite]'] as $tile) {
+            inviteHitAboveFloor($page, $tile, "chess {$tile} {$width}x{$height}");
+        }
+        ChessLobby::openBlitz($page);
+        inviteHitAboveFloor($page, '[data-test=find-opponent-button]', "chess find-opponent {$width}x{$height}");
+
+        // The invite tile opens the module in place: in the first viewport, its call to action free.
+        $page->locator('[data-test=play-invite]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]").checkVisibility()', 5_000);
         inviteInFirstViewport($page, "chess invite {$width}x{$height}");
-        $find = $page->evaluate(INVITE_BOX, '[data-test=find-opponent-button]');
-        fwrite(STDERR, "\n[invite] chess find-opponent {$width}x{$height}: ".json_encode($find)."\n");
-        expect($find['bottom'])->toBeLessThanOrEqual($page->evaluate(INVITE_FLOOR));
         inviteShot($page, "chess-{$width}");
 
         // The options open inline, and the link is made from the top of the lobby.
@@ -202,7 +228,10 @@ test('the invite sits in the first viewport of /chess at 375 and 1440 px and mak
 
     // A guest sees the login state, not a broken button.
     $page = invitePage(null, route('chess.lobby', ['lang' => 'en'], false), 375, 667);
-    BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module][data-state=guest]") !== null', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module][data-state=guest]") !== null && window.Alpine !== undefined', 10_000);
+    inviteHitAboveFloor($page, '[data-test=play-invite]', 'chess guest invite tile 375x667');
+    $page->locator('[data-test=play-invite]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=invite-module]").checkVisibility()', 5_000);
     inviteInFirstViewport($page, 'chess guest 375x667');
     expect($page->evaluate('() => document.querySelector("[data-test=invite-login]").getAttribute("href")'))->toEndWith('/login');
     inviteShot($page, 'chess-guest-375');

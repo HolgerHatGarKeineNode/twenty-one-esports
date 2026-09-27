@@ -16,6 +16,7 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\ChessLobby;
 use Tests\Support\TestSigner;
 
 pest()->group('browser');
@@ -143,6 +144,8 @@ test('a player adds an opponent who lists them back, and the lobby then opens Ra
     // The lobby before: Rated closed, with the reason.
     $lobby = p7ePage($anna, route('chess.lobby', [], false), 375);
     BrowserWait::until($lobby, '() => document.querySelector("[data-test=kind-rated]")?.disabled === true', 10_000);
+    // The reason is behind the panel's "?" (lobby v2): opened, it is rendered text.
+    ChessLobby::openHelp($lobby);
     expect($lobby->evaluate('() => document.querySelector("[data-test=kind-why]").innerText'))->toContain('Rated play needs a player you list each other with');
     p7eMeasure($lobby, '[data-test=game-kind]', 375, 'lobby rated closed');
     p7eShot($lobby, 'lobby-rated-closed-375');
@@ -166,6 +169,7 @@ test('a player adds an opponent who lists them back, and the lobby then opens Ra
     // The lobby after: Rated open; choose it and search.
     $lobby->goto(ComputeUrl::from(route('chess.lobby', [], false)));
     BrowserWait::until($lobby, '() => document.querySelector("[data-test=kind-rated]")?.disabled === false && window.Alpine !== undefined', 10_000);
+    ChessLobby::openHelp($lobby);
     $lobby->locator('[data-test=kind-rated]')->click();
     BrowserWait::until($lobby, '() => document.querySelector("[data-test=kind-rated]").getAttribute("aria-checked") === "true"', 5_000);
     // x-show applies a tick after the radio's own bindings: wait for the text, not the attribute.

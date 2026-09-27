@@ -63,7 +63,7 @@ test('the pairing range widens the longer a player waits', function () {
 });
 
 test('a friend who is online can be invited and the accepted invite starts the game', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invites = app(ChessInvites::class);
     app(ChessQueue::class)->join($anna);
 
@@ -79,7 +79,7 @@ test('a friend who is online can be invited and the accepted invite starts the g
 });
 
 test('accepting an invite is refused while either side plays a live game, with the reason on the lobby', function (string $busy, string $message, ChessInviteStatus $after) {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invite = app(ChessInvites::class)->invite($anna, $bert);
     // The live game began after the invite went out (a race the start's own withdrawal cannot see).
     $running = ChessGame::factory()->create(['white_id' => $busy === 'inviter' ? $anna->id : $bert->id]);
@@ -99,7 +99,7 @@ test('accepting an invite is refused while either side plays a live game, with t
 ]);
 
 test('a live game that starts withdraws both players\' other open invites and takes them out of the queue', function (string $start) {
-    [$anna, $bert, $carl, $dora, $eve] = User::factory()->count(5)->create();
+    [$anna, $bert, $carl, $dora, $eve] = User::factory()->lookingToPlay()->count(5)->create();
     // Dora is gone, so Bert's search does not answer her open invite (P5e).
     $presence = Mockery::mock(PresenceLookup::class);
     $presence->shouldReceive('online')->andReturnUsing(fn (User $user) => ! $user->is($dora));
@@ -144,7 +144,7 @@ function noticeKinds(User $user): array
 }
 
 test('inviting a player who searches starts the game at once, as a found match for both', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     app(ChessQueue::class)->join($bert);
     Event::fake([ChessGameStarted::class]);
 
@@ -163,7 +163,7 @@ test('inviting a player who searches starts the game at once, as a found match f
 });
 
 test('an invite to a player who is not searching stays an ordinary open invite', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
 
     $invite = app(ChessInvites::class)->invite($anna, $bert);
 
@@ -174,7 +174,7 @@ test('an invite to a player who is not searching stays an ordinary open invite',
 });
 
 test('a player who searches and sends an invite leaves the queue', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     app(ChessQueue::class)->join($anna);
 
     Livewire::actingAs($anna)->test('pages::chess.lobby')
@@ -188,7 +188,7 @@ test('a player who searches and sends an invite leaves the queue', function () {
 });
 
 test('"Find opponent" with an open invite pairs with its inviter at once', function () {
-    [$anna, $bert, $carl] = User::factory()->count(3)->create();
+    [$anna, $bert, $carl] = User::factory()->lookingToPlay()->count(3)->create();
     app(ChessQueue::class)->join($carl); // someone else waits in range; the invite still comes first
     $invite = app(ChessInvites::class)->invite($anna, $bert);
 
@@ -204,7 +204,7 @@ test('"Find opponent" with an open invite pairs with its inviter at once', funct
 });
 
 test('"Find opponent" does not answer an invite whose inviter is gone or playing', function (string $inviter) {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invite = app(ChessInvites::class)->invite($anna, $bert);
     $presence = Mockery::mock(PresenceLookup::class);
     $presence->shouldReceive('online')->andReturn($inviter !== 'offline');
@@ -224,7 +224,7 @@ test('"Find opponent" does not answer an invite whose inviter is gone or playing
 })->with(['offline', 'playing']);
 
 test('the online list knows whom the open invite goes to until it is answered, withdrawn or expired', function (string $end) {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     config(['esports.chess.invite_seconds' => 120]);
 
     $lobby = Livewire::actingAs($anna)->test('pages::chess.lobby')
@@ -259,7 +259,7 @@ test('"Looking to play" stores the wanted state, not a flip, and announces only 
 });
 
 test('a pairing that loses every retry to a deadlock tells the player instead of failing', function (string $action) {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invite = app(ChessInvites::class)->invite($anna, $bert);
 
     if ($action === 'findOpponent') {

@@ -19,6 +19,11 @@ use Illuminate\Support\Facades\DB;
  * someone who just left simply expires unanswered
  * (esports.chess.invite_seconds).
  *
+ * Only players with "Looking to play" on can be invited (`not_looking`
+ * otherwise), and turning it off declines the invites still open
+ * (declineAll). The switch is stored on the user and stays as set across
+ * visits and disconnects; nothing resets it on its own.
+ *
  * One open invite per inviter: a new one withdraws the previous. A live
  * game that starts for a player withdraws all their open invites, sent and
  * received (ChessGameService::start).
@@ -51,7 +56,17 @@ final class ChessInvites
 
         $previous = $this->outgoing($inviter);
 
-        $invite = DB::transaction(function () use ($inviter, $invitee, $mode, $previous): ChessInvite {
+        $invite = DB::transaction(function () use ($inviter, $invitee, $mode, $previous): ChessInvite|string {
+            // Only a player whose "Looking to play" is on for this mode can be invited
+            // (2026-09-27: a player with it off got unwanted requests). Read fresh and
+            // locked, so a switch turned off a moment ago is seen; setLookingToPlay
+            // declines what is still open when it turns off.
+            $looking = User::query()->whereKey($invitee->id)->lockForUpdate()->value('looking_to_play');
+
+            if ($looking !== 'chess/'.$mode) {
+                return 'not_looking';
+            }
+
             $previous?->forceFill(['status' => ChessInviteStatus::Withdrawn])->save();
             ChessQueueEntry::query()->where('user_id', $inviter->id)->delete();
 
@@ -63,6 +78,10 @@ final class ChessInvites
                 'expires_at' => now()->addSeconds((int) config('esports.chess.invite_seconds')),
             ]);
         });
+
+        if (is_string($invite)) {
+            throw new ChessRuleViolation($invite, __(':name is not looking for a game right now.', ['name' => $invitee->displayName()]));
+        }
 
         if ($previous !== null) {
             $this->announce($previous);
@@ -193,6 +212,18 @@ final class ChessInvites
 
         $invite->forceFill(['status' => $status])->save();
         $this->announce($invite);
+    }
+
+    /**
+     * The invitee turned "Looking to play" off: every open invite to them
+     * is declined, as if they had pressed Decline. The inviters' lobbies
+     * learn it by the usual push; no notification goes out.
+     */
+    public function declineAll(User $invitee): void
+    {
+        foreach ($this->incoming($invitee) as $invite) {
+            $this->close($invite, $invitee);
+        }
     }
 
     public function outgoing(User $inviter): ?ChessInvite

@@ -43,7 +43,7 @@ test('a pairing tells both players, in the bell and on their open page, with a c
 });
 
 test('each kind of notification is stored for the right player and can be marked read', function (string $kind) {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $games = app(ChessGameService::class);
 
     $recipient = match ($kind) {

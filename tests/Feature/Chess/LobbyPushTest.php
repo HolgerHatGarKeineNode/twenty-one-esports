@@ -54,7 +54,7 @@ test('a pairing reaches both players on their own private channel, with the game
 
 test('an invite, its acceptance and its withdrawal reach both players, without anything about them', function () {
     Event::fake([ChessInviteChanged::class, ChessGameStarted::class]);
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invites = app(ChessInvites::class);
 
     $invite = $invites->invite($anna, $bert);
@@ -125,7 +125,7 @@ test('the searching lobby does not poll: it asks once the range can widen, and a
 });
 
 test('the lobby waiting for a friend asks when the invite expires, or at the slow net', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert] = User::factory()->lookingToPlay()->count(2)->create();
     $invite = app(ChessInvites::class)->invite($anna, $bert);
 
     $lobby = Livewire::actingAs($anna)->test('pages::chess.lobby');
