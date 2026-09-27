@@ -1,7 +1,7 @@
 /*
  * An emulated Amber NIP-46 bunker for the browser tests, never part of the app.
  *
- *   BUNKER_KEY=<hex> BUNKER_SECRET=<hex> BUNKER_RELAY=ws://127.0.0.1:<port> BUNKER_LOG=<file> node tests/Support/amber-bunker.mjs
+ *   BUNKER_KEY="<hex>" BUNKER_SECRET="<hex>" BUNKER_RELAY=ws://127.0.0.1:<port> BUNKER_LOG=<file> node tests/Support/amber-bunker.mjs
  *
  * What it copies from Amber's "create a bunker" flow:
  * - the bunker:// URI carries a ONE-TIME secret: the first `connect` with it
