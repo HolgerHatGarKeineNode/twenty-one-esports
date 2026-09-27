@@ -178,13 +178,36 @@ function tvOpen(Page $page, Tournament $tournament): array
     return $page->evaluate(TV_STATE);
 }
 
-/** Show a scene by hand (as the arrow keys do) and let its entrance finish. */
+/**
+ * The full-screen hint while it shows (on load and whenever someone moves the mouse): it must be
+ * visible, and neither the active scene nor anything inside it may reach under it.
+ */
+const TV_HINT = <<<'JS'
+    () => {
+        const hint = document.querySelector('[data-test=tv-hint]');
+        const h = hint.getBoundingClientRect();
+        const scene = document.querySelector(`[data-scene-id="${document.querySelector('.tv-stage').dataset.scene}"]`);
+        const meets = (r) => r.width > 0 && r.height > 0 && r.left < h.right && r.right > h.left && r.top < h.bottom && r.bottom > h.top;
+        const hits = [scene, ...scene.querySelectorAll('*')]
+            .filter((el) => !el.closest('.tv-confetti') && meets(el.getBoundingClientRect()))
+            .map((el) => (el.getAttribute('class') ?? el.tagName).split(' ')[0] + ':' + (el.textContent ?? '').trim().slice(0, 20));
+        return { visible: hint.checkVisibility({ visibilityProperty: true, opacityProperty: true }), rect: [Math.round(h.left), Math.round(h.top), Math.round(h.right), Math.round(h.bottom)], hits };
+    }
+    JS;
+
+/**
+ * Show a scene by hand (as the arrow keys do), with someone at the screen: the hint is up while the
+ * scene is measured (`hint`), then it is let go for the screenshot.
+ */
 function tvShow(Page $page, string $scene): array
 {
-    $page->evaluate('(scene) => { const root = document.querySelector(".tv"); window.Alpine.$data(root).show(scene, true); root.querySelectorAll("[data-scene-id]").forEach((el) => el.dataset.dwell = "600"); root.querySelector(".tv-stage").setAttribute("data-idle", ""); }', $scene);
+    $page->evaluate('(scene) => { const root = document.querySelector(".tv"); const tv = window.Alpine.$data(root); tv.show(scene, true); tv.wake(); root.querySelectorAll("[data-scene-id]").forEach((el) => el.dataset.dwell = "600"); }', $scene);
     Execution::instance()->wait(1.2);
+    $hint = $page->evaluate(TV_HINT);
+    $page->evaluate('() => document.querySelector(".tv-stage").setAttribute("data-idle", "")');
+    Execution::instance()->wait(0.4);
 
-    return $page->evaluate(TV_STATE);
+    return $page->evaluate(TV_STATE) + ['hint' => $hint];
 }
 
 function tvShot(Page $page, string $name): void
@@ -282,6 +305,7 @@ test('the TV rotates its scenes and shows three new results live, without a relo
 
     foreach ($measured as $width => $scenes) {
         foreach ($scenes as $scene => $state) {
+            expect([$width, $scene, $state['hint']['visible'], $state['hint']['hits']])->toBe([$width, $scene, true, []]);
             expect([$width, $scene, $state['scene'], $state['escapes'], $state['clipped'], $state['overflow'], $state['errors'], $state['bad']])->toBe([$width, $scene, $scene, [], [], [0, 0], [], []])
                 ->and($state['minFont'])->toBeGreaterThanOrEqual(24 * $width / 1920 - 0.5);
         }
@@ -323,6 +347,13 @@ test('the champion, the tables and the lobby, and reduced motion: still live, no
 
         foreach ([[$finished, 'champion'], [$groups, 'standings'], [$open, 'lobby']] as [$tournament, $scene]) {
             tvOpen($page, $tournament);
+
+            if ($scene === 'champion') {
+                // Fresh load, nobody touched anything: the champion is the first scene and the hint is up.
+                Execution::instance()->wait(0.8);
+                $fresh = $page->evaluate(TV_HINT);
+                expect([$width, $fresh['visible'], $fresh['hits']])->toBe([$width, true, []]);
+            }
             $measured[$width][$scene] = tvShow($page, $scene);
             tvShot($page, "tv-{$width}-{$scene}");
 
@@ -332,9 +363,19 @@ test('the champion, the tables and the lobby, and reduced motion: still live, no
                 expect($confettiRunning)->toBe(36);
             }
 
+            expect([$width, $scene, $measured[$width][$scene]['hint']['visible'], $measured[$width][$scene]['hint']['hits']])->toBe([$width, $scene, true, []]);
             expect([$width, $scene, $measured[$width][$scene]['scene'], $measured[$width][$scene]['escapes'], $measured[$width][$scene]['clipped'], $measured[$width][$scene]['errors'], $measured[$width][$scene]['bad']])->toBe([$width, $scene, $scene, [], [], [], []])
                 ->and($measured[$width][$scene]['minFont'])->toBeGreaterThanOrEqual(24 * $width / 1920 - 0.5);
         }
+    }
+
+    // The reviewer's other two sizes (a laptop and a phone held sideways is not a TV, but the page still opens there).
+    foreach ([[1440, 900], [390, 844]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        tvOpen($page, $finished);
+        Execution::instance()->wait(0.8);
+        $fresh = $page->evaluate(TV_HINT);
+        expect([$width, $fresh['visible'], $fresh['hits']])->toBe([$width, true, []]);
     }
 
     // Reduced motion: no confetti, no slam; a new result still arrives and is marked.

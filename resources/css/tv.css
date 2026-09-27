@@ -50,7 +50,7 @@
 .tv-stage {
     position: relative;
     display: grid;
-    grid-template-rows: calc(var(--u) * 8) minmax(0, 1fr) calc(var(--u) * 4.5);
+    grid-template-rows: calc(var(--u) * 10) minmax(0, 1fr) calc(var(--u) * 4.5);
     gap: calc(var(--u) * 1.5);
     width: calc(var(--u) * 100);
     height: calc(var(--u) * 56.25);
@@ -95,7 +95,8 @@
     margin: 0;
     overflow: hidden;
     font-family: var(--tv-display);
-    font-size: calc(var(--u) * 3);
+    /* As large as the column allows, 3u at most, 2u at least (longer names then end in an ellipsis). */
+    font-size: max(calc(var(--u) * 2), min(calc(var(--u) * 3), calc(100cqi / (var(--chars) * 0.8))));
     font-weight: 800;
     line-height: 1.1;
     white-space: nowrap;
@@ -142,9 +143,10 @@
 }
 
 .tv-qr-code {
+    /* 10u: 192 px at 1080p, as large as the header row allows (a version-4 code: 41 modules, 4.7 px each). */
     display: block;
-    width: calc(var(--u) * 8);
-    height: calc(var(--u) * 8);
+    width: calc(var(--u) * 10);
+    height: calc(var(--u) * 10);
     overflow: hidden;
     border-radius: calc(var(--u) * 0.3);
 }
@@ -1033,6 +1035,8 @@
 }
 
 .tv-ticker {
+    grid-row: 1;
+    grid-column: 1;
     display: flex;
     align-items: center;
     gap: calc(var(--u) * 1.5);
@@ -1073,6 +1077,8 @@
 }
 
 .tv-tabs {
+    grid-row: 1;
+    grid-column: 2;
     display: flex;
     gap: calc(var(--u) * 0.5);
 }
@@ -1144,19 +1150,23 @@
 /* ---------- The full-screen hint: shows while someone is at the screen -------------------------------------- */
 
 .tv-hint {
-    position: absolute;
-    right: calc(var(--u) * 3);
-    bottom: calc(var(--u) * 7);
+    z-index: 1;
     display: flex;
+    grid-row: 1;
+    grid-column: 1;
     align-items: center;
+    align-self: stretch;
     gap: calc(var(--u) * 1);
-    max-width: calc(var(--u) * 50);
-    padding: calc(var(--u) * 0.75) calc(var(--u) * 1);
-    border-radius: calc(var(--u) * 0.4);
-    background: var(--tv-raised);
-    box-shadow: inset 0 0 0 max(1px, calc(var(--u) * 0.06)) var(--tv-line);
+    min-width: 0;
+    background: var(--tv-ground);
     color: var(--tv-ink-2);
+    white-space: nowrap;
     transition: opacity 300ms ease-out;
+}
+
+.tv-hint span {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .tv-hint-button {

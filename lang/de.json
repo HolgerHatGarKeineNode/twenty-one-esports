@@ -3249,7 +3249,6 @@
     "In the pot": "Im Topf",
     "Latest": "Zuletzt",
     "No results yet.": "Noch keine Ergebnisse.",
-    "Press F for full screen, the arrow keys to switch scenes, space to pause.": "F für Vollbild, Pfeiltasten wechseln die Szene, Leertaste pausiert.",
     "QR code for :url": "QR-Code für :url",
     "Results appear here as they come in.": "Ergebnisse erscheinen hier, sobald sie eintreffen.",
     "Scan to sign up": "Scannen und anmelden",
@@ -3264,5 +3263,6 @@
     "wins :score": "gewinnt :score",
     "Full screen for a TV or a stream": "Vollbild für Fernseher oder Stream",
     "TV view": "TV-Ansicht",
-    "Round 1 starts :date.": "Runde 1 beginnt :date."
+    "Round 1 starts :date.": "Runde 1 beginnt :date.",
+    "Press F for full screen, arrows switch scenes, space pauses.": "F für Vollbild, Pfeiltasten wechseln die Szene, Leertaste pausiert."
 }

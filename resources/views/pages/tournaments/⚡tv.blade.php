@@ -139,7 +139,7 @@ new #[Layout('layouts::tv')] class extends Component {
         <header class="tv-head">
             <x-game-cover :game="$tournament->game" size="thumb" loading="eager" class="tv-head-cover" />
             <div class="tv-head-title">
-                <h1 class="tv-name">{{ $tournament->name }}</h1>
+                <span class="tv-fit" style="--chars: {{ max(8, mb_strlen($tournament->name)) }}"><h1 class="tv-name">{{ $tournament->name }}</h1></span>
                 <p class="tv-meta">
                     <span>{{ $gameLine }}</span>
                     <span>{{ $tournament->format->label() }}</span>
@@ -418,11 +418,11 @@ new #[Layout('layouts::tv')] class extends Component {
                     </button>
                 @endforeach
             </nav>
+            {{-- Over the ticker, inside the footer row: while someone is at the screen it never covers a scene. --}}
+            <div class="tv-hint" data-test="tv-hint">
+                <button type="button" class="tv-hint-button" x-on:click="fullscreen()">{{ __('Full screen') }}</button>
+                <span>{{ __('Press F for full screen, arrows switch scenes, space pauses.') }}</span>
+            </div>
         </footer>
-
-        <div class="tv-hint" data-test="tv-hint">
-            <button type="button" class="tv-hint-button" x-on:click="fullscreen()">{{ __('Full screen') }}</button>
-            <span>{{ __('Press F for full screen, the arrow keys to switch scenes, space to pause.') }}</span>
-        </div>
     </div>
 </div>
