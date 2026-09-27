@@ -29,6 +29,7 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -98,6 +99,13 @@ class TwentyOneStreamCommand extends Command
     /** How long a scene that failed (render, encoder, database) stays off. */
     private const SCENE_BLOCK_SECONDS = 60;
 
+    /** Cache key of what the stream announces (viewers, title, summary), read by the website. */
+    public const ANNOUNCE_CACHE_KEY = 'twentyone.stream.announced';
+
+    private const ANNOUNCE_TTL_SECONDS = 60;
+
+    private const ANNOUNCE_REFRESH_SECONDS = 20;
+
     /** For sizing the music list only: the 32 tracks average ~181 s (96.5 min). */
     private const ASSUMED_TRACK_SECONDS = 180;
 
@@ -130,6 +138,14 @@ class TwentyOneStreamCommand extends Command
 
     /** Whether the tournament slides could not be built on the last frame (logged once per series). */
     private bool $tournamentFramesFailing = false;
+
+    /** Whether the announced state could not be cached last time (logged once per series). */
+    private bool $announceCacheFailing = false;
+
+    /** @var array{viewers: int|null, title: string, summary: string}|null the state last put into the cache */
+    private ?array $cachedAnnouncement = null;
+
+    private float $announcementCachedAt = 0.0;
 
     /** The socket nginx logs playlist requests to; null while the count is off. */
     private ?ViewerSocket $viewerSocket = null;
@@ -184,6 +200,9 @@ class TwentyOneStreamCommand extends Command
         $this->rotationFailing = false;
         $this->tournamentsFailing = false;
         $this->tournamentFramesFailing = false;
+        $this->announceCacheFailing = false;
+        $this->cachedAnnouncement = null;
+        $this->announcementCachedAt = 0.0;
         $this->viewerSocket = null;
 
         if ($public->recoveredFrom === 'unreadable') {
@@ -429,6 +448,7 @@ class TwentyOneStreamCommand extends Command
             $texts = $this->active?->mode === ModeMachine::SCENE ? StreamTexts::forGames($sceneGames, $sceneMore) : StreamTexts::for(null);
             // A new viewer count is republished like a text change (at most once per text_change_seconds).
             $announced = [...$texts, 'viewers' => $viewerCount];
+            $this->cacheAnnouncement(['viewers' => $viewerCount, 'title' => $texts['title'], 'summary' => $texts['summary']], $now);
 
             // A playlist kept from before this start is fresh after a quick
             // restart (and rewritten when trimmed), but says nothing about
@@ -561,6 +581,34 @@ class TwentyOneStreamCommand extends Command
             $this->log('scene data for '.$scene.' not built, keeping the last frame: '.$this->describe($e));
 
             return $previous;
+        }
+    }
+
+    /**
+     * What the stream announces now, for the website's LIVE badge:
+     * `twentyone.stream.announced` = {viewers, title, summary}, kept 60 s and
+     * put again on every change and at least every 20 s, so it lasts while
+     * the daemon runs and is gone a minute after it stopped. A failing cache
+     * store never stops the stream (logged once per series).
+     *
+     * @param  array{viewers: int|null, title: string, summary: string}  $state
+     */
+    private function cacheAnnouncement(array $state, float $now): void
+    {
+        if ($state === $this->cachedAnnouncement && $now - $this->announcementCachedAt < self::ANNOUNCE_REFRESH_SECONDS) {
+            return;
+        }
+
+        try {
+            Cache::put(self::ANNOUNCE_CACHE_KEY, $state, self::ANNOUNCE_TTL_SECONDS);
+            $this->cachedAnnouncement = $state;
+            $this->announcementCachedAt = $now;
+            $this->announceCacheFailing = false;
+        } catch (Throwable $e) {
+            if (! $this->announceCacheFailing) {
+                $this->log('announced state not cached: '.$this->describe($e));
+                $this->announceCacheFailing = true;
+            }
         }
     }
 

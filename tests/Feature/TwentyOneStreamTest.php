@@ -16,7 +16,9 @@ use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\Stream\ViewerCounter;
 use App\Support\TwentyOne\Stream\ViewerSocket;
 use App\Support\TwentyOne\TwentyOneSigner;
+use Illuminate\Contracts\Cache\Store;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\View;
@@ -964,4 +966,95 @@ test('a teaser whose numbers change mid-slide is rendered again with the new dat
         ->and(count($ladders))->toBeGreaterThanOrEqual(2)
         ->and($ladders[0])->not->toContain('Latecomer')
         ->and($ladders[count($ladders) - 1])->toContain('Latecomer');
+});
+
+test('the daemon keeps what it announces in the cache for the website, gone a minute after it stopped', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    $game = ChessGame::factory()->create();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 3]);
+    $announced = Cache::get('twentyone.stream.announced');
+    $this->travel(61)->seconds();
+
+    // The viewer socket is bound (no nginx sends anything): a count of 0, not null.
+    expect($announced)->toBe(['viewers' => 0, ...StreamTexts::forGames([$game->fresh(['white', 'black'])], 0)])
+        ->and(Cache::get('twentyone.stream.announced'))->toBeNull();
+});
+
+test('a failing cache store does not stop the stream, and is logged once', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    // A cache store that fails on every call (StreamStats and TournamentSlides count directly then).
+    Cache::extend('down', fn () => Cache::repository(new class implements Store
+    {
+        public function __call(string $method, array $arguments): mixed
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function get($key): mixed
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function many(array $keys): array
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function put($key, $value, $seconds): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function putMany(array $values, $seconds): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function increment($key, $value = 1): int|bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function decrement($key, $value = 1): int|bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function forever($key, $value): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function touch($key, $seconds): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function forget($key): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function flush(): bool
+        {
+            throw new RuntimeException('cache store down');
+        }
+
+        public function getPrefix(): string
+        {
+            return '';
+        }
+    }));
+    config(['cache.stores.down' => ['driver' => 'down'], 'cache.default' => 'down']);
+    Cache::forgetDriver('down');
+
+    $exit = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 3]);
+    $output = Artisan::output();
+
+    expect($exit)->toBe(0)
+        ->and(substr_count($output, 'announced state not cached: RuntimeException'))->toBe(1)
+        ->and($output)->toContain('ffmpeg started');
 });
