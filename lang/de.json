@@ -3130,7 +3130,7 @@
     "Planning times": "Planungszeiten",
     "This tournament has ended; it can no longer be changed.": "Dieses Turnier ist vorbei; es lässt sich nicht mehr ändern.",
     "Format locked": "Format gesperrt",
-    "The draw committed to a Bitcoin block with these entries and this format: :format, :who. Game, format, capacity and sign-up can no longer change, and the draw is never redone, because the league would then pick among block hashes it has already seen. Name and start time can still change. To play in another system, call this tournament off and create a new one.": "Die Auslosung hat sich mit diesen Anmeldungen und diesem Format auf einen Bitcoin-Block festgelegt: :format, :who. Spiel, Format, Plätze und Anmeldung lassen sich nicht mehr ändern, und die Auslosung wird nie wiederholt, weil die Liga sonst unter Block-Hashes wählen könnte, die sie schon kennt. Name und Startzeit kannst du noch ändern. Für ein anderes System sag dieses Turnier ab und leg ein neues an.",
+    "The draw committed to a Bitcoin block with these entries and this format: :format, :who. Game, format, capacity and sign-up can no longer change, and the draw is never redone, because the league would then pick among block hashes it has already seen. Name, description and start time can still change. To play in another system, call this tournament off and create a new one.": "Die Auslosung hat sich mit diesen Anmeldungen und diesem Format auf einen Bitcoin-Block festgelegt: :format, :who. Spiel, Format, Plätze und Anmeldung lassen sich nicht mehr ändern, und die Auslosung wird nie wiederholt, weil die Liga sonst unter Block-Hashes wählen könnte, die sie schon kennt. Name, Beschreibung und Startzeit kannst du noch ändern. Für ein anderes System sag dieses Turnier ab und leg ein neues an.",
     "Saving publishes a new version of the tournament to the league calendar. Its address stays the same.": "Speichern veröffentlicht eine neue Fassung des Turniers im Liga-Kalender. Seine Adresse bleibt gleich.",
     "A draft: nothing is published until you publish it on the tournament page.": "Ein Entwurf: nichts wird veröffentlicht, bis du ihn auf der Turnierseite veröffentlichst.",
     "These lineups were entered for the old game or mode": "Diese Lineups wurden für das alte Spiel oder den alten Modus angemeldet",
@@ -3154,7 +3154,7 @@
     "Only the organizer of this tournament or an admin can do this.": "Das darf nur der Veranstalter dieses Turniers oder ein Admin.",
     "These lineups were entered for the old game or mode: :entries. Confirm their removal to change the game.": "Diese Lineups wurden für das alte Spiel oder den alten Modus angemeldet: :entries. Bestätige ihr Entfernen, um das Spiel zu ändern.",
     "The game or mode of the tournament was corrected.": "Spiel oder Modus des Turniers wurde korrigiert.",
-    "The draw has run: format, game, capacity and sign-up are locked. Only the name and the start time can change.": "Die Auslosung ist gelaufen: Format, Spiel, Plätze und Anmeldung sind gesperrt. Nur Name und Startzeit lassen sich ändern.",
+    "The draw has run: format, game, capacity and sign-up are locked. Only the name, the description and the start time can change.": "Die Auslosung ist gelaufen: Format, Spiel, Plätze und Anmeldung sind gesperrt. Nur Name, Beschreibung und Startzeit lassen sich ändern.",
     "Give the tournament a name of up to 80 characters.": "Gib dem Turnier einen Namen mit höchstens 80 Zeichen.",
     "Sign-up closes are set when the tournament is published.": "Der Anmeldeschluss wird beim Veröffentlichen festgelegt.",
     "Plan for 2 to 64 entries.": "Plane für 2 bis 64 Plätze.",
@@ -3184,5 +3184,7 @@
     "Your captain confirms the lineup.": "Dein Captain bestätigt das Lineup.",
     "Tournament rules changed": "Turnierregeln geändert",
     "confirm your entry again after a tournament changed its rules": "bestätige deine Anmeldung neu, nachdem ein Turnier seine Regeln geändert hat",
-    "The entry was not confirmed again after the rules changed.": "Die Anmeldung wurde nach der Regeländerung nicht neu bestätigt."
+    "The entry was not confirmed again after the rules changed.": "Die Anmeldung wurde nach der Regeländerung nicht neu bestätigt.",
+    "Keep the description to 1000 characters.": "Halte die Beschreibung bei höchstens 1000 Zeichen.",
+    "Description": "Beschreibung"
 }

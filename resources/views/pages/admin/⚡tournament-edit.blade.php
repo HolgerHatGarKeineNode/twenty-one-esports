@@ -37,6 +37,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
     public string $name = '';
 
+    public string $description = '';
+
     public string $date = '';
 
     public string $time = '';
@@ -85,6 +87,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $times = $tournament->times ?? [];
 
         $this->name = $tournament->name;
+        $this->description = (string) $tournament->description;
         $this->date = $tournament->starts_at->copy()->timezone($zone)->format('Y-m-d');
         $this->time = $tournament->starts_at->copy()->timezone($zone)->format('H:i');
         $this->closesAt = $tournament->signup_closes_at?->copy()->timezone($zone)->format('Y-m-d\TH:i') ?? '';
@@ -175,6 +178,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
 
         $this->validate([
             'name' => ['required', 'string', 'max:80'],
+            'description' => ['nullable', 'string', 'max:1000'],
             'date' => ['required', 'date_format:Y-m-d'],
             'time' => ['required', 'date_format:H:i'],
             ...($beforeDraw ? [
@@ -190,6 +194,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         $zone = $this->zone();
         $changes = [
             'name' => trim($this->name),
+            'description' => trim($this->description) === '' ? null : trim($this->description),
             'starts_at' => CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $zone)->utc(),
         ];
 
@@ -352,7 +357,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         default => (string) $value,
     };
     $fields = [
-        'name' => __('Name'), 'starts_at' => __('Starts'), 'signup_closes_at' => __('Sign-up closes'), 'capacity' => __('Planned for'),
+        'name' => __('Name'), 'description' => __('Description'), 'starts_at' => __('Starts'), 'signup_closes_at' => __('Sign-up closes'), 'capacity' => __('Planned for'),
         'results_mode' => __('Results'), 'directors' => __('Tournament directors'), 'game' => __('Game'), 'mode' => __('Mode'),
         'format' => __('Format'), 'options' => __('Format options'), 'time_window' => __('Time you have'), 'on_site' => __('On site'),
         'stations' => __('Stations'), 'times' => __('Planning times'), 'ladder' => __('Ladder'),
@@ -409,6 +414,13 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
                     </label>
                 @endif
                 <span class="col-span-2 text-xs text-ink-3 lg:col-span-4">{{ __('Times in :zone.', ['zone' => $zone]) }}</span>
+                <label class="col-span-2 flex min-w-0 flex-col gap-1.5 text-xs text-ink-2 lg:col-span-4">
+                    {{ __('Description (optional)') }}
+                    <textarea wire:model="description" maxlength="1000" rows="3" data-test="edit-description"
+                              class="min-h-24 w-full rounded-md border border-edge bg-ground px-3 py-2.5 text-[13px] leading-normal text-ink"></textarea>
+                    <span class="text-ink-3">{{ __('Shown at the top of the tournament page and published with it on Nostr. Up to 1000 characters.') }}</span>
+                    @error('description')<span class="text-loss" role="alert">{{ $message }}</span>@enderror
+                </label>
             </section>
 
             @if ($beforeDraw)
@@ -418,7 +430,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             @else
                 <section class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:px-6" data-test="format-locked">
                     <h2 class="m-0 text-[15px] font-bold">{{ __('Format locked') }}</h2>
-                    <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The draw committed to a Bitcoin block with these entries and this format: :format, :who. Game, format, capacity and sign-up can no longer change, and the draw is never redone, because the league would then pick among block hashes it has already seen. Name and start time can still change. To play in another system, call this tournament off and create a new one.', [
+                    <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The draw committed to a Bitcoin block with these entries and this format: :format, :who. Game, format, capacity and sign-up can no longer change, and the draw is never redone, because the league would then pick among block hashes it has already seen. Name, description and start time can still change. To play in another system, call this tournament off and create a new one.', [
                         'format' => $tournament->format->label(),
                         'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
                     ]) }}</p>

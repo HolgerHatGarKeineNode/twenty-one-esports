@@ -132,7 +132,7 @@ test('after the draw the format and game are locked, only name and start change'
     expect($tournament->refresh()->name)->toBe('Renamed Cup')
         ->and(latestTags($tournament))->toContain(['title', 'Renamed Cup'])
         ->and(fn () => app(TournamentEditor::class)->update($tournament, $tournament->creator, ['format' => TournamentFormat::SingleElimination]))
-        ->toThrow(TournamentRuleViolation::class, __('The draw has run: format, game, capacity and sign-up are locked. Only the name and the start time can change.'))
+        ->toThrow(TournamentRuleViolation::class, __('The draw has run: format, game, capacity and sign-up are locked. Only the name, the description and the start time can change.'))
         ->and(fn () => app(TournamentEditor::class)->update($tournament, $tournament->creator, ['game' => 'rocket-league', 'mode' => '3v3']))
         ->toThrow(TournamentRuleViolation::class)
         ->and($tournament->refresh()->format)->toBe(TournamentFormat::Swiss)
@@ -369,3 +369,24 @@ test('start times are typed and shown in the display zone and stored as UTC, acr
     'summer time, the day before the change' => ['2026-10-24', '2026-10-24 17:00'],
     'winter time, the day of the change' => ['2026-10-25', '2026-10-25 18:00'],
 ]);
+
+test('the description is edited before and after the draw, republished in the 31923 content, and kept to 1000 characters', function () {
+    $tournament = openTournament();
+    $tournament->forceFill(['status' => TournamentStatus::Running])->save();
+
+    Livewire::actingAs($tournament->creator)->test('pages::admin.tournament-edit', ['tournament' => $tournament])
+        ->assertSet('description', '')
+        ->set('description', 'Stream on the big screen, pizza at the break.')
+        ->call('save')
+        ->assertSet('error', '');
+
+    expect($tournament->refresh()->description)->toBe('Stream on the big screen, pizza at the break.')
+        ->and($tournament->event->payload()['content'])->toStartWith('Stream on the big screen, pizza at the break.')
+        ->and(calendarVersions($tournament))->toHaveCount(2)
+        ->and(TournamentModerationEntry::query()->sole()->details)->toHaveKey('description');
+
+    $this->travel(3)->seconds();
+
+    expect(fn () => app(TournamentEditor::class)->update($tournament, $tournament->creator, ['description' => str_repeat('a', 1001)]))
+        ->toThrow(TournamentRuleViolation::class, __('Keep the description to 1000 characters.'));
+});

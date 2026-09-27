@@ -42,8 +42,8 @@ use Illuminate\Support\Facades\Gate;
  *   none, so the tournament is unrated for its whole run (fail closed, NIP
  *   "Tournaments", rev. 8.1).
  *
- * From the draw on (draw pending, running) only the name and the start
- * change: the draw committed to a Bitcoin block with these entries and this
+ * From the draw on (draw pending, running) only the name, the description
+ * and the start change: the draw committed to a Bitcoin block with these entries and this
  * format, so the format, game and capacity are locked. There is no redo of
  * the draw: the league would pick among block hashes it has seen, which is
  * exactly what the commitment rules out (NIP "Tournament Draw"). A finished
@@ -56,7 +56,7 @@ use Illuminate\Support\Facades\Gate;
 final class TournamentEditor
 {
     /** Fields that may still change after the draw. */
-    public const AFTER_DRAW = ['name', 'starts_at'];
+    public const AFTER_DRAW = ['name', 'description', 'starts_at'];
 
     /** Why a lineup is removed by a game correction (English key, translated for each player). */
     public const GAME_CORRECTED = 'The game or mode of the tournament was corrected.';
@@ -67,7 +67,7 @@ final class TournamentEditor
     public function __construct(private TournamentPublisher $publisher, private TournamentModeration $moderation) {}
 
     /**
-     * @param  array{name?: string, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null}  $changes
+     * @param  array{name?: string, description?: string|null, starts_at?: CarbonImmutable, signup_closes_at?: CarbonImmutable, capacity?: int, results_mode?: TournamentResultsMode, director_ids?: list<int>, game?: string, mode?: string, format?: TournamentFormat, options?: array<string, mixed>, time_window?: int, on_site?: bool, stations?: int|null, times?: array<string, float>|null}  $changes
      * @return list<string> the fields that changed
      *
      * @throws TournamentRuleViolation
@@ -243,7 +243,7 @@ final class TournamentEditor
         }
 
         if (! $tournament->isBeforeDraw() && array_diff(array_keys($diff), self::AFTER_DRAW) !== []) {
-            throw new TournamentRuleViolation('locked', __('The draw has run: format, game, capacity and sign-up are locked. Only the name and the start time can change.'));
+            throw new TournamentRuleViolation('locked', __('The draw has run: format, game, capacity and sign-up are locked. Only the name, the description and the start time can change.'));
         }
     }
 
@@ -255,6 +255,10 @@ final class TournamentEditor
     {
         if (isset($diff['name']) && (trim((string) $changes['name']) === '' || mb_strlen((string) $changes['name']) > 80)) {
             throw new TournamentRuleViolation('name', __('Give the tournament a name of up to 80 characters.'));
+        }
+
+        if (isset($diff['description']) && mb_strlen((string) $changes['description']) > 1000) {
+            throw new TournamentRuleViolation('description', __('Keep the description to 1000 characters.'));
         }
 
         $startsAt = $changes['starts_at'] ?? $tournament->starts_at;
