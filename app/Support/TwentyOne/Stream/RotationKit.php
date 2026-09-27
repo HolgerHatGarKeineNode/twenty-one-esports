@@ -887,4 +887,36 @@ final class RotationKit
     {
         return '+'.$n.' more open '.($n === 1 ? 'spot' : 'spots');
     }
+
+    /**
+     * The live viewer badge of a scene: an eye, the count ("12,345", thousands separated) and the word "watching",
+     * right-aligned to $right on the baseline $y. Null when the count is unknown (anything but an int): the scene then
+     * renders exactly as it does without a badge. 0 is a real count and shows as "0 watching".
+     *
+     * The word is set with text-anchor="end" at $right, the count ends one mono space before it, so the right edge
+     * is exact; only the eye's position depends on the count's width (Unbounded: the advance table + 4 % reserve).
+     * The eye is a 24-unit drawing (almond outline, filled pupil) scaled to the count's cap height.
+     *
+     * @return array{count: string, countX: float, wordX: float, eyeX: float, eyeY: float, eyeScale: float, box: string, x0: float, y: float, countFont: string, countSize: float, wordSize: float}|null
+     */
+    public static function viewerBadge(mixed $viewers, float $right, float $y, string $countFont, float $countSize, float $wordSize): ?array
+    {
+        if (! is_int($viewers)) {
+            return null;
+        }
+        $count = number_format(max(0, $viewers));
+        $countW = self::width($count, $countFont, $countSize) * ($countFont === self::MONO ? 1.0 : 1.04);
+        $countX = $right - self::width('watching', self::MONO, $wordSize) - 0.6 * $wordSize;
+        $cap = $countSize * ($countFont === self::MONO ? 0.73 : 0.75);
+        $eyeScale = round($cap / 13, 3);
+        $eyeX = $countX - $countW - round(0.5 * $countSize) - 24 * $eyeScale;
+        $top = $y - max($cap, 0.73 * $wordSize);
+
+        return [
+            'count' => $count, 'countX' => round($countX, 1), 'wordX' => $right,
+            'eyeX' => round($eyeX, 1), 'eyeY' => round($y - $cap / 2 - 12 * $eyeScale, 1), 'eyeScale' => $eyeScale,
+            'box' => floor($eyeX - 2).' '.floor($top - 3).' '.ceil($right + 2).' '.ceil($y + 0.25 * $wordSize + 2),
+            'x0' => floor($eyeX), 'y' => $y, 'countFont' => $countFont, 'countSize' => $countSize, 'wordSize' => $wordSize,
+        ];
+    }
 }

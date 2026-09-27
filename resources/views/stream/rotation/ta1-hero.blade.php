@@ -82,4 +82,6 @@
 <text data-unit="cta" data-box="703 522 1209 574" x="704" y="560" font-family="Unbounded" font-weight="800" font-size="40" fill="#F7931A">{{ $spots['full'] ? 'Watch it live' : 'Sign up' }}</text>
 <text data-unit="url" data-box="703 578 1209 604" x="704" y="598" font-family="JetBrains Mono" font-weight="700" font-size="{{ $urlSize }}" fill="#FFFFFF">{{ $url }}</text>
 @unless ($spots['full'])<text data-unit="pull-out" x="680" y="652" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">You can pull out until sign-up closes.</text>@endunless
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 64, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 </svg>

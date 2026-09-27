@@ -34,4 +34,6 @@
 @endforeach
 @if ($already)<text data-unit="already" data-box="39 650 860 680" x="40" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">{{ $already }}</text>@endif
 <text x="1240" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A" text-anchor="end">esports.einundzwanzig.space</text>
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 92, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 </svg>

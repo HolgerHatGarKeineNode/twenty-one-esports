@@ -75,4 +75,6 @@
 <rect x="0" y="616" width="1280" height="104" fill="#F7931A"/>
 <text x="40" y="678" font-family="Unbounded" font-weight="800" font-size="28" fill="#17120A">The next game starts when you do.</text>
 <text x="1240" y="676" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A" text-anchor="end">esports.einundzwanzig.space</text>
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 72, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif
 </svg>

@@ -29,6 +29,9 @@
      * and always:
      * @var string $stats        ONE line of real stats, e.g. "14 games played · 2 live · 3 clans"
      * @var string $url          e.g. "esports.einundzwanzig.space"
+     * @var int|null $viewers     optional; live viewers of the stream. Null (or absent) = unknown: no badge, the output is
+     *                           exactly as without it. Single layout: "<eye> N watching" right-aligned on the call to
+     *                           action line; gallery: in the header, ending at x 1024 or 32 px left of "N GAMES LIVE".
      *
      * Fonts: "Unbounded" (800) and "JetBrains Mono" (700, latin + latin-ext files) through a private FONTCONFIG_FILE;
      * nothing else is installed. Variable strings are filtered to the code points the mono files cover ($covered);
@@ -274,6 +277,8 @@
 {{-- Call to action and stats --}}
 <rect x="720" y="504" width="520" height="2" fill="#2A2A30"/>
 <text x="720" y="562" font-family="Unbounded" font-weight="800" font-size="24" fill="#FFFFFF">Play the next game</text>
+@php($vb = \App\Support\TwentyOne\Stream\RotationKit::viewerBadge($viewers ?? null, 1240, 562, \App\Support\TwentyOne\Stream\RotationKit::MONO, 18, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif
 <text x="720" y="608" font-family="JetBrains Mono" font-weight="700" font-size="30" fill="#F7931A">{{ $fit($url, 28) }}</text>
 <text x="720" y="672" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $fit($stats, 48) }}</text>
 @else
@@ -282,6 +287,8 @@
 <text x="112" y="56" font-family="Unbounded" font-weight="800" font-size="24" fill="#FFFFFF">TWENTY ONE ESPORTS</text>
 <text x="1240" y="{{ $more > 0 ? 44 : 56 }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A" text-anchor="end">{{ $liveCount }} {{ $liveCount === 1 ? 'GAME' : 'GAMES' }} LIVE</text>
 @if ($more > 0)<text x="1240" y="70" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="end">+{{ $more }} more live</text>@endif
+@php($vb = \App\Support\TwentyOne\Stream\RotationKit::viewerBadge($viewers ?? null, min(1024, 1240 - 32 - max(mb_strlen($liveCount.($liveCount === 1 ? ' GAME' : ' GAMES').' LIVE') * 13.2, $more > 0 ? mb_strlen('+'.$more.' more live') * 9.6 : 0)), 56, \App\Support\TwentyOne\Stream\RotationKit::MONO, 22, 22))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif
 
 {{-- Game cards --}}
 @foreach ($cardsOut as $card)

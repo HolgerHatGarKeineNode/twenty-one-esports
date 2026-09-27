@@ -83,4 +83,6 @@
 @if ($days)<text data-unit="cd-days" x="{{ $cells['x0'] - 10 }}" y="636" font-family="Unbounded" font-weight="800" font-size="{{ $cdSize }}" fill="#F7931A" text-anchor="end">{{ $days }}</text>@endif
 @endif
 </g>
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 84, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 </svg>

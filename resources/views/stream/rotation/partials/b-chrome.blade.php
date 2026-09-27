@@ -8,7 +8,10 @@
 @php($tickX = 40)
 <use href="#mark" xlink:href="#mark" x="40" y="32" width="40" height="40"/>
 <text x="94" y="59" font-family="Unbounded" font-weight="800" font-size="18" fill="#FFFFFF">TWENTY ONE ESPORTS</text>
-@if (! empty($bugNote))<text data-unit="bug-note" data-box="380 36 900 66" x="380" y="59" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $bugNote }}</text>@endif
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 59, K::DISPLAY, 18, 18))
+@if (! empty($bugNote) && ! $vb)<text data-unit="bug-note" data-box="380 36 900 66" x="380" y="59" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $bugNote }}</text>@endif
+@if (! empty($bugNote) && $vb)<text data-unit="bug-note" data-box="380 36 {{ $vb['x0'] - 24 }} 66" x="380" y="59" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ K::fit($bugNote, K::MONO, 18, $vb['x0'] - 404) }}</text>@endif
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif
 <rect x="0" y="664" width="1280" height="56" fill="#F7931A"/>
 @foreach ($tick as $i => $item)
 @if ($i > 0)<rect x="{{ $tickX }}" y="688" width="8" height="8" fill="#17120A"/>@php($tickX += 32)@endif

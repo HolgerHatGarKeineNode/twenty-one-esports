@@ -53,4 +53,6 @@
 <use href="#mark-dark" xlink:href="#mark-dark" x="680" y="624" width="48" height="48"/>
 <text x="744" y="642" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Watch it, then play your own:</text>
 <text x="744" y="670" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#17120A">esports.einundzwanzig.space</text>
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 64, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 </svg>

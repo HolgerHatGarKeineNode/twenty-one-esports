@@ -48,4 +48,6 @@
 @endforeach
 <text x="40" y="672" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#ADADB0">Casual Elo, just for fun. Log in and climb.</text>
 <text x="680" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">esports.einundzwanzig.space</text>
+@php($vb = K::viewerBadge($viewers ?? null, 1024, 64, K::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 </svg>

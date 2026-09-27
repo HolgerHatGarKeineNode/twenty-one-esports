@@ -24,4 +24,6 @@
 <text x="{{ $tx }}" y="364" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#FFFFFF">Tap the bolt in your Nostr client.</text>
 @endif
 <text x="{{ $tx }}" y="672" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#F7931A">esports.einundzwanzig.space</text>
+@php($vb = \App\Support\TwentyOne\Stream\RotationKit::viewerBadge($viewers ?? null, 1024, 64, \App\Support\TwentyOne\Stream\RotationKit::DISPLAY, 24, 18))
+@if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#F7931A', 'countInk' => '#FFFFFF', 'wordInk' => '#ADADB0'])@endif
 </svg>
