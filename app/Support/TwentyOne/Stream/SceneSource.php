@@ -9,6 +9,7 @@ use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
 use App\Models\Clan;
 use App\Support\Chess\ChessGameService;
+use LogicException;
 
 /**
  * What the stream scene shows, read from the database: every active chess
@@ -17,6 +18,10 @@ use App\Support\Chess\ChessGameService;
  * last minute with their result, turned into the data contract of
  * resources/views/stream/scene.blade.php. One game renders the single layout.
  *
+ * The rotation scenes (resources/views/stream/rotation/*) take their data
+ * from {@see rotation()}: the same game cards, the last moves, the counts of
+ * StreamStats and the static QR codes (resources/stream/qr).
+ *
  * Names are the public profile names the lobby shows (User::displayName()).
  * Stats are real counts only; nothing here is a placeholder or a rating.
  */
@@ -24,6 +29,12 @@ class SceneSource
 {
     /** Cards the gallery shows; further live games are counted as "+N more live". */
     public const MAX_GAMES = 6;
+
+    /** Moves a match scene lists. */
+    public const MOVES = 10;
+
+    /** @var array<string, string> QR name => SVG file content, read once */
+    private array $qrCodes = [];
 
     public function __construct(
         private ChessGameService $chess,
@@ -91,6 +102,62 @@ class SceneSource
             'stats' => $this->stats(),
             'url' => (string) config('twentyone.stream.scene.url'),
         ];
+    }
+
+    /**
+     * The data of one rotation scene, as its view's docblock describes it:
+     * a match (x1) gets its game with the last moves, a gallery (x2) the
+     * cards, the teasers the counts, the zap and scan scenes their QR code,
+     * B3 the daily game on show (if any).
+     *
+     * @param  list<ChessGame>  $games  the games on show, in display order
+     * @param  array<string, mixed>  $stats  StreamStats::all()
+     * @return array<string, mixed>
+     */
+    public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats): array
+    {
+        if (str_ends_with($scene, '1')) {
+            $game = collect($games)->first(fn (ChessGame $game): bool => $game->id === $gameId) ?? $games[0] ?? null;
+
+            if ($game === null) {
+                throw new LogicException('A match scene needs a game.');
+            }
+
+            return ['game' => [...$this->card($game, $nowMs), 'moves' => $this->moves($game)], 'stats' => $stats];
+        }
+
+        if (str_ends_with($scene, '2')) {
+            return ['games' => array_map(fn (ChessGame $game): array => $this->card($game, $nowMs), $games), 'more' => $more, 'stats' => $stats];
+        }
+
+        return match ($scene) {
+            'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats],
+            'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats],
+            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs)],
+            default => ['stats' => $stats],
+        };
+    }
+
+    /**
+     * The last MOVES moves in SAN, oldest first (as the moves table stores them;
+     * the relation sorts by ply ascending, hence the reorder).
+     *
+     * @return list<string>
+     */
+    public function moves(ChessGame $game): array
+    {
+        return array_values(array_reverse($game->moves()->reorder('ply', 'desc')->limit(self::MOVES)->pluck('san')->map(fn ($san): string => (string) $san)->all()));
+    }
+
+    /**
+     * A static QR code (resources/stream/qr/<name>.svg), '' when the file is missing:
+     * the scene then leaves the code out instead of showing a broken box.
+     */
+    public function qr(string $name): string
+    {
+        $path = resource_path('stream/qr/'.$name.'.svg');
+
+        return $this->qrCodes[$name] ??= is_file($path) ? (string) file_get_contents($path) : '';
     }
 
     /**

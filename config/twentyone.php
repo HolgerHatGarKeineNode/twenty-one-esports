@@ -162,6 +162,23 @@ return [
         | app itself runs in UTC); the clan spotlight moves on every
         | `clan_spotlight_seconds`.
         */
+        /*
+        | The scene rotation (RotationPlanner), in seconds. With games: match
+        | (blitz longer), gallery from two games, then teasers from the pool
+        | of nine. Without games: teasers, and every `loop_every_rounds`-th
+        | round one pass of the promo loop (its length read with ffprobe at
+        | start; `loop_fallback_seconds` when that fails).
+        */
+        'rotation' => [
+            'match_seconds' => 45,
+            'blitz_match_seconds' => 60,
+            'gallery_seconds' => 20,
+            'teaser_seconds' => 12,
+            'teasers_per_round' => 3,
+            'loop_every_rounds' => 3,
+            'loop_fallback_seconds' => 60,
+        ],
+
         'stats' => [
             'cache_seconds' => 15,
             'timezone' => 'Europe/Berlin',

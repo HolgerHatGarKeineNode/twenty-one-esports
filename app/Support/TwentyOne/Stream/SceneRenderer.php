@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Process;
 use RuntimeException;
 
 /**
- * Scene data → SVG (resources/views/stream/scene.blade.php) → PNG bytes.
+ * Scene data → SVG (resources/views/stream/scene.blade.php, or a rotation
+ * scene under resources/views/stream/rotation) → PNG bytes.
  *
  * `rsvg-convert` reads the SVG on stdin and writes the PNG to stdout, with a
  * private fontconfig that knows only the committed brand fonts
@@ -47,20 +48,22 @@ final class SceneRenderer
 
     /**
      * @param  array<string, mixed>  $scene  the view's data contract
+     * @param  view-string  $view
      */
-    public function svg(array $scene): string
+    public function svg(array $scene, string $view = 'stream.scene'): string
     {
-        return view('stream.scene', $scene)->render();
+        return view($view, $scene)->render();
     }
 
     /**
      * @param  array<string, mixed>  $scene
+     * @param  view-string  $view
      *
      * @throws RuntimeException when rsvg-convert fails
      */
-    public function png(array $scene): string
+    public function png(array $scene, string $view = 'stream.scene'): string
     {
-        $svg = $this->svg($scene);
+        $svg = $this->svg($scene, $view);
 
         if ($svg === $this->lastSvg && $this->lastPng !== null) {
             return $this->lastPng;

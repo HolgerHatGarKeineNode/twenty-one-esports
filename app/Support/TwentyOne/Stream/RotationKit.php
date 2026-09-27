@@ -135,6 +135,8 @@ final class RotationKit
     /**
      * The game's mode for a scene, in sentence case: "LIVE · CHESS BLITZ 5+3 · CASUAL" -> "Blitz 5+3, casual".
      * A result (after the game) wins over the mode.
+     *
+     * @param  array<string, mixed>  $game
      */
     public static function modeLabel(array $game): string
     {
@@ -149,7 +151,11 @@ final class RotationKit
         return $label === '' ? 'Chess, casual' : mb_strtoupper(mb_substr($label, 0, 1)).mb_substr($label, 1);
     }
 
-    /** True for a daily (correspondence) game: its clock is the time left for one move. */
+    /**
+     * True for a daily (correspondence) game: its clock is the time left for one move.
+     *
+     * @param  array<string, mixed>  $game
+     */
     public static function isDaily(array $game): bool
     {
         return (bool) preg_match('/CORRESPONDENCE|DAILY/i', (string) ($game['mode'] ?? ''));
@@ -159,7 +165,7 @@ final class RotationKit
      * The last moves as numbered rows: [number, white SAN|null, black SAN|null], numbered from the FEN's move
      * number and side to move. Without a usable list: [].
      *
-     * @param  list<string>|null  $moves  the last up to 10 SAN moves, oldest first
+     * @param  array<mixed>|null  $moves  the last up to 10 SAN moves, oldest first (anything else is dropped)
      * @return list<array{0: int, 1: ?string, 2: ?string}>
      */
     public static function moveRows(?array $moves, ?string $fen, int $limit = 10): array
@@ -182,7 +188,8 @@ final class RotationKit
             if ($rows === [] || end($rows)[0] !== $n) {
                 $rows[] = [$n, null, null];
             }
-            $rows[count($rows) - 1][$col] = $san;
+            $i = count($rows) - 1;
+            $rows[$i] = $col === 1 ? [$rows[$i][0], $san, $rows[$i][2]] : [$rows[$i][0], $rows[$i][1], $san];
             $ply++;
         }
 
@@ -200,7 +207,7 @@ final class RotationKit
     /**
      * Squares and pieces of one board at ($x, $y) with square size $sq; white at the bottom.
      *
-     * @param  array{from: string, to: string}|null  $lastMove
+     * @param  array{from?: mixed, to?: mixed}|null  $lastMove
      * @return array{x: float, y: float, sq: float, size: float, squares: list<array{x: float, y: float, fill: string}>, pieces: list<array{id: string, x: float, y: float}>}
      */
     public static function board(?string $fen, ?array $lastMove, float $x, float $y, float $sq, string $theme = 'house'): array
@@ -236,7 +243,11 @@ final class RotationKit
         return ['x' => $x, 'y' => $y, 'sq' => $sq, 'size' => 8 * $sq, 'squares' => $squares, 'pieces' => $pieces];
     }
 
-    /** A count from the stats array, or null when it is missing or not a whole number >= 0. */
+    /**
+     * A count from the stats array, or null when it is missing or not a whole number >= 0.
+     *
+     * @param  array<string, mixed>  $stats
+     */
     public static function count(array $stats, string $key): ?int
     {
         $v = $stats[$key] ?? null;
@@ -255,6 +266,7 @@ final class RotationKit
      *
      * Accepts StreamStats' keys (wins, draws, losses) and the short ones (w, d, l).
      *
+     * @param  array<string, mixed>  $stats
      * @return list<array{name: string, elo: int, games: ?int, w: ?int, d: ?int, l: ?int}>
      */
     public static function ladder(array $stats, string $key, int $limit): array
@@ -275,7 +287,11 @@ final class RotationKit
         return $rows;
     }
 
-    /** A whole number >= 0 under $key, or null. */
+    /**
+     * A whole number >= 0 under $key, or null.
+     *
+     * @param  array<string, mixed>  $row
+     */
     private static function whole(array $row, string $key): ?int
     {
         $v = $row[$key] ?? null;
@@ -287,6 +303,7 @@ final class RotationKit
      * Direction B's ticker: the counts that are known, as text, then the site URL. Mono 20 (12 px a character),
      * 56 px between items (24 + an 8 px square + 24); counts are dropped from the end until everything fits 1200 px.
      *
+     * @param  array<string, mixed>  $stats
      * @return list<string>
      */
     public static function tickerItems(array $stats): array
@@ -317,6 +334,7 @@ final class RotationKit
     /**
      * Direction C's stats bar: [label, value] for every known count.
      *
+     * @param  array<string, mixed>  $stats
      * @return list<array{0: string, 1: int}>
      */
     public static function statCells(array $stats): array
@@ -332,7 +350,11 @@ final class RotationKit
         return $cells;
     }
 
-    /** "1/0/0" or null when any part is missing. */
+    /**
+     * "1/0/0" or null when any part is missing.
+     *
+     * @param  array{w: ?int, d: ?int, l: ?int}  $row
+     */
     public static function record(array $row): ?string
     {
         return $row['w'] === null || $row['d'] === null || $row['l'] === null ? null : $row['w'].'/'.$row['d'].'/'.$row['l'];

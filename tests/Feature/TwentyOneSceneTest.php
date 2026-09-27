@@ -3,8 +3,11 @@
 use App\Enums\ChessEndReason;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use Illuminate\Support\Facades\Blade;
 
@@ -184,4 +187,37 @@ test('the stream views define no closures, which leak on every render without th
     }
 
     expect($closures)->toBe([]);
+});
+
+test('every rotation scene renders from the real data: moves in SAN, the QR codes, escaped names', function () {
+    $chess = app(ChessGameService::class);
+    $white = User::factory()->create(['name' => 'Pleb <script>alert(1)</script>']);
+    $black = User::factory()->create(['name' => 'Satoshi']);
+    $game = $chess->start($white, $black);
+    foreach (['e2e4', 'e7e5', 'g1f3'] as $i => $uci) {
+        $game = $chess->move($game->refresh(), $i % 2 === 0 ? $white : $black, $uci);
+    }
+    ChessGame::factory()->daily()->create();
+    $source = app(SceneSource::class);
+    ['games' => $games, 'more' => $more] = $source->sceneGames(60);
+    $stats = app(StreamStats::class)->all();
+    $renderer = SceneRenderer::fromConfig();
+
+    $svgs = [];
+    foreach (RotationPlanner::VIEWS as $scene => $view) {
+        $svgs[$scene] = $renderer->svg($source->rotation($scene, $game->id, $games, $more, (int) now()->getTimestampMs(), $stats), $view);
+    }
+
+    expect($source->moves($game->refresh()))->toBe(['e4', 'e5', 'Nf3'])
+        ->and(array_filter($svgs, fn (string $svg): bool => ! str_contains($svg, 'width="1280" height="720"')))->toBe([])
+        ->and(array_filter($svgs, fn (string $svg): bool => str_contains($svg, '<script>')))->toBe([])
+        ->and($svgs['b1'])->toContain('Nf3')
+        ->and($svgs['c1'])->toContain('Nf3')
+        ->and($svgs['a1'])->toContain('Pleb &lt;script')
+        // The QR codes are drawn (their module path), never the address as text.
+        ->and($svgs['a5'])->toContain('<path style="stroke:#17120a"')
+        ->and($svgs['c5'])->toContain('<path style="stroke:#17120a"')
+        ->and($svgs['c4'])->toContain('<path style="stroke:#17120a"')
+        ->and(implode('', $svgs))->not->toContain('getalby')
+        ->and(implode('', $svgs))->not->toContain('LNURL');
 });

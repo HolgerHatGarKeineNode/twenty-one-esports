@@ -238,24 +238,48 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
 });
 
 /**
- * A SceneSource whose liveGame() answers from a script: a ChessGame, null,
- * or a Throwable to throw, one entry per poll (the last one repeats).
+ * A SceneSource whose sceneGames() answers from a script: the one game on
+ * show, none (null), or a Throwable to throw, one entry per poll (the last one repeats).
  *
  * @param  list<ChessGame|Throwable|null>  $answers
  */
 function scriptedSource(array $answers): void
 {
     $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class)])->makePartial();
-    $source->shouldReceive('liveGame')->andReturnUsing(function () use (&$answers) {
+    $source->shouldReceive('sceneGames')->andReturnUsing(function () use (&$answers) {
         $answer = count($answers) > 1 ? array_shift($answers) : $answers[0];
 
         if ($answer instanceof Throwable) {
             throw $answer;
         }
 
-        return $answer;
+        return ['games' => $answer === null ? [] : [$answer->fresh(['white', 'black'])], 'more' => 0];
     });
     app()->instance(SceneSource::class, $source);
+}
+
+/**
+ * A render "binary" that answers with a PNG signature; with `$failRotation`
+ * it fails on the rotation scenes (their defs carry "mark-dark") and
+ * renders the old game scene.
+ */
+function fakeRenderer(string $dir, bool $failRotation = false): void
+{
+    $check = $failRotation ? 'if printf %s "$svg" | grep -q mark-dark; then echo rotation broken >&2; exit 1; fi'."\n" : '';
+    File::put($dir.'/rsvg-convert', "#!/bin/sh\nsvg=$(cat)\n{$check}printf '\\211PNG'\n");
+    chmod($dir.'/rsvg-convert', 0755);
+    config(['twentyone.stream.scene.rsvg_convert' => $dir.'/rsvg-convert']);
+}
+
+/**
+ * Short rotation slots, so a few seconds show a whole round.
+ */
+function shortRotation(): void
+{
+    config(['twentyone.stream.rotation' => [
+        'match_seconds' => 1, 'blitz_match_seconds' => 1, 'gallery_seconds' => 1, 'teaser_seconds' => 1,
+        'teasers_per_round' => 3, 'loop_every_rounds' => 3, 'loop_fallback_seconds' => 1,
+    ]]);
 }
 
 /**
@@ -389,6 +413,50 @@ test('an active daily game alone brings the scene, not the loop', function () {
 
     expect(Artisan::output())->toContain('ffmpeg started mode=scene')
         ->and(Artisan::output())->not->toContain('ffmpeg started mode=loop');
+});
+
+test('with two games the rotation shows match, gallery and teasers', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    $blitz = ChessGame::factory()->create();
+    ChessGame::factory()->daily()->create();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5.5]);
+    $output = Artisan::output();
+
+    expect($output)->toContain('rotation: a1 match game '.$blitz->id.', rendered in', 'rotation: a2 gallery, rendered in', 'rotation: a3 teaser, rendered in', 'rotation: a4 teaser')
+        ->and($output)->not->toContain('rotation: promo loop')
+        ->and($output)->not->toContain('ffmpeg started mode=loop');
+});
+
+test('without games the stream starts on the promo loop and goes on with the teasers', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 4]);
+    $output = Artisan::output();
+
+    expect($output)->toContain('promo length not readable, the loop slot lasts 1 s', 'rotation: promo loop', 'ffmpeg started mode=loop', 'rotation: a3 teaser', 'ffmpeg started mode=scene')
+        ->and(strpos($output, 'rotation: promo loop'))->toBeLessThan(strpos($output, 'rotation: a3 teaser'));
+});
+
+test('a rotation scene that fails to render gives way to the game scene, not to the loop', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir, failRotation: true);
+    config(['twentyone.stream.scene.render_failure_seconds' => 2]);
+    $game = ChessGame::factory()->create();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 4]);
+    $output = Artisan::output();
+
+    expect(substr_count($output, 'rotation scene a1 match game '.$game->id.' failed, showing the game scene'))->toBe(1)
+        ->and($output)->not->toContain('back to the loop')
+        ->and($output)->not->toContain('ffmpeg started mode=loop');
 });
 
 test('a hanging renderer is cut off after its timeout and the loop takes over by wall-clock time', function () {

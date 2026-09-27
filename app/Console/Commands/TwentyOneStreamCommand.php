@@ -14,8 +14,10 @@ use App\Support\TwentyOne\Stream\MusicPlaylist;
 use App\Support\TwentyOne\Stream\PlaylistWriter;
 use App\Support\TwentyOne\Stream\PublicPlaylist;
 use App\Support\TwentyOne\Stream\PublishSchedule;
+use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
+use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
 use App\Support\TwentyOne\TwentyOneSigner;
 use Closure;
@@ -99,13 +101,16 @@ class TwentyOneStreamCommand extends Command
 
     private ?EncoderRun $pending = null;
 
+    /** Whether the rotation scene failed on the last frame (logged once per series). */
+    private bool $rotationFailing = false;
+
     /** @var list<string> run ids of the encoders this process started */
     private array $runIds = [];
 
     /**
      * Execute the console command.
      */
-    public function handle(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source): int
+    public function handle(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts): int
     {
         $prepared = (string) config('twentyone.stream.prepared');
         $hlsDir = rtrim((string) config('twentyone.stream.hls_dir'), '/');
@@ -132,6 +137,7 @@ class TwentyOneStreamCommand extends Command
         $public = new PublicPlaylist($hlsDir, $playlistName);
         // The instance can be reused (Artisan::call in one process): only runs of this start count.
         $this->runIds = [];
+        $this->rotationFailing = false;
 
         if ($public->recoveredFrom === 'unreadable') {
             $this->log('WARNING: playlist state '.$public->statePath().' is unreadable; MEDIA-SEQUENCE continues from the clock floor '.$public->state()->mediaSequence);
@@ -150,7 +156,7 @@ class TwentyOneStreamCommand extends Command
         }
 
         try {
-            $this->supervise($builder, $publisher, $source, $public, $hlsDir, $prepared);
+            $this->supervise($builder, $publisher, $source, $counts, $public, $hlsDir, $prepared);
         } finally {
             // Also after an exception: `ended` goes out, the encoders stop.
             $this->shutdown($builder, $publisher, $public);
@@ -159,11 +165,14 @@ class TwentyOneStreamCommand extends Command
         return self::SUCCESS;
     }
 
-    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, PublicPlaylist $public, string $hlsDir, string $prepared): void
+    private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, PublicPlaylist $public, string $hlsDir, string $prepared): void
     {
         $renderer = SceneRenderer::fromConfig();
+        // Games that ended within this window stay on show with their result.
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
-        $modes = new ModeMachine($hysteresis);
+        // The planner decides scene or loop; the machine only keeps a failed scene off.
+        $modes = new ModeMachine(0);
+        $planner = RotationPlanner::fromConfig($this->promoSeconds($prepared));
         $backoff = new Backoff(
             (int) config('twentyone.stream.backoff.initial_seconds', 5),
             (int) config('twentyone.stream.backoff.max_seconds', 300),
@@ -184,7 +193,11 @@ class TwentyOneStreamCommand extends Command
         /** @var list<ChessGame> $sceneGames */
         $sceneGames = [];
         $sceneMore = 0;
-        $scene = null;
+        /** @var array<string, mixed> $stats the last counts that could be read */
+        $stats = [];
+        $slotKey = null;
+        /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
+        $frame = null;
         $stopAt = is_numeric($this->option('stop-after')) ? microtime(true) + (float) $this->option('stop-after') : null;
 
         while (! $this->stopping) {
@@ -196,24 +209,16 @@ class TwentyOneStreamCommand extends Command
                 break;
             }
 
-            // Once a second: is a live game running, and what does the scene show?
-            // A database that fails or hangs counts as "no live game": the
-            // stream falls back to the loop instead of dying (FD1).
+            // Once a second: which games are on show (live ones, daily included,
+            // and those that just ended), which rotation slot runs, and its data.
+            // A database that fails or hangs counts as "no game": the rotation
+            // goes on with the teasers and the last counts instead of dying (FD1).
             if ($now >= $nextPollAt) {
                 $nextPollAt = $now + 1;
                 $before = $modes->mode();
 
                 try {
-                    $live = $source->liveGame();
-                    $mode = $modes->tick($live !== null, (int) $now);
-
-                    if ($mode === ModeMachine::SCENE) {
-                        // Every live game (a gallery from two on) and those that just ended;
-                        // when none is left inside the window, the last picture stays.
-                        ['games' => $games, 'more' => $sceneMore] = $source->sceneGames($hysteresis);
-                        $sceneGames = $games !== [] ? $games : array_values(array_filter(array_map(fn (ChessGame $game): ?ChessGame => $game->fresh(['white', 'black']), $sceneGames)));
-                        $scene = $sceneGames === [] ? $scene : $source->gallery($sceneGames, $sceneMore, (int) ($now * 1000));
-                    }
+                    ['games' => $sceneGames, 'more' => $sceneMore] = $source->sceneGames($hysteresis);
 
                     if ($pollFailures > 0) {
                         $this->log('database poll recovered after '.$pollFailures.' failed polls');
@@ -224,17 +229,36 @@ class TwentyOneStreamCommand extends Command
                         $this->log('database poll failed, treating as no live game: '.$this->describe($e));
                     }
 
-                    $live = null;
+                    [$sceneGames, $sceneMore] = [[], 0];
                     $pollFailures++;
-                    $modes->tick(false, (int) $now);
 
                     if ($pollFailures >= self::POLL_FAILURES_FOR_LOOP && $modes->mode() === ModeMachine::SCENE) {
                         $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
                     }
                 }
 
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames));
+                $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
+
+                if ($slot['scene'] !== null) {
+                    $stats = $this->readStats($counts, $stats, $pollFailures === 0);
+                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame);
+                }
+
+                $key = $slot['kind'].':'.$slot['scene'].':'.$slot['gameId'].':'.$slot['until'];
+
+                if ($key !== $slotKey) {
+                    $slotKey = $key;
+
+                    if ($frame !== null && $slot['scene'] !== null) {
+                        $frame['announce'] = true;
+                    } else {
+                        $this->log('rotation: promo loop');
+                    }
+                }
+
                 if ($modes->mode() !== $before) {
-                    $this->log('mode '.$before.' -> '.$modes->mode().($live !== null ? ' (game '.$live->number().')' : ''));
+                    $this->log('mode '.$before.' -> '.$modes->mode());
                 }
             }
 
@@ -258,7 +282,7 @@ class TwentyOneStreamCommand extends Command
             }
 
             foreach ([$this->active, $this->pending] as $run) {
-                if ($run === null || $run->mode !== ModeMachine::SCENE || $scene === null || $now - $run->lastFrameAt < 1) {
+                if ($run === null || $run->mode !== ModeMachine::SCENE || $frame === null || $now - $run->lastFrameAt < 1) {
                     continue;
                 }
 
@@ -277,8 +301,14 @@ class TwentyOneStreamCommand extends Command
                 }
 
                 $attemptAt = microtime(true);
-                $rendered = $this->sendSceneFrame($run, $renderer, $scene, $now, $renderFailingSince === null);
+                $rendered = $this->sendSceneFrame($run, $renderer, $frame, $now, $renderFailingSince === null);
                 $renderFailingSince = $rendered ? null : ($renderFailingSince ?? $attemptAt);
+
+                if ($rendered && $frame['announce']) {
+                    // One line per slot, with what its first frame cost (Blade + rsvg-convert).
+                    $this->log(sprintf('rotation: %s, rendered in %.0f ms', $frame['label'], 1000 * (microtime(true) - $attemptAt)));
+                    $frame['announce'] = false;
+                }
             }
 
             if ($this->pending !== null) {
@@ -448,17 +478,109 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * Render and send one frame. When the render fails the last good frame
-     * is sent again, so the picture holds instead of the encoder starving;
-     * only the first failure of a series is logged.
+     * The rotation slot's view and data, and the old single/gallery scene as
+     * the fallback while games are on show. The previous frame stays when the
+     * data cannot be built (a database that fails mid-read).
      *
-     * @param  array<string, mixed>  $scene
+     * @param  array{kind: string, scene: string|null, gameId: int|null, until: float}  $slot
+     * @param  list<ChessGame>  $games
+     * @param  array<string, mixed>  $stats
+     * @param  array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null  $previous
+     * @return array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null
+     */
+    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous): ?array
+    {
+        $scene = (string) $slot['scene'];
+
+        try {
+            return [
+                'view' => RotationPlanner::VIEWS[$scene],
+                'data' => $source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats),
+                'fallback' => $games === [] ? null : $source->gallery($games, $more, $nowMs),
+                'label' => $scene.' '.$slot['kind'].($slot['gameId'] !== null ? ' game '.$slot['gameId'] : ''),
+                'announce' => $previous['announce'] ?? false,
+            ];
+        } catch (Throwable $e) {
+            $this->log('scene data for '.$scene.' not built, keeping the last frame: '.$this->describe($e));
+
+            return $previous;
+        }
+    }
+
+    /**
+     * The counts for the teasers (StreamStats, cached); the last ones when
+     * the database fails, so a teaser never shows invented numbers.
+     *
+     * @param  array<string, mixed>  $last
+     * @return array<string, mixed>
+     */
+    private function readStats(StreamStats $counts, array $last, bool $databaseUp): array
+    {
+        if (! $databaseUp) {
+            return $last;
+        }
+
+        try {
+            return $counts->all();
+        } catch (Throwable $e) {
+            return $last;
+        }
+    }
+
+    /**
+     * One pass of the prepared promo in seconds (ffprobe), for the loop's
+     * slot in the rotation; the configured fallback when it cannot be read.
+     */
+    private function promoSeconds(string $prepared): float
+    {
+        $fallback = (float) config('twentyone.stream.rotation.loop_fallback_seconds', 60);
+
+        try {
+            $result = Process::timeout(10)->env(ChildEnvironment::withoutSecrets())
+                ->run([(string) config('twentyone.stream.ffprobe'), '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $prepared]);
+            $seconds = (float) trim($result->output());
+        } catch (Throwable $e) {
+            $seconds = 0.0;
+        }
+
+        if ($seconds < 1) {
+            $this->log('promo length not readable, the loop slot lasts '.$fallback.' s');
+
+            return $fallback;
+        }
+
+        return $seconds;
+    }
+
+    /**
+     * Render and send one frame: the rotation scene, else the old
+     * single/gallery scene while games are on show, else the last good frame
+     * again, so the picture holds instead of the encoder starving; only the
+     * first failure of a series is logged.
+     *
+     * @param  array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}  $frame
      * @return bool whether this frame rendered
      */
-    private function sendSceneFrame(EncoderRun $run, SceneRenderer $renderer, array $scene, float $now, bool $logFailure): bool
+    private function sendSceneFrame(EncoderRun $run, SceneRenderer $renderer, array $frame, float $now, bool $logFailure): bool
     {
         try {
-            $run->sendFrame($renderer->png($scene), $now);
+            try {
+                $png = $renderer->png($frame['data'], $frame['view']);
+                $this->rotationFailing = false;
+            } catch (Throwable $e) {
+                if ($frame['fallback'] === null) {
+                    throw $e;
+                }
+
+                if (! $this->rotationFailing) {
+                    $this->log('rotation scene '.$frame['label'].' failed, showing the game scene: '.$this->describe($e));
+                    $this->rotationFailing = true;
+                }
+
+                $png = $renderer->png($frame['fallback']);
+            }
+
+            $run->sendFrame($png, $now);
 
             return true;
         } catch (Throwable $e) {
