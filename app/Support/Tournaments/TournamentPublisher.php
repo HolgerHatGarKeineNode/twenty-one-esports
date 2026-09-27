@@ -4,21 +4,26 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Sleep;
 use Illuminate\Support\Str;
 
 /**
  * Publishing a draft opens its sign-up (P8b): the league key signs the
  * tournament as a NIP-52 time-based calendar event (`31923`, NIP
  * "Tournaments") and a new version of the league's calendar (`31924`, `d` =
- * `tournaments`) that lists every published tournament. Both go to the
+ * `tournaments`) that lists every published tournament; the calendar, shared
+ * by all tournaments, through its one coalescing writer
+ * (PublishTournamentCalendar). Both go to the
  * league relays after the commit (LeagueKey::publish, PublishNostrEvent);
  * never to a public relay unless `esports.relays` names one.
  *
@@ -30,7 +35,7 @@ use Illuminate\Support\Str;
  */
 final class TournamentPublisher
 {
-    /** How far ahead of the clock a version may be signed ({@see nextSignedAt()}). */
+    /** How far ahead of the clock a tournament's 31923 may be signed ({@see nextSignedAt()}). */
     public const MAX_AHEAD = 2;
 
     /**
@@ -61,9 +66,7 @@ final class TournamentPublisher
             }
 
             $slug = $locked->slug ?? Str::limit(Str::slug($locked->name), 50, '').'-'.$locked->id;
-            // Both times before anything is signed: a refusal leaves nothing half-published.
-            $eventAt = $this->nextSignedAt($league, Tournament::CALENDAR_EVENT, $slug);
-            $calendarAt = $this->nextSignedAt($league, Tournament::CALENDAR, 'tournaments');
+            $eventAt = $this->nextSignedAt($league, $slug);
             $locked->forceFill([
                 'slug' => $slug,
                 'signup_closes_at' => $signupClosesAt,
@@ -77,7 +80,7 @@ final class TournamentPublisher
             $locked->event_id = $event->id;
             $locked->save();
 
-            $this->publishCalendar($league, $calendarAt);
+            PublishTournamentCalendar::dispatch();
 
             return $locked;
         });
@@ -86,7 +89,7 @@ final class TournamentPublisher
     /**
      * A new version of a published tournament after an edit (NIP
      * "Tournaments": a change of time or rules is a new version of the same
-     * address) and of the league calendar. The `d` never changes; the ladder
+     * address), and the league calendar through its job. The `d` never changes; the ladder
      * is the stored one, frozen with the first version (a game or mode
      * correction before the draw re-derives it, TournamentEditor). Runs in
      * the caller's transaction, which holds the lock on the tournament.
@@ -105,32 +108,29 @@ final class TournamentPublisher
         $league = LeagueKey::fromConfig()
             ?? throw new TournamentRuleViolation('no_league_key', __('The league key is not set up, so nothing can be published yet.'));
 
-        // Both times before anything is signed: a refusal leaves nothing half-published.
-        $eventAt = $this->nextSignedAt($league, Tournament::CALENDAR_EVENT, $locked->slug);
-        $calendarAt = $this->nextSignedAt($league, Tournament::CALENDAR, 'tournaments');
+        $eventAt = $this->nextSignedAt($league, $locked->slug);
 
         $locked->event_id = $league->publish(Tournament::CALENDAR_EVENT, $this->tags($locked, $league->pubkey()), $this->content($locked), $eventAt)->id;
         $locked->save();
 
-        $this->publishCalendar($league, $calendarAt);
+        PublishTournamentCalendar::dispatch();
     }
 
     /**
-     * When the next version of an addressable event of the league may be
-     * signed: now, and at least one second after the version it replaces
-     * (two versions in one second leave the relays to keep the lower id,
-     * NIP-01, which may be the old one). Never more than MAX_AHEAD seconds
-     * in the future: a burst of changes would otherwise push the shared
-     * calendar ahead of the clock, and a tournament published "now" would
-     * sign an older calendar that relays drop. Past the cap the change is
-     * refused and can be repeated a moment later.
+     * When the next version of this tournament's own 31923 may be signed:
+     * now, and at least one second after the version it replaces (two
+     * versions in one second leave the relays to keep the lower id, NIP-01,
+     * which may be the old one). The floor is this tournament's alone, so
+     * nobody else's edits can refuse it. Never more than MAX_AHEAD seconds
+     * in the future; past the cap the change is refused and can be repeated
+     * a moment later (the edit page saves one change every 2 s anyway).
      *
      * @throws TournamentRuleViolation
      */
-    private function nextSignedAt(LeagueKey $league, int $kind, string $d): int
+    private function nextSignedAt(LeagueKey $league, string $slug): int
     {
         $now = now()->getTimestamp();
-        $previous = (int) NostrEvent::query()->where('pubkey', $league->pubkey())->where('kind', $kind)->where('d', $d)->max('signed_at');
+        $previous = (int) NostrEvent::query()->where('pubkey', $league->pubkey())->where('kind', Tournament::CALENDAR_EVENT)->where('d', $slug)->max('signed_at');
         $at = max($now, $previous + 1);
 
         if ($at > $now + self::MAX_AHEAD) {
@@ -142,9 +142,33 @@ final class TournamentPublisher
 
     /**
      * The league calendar lists every published tournament (a new version
-     * replaces the old one on the relays).
+     * replaces the old one on the relays). Its only writer, run by the
+     * coalescing PublishTournamentCalendar job: serialized by a lock, each
+     * version is signed at the current second and after the previous one.
+     * When the previous one was signed in this very second, the writer waits
+     * for the next second instead of dating the calendar ahead of the clock,
+     * so a tournament published later always lands in a newer calendar.
      */
-    private function publishCalendar(LeagueKey $league, int $signedAt): void
+    public function publishCalendar(): ?NostrEvent
+    {
+        $league = LeagueKey::fromConfig();
+
+        if ($league === null) {
+            return null;
+        }
+
+        return Cache::lock('tournament-calendar-writer', 30)->block(20, function () use ($league): NostrEvent {
+            $previous = (int) NostrEvent::query()->where('pubkey', $league->pubkey())->where('kind', Tournament::CALENDAR)->where('d', 'tournaments')->max('signed_at');
+
+            if ($previous >= now()->getTimestamp()) {
+                Sleep::until(CarbonImmutable::createFromTimestamp($previous + 1));
+            }
+
+            return $this->signCalendar($league, max(now()->getTimestamp(), $previous + 1));
+        });
+    }
+
+    private function signCalendar(LeagueKey $league, int $signedAt): NostrEvent
     {
         $tags = [['d', 'tournaments'], ['title', 'TWENTY ONE Esports tournaments']];
 
@@ -156,7 +180,7 @@ final class TournamentPublisher
 
         $tags[] = ['alt', 'Calendar: TWENTY ONE Esports tournaments'];
 
-        $league->publish(Tournament::CALENDAR, $tags, '', $signedAt);
+        return $league->publish(Tournament::CALENDAR, $tags, '', $signedAt);
     }
 
     /**

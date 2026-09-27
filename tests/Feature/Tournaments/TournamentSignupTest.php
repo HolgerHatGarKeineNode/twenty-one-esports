@@ -2,6 +2,7 @@
 
 use App\Enums\TournamentStatus;
 use App\Jobs\PublishNostrEvent;
+use App\Jobs\PublishTournamentCalendar;
 use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
@@ -39,6 +40,9 @@ beforeEach(function () {
 
 test('publishing signs the tournament and the league calendar with the league key, nothing of the entries', function () {
     $tournament = openTournament();
+    // The shared calendar has one coalescing writer, queued after the commit; run it as the worker would.
+    Queue::assertPushed(PublishTournamentCalendar::class, 1);
+    app(TournamentPublisher::class)->publishCalendar();
     [$event, $calendar] = NostrEvent::query()->orderBy('id')->get()->all();
     $tags = $event->payload()['tags'];
 

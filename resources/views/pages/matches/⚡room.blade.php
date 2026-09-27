@@ -274,7 +274,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
 
         if (in_array($match->status, [SeriesStatus::Accepted, SeriesStatus::Disputed], true)) {
             try {
-                $draft = $series->draftReport($match);
+                $draft = $series->draftReport($match, $match->captainSideOf($user));
             } catch (SeriesRuleViolation $violation) {
                 $draftError = $violation->getMessage();
             }

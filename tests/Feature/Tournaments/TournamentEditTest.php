@@ -3,6 +3,7 @@
 use App\Enums\NotificationKind;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Jobs\PublishTournamentCalendar;
 use App\Jobs\SendNostrDm;
 use App\Models\Admin;
 use App\Models\NostrEvent;
@@ -114,7 +115,8 @@ test('a format change before the draw is saved and republished, the ladder addre
         ->and($versions)->toHaveCount(2)
         ->and($versions[1]->signed_at)->toBeGreaterThan($first->signed_at)
         ->and(latestTags($tournament))->toContain(['d', $tournament->slug], ['a', $ladder, ''])
-        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR)->count())->toBe(2)
+        // Publish and edit both queue the calendar; the second dispatch coalesces into the queued one.
+        ->and(Queue::pushed(PublishTournamentCalendar::class))->toHaveCount(1)
         ->and(TournamentModerationEntry::query()->where('tournament_id', $tournament->id)->sole()->details)->toHaveKeys(['format', 'capacity']);
 });
 
@@ -174,7 +176,8 @@ test('removing a sign-up frees its place, keeps the consent, notifies the player
         ->and($bob->notifications()->count())->toBe(0)
         ->and(TournamentModerationEntry::query()->sole()->only(['action', 'subject', 'reason']))
         ->toBe(['action' => 'removed', 'subject' => $removed->name, 'reason' => 'No-show at the last two events'])
-        ->and(NostrEvent::query()->where('kind', '!=', TournamentSignups::CONSENT)->count())->toBe(2);
+        // Only the tournament's 31923 of its publish: the removal signed and published nothing.
+        ->and(NostrEvent::query()->where('kind', '!=', TournamentSignups::CONSENT)->count())->toBe(1);
     Queue::assertPushed(SendNostrDm::class, 1);
     Queue::assertPushed(SendNostrDm::class, fn (SendNostrDm $job) => $job->user->is($ana));
 });

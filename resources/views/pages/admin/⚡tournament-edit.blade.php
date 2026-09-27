@@ -228,13 +228,15 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             }
         }
 
-        // One saved change per tournament every 2 s: each one signs new versions of the 31923 and the shared calendar.
-        $throttle = 'tournament-edit:'.$tournament->id;
+        // One saved change every 2 s per tournament and per organizer: each one signs a new 31923 and queues the calendar.
+        $throttles = ['tournament-edit:'.$tournament->id, 'tournament-edit-user:'.$this->user()->id];
 
-        if (RateLimiter::tooManyAttempts($throttle, 1)) {
-            $this->error = __('Saved a moment ago. Wait :seconds s and save again.', ['seconds' => max(1, RateLimiter::availableIn($throttle))]);
+        foreach ($throttles as $throttle) {
+            if (RateLimiter::tooManyAttempts($throttle, 1)) {
+                $this->error = __('Saved a moment ago. Wait :seconds s and save again.', ['seconds' => max(1, RateLimiter::availableIn($throttle))]);
 
-            return;
+                return;
+            }
         }
 
         try {
@@ -246,7 +248,9 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         }
 
         if ($changed !== []) {
-            RateLimiter::hit($throttle, 2);
+            foreach ($throttles as $throttle) {
+                RateLimiter::hit($throttle, 2);
+            }
         }
 
         $this->tournament = $tournament->refresh();

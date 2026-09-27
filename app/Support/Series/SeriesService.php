@@ -684,13 +684,14 @@ final class SeriesService
 
     /**
      * What "Submit final score" would send: the games of the live sheet and
-     * both rosters, checked against the game's rules.
+     * both rosters, checked against the game's rules. With `$side` only that
+     * side's roster has to reach the team size ({@see rosterFor()}).
      *
      * @return array{games: list<array{winner: string, challenger: int|null, challenged: int|null}>, roster: list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>}
      *
      * @throws SeriesRuleViolation
      */
-    public function draftReport(SeriesMatch $match): array
+    public function draftReport(SeriesMatch $match, ?string $side = null): array
     {
         $games = [];
 
@@ -712,7 +713,7 @@ final class SeriesService
             throw new SeriesRuleViolation('series_invalid', $this->seriesError($errors[0], $match->best_of));
         }
 
-        return ['games' => $games, 'roster' => $this->rosterFor($match)];
+        return ['games' => $games, 'roster' => $this->rosterFor($match, $side)];
     }
 
     /**
@@ -782,7 +783,7 @@ final class SeriesService
             throw new SeriesRuleViolation('not_started', __('The match has not started yet.'));
         }
 
-        ['games' => $games, 'roster' => $roster] = $this->draftReport($match);
+        ['games' => $games, 'roster' => $roster] = $this->draftReport($match, $side);
 
         $templates = [];
 
@@ -795,16 +796,21 @@ final class SeriesService
     }
 
     /**
+     * Both rosters of the report. The team size is judged on the reporting
+     * side only (`$reporting`; null = both, where no side reports): a side
+     * that came short, say an entered player left the clan, is that side's
+     * problem and never blocks the other side's report of a result it won.
+     *
      * @return list<array{user_id: int, pubkey: string, name: string, side: string, role: string}>
      */
-    private function rosterFor(SeriesMatch $match): array
+    private function rosterFor(SeriesMatch $match, ?string $reporting = null): array
     {
         $roster = [];
 
         foreach (SeriesMatch::SIDES as $side) {
             $seats = $this->rosterSeats($match, $side);
 
-            if (count($seats) < $match->gameMode()->teamSize) {
+            if (($reporting === null || $reporting === $side) && count($seats) < $match->gameMode()->teamSize) {
                 throw new SeriesRuleViolation('roster_short', __('":clan" needs at least :count players in "Who played".', ['clan' => $match->sideName($side), 'count' => $match->gameMode()->teamSize]));
             }
 

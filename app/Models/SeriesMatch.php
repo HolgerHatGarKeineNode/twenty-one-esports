@@ -319,6 +319,11 @@ class SeriesMatch extends Model
             return null;
         }
 
+        // A player blocked from the tournament acts for no side of its series, not even as the clan's captain or owner.
+        if ($this->tournament_match_id !== null && ($this->tournamentMatch?->tournament?->bans()->where('user_id', $user->id)->exists() ?? false)) {
+            return null;
+        }
+
         foreach (self::SIDES as $side) {
             if ($this->lineup($side)?->isActingCaptain($user) === true || $this->isRosterSideMember($side, $user)) {
                 return $side;

@@ -283,6 +283,9 @@ final class TournamentSignups
             throw new TournamentRuleViolation('not_captain', __('Only a captain of the lineup can confirm it again.'));
         }
 
+        // A blocked captain confirms nothing for the lineup; another captain can.
+        $this->assertNotBlocked($tournament, [$user->id]);
+
         if (! $signup->needsReconfirm()) {
             throw new TournamentRuleViolation('not_needed', __('Your entry does not need a new confirmation.'));
         }

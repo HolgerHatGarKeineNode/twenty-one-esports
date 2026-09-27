@@ -3,6 +3,7 @@
 use App\Enums\ClanRole;
 use App\Enums\LineupRole;
 use App\Enums\NotificationKind;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
@@ -12,6 +13,7 @@ use App\Models\LineupSeat;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentBan;
 use App\Models\TournamentModerationEntry;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
@@ -27,9 +29,9 @@ use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentSignups;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Sleep;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
@@ -69,12 +71,12 @@ function f1Run($tournament): SeriesMatch
     return SeriesMatch::query()->where('tournament_match_id', $tournament->matches()->value('id'))->sole();
 }
 
-function f1Seat($lineup, User $player): void
+function f1Seat($lineup, User $player, LineupRole $role = LineupRole::Substitute): void
 {
     // One clan per player: he leaves the one he was in.
     ClanMember::query()->where('user_id', $player->id)->delete();
     ClanMember::query()->create(['clan_id' => $lineup->clan_id, 'user_id' => $player->id, 'role' => ClanRole::Member, 'joined_at' => now()]);
-    LineupSeat::query()->create(['lineup_id' => $lineup->id, 'user_id' => $player->id, 'role' => LineupRole::Substitute, 'accepted_at' => now()]);
+    LineupSeat::query()->create(['lineup_id' => $lineup->id, 'user_id' => $player->id, 'role' => $role, 'accepted_at' => now()]);
     $lineup->unsetRelation('seats');
 }
 
@@ -231,41 +233,89 @@ test('an entry not confirmed again by sign-up close is dropped at the close, not
 });
 
 /*
-| F3: the shared calendar (31924) is signed on one floor by publish and
-| republish, never more than two seconds ahead of the clock; the edit page
-| saves one change per tournament every two seconds.
+| F3 / L3: a tournament's own 31923 is signed on its own floor, never refused
+| because of another tournament; the shared calendar (31924) has one
+| coalescing, serialized writer that signs strictly increasing versions and
+| never ahead of the clock; the edit page saves one change per tournament
+| and per organizer every two seconds.
 */
 
-test('publish and republish sign the shared calendar on one floor, never more than two seconds ahead', function () {
+test('an organizer\'s bursts never refuse another organizer\'s edits, and the calendar stays increasing and lists both', function () {
     $this->freezeTime();
-    $first = openTournament();
+    Sleep::fake(syncWithCarbon: true);
+    $busy = openTournament(['name' => 'Busy Cup']);
+    $victim = openTournament(['name' => 'Quiet Cup']);
     $editor = app(TournamentEditor::class);
+    $busyRefused = 0;
 
-    // Three versions in one clock second: now, now + 1, now + 2.
-    $editor->update($first, $first->creator, ['name' => 'Second version']);
-    $editor->update($first, $first->creator, ['name' => 'Third version']);
+    foreach (range(1, 10) as $round) {
+        // The busy organizer saves twice in every second; his own floor may refuse him, nobody else's.
+        foreach ([1, 2] as $burst) {
+            try {
+                $editor->update($busy, $busy->creator, ['name' => "Busy Cup {$round}.{$burst}"]);
+            } catch (TournamentRuleViolation $violation) {
+                expect($violation->reason)->toBe('too_fast');
+                $busyRefused++;
+            }
+        }
 
-    // A fourth would be signed 3 s ahead: refused, nothing changed and nothing signed.
-    expect(fn () => $editor->update($first, $first->creator, ['name' => 'Fourth version']))
-        ->toThrow(TournamentRuleViolation::class, __('Too many changes in a row. Wait a few seconds and save again.'))
-        ->and($first->refresh()->name)->toBe('Third version')
-        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR)->count())->toBe(3);
+        // The other organizer saves once in the same second: never refused.
+        $editor->update($victim, $victim->creator, ['name' => "Quiet Cup {$round}"]);
 
-    // Publishing another tournament in that same second takes the same floor: refused rather than future-dated.
-    $draft = Tournament::factory()->create(['created_by_id' => $first->created_by_id]);
+        // The queued calendar writes, coalesced into one run per second as a worker would take them.
+        app(TournamentPublisher::class)->publishCalendar();
+        $this->travel(1)->seconds();
+    }
 
-    expect(fn () => app(TournamentPublisher::class)->publish($draft, $draft->creator, CarbonImmutable::now()->addDay()))
-        ->toThrow(TournamentRuleViolation::class)
-        ->and($draft->refresh()->status)->toBe(TournamentStatus::Draft);
+    $calendars = NostrEvent::query()->where('kind', Tournament::CALENDAR)->orderBy('id')->pluck('signed_at')->all();
+    $signedAt = array_values($calendars);
+    $sorted = $signedAt;
+    sort($sorted);
+    $latest = NostrEvent::query()->where('kind', Tournament::CALENDAR)->orderByDesc('signed_at')->first();
 
-    // A second later it publishes, and its calendar follows the newest one (still ahead of the clock): listed, not dropped.
-    $this->travel(1)->seconds();
-    $published = app(TournamentPublisher::class)->publish($draft, $draft->creator, CarbonImmutable::now()->addDay());
-    $calendars = NostrEvent::query()->where('kind', Tournament::CALENDAR)->orderBy('signed_at')->get();
+    expect($busyRefused)->toBeGreaterThan(0)
+        ->and($victim->refresh()->name)->toBe('Quiet Cup 10')
+        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR_EVENT)->where('d', $victim->slug)->count())->toBe(11)
+        ->and($signedAt)->toBe($sorted)
+        ->and(count(array_unique($signedAt)))->toBe(count($signedAt))
+        ->and(max($signedAt))->toBeLessThanOrEqual(now()->getTimestamp())
+        ->and($signedAt)->toHaveCount(10)
+        ->and($latest->payload()['tags'])->toContain(['a', $busy->refresh()->address(), ''], ['a', $victim->address(), '']);
 
-    expect($calendars->pluck('signed_at')->map(fn ($at) => $at - $calendars->first()->signed_at)->all())->toBe([0, 1, 2, 3])
-        ->and($calendars->last()->signed_at)->toBeLessThanOrEqual(now()->getTimestamp() + TournamentPublisher::MAX_AHEAD)
-        ->and($calendars->last()->payload()['tags'])->toContain(['a', $published->address(), '']);
+    fwrite(STDERR, "\n[l3] busy refused {$busyRefused} of 20, victim refused 0 of 10, calendars ".count($signedAt)."\n");
+});
+
+test('the calendar writer waits for the next second instead of signing ahead of the clock', function () {
+    $this->freezeTime();
+    Sleep::fake(syncWithCarbon: true);
+    openTournament();
+    $publisher = app(TournamentPublisher::class);
+    $start = now()->getTimestamp();
+
+    $first = $publisher->publishCalendar();
+    $second = $publisher->publishCalendar();
+    $third = $publisher->publishCalendar();
+
+    expect([$first->signed_at, $second->signed_at, $third->signed_at])->toBe([$start, $start + 1, $start + 2])
+        ->and(now()->getTimestamp())->toBe($start + 2);
+    Sleep::assertSleptTimes(2);
+});
+
+test('an organizer saves one change every two seconds, across his tournaments too', function () {
+    $first = openTournament();
+    $second = openTournament(['created_by_id' => $first->created_by_id]);
+
+    Livewire::actingAs($first->creator)->test('pages::admin.tournament-edit', ['tournament' => $first])
+        ->set('name', 'First rename')->call('save')->assertSet('error', '');
+    Livewire::actingAs($first->creator)->test('pages::admin.tournament-edit', ['tournament' => $second])
+        ->set('name', 'Second rename')->call('save')->assertSet('error', __('Saved a moment ago. Wait :seconds s and save again.', ['seconds' => 2]));
+
+    $this->travel(3)->seconds();
+
+    Livewire::actingAs($first->creator)->test('pages::admin.tournament-edit', ['tournament' => $second])
+        ->set('name', 'Second rename')->call('save')->assertSet('error', '');
+
+    expect($second->refresh()->name)->toBe('Second rename');
 });
 
 test('the edit page saves one change per tournament every two seconds', function () {
@@ -281,4 +331,76 @@ test('the edit page saves one change per tournament every two seconds', function
     $page->call('save')->assertSet('error', '');
 
     expect($tournament->refresh()->name)->toBe('Second rename');
+});
+
+/*
+| L1: a player blocked from the tournament acts for no side of its series,
+| not as a re-seated captain and not as the clan's owner.
+*/
+
+test('a blocked player re-seated as captain after the draw cannot set the roster or report', function () {
+    $tournament = openTournament(rocketLeague: true);
+    [$blocked, $blockedKey] = keyedPlayer();
+    app(TournamentModeration::class)->remove($tournament, $tournament->creator, soloSignup($tournament, $blocked, $blockedKey)->id, 'Match fixing', block: true);
+    [$a, $captainA, $signerA] = keyedLineup();
+    [$b, $captainB, $signerB] = keyedLineup();
+    lineupSignup($tournament, $a, $captainA, $signerA);
+    lineupSignup($tournament, $b, $captainB, $signerB);
+    $series = f1Run($tournament->refresh());
+
+    // After the draw he joins lineup A as a captain.
+    f1Seat($a, $blocked, LineupRole::Captain);
+    $service = app(SeriesService::class);
+    $series->refresh();
+
+    expect($a->refresh()->load('seats.user')->isActingCaptain($blocked))->toBeTrue()
+        ->and($series->captainSideOf($blocked))->toBeNull()
+        ->and(fn () => $service->setRoster($series, $blocked, [$captainA->id]))->toThrow(SeriesRuleViolation::class, __('Only a captain can set who played.'))
+        ->and(fn () => $service->prepareReport($series, $blocked))->toThrow(SeriesRuleViolation::class, __('Only a captain can submit the final score.'))
+        ->and(fn () => $service->reportNoShow($series, $blocked))->toThrow(SeriesRuleViolation::class)
+        // The unblocked captain of the same side still acts.
+        ->and($series->captainSideOf($captainA))->not->toBeNull();
+
+    // A blocked clan owner is no acting captain for the tournament either.
+    TournamentBan::query()->create(['tournament_id' => $tournament->id, 'user_id' => $captainB->id, 'reason' => 'Owner blocked']);
+
+    expect($series->captainSideOf($captainB))->toBeNull();
+});
+
+/*
+| L2: a side that came short (an entered player left the clan) never blocks
+| the other side's report: the team size is judged on the reporting side.
+*/
+
+test('a side that came short cannot block the winner\'s report in a casual tournament series', function () {
+    $tournament = openTournament(rocketLeague: true);
+    [$a, $captainA, $signerA] = keyedLineup();
+    [$b, $captainB, $signerB] = keyedLineup();
+    lineupSignup($tournament, $a, $captainA, $signerA);
+    lineupSignup($tournament, $b, $captainB, $signerB);
+    $series = f1Run($tournament->refresh());
+    $service = app(SeriesService::class);
+    $sideA = $series->captainSideOf($captainA);
+    $sideB = $series->captainSideOf($captainB);
+
+    // An entered player of B leaves the clan: B has 2 of 3.
+    $leaver = collect($b->activeSeats())->first(fn ($seat) => $seat->user_id !== $captainB->id)->user_id;
+    ClanMember::query()->where('user_id', $leaver)->delete();
+
+    expect($service->rosterSeats($series->refresh(), $sideB))->toHaveCount(2);
+
+    foreach (range(0, intdiv($series->best_of, 2)) as $index) {
+        $service->saveLiveGame($series->refresh(), $captainA, $index, $sideA === 'challenger' ? 3 : 1, $sideA === 'challenger' ? 1 : 3, null);
+    }
+
+    // The short side cannot report (its own roster is short) …
+    expect(fn () => $service->prepareReport($series->refresh(), $captainB))
+        ->toThrow(SeriesRuleViolation::class, __('":clan" needs at least :count players in "Who played".', ['clan' => $series->sideName($sideB), 'count' => 3]));
+
+    // … but the winner can: the result reaches the other side for confirmation, not the admin queue.
+    $report = $service->report($series->refresh(), $captainA, $signerA->signTemplates($service->prepareReport($series, $captainA)));
+
+    expect($series->refresh()->status)->toBe(SeriesStatus::Reported)
+        ->and($report->side)->toBe($sideA)
+        ->and(collect($report->roster)->where('side', $sideB)->count())->toBe(2);
 });
