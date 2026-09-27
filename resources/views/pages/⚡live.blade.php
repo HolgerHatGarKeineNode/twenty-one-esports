@@ -2,12 +2,17 @@
 
 use App\Enums\ChessGameStatus;
 use App\Enums\TournamentStatus;
+use App\Models\ChatMute;
 use App\Models\ChessGame;
 use App\Models\Tournament;
+use App\Models\User;
+use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
+use App\Support\StreamChat\StreamChat;
 use App\Support\TwentyOne\LiveStatus;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -24,8 +29,13 @@ use Livewire\Component;
  * starts playing when the stream comes on air while the page is open. Both
  * are wire:ignore'd; the 30-second poll refreshes the lists. The floating player
  * (<x-live-player>) is not rendered here.
+ *
+ * The stream chat (P24, pages/live/chat, resources/js/liveChat.js): the
+ * NIP-53 chat of the stream's 30311 next to the stage from lg, a tab under it
+ * on smaller screens. The server hands it its config and keeps a viewer's
+ * mutes; messages never pass through it.
  */
-new #[Layout('layouts::app')] class extends Component {
+new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class extends Component {
     public const GAMES = 8;
 
     public function rendering(\Illuminate\View\View $view): void
@@ -71,6 +81,40 @@ new #[Layout('layouts::app')] class extends Component {
     {
         return Tournament::query()->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])
             ->whereNotNull('starts_at')->where('starts_at', '>', now())->orderBy('starts_at')->first();
+    }
+
+    /**
+     * Config for the stream chat, null when the stream has no Nostr address.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function chat(): ?array
+    {
+        $viewer = auth()->user();
+
+        return StreamChat::current()?->config($viewer instanceof User ? $viewer : null);
+    }
+
+    /**
+     * Mute or unmute a pubkey in the chat, for this viewer only (the browser keeps its own copy).
+     */
+    #[Json]
+    public function setMuted(string $pubkey, bool $muted): bool
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || ! NostrKeys::isHexPubkey($pubkey) || $pubkey === $user->pubkey) {
+            return false;
+        }
+
+        if ($muted) {
+            ChatMute::query()->firstOrCreate(['user_id' => $user->id, 'muted_pubkey' => $pubkey]);
+        } else {
+            ChatMute::query()->where('user_id', $user->id)->where('muted_pubkey', $pubkey)->delete();
+        }
+
+        return true;
     }
 
     /**
@@ -127,8 +171,14 @@ new #[Layout('layouts::app')] class extends Component {
         </p>
     </div>
 
-    <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
-        <div class="flex min-w-0 flex-col gap-4">
+    {{--
+        From lg: the stage and under it the programme on the left, the chat as a
+        column on the right, as tall as the window allows below the page title
+        and sticky while the programme scrolls by. Below lg: stage, then the
+        chat and the programme as two views behind a switch, then sharing.
+    --}}
+    <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-x-6 lg:gap-y-5" x-data="{ tab: 'chat' }">
+        <div class="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-1">
             {{-- The stage: edge to edge on a phone, a framed screen from sm. From lg its
                  width follows the window height, so the whole 16:9 picture fits below the
                  header without scrolling (user 2026-09-27: too big on desktop). --}}
@@ -172,7 +222,23 @@ new #[Layout('layouts::app')] class extends Component {
             @if ($status->live && $status->title !== null)
                 <p class="m-0 text-[13px] leading-5 text-ink" data-test="live-title">{{ $status->title }}</p>
             @endif
+        </div>
 
+        {{-- Below lg: which of the two the space under the stage shows. --}}
+        <div class="flex gap-1 rounded-lg bg-card p-1 lg:hidden" role="group" aria-label="{{ __('Show under the stream') }}" data-test="live-switch">
+            <button type="button" x-on:click="tab = 'chat'; $dispatch('live-chat-shown')" :aria-pressed="(tab === 'chat').toString()" aria-controls="live-chat" data-test="live-switch-chat"
+                    class="inline-flex h-11 grow cursor-pointer items-center justify-center gap-2 rounded-control text-[13px]" :class="tab === 'chat' ? 'bg-well font-bold text-ink shadow-ring' : 'text-ink-2'">
+                <x-icon name="chat" :size="16" />{{ __('Chat') }}
+            </button>
+            <button type="button" x-on:click="tab = 'programme'" :aria-pressed="(tab === 'programme').toString()" aria-controls="live-programme" data-test="live-switch-programme"
+                    class="inline-flex h-11 grow cursor-pointer items-center justify-center gap-2 rounded-control text-[13px]" :class="tab === 'programme' ? 'bg-well font-bold text-ink shadow-ring' : 'text-ink-2'">
+                <x-icon name="list" :size="16" />{{ __('On the stream') }}
+            </button>
+        </div>
+
+        @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--live-chat-floor,5rem)-1rem))] max-lg:scroll-mb-[var(--live-chat-floor,5rem)] lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
+
+        <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
             {{-- Share: the page link, the system share sheet (else the clipboard), Telegram. --}}
             <div class="flex flex-col gap-2" data-test="live-share"
                  x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($pageUrl), text: @js($shareText),
@@ -189,63 +255,63 @@ new #[Layout('layouts::app')] class extends Component {
                 </div>
                 <span class="text-xs text-win" role="status" x-show="hint" x-text="hint" x-cloak></span>
             </div>
-        </div>
 
-        {{-- The programme next to the screen: what is on it, one panel. --}}
-        <aside class="flex flex-col rounded-lg bg-card" aria-label="{{ __('On the stream') }}">
-            <section aria-labelledby="live-now-h" class="flex flex-col gap-2 px-4 py-4 lg:px-5" data-test="live-now">
-                <span class="flex items-baseline justify-between gap-3">
-                    <h2 id="live-now-h" class="m-0 text-[15px] font-bold">{{ __('Live now') }}</h2>
-                    <a href="{{ route('games.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All live games') }}</a>
-                </span>
-                @if ($games->isEmpty())
-                    <p class="m-0 text-[13px] leading-5 text-ink-2">
-                        {{ $status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
-                        <a href="{{ route('chess.lobby') }}">{{ __('Play blitz') }}</a>
-                    </p>
-                @else
-                    <ul class="m-0 flex list-none flex-col p-0">
-                        @foreach ($games as $game)
-                            <li wire:key="live-game-{{ $game->id }}" class="border-t border-hairline first:border-0" data-test="live-now-game">
-                                <a href="{{ route('games.show', $game) }}" class="flex min-h-12 items-center gap-3 py-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
-                                    <span class="flex min-w-0 grow flex-col gap-1">
-                                        <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->white" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->white->displayName() }}</span></span>
-                                        <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->black" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->black->displayName() }}</span></span>
+            {{-- The programme: what is on the stream. Under the stage from lg; the second view below lg. --}}
+            <aside id="live-programme" class="flex flex-col rounded-lg bg-card max-lg:order-first" :class="tab === 'programme' ? '' : 'max-lg:hidden'" aria-label="{{ __('On the stream') }}" data-test="live-programme">
+                <section aria-labelledby="live-now-h" class="flex flex-col gap-2 px-4 py-4 lg:px-5" data-test="live-now">
+                    <span class="flex items-baseline justify-between gap-3">
+                        <h2 id="live-now-h" class="m-0 text-[15px] font-bold">{{ __('Live now') }}</h2>
+                        <a href="{{ route('games.index') }}" class="inline-flex min-h-11 items-center text-xs lg:min-h-6">{{ __('All live games') }}</a>
+                    </span>
+                    @if ($games->isEmpty())
+                        <p class="m-0 text-[13px] leading-5 text-ink-2">
+                            {{ $status->live ? __('No game running. Start a blitz game and it is on the stream.') : __('No game running right now.') }}
+                            <a href="{{ route('chess.lobby') }}">{{ __('Play blitz') }}</a>
+                        </p>
+                    @else
+                        <ul class="m-0 flex list-none flex-col p-0">
+                            @foreach ($games as $game)
+                                <li wire:key="live-game-{{ $game->id }}" class="border-t border-hairline first:border-0" data-test="live-now-game">
+                                    <a href="{{ route('games.show', $game) }}" class="flex min-h-12 items-center gap-3 py-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink">
+                                        <span class="flex min-w-0 grow flex-col gap-1">
+                                            <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->white" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->white->displayName() }}</span></span>
+                                            <span class="flex min-w-0 items-center gap-1.5"><x-avatar :user="$game->black" :size="18" class="rounded-sm" /><span class="truncate">{{ $game->black->displayName() }}</span></span>
+                                        </span>
+                                        <span class="shrink-0 text-right text-xs text-ink-2">{{ $game->isCorrespondence() ? __('Daily') : __('Blitz') }}<br>{{ __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
+                                    </a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </section>
+
+                @if ($this->tournaments->isNotEmpty())
+                    <section aria-labelledby="live-tournaments-h" class="flex flex-col gap-2 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-tournaments">
+                        <h2 id="live-tournaments-h" class="m-0 text-[15px] font-bold">{{ __('Tournaments running') }}</h2>
+                        <ul class="m-0 flex list-none flex-col gap-3 p-0">
+                            @foreach ($this->tournaments as $tournament)
+                                <li wire:key="live-tournament-{{ $tournament->id }}" class="flex flex-col gap-1">
+                                    <b class="text-[13px] break-words">{{ $tournament->name }}</b>
+                                    <span class="flex flex-wrap gap-x-4 text-xs">
+                                        <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6">{{ __('Bracket') }}</a>
+                                        <a href="{{ route('tournaments.tv', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6" data-test="live-tournament-tv">{{ __('TV view') }}</a>
                                     </span>
-                                    <span class="shrink-0 text-right text-xs text-ink-2">{{ $game->isCorrespondence() ? __('Daily') : __('Blitz') }}<br>{{ __('move :n', ['n' => intdiv($game->ply, 2) + 1]) }}</span>
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </section>
                 @endif
-            </section>
 
-            @if ($this->tournaments->isNotEmpty())
-                <section aria-labelledby="live-tournaments-h" class="flex flex-col gap-2 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-tournaments">
-                    <h2 id="live-tournaments-h" class="m-0 text-[15px] font-bold">{{ __('Tournaments running') }}</h2>
-                    <ul class="m-0 flex list-none flex-col gap-3 p-0">
-                        @foreach ($this->tournaments as $tournament)
-                            <li wire:key="live-tournament-{{ $tournament->id }}" class="flex flex-col gap-1">
-                                <b class="text-[13px] break-words">{{ $tournament->name }}</b>
-                                <span class="flex flex-wrap gap-x-4 text-xs">
-                                    <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6">{{ __('Bracket') }}</a>
-                                    <a href="{{ route('tournaments.tv', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6" data-test="live-tournament-tv">{{ __('TV view') }}</a>
-                                </span>
-                            </li>
-                        @endforeach
-                    </ul>
-                </section>
-            @endif
-
-            @if ($this->zapQr)
-                <section aria-labelledby="live-zap-h" class="flex items-center gap-4 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-zap">
-                    <img src="{{ $this->zapQr }}" width="112" height="112" alt="{{ __('QR code to zap the stream') }}" class="size-28 shrink-0 rounded-sm bg-white p-2 [image-rendering:pixelated]">
-                    <div class="flex min-w-0 flex-col gap-1">
-                        <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
-                        <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
-                    </div>
-                </section>
-            @endif
-        </aside>
+                @if ($this->zapQr)
+                    <section aria-labelledby="live-zap-h" class="flex items-center gap-4 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-zap">
+                        <img src="{{ $this->zapQr }}" width="112" height="112" alt="{{ __('QR code to zap the stream') }}" class="size-28 shrink-0 rounded-sm bg-white p-2 [image-rendering:pixelated]">
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
+                            <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
+                        </div>
+                    </section>
+                @endif
+            </aside>
+        </div>
     </div>
 </div>

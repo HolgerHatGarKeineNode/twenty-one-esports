@@ -33,9 +33,13 @@ Route::get('locale/{locale}', SwitchLocaleController::class)
 
 Route::middleware('guest')->group(function () {
     // "Start playing" (the header, for guests) logs in and then opens the chess lobby: `then=play` sets where the login lands.
+    // "Log in to chat" on /live comes back to the stream: `then=live`.
     Route::get('login', function (Request $request) {
-        if ($request->query('then') === 'play') {
-            $request->session()->put('url.intended', route('chess.lobby'));
+        $query = $request->query('then');
+        $then = is_string($query) ? (['play' => 'chess.lobby', 'live' => 'live'][$query] ?? null) : null;
+
+        if ($then !== null) {
+            $request->session()->put('url.intended', route($then));
         }
 
         return view('pages.auth.login');

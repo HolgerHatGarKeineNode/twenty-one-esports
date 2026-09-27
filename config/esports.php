@@ -780,4 +780,42 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Stream chat on /live (P24)
+    |--------------------------------------------------------------------------
+    |
+    | The NIP-53 live chat of the 24/7 stream, read and written straight from
+    | the browser (resources/js/liveChat.js): kind 1311 (and zap receipts,
+    | kind 9735) with the stream's `a` tag. The server never talks to a relay
+    | for it and stores nothing but a viewer's own mutes (ChatMute).
+    |
+    | `relays`: where the page reads and posts. Unset = the stream's relays
+    | (`twentyone.stream.relays`) plus the bot's `chat_relays`; set but empty
+    | = no chat (the tests force that, so no page ever reaches a real relay).
+    |
+    | `zap_signers`: the pubkeys whose zap receipts are shown (NIP-57: the
+    | receipt is signed by the recipient's LNURL server). The default is the
+    | `nostrPubkey` of the stream's lud16 (`twentyone.nostr.lud16`,
+    | theben@getalby.com), read from
+    | https://getalby.com/.well-known/lnurlp/theben on 2026-09-28. Any other
+    | signer's receipt is dropped: anyone can publish a 9735.
+    |
+    */
+
+    'stream_chat' => [
+        'relays' => env('ESPORTS_STREAM_CHAT_RELAYS') === null
+            ? null
+            : array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_STREAM_CHAT_RELAYS'))))),
+        'zap_signers' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'ESPORTS_STREAM_ZAP_SIGNERS',
+            '79f00d3f5a19ec806189fcab03c1be4ff81d18ee4f653c88fac41fe03570f432',
+        ))))),
+        // Characters one message may have, and the pause between two posts of one browser.
+        'max_length' => 280,
+        'cooldown_ms' => 2000,
+        // Messages read back when the page opens.
+        'history' => 80,
+    ],
+
 ];
