@@ -75,7 +75,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $tournament_match_id the tournament match this series plays (P8b)
  * @property int $tournament_attempt 1, or the replay number after an admin voided the series before (P18)
  * @property array{challenger?: list<int>, challenged?: list<int>}|null $sides a roster side's players (mix team, RL 1v1 player): no lineup
- * @property array{noshow_minutes: int, report_hours: int, response_minutes: int}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18); null = none run by the league
+ * @property array{noshow_minutes: int, report_hours?: int, report_minutes?: int, response_minutes: int}|null $deadlines a players-mode tournament's deadlines, pinned at the pairing (P18; `report_minutes` on the round clock); null = none run by the league
  * @property Carbon|null $overdue_at when the league moved it to the admin queue: nobody reported by the report deadline (P18)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -283,11 +283,16 @@ class SeriesMatch extends Model
         return $this->deadlines === null ? null : (int) $this->deadlines['response_minutes'];
     }
 
-    /** When a series nobody reported joins the admin queue; null without league deadlines. */
+    /** When a series nobody reported joins the admin queue; null without league deadlines. Round clock: minutes after the start. */
     public function reportDueAt(): ?CarbonInterface
     {
-        return $this->deadlines === null || $this->start_at === null ? null
-            : $this->start_at->copy()->addHours((int) $this->deadlines['report_hours']);
+        if ($this->deadlines === null || $this->start_at === null) {
+            return null;
+        }
+
+        return isset($this->deadlines['report_minutes'])
+            ? $this->start_at->copy()->addMinutes((int) $this->deadlines['report_minutes'])
+            : $this->start_at->copy()->addHours((int) ($this->deadlines['report_hours'] ?? config('esports.tournaments.report_hours', 2)));
     }
 
     /** When a reported no-show the other side did not answer becomes a forfeit; null without one. */

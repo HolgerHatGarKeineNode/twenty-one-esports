@@ -52,7 +52,8 @@ beforeEach(function () {
 
 /**
  * A running players-mode RL 1v1 final between two solo players (casual: no
- * season), its series paired now.
+ * season), its series paired now. On site, so the config defaults apply:
+ * an online one plays on the round clock (TournamentHonestDurationTest).
  *
  * @param  array<string, mixed>  $attributes
  * @return array{0: Tournament, 1: SeriesMatch, 2: User, 3: User}
@@ -63,6 +64,7 @@ function deadlineDuel(array $attributes = []): array
         'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => 2,
         'options' => FormatOptions::defaults(GameProfile::for('rocket-league', '1v1'))->toArray(),
         'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'slug' => 'deadline-duel-'.fake()->unique()->numberBetween(1, 1_000_000),
+        'on_site' => true, 'stations' => 2,
         ...$attributes,
     ]);
     $players = [User::factory()->create(), User::factory()->create()];

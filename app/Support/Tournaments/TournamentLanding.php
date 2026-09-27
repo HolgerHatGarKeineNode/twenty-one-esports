@@ -13,6 +13,7 @@ use App\Support\Rating\Ratings;
 use App\Support\Tournaments\Engine\BracketBuilder;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\Entrant;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -116,6 +117,39 @@ final class TournamentLanding
         }
 
         return null;
+    }
+
+    /**
+     * An online tournament has only a start (P18): when it is expected to
+     * end and the latest, never promised. Null on site and in daily chess.
+     *
+     * @return array{typical: CarbonImmutable, latest: CarbonImmutable}|null
+     */
+    public function expectedEnd(): ?array
+    {
+        return $this->tournament->expectedEnd();
+    }
+
+    /**
+     * "Open end, expected around 0:30" in `$zone`; null without an open end.
+     */
+    public function openEndLine(string $zone): ?string
+    {
+        return self::openEnd($this->tournament, $zone);
+    }
+
+    /**
+     * The open-end line of any tournament (the list's cards have no landing).
+     */
+    public static function openEnd(Tournament $tournament, string $zone): ?string
+    {
+        $end = $tournament->expectedEnd();
+
+        if ($end === null) {
+            return null;
+        }
+
+        return __('Open end, expected around :time', ['time' => $end['typical']->setTimezone($zone)->format('G:i')]);
     }
 
     /**

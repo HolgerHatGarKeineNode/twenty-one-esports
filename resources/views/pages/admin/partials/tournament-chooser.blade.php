@@ -506,6 +506,7 @@
                         <span class="grow"></span>
                         <span class="text-[13px] text-ink-2">{{ __('about') }} <b class="text-ink">{{ $duration($chosen->total()) }}</b></span>
                     </div>
+                    @include('pages.admin.partials.tournament-range')
                     <p class="m-0 text-[13px] leading-relaxed">{{ __($copy['how']) }}</p>
 
                     <figure class="m-0 flex flex-col gap-2 rounded-md bg-card p-3" x-data x-ref="figure" wire:key="preview-{{ $previewKey }}" data-test="preview">

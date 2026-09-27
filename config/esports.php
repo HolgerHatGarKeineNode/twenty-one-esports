@@ -263,6 +263,14 @@ return [
     | forfeit, unrated. Ladder series outside tournaments keep
     | `unanswered_report_hours`. The `tournaments:tick` command applies them.
     |
+    | round_clock: an online tournament of a minute game (not daily chess) is
+    | played on one day, so its series deadlines follow from the match's own
+    | start instead of the long defaults above (P18, user decision 2026-09-27):
+    | a no-show can be reported after `noshow_minutes`, the result is due
+    | after the no-show wait, the longest play of the series
+    | (GameProfile::longestPlay()) and `grace_minutes`, and the other side
+    | answers within `response_minutes`. The tournament's own values still win.
+    |
     */
 
     'tournaments' => [
@@ -272,6 +280,7 @@ return [
         'unanswered_report_hours' => 2,
         'report_hours' => 2,
         'response_minutes' => 30,
+        'round_clock' => ['noshow_minutes' => 15, 'grace_minutes' => 5, 'response_minutes' => 10],
     ],
 
     /*

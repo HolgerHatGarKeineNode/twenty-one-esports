@@ -11,6 +11,13 @@ use InvalidArgumentException;
  * organizer can change game, setup and break per tournament ("Change times").
  *
  * Times are in the profile's unit: minutes, or days for daily chess.
+ *
+ * Online a match needs more than its games (P18, user decision 2026-09-27):
+ * `overhead` is the time per match for finding the opponent, the friend
+ * request, the lobby and the report; `longPlay` stretches a game to its
+ * longest (EA Sports FC extra time and penalties, Rocket League overtime).
+ * Both are unmeasured assumptions: FC 10 min and 1.3, RL 5 min and 1.25,
+ * blitz 3 min and 1.0 (the clock bounds a game), daily chess 0 and 1.0.
  */
 final readonly class GameProfile
 {
@@ -34,6 +41,8 @@ final readonly class GameProfile
         public bool $allAtOnce,
         public string $what,
         public int $teamSize = 1,
+        public float $overhead = 0.0,
+        public float $longPlay = 1.0,
     ) {}
 
     /**
@@ -44,14 +53,14 @@ final readonly class GameProfile
         return match ("{$game}/{$mode}") {
             // Only what a tournament match can be played as (P8b DoD gate): one chess game per match
             // (no 2-game match yet), and the series lengths the game registry allows (Bo3, Bo5).
-            'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game'),
+            'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
-            'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 1),
-            'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 2),
-            'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 3),
+            'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 1, 5, 1.25),
+            'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 2, 5, 1.25),
+            'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 3, 5, 1.25),
             // EA Sports FC: planned at about 15 min a game (league default, not measured yet), Bo1 rounds and a Bo3 final.
-            'ea-sports-fc-26/1v1', 'ea-sports-fc-27/1v1' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 1),
-            'ea-sports-fc-26/2v2', 'ea-sports-fc-27/2v2' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 2),
+            'ea-sports-fc-26/1v1', 'ea-sports-fc-27/1v1' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 1, 10, 1.3),
+            'ea-sports-fc-26/2v2', 'ea-sports-fc-27/2v2' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 2, 10, 1.3),
             default => throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
     }
@@ -63,7 +72,7 @@ final readonly class GameProfile
     {
         return new self($this->key, $this->game, $this->mode, $this->unit,
             $gameLength ?? $this->gameLength, $setup ?? $this->setup, $break ?? $this->break,
-            $this->bestOf, $this->finalBestOf, $this->bestOfOptions, $this->allAtOnce, $this->what, $this->teamSize);
+            $this->bestOf, $this->finalBestOf, $this->bestOfOptions, $this->allAtOnce, $this->what, $this->teamSize, $this->overhead, $this->longPlay);
     }
 
     public function isChess(): bool
@@ -103,5 +112,23 @@ final readonly class GameProfile
         }
 
         return $this->setup + $bestOf * $this->gameLength;
+    }
+
+    /**
+     * Time one match needs online, typically: the slot plus the overhead of
+     * meeting the opponent and reporting.
+     */
+    public function onlineSlot(int $bestOf): float
+    {
+        return $this->slot($bestOf) + $this->overhead;
+    }
+
+    /**
+     * The longest a match plays once both sides are there: every game to its
+     * longest (extra time, overtime), plus the setup.
+     */
+    public function longestPlay(int $bestOf): float
+    {
+        return $this->allAtOnce ? $this->gameLength * $this->longPlay : $this->setup + $bestOf * $this->gameLength * $this->longPlay;
     }
 }

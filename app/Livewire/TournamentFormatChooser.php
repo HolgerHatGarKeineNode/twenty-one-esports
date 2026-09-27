@@ -5,12 +5,14 @@ namespace App\Livewire;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Models\User;
+use App\Support\Tournaments\DurationRange;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentDeadlines;
 use App\Support\Tournaments\TournamentGames;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -24,6 +26,7 @@ use Livewire\Component;
  *
  * @property-read Evaluation $evaluation
  * @property-read TournamentFormat $format
+ * @property-read DurationRange|null $durationRange
  * @property-read Collection<int, User> $directors
  */
 abstract class TournamentFormatChooser extends Component
@@ -76,6 +79,11 @@ abstract class TournamentFormatChooser extends Component
 
     public string $responseMinutes = '';
 
+    /** The start as typed on the page (date `Y-m-d`, time `H:i`), in {@see chooserZone()}. */
+    public string $date = '';
+
+    public string $time = '';
+
     /** Form property => tournament column of each deadline. */
     public const DEADLINE_FIELDS = [
         'checkinMinutes' => 'checkin_minutes',
@@ -116,6 +124,67 @@ abstract class TournamentFormatChooser extends Component
     public function evaluation(): Evaluation
     {
         return (new Estimator)->evaluate($this->count(), $this->profile(), $this->formatOptions(), $this->stationLimit(), $this->window);
+    }
+
+    /**
+     * The honest range of the chosen format (P18): the plan, the typical
+     * online duration and the latest on the round clock with the deadlines
+     * typed so far. Null when the format cannot run.
+     */
+    #[Computed]
+    public function durationRange(): ?DurationRange
+    {
+        $row = $this->evaluation->row($this->format);
+
+        if (! $row->enabled || $row->structure === null) {
+            return null;
+        }
+
+        $typed = array_filter($this->chosenDeadlines(), fn (?int $value, string $column): bool => $value !== null
+            && $value >= TournamentDeadlines::BOUNDS[$column][0] && $value <= TournamentDeadlines::BOUNDS[$column][1], ARRAY_FILTER_USE_BOTH);
+
+        return (new Estimator)->range($this->format, $row->structure, $this->profile(), $this->evaluation->options, $this->stationLimit(),
+            TournamentDeadlines::clock($this->profile()->mode, $typed));
+    }
+
+    /**
+     * Start, expected end and latest end as the chooser shows them, with the
+     * warnings; null on site and in daily chess (they keep the plan) or when
+     * the format cannot run. `start` is null while date or time are not valid.
+     *
+     * @return array{start: CarbonImmutable|null, typical: CarbonImmutable|null, latest: CarbonImmutable|null, warnings: list<string>}|null
+     */
+    public function expectedTimes(): ?array
+    {
+        $range = $this->durationRange;
+        $profile = $this->profile();
+
+        if ($range === null || $this->stationLimit() !== null || $profile->isDaily()) {
+            return null;
+        }
+
+        $start = null;
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->date) === 1 && preg_match('/^\d{2}:\d{2}$/', $this->time) === 1) {
+            $start = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $this->chooserZone()) ?: null;
+        }
+
+        return [
+            'start' => $start,
+            'typical' => $start?->addMinutes((int) ceil($range->typical)),
+            'latest' => $start?->addMinutes((int) ceil($range->latest)),
+            // Midnight in the league's zone (Berlin), whatever zone the organizer types in.
+            'warnings' => $start !== null ? $range->warnings($start, $profile, (string) config('esports.preseason.display_timezone'))
+                : ($range->latest > DurationRange::LATEST_MAX_MINUTES ? ['too-long'] : []),
+        ];
+    }
+
+    /**
+     * The zone date and time are entered in: the one the tournament pages show them in.
+     */
+    public function chooserZone(): string
+    {
+        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     }
 
     /**
@@ -424,7 +493,7 @@ abstract class TournamentFormatChooser extends Component
      */
     protected function changed(): void
     {
-        unset($this->evaluation, $this->format);
+        unset($this->evaluation, $this->format, $this->durationRange);
         $this->renderIsland('summary');
     }
 }

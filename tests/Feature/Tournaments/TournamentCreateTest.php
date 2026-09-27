@@ -236,8 +236,11 @@ test('a draft is shown to its creator and admins only; a published tournament to
     $this->actingAs(tournamentAdmin())->get(route('tournaments.show', $draft))->assertOk();
 
     auth()->logout();
-    // No stored round count: the default, log2 12 = 4 rounds of 14 min and 3 breaks.
-    $this->get(route('tournaments.show', $open))->assertOk()->assertSee('about 1 h 5 min');
+    // Online the end is open (P18). No stored round count: the default, log2 12 = 4 rounds of 14 min
+    // plus 3 min online overhead each, and 3 breaks of 3 min: expected 77 min after the start.
+    $this->get(route('tournaments.show', $open))->assertOk()
+        ->assertSee('Open end, expected around '.$open->starts_at->copy()->addMinutes(77)->timezone('Europe/Berlin')->format('G:i'))
+        ->assertDontSee('Planned duration');
 });
 
 test('an organizer finds their tournaments in the header menu, a member does not', function () {

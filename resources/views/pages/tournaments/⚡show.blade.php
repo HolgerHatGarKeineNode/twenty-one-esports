@@ -234,8 +234,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     $chips = [
         ['tournaments', __('Format'), $tournament->format->label().($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
-        ['flag', __('Starts'), $at($tournament->starts_at), 'starts'],
-        ['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration'],
+        // Online the end is open (P18): the start, and when it is expected to end, never a planned duration.
+        ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
+        ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
         [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
         ['shield-check', __('Results'), $tournament->results_mode->label(), 'results'],
         ['ladder', __('Rated'), match (true) {

@@ -90,7 +90,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
             <div class="flex min-w-0 grow flex-col gap-2">
                 <span class="text-xs text-ink-2">{{ __('Next tournament') }}</span>
                 <h2 id="next-h" class="m-0 font-display text-[26px] font-bold break-words"><a href="{{ route('tournaments.show', $next) }}" class="text-ink hover:text-ink">{{ $next->name }}</a></h2>
-                <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · {{ $next->starts_at->copy()->timezone($zone)->format('D Y-m-d H:i') }}</p>
+                <p class="m-0 text-[13px] text-ink-2">{{ $modeLabel($next) }} · {{ $next->format->label() }} · {{ $next->starts_at->copy()->timezone($zone)->format('D Y-m-d H:i') }}@if (($openEnd = \App\Support\Tournaments\TournamentLanding::openEnd($next, $zone)) !== null) · <span data-test="open-end">{{ $openEnd }}</span>@endif</p>
                 <div class="flex flex-col gap-1.5 pt-2">
                     <span class="text-[13px]">{{ __(':taken of :places places taken', ['taken' => $places['taken'], 'places' => $places['places']]) }}</span>
                     <span class="h-2 w-full overflow-hidden rounded-full bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $places['places'] > 0 ? min(100, (int) round(100 * $places['taken'] / $places['places'])) : 0 }}%"></span></span>

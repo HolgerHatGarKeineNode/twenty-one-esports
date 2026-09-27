@@ -399,6 +399,8 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             <p class="m-0 rounded-md px-4 py-3 text-[13px] text-loss shadow-[inset_0_0_0_1px_#5A2A2E]" role="alert" data-test="edit-error">{{ $error }}</p>
         @endif
 
+        @include('pages.admin.partials.tournament-round-times')
+
         @if ($ended)
             <p class="m-0 rounded-lg bg-card px-4 py-4 text-[13px] text-ink-2" data-test="edit-ended">{{ __('This tournament has ended; it can no longer be changed.') }}</p>
         @else

@@ -8,10 +8,12 @@ use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Series\Ladders;
+use App\Support\Tournaments\DurationRange;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentDeadlines;
+use Carbon\CarbonImmutable;
 use Database\Factories\TournamentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -323,6 +325,43 @@ class Tournament extends Model
         $profile = $this->profile();
 
         return $estimator->duration($this->format, $estimator->structure($this->format, $this->capacity, $options), $profile, $options, $profile->isDaily() ? null : $this->stations)->total;
+    }
+
+    /**
+     * The honest range in the game's unit (P18): the plan, the typical
+     * online duration and the latest, on this tournament's round clock.
+     */
+    public function durationRange(): DurationRange
+    {
+        $estimator = new Estimator;
+        $options = $this->formatOptions();
+        $profile = $this->profile();
+
+        return $estimator->range($this->format, $estimator->structure($this->format, $this->capacity, $options), $profile, $options,
+            $profile->isDaily() ? null : $this->stations, TournamentDeadlines::clockOf($this));
+    }
+
+    /**
+     * An online tournament of a minute game has only a start; its end is
+     * open (P18, user decision 2026-09-27). This is when it is expected to
+     * end, and the latest if every deadline runs out: never a promise. Null
+     * on site and in daily chess, which keep their planned duration.
+     *
+     * @return array{typical: CarbonImmutable, latest: CarbonImmutable}|null
+     */
+    public function expectedEnd(): ?array
+    {
+        if (! TournamentDeadlines::isSingleDay($this)) {
+            return null;
+        }
+
+        $range = $this->durationRange();
+        $start = $this->starts_at->toImmutable();
+
+        return [
+            'typical' => $start->addMinutes((int) ceil($range->typical)),
+            'latest' => $start->addMinutes((int) ceil($range->latest)),
+        ];
     }
 
     /**

@@ -34,7 +34,7 @@
 #   1: RouteSweepTest, NotificationDmPagesTest, PlayerPickerTest (~29s + ~6s + picker)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest (~26s + clan logos)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest (~27s + P8b + ladder + covers)
-#   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest
+#   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest
 #   5: NavigationCrawlTest (~47s, the P16 walk per role and width)
 #   6: NavigationMenusTest (~17s, P16 menus and context actions)
 #   7: TournamentLandingTest (the tournament page and sign-up at three widths)
@@ -66,7 +66,7 @@ SHARD_FILES=(
     "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/PlayerPickerTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
-    "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php"
+    "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"
     "tests/Browser/NavigationCrawlTest.php"
     "tests/Browser/NavigationMenusTest.php tests/Browser/InvitePlacementTest.php"
     "tests/Browser/TournamentLandingTest.php"

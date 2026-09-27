@@ -3,6 +3,7 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
+use Closure;
 
 /**
  * The tournament estimator and recommendation of the format chooser, a port
@@ -289,11 +290,17 @@ final class Estimator
      * Duration in the game's unit. `$stations` null = online, no limit. In
      * daily chess, formats whose pairings don't depend on results (round
      * robin, round-robin groups) start all their games at once.
+     *
+     * `$slotOf` gives the time one match of a best-of takes; null = the
+     * profile's plan ({@see GameProfile::slot()}).
+     *
+     * @param  (Closure(int): float)|null  $slotOf
      */
-    public function duration(TournamentFormat $format, Structure $structure, GameProfile $profile, FormatOptions $options, ?int $stations): Duration
+    public function duration(TournamentFormat $format, Structure $structure, GameProfile $profile, FormatOptions $options, ?int $stations, ?Closure $slotOf = null): Duration
     {
-        $slot = $profile->slot($options->bestOf);
-        $finalSlot = $profile->slot($options->finalBestOf);
+        $slotOf ??= $profile->slot(...);
+        $slot = $slotOf($options->bestOf);
+        $finalSlot = $slotOf($options->finalBestOf);
         $rounds = array_map(fn (array $round): array => [...$round, 'merged' => 0], $structure->rounds);
 
         if ($profile->allAtOnce && ($format === TournamentFormat::RoundRobin || ($format === TournamentFormat::TwoStage && $options->groupStage === 'round-robin'))) {
@@ -327,6 +334,28 @@ final class Estimator
         }
 
         return new Duration($blocks, $play, $breaks, $play + $breaks, $play + $breaks - $ifNeeded);
+    }
+
+    /**
+     * The honest range of a format (P18, user decision 2026-09-27): the plan,
+     * the typical online duration (every match plus its overhead) and the
+     * latest (every round runs out every deadline of `$clock`). A round still
+     * waits for its slowest match, so the knockout pull-forward makes the
+     * real duration shorter, never longer. On site: the plan three times.
+     */
+    public function range(TournamentFormat $format, Structure $structure, GameProfile $profile, FormatOptions $options, ?int $stations, RoundClock $clock): DurationRange
+    {
+        $planned = $this->duration($format, $structure, $profile, $options, $stations)->total;
+
+        if ($stations !== null && ! $profile->isDaily()) {
+            return new DurationRange($planned, $planned, $planned);
+        }
+
+        return new DurationRange(
+            $planned,
+            $this->duration($format, $structure, $profile, $options, null, $profile->onlineSlot(...))->total,
+            $this->duration($format, $structure, $profile, $options, null, fn (int $bestOf): float => $clock->hardEnd($profile, $bestOf))->total,
+        );
     }
 
     /**

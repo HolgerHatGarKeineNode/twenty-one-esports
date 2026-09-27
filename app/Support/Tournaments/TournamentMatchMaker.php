@@ -6,6 +6,7 @@ use App\Enums\ChessGameStatus;
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
@@ -16,6 +17,7 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
+use App\Models\TournamentRound;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
@@ -72,6 +74,13 @@ final class TournamentMatchMaker
      * Start the normal match of every tournament match that is ready and
      * has none yet. A chess player still busy in another live game is left
      * for the next run (the scheduler tries again every minute).
+     *
+     * In players mode a match starts as soon as its two sides are known: a
+     * knockout match does not wait for the rest of its round (P18). A
+     * round-robin match waits until both sides are done with the earlier
+     * rounds of its stage ({@see waitsForEarlierRound()}); Swiss pairs one
+     * round at a time anyway. The first match that starts marks its round
+     * as started (`tournament_rounds.started_at`, the measurement of P18).
      */
     public function startReady(Tournament $tournament): void
     {
@@ -91,9 +100,11 @@ final class TournamentMatchMaker
 
             [$a, $b] = [$match->slots[0]->participant ?? null, $match->slots[1]->participant ?? null];
 
-            if ($a === null || $b === null) {
+            if ($a === null || $b === null || self::waitsForEarlierRound($tournament, $match)) {
                 continue;
             }
+
+            TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
 
             try {
                 if ($tournament->profile()->isChess()) {
@@ -117,6 +128,29 @@ final class TournamentMatchMaker
                 report($violation);
             }
         }
+    }
+
+    /**
+     * A round-robin match of a one-day players tournament (the format, or
+     * the groups of Two Stage) whose sides still have a match of an earlier
+     * round of the same stage to finish: it waits for them, so nobody plays
+     * two series at once, and nobody waits for an unrelated match. Daily
+     * chess starts every round-robin game at once (the estimator plans it
+     * so), and directors open one round at a time themselves.
+     */
+    public static function waitsForEarlierRound(Tournament $tournament, TournamentMatch $match): bool
+    {
+        if ($tournament->isDirectorMode() || $tournament->profile()->isDaily() || $match->round->stage->format !== TournamentFormat::RoundRobin) {
+            return false;
+        }
+
+        $sides = $match->slots->pluck('tournament_participant_id')->filter()->all();
+
+        return TournamentMatch::query()->where('tournament_id', $tournament->id)
+            ->whereNotIn('status', ['done', 'skipped'])->where('bracket', '!=', 'bye')
+            ->whereHas('round', fn ($round) => $round->where('tournament_stage_id', $match->round->tournament_stage_id)->where('number', '<', $match->round->number))
+            ->whereHas('slots', fn ($slot) => $slot->whereIn('tournament_participant_id', $sides))
+            ->exists();
     }
 
     /**
@@ -266,7 +300,7 @@ final class TournamentMatchMaker
             'tournament_attempt' => $attempt,
             'sides' => $sides === [] ? null : $sides,
             // The league runs the deadlines where the players report; pinned now, so a later edit reaches only later pairings (P18).
-            'deadlines' => $tournament->isDirectorMode() ? null : TournamentDeadlines::forSeries($tournament),
+            'deadlines' => $tournament->isDirectorMode() ? null : TournamentDeadlines::forSeries($tournament, $bestOf),
         ]);
 
         if ($league !== null && $pin !== null) {

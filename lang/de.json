@@ -3212,5 +3212,17 @@
     "Several players, one request each.": "Mehrere Spieler, je eine Anfrage.",
     "Sign-up closes :when": "Anmeldeschluss :when",
     "Another game": "Noch eine Partie",
-    "Another series": "Noch eine Serie"
+    "Another series": "Noch eine Serie",
+    "Open end, expected around :time": "Ende offen, voraussichtlich gegen :time",
+    "Start :start · expected end about :typical · at the latest about :latest if every deadline runs out": "Start :start · Ende voraussichtlich gegen :typical · spätestens gegen :latest, wenn jede Frist ausläuft",
+    "Expected about :typical, at the latest :latest if every deadline runs out": "Voraussichtlich etwa :typical, höchstens :latest, wenn jede Frist ausläuft",
+    "Planned play :planned, online about :typical with finding the opponent and reporting, at most :latest. The end stays open for the players.": "Reine Spielzeit :planned, online mit Gegnersuche und Melden etwa :typical, höchstens :latest. Für die Spieler bleibt das Ende offen.",
+    "The expected end is after midnight (:zone).": "Das voraussichtliche Ende liegt nach Mitternacht (:zone).",
+    "If every deadline runs out this takes more than 10 hours. Fewer players, shorter series or fewer rounds help.": "Laufen alle Fristen aus, dauert es über 10 Stunden. Weniger Spieler, kürzere Serien oder weniger Runden helfen.",
+    "Measured: a round took :measured in the median of :count finished round (assumed :assumed).|Measured: a round took :measured in the median of :count finished rounds (assumed :assumed).": "Gemessen: Eine Runde dauerte im Median von :count beendeten Runde :measured (angenommen :assumed).|Gemessen: Eine Runde dauerte im Median von :count beendeten Runden :measured (angenommen :assumed).",
+    "Online on one day, every deadline runs from the start of the match: a no-show after :noshow min, the result :report min after the start (a final :final min), an answer within :response min.": "Online an einem Tag läuft jede Frist ab dem Start des Matches: Nichterscheinen nach :noshow Min., das Ergebnis :report Min. nach dem Start (ein Finale :final Min.), eine Antwort innerhalb von :response Min.",
+    ":min to :max; empty: :minutes min after the start of the match.": ":min bis :max; leer: :minutes Min. nach dem Start des Matches.",
+    "Round times": "Rundenzeiten",
+    "Stage :stage": "Phase :stage",
+    "Round :number: :measured (estimate :estimate)": "Runde :number: :measured (Schätzung :estimate)"
 }
