@@ -137,11 +137,14 @@ return [
         | Music under the picture in both modes: `<title>__v<n>.m4a` files
         | (AAC-LC 44.1 kHz stereo). The supervisor writes a shuffled ffconcat
         | list of about `list_hours`; ffmpeg loops it. Instrumentals, named the
-        | same way in `instrumental_dir`, alternate with the vocal tracks.
+        | same way in `instrumental_dir`, play `instrumentals_per_vocal` at a time
+        | between two vocal tracks.
         */
         'music' => [
             'dir' => env('TWENTYONE_STREAM_MUSIC_DIR') ?: storage_path('app/stream/music'),
             'instrumental_dir' => env('TWENTYONE_STREAM_INSTRUMENTAL_DIR') ?: storage_path('app/stream/music/instrumental'),
+            // How many instrumentals play between two vocal tracks.
+            'instrumentals_per_vocal' => 3,
             'list_hours' => 12,
         ],
 

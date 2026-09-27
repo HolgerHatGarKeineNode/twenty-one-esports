@@ -139,3 +139,42 @@ test('instrumentals that are all also sung leave a slot empty instead of failing
         }
     }
 });
+
+test('three instrumentals play between two vocal tracks, never next to the same title, and all come round', function () {
+    $instrumentals = [];
+
+    foreach (['dnb' => 10, 'drumnbass' => 4, 'shitcoin-shuffle' => 2, 'title-1' => 2, 'title-2' => 2, 'title-3' => 2] as $title => $versions) {
+        foreach (range(1, $versions) as $version) {
+            $instrumentals[] = "/music/instrumental/{$title}__v{$version}.m4a";
+        }
+    }
+
+    foreach (range(1, 100) as $seed) {
+        $random = new Randomizer(new Mt19937($seed));
+        $vocals = MusicPlaylist::order(musicFiles(), 4, $random);
+        $list = MusicPlaylist::interleave($vocals, $instrumentals, $random, 3);
+        $count = count($list);
+        $played = [];
+
+        expect($count)->toBe(4 * count($vocals))
+            ->and(array_values(array_filter($list, fn (string $file): bool => ! str_contains($file, '/instrumental/'))))->toBe($vocals);
+
+        foreach ($list as $index => $file) {
+            expect(str_contains($file, '/instrumental/'))->toBe($index % 4 !== 0)
+                ->and(MusicPlaylist::title($file))->not->toBe(MusicPlaylist::title($list[($index + 1) % $count]));
+
+            if ($index % 4 === 1) {
+                // One run of three: three different titles.
+                expect(count(array_unique(array_map(MusicPlaylist::title(...), array_slice($list, $index, 3)))))->toBe(3);
+            }
+
+            if ($index % 4 !== 0) {
+                $played[$file] = ($played[$file] ?? 0) + 1;
+            }
+        }
+
+        // Every file plays; a title with many versions (DnB) is rationed to one per run, so its
+        // versions come round less often than the others: variety of titles wins over evenness.
+        expect(count($played))->toBe(count($instrumentals));
+    }
+});

@@ -762,11 +762,12 @@ class TwentyOneStreamCommand extends Command
         $files = $this->musicFiles();
         $instrumentals = $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir'));
         // With instrumentals every vocal track is followed by one: a pass lasts twice as long.
-        $seconds = max(1, count($files) * self::ASSUMED_TRACK_SECONDS * ($instrumentals === [] ? 1 : 2));
+        $perVocal = max(1, (int) config('twentyone.stream.music.instrumentals_per_vocal', 3));
+        $seconds = max(1, count($files) * self::ASSUMED_TRACK_SECONDS * ($instrumentals === [] ? 1 : 1 + $perVocal));
         $passes = (int) ceil(3600 * (int) config('twentyone.stream.music.list_hours', 12) / $seconds);
         $path = rtrim((string) config('twentyone.stream.scene.work_dir'), '/').'/music.ffconcat';
         File::ensureDirectoryExists(dirname($path));
-        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat(MusicPlaylist::interleave(MusicPlaylist::order($files, max(1, $passes)), $instrumentals)));
+        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat(MusicPlaylist::interleave(MusicPlaylist::order($files, max(1, $passes)), $instrumentals, perVocal: $perVocal)));
 
         return $path;
     }

@@ -106,12 +106,13 @@ final class MusicPlaylist
     }
 
     /**
-     * The vocal order with one instrumental after every vocal track (vocal,
-     * instrumental, vocal, …). Instrumentals are drawn from a shuffled bag
-     * that refills when empty, so all of them come round before one repeats.
-     * An instrumental never shares its title with the vocal before or after
-     * it (several exist in both forms: the same tune twice in a row), nor
-     * with the previous instrumental; the list wraps like `order()`.
+     * The vocal order with `$perVocal` instrumentals after every vocal track
+     * (vocal, 3 instrumentals, vocal, … with 3). Instrumentals are drawn from a
+     * shuffled bag that refills when empty, so all of them come round before
+     * one repeats. No two neighbours ever share a title (several tunes exist
+     * both sung and instrumental, and as several versions); where it can, a
+     * run also avoids a title twice and the instrumental before the vocal.
+     * The list wraps like `order()`.
      *
      * A slot no instrumental fits (possible only with at most two titles,
      * all of which are also sung) stays empty rather than failing.
@@ -120,47 +121,59 @@ final class MusicPlaylist
      * @param  list<string>  $instrumentals
      * @return list<string>
      */
-    public static function interleave(array $vocals, array $instrumentals, Randomizer $random = new Randomizer): array
+    public static function interleave(array $vocals, array $instrumentals, Randomizer $random = new Randomizer, int $perVocal = 1): array
     {
-        if ($instrumentals === []) {
+        if ($instrumentals === [] || $vocals === []) {
             return $vocals;
         }
 
+        $perVocal = max(1, $perVocal);
         $count = count($vocals);
         $bag = [];
-        $previous = null;
+        $lastInstrumental = null;
         $list = [];
 
         foreach ($vocals as $index => $vocal) {
-            $neighbours = [self::title($vocal), self::title($vocals[($index + 1) % $count])];
-            $pick = null;
+            $list[] = $vocal;
+            $previous = self::title($vocal);
+            $next = self::title($vocals[($index + 1) % $count]);
+            $run = [];
 
-            // Strict first (not the previous instrumental either), then only the neighbours.
-            foreach ([[...$neighbours, $previous], $neighbours] as $avoid) {
-                foreach ([false, true] as $refill) {
-                    if ($refill || $bag === []) {
-                        $bag = [...$bag, ...$random->shuffleArray($instrumentals)];
-                    }
+            for ($slot = 0; $slot < $perVocal; $slot++) {
+                $neighbours = $slot === $perVocal - 1 ? [$previous, $next] : [$previous];
+                // Strict first: no title twice in one run, nor the last instrumental before this
+                // vocal; then only the neighbours, which must always differ.
+                $strict = [...$neighbours, ...$run, ...($slot === 0 && $lastInstrumental !== null ? [$lastInstrumental] : [])];
+                $pick = null;
 
-                    foreach ($bag as $key => $file) {
-                        if (! in_array(self::title($file), $avoid, true)) {
-                            $pick = $file;
-                            unset($bag[$key]);
-                            $bag = array_values($bag);
+                foreach ([$strict, $neighbours] as $avoid) {
+                    foreach ([false, true] as $refill) {
+                        if ($refill || $bag === []) {
+                            $bag = [...$bag, ...$random->shuffleArray($instrumentals)];
+                        }
 
-                            break 3;
+                        foreach ($bag as $key => $file) {
+                            if (! in_array(self::title($file), $avoid, true)) {
+                                $pick = $file;
+                                unset($bag[$key]);
+                                $bag = array_values($bag);
+
+                                break 3;
+                            }
                         }
                     }
                 }
-            }
 
-            // No instrumental fits here (few titles, all also sung): the slot stays empty, two vocal
-            // tracks follow each other as in order(), and the daemon never dies over the music.
-            $list[] = $vocal;
+                // No instrumental fits (few titles, all also sung): the slot stays empty rather than
+                // repeating a title back to back, and the daemon never dies over the music.
+                if ($pick === null) {
+                    continue;
+                }
 
-            if ($pick !== null) {
                 $list[] = $pick;
                 $previous = self::title($pick);
+                $run[] = $previous;
+                $lastInstrumental = $previous;
             }
         }
 
