@@ -565,7 +565,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
                 {{-- Board column --}}
                 <div class="order-2 -mx-4 flex flex-col gap-4 lg:order-none lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mx-0 lg:mt-4">
-                    <x-chess.board playable class="lg:max-w-[576px]">
+                    <x-chess.board playable class="lg:max-w-[576px]" data-test="live-board">
                         {{-- Promotion picker, on the target file (ChessOverlays 2) --}}
                         <template x-if="promotion">
                             <div class="absolute inset-0">
@@ -741,8 +741,13 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     @endif
                 </div>
 
-                {{-- Moves: list from lg, one scrolling row below (MobileChessGame) --}}
-                <div class="order-4 lg:order-none lg:col-start-2 lg:row-start-2 lg:flex lg:min-h-[180px] lg:flex-col lg:rounded-lg lg:bg-card">
+                {{--
+                    Moves: list from lg, one scrolling row below (MobileChessGame). As in the daily game, the list takes
+                    the board's height and never grows it: size containment makes the card count only its 180px floor
+                    towards its grid row (minmax(0,1fr)), the row gets what the board column leaves over, and the list
+                    scrolls inside. It is column-reverse, so it rests at its newest end while moves arrive.
+                --}}
+                <div class="order-4 lg:order-none lg:col-start-2 lg:row-start-2 lg:flex lg:min-h-[180px] lg:flex-col lg:rounded-lg lg:bg-card lg:[contain:size]" data-test="moves-card">
                     <span class="hidden items-baseline justify-between border-b border-hairline px-4 pt-3 pb-2 lg:flex"><span class="text-[15px] font-bold">{{ __('Moves') }}</span><span class="text-[11px] text-ink-3">{{ __('seconds per move') }}</span></span>
                     <div tabindex="0" aria-label="{{ __('Move list, newest move at the bottom') }}" class="hidden min-h-0 grow flex-col-reverse overflow-y-auto lg:flex" data-test="move-list">
                         <ol class="m-0 list-none px-2 py-0">
@@ -755,7 +760,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                             </template>
                         </ol>
                     </div>
-                    <div class="flex h-12 items-center overflow-x-auto rounded-lg bg-card px-2 text-sm whitespace-nowrap lg:hidden" x-effect="state.moves.length; $nextTick(() => $el.scrollLeft = $el.scrollWidth)" aria-label="{{ __('Moves') }}">
+                    <div class="flex h-12 items-center overflow-x-auto rounded-lg bg-card px-2 text-sm whitespace-nowrap lg:hidden" x-effect="state.moves.length; $nextTick(() => $el.scrollLeft = $el.scrollWidth)" aria-label="{{ __('Moves') }}" data-test="move-strip">
                         <template x-if="state.moves.length === 0"><span class="px-2 text-ink-3">{{ __('No moves yet') }}</span></template>
                         <template x-for="row in moveRows" :key="'m' + row.n">
                             <span class="flex items-center gap-1 pr-2">

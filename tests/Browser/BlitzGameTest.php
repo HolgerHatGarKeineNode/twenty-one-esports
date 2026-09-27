@@ -4,9 +4,11 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
 
@@ -355,4 +357,94 @@ test('the lobby switch answers every click, the online list holds still, and an 
     // Control: a player who really leaves is dropped, after the grace period.
     $pageB->close();
     BrowserWait::until($pageA, '() => !('.listsPlayer($bert).')()', 10_000);
+});
+
+/**
+ * 70 legal plies without a capture streak, a check or a repetition that ends
+ * the game (seeded random walk, replayed through ChessRules): a blitz game
+ * long enough to fill any move list.
+ */
+const BLITZ_LONG_GAME = 'b2b4 c7c6 g1h3 e7e5 d2d3 g7g5 d1d2 h7h6 c1a3 f7f5 g2g4 d7d6 b4b5 d6d5 h1g1 g8f6 a3d6 d8c7 e1d1 c7g7 d6b4 g7h7 b4c3 a7a5 d1c1 e5e4 a2a4 f8d6 c3d4 h7g8 d4e3 c8e6 e3d4 e8d7 d4b6 d6g3 h3g5 d7c8 b6e3 f5g4 d3d4 f6e8 g5h7 g8f8 e3g5 g3f4 h7f6 f8a3 c1d1 a3e7 f1g2 f4c7 b5c6 e7g7 f6g8 h6h5 c2c3 g7f7 g5e3 c8d8 d2c1 f7g6 g2f1 g6g5 d1c2 d8c8 f2f3 c7g3 c2b3 g5h4';
+
+/**
+ * The live room's layout while the moves pile up: board, the move list's box
+ * (the card from lg, the one-line strip below), whether the newest move is in
+ * view and the list sits at its end, and the document's height.
+ */
+const BLITZ_LAYOUT = <<<'JS'
+    () => {
+        const desktop = innerWidth >= 1024;
+        const round = (n) => Math.round(n * 10) / 10;
+        const board = document.querySelector('[data-test=live-board]').getBoundingClientRect();
+        const box = document.querySelector(desktop ? '[data-test=moves-card]' : '[data-test=move-strip]');
+        const scroller = desktop ? document.querySelector('[data-test=move-list]') : box;
+        const port = scroller.getBoundingClientRect();
+        const items = desktop ? scroller.querySelectorAll('li') : scroller.querySelectorAll(':scope > span');
+        const last = items[items.length - 1]?.getBoundingClientRect() ?? null;
+        return {
+            board: round(board.height),
+            box: round(box.getBoundingClientRect().height),
+            rows: items.length,
+            scrolls: desktop ? scroller.scrollHeight > scroller.clientHeight : scroller.scrollWidth > scroller.clientWidth,
+            // Column-reverse list: scrollTop 0 is the newest end, older moves are at negative offsets.
+            atEnd: desktop ? scroller.scrollTop >= -1 : scroller.scrollLeft >= scroller.scrollWidth - scroller.clientWidth - 1,
+            lastInView: last !== null && (desktop ? last.top >= port.top - 1 && last.bottom <= port.bottom + 1 : last.left >= port.left - 1 && last.right <= port.right + 1),
+            doc: document.documentElement.scrollHeight,
+        };
+    }
+    JS;
+
+test('a blitz room keeps its board and move list the same height through 70 moves, the newest move in view, at 1440 and 375 px', function () {
+    $games = app(ChessGameService::class);
+    $plies = explode(' ', BLITZ_LONG_GAME);
+    $sizes = [];
+
+    foreach ([1440 => 900, 375 => 667] as $width => $height) {
+        [$anna, $bert] = User::factory()->count(2)->create();
+        $game = $games->start($anna, $bert);
+        // Two plies first: past the first-move notice and the abort button, both of which change the room's height on their own.
+        foreach (array_slice($plies, 0, 2) as $i => $uci) {
+            $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+        }
+
+        $page = blitzPage($anna, route('games.show', $game, false));
+        $page->setViewportSize($width, $height);
+        BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chess-game]")).state.moves.length === 2', 10_000);
+        $before = $page->evaluate(BLITZ_LAYOUT);
+        // On a phone the move strip sits under the board: bring it into the shot (after measuring).
+        $reveal = '() => innerWidth < 1024 && document.querySelector("[data-test=move-strip]").scrollIntoView({ block: "center" })';
+        $page->evaluate($reveal);
+        shellShot($page, "blitz-{$width}-2-plies");
+
+        foreach (array_slice($plies, 2) as $i => $uci) {
+            $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+        }
+        // The page learns the moves the way it would after a missed push: its own state fetch.
+        $page->evaluate('() => Alpine.$data(document.querySelector("[data-test=chess-game]")).resync()');
+        BrowserWait::until($page, '() => Alpine.$data(document.querySelector("[data-test=chess-game]")).state.moves.length === 70', 10_000);
+        $page->evaluate('() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+        $after = $page->evaluate(BLITZ_LAYOUT);
+        $page->evaluate($reveal);
+        shellShot($page, "blitz-{$width}-70-plies");
+        $sizes[$width] = ['before' => $before, 'after' => $after];
+
+        expect($after['rows'])->toBe(35)
+            ->and($after['board'])->toBe($before['board'])
+            ->and(abs($after['box'] - $before['box']))->toBeLessThanOrEqual(1.0, "move list box @{$width}: {$before['box']} -> {$after['box']}")
+            ->and($after['doc'])->toBe($before['doc'], "document height @{$width}")
+            ->and($after['scrolls'])->toBeTrue()
+            ->and($after['atEnd'])->toBeTrue()
+            ->and($after['lastInView'])->toBeTrue()
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+        $games->resign($game->refresh(), $anna);
+    }
+
+    fwrite(STDERR, "\n[blitz-moves] ".json_encode($sizes));
+
+    // Positive control: the same collectors do see a thrown error, a 404 fetch and a broken image.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("control-throw"); }); fetch("/control-missing-page"); document.body.append(Object.assign(new Image(), { src: "/control-missing.png" })); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("control-throw")) && window.__errors.some((e) => e.startsWith("404"))', 5_000);
+    BrowserWait::until($page, '() => ('.BrowserConsole::BAD_RESPONSES.')().some((e) => e.includes("control-missing.png"))', 5_000);
 });
