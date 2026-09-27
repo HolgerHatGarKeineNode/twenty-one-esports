@@ -139,7 +139,7 @@ class TournamentSlides
         $timezone = (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
         $landing = new TournamentLanding($tournament, null);
         $places = $landing->places();
-        $countdown = $landing->countdown($timezone);
+        $countdown = $landing->countdown();
 
         // "Who plays": the seeded entries, best first. A solo player shows the
         // public name of today, a lineup its clan's name as the roster has it.
