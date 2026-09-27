@@ -51,6 +51,12 @@ use Throwable;
  *   under way, the league decides ({@see decision()}).
  * - Chess draws: a second game with the colours swapped, then Armageddon
  *   (a draw advances Black; TournamentRunner::chessGameFinished()).
+ * - Small cups (S2): with fewer than `min_players` after the extension the
+ *   cup is not called off but switched to a small format ({@see formatFor()}:
+ *   2 players one match, 3 to 5 a round robin) and played as one live
+ *   evening: the rounds follow each other after a short break and the
+ *   league starts every game at its round's start. The switch is the one
+ *   new version of the 31923 with the evening's start and end.
  *
  * Each cup is handled on its own: one that fails is reported and the others
  * go on. Every transition is a conditional update or happens under the
@@ -139,14 +145,109 @@ final class CasualCups
         return $slot->utc();
     }
 
+    /* ---------- Small cups: one live evening (S2) ------------------------------------------------------------ */
+
+    /**
+     * A cup switched to a small format: played as one live evening.
+     */
+    public static function isEvening(Tournament $cup): bool
+    {
+        return $cup->isCasualCup() && $cup->format !== TournamentFormat::DoubleElimination;
+    }
+
+    /**
+     * The cup's format for this many players at its last close; null = call
+     * it off. From `min_players` on the double elimination stays; 2 players
+     * play one match (chess: `duel_games` games with the colours
+     * alternating, a round robin of two; the series games a best of
+     * `duel_best_of`); 3 to 5 a round robin, one game per pairing, ranked by
+     * points, then head-to-head, then wins, then the order the draw's block
+     * hash seeded (the lot).
+     *
+     * @return array{format: TournamentFormat, options: array<string, mixed>}|null
+     */
+    public static function formatFor(Tournament $cup, int $players): ?array
+    {
+        if ($players < 2) {
+            return null;
+        }
+
+        if ($players >= self::minPlayers()) {
+            return ['format' => TournamentFormat::DoubleElimination, 'options' => $cup->options];
+        }
+
+        $evening = (array) config('esports.casual_cups.evening', []);
+
+        if ($players === 2 && ! $cup->profile()->isChess()) {
+            $bestOf = (int) ($evening['duel_best_of'] ?? 3);
+
+            return ['format' => TournamentFormat::SingleElimination, 'options' => ['bestOf' => $bestOf, 'finalBestOf' => $bestOf]];
+        }
+
+        return ['format' => TournamentFormat::RoundRobin, 'options' => [
+            'iterations' => $players === 2 ? (int) ($evening['duel_games'] ?? 3) : 1,
+            'rankBy' => 'points',
+            'roundRobinTieBreaks' => ['head-to-head', 'match-wins'],
+        ]];
+    }
+
+    /**
+     * The evening of a small cup as planned: rounds, the games each player
+     * plays, their play time (the game profile's length per game) and the
+     * whole evening with the breaks, in minutes.
+     *
+     * @return array{rounds: int, games_per_player: int, round_minutes: int, play_minutes: int, span_minutes: int}
+     */
+    public static function eveningPlan(Tournament $cup, int $players): array
+    {
+        $options = $cup->formatOptions();
+        $gameMinutes = $cup->profile()->gameLength;
+        $break = max(0, (int) config('esports.casual_cups.evening.break_minutes', 3));
+
+        if ($cup->format === TournamentFormat::SingleElimination) {
+            [$rounds, $gamesPerRound, $games] = [1, $options->finalBestOf, $options->finalBestOf];
+        } else {
+            [$rounds, $gamesPerRound, $games] = [($players + $players % 2 - 1) * $options->iterations, 1, ($players - 1) * $options->iterations];
+        }
+
+        $roundMinutes = (int) ceil($gamesPerRound * $gameMinutes);
+
+        return [
+            'rounds' => $rounds,
+            'games_per_player' => $games,
+            'round_minutes' => $roundMinutes,
+            'play_minutes' => (int) ceil($games * $gameMinutes),
+            'span_minutes' => $rounds * $roundMinutes + ($rounds - 1) * $break,
+        ];
+    }
+
+    /**
+     * When the evening starts: `start` in the cups' timezone,
+     * `days_after_close` days after sign-up closed.
+     */
+    public static function eveningStart(CarbonInterface $closedAt): CarbonImmutable
+    {
+        $evening = (array) config('esports.casual_cups.evening', []);
+        [$hour, $minute] = array_map(intval(...), explode(':', (string) ($evening['start'] ?? '20:00')) + [1 => '0']);
+
+        return CarbonImmutable::instance($closedAt)->setTimezone((string) config('esports.casual_cups.timezone', 'Europe/Berlin'))
+            ->addDays((int) ($evening['days_after_close'] ?? 1))->setTime($hour, $minute)->utc();
+    }
+
+    /** The players of a cup: its entries once drawn, its sign-ups before. */
+    public static function players(Tournament $cup): int
+    {
+        return $cup->participants()->count() ?: TournamentSignup::query()->where('tournament_id', $cup->id)->active()->count();
+    }
+
     /* ---------- The clock ------------------------------------------------------------------------------------- */
 
     /**
-     * @return array{opened: int, extended: int, cancelled: int, rounds: int, decided: int}
+     * @return array{opened: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}
      */
     public function tick(): array
     {
-        $done = ['opened' => 0, 'extended' => 0, 'cancelled' => 0, 'rounds' => 0, 'decided' => 0];
+        $done = ['opened' => 0, 'extended' => 0, 'evenings' => 0, 'cancelled' => 0, 'rounds' => 0, 'decided' => 0];
 
         // Cups that ended some other way (the last result, an admin's call-off) give back their open place first.
         foreach (Tournament::query()->whereNotNull('cup_open_series')->whereIn('status', [TournamentStatus::Finished, TournamentStatus::Cancelled])->get() as $cup) {
@@ -247,10 +348,11 @@ final class CasualCups
     /* ---------- Sign-up --------------------------------------------------------------------------------------- */
 
     /**
-     * Start a full cup at once; at the close start it with enough players,
-     * extend its sign-up once, or call it off.
+     * Start a full cup at once; at the close start it with enough players or
+     * extend its sign-up once; after the extension switch it to a small
+     * format with 2 to 5 players, or call it off.
      *
-     * @return 'extended'|'cancelled'|null
+     * @return 'extended'|'evenings'|'cancelled'|null
      */
     private function settleSignup(Tournament $cup): ?string
     {
@@ -267,13 +369,69 @@ final class CasualCups
             return null;
         }
 
-        if ($signedUp >= self::minPlayers()) {
+        // Switched already (a draw that could not commit yet is tried again).
+        if ($signedUp >= self::minPlayers() || self::isEvening($cup)) {
             $this->draws->close($cup);
 
             return null;
         }
 
-        return $cup->cup_extended_at === null ? ($this->extend($cup) ? 'extended' : null) : ($this->cancel($cup) ? 'cancelled' : null);
+        if ($cup->cup_extended_at === null) {
+            return $this->extend($cup) ? 'extended' : null;
+        }
+
+        if ($this->toEvening($cup, $signedUp)) {
+            $this->draws->close($cup->refresh());
+
+            return 'evenings';
+        }
+
+        return $this->cancel($cup) ? 'cancelled' : null;
+    }
+
+    /**
+     * Switch a cup with 2 to 5 players to its small format and its live
+     * evening: one new version of the 31923 with the evening's start and
+     * end, and a notice to every player.
+     */
+    private function toEvening(Tournament $cup, int $players): bool
+    {
+        $format = self::formatFor($cup, $players);
+
+        if ($format === null || $format['format'] === TournamentFormat::DoubleElimination) {
+            return false;
+        }
+
+        $switched = DB::transaction(function () use ($cup, $format): bool {
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
+
+            if ($locked->status !== TournamentStatus::Signup || $locked->signup_closes_at === null || $locked->signup_closes_at->isFuture() || self::isEvening($locked)) {
+                return false;
+            }
+
+            $locked->forceFill([
+                'format' => $format['format'],
+                'options' => FormatOptions::fromArray($format['options'], $locked->profile())->toArray(),
+                'starts_at' => self::eveningStart($locked->signup_closes_at),
+            ])->save();
+            $this->publisher->republish($locked);
+
+            return true;
+        });
+
+        if ($switched) {
+            $this->notices->eveningAnnounced($cup->refresh(), self::planOf($cup));
+        }
+
+        return $switched;
+    }
+
+    /**
+     * @return array{rounds: int, games_per_player: int, round_minutes: int, play_minutes: int, span_minutes: int}
+     */
+    public static function planOf(Tournament $cup): array
+    {
+        return self::eveningPlan($cup, self::players($cup));
     }
 
     private function signedUp(Tournament $cup): int
@@ -356,9 +514,11 @@ final class CasualCups
         $opened = 0;
         $previousDone = true;
 
+        $previous = null;
+
         foreach ($this->rounds($cup) as $round) {
             if ($round->window_ends_at === null) {
-                if (! $previousDone || ! $this->openRound($cup, $round)) {
+                if (! $previousDone || (self::isEvening($cup) && ! self::eveningRoundDue($cup, $previous)) || ! $this->openRound($cup, $round)) {
                     break;
                 }
 
@@ -368,15 +528,39 @@ final class CasualCups
             }
 
             $previousDone = $round->status === 'closed';
+            $previous = $round;
         }
 
         return $opened;
     }
 
+    /**
+     * A live evening's round starts at the evening's start (the first) or a
+     * break after the round before it closed.
+     */
+    private static function eveningRoundDue(Tournament $cup, ?TournamentRound $previous): bool
+    {
+        $due = $previous === null
+            ? $cup->starts_at->toImmutable()
+            : ($previous->closed_at ?? now())->toImmutable()->addMinutes(max(0, (int) config('esports.casual_cups.evening.break_minutes', 3)));
+
+        return ! $due->isFuture();
+    }
+
     private function openRound(Tournament $cup, TournamentRound $round): bool
     {
-        $opened = DB::transaction(function () use ($cup, $round): bool {
+        $evening = self::isEvening($cup);
+
+        $opened = DB::transaction(function () use ($cup, $round, $evening): bool {
             $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
+
+            // A live evening round: planned length plus grace; the evening's start and end were published at the switch.
+            if ($evening) {
+                $minutes = self::planOf($locked)['round_minutes'] + max(0, (int) config('esports.casual_cups.evening.grace_minutes', 15));
+
+                return TournamentRound::query()->whereKey($round->id)->whereNull('window_ends_at')->update(['window_ends_at' => now()->addMinutes($minutes)]) === 1;
+            }
+
             $first = ! TournamentRound::query()->whereHas('stage', fn ($query) => $query->where('tournament_id', $locked->id))->whereNotNull('window_ends_at')->exists();
 
             if ($first) {
@@ -398,7 +582,8 @@ final class CasualCups
             return true;
         });
 
-        if ($opened) {
+        // At a live evening the league starts every game itself and says so then (the game-started notice).
+        if ($opened && ! $evening) {
             $this->notices->roundOpened($cup, $round->refresh());
         }
 
@@ -486,7 +671,8 @@ final class CasualCups
             return false;
         }
 
-        if ($invited || $match->chessGame !== null) {
+        // A live evening's games start at their round's start (S2).
+        if ($invited || $match->chessGame !== null || self::isEvening($match->tournament)) {
             return true;
         }
 
@@ -507,6 +693,11 @@ final class CasualCups
     public static function decision(Tournament $cup, TournamentMatch $match): array
     {
         $acted = self::actedSlots($match);
+
+        // A round robin (a small cup, S2) keeps the table fair: nobody who did not play gets a point.
+        if (count($acted) !== 1 && $cup->format === TournamentFormat::RoundRobin) {
+            return ['winner' => null, 'double_loss' => true, 'games_won' => [0.0, 0.0], 'points' => [], 'forfeit' => true, 'decided' => 'noshow', 'label' => __('double no-show'), 'by' => 'league'];
+        }
 
         if (count($acted) === 1) {
             $winner = $acted[0];

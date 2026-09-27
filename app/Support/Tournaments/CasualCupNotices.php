@@ -8,6 +8,7 @@ use App\Models\ChessInvite;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentRound;
+use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
@@ -33,6 +34,29 @@ final class CasualCupNotices
 
             $this->send($player, $cup, __(':tournament was called off', ['tournament' => $cup->name], $locale),
                 __('Not enough players signed up. The next cup opens in a day.', [], $locale), $locale);
+        }
+    }
+
+    /**
+     * A small cup switched to its live evening (S2): when it starts, the
+     * format, and that the league starts every game.
+     *
+     * @param  array{rounds: int, games_per_player: int, round_minutes: int, play_minutes: int, span_minutes: int}  $plan
+     */
+    public function eveningAnnounced(Tournament $cup, array $plan): void
+    {
+        $ids = TournamentSignup::query()->where('tournament_id', $cup->id)->active()->get()
+            ->flatMap(fn (TournamentSignup $signup): array => $signup->members)->all();
+
+        foreach (User::query()->whereKey(array_values(array_unique(array_map(intval(...), $ids))))->get() as $player) {
+            $locale = $this->locale($player);
+
+            $this->send($player, $cup, __(':tournament: live evening :start', ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player)], $locale),
+                __('Few signed up, so the cup is one evening: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.', [
+                    'format' => __($cup->format->label(), [], $locale),
+                    'games' => $plan['games_per_player'],
+                    'minutes' => $plan['span_minutes'],
+                ], $locale), $locale);
         }
     }
 

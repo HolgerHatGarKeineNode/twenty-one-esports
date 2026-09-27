@@ -52,7 +52,7 @@ final class TournamentScheduler
     public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups) {}
 
     /**
-     * @return array{cups: array{opened: int, extended: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int}
+     * @return array{cups: array{opened: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int}
      */
     public function tick(): array
     {

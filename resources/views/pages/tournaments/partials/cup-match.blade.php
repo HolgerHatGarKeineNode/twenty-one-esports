@@ -10,7 +10,11 @@
 <section aria-labelledby="cup-match-h" class="mx-4 flex flex-col gap-3 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="cup-match">
     <h2 id="cup-match-h" class="m-0 text-[15px] font-bold">{{ __('Your cup match: :opponent', ['opponent' => $cup['opponent']]) }}</h2>
     <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2" data-test="cup-match-when">
-        {{ __('Play by :deadline. When you are both online, start it here; otherwise the league starts your game at :slot.', ['deadline' => $format($cup['endsAt']), 'slot' => $format($cup['slot'])]) }}
+        @if ($cup['evening'])
+            {{ __('Tonight\'s round: the league starts your game on the board as soon as you are both free. Stay online.') }}
+        @else
+            {{ __('Play by :deadline. When you are both online, start it here; otherwise the league starts your game at :slot.', ['deadline' => $format($cup['endsAt']), 'slot' => $format($cup['slot'])]) }}
+        @endif
     </p>
     @if ($error !== '')
         <p class="m-0 text-[13px] text-loss" role="alert" data-test="cup-match-error">{{ $error }}</p>

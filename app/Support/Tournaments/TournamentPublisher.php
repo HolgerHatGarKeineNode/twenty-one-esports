@@ -219,10 +219,11 @@ final class TournamentPublisher
     {
         $start = $tournament->starts_at->getTimestamp();
         $profile = $tournament->profile();
-        // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap.
+        // A casual cup runs over days of round windows (P25): it ends at the latest after its hard cap;
+        // a small cup's live evening (S2) at its planned end.
         $end = $tournament->pool_closed_at?->getTimestamp()
             ?? ($tournament->isCasualCup()
-                ? $start + CasualCups::maxDays() * 86400
+                ? $start + (CasualCups::isEvening($tournament) ? CasualCups::planOf($tournament)['span_minutes'] * 60 : CasualCups::maxDays() * 86400)
                 : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
         $page = route('tournaments.show', $tournament);
         // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
@@ -288,11 +289,13 @@ final class TournamentPublisher
     {
         $profile = $tournament->profile();
         $lines = [$this->summary($tournament)];
-        $lines[] = $tournament->isCasualCup()
+        $lines[] = CasualCups::isEvening($tournament)
+            ? 'A casual cup the league opens on its own, played as one live evening because few signed up: the rounds follow each other after a short break and the league starts every game at its round\'s start; players are seeded at random from the draw\'s block hash; a game nobody played is lost by both, one only one side showed up for is won by that side.'
+            : ($tournament->isCasualCup()
             ? 'A casual cup the league opens on its own: players are seeded at random from the draw\'s block hash, and each round is played within its window; what is not played by the deadline the league decides (whoever tried to play advances, else a visible draw of lots).'
             : ($profile->entersTeams()
             ? 'Clan lineups are seeded by their rating at registration close; the mix teams of the solo draw follow in draw order.'
-            : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.');
+            : 'Players are seeded by their rating at registration close; equal ratings by who signed up first.'));
         $lines[] = $tournament->isDirectorMode()
             ? 'Results are entered by the tournament directors.'
             : 'Players report results and the other side accepts them.';

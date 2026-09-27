@@ -367,6 +367,17 @@ return [
     | this time (timezone) on the window's last evening. invite_minutes: how
     | long a "Play your cup match" invite stays open.
     |
+    | evening (P25 S2): a cup with fewer than min_players after its extension
+    | still runs, as one live evening instead of round windows: 2 players
+    | play one match (chess: duel_games games, colours alternating; the
+    | series games a best of duel_best_of), 3 to 5 a round robin; 0 or 1 is
+    | called off. It starts at `start` (timezone above) `days_after_close`
+    | days after sign-up closed; the league starts each round's games at the
+    | round's start, rounds follow each other after `break_minutes`. A round
+    | is decided `grace_minutes` after its planned length (the game profile's
+    | game length per game). max_play_minutes: the play budget per player
+    | the formats are chosen to stay within.
+    |
     */
 
     'casual_cups' => [
@@ -388,6 +399,15 @@ return [
         'auto_slot' => '20:00',
         'timezone' => 'Europe/Berlin',
         'invite_minutes' => 10,
+        'evening' => [
+            'start' => '20:00',
+            'days_after_close' => 1,
+            'break_minutes' => 3,
+            'grace_minutes' => 15,
+            'duel_games' => 3,
+            'duel_best_of' => 3,
+            'max_play_minutes' => 60,
+        ],
     ],
 
     /*

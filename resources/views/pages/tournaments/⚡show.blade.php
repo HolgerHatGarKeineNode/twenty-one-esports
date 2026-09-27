@@ -141,7 +141,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     /**
      * The viewer's open chess match in this casual cup, with its invites.
      *
-     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null}|null
+     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null}|null
      */
     #[Computed]
     public function cupMatch(): ?array
@@ -169,6 +169,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             'opponent' => $opponent->name ?? '',
             'endsAt' => $match->round->window_ends_at,
             'slot' => CasualCups::autoSlot($match->round->window_ends_at),
+            'evening' => CasualCups::isEvening($this->tournament),
             'game' => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
             'incoming' => $open()->where('invitee_id', $user->id)->first(),
             'outgoing' => $open()->where('inviter_id', $user->id)->first(),

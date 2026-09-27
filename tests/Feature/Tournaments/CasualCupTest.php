@@ -12,7 +12,6 @@ use App\Models\ChessInvite;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
-use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
 use App\Models\User;
@@ -24,12 +23,10 @@ use App\Support\Tournaments\Engine\BracketBuilder;
 use App\Support\Tournaments\Engine\Entrant;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
-use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentEditor;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
-use App\Support\Tournaments\TournamentScheduler;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -55,55 +52,6 @@ beforeEach(function () {
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess']]);
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
 });
-
-/** The open cup of chess, if any. */
-function openCup(): ?Tournament
-{
-    return Tournament::query()->where('cup_open_series', 'chess')->first();
-}
-
-/** `$n` keyed players signed up solo to the cup. */
-function cupSignups(Tournament $cup, int $n): void
-{
-    foreach (range(1, $n) as $ignored) {
-        [$player, $signer] = keyedPlayer();
-        soloSignup($cup->refresh(), $player, $signer);
-    }
-}
-
-/** A running chess cup of `$n` players, bracket stored; no round open yet. */
-function runningCup(int $n): Tournament
-{
-    $cup = Tournament::factory()->create([
-        'name' => 'Chess Casual Cup #1', 'format' => TournamentFormat::DoubleElimination,
-        'options' => FormatOptions::fromArray(['grandFinal' => 'single'], GameProfile::for('chess', 'blitz'))->toArray(),
-        'capacity' => 16, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
-        'slug' => 'chess-casual-cup-1-'.fake()->unique()->numberBetween(1, 1_000_000), 'starts_at' => now(), 'created_by_id' => null,
-        'cup_series' => 'chess', 'cup_number' => 1, 'cup_open_series' => 'chess',
-    ]);
-
-    foreach (range(1, $n) as $index) {
-        $user = User::factory()->create();
-        TournamentParticipant::query()->create(['tournament_id' => $cup->id, 'user_id' => $user->id, 'name' => "Player {$index}", 'rating' => 1000 + 10 * $index, 'members' => [$user->id]]);
-    }
-
-    app(TournamentBrackets::class)->generate($cup, str_repeat('cd', 32));
-    app(TournamentRunner::class)->sync($cup);
-
-    return $cup->refresh();
-}
-
-function cupTick(): array
-{
-    return app(TournamentScheduler::class)->tick();
-}
-
-/** The ready matches of the cup's open round, with slots and games. */
-function openCupMatches(Tournament $cup)
-{
-    return TournamentMatch::query()->where('tournament_id', $cup->id)->where('status', 'ready')->where('bracket', '!=', 'bye')
-        ->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))->with(['slots.participant', 'round.stage', 'chessGame'])->orderBy('id')->get();
-}
 
 /* ---------- Opening and numbering --------------------------------------------------------------------------- */
 
@@ -214,32 +162,32 @@ test('a full cup closes sign-up at once and commits its draw', function () {
         ->and($cup->signup_closes_at->lessThanOrEqualTo(now()))->toBeTrue();
 });
 
-test('at the close six players start the cup, five extend sign-up once and are then called off with a notice', function () {
+test('at the close six players start the cup, a lone player extends sign-up once and is then called off with a notice (S2: two to five play an evening)', function () {
     Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
     cupTick();
     $six = openCup();
     cupSignups($six, 6);
     $six->forceFill(['cup_open_series' => null])->save();
     cupTick();
-    $five = openCup();
-    cupSignups($five, 5);
+    $lone = openCup();
+    cupSignups($lone, 1);
 
     $this->travel(72)->hours();
     cupTick();
 
     expect($six->refresh()->status)->toBe(TournamentStatus::Drawing)
-        ->and($five->refresh()->status)->toBe(TournamentStatus::Signup)
-        ->and($five->cup_extended_at)->not->toBeNull()
-        ->and($five->signup_closes_at->equalTo(now()->addHours(48)))->toBeTrue();
+        ->and($lone->refresh()->status)->toBe(TournamentStatus::Signup)
+        ->and($lone->cup_extended_at)->not->toBeNull()
+        ->and($lone->signup_closes_at->equalTo(now()->addHours(48)))->toBeTrue();
 
     $this->travel(48)->hours();
     cupTick();
 
-    $player = User::query()->findOrFail($five->signups()->firstOrFail()->members[0]);
+    $player = User::query()->findOrFail($lone->signups()->firstOrFail()->members[0]);
 
-    expect($five->refresh()->status)->toBe(TournamentStatus::Cancelled)
-        ->and($five->cup_open_series)->toBeNull()
-        ->and(NostrEvent::query()->findOrFail($five->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ')
+    expect($lone->refresh()->status)->toBe(TournamentStatus::Cancelled)
+        ->and($lone->cup_open_series)->toBeNull()
+        ->and(NostrEvent::query()->findOrFail($lone->event_id)->payload()['tags'][1][1])->toStartWith('Called off: ')
         ->and($player->notifications()->count())->toBe(1);
 });
 
