@@ -113,7 +113,8 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
 
     foreach ([375, 1440] as $width) {
         $page = gameCoverPage($captain, route('tournaments.index', absolute: false), $width);
-        assertGameCovers($page, ['ea-sports-fc-27', 'rocket-league']);
+        // The page's own covers; the header's game chips (below lg, lazy, scrolled sideways) are checked with the games menu below.
+        assertGameCovers($page, ['ea-sports-fc-27', 'rocket-league'], 'main');
         gameCoverShot($page, "covers-tournaments-{$width}");
         assertCleanPage($page, "/tournaments at {$width}");
 
@@ -139,7 +140,7 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
 
         $page = gameCoverPage($captain, route('challenges.create', ['game' => 'ea-sports-fc-27'], false), $width);
         // Below lg the form is a stepper: step 1 shows the lineup picker with the covers.
-        assertGameCovers($page, ['ea-sports-fc-27']);
+        assertGameCovers($page, ['ea-sports-fc-27'], 'main');
         gameCoverShot($page, "covers-challenge-create-{$width}");
         assertCleanPage($page, "challenge create at {$width}");
 
@@ -158,7 +159,7 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
         assertCleanPage($page, "/matches at {$width}");
 
         $page = gameCoverPage($captain, route('games.series', 'ea-sports-fc-27', false), $width);
-        assertGameCovers($page, ['ea-sports-fc-27']);
+        assertGameCovers($page, ['ea-sports-fc-27'], 'main');
         gameCoverShot($page, "covers-game-page-{$width}");
         assertCleanPage($page, "FC 27 page at {$width}");
     }

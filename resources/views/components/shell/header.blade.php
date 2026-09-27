@@ -32,7 +32,7 @@
 <header class="relative z-30 shrink-0 bg-bar" x-data="shellHeader" x-bind:style="(bell || hub) ? 'z-index: 55' : ''"
         x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="search = false; closeHub()">
     {{--
-        Row 1. Below lg it is the phone's top bar (56 px: logo, search, bell or
+        Row 1. Below lg it is the phone's only top bar (56 px: logo, game chips, search, bell or
         "Log in"); from lg the desktop bar (64 px): logo, game tabs, the hub,
         Clans, Season, search, then the account side. How many game tabs show
         depends on the width (app.css `.gtab`), so 1024 px never overflows.
@@ -42,11 +42,28 @@
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
             {{-- The word mark gives its room to the game tabs on desktop until the widest tier. --}}
-            <span class="flex items-baseline gap-1.5 whitespace-nowrap max-[359px]:sr-only lg:max-[105rem]:sr-only">
+            <span class="flex items-baseline gap-1.5 whitespace-nowrap max-md:sr-only lg:max-[105rem]:sr-only">
                 <span class="font-display text-sm font-extrabold tracking-[0.02em] lg:text-base">TWENTY ONE</span>
                 <span class="text-xs text-ink-2 max-sm:hidden">esports</span>
             </span>
         </a>
+
+        {{-- Phones: every game as a chip, inside the top bar (one 56 px bar, not two), the active one scrolled into view; the last chip opens the hub. --}}
+        <nav class="flex min-w-0 flex-1 snap-x snap-mandatory gap-2 overflow-x-auto px-1 [scrollbar-width:none] [mask-image:linear-gradient(90deg,#000_calc(100%-24px),transparent)] lg:hidden" aria-label="{{ __('Game titles') }}" id="game-chips" x-ref="chips">
+            @foreach ($games as $game)
+                <a href="{{ $game['page'] }}" style="--game: {{ $game['colour'] }}" class="gchip"
+                   @if ($game['slug'] === $active['slug']) aria-current="{{ $onGamePage ? 'page' : 'true' }}" @endif
+                   @if ($game['slug'] !== 'chess') data-test="mobile-{{ $game['slug'] }}" @endif>
+                    {{-- Eager: the chips are the top bar of every phone page, above the fold by definition. --}}
+                    <x-game-cover :game="$game['slug']" size="thumb" loading="eager" class="w-12 rounded-xs" />
+                    <span>{{ $game['name'] }}</span>
+                </a>
+            @endforeach
+            <button type="button" class="gchip" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog" x-on:click="toggleHub($el)" data-test="mobile-games-menu">
+                <x-icon name="grid" :size="18" class="text-ink-3" />
+                <span>{{ $allGames }}</span>
+            </button>
+        </nav>
 
         <nav class="hidden h-16 min-w-0 grow items-stretch gap-1 lg:ml-2 lg:flex xl:ml-4" aria-label="{{ __('Main navigation') }}" data-test="game-tabs">
             @foreach ($tabs as $index => $tab)
@@ -73,7 +90,6 @@
                 </a>
             @endforeach
         </nav>
-        <span class="grow lg:hidden"></span>
 
         {{-- The site search (P16, SearchController): Enter opens the results, a match number the match. "/" focuses it. --}}
         <form method="GET" action="{{ route('search') }}" role="search" class="hidden w-40 shrink-0 lg:block xl:w-44" data-test="site-search-form">
@@ -147,22 +163,6 @@
                class="btn-s flex h-11 shrink-0 items-center rounded-md border border-edge px-3 text-[13px] font-bold text-ink hover:text-ink lg:hidden" data-test="mobile-login">{{ __('Log in') }}</a>
         @endguest
     </div>
-
-    {{-- Phones: every game as a chip, the active one marked and scrolled into view; the last chip opens the hub. --}}
-    <nav class="flex snap-x snap-mandatory gap-2 overflow-x-auto border-b border-hairline px-4 py-1.5 [scrollbar-width:none] lg:hidden" aria-label="{{ __('Game titles') }}" id="game-chips" x-ref="chips">
-        @foreach ($games as $game)
-            <a href="{{ $game['page'] }}" style="--game: {{ $game['colour'] }}" class="gchip"
-               @if ($game['slug'] === $active['slug']) aria-current="{{ $onGamePage ? 'page' : 'true' }}" @endif
-               @if ($game['slug'] !== 'chess') data-test="mobile-{{ $game['slug'] }}" @endif>
-                <x-game-cover :game="$game['slug']" size="thumb" class="w-12 rounded-xs" />
-                <span>{{ $game['name'] }}</span>
-            </a>
-        @endforeach
-        <button type="button" class="gchip" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog" x-on:click="toggleHub($el)" data-test="mobile-games-menu">
-            <x-icon name="grid" :size="18" class="text-ink-3" />
-            <span>{{ $allGames }}</span>
-        </button>
-    </nav>
 
     {{-- Row 2 (from lg): the context bar of the active game. Icons and full labels from 90rem; short labels below (German ran 69 px past 1280 with full labels). --}}
     <nav class="ctx hidden h-12 items-center gap-1 border-b border-hairline px-6 lg:flex xl:px-8" style="--game: {{ $active['colour'] }}" aria-label="{{ $active['name'] }}" data-test="context-bar" data-game="{{ $active['slug'] }}">
