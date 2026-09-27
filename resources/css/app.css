@@ -2346,6 +2346,16 @@ select:focus[data-flux-control] {
     color: var(--color-btc);
 }
 
+/* A viewer count that changed ticks once; it never changes its box (tabular figures, room for three digits). */
+.live-tick {
+    animation: live-tick 0.24s ease-out;
+}
+
+@keyframes live-tick {
+    from { opacity: 0.35; transform: translateY(2px); }
+    to { opacity: 1; transform: none; }
+}
+
 /* The mini player opens out of its tab (the one motion that answers a click). */
 .live-rise {
     animation: live-rise 0.2s var(--ease-snap) both;

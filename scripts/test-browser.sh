@@ -31,7 +31,7 @@
 # Files are grouped by measured wall time (per-test durations captured with a
 # temporary beforeEach/afterEach timer on this machine — RouteSweepTest alone
 # is heavier than any other file, so it gets its own shard):
-#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since)
+#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since), LiveCountTest (P20b, the live count and on-air flips)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest (~26s + clan logos)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest (~27s + P8b + ladder + covers)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest
@@ -171,7 +171,7 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
-    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php"
+    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/LiveCountTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"

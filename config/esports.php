@@ -541,6 +541,16 @@ return [
         'poll_seconds_with_socket' => 120,
     ],
 
+    /*
+    | The live stream around the site (P20b): every page asks GET
+    | /stream/status this often while it is visible (resources/js/liveFeed.js),
+    | and an IP may ask this often per minute (a LAN party shares one IP).
+    */
+    'live' => [
+        'poll_seconds' => 15,
+        'status_per_minute' => 240,
+    ],
+
     'webpush' => [
         'public_key' => env('WEBPUSH_VAPID_PUBLIC_KEY'),
         'private_key' => env('WEBPUSH_VAPID_PRIVATE_KEY'),

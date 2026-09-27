@@ -17,7 +17,8 @@ import { StreamPlayer } from './streamPlayer.js';
  * shell or the dock is open (a button with aria-haspopup="dialog" expanded)
  * or the on-screen keyboard is up.
  *
- * `liveStage`: the big player of /live, with the browser's own controls.
+ * `liveStage`: the big player of /live, with the browser's own controls; it
+ * starts when the page's live feed says the stream came on air.
  */
 
 export const STORAGE_KEY = 'twentyone.live-player';
@@ -101,6 +102,19 @@ export function livePlayer(config) {
 
         get statusText() {
             return statusText(config.labels, this.status);
+        },
+
+        /** On air (the feed), or still busy with a stream that just went off. */
+        get shown() {
+            return this.view !== 'closed' && (this.$store.live.live || this.status !== 'idle');
+        },
+
+        /** "N watching", or the tab's plain line while the stream shares no count. */
+        get watching() {
+            const count = this.$store.live.viewers;
+            if (count === null) return config.watching.none;
+
+            return config.watching[count === 1 ? 'one' : 'many'].replace('#', count);
         },
 
         get playing() {
@@ -205,9 +219,21 @@ export function liveStage(config) {
         init() {
             this.miniClosed = storedView() === 'closed';
 
-            if (!config.live) return;
+            if (this.$store.live.live) this.start();
 
-            player = new StreamPlayer(this.$refs.video, config.url, (status) => {
+            // The stream comes on air while the page is open (P20b): the stage starts playing.
+            this.$watch('$store.live.live', (live) => {
+                if (live && (player === null || !player.running)) this.start();
+            });
+        },
+
+        /** On air, or still showing a stream that just went off (its own "off air" message ends it). */
+        get onScreen() {
+            return this.$store.live.live || this.status !== 'idle';
+        },
+
+        start() {
+            player ??= new StreamPlayer(this.$refs.video, config.url, (status) => {
                 this.status = status;
             });
             this.$refs.video.muted = true;

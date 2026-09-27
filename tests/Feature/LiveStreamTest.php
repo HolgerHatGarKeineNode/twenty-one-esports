@@ -101,26 +101,107 @@ test('the status is cached for a few seconds and read once per request', functio
     expect(LiveStatus::current()->live)->toBeFalse();
 });
 
-test('the header badge and the floating player exist only on air', function () {
-    $this->get(route('home'))->assertOk()
-        ->assertDontSee('data-test="live-badge"', false)
-        ->assertDontSee('data-test="live-player"', false)
-        ->assertDontSee('data-test="mobile-live-on-air"', false)
+/**
+ * Whether the element with this data-test is rendered hidden (the live feed shows it later), or null when it is not there.
+ */
+function renderedHidden(string $html, string $test): ?bool
+{
+    if (preg_match('/<[^>]*data-test="'.preg_quote($test, '/').'"[^>]*>/', $html, $tag) !== 1) {
+        return null;
+    }
+
+    return str_contains($tag[0], 'display: none') || str_contains($tag[0], 'x-cloak');
+}
+
+/**
+ * @return array{url: string, interval: int, live: bool, viewers: int|null}|null
+ */
+function feedSeed(string $html): ?array
+{
+    return preg_match('#<script type="application/json" data-live-feed>(.*?)</script>#s', $html, $match) === 1 ? json_decode($match[1], true) : null;
+}
+
+test('the badge and the floating player show only on air, and follow the feed from the first paint', function () {
+    $off = $this->get(route('home'))->assertOk()->getContent();
+
+    // Off air they are in the page, hidden, for the live feed to show when the stream starts.
+    expect(renderedHidden($off, 'live-badge'))->toBeTrue()
+        ->and(renderedHidden($off, 'mobile-live-on-air'))->toBeTrue()
         // The page itself stays reachable off air: "Live" in row 1 from lg, More on phones.
-        ->assertSee('data-test="mobile-live"', false)
-        ->assertSee('data-test="nav-live"', false);
+        ->and(renderedHidden($off, 'nav-live'))->toBeFalse()
+        ->and(renderedHidden($off, 'mobile-live'))->toBeFalse()
+        ->and(feedSeed($off))->toBe(['url' => '/stream/status', 'interval' => 15, 'live' => false, 'viewers' => null])
+        ->and($off)->toContain('x-persist="live-player"')
+        ->and(preg_match('/<section[^>]*aria-label="Live stream"[^>]*>/', $off, $section))->toBe(1)
+        ->and($section[0])->toContain('x-cloak');
 
     Cache::flush();
     onAir(['viewers' => 7]);
+    $on = $this->get(route('home'))->assertOk()->assertSee('Live stream on air, 7 watching')->assertSee('esports.example', false)->getContent();
 
-    $this->get(route('home'))->assertOk()
-        ->assertSee('data-test="live-badge"', false)
-        ->assertDontSee('data-test="nav-live"', false)
-        ->assertSee('data-test="mobile-live-on-air"', false)
-        ->assertSee('Live stream on air, 7 watching')
-        ->assertSee('data-test="live-player"', false)
-        ->assertSee('x-persist="live-player"', false)
-        ->assertSee('esports.example', false);
+    expect(renderedHidden($on, 'live-badge'))->toBeFalse()
+        ->and(renderedHidden($on, 'live-badge-viewers'))->toBeFalse()
+        ->and(renderedHidden($on, 'mobile-live-on-air'))->toBeFalse()
+        ->and(renderedHidden($on, 'nav-live'))->toBeTrue()
+        ->and(renderedHidden($on, 'live-tab-viewers'))->toBeFalse()
+        ->and(feedSeed($on))->toBe(['url' => '/stream/status', 'interval' => 15, 'live' => true, 'viewers' => 7]);
+});
+
+test('without a shared count the count is hidden, never a 0', function () {
+    onAir();
+    $html = $this->get(route('home'))->assertOk()->getContent();
+
+    expect(renderedHidden($html, 'live-badge'))->toBeFalse()
+        ->and(renderedHidden($html, 'live-badge-viewers'))->toBeTrue()
+        ->and(renderedHidden($html, 'live-mini-count'))->toBeTrue()
+        ->and(feedSeed($html)['viewers'])->toBeNull()
+        ->and($html)->toContain('Matches and music');
+});
+
+test('GET /stream/status answers {live, viewers}, public, without a session', function () {
+    $this->getJson('/stream/status')->assertOk()->assertExactJson(['live' => false, 'viewers' => null])
+        ->assertHeader('Cache-Control', 'max-age=5, public')
+        ->assertCookieMissing(config('session.cookie'));
+
+    Cache::flush();
+    onAir();
+    $this->getJson('/stream/status')->assertExactJson(['live' => true, 'viewers' => null]);
+
+    Cache::flush();
+    onAir(['viewers' => 12, 'title' => 'Live now: Alice vs Bob']);
+    // Only the two fields: nothing of the title, nothing else.
+    $this->getJson('/stream/status')->assertExactJson(['live' => true, 'viewers' => 12]);
+
+    // Off air, an old count says nothing.
+    Cache::flush();
+    Cache::put(LiveStatus::ANNOUNCED_KEY, ['viewers' => 12], 60);
+    touch($this->hls.'/stream.m3u8', time() - 600);
+    $this->getJson('/stream/status')->assertExactJson(['live' => false, 'viewers' => null]);
+});
+
+test('the status endpoint serves LiveStatus\'s 5-second cache', function () {
+    onAir(['viewers' => 4]);
+    $this->getJson('/stream/status')->assertExactJson(['live' => true, 'viewers' => 4]);
+
+    File::delete($this->hls.'/stream.m3u8');
+    Cache::put(LiveStatus::ANNOUNCED_KEY, ['viewers' => 9], 60);
+    $this->getJson('/stream/status')->assertExactJson(['live' => true, 'viewers' => 4]);
+
+    $this->travel(LiveStatus::CACHE_SECONDS + 1)->seconds();
+    $this->getJson('/stream/status')->assertExactJson(['live' => false, 'viewers' => null]);
+});
+
+test('the status endpoint is rate-limited per IP', function () {
+    config(['esports.live.status_per_minute' => 3]);
+
+    foreach (range(1, 3) as $i) {
+        $this->getJson('/stream/status')->assertOk();
+    }
+
+    $this->getJson('/stream/status')->assertTooManyRequests();
+    $this->getJson('/stream/status')->assertTooManyRequests();
+    // Per IP: another address is not held back by the first one's limit.
+    $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])->getJson('/stream/status')->assertOk();
 });
 
 test('/live renders on and off air, for a guest and a player', function (bool $live, bool $player) {
@@ -142,13 +223,20 @@ test('/live renders on and off air, for a guest and a player', function (bool $l
         ->assertSee('data-test="live-zap"', false)
         ->assertDontSee((string) config('twentyone.profile.lud16'));
 
+    // Both states are in the page (the feed flips them while it is open); the server's state shows first.
+    $html = $response->assertSee('data-test="live-stage-video"', false)->assertSee('data-live-stage', false)
+        ->assertSee('data-test="live-offline"', false)->getContent();
+
     if ($live) {
-        $response->assertSee('data-test="live-stage-video"', false)->assertSee('data-live-stage', false)
-            ->assertSee('Live now: Ana vs Ben')->assertSee('data-test="live-viewers"', false)
-            ->assertDontSee('data-test="live-offline"', false);
+        $response->assertSee('Live now: Ana vs Ben');
+        expect(renderedHidden($html, 'live-stage'))->toBeFalse()
+            ->and(renderedHidden($html, 'live-offline'))->toBeTrue()
+            ->and(renderedHidden($html, 'live-viewers'))->toBeFalse();
     } else {
-        $response->assertSee('data-test="live-offline"', false)->assertSee('The stream is off air right now.')
-            ->assertDontSee('data-test="live-stage-video"', false);
+        $response->assertSee('The stream is off air right now.');
+        expect(renderedHidden($html, 'live-stage'))->toBeTrue()
+            ->and(renderedHidden($html, 'live-offline'))->toBeFalse()
+            ->and(renderedHidden($html, 'live-on-air'))->toBeTrue();
     }
 
     // The page's own player only: no floating one, whose markup would carry the persist key.

@@ -443,7 +443,8 @@ test('off air there is no badge and no tab, and /live says so; the collector cat
     $page->goto(ComputeUrl::from('/'));
     BrowserWait::until($page, '() => window.Alpine !== undefined && document.fonts.status === "loaded"', 10_000);
 
-    expect($page->evaluate('() => [document.querySelector("[data-test=live-badge]"), document.querySelector("[data-test=live-player]")]'))->toBe([null, null])
+    // In the page for the live feed (P20b), but nothing of it shows off air.
+    expect($page->evaluate('() => [...document.querySelectorAll("[data-test=live-badge], [data-test=live-tab], [data-test=live-mini]")].filter((el) => el.checkVisibility()).length'))->toBe(0)
         ->and($page->evaluate(LIVE_REQUESTS))->toBe(0);
 
     $page->goto(ComputeUrl::from('/live'));

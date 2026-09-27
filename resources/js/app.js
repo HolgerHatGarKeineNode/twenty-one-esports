@@ -14,6 +14,7 @@ import matchDock from './matchDock.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
 import { livePlayer, liveStage } from './livePlayer.js';
+import { liveStore, readSeed, startLiveFeed } from './liveFeed.js';
 import './nostrSign.js';
 import './badgeShare.js';
 import './captured.js';
@@ -44,6 +45,10 @@ document.addEventListener('alpine:init', () => {
     // The live stream (P20): the floating player and the big one on /live; hls.js loads on first play.
     window.Alpine.data('livePlayer', livePlayer);
     window.Alpine.data('liveStage', liveStage);
+    // Whether the stream is on air and how many watch (P20b): one store, one poller per window.
+    const liveSeed = readSeed();
+    window.Alpine.store('live', liveStore(liveSeed));
+    startLiveFeed(liveSeed, window.Alpine.store('live'));
 });
 
 // Call before submitting the logout form so a remote signer is not inherited.

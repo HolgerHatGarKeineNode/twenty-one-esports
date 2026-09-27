@@ -87,11 +87,12 @@ const SWEEP_DOWNLOADS = ['tournaments.calendar'];
 /**
  * JSON endpoints, not pages: the player picker's suggestions
  * (tests/Feature/PlayerPickerTest, tests/Browser/PlayerPickerTest) and the
- * league's Lightning address (tests/Feature/Payouts/LnurlEndpointTest).
+ * league's Lightning address (tests/Feature/Payouts/LnurlEndpointTest), and
+ * the live stream's status (tests/Feature/LiveStreamTest).
  *
  * @var list<string>
  */
-const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback'];
+const SWEEP_JSON_ENDPOINTS = ['players.search', 'lnurl.pay', 'lnurl.callback', 'stream.status'];
 
 /**
  * @param  array<string, string>  $bound  route key per bound parameter, from sweepFixtures()

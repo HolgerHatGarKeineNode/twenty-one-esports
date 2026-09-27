@@ -19,8 +19,10 @@ use Livewire\Component;
  * scenes (never a Lightning address as text). Off air, the stage says so and
  * names the next tournament if one is scheduled.
  *
- * The stage is wire:ignore'd: the 30-second poll refreshes the lists and the
- * viewer count without touching the player. The floating player
+ * The stage and the on-air line follow the page's live feed (P20b,
+ * Alpine.store('live')): the count changes without a reload, and the stage
+ * starts playing when the stream comes on air while the page is open. Both
+ * are wire:ignore'd; the 30-second poll refreshes the lists. The floating player
  * (<x-live-player>) is not rendered here.
  */
 new #[Layout('layouts::app')] class extends Component {
@@ -89,8 +91,11 @@ new #[Layout('layouts::app')] class extends Component {
     $games = $this->games;
     $pageUrl = route('live');
     $shareText = __('Live now on TWENTY ONE esports: chess, tournaments and music.');
+    $watchingNow = [
+        'one' => trans_choice('watching now|watching now', 1),
+        'many' => trans_choice('watching now|watching now', 2),
+    ];
     $stage = [
-        'live' => $status->live,
         'url' => LiveStatus::playlistUrl(),
         'labels' => [
             'loading' => __('Tuning in…'),
@@ -108,25 +113,24 @@ new #[Layout('layouts::app')] class extends Component {
             <p class="m-0 text-[13px] leading-5 text-ink-2">{{ __('The league\'s live chess games and tournaments, with music, around the clock.') }}</p>
         </div>
         {{-- On air: the tally light, not over the picture (the stream's own scenes carry their marks there). --}}
-        @if ($status->live)
-            <p class="m-0 flex items-center gap-3 text-[13px] text-ink-2">
-                <span class="flex h-7 items-center gap-1.5 rounded-control bg-live-tint px-2 shadow-[inset_0_0_0_1px_var(--color-live-ring)]">
-                    <span class="on-air" aria-hidden="true"></span>
-                    <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em] text-ink">LIVE</span>
-                </span>
-                @if ($status->viewers !== null)
-                    <span data-test="live-viewers"><b class="font-display text-base text-ink tabular-nums">{{ $status->viewers }}</b> {{ trans_choice('watching now|watching now', $status->viewers) }}</span>
-                @endif
-            </p>
-        @endif
+        <p class="m-0 flex items-center gap-3 text-[13px] text-ink-2" wire:ignore data-test="live-on-air"
+           x-data="{ words: @js($watchingNow) }" x-show="$store.live.live" @unless ($status->live) style="display: none" @endunless>
+            <span class="flex h-7 items-center gap-1.5 rounded-control bg-live-tint px-2 shadow-[inset_0_0_0_1px_var(--color-live-ring)]">
+                <span class="on-air" aria-hidden="true"></span>
+                <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em] text-ink">LIVE</span>
+            </span>
+            <span data-test="live-viewers" x-show="$store.live.viewers !== null" @if ($status->viewers === null) style="display: none" @endif>
+                <b class="inline-block min-w-[3ch] font-display text-base text-ink tabular-nums" x-text="$store.live.viewers" x-effect="$store.live.tick($el)">{{ $status->viewers }}</b>
+                <span x-text="words[$store.live.viewers === 1 ? 'one' : 'many']">{{ $status->viewers === null ? '' : trans_choice('watching now|watching now', $status->viewers) }}</span>
+            </span>
+        </p>
     </div>
 
     <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
         <div class="flex min-w-0 flex-col gap-4">
             {{-- The stage: edge to edge on a phone, a framed screen from sm. --}}
-            <div class="-mx-4 sm:mx-0" wire:ignore>
-                @if ($status->live)
-                    <div x-data="liveStage(@js($stage))" data-live-stage class="flex flex-col gap-2">
+            <div class="-mx-4 sm:mx-0" wire:ignore x-data="liveStage(@js($stage))" data-live-stage>
+                    <div class="flex flex-col gap-2" x-show="onScreen" @unless ($status->live) style="display: none" @endunless data-test="live-stage">
                         <div class="relative aspect-video overflow-hidden bg-black sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]">
                             <video x-ref="video" class="size-full object-contain" controls playsinline muted autoplay preload="none" aria-label="{{ __('TWENTY ONE live stream') }}" data-test="live-stage-video"></video>
                             <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[rgba(10,10,11,.72)] p-4 text-center text-[13px] text-ink-2"
@@ -140,8 +144,8 @@ new #[Layout('layouts::app')] class extends Component {
                             <button type="button" class="inline-flex min-h-11 cursor-pointer items-center text-btc underline decoration-btc/40 underline-offset-2 hover:text-btc-hi sm:min-h-6" x-on:click="showMiniPlayer()">{{ __('Switch it back on') }}</button>
                         </p>
                     </div>
-                @else
-                    <div class="flex aspect-video flex-col items-center justify-center gap-3 bg-bar px-6 text-center sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]" data-test="live-offline">
+                    <div class="flex aspect-video flex-col items-center justify-center gap-3 bg-bar px-6 text-center sm:rounded-lg sm:shadow-[0_0_0_1px_var(--color-line)]" data-test="live-offline"
+                         x-show="! onScreen" @if ($status->live) style="display: none" @endif>
                         <span class="flex h-7 items-center gap-2 rounded-control bg-well px-2.5 text-ink-2">
                             <span class="inline-block size-2 rounded-full bg-edge" aria-hidden="true"></span>
                             <span class="font-display text-[11px] leading-none font-extrabold tracking-[0.06em]">{{ __('Off air') }}</span>
@@ -156,7 +160,6 @@ new #[Layout('layouts::app')] class extends Component {
                         @endif
                         <x-button variant="quiet" icon="eye" :href="route('games.index')">{{ __('Watch live games') }}</x-button>
                     </div>
-                @endif
             </div>
 
             @if ($status->live && $status->title !== null)

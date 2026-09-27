@@ -35,7 +35,9 @@
         // The 24/7 stream (P20): on phones the header has no room for its badge, so its tally dot shows here.
         ['key' => 'live', 'href' => route('live'), 'label' => __('Live stream'), 'icon' => 'play', 'test' => 'mobile-live'],
     ];
-    $onAir = \App\Support\TwentyOne\LiveStatus::current()->live;
+    $liveStatus = \App\Support\TwentyOne\LiveStatus::current();
+    $onAir = $liveStatus->live;
+    $viewers = $onAir ? $liveStatus->viewers : null;
     $otherGames = array_values(array_filter($games, fn (array $game): bool => $game['slug'] !== $active['slug']));
     $row = 'flex min-h-11 min-w-0 items-center gap-2.5 rounded-md px-2 text-[13px] text-ink hover:bg-row-hover hover:text-ink';
 @endphp
@@ -100,8 +102,12 @@
                                 @if ($link['key'] === 'mining' && $seasonTag)
                                     <span class="nav-tag">{{ $seasonTag }}</span>
                                 @endif
-                                @if ($link['key'] === 'live' && $onAir)
-                                    <span class="flex items-center gap-1.5" data-test="mobile-live-on-air"><span class="on-air" aria-hidden="true"></span><span class="font-display text-[10px] leading-none font-extrabold tracking-[0.06em]">LIVE</span></span>
+                                @if ($link['key'] === 'live')
+                                    {{-- On air or not follows the page's live feed (P20b), with the count when the stream shares one. --}}
+                                    <span class="flex items-center gap-1.5" data-test="mobile-live-on-air" x-show="$store.live.live" @unless ($onAir) style="display: none" @endunless>
+                                        <span class="on-air" aria-hidden="true"></span><span class="font-display text-[10px] leading-none font-extrabold tracking-[0.06em]">LIVE</span>
+                                        <span class="inline-block min-w-[3ch] text-[11px] leading-none text-ink-2 tabular-nums" x-show="$store.live.viewers !== null" x-text="$store.live.viewers" x-effect="$store.live.tick($el)" @if ($viewers === null) style="display: none" @endif>{{ $viewers }}</span>
+                                    </span>
                                 @endif
                             </span>
                         </a>

@@ -4,6 +4,7 @@ use App\Games\GameRegistry;
 use App\Http\Controllers\BadgeImageController;
 use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
+use App\Http\Controllers\LiveStatusController;
 use App\Http\Controllers\LnurlPayController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
@@ -101,6 +102,8 @@ Route::livewire('games', 'pages::games.index')->name('games.index');
 Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
 // The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
 Route::livewire('live', 'pages::live')->name('live');
+// Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.
+Route::get('stream/status', LiveStatusController::class)->withoutMiddleware('web')->middleware('throttle:live-status')->name('stream.status');
 
 // Daily chess (P5b): challenge a player, your daily games.
 Route::middleware('auth')->group(function () {
