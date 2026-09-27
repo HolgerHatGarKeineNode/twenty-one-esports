@@ -62,11 +62,16 @@ class TwentyOneProfileCommand extends Command
         }
 
         $timeout = (float) config('twentyone.nostr.publish_timeout_seconds', 5);
-        $allAccepted = true;
+        // Each event needs one relay that took it: the prod host is refused by
+        // some public relays (damus 403, nos.lol unreachable), which the relay
+        // list still names for readers elsewhere.
+        $everyEventTaken = true;
 
         foreach ($events as $event) {
+            $taken = false;
+
             foreach ($publisher->publish($event, $relays, $timeout) as $result) {
-                $allAccepted = $allAccepted && $result->accepted;
+                $taken = $taken || $result->accepted;
 
                 $this->line(sprintf(
                     'kind %d %s %s',
@@ -75,8 +80,10 @@ class TwentyOneProfileCommand extends Command
                     $result->accepted ? 'ok' : 'failed: '.$result->message,
                 ));
             }
+
+            $everyEventTaken = $everyEventTaken && $taken;
         }
 
-        return $allAccepted ? self::SUCCESS : self::FAILURE;
+        return $everyEventTaken ? self::SUCCESS : self::FAILURE;
     }
 }

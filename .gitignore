@@ -39,3 +39,9 @@ yarn-error.log
 /opencode.jsonc
 plans/
 /.codegraph
+
+# Promo kit (user 2026-09-27): only the build sources and the README are versioned.
+# Assets, music, renders, gallery and posting texts are large or local marketing material.
+/docs/promo/*
+!/docs/promo/src/
+!/docs/promo/README.md
