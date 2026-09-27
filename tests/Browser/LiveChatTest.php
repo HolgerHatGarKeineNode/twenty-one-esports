@@ -312,17 +312,23 @@ test('the auditor\'s 63 KB message renders bounded and keeps the main thread und
     try {
         $page = p24Page(null, 1440, 900);
         p24Live($page);
-        $page->evaluate('() => { window.__long = []; new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__long.push(Math.round(e.duration)))).observe({ type: "longtask" }); }');
+        // Long animation frames name the scripts that ran in them: the chat's are the receive path (the relay
+        // socket in pool-*, liveChat-*, and Alpine rendering inside that same task). Frames of anything else on
+        // the page are listed but not judged: after twenty contexts at host load 44 they reached 272 ms, while
+        // this test alone measured 54-56 ms three times in a row.
+        $page->evaluate('() => { window.__long = []; window.__frames = []; new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__long.push(Math.round(e.duration)))).observe({ type: "longtask" }); new PerformanceObserver((list) => list.getEntries().forEach((e) => window.__frames.push({ duration: Math.round(e.duration), chat: (e.scripts ?? []).some((s) => /\\/build\\/assets\\/(pool|liveChat)-/.test(s.sourceURL ?? "")) }))).observe({ type: "long-animation-frame" }); }');
 
         // Published while the page listens: the receive path, not the first load, takes it.
         $page->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $payload]);
         BrowserWait::until($page, '() => { const imgs = [...document.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()); return imgs.length > 0 && imgs.every((i) => i.complete); }', 10_000);
         Execution::instance()->wait(0.5);
 
-        $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=live-chat-message]").closest("li"); return { longTasks: window.__long, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }');
+        $measured = $page->evaluate('() => { const li = document.querySelector("[data-test=live-chat-message]").closest("li"); return { longTasks: window.__long, frames: window.__frames, nodes: li.querySelectorAll("*").length, images: [...li.querySelectorAll("[data-test=live-chat-emoji-img]")].filter((i) => i.checkVisibility()).length, chars: [...li.querySelector("[data-test=live-chat-text]").innerText].length, allNodes: document.querySelectorAll("*").length }; }');
         fwrite(STDERR, "\n[p24 payload] ".json_encode($measured)."\n");
 
-        expect(max([0, ...$measured['longTasks']]))->toBeLessThan(200)
+        $chatFrames = array_values(array_filter($measured['frames'], fn (array $frame): bool => $frame['chat']));
+        expect($chatFrames)->not->toBeEmpty()
+            ->and(max(array_column($chatFrames, 'duration')))->toBeLessThan(200)
             ->and($measured['images'])->toBe(20)
             ->and($measured['nodes'])->toBeLessThan(400)
             ->and($measured['chars'])->toBeLessThanOrEqual(4 * 280 + 1)
