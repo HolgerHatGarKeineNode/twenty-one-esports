@@ -25,6 +25,9 @@ use Throwable;
  * tournament whose sign-up closed drops out at once, not at the next read.
  * Covers are read once per game for the process lifetime.
  *
+ * Every roster row says how many places it takes (`seats`: a lineup its
+ * team size, a player one), so a seat map can give each taken seat its face.
+ *
  * Pictures join in frame(), from plain refs the snapshot keeps per seed
  * (StreamImages): every roster row and every preview side with a name gets
  * `avatar` (a player's picture or Blockpile; null for a lineup, a mix team
@@ -166,7 +169,8 @@ class TournamentSlides
             ];
 
             if (count($roster) < self::ROSTER) {
-                $roster[] = ['seed' => $row['seed'], 'name' => $names[$row['seed']], 'rating' => $row['rating']];
+                // A lineup takes a team's places (TournamentLanding::places()), a player one.
+                $roster[] = ['seed' => $row['seed'], 'name' => $names[$row['seed']], 'rating' => $row['rating'], 'seats' => $row['kind'] === 'lineup' ? $tournament->teamSize() : 1];
             }
         }
 

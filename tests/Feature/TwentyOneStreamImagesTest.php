@@ -10,6 +10,7 @@ use App\Support\Clans\ClanLogos;
 use App\Support\Nostr\Blockpile;
 use App\Support\Nostr\HostResolver;
 use App\Support\TwentyOne\Stream\ImageFetcher;
+use App\Support\TwentyOne\Stream\RotationKit;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamImageBuilder;
@@ -647,4 +648,35 @@ test('curl itself stops a body past 2 MB that announces no length', function () 
     // Aborted in transfer by the progress callback, not only refused after reading it all.
     expect($fetch)->toThrow(StreamImageFailed::class, 'Callback aborted');
     stopHttpsImageServer($server, $dir);
+});
+
+test('every taken seat of a lineup shows its clan logo on the seat map', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    Storage::fake('public');
+    $logos = app(ClanLogos::class);
+    $teams = openTournament([], rocketLeague: true);
+
+    foreach ([[200, 10, 10], [10, 10, 200]] as $rgb) {
+        [$lineup, $captain, $signer] = keyedLineup();
+        $png = streamPicture(64, 64, $rgb);
+        $logos->store($png);
+        $lineup->clan->forceFill(['picture' => $logos->urlFor($png)])->save();
+        lineupSignup($teams, $lineup, $captain, $signer);
+    }
+
+    app(StreamImageBuilder::class)->refreshLogos();
+    $now = (int) now()->getTimestampMs();
+    $slide = app(TournamentSlides::class)->data($teams->refresh(), $now);
+    $tournament = app(SceneSource::class)->rotation('tb1', null, [], 0, $now, [], $slide)['tournament'];
+    $seats = RotationKit::seats($tournament, 696, 368, 512, 40)['seats'];
+    $filled = array_values(array_filter($seats, fn (array $seat): bool => $seat['filled']));
+    [$first, $second] = array_column($tournament['roster'], 'logo');
+
+    expect(array_column($tournament['roster'], 'seats'))->toBe([3, 3])
+        ->and($first)->toStartWith('data:image/png;base64,')
+        ->and($second)->toStartWith('data:image/png;base64,')
+        ->and($first)->not->toBe($second)
+        ->and(array_column(array_column($filled, 'face'), 'uri'))->toBe([$first, $first, $first, $second, $second, $second])
+        ->and(count($seats))->toBe($tournament['places'])
+        ->and(array_filter($seats, fn (array $seat): bool => ! $seat['filled'] && $seat['face'] !== null))->toBe([]);
 });

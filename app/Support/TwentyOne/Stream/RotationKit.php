@@ -1031,6 +1031,31 @@ final class RotationKit
     }
 
     /**
+     * rosterFaces() spread over the places each row takes (its `seats`: a lineup's team size, a player one; 1 when
+     * missing), in roster order: the face of every taken seat of seats().
+     *
+     * @param  array<string, mixed>  $t
+     * @return list<array{uri: ?string, tag: ?string, fit: string}>
+     */
+    public static function seatFaces(array $t): array
+    {
+        $clan = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
+        $out = [];
+        foreach (array_values(is_array($t['roster'] ?? null) ? $t['roster'] : []) as $row) {
+            if (! is_array($row) || ! is_string($row['name'] ?? null) || self::clean($row['name']) === '') {
+                continue;
+            }
+            $face = self::face($row, $clan);
+            $seats = is_int($row['seats'] ?? null) ? max(1, min(32, $row['seats'])) : 1;
+            for ($i = 0; $i < $seats; $i++) {
+                $out[] = $face;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * face() of every seat of previewBoxes(), per box and row in the same order (boxes that previewBoxes() drops for
      * room are at the end, so the indexes match).
      *
@@ -1067,7 +1092,8 @@ final class RotationKit
 
     /**
      * The spots as a seat map: one circle per place, at most $perRow in a row, the taken ones first and filled, the
-     * first of those with the roster's faces. Null for more than $max places (the caller keeps the proportional bar).
+     * first of those with the roster's faces, each as often as its row takes places (seatFaces()). Null for more than
+     * $max places (the caller keeps the proportional bar).
      *
      * @param  array<string, mixed>  $t
      * @return array{d: float, h: float, seats: list<array{x: float, y: float, filled: bool, face: array{uri: ?string, tag: ?string, fit: string}|null}>}|null
@@ -1078,7 +1104,7 @@ final class RotationKit
         if ($spots['places'] > $max) {
             return null;
         }
-        $faces = self::rosterFaces($t);
+        $faces = self::seatFaces($t);
         $cols = min($spots['places'], max(1, $perRow));
         $d = floor(min($maxD, ($w - $gap * ($cols - 1)) / $cols));
         $seats = [];

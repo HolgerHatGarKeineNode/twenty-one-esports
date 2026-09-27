@@ -86,7 +86,7 @@ test('a two stage tournament: every contract field, the seeds by Elo, the projec
             'openSpots' => 6,
             'url' => 'esports.einundzwanzig.space/tournaments/'.$tournament->id,
         ])
-        ->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => 'hodl queen', 'rating' => 1400], ['seed' => 2, 'name' => 'satsjaeger', 'rating' => 1100]])
+        ->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => 'hodl queen', 'rating' => 1400, 'seats' => 1], ['seed' => 2, 'name' => 'satsjaeger', 'rating' => 1100, 'seats' => 1]])
         // Berlin is UTC+1 or +2: 18:00 UTC is 19:00 or 20:00 there.
         ->and($data['startsAt'])->toMatch('/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, (19:00 CET|20:00 CEST)$/')
         ->and($data['cover'])->toStartWith('data:image/jpeg;base64,/9j/')
@@ -132,7 +132,7 @@ test('a team mode counts player places, seeds the lineup under its clan and leav
         'taken' => 4,
         'places' => 24,
         'spotsLeft' => 20,
-    ])->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => $lineup->clan->name, 'rating' => (int) config('season.rating.start', 1000)]])
+    ])->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => $lineup->clan->name, 'rating' => (int) config('season.rating.start', 1000), 'seats' => 3]])
         ->and(slideEntriesWithoutPictures($data['preview']['matches'][0]['sides'])[0])->toBe(['seed' => 1, 'name' => $lineup->clan->name]);
 });
 
