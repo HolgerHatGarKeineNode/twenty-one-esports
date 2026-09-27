@@ -20,7 +20,10 @@ test('an admin from the database is admin', function () {
     Admin::query()->create(['pubkey' => $user->pubkey]);
 
     expect($user->isAdmin())->toBeTrue();
-    $this->actingAs($user)->get(route('admin.admins'))->assertOk();
+    // The admin tabs lead to the other admin pages from here too.
+    $this->actingAs($user)->get(route('admin.admins'))->assertOk()
+        ->assertSee('<nav aria-label="Admin"', false)
+        ->assertSee('href="'.route('admin.trust').'"', false);
 });
 
 test('a normal user gets 403 on the admin area', function () {
