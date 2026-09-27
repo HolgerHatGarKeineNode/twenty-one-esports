@@ -404,7 +404,7 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
         ->and($teamScene['tournament'])->not->toHaveKey('backdrop')
         ->and(collect($scenes)->map(fn (array $data): ?string => $data['backdrop'])->all())->toBe([
             'a1' => $chessBackdrop, 'a2' => $chessBackdrop, 'a3' => $brandBackdrop, 'a4' => $brandBackdrop, 'a5' => $brandBackdrop,
-            'b1' => $chessBackdrop, 'b2' => $chessBackdrop, 'b3' => $brandBackdrop, 'b4' => $brandBackdrop, 'b5' => $brandBackdrop,
+            'b1' => $chessBackdrop, 'b2' => $chessBackdrop, 'b3' => $chessBackdrop, 'b4' => $brandBackdrop, 'b5' => $brandBackdrop,
             'c1' => $chessBackdrop, 'c2' => $chessBackdrop, 'c3' => $brandBackdrop, 'c4' => $brandBackdrop, 'c5' => $brandBackdrop,
             'ta1' => $chessBackdrop, 'ta2' => $chessBackdrop, 'tb1' => $chessBackdrop, 'tb2' => $chessBackdrop, 'tc1' => $chessBackdrop, 'tc2' => $chessBackdrop,
         ])

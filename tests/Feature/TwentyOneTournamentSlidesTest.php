@@ -76,8 +76,8 @@ test('a two stage tournament: every contract field, the seeds by Elo, the projec
             'teamSize' => 1,
             'rated' => false,
             'where' => 'Online',
-            'startsAt' => $tournament->starts_at->copy()->timezone('Europe/Berlin')->format('D j M, H:i'),
-            'signupClosesAt' => $tournament->signup_closes_at->copy()->timezone('Europe/Berlin')->format('D j M, H:i'),
+            'startsAt' => $tournament->starts_at->copy()->timezone('Europe/Berlin')->format('D j M, H:i T'),
+            'signupClosesAt' => $tournament->signup_closes_at->copy()->timezone('Europe/Berlin')->format('D j M, H:i T'),
             'countdown' => '6d 06:05:01',
             'countdownLabel' => 'Sign-up closes in',
             'taken' => 2,
@@ -88,7 +88,7 @@ test('a two stage tournament: every contract field, the seeds by Elo, the projec
         ])
         ->and(slideEntriesWithoutPictures($data['roster']))->toBe([['seed' => 1, 'name' => 'hodl queen', 'rating' => 1400], ['seed' => 2, 'name' => 'satsjaeger', 'rating' => 1100]])
         // Berlin is UTC+1 or +2: 18:00 UTC is 19:00 or 20:00 there.
-        ->and($data['startsAt'])->toMatch('/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, (19|20):00$/')
+        ->and($data['startsAt'])->toMatch('/^[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}, (19:00 CET|20:00 CEST)$/')
         ->and($data['cover'])->toStartWith('data:image/jpeg;base64,/9j/')
         ->and($data['preview']['kind'])->toBe('groups')
         ->and($data['preview']['stageNote'])->toBe('Groups if sign-up closed now')

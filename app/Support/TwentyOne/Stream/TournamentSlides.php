@@ -171,7 +171,7 @@ class TournamentSlides
         }
 
         $open = $landing->openSeats();
-        $at = fn (?CarbonInterface $moment): ?string => $moment?->copy()->timezone($timezone)->format('D j M, H:i');
+        $at = fn (?CarbonInterface $moment): ?string => $moment?->copy()->timezone($timezone)->format('D j M, H:i T');
         $description = PublicName::clean((string) $tournament->description);
 
         return [

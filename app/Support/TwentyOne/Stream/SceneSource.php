@@ -29,7 +29,7 @@ use LogicException;
  * data URI (their cached picture as JPEG, else their Blockpile as SVG);
  * every scene has `backdrop`, a data URI or null while it is not built:
  * the tournament's game for a tournament slide, chess for the match, the
- * gallery and the fallback scene, the brand cover for the teasers.
+ * gallery, the daily teaser (b3) and the fallback scene, the brand cover for the other teasers.
  */
 class SceneSource
 {
@@ -157,7 +157,7 @@ class SceneSource
         return match ($scene) {
             'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats, 'backdrop' => $brand],
             'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
-            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $brand],
+            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $this->images->backdrop(StreamImages::CHESS)],
             default => ['stats' => $stats, 'backdrop' => $brand],
         };
     }
