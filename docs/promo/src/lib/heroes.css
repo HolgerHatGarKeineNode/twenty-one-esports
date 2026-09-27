@@ -1,0 +1,195 @@
+/* Hero layouts. Every hero lives in a size container (.hero) and sizes itself in
+ * container units, so one hero serves 9:16, 16:9, 1:1, 1.9:1 and 4:1 zones.
+ * Default = portrait/square arrangement; @container (min-aspect-ratio: 5/4) = landscape.
+ * Every direct part carries data-part; the probe checks each part stays inside
+ * the hero and no two parts intersect. Cube faces need --d room top and right. */
+
+.hero { container-type: size; position: relative; }
+.hero > [class^="h-"] { position: absolute; inset: 0; --d: 3.2cqmin; padding: var(--d) var(--d) 0 0; }
+.hero .cube { --d: 3.2cqmin; }
+
+/* shared bits */
+.bd { background: var(--btc-frame); }
+.bd .board { width: 100%; height: 100%; }
+.bd .board .sq svg text { font-family: var(--glyph); }
+.hud-tag { font: 700 max(14px, 3cqmin)/1.2 var(--mono); color: var(--chess); padding: .45em .6em; border: 3px solid var(--chess); background: rgba(10,10,11,.85); width: max-content; white-space: nowrap; }
+.hud-tag.live { color: var(--win); border-color: var(--win); }
+.ui-card { background: var(--card); border: 2px solid var(--line); color: var(--ink); font-family: var(--mono); }
+.btn { display: block; font: 700 1em/1.2 var(--mono); padding: .8em 1em; text-align: center; }
+.btn.primary { background: var(--btc); color: var(--on-btc); }
+.btn.ghost { background: var(--well); border: 2px solid var(--line); color: var(--ink); }
+.btn.sm { display: inline-block; padding: .55em .8em; }
+.av { width: 1.6em; height: 1.6em; image-rendering: pixelated; display: block; flex: none; }
+
+/* ---------------- login ---------------- */
+.h-login { display: grid; grid-template-rows: 1fr auto; justify-items: start; row-gap: 4cqh; }
+.h-login .key-item { position: relative; align-self: center; justify-self: center; width: min(62cqw, 44cqh); aspect-ratio: 16 / 9; padding: 3cqmin; }
+.h-login .hud { inset: 0; --b: 5cqmin; --t: .7cqmin; }
+.h-login .pix-key { width: 100%; height: 100%; display: block; filter: drop-shadow(1.6cqmin 1.6cqmin 0 var(--btc-frame)); }
+.h-login .login-card { font-size: min(3.6cqw, 3.4cqh); width: min(86cqw, 100%); padding: 1.2em; display: grid; row-gap: .7em; }
+.h-login .lc-title { font: 800 1.35em/1.15 var(--disp); }
+.h-login .lc-note, .h-login .lc-foot { color: var(--ink-2); font-size: .82em; line-height: 1.4; }
+@container (min-aspect-ratio: 5/4) {
+  .h-login { grid-template-rows: none; grid-template-columns: 1fr 1fr; column-gap: 4cqw; align-items: center; }
+  .h-login .key-item { width: 100%; order: 2; }
+  .h-login .login-card { font-size: min(2.1cqw, 4.6cqh); width: 100%; align-self: stretch; align-content: center; }
+}
+
+/* ---------------- blitz ---------------- */
+.h-blitz { display: grid; grid-template-rows: minmax(0, 1fr) auto; row-gap: 3cqh; justify-items: start; }
+.h-blitz .bwrap { position: relative; height: 100%; aspect-ratio: 1; max-width: 100%; min-height: 0; }
+.h-blitz .bwrap .bd { position: absolute; inset: 0; }
+.h-blitz .side { display: grid; grid-template-columns: 1fr 1fr; gap: 2cqmin; width: 100%; font-size: min(3.1cqw, 2.7cqh); }
+.h-blitz .clock { background: var(--card); border: 3px solid var(--btc); padding: .55em .8em; display: flex; justify-content: space-between; align-items: center; gap: .8em; min-width: 0; }
+.h-blitz .clock.dim { border-color: var(--line); order: 2; }
+.h-blitz .clock .who { display: flex; align-items: center; gap: .5em; font: 700 .8em/1.2 var(--mono); color: var(--ink-2); min-width: 0; }
+.h-blitz .clock .t { font: 800 1.8em/1 var(--disp); color: var(--ink); font-variant-numeric: tabular-nums; }
+.h-blitz .clock.dim .t { color: var(--ink-3); }
+.h-blitz .moves { grid-column: 1 / -1; order: 3; display: grid; grid-template-columns: repeat(4, 2.2em 1fr 1fr); column-gap: .3em; row-gap: .25em; font: 500 .82em/1.2 var(--mono); color: var(--ink-2); background: var(--well); padding: .6em .8em; }
+.h-blitz .moves .mn { color: var(--ink-3); }
+.h-blitz .moves .hot { color: var(--btc); font-weight: 800; }
+.h-blitz .mode { grid-column: 1 / -1; order: 4; font: 700 .85em/1.2 var(--mono); color: var(--chess); }
+@container (min-aspect-ratio: 1/1) {
+  .h-blitz { grid-template-rows: none; grid-template-columns: auto minmax(0, 1fr); column-gap: 3cqw; align-items: center; }
+  .h-blitz .bwrap { height: min(calc(100cqh - var(--d)), 60cqw); }
+  .h-blitz { align-items: stretch; }
+  .h-blitz .bwrap { align-self: center; }
+  .h-blitz .side { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto auto; align-self: center; height: min(calc(100cqh - var(--d)), 60cqw); font-size: min(2.3cqw, 4.2cqh); }
+  .h-blitz .moves { grid-template-columns: repeat(2, 2.2em 1fr 1fr); align-content: center; row-gap: .8em; font-size: .95em; }
+  .h-blitz .clock.dim { order: 0; }
+  .h-blitz .moves { grid-column: auto; order: 0; grid-template-columns: repeat(2, 2.2em 1fr 1fr); }
+  .h-blitz .mode { grid-column: auto; order: 0; }
+}
+/* near-square zones (mobile): the board takes the full height and bleeds off the left
+   edge (a-file cropped, the mate on d5/e7 stays whole); the side column gets the rest */
+@container (min-aspect-ratio: 1/1) and (max-aspect-ratio: 14/10) {
+  .h-blitz { grid-template-columns: 62cqw minmax(0, 1fr); }
+  .h-blitz .bwrap { height: calc(100cqh - var(--d)); justify-self: end; max-width: none; }
+  .h-blitz .side { height: calc(100cqh - var(--d)); font-size: min(3.1cqw, 3.4cqh); }
+  .h-blitz .clock { flex-direction: column; align-items: flex-start; gap: .5em; }
+  .h-blitz .clock .t { font-size: 1.9em; }
+  .h-blitz .moves { grid-template-columns: 2.2em 1fr 1fr; row-gap: .45em; }
+}
+
+/* ---------------- daily ---------------- */
+.h-daily { display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr auto; gap: 5cqmin; }
+.h-daily .bwrap { position: relative; height: 100%; aspect-ratio: 1; min-height: 0; max-width: 64cqw; }
+.h-daily .bwrap .bd { position: absolute; inset: 0; }
+.h-daily .days { display: flex; flex-direction: column; justify-content: space-between; font-size: min(3cqw, 2.8cqh); min-width: 0; }
+.h-daily .day { display: grid; grid-template-columns: 2.6em 1fr 1fr; align-items: baseline; padding: .35em 0; border-bottom: 2px solid var(--line); font: 500 1em/1.1 var(--mono); color: var(--ink-2); }
+.h-daily .day .dn { color: var(--ink-3); }
+.h-daily .day.now { border-bottom-color: var(--btc); }
+.h-daily .day.now .dn { color: var(--btc); font-weight: 700; }
+.h-daily .day .you { color: var(--btc); font-weight: 700; white-space: nowrap; }
+.h-daily .dm { grid-column: 1 / -1; display: flex; align-items: center; gap: .8em; padding: .8em 1em; font-size: min(3.2cqw, 3cqh); border-left: 6px solid var(--proof, #A78BFA); }
+.h-daily .dm .av { width: 2.2em; height: 2.2em; }
+.h-daily .dm-from { font: 700 .75em/1.2 var(--mono); color: #A78BFA; }
+.h-daily .dm-text { font: 700 1em/1.3 var(--mono); }
+@container (min-aspect-ratio: 5/4) {
+  .h-daily { grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; }
+  .h-daily .bwrap { grid-row: 1 / 3; height: calc(100cqh - var(--d)); max-width: none; }
+  .h-daily .dm { grid-column: 2; font-size: min(2.2cqw, 4.2cqh); }
+  .h-daily .days { font-size: min(2.2cqw, 4cqh); }
+}
+
+/* ---------------- clans ---------------- */
+.h-clans { display: grid; grid-template-rows: auto minmax(0, 1fr); row-gap: 5cqmin; }
+.h-clans .clan-card { display: grid; grid-template-columns: auto 1fr; column-gap: 5cqmin; align-items: center; padding: 4cqmin; font-size: min(4cqw, 3.6cqh); }
+.h-clans .crest { width: min(38cqw, 34cqh); aspect-ratio: 1; background: var(--raised); --cube-face: var(--btc); display: grid; place-items: center; }
+.h-clans .crest-img { width: 80%; height: 80%; }
+.h-clans .cc-body { display: grid; row-gap: .8em; justify-items: start; min-width: 0; }
+.h-clans .cc-name { font: 800 1.9em/1.05 var(--disp); }
+.h-clans .cc-tag { display: flex; align-items: center; gap: .6em; }
+.h-clans .chip { font: 800 1em/1 var(--disp); background: linear-gradient(135deg, #F9B25F, #F7931A 55%, #B9640A); color: var(--on-btc); padding: .35em .45em; }
+.h-clans .cc-tag .k { color: var(--ink-3); }
+.h-clans .cc-members { display: flex; gap: .4em; }
+.h-clans .cc-members .av { width: 2em; height: 2em; }
+.h-clans .wall { display: grid; grid-template-columns: repeat(2, 1fr); grid-auto-rows: 1fr; gap: 3cqmin; min-height: 0; }
+.h-clans .tile { display: flex; align-items: center; gap: .7em; background: var(--card); border: 2px solid var(--line); padding: .4em .8em; font: 800 min(3.6cqw, 2.8cqh)/1.1 var(--disp); color: var(--ink-2); min-height: 0; }
+.h-clans .tcrest { width: 2.2em; height: 2.2em; flex: none; }
+.h-clans .tcrest img { width: 100%; height: 100%; }
+@container (min-aspect-ratio: 5/4) {
+  .h-clans { grid-template-rows: none; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); column-gap: 3cqw; align-items: center; }
+  .h-clans .clan-card { grid-template-columns: 1fr; row-gap: 4cqmin; font-size: min(2.2cqw, 3.8cqh); justify-items: start; }
+  .h-clans .crest { width: min(18cqw, 40cqh); }
+  .h-clans .wall { grid-template-columns: 1fr; gap: 2cqmin; height: 100%; }
+  .h-clans .clan-card { align-self: stretch; align-content: center; }
+  .h-clans .tile { font-size: min(1.8cqw, 3.4cqh); }
+}
+
+/* ---------------- open source ---------------- */
+.h-os { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; row-gap: 4cqmin; }
+.h-os .editor { background: #0F0F12; --cube-face: var(--chess-deep); font-size: min(3.4cqw, 3.2cqh); overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.h-os .ed-body { align-self: center; }
+.h-os .ed-bar { font: 700 .9em/1.2 var(--mono); color: var(--ink-3); padding: .9em 1em; border-bottom: 2px solid var(--line); }
+.h-os .ed-body { padding: 1em 0; white-space: pre; overflow: hidden; }
+.h-os .ln { display: grid; grid-template-columns: 3em 1fr; font: 500 1em/1.7 var(--mono); }
+.h-os .ln i { font-style: normal; color: var(--dash); text-align: right; padding-right: 1em; }
+.h-os .ln code { font: inherit; color: var(--ink); overflow: hidden; font-variant-ligatures: none; }
+.h-os .c-k { color: var(--btc); } .h-os .c-f { color: var(--chess); } .h-os .c-s { color: var(--win); }
+.h-os .footer-strip { display: flex; flex-wrap: wrap; gap: .6em 1.6em; font: 500 min(2.8cqw, 2.6cqh)/1.3 var(--mono); color: var(--ink-3); border-top: 2px solid var(--line); padding-top: 1em; }
+.h-os .footer-strip .on { color: var(--ink); box-shadow: 0 .25em 0 var(--btc); }
+.h-os .repo { font: 700 min(2.8cqw, 2.6cqh)/1.2 var(--mono); color: var(--chess); }
+@container (min-aspect-ratio: 5/4) {
+  .h-os .editor { font-size: max(13px, min(2.7cqw, 5.6cqh)); }
+  .h-os .footer-strip, .h-os .repo { font-size: max(13px, min(1.6cqw, 3.2cqh)); }
+}
+
+/* ---------------- tournaments ---------------- */
+.h-tour { display: grid; grid-template-rows: auto minmax(0, 1fr); row-gap: 5cqmin; }
+.h-tour .tag-open { order: -1; font: 700 min(3.2cqw, 3cqh)/1.2 var(--mono); color: var(--chess); border: 3px solid var(--chess); padding: .5em .7em; width: max-content; }
+.h-tour .bracket { background: var(--card); --cube-face: #1E1E24; display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 3cqw; padding: 3cqmin; font-size: min(2.6cqw, 2.4cqh); min-height: 0; }
+.h-tour .col { display: flex; flex-direction: column; justify-content: space-around; row-gap: 1em; }
+.h-tour .rh { font: 700 max(11px, .9em)/1.2 var(--mono); color: var(--ink-3); }
+.h-tour .match { display: grid; row-gap: 3px; }
+.h-tour .slot { display: flex; align-items: center; gap: .5em; padding: .45em .5em; background: var(--well); font: 700 1em/1.2 var(--mono); min-width: 0; }
+.h-tour .slot b { overflow: hidden; text-overflow: clip; white-space: nowrap; }
+.h-tour .slot.out { color: var(--ink-2); }
+.h-tour .slot.out .av { opacity: .45; }
+.h-tour .slot.won { box-shadow: inset 4px 0 0 var(--btc); }
+.h-tour .slot.live { box-shadow: inset 4px 0 0 var(--win); }
+.h-tour .slot.open { background: transparent; border: 3px dashed var(--btc); justify-content: center; }
+.h-tour .slot .q { font: 800 1.4em/1 var(--disp); color: var(--btc); }
+@container (min-aspect-ratio: 5/4) {
+  .h-tour .bracket { font-size: max(12px, min(2.2cqw, 3.4cqh)); padding: 2.4cqmin; }
+  .h-tour .col { row-gap: .5em; }
+  .h-tour .slot { padding: .3em .45em; }
+  .h-tour .tag-open { font-size: min(1.9cqw, 3.8cqh); }
+}
+
+/* ---------------- watch ---------------- */
+.h-watch { display: grid; grid-template-rows: auto 1fr; row-gap: 2.4cqh; }
+.h-watch .wall-head { font: 800 min(4.4cqw, 4cqh)/1.2 var(--disp); }
+.h-watch .wall { display: grid; grid-template-columns: 1fr 1fr; gap: 3cqmin; min-height: 0; justify-content: start; }
+.h-watch .cell { display: grid; grid-template-rows: auto 1fr; row-gap: 1.2cqmin; min-height: 0; }
+.h-watch .live-row { display: flex; align-items: center; gap: .5em; font: 700 min(2.4cqw, 2.2cqh)/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.h-watch .dot { width: .7em; height: .7em; border-radius: 50%; background: var(--win); box-shadow: 0 0 .6em var(--win); }
+.h-watch .cell .bd { height: 100%; aspect-ratio: 1; max-width: 100%; min-height: 0; }
+@container (min-aspect-ratio: 5/4) {
+  .h-watch { grid-template-rows: auto minmax(0, 1fr); }
+  .h-watch .wall { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; align-self: end; }
+  .h-watch .cell { grid-template-rows: auto auto; }
+  .h-watch .cell .bd { width: 100%; height: auto; }
+  .h-watch .live-row { font-size: max(11px, min(1.5cqw, 3.4cqh)); white-space: normal; line-height: 1.25; }
+  .h-watch .wall-head { font-size: min(2.6cqw, 6cqh); }
+}
+
+/* ---------------- invite ---------------- */
+.h-invite { display: grid; grid-template-rows: auto 1fr; row-gap: 4cqh; align-content: start; }
+.h-invite .linkbox { padding: .9em 1em; font-size: min(3cqw, 2.8cqh); display: grid; row-gap: .7em; }
+.h-invite .lb-note { color: var(--ink-2); }
+.h-invite .lb-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .6em 1em; background: var(--well); border: 2px solid var(--line); padding: .4em .4em .4em .8em; }
+.h-invite .lb-url { font-weight: 700; white-space: nowrap; overflow: hidden; }
+.h-invite .icard { background: var(--ground); border: 2px solid var(--line); --cube-face: var(--btc); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 4cqmin; padding: 4cqmin; align-items: center; min-height: 0; }
+.h-invite .ic-left { display: grid; row-gap: 1.2em; font-size: min(3cqw, 2.8cqh); min-width: 0; }
+.h-invite .ic-who { display: flex; align-items: center; gap: .6em; font: 800 1.2em/1 var(--disp); }
+.h-invite .ic-who .av { width: 2em; height: 2em; }
+.h-invite .ic-head { font: 800 1.7em/1.1 var(--disp); overflow-wrap: anywhere; }
+.h-invite .ic-sub { color: var(--ink-2); line-height: 1.45; }
+.h-invite .ic-board { height: min(40cqw, 38cqh); aspect-ratio: 1; }
+.h-invite .ic-board .bd { width: 100%; height: 100%; }
+@container (min-aspect-ratio: 5/4) {
+  .h-invite .linkbox { font-size: min(1.9cqw, 3.6cqh); }
+  .h-invite .ic-left { font-size: min(1.9cqw, 3.4cqh); }
+  .h-invite .ic-board { height: min(26cqw, 52cqh); }
+}

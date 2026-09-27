@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TWENTY ONE esports — promo gallery</title>
+<style>
+@font-face{font-family:'Unbounded';src:url('assets/fonts/unbounded-latin.woff2') format('woff2');font-weight:200 900}
+@font-face{font-family:'JetBrains Mono';src:url('assets/fonts/jetbrains-mono-latin.woff2') format('woff2');font-weight:400 800}
+:root{
+  --bg:#0A0A0B; --panel:#121215; --panel2:#1E1E24; --line:#2A2A30;
+  --text:#FFFFFF; --muted:#ADADB0; --dim:#8B8B90;
+  --orange:#F7931A; --green:#4ADE80; --red:#F87171; --cyan:#22D3EE;
+  --disp:'Unbounded',sans-serif; --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:14px}
+header{position:sticky;top:0;z-index:50;background:rgba(10,10,11,.94);border-bottom:1px solid var(--line);padding:14px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+header h1{font-family:var(--disp);font-size:17px;margin:0;letter-spacing:.04em}
+header h1 b{color:var(--orange)}
+#bridge{font-size:12px;padding:5px 10px;border:1px solid var(--line);border-radius:99px;color:var(--dim)}
+#bridge.on{color:var(--green);border-color:var(--green)}
+#bridge.off{color:var(--red)}
+#bridge.hint{color:var(--orange);border-color:var(--orange)}
+nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+nav button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer}
+nav button.active{color:#17120A;background:var(--orange);border-color:var(--orange);font-weight:700}
+main{max-width:1500px;margin:0 auto;padding:22px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card .media{position:relative;background:#000;min-height:180px;display:flex;align-items:center;justify-content:center;cursor:zoom-in}
+.card .media img,.card .media video{max-width:100%;max-height:420px;display:block}
+.card.tall{grid-row:span 2}
+.card.tall .media img,.card.tall .media video{max-height:640px}
+.idchip{background:rgba(10,10,11,.9);border:1px solid var(--orange);color:var(--orange);font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 9px;border-radius:7px;cursor:pointer;letter-spacing:.03em}
+.media .idchip{position:absolute;top:10px;left:10px}
+.idchip:hover{background:var(--orange);color:#17120A}
+.body{padding:13px 15px 15px;display:flex;flex-direction:column;gap:9px;flex:1}
+.body h3{margin:0;font-family:var(--disp);font-size:12.5px;font-weight:700;letter-spacing:.02em;color:var(--text)}
+.meta{font-size:11px;color:var(--dim);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.meta .tag{border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.note{font-size:11px;color:var(--muted);line-height:1.45}
+textarea{width:100%;min-height:150px;background:#0D0D0F;border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12.5px;line-height:1.55;padding:10px;resize:vertical}
+textarea:focus{outline:1px solid var(--orange)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--orange);border:1px solid var(--orange);color:#17120A;font-family:var(--mono);font-weight:700;font-size:12px;padding:7px 13px;border-radius:8px;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+.btn.ghost:hover{color:var(--text);border-color:var(--muted)}
+.btn.small{padding:5px 10px;font-size:11px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.posted{color:var(--green);font-size:11px}
+.count{font-size:11px;color:var(--dim);margin-left:auto}
+section h2{font-family:var(--disp);font-size:22px;margin:40px 0 6px;color:var(--text)}
+section .day{font-size:12px;color:var(--orange);margin:0 0 16px}
+section h4{font-family:var(--mono);font-size:12px;color:var(--dim);margin:18px 0 10px;font-weight:500}
+.plan{max-width:1500px;margin:18px auto 0;padding:0 22px}
+.plan table{border-collapse:collapse;font-size:12px;width:100%}
+.plan td,.plan th{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+.plan th{color:var(--dim);font-weight:500}
+dialog{background:var(--panel);border:1px solid var(--orange);border-radius:14px;color:var(--text);max-width:660px;width:92vw;padding:0}
+dialog::backdrop{background:rgba(0,0,0,.72)}
+dialog .inner{padding:20px}
+dialog h3{font-family:var(--disp);margin:0 0 12px;font-size:15px}
+dialog textarea{min-height:170px}
+#relayres{font-size:11px;color:var(--muted);line-height:1.5;max-height:120px;overflow:auto;white-space:pre-wrap}
+.burl{font-size:11px;color:var(--cyan);word-break:break-all;cursor:pointer;border:1px dashed var(--line);border-radius:6px;padding:5px 8px}
+.burl:hover{border-color:var(--cyan)}
+.burl b{color:var(--green)}
+#lightbox{position:fixed;inset:0;background:rgba(5,5,6,.96);z-index:200;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;padding:30px}
+#lightbox.open{display:flex}
+#lightbox img,#lightbox video{max-width:96vw;max-height:88vh;border:1px solid var(--line);border-radius:8px}
+#lightbox .cap{font-size:12px;color:var(--muted);text-align:center}
+#lightbox .cap b{color:var(--orange)}
+#lightbox .close{position:absolute;top:18px;right:22px;font-size:26px;color:var(--muted);cursor:pointer;background:none;border:none}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#17120A;color:var(--orange);border:1px solid var(--orange);padding:10px 18px;border-radius:10px;font-size:13px;z-index:300;opacity:0;transition:opacity .18s;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1}
+.empty{color:var(--dim);padding:30px;text-align:center}
+footer{color:var(--dim);font-size:11px;text-align:center;padding:26px}
+</style>
+</head>
+<body>
+<header>
+  <h1>TWENTY ONE esports · <b>Promo</b></h1>
+  <span id="bridge" class="hint">checking bridge…</span>
+  <nav id="typeFilters"></nav>
+  <nav id="langFilters"></nav>
+  <nav id="ratioFilters"></nav>
+</header>
+<div class="plan" id="plan"></div>
+<main id="main"><div class="empty">Loading manifest…</div></main>
+<footer>Generated by src/build-gallery.mjs from src/gallery/gallery.template.html. Click an ID to copy it, click an image for the lightbox. Blossom URLs, text edits and posted state stay in localStorage. Posting needs the local bridge (README).</footer>
+<div id="lightbox"><button class="close" title="close (Esc)">✕</button><div class="media-holder"></div><div class="cap"></div></div>
+<div id="toast"></div>
+
+<dialog id="composer">
+  <div class="inner">
+    <h3 id="composerTitle">Post to Nostr</h3>
+    <div class="row" style="margin-bottom:10px">
+      <img id="composerThumb" style="max-height:110px;border:1px solid var(--line);border-radius:6px;display:none" alt="">
+      <video id="composerThumbVideo" style="max-height:110px;border:1px solid var(--line);border-radius:6px;display:none" muted controls></video>
+    </div>
+    <div style="font-size:11px;color:var(--orange);margin-bottom:6px">Text stays fully editable until you publish — changes persist per item.</div>
+    <select id="composerCaption" style="width:100%;margin-bottom:8px"></select>
+    <textarea id="composerText" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:6px">
+      <span style="font-size:11px;color:var(--dim)">Event text: feature URL on top, Blossom image URL below — edit freely.</span>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="btn" id="composerPost">Upload &amp; publish</button>
+      <button class="btn ghost" id="composerCancel">Cancel</button>
+      <span class="count" id="composerCount"></span>
+    </div>
+    <div id="relayres" style="margin-top:12px"></div>
+  </div>
+</dialog>
+
+<script id="manifestData" type="application/json">/*MANIFEST*/</script>
+<script>
+'use strict';
+const MANIFEST = JSON.parse(document.getElementById('manifestData').textContent);
+const BRIDGE = 'http://127.0.0.1:8919';
+const $ = (s) => document.querySelector(s);
+const state = { type: 'all', lang: 'all', ratio: 'all', bridge: null };
+
+// Ratio class per item: mobile (9:16), square (1:1), wide (16:9 & 1.91:1), banner (4:1), text (—)
+function ratioOf(item) {
+  if (item.type === 'message') return 'text';
+  if (item.type === 'reel') return 'mobile';
+  if (item.format === 'mobile-9x16') return 'mobile';
+  if (item.format === 'nostr-square') return 'square';
+  if (item.format === 'stream-banner') return 'banner';
+  return 'wide'; // x-16x9, nostr-wide
+}
+
+// ---------- storage helpers ----------
+const store = {
+  text(id) { try { return localStorage.getItem('tp:' + id); } catch { return null; } },
+  setText(id, v) { try { v === null ? localStorage.removeItem('tp:' + id) : localStorage.setItem('tp:' + id, v); } catch {} },
+  posted(id) { try { return JSON.parse(localStorage.getItem('posted:' + id) || 'null'); } catch { return null; } },
+  setPosted(id, v) { try { localStorage.setItem('posted:' + id, JSON.stringify(v)); } catch {} },
+  blossom(id) { try { return localStorage.getItem('blossom:' + id); } catch { return null; } },
+  setBlossom(id, v) { try { localStorage.setItem('blossom:' + id, v); } catch {} },
+};
+
+// ---------- toast ----------
+let toastT;
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function copyText(txt, label) {
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject())
+    .then(() => toast((label || 'Copied') + ': ' + txt))
+    .catch(() => prompt('Copy:', txt));
+}
+
+// ---------- bridge ----------
+async function checkBridge() {
+  const el = $('#bridge');
+  try {
+    const r = await fetch(BRIDGE + '/status', { signal: AbortSignal.timeout(2500) });
+    const j = await r.json();
+    state.bridge = j;
+    el.className = 'on';
+    el.textContent = '● bridge ready · ' + j.npub.slice(0, 16) + '… · ' + j.relays.length + ' relays';
+  } catch {
+    state.bridge = null;
+    el.className = 'off';
+    el.textContent = '✕ no bridge — php -S 127.0.0.1:8919 docs/promo/src/nostr-bridge.php';
+  }
+}
+async function bridgeUpload(file) {
+  const r = await fetch(BRIDGE + '/upload', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: file }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+  return j.url;
+}
+async function bridgePublish(content, file) {
+  const body = { content };
+  if (file) body.image = file;
+  const r = await fetch(BRIDGE + '/publish', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+
+// ---------- lightbox ----------
+function openLightbox(item) {
+  const lb = $('#lightbox');
+  const holder = lb.querySelector('.media-holder');
+  holder.innerHTML = '';
+  if (item.type === 'reel') {
+    const v = document.createElement('video');
+    v.src = item.file; v.controls = true; v.autoplay = true; v.loop = true;
+    holder.appendChild(v);
+  } else {
+    const i = document.createElement('img');
+    i.src = item.file; i.alt = item.title;
+    holder.appendChild(i);
+  }
+  lb.querySelector('.cap').innerHTML = `<b>${item.id}</b> — ${item.title}`;
+  lb.classList.add('open');
+}
+function closeLightbox() {
+  const lb = $('#lightbox');
+  lb.querySelectorAll('video').forEach((v) => { v.pause(); v.removeAttribute('src'); v.load(); });
+  lb.classList.remove('open');
+}
+$('#lightbox').addEventListener('click', (e) => {
+  if (e.target.id === 'lightbox' || e.target.classList.contains('close')) closeLightbox();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+
+// ---------- filters ----------
+function renderFilters() {
+  const types = [['all', 'All'], ['poster', 'Posters'], ['reel', 'Reels'], ['message', 'Post texts']];
+  $('#typeFilters').innerHTML = '';
+  types.forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.className = state.type === k ? 'active' : '';
+    b.onclick = () => { state.type = k; render(); };
+    $('#typeFilters').appendChild(b);
+  });
+  const langs = [['all', 'DE+EN'], ['de', 'DE'], ['en', 'EN']];
+  $('#langFilters').innerHTML = '';
+  langs.forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.className = state.lang === k ? 'active' : '';
+    b.onclick = () => { state.lang = k; render(); };
+    $('#langFilters').appendChild(b);
+  });
+  const ratios = [
+    ['all', 'All ratios'], ['mobile', '9:16 mobile'], ['square', '1:1 square'],
+    ['wide', '16:9 wide'], ['banner', '4:1 banner'],
+  ];
+  $('#ratioFilters').innerHTML = '';
+  ratios.forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.className = state.ratio === k ? 'active' : '';
+    b.onclick = () => { state.ratio = k; render(); };
+    $('#ratioFilters').appendChild(b);
+  });
+}
+
+// ---------- composer (image-first) ----------
+let composerCtx = null;
+function defaultEventText(item, blossomUrl, caption) {
+  // the post texts already end with the site; only add the feature URL when it is missing
+  const feat = item.featureUrl || 'https://esports.einundzwanzig.space/';
+  const cap = caption && caption.trim() ? caption.trim() : '';
+  const hasSite = /esports\.einundzwanzig\.space/.test(cap);
+  return (cap ? cap + '\n\n' : '') + (hasSite ? '' : feat + '\n\n') + (blossomUrl || '');
+}
+function openComposer(item) {
+  if (!state.bridge) { toast('Bridge not running — see header'); return; }
+  composerCtx = item;
+  $('#composerTitle').textContent = 'Post · ' + item.id;
+  const isVid = item.type === 'reel';
+  $('#composerThumb').style.display = isVid ? 'none' : 'block';
+  $('#composerThumbVideo').style.display = isVid ? 'block' : 'none';
+  if (isVid) { $('#composerThumbVideo').src = item.file; }
+  else { $('#composerThumb').src = item.file; }
+  const existing = store.posted(item.id);
+  const blossomUrl = store.blossom(item.id) || (existing && existing.blossom) || null;
+  const sel = $('#composerCaption');
+  sel.innerHTML = '<option value="">— no caption —</option>';
+  (item.captions || []).forEach((c, i) => {
+    const o = document.createElement('option');
+    o.value = String(i); o.textContent = c.label.slice(0, 60);
+    sel.appendChild(o);
+  });
+  const saved = store.text(item.id + ':cap');
+  sel.value = saved !== null && saved !== '' ? saved : '0';
+  const capText = () => (sel.value === '' ? '' : (item.captions || [])[+sel.value]?.text || '');
+  const t = $('#composerText');
+  t.value = existing && existing.text ? existing.text : defaultEventText(item, blossomUrl, capText());
+  sel.onchange = () => {
+    store.setText(item.id + ':cap', sel.value);
+    const b = store.blossom(item.id);
+    t.value = defaultEventText(item, b, capText());
+    $('#composerCount').textContent = t.value.length + ' chars';
+  };
+  $('#composerCount').textContent = t.value.length + ' chars';
+  $('#relayres').textContent = blossomUrl ? 'Blossom URL from cache: ' + blossomUrl : 'Image will be uploaded to Blossom during publish.';
+  $('#composer').showModal();
+}
+$('#composerText').addEventListener('input', (e) => {
+  $('#composerCount').textContent = e.target.value.length + ' chars';
+});
+$('#composerCancel').onclick = () => $('#composer').close();
+$('#composerPost').onclick = async () => {
+  const btn = $('#composerPost');
+  btn.disabled = true;
+  const res = $('#relayres');
+  try {
+    btn.textContent = 'Uploading to Blossom…';
+    let url = store.blossom(composerCtx.id);
+    if (!url) {
+      url = await bridgeUpload(composerCtx.file);
+      store.setBlossom(composerCtx.id, url);
+    }
+    // keep the blossom URL in the text if the default block is still in place
+    let content = $('#composerText').value;
+    if (!content.includes(url)) {
+      content = content.replace(/(https:\/\/\S+)\s*$/m, (m) => m); // no-op guard
+      content = content.trimEnd() + '\n' + url;
+      $('#composerText').value = content;
+    }
+    btn.textContent = 'Signing & publishing…';
+    res.textContent = 'Publishing kind 1 to ' + state.bridge.relays.length + ' relays…';
+    const j = await bridgePublish(content, composerCtx.file);
+    store.setPosted(composerCtx.id, { at: new Date().toISOString(), eventId: j.id, text: content, blossom: url, relays: j.relays });
+    res.textContent = (j.accepted ? '✓ ' : '⚠ ') + j.relays.map((x) => `${x.relay.replace('wss://', '')}: ${x.accepted ? 'ok' : x.message}`).join('\n');
+    toast(j.accepted ? 'Posted! ' + (j.id || '').slice(0, 12) + '…' : 'No relay accepted — see details');
+    render();
+    if (j.accepted) setTimeout(() => $('#composer').close(), 1800);
+  } catch (e) {
+    res.textContent = '✕ ' + e.message;
+    toast('Failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Upload & publish';
+  }
+};
+
+// ---------- upload button on image cards ----------
+async function doBlossomUpload(item, btn, urlSlot) {
+  if (!state.bridge) { toast('Bridge not running — see header'); return; }
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const url = await bridgeUpload(item.file);
+    store.setBlossom(item.id, url);
+    urlSlot.style.display = 'block';
+    urlSlot.innerHTML = `<b>blossom:</b> ${url} <span style="color:var(--dim)">· click to copy</span>`;
+    urlSlot.onclick = () => copyText(url, 'Blossom URL');
+    toast('Uploaded — URL shown below the image');
+  } catch (e) {
+    toast('Upload failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬆ Blossom';
+  }
+}
+
+// ---------- cards ----------
+function cardEl(item) {
+  const el = document.createElement('div');
+  const posted = store.posted(item.id);
+  el.className = 'card' + (item.type === 'message' ? ' msg' : item.format === 'mobile-9x16' ? ' tall' : '');
+  const isImage = ['poster', 'reel'].includes(item.type);
+  const media = item.type === 'message' ? '' : `
+    <div class="media" data-lightbox="${item.id}">
+      ${item.type === 'reel'
+        ? `<video src="${item.file}" preload="metadata" muted></video>`
+        : `<img src="${item.file}" loading="lazy" alt="${item.title}">`}
+      <button class="idchip" title="click to copy">${item.id}</button>
+    </div>`;
+  el.innerHTML = `
+    ${media}
+    <div class="body">
+      <h3>${item.title}</h3>
+      <div class="meta">
+        <span class="tag">${item.type}</span>
+        ${item.lang ? `<span class="tag">${item.lang.toUpperCase()}</span>` : ''}
+        ${item.format ? `<span class="tag">${item.format}</span>` : ''}
+        ${posted ? `<span class="posted">✓ posted ${new Date(posted.at).toLocaleString()}</span>` : ''}
+      </div>
+      ${item.type === 'message' ? `<button class="idchip" style="align-self:flex-start" title="click to copy">${item.id}</button>` : ''}
+      ${item.note ? `<div class="note">${item.note}</div>` : ''}
+      ${item.type === 'message' ? `
+        <textarea spellcheck="false" data-id="${item.id}"></textarea>
+        <div class="row">
+          <button class="btn ghost" data-reset="${item.id}">Reset text</button>
+          <button class="btn ghost" data-copytext="${item.id}">Copy text</button>
+          <span class="count" data-count="${item.id}"></span>
+        </div>` : ''}
+      ${isImage ? `
+        <div class="row">
+          <button class="btn small" data-post="${item.id}">${item.type === 'reel' ? 'Post video' : 'Post image'}</button>
+          <button class="btn ghost small" data-edit="${item.id}">✎ Text</button>
+          <button class="btn ghost small" data-blossom="${item.id}">⬆ Blossom</button>
+        </div>
+        <div class="burl" data-burl="${item.id}" style="display:none"></div>` : ''}
+      ${item.file && item.type !== 'message' ? `<div class="note" style="color:var(--dim)">${item.file}${item.featureUrl ? ' → ' + item.featureUrl : ''}</div>` : ''}
+    </div>`;
+  // wire interactions
+  el.querySelectorAll('.idchip').forEach((b) => { b.onclick = () => copyText(item.id, 'ID'); });
+  const mediaEl = el.querySelector('[data-lightbox]');
+  if (mediaEl) mediaEl.onclick = (e) => { if (!e.target.classList.contains('idchip')) openLightbox(item); };
+  const ta = el.querySelector('textarea');
+  if (ta) {
+    ta.value = store.text(item.id) !== null ? store.text(item.id) : (item.text || '');
+    const c = el.querySelector(`[data-count="${item.id}"]`);
+    c.textContent = ta.value.length + ' chars';
+    ta.addEventListener('input', () => { store.setText(item.id, ta.value); c.textContent = ta.value.length + ' chars'; });
+    el.querySelector(`[data-reset="${item.id}"]`).onclick = () => {
+      store.setText(item.id, null); ta.value = item.text || ''; c.textContent = ta.value.length + ' chars';
+      toast('Text reset');
+    };
+    el.querySelector(`[data-copytext="${item.id}"]`).onclick = () => copyText(ta.value, 'Text');
+  }
+  const pb = el.querySelector(`[data-post="${item.id}"]`);
+  if (pb) pb.onclick = () => openComposer(item);
+  const eb = el.querySelector(`[data-edit="${item.id}"]`);
+  if (eb) eb.onclick = () => { openComposer(item); $('#composerText').focus(); };
+  const ub = el.querySelector(`[data-blossom="${item.id}"]`);
+  const urlSlot = el.querySelector(`[data-burl="${item.id}"]`);
+  if (ub && urlSlot) {
+    const cached = store.blossom(item.id);
+    if (cached) {
+      urlSlot.style.display = 'block';
+      urlSlot.innerHTML = `<b>blossom:</b> ${cached} <span style="color:var(--dim)">· click to copy</span>`;
+      urlSlot.onclick = () => copyText(cached, 'Blossom URL');
+    }
+    ub.onclick = () => doBlossomUpload(item, ub, urlSlot);
+  }
+  return el;
+}
+
+// ---------- render: one section per motif, in posting-plan order ----------
+function render() {
+  renderFilters();
+  const main = $('#main');
+  const any = MANIFEST.items.filter((i) =>
+    (state.type === 'all' || i.type === state.type) &&
+    (state.lang === 'all' || (i.lang || 'en') === state.lang) &&
+    (state.ratio === 'all' || ratioOf(i) === state.ratio));
+  if (!any.length) { main.innerHTML = '<div class="empty">No items for this filter.</div>'; return; }
+  main.innerHTML = '';
+  for (const m of MANIFEST.motifs) {
+    const items = any.filter((i) => i.motif === m.id);
+    if (!items.length) continue;
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h2>${m.title}</h2><div class="day">${m.day}</div>`;
+    for (const [type, label] of [['poster', 'Posters'], ['reel', 'Reel'], ['message', 'Post texts (src/copy/posts.md)']]) {
+      const list = items.filter((i) => i.type === type);
+      if (!list.length) continue;
+      const h = document.createElement('h4'); h.textContent = `${label} (${list.length})`;
+      const grid = document.createElement('div'); grid.className = 'grid';
+      list.forEach((i) => grid.appendChild(cardEl(i)));
+      sec.appendChild(h); sec.appendChild(grid);
+    }
+    main.appendChild(sec);
+  }
+}
+function renderPlan() {
+  const rows = MANIFEST.plan.map((p) => `<tr><td>${p.day}</td><td>${p.text}</td><td>${p.media}</td></tr>`).join('');
+  document.getElementById('plan').innerHTML = `<table><tr><th>Day</th><th>Post</th><th>Media</th></tr>${rows}</table>`;
+}
+
+checkBridge();
+renderPlan();
+render();
+</script>
+</body>
+</html>

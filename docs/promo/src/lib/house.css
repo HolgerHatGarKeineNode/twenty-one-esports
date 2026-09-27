@@ -1,0 +1,75 @@
+/* TWENTY ONE esports promo kit, house layer.
+ * Tokens mirror resources/css/app.css (dark theme). Fonts are the site's own
+ * variable builds, copied to docs/promo/assets/fonts (binary, local only).
+ * Spacing: 8pt scale only (4 for hairlines). */
+
+@font-face { font-family: 'Unbounded'; src: url('../../assets/fonts/unbounded-latin.woff2') format('woff2'); font-weight: 200 900;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Unbounded'; src: url('../../assets/fonts/unbounded-latin-ext.woff2') format('woff2'); font-weight: 200 900;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-latin.woff2') format('woff2'); font-weight: 400 800;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'JetBrains Mono'; src: url('../../assets/fonts/jetbrains-mono-latin-ext.woff2') format('woff2'); font-weight: 400 800;
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+
+:root {
+  /* surfaces */
+  --ground: #0A0A0B; --bar: #111114; --card: #121215; --raised: #1E1E24; --well: #1A1A1E;
+  --hairline: #1E1E22; --line: #2A2A30; --dash: #3A3A42;
+  /* ink */
+  --ink: #FFFFFF; --ink-2: #ADADB0; --ink-3: #8B8B90;
+  /* bitcoin orange: action and the last move, nothing else */
+  --btc: #F7931A; --btc-hi: #F9B25F; --btc-deep: #B9640A; --on-btc: #17120A; --btc-frame: #3A2C14;
+  /* chess cyan: the game HUD */
+  --chess: #22D3EE; --chess-deep: #0E7490;
+  --win: #4ADE80; --loss: #F87171;
+  /* board, house theme of resources/js/chess.js */
+  --sq-l: #CFCFD4; --sq-d: #62626C; --sq-last-l: #F4C47F; --sq-last-d: #B8741F;
+  --disp: 'Unbounded', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --glyph: 'DejaVu Sans', 'Noto Sans Symbols 2', sans-serif;
+  /* spacing scale */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px; --s9: 96px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: #000; }
+body { font-family: var(--mono); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+/* ---------- cube: the site's oblique board frame, pushed to hero scale ---------- */
+.cube { position: relative; --d: 32px; }
+.cube::before, .cube::after { content: ''; position: absolute; background: var(--cube-face, var(--btc-frame)); pointer-events: none; }
+.cube::before { left: 0; top: calc(var(--d) * -1); width: 100%; height: var(--d); filter: brightness(1.35); transform: skewX(-45deg); transform-origin: bottom left; }
+.cube::after { left: 100%; top: 0; width: var(--d); height: 100%; filter: brightness(.6); transform: skewY(-45deg); transform-origin: top left; }
+.cube.lit { --cube-face: var(--btc); }
+
+/* ---------- board ---------- */
+.board { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); aspect-ratio: 1; background: var(--btc-frame); }
+.board .sq { position: relative; }
+.board .sq svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.board .sq .co { position: absolute; font: 700 var(--co, 13px)/1 var(--mono); }
+.board .sq .co.r { top: 6%; left: 7%; } .board .sq .co.f { right: 7%; bottom: 5%; }
+.board .sq.last::after { content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 calc(var(--co, 13px) * .3) rgba(247,147,26,.0); }
+.board .sq.mate { box-shadow: inset 0 0 0 4px #F87171, inset 0 0 28px 6px rgba(248,113,113,.8); }
+
+/* ---------- HUD bracket (game layer, cyan) ---------- */
+.hud { position: absolute; pointer-events: none; --b: 40px; --t: 4px; }
+.hud i { position: absolute; width: var(--b); height: var(--b); border: var(--t) solid var(--chess); }
+.hud i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+.hud i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.hud i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+.hud i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+
+/* ---------- logo ---------- */
+.logo { display: flex; align-items: center; gap: .35em; font: 800 var(--logo, 28px)/1 var(--disp); letter-spacing: -.01em; white-space: nowrap; }
+.logo .mark { display: grid; place-items: center; width: 1.45em; height: 1.45em; background: var(--btc); color: var(--on-btc); font-size: .9em; letter-spacing: -.06em; }
+.logo small { font: 500 .62em/1 var(--mono); color: var(--ink-2); letter-spacing: 0; margin-left: .1em; }
+
+/* ---------- CTA slab: square corners on purpose (no pill) ---------- */
+.cta { display: inline-flex; align-items: center; gap: var(--s4); background: var(--btc); color: var(--on-btc);
+  font: 700 var(--cta, 32px)/1 var(--mono); padding: .7em .9em; white-space: nowrap; box-shadow: .35em .35em 0 var(--btc-deep); }
+.cta b { font-weight: 800; }
+
+/* ---------- scanlines + grain on the ground ---------- */
+.scan::before { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 50;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 5px); }

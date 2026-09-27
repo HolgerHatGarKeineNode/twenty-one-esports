@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TWENTY ONE esports poster</title>
+<link rel="stylesheet" href="../lib/house.css">
+<link rel="stylesheet" href="../lib/heroes.css">
+<style>
+/* ================= poster frame =================
+ * Hierarchy: 1 hero object, 2 headline, 3 one action (URL slab). Everything else is small.
+ * All spacing from the 8pt scale. Formats are CSS px; render is @2x. */
+.poster { position: relative; overflow: hidden; background: var(--ground); display: grid; }
+.poster > * { position: relative; z-index: 2; min-width: 0; min-height: 0; }
+
+/* background: a chess floor in perspective under the hero, and the glow of the last move */
+.bg { position: absolute !important; inset: 0; z-index: 0 !important; pointer-events: none; overflow: hidden; }
+.bg .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 62%; }
+.bg .floor svg { display: block; width: 100%; height: 100%; }
+.bg .glow { position: absolute; width: 900px; height: 900px; border-radius: 50%; background: radial-gradient(closest-side, rgba(247,147,26,.16), transparent); }
+
+/* logo row */
+.top { display: flex; align-items: center; justify-content: space-between; gap: var(--s5); }
+
+/* copy block */
+.copy { display: grid; grid-template-columns: minmax(0, 1fr); align-content: end; justify-items: start; }
+.head { font: 800 96px/1.02 var(--disp); padding-bottom: .1em; letter-spacing: -.02em; color: var(--ink); width: 100%; text-wrap: balance; hyphens: manual; }
+.head .w { white-space: nowrap; display: inline-block; }
+.sub { font: 500 var(--sub, 32px)/1.45 var(--mono); color: var(--ink-2); max-width: 34em; }
+.bul { list-style: none; display: grid; row-gap: var(--s3); font: 500 var(--bul, 28px)/1.35 var(--mono); color: var(--ink); }
+.bul li { display: grid; grid-template-columns: .5em 1fr; column-gap: .7em; align-items: baseline; }
+.bul li::before { content: ''; width: .5em; height: .5em; background: var(--chess); transform: translateY(-.05em); }
+
+/* ---------- mobile 1080x1920 ---------- */
+.poster[data-format="mobile-9x16"] { width: 1080px; height: 1920px; padding: 64px; grid-template-rows: auto minmax(0, 1fr) auto; row-gap: 48px; --logo: 32px; --sub: 34px; --bul: 30px; --cta: 36px; }
+.poster[data-format="mobile-9x16"] .copy { row-gap: 32px; }
+.poster[data-format="mobile-9x16"] .bg .glow { right: -300px; top: 120px; }
+
+/* ---------- X 1600x900 ---------- */
+.poster[data-format="x-16x9"] { width: 1600px; height: 900px; padding: 56px; grid-template-columns: 704px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 64px; row-gap: 32px; --logo: 26px; --sub: 24px; --bul: 22px; --cta: 26px; }
+.poster[data-format="x-16x9"] .top { grid-column: 1; }
+.poster[data-format="x-16x9"] .copy { grid-column: 1; grid-row: 2; row-gap: 24px; }
+.poster[data-format="x-16x9"] .hero { grid-column: 2; grid-row: 1 / 3; }
+.poster[data-format="x-16x9"] .bg .glow { right: -200px; top: -100px; }
+
+/* ---------- Nostr square 1080x1080 ---------- */
+.poster[data-format="nostr-square"] { width: 1080px; height: 1080px; padding: 56px; grid-template-rows: auto minmax(0, 1fr) auto; row-gap: 40px; --logo: 26px; --sub: 26px; --cta: 28px; }
+.poster[data-format="nostr-square"] .copy { row-gap: 24px; }
+.poster[data-format="nostr-square"] .bg .glow { right: -300px; top: -200px; }
+
+/* ---------- Nostr wide 1200x630 ---------- */
+.poster[data-format="nostr-wide"] { width: 1200px; height: 630px; padding: 48px; grid-template-columns: 536px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 48px; row-gap: 24px; --logo: 22px; --sub: 22px; --cta: 22px; }
+.poster[data-format="nostr-wide"] .top { grid-column: 1; }
+.poster[data-format="nostr-wide"] .copy { grid-column: 1; grid-row: 2; row-gap: 20px; }
+.poster[data-format="nostr-wide"] .hero { grid-column: 2; grid-row: 1 / 3; }
+.poster[data-format="nostr-wide"] .bg .glow { right: -300px; top: -300px; }
+
+/* ---------- stream banner 1920x480 ---------- */
+.poster[data-format="stream-banner"] { width: 1920px; height: 480px; padding: 40px 48px; grid-template-columns: 760px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 64px; row-gap: 24px; --logo: 22px; --cta: 24px; }
+.poster[data-format="stream-banner"] .top { grid-column: 1; }
+.poster[data-format="stream-banner"] .copy { grid-column: 1; grid-row: 2; row-gap: 20px; }
+.poster[data-format="stream-banner"] .hero { grid-column: 2; grid-row: 1 / 3; }
+.poster[data-format="stream-banner"] .bg .glow { right: 0; top: -500px; }
+</style>
+</head>
+<body>
+<div id="mount"></div>
+<script src="../lib/kit.js"></script>
+<script src="../lib/ui-strings.js"></script>
+<script src="../lib/heroes.js"></script>
+<script>
+/* Which copy fields each format carries, and the headline limits. */
+const FORMATS = {
+  'mobile-9x16':   { sub: true, bullets: true,  maxLines: 3, max: 128, min: 66 },
+  'x-16x9':        { sub: true, bullets: true,  maxLines: 3, max: 88, min: 48 },
+  'nostr-square':  { sub: true, bullets: false, maxLines: 3, max: 104, min: 60 },
+  'nostr-wide':    { sub: true, bullets: false, maxLines: 3, max: 72,  min: 40 },
+  'stream-banner': { sub: false, bullets: false, maxLines: 2, max: 88, min: 48 },
+};
+
+/* Extruded headline: the cube's right face as a stepped shadow, depth scales with size. */
+function extrude(el, size) {
+  const n = Math.max(3, Math.round(size * 0.07));
+  const s = [];
+  for (let i = 1; i <= n; i++) s.push(`${i}px ${i}px 0 ${i === n ? '#241B0C' : '#3A2C14'}`);
+  el.style.textShadow = s.join(',');
+}
+
+/* Fit: largest step with no word wider than the box and at most maxLines lines. */
+function fitHead(el, f) {
+  const steps = Kit.STEPS.filter((s) => s <= f.max && s >= f.min).reverse();
+  for (const s of steps) {
+    el.style.fontSize = s + 'px';
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    const lines = Math.round(el.getBoundingClientRect().height / lh);
+    const wordsFit = [...el.querySelectorAll('.w')].every((w) => w.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5);
+    if (wordsFit && lines <= f.maxLines) { el.dataset.size = s; el.dataset.lines = lines; return s; }
+  }
+  el.dataset.fitFailed = '1';
+  return f.min;
+}
+
+function render(copy) {
+  const p = Kit.params();
+  const motif = p.motif, format = p.format, lang = p.lang || 'de';
+  document.documentElement.lang = lang;
+  const m = copy.posters.find((x) => x.id === motif);
+  if (!m) throw new Error('motif not in copy: ' + motif);
+  const f = FORMATS[format];
+  const t = m[lang];
+  const html = `
+  <div class="poster scan" data-format="${format}" data-motif="${motif}" data-lang="${lang}">
+    <div class="bg"><div class="floor">${Kit.floorSVG(1000, 600, { horizon: 0, cam: 560, cell: 0.16, rows: 18, cols: 30 })}</div><div class="glow"></div></div>
+    <div class="top"><div class="logo" data-box="logo"><span class="mark">21</span>TWENTY ONE<small>esports</small></div></div>
+    <section class="hero" data-box="hero">${Heroes.build(motif, lang)}</section>
+    <div class="copy">
+      <h1 class="head" data-box="headline">${Kit.words(t.headline)}</h1>
+      ${f.sub ? `<p class="sub" data-box="subline">${Kit.esc(t.subline)}</p>` : ''}
+      ${f.bullets && t.bullets.length ? `<ul class="bul" data-box="bullets">${t.bullets.map((b) => `<li>${Kit.esc(b)}</li>`).join('')}</ul>` : ''}
+      <div class="cta" data-box="cta">${Kit.esc(m.cta)}</div>
+    </div>
+  </div>`;
+  document.getElementById('mount').innerHTML = html;
+  const root = document.querySelector('.poster');
+  root.querySelectorAll('.hero > [class^="h-"] > *').forEach((e, i) => { e.dataset.part = e.className.split(' ')[0] || 'part' + i; });
+  const h = root.querySelector('.head');
+  extrude(h, fitHead(h, f));
+  return root;
+}
+
+/* Probe: poster-level boxes plus hero parts (inside the hero, not touching each other). */
+function probeAll() {
+  const root = document.querySelector('.poster');
+  const res = Kit.probe(root);
+  const hero = root.querySelector('.hero');
+  const H = hero.getBoundingClientRect();
+  const parts = [...hero.querySelectorAll('[data-part]')];
+  /* A part's extent = its box plus the faces of every cube inside it (top +d, right +d). */
+  const extent = (e) => {
+    const r = e.getBoundingClientRect();
+    const x = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    for (const c of [e, ...e.querySelectorAll('.cube')].filter((c) => c.classList.contains('cube'))) {
+      const cr = c.getBoundingClientRect(), d = parseFloat(getComputedStyle(c, '::before').height) || 0;
+      x.top = Math.min(x.top, cr.top - d); x.right = Math.max(x.right, cr.right + d);
+      x.left = Math.min(x.left, cr.left); x.bottom = Math.max(x.bottom, cr.bottom);
+    }
+    return x;
+  };
+  const hasCube = (e) => e.classList.contains('cube') || !!e.querySelector('.cube');
+  for (const e of parts) {
+    const r = extent(e);
+    const bleedL = (e.dataset.bleed || '').includes('left');
+    if ((!bleedL && r.left < H.left - 0.5) || r.top < H.top - 0.5 || r.right > H.right + 0.5 || r.bottom > H.bottom + 0.5) res.issues.push(`hero part ${e.dataset.part}: outside hero by L${(H.left - r.left).toFixed(0)} T${(H.top - r.top).toFixed(0)} R${(r.right - H.right).toFixed(0)} B${(r.bottom - H.bottom).toFixed(0)}`);
+    if (!hasCube(e) && (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) res.issues.push(`hero part ${e.dataset.part}: overflows itself ${e.scrollWidth}x${e.scrollHeight} > ${e.clientWidth}x${e.clientHeight}`);
+  }
+  for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+    const a = extent(parts[i]), b = extent(parts[j]);
+    const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left), oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    if (ox > 0.5 && oy > 0.5) res.issues.push(`hero parts ${parts[i].dataset.part} x ${parts[j].dataset.part}: overlap ${ox.toFixed(0)}x${oy.toFixed(0)}`);
+  }
+  // fill: PAINTED content (text, images, backgrounds, borders; cube faces included)
+  // must span most of the zone. Layout boxes do not count: a stretched empty grid cell is a hole.
+  const painted = [...hero.querySelectorAll('*')].filter((e) => {
+    if (!e.getClientRects().length) return false;
+    const cs = getComputedStyle(e);
+    if (cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+    if (/^(IMG|svg)$/i.test(e.tagName)) return true;
+    if ([...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return true;
+    if (cs.backgroundImage !== 'none') return true;
+    if (!/rgba\(0, 0, 0, 0\)|transparent/.test(cs.backgroundColor)) return true;
+    return parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0;
+  });
+  if (painted.length) {
+    const ex = painted.map((e) => (e.classList.contains('cube') ? extent(e) : e.getBoundingClientRect()));
+    const vFill = (Math.max(...ex.map((x) => x.bottom)) - Math.min(...ex.map((x) => x.top))) / H.height;
+    const hFill = (Math.max(...ex.map((x) => x.right)) - Math.min(...ex.map((x) => x.left))) / H.width;
+    res.fill = { v: +vFill.toFixed(2), h: +hFill.toFixed(2) };
+    if (vFill < 0.85 || hFill < 0.85) res.issues.push(`hero fill too low: vertical ${(vFill * 100).toFixed(0)}%, horizontal ${(hFill * 100).toFixed(0)}% (floor 85%)`);
+  }
+  // text that clips inside itself (single-line UI labels)
+  hero.querySelectorAll('b, .lb-url, .live-row, .hud-tag, .btn, .t, .mv').forEach((e) => {
+    if (e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).display !== 'inline') res.issues.push(`hero text clipped: "${e.textContent.trim().slice(0, 30)}" ${e.scrollWidth}>${e.clientWidth}`);
+  });
+  // legibility floor in CSS px (output is @2x): copy >= 20, hero UI >= 11
+  root.querySelectorAll('.copy *, .hero *').forEach((e) => {
+    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return;
+    const fs = parseFloat(getComputedStyle(e).fontSize);
+    const floor = e.closest('.copy') ? 20 : 11;
+    if (fs < floor) res.issues.push(`small text ${fs.toFixed(1)}px: "${e.textContent.trim().slice(0, 24)}"`);
+  });
+  const h = root.querySelector('.head');
+  res.headline = { size: +h.dataset.size, lines: +h.dataset.lines };
+  return res;
+}
+
+window.__render = render;
+window.__probe = probeAll;
+if (window.__COPY) render(window.__COPY);
+</script>
+</body>
+</html>

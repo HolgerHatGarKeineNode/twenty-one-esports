@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>TWENTY ONE esports reel</title>
+<link rel="stylesheet" href="../lib/house.css">
+<link rel="stylesheet" href="../lib/heroes.css">
+<style>
+/* ================= reel frame 1080x1920 =================
+ * Hierarchy per beat: scene (the product doing the thing) above, caption (copy) below.
+ * Motion: one gesture per beat. Caption slam + decaying chromatic split on entry,
+ * a 240 ms glitch cut between beats, functional motion inside the scene. */
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
+.reel { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--ground); }
+.reel .bg { position: absolute; inset: 0; pointer-events: none; }
+.reel .bg .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 58%; }
+.reel .bg .floor svg { display: block; width: 100%; height: 100%; }
+.reel .bg .glow { position: absolute; width: 1100px; height: 1100px; right: -420px; top: 60px; border-radius: 50%; background: radial-gradient(closest-side, rgba(247,147,26,.15), transparent); }
+.top { position: absolute; left: 64px; right: 64px; top: 64px; height: 56px; display: flex; align-items: center; justify-content: space-between; z-index: 5; --logo: 32px; }
+.prog { display: flex; gap: 8px; width: 360px; }
+.prog i { flex: 1; height: 8px; background: var(--line); position: relative; overflow: hidden; }
+.prog i b { position: absolute; inset: 0; background: var(--btc); transform-origin: left; transform: scaleX(0); }
+.scenes { position: absolute; left: 64px; top: 176px; width: 952px; height: 1072px; z-index: 3; transform-origin: 50% 60%; }
+.scene { position: absolute; inset: 0; display: none; }
+.scene.on { display: block; }
+.capbox { position: absolute; left: 64px; right: 64px; top: 1312px; height: 544px; z-index: 4; }
+.caption { position: absolute; left: 0; top: 0; width: 952px; max-height: 544px; font: 800 112px/1.02 var(--disp); letter-spacing: -.02em; color: var(--ink); display: none; padding-bottom: .1em; transform-origin: 0 50%; }
+.caption .w { white-space: nowrap; display: inline-block; }
+.caption.on { display: block; }
+.caption.url { font: 700 56px/1 var(--mono); letter-spacing: 0; }
+.caption.url .slab { display: inline-block; background: var(--btc); color: var(--on-btc); padding: .5em .6em; box-shadow: .3em .3em 0 var(--btc-deep); white-space: nowrap; }
+.fx { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+.fx .band { position: absolute; left: 0; right: 0; }
+.fx .sweep { position: absolute; left: 0; right: 0; height: 160px; background: linear-gradient(to bottom, transparent, rgba(34,211,238,.06), transparent); }
+
+/* ---------- scene building blocks ---------- */
+.center { position: absolute; inset: 0; display: grid; place-items: center; }
+.card { background: var(--card); border: 2px solid var(--line); font-family: var(--mono); color: var(--ink); }
+.phone { position: relative; width: 600px; height: 1040px; border-radius: 64px; background: #1E1E24; padding: 18px; box-shadow: 18px 18px 0 #16161A; }
+.phone .screen { position: absolute; inset: 18px; border-radius: 48px; background: var(--ground); overflow: hidden; padding: 72px 32px 32px; display: grid; align-content: start; row-gap: 20px; }
+.phone .notch { position: absolute; top: 34px; left: 50%; width: 140px; height: 30px; margin-left: -70px; border-radius: 16px; background: #000; z-index: 2; }
+.cursor { position: absolute; width: 56px; height: 56px; z-index: 9; pointer-events: none; }
+.ripple { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 6px solid var(--btc); pointer-events: none; z-index: 8; }
+.pressed { filter: brightness(1.15); transform: scale(.97); }
+.row { display: flex; align-items: center; gap: 16px; }
+.muted { color: var(--ink-2); }
+.dim { color: var(--ink-3); }
+.lbl { font: 500 26px/1.3 var(--mono); color: var(--ink-2); }
+.input { background: var(--well); border: 2px solid var(--line); padding: 20px 22px; font: 700 40px/1.2 var(--mono); min-height: 88px; }
+.input .caret { display: inline-block; width: .5em; height: 1em; background: var(--btc); vertical-align: -0.12em; margin-left: 2px; }
+.btnx { display: inline-flex; align-items: center; justify-content: center; font: 700 34px/1.2 var(--mono); padding: 24px 30px; background: var(--btc); color: var(--on-btc); }
+.btnx.ghost { background: var(--well); color: var(--ink); border: 2px solid var(--line); }
+.dotlive { width: 18px; height: 18px; border-radius: 50%; background: var(--win); flex: none; }
+.chipx { font: 800 34px/1 var(--disp); background: linear-gradient(135deg, #F9B25F, #F7931A 55%, #B9640A); color: var(--on-btc); padding: 10px 12px; }
+.avx { image-rendering: pixelated; display: block; flex: none; }
+
+/* board in reels */
+.rb { position: relative; background: var(--btc-frame); }
+.rb .board { width: 100%; height: 100%; }
+.rb .mover { position: absolute; width: 12.5%; height: 12.5%; z-index: 3; }
+.rb .mover svg { width: 100%; height: 100%; display: block; }
+.rb .flash { position: absolute; width: 12.5%; height: 12.5%; z-index: 2; pointer-events: none; }
+
+/* clocks */
+.clk { display: flex; justify-content: space-between; align-items: center; background: var(--card); border: 4px solid var(--line); padding: 16px 22px; }
+.clk.run { border-color: var(--btc); }
+.clk .who { display: flex; align-items: center; gap: 14px; font: 700 30px/1.2 var(--mono); color: var(--ink-2); }
+.clk .t { font: 800 64px/1 var(--disp); font-variant-numeric: tabular-nums; }
+.clk:not(.run) .t { color: var(--ink-3); }
+
+/* ladder */
+.lad { width: 100%; }
+.lad .head { display: flex; justify-content: space-between; align-items: baseline; padding: 28px 28px 12px; gap: 16px; }
+.lad .head b { font: 700 36px/1.2 var(--mono); }
+.lad .head span { font: 500 22px/1.3 var(--mono); color: var(--ink-3); text-align: right; }
+.lad .tr { display: grid; grid-template-columns: 56px 1fr 190px 140px 190px; column-gap: 8px; align-items: center; padding: 18px 28px; font: 500 30px/1.2 var(--mono); border-top: 2px solid var(--hairline); }
+.lad .th { color: var(--ink-3); font-size: 24px; }
+.lad .tr .num { text-align: right; font-variant-numeric: tabular-nums; }
+.lad .tr .pl { display: flex; align-items: center; gap: 14px; font-weight: 700; }
+.delta { font: 800 26px/1 var(--mono); margin-left: 8px; }
+.delta.up { color: var(--win); } .delta.dn { color: var(--loss); }
+
+/* end card */
+.endcard { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; row-gap: 64px; }
+.endcard .mark { width: 360px; height: 360px; background: var(--btc); color: var(--on-btc); display: grid; place-items: center; font: 900 220px/1 var(--disp); letter-spacing: -.08em; --cube-face: var(--btc); --d: 56px; }
+.endcard .word { font: 800 72px/1 var(--disp); text-align: center; }
+.endcard .word small { display: block; font: 500 36px/1.4 var(--mono); color: var(--ink-2); margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="reel scan" id="reel">
+  <div class="bg"><div class="floor" id="floor"></div><div class="glow"></div></div>
+  <header class="top"><div class="logo"><span class="mark">21</span>TWENTY ONE<small>esports</small></div><div class="prog" id="prog"></div></header>
+  <div class="scenes" id="scenes"></div>
+  <div class="capbox" id="capbox"></div>
+  <div class="fx" id="fx"></div>
+</div>
+<script src="../lib/kit.js"></script>
+<script src="../lib/ui-strings.js"></script>
+<script src="../lib/heroes.js"></script>
+<script>
+'use strict';
+/* ---------- math ---------- */
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eo = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const back = (x) => { x = clamp(x); const c = 1.70158; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const E = (s) => Kit.esc(s);
+const AV = '../../assets/brand/avatars/';
+const CR = '../../assets/brand/clans/';
+const av = (n, px) => `<img class="avx" src="${AV}${n}.svg" width="${px}" height="${px}" alt="">`;
+const cursorSVG = '<svg class="cursor" viewBox="0 0 16 16" shape-rendering="crispEdges"><path fill="#0A0A0B" d="M1 0h2v1h1v1h1v1h1v1h1v1h1v1h1v1h1v1h1v2H9v1h1v2H9v1H7v-1H6v-2H5v-1H4v1H3v1H1z"/><path fill="#fff" d="M2 2h1v1h1v1h1v1h1v1h1v1h1v1h1v1H8v1h1v2H8v-1H7v-2H6V9H5v1H4v1H3v1H2z"/></svg>';
+const mmss = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+/* ---------- animated board (timelines come from chess.js via the renderer) ---------- */
+function boardBox(id, size) {
+  return `<div class="rb cube" id="${id}" style="width:${size}px;height:${size}px;--d:${Math.round(size * 0.035)}px"><div class="board"></div><div class="mover"></div><div class="flash"></div></div>`;
+}
+/* Moves k = 0..n-1 of `tl` (from ply p0) start at t0 + k*step and slide for `dur`. */
+function playBoard(el, tl, p0, n, t, t0, step, o = {}) {
+  const dur = Math.min(0.18, step * 0.8);
+  let done = 0, moving = -1, frac = 0;
+  for (let k = 0; k < n; k++) {
+    const s = t0 + k * step;
+    if (t >= s + dur) done = k + 1;
+    else if (t >= s) { moving = k; frac = (t - s) / dur; break; }
+  }
+  const base = tl[p0 + done];
+  const next = moving >= 0 ? tl[p0 + done + 1] : null;
+  const bd = el.querySelector('.board');
+  Kit.board(bd, base.fen, { last: base.last, mate: base.mate ? base.check : null, flip: o.flip });
+  if (base.check && !base.mate) { const sq = bd.querySelector(`[data-sq="${base.check}"]`); if (sq) sq.style.boxShadow = 'inset 0 0 0 5px #F87171'; }
+  const mv = el.querySelector('.mover');
+  const pos = (sq) => { let f = 'abcdefgh'.indexOf(sq[0]), r = 8 - +sq[1]; if (o.flip) { f = 7 - f; r = 7 - r; } return [f * 12.5, r * 12.5]; };
+  if (next) {
+    const [from, to] = next.last;
+    const src = bd.querySelector(`[data-sq="${from}"] svg`); if (src) src.style.visibility = 'hidden';
+    const ch = Kit.fenRows(base.fen)[8 - +from[1]]['abcdefgh'.indexOf(from[0])];
+    const a = pos(from), b = pos(to), e = eo(frac);
+    mv.innerHTML = ch ? Kit.glyph(ch) : '';
+    mv.style.left = (a[0] + (b[0] - a[0]) * e) + '%'; mv.style.top = (a[1] + (b[1] - a[1]) * e) + '%';
+    mv.style.display = 'block';
+  } else { mv.style.display = 'none'; }
+  const fl = el.querySelector('.flash');
+  const landed = done > 0 ? t - (t0 + (done - 1) * step + dur) : 99;
+  if (landed < 0.35 && base.last.length) {
+    const [x, y] = pos(base.last[1]);
+    fl.style.left = x + '%'; fl.style.top = y + '%';
+    fl.style.boxShadow = `inset 0 0 0 ${Math.round(8 * (1 - landed / 0.35))}px rgba(247,147,26,${1 - landed / 0.35}), 0 0 ${Math.round(40 * (1 - landed / 0.35))}px rgba(247,147,26,.8)`;
+    fl.style.display = 'block';
+  } else fl.style.display = 'none';
+  return { done, mate: !!base.mate, landed };
+}
+
+/* ---------- scenes per reel: html(lang) + update(root, t, len, lang) ---------- */
+const S = {};
+const lobbyCard = (lang) => `
+  <div class="card" style="width:880px;padding:40px;display:grid;row-gap:28px">
+    <div class="row" style="justify-content:space-between"><b style="font:700 40px/1.2 var(--mono)">${E(UI('findOpponent', lang))}</b><span class="dim" style="font:500 28px/1.2 var(--mono)">${E(UI('blitzLive', lang))}</span></div>
+    <div class="card" style="padding:28px;display:flex;align-items:center;gap:16px;background:var(--well)"><i class="dotlive" data-pulse></i><span style="font:700 30px/1.2 var(--mono)">${E(UI('playersSearching', lang))}</span></div>
+    <div class="card" style="padding:24px 28px;border-color:var(--btc);box-shadow:inset 0 -6px 0 var(--btc)"><b style="font:700 32px/1.2 var(--mono);color:var(--btc)">${E(UI('casual', lang))}</b><div class="dim" style="font:500 24px/1.3 var(--mono)">${E(UI('casualElo', lang))}</div></div>
+    <div class="btnx" data-btn style="width:100%">${E(UI('logInToPlay', lang))}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px"><div class="btnx ghost" style="font-size:26px">${E(UI('dailyChallenge', lang))}</div><div class="btnx ghost" style="font-size:26px">${E(UI('inviteOnline', lang))}</div></div>
+  </div>`;
+function cursorTo(root, t, a, b, from, to, clickAt) {
+  let c = root.querySelector('.cursor');
+  if (!c) { root.insertAdjacentHTML('beforeend', cursorSVG + '<div class="ripple"></div>'); c = root.querySelector('.cursor'); }
+  const p = eo(seg(t, a, b));
+  c.style.left = (from[0] + (to[0] - from[0]) * p) + 'px'; c.style.top = (from[1] + (to[1] - from[1]) * p) + 'px';
+  c.style.opacity = t < a - 0.2 ? 0 : 1;
+  const r = root.querySelector('.ripple'), q = seg(t, clickAt, clickAt + 0.45);
+  r.style.left = (to[0] + 10) + 'px'; r.style.top = (to[1] + 10) + 'px';
+  r.style.opacity = t >= clickAt && q < 1 ? 1 - q : 0; r.style.transform = `scale(${0.3 + q})`;
+  return t >= clickAt && t < clickAt + 0.25;
+}
+function ladderCard(lang, rows) {
+  return `<div class="card lad"><div class="head"><b>${E(UI('casualLadder', lang))}</b><span>${E(UI('casualNote', lang))}</span></div>
+    <div class="tr th"><span>#</span><span>${E(UI('colPlayer', lang))}</span><span class="num">${E(UI('colElo', lang))}</span><span class="num">${E(UI('colGames', lang))}</span><span class="num">${E(UI('colWdl', lang))}</span></div>
+    ${rows.map((r, i) => `<div class="tr" data-row="${i}"><span class="dim">${i + 1}</span><span class="pl">${av(r.n, 48)}${E(r.n)}</span><span class="num"><b data-elo>1000</b></span><span class="num">${r.g}</span><span class="num">${r.wdl}</span></div>`).join('')}</div>`;
+}
+function ladderUpdate(root, t, rows) {
+  root.querySelectorAll('[data-row]').forEach((el, i) => {
+    const p = eo(seg(t, 0.3 + i * 0.25, 0.8 + i * 0.25));
+    el.style.opacity = p; el.style.transform = `translateX(${(1 - p) * 80}px)`;
+    const r = rows[i], q = eo(seg(t, 1.2, 2.0));
+    const v = Math.round(1000 + (r.elo - 1000) * q);
+    el.querySelector('[data-elo]').innerHTML = v + (q > 0.02 && r.elo !== 1000 ? `<span class="delta ${r.elo > 1000 ? 'up' : 'dn'}">${r.elo > 1000 ? '+' : '−'}${Math.abs(v - 1000)}</span>` : '');
+    el.style.background = r.hl && t > 2 ? `rgba(247,147,26,${0.12 * (0.5 + 0.5 * Math.sin((t - 2) * 6))})` : 'transparent';
+  });
+}
+const endCard = () => `<div class="endcard"><div class="mark cube">21</div><div class="word">TWENTY ONE<small>esports</small></div></div>`;
+function endUpdate(root, t) {
+  const m = root.querySelector('.mark'), p = back(seg(t, 0, 0.5));
+  m.style.transform = `scale(${0.4 + 0.6 * p}) rotate(${(1 - p) * -8}deg)`;
+  const w = root.querySelector('.word'); w.style.opacity = eo(seg(t, 0.3, 0.7)); w.style.transform = `translateY(${(1 - eo(seg(t, 0.3, 0.7))) * 40}px)`;
+}
+const TL = () => window.__TL;
+
+/* ===== blitz ===== */
+S.blitz = [
+  { html: (l) => `<div class="center" style="position:absolute">${lobbyCard(l)}</div>`,
+    update(root, t) {
+      const dot = root.querySelector('[data-pulse]'); dot.style.boxShadow = `0 0 0 ${Math.round(10 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(74,222,128,.25)`;
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      const press = cursorTo(root, t, 1.0, 2.0, [820, 980], [b.left - R.left + b.width * 0.6, b.top - R.top + b.height * 0.4], 2.3);
+      btn.classList.toggle('pressed', press);
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card" style="width:900px;overflow:hidden">
+      <div style="display:flex;gap:10px;align-items:center;padding:18px 22px;background:var(--bar);border-bottom:2px solid var(--line)"><i style="width:16px;height:16px;border-radius:50%;background:#F87171"></i><i style="width:16px;height:16px;border-radius:50%;background:#FACC15"></i><i style="width:16px;height:16px;border-radius:50%;background:#4ADE80"></i><span style="margin-left:18px;flex:1;background:var(--well);padding:10px 18px;font:500 26px/1.2 var(--mono);color:var(--ink-2)">esports.einundzwanzig.space/chess</span></div>
+      <div style="padding:40px;display:grid;row-gap:28px;justify-items:center">
+        <div class="row" style="width:100%;justify-content:space-between"><b style="font:800 44px/1.1 var(--disp)">Blitz 5+3</b><span class="dim" style="font:500 28px/1.2 var(--mono)">${E(UI('casual', l))}</span></div>
+        ${boardBox('b2', 620)}
+        <div style="width:100%;height:14px;background:var(--well);position:relative;overflow:hidden"><i data-scan style="position:absolute;top:0;bottom:0;width:30%;background:var(--chess)"></i></div>
+      </div></div>
+      <div data-toast class="card" style="position:absolute;left:50%;top:40px;transform:translateX(-50%);padding:24px 36px;border-color:var(--win);display:flex;align-items:center;gap:18px;font:700 38px/1.2 var(--mono)"><i class="dotlive"></i>${E(UI('opponentFound', l))}</div></div>`,
+    update(root, t) {
+      const b = root.querySelector('#b2'); Kit.board(b.querySelector('.board'), TL().legal[0].fen, {});
+      root.querySelector('[data-scan]').style.left = (((t * 0.9) % 1.3) * 100 - 30) + '%';
+      const p = back(seg(t, 2.2, 2.6)); const toast = root.querySelector('[data-toast]');
+      toast.style.opacity = t < 2.2 ? 0 : 1; toast.style.transform = `translateX(-50%) translateY(${(1 - p) * -120}px)`;
+    } },
+  { html: () => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:24px">
+      <div class="clk" data-c="b" style="width:880px"><span class="who">${av('hodlqueen', 44)}hodlqueen</span><span class="t">5:00</span></div>
+      ${boardBox('b3', 820)}
+      <div class="clk" data-c="w" style="width:880px"><span class="who">${av('satsjaeger', 44)}satsjaeger</span><span class="t">5:00</span></div></div>`,
+    update(root, t) {
+      const tl = TL().legal, n = tl.length - 1, t0 = 0.3, step = 0.22;
+      const r = playBoard(root.querySelector('#b3'), tl, 0, n, t, t0, step);
+      // fast-forward clocks (x30): the side to move loses time during its turn, +3 s per own completed move
+      const clock = { w: 300, b: 300 }; let turnStart = 0;
+      for (let k = 0; k < n; k++) {
+        const side = k % 2 === 0 ? 'w' : 'b', end = t0 + k * step + 0.18;
+        clock[side] -= Math.max(0, Math.min(t, end) - turnStart) * 30;
+        if (t < end) break;
+        clock[side] += 3; turnStart = end;
+      }
+      const turn = r.mate ? null : (r.done % 2 === 0 ? 'w' : 'b');
+      for (const side of ['w', 'b']) { const c = root.querySelector(`[data-c="${side}"]`); c.querySelector('.t').textContent = mmss(clock[side]); c.classList.toggle('run', turn === side); }
+      const shake = r.mate && r.landed < 0.25 ? (hash(Math.floor(t * 60)) - 0.5) * 24 * (1 - r.landed / 0.25) : 0;
+      root.firstElementChild.style.transform = `translate(${shake}px, ${shake * 0.6}px)`;
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div style="width:952px">${ladderCard(l, [{ n: 'satsjaeger', g: 1, wdl: '1 / 0 / 0' }, { n: 'hodlqueen', g: 1, wdl: '0 / 0 / 1' }])}</div></div>`,
+    update(root, t) { ladderUpdate(root, t, [{ elo: 1020, hl: true }, { elo: 980 }]); } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== daily (Fernschach) ===== */
+const phone = (inner) => `<div class="center" style="position:absolute"><div class="phone" data-phone><div class="notch"></div><div class="screen">${inner}</div></div></div>`;
+const bob = (root, t) => { const p = root.querySelector('[data-phone]'); if (p) p.style.transform = `translateY(${Math.sin(t * 1.6) * 8}px) rotate(${Math.sin(t * 1.1) * 0.6}deg)`; };
+S.daily = [
+  { html: (l) => phone(`<b style="font:700 34px/1.2 var(--mono)">${E(UI('yourDailyGames', l))}</b>
+      ${[['12', 'satsjaeger'], ['9', 'hodlqueen'], ['7', 'zap_zoe']].map(([n, p], i) => `<div class="card" data-i="${i}" style="padding:22px;display:flex;gap:16px;align-items:center">${av(p, 56)}<span style="font:500 26px/1.35 var(--mono)">${E(UI('dailyTheirs', l, { number: n, name: p }))}</span></div>`).join('')}`),
+    update(root, t) { bob(root, t); root.querySelectorAll('[data-i]').forEach((e, i) => { const p = eo(seg(t, 0.3 + i * 0.3, 0.8 + i * 0.3)); e.style.opacity = p; e.style.transform = `translateY(${(1 - p) * 40}px)`; }); } },
+  { html: (l) => {
+      const days = l === 'de' ? ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const san = Kit.GAMES.qgd.san.split(' ');
+      return `<div style="position:absolute;inset:0;display:grid;grid-template-rows:auto 1fr;row-gap:40px;justify-items:center;align-content:center">
+        ${boardBox('d2', 640)}
+        <div style="width:880px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px">${days.map((d, i) => `<div class="card" data-day="${i}" style="padding:18px 20px;font:500 30px/1.3 var(--mono)"><span class="dim">${d}</span><br>${i + 1}.${E(Kit.sanLocal(san[2 * i], l))} ${E(Kit.sanLocal(san[2 * i + 1], l))}</div>`).join('')}</div></div>`; },
+    update(root, t) {
+      const r = playBoard(root.querySelector('#d2'), TL().qgd, 0, 12, t, 0.2, 0.25);
+      root.querySelectorAll('[data-day]').forEach((e, i) => { const on = r.done >= 2 * i + 2; e.style.opacity = on ? 1 : 0.25; e.style.borderColor = on && r.done === 2 * i + 2 ? 'var(--btc)' : 'var(--line)'; });
+    } },
+  { html: (l) => phone(`<div data-note class="card" style="padding:26px;border-left:8px solid #A78BFA;display:flex;gap:18px;align-items:center">${av('satsjaeger', 72)}<div><div style="font:700 22px/1.2 var(--mono);color:#A78BFA">Nostr DM</div><div style="font:700 28px/1.35 var(--mono)">${E(UI('dailyYours', l, { number: '12', name: 'satsjaeger' }))}</div></div></div>
+      <div style="opacity:.35;justify-self:center;margin-top:40px">${boardBox('d3', 460)}</div>`),
+    update(root, t) {
+      bob(root, t); Kit.board(root.querySelector('#d3 .board'), TL().qgd[12].fen, { last: TL().qgd[12].last });
+      const n = root.querySelector('[data-note]'), p = back(seg(t, 0.4, 0.9)); n.style.opacity = t < 0.4 ? 0 : 1; n.style.transform = `translateY(${(1 - p) * -260}px)`;
+    } },
+  { html: (l) => phone(`<div data-status style="font:700 26px/1.35 var(--mono)"></div>${boardBox('d4', 520)}<div class="btnx" data-btn style="font-size:30px">${E(UI('playYourMove', l))}</div>`),
+    update(root, t, len, l) {
+      bob(root, t); const tl = TL().qgd7;
+      const r = playBoard(root.querySelector('#d4'), tl, 12, 1, t, 1.4, 0.4);
+      root.querySelector('[data-status]').textContent = UI(r.done ? 'dailyTheirs' : 'dailyYours', l, { number: '12', name: 'satsjaeger' });
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.3, 1.0, [860, 1000], [b.left - R.left + b.width * 0.6, b.top - R.top + b.height * 0.3], 1.2));
+      btn.style.opacity = r.done ? 0.4 : 1;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== clans ===== */
+const CLANS = [['OPS', 'Orange Pill Squad'], ['LSR', 'Laser Eyes'], ['LNB', 'Lightning Boost'], ['STK', 'Stack Sats Crew']];
+S.clans = [
+  { html: () => `<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:24px;align-content:center">${CLANS.map(([t, n], i) => `<div class="card" data-i="${i}" style="padding:32px;display:grid;justify-items:center;row-gap:18px;text-align:center"><img src="${CR}${t}.svg" width="200" height="200" alt=""><b style="font:800 44px/1.1 var(--disp)">${t}</b><div class="muted" style="font:500 26px/1.3 var(--mono)">${E(n)}</div></div>`).join('')}</div>`,
+    update(root, t) { root.querySelectorAll('[data-i]').forEach((e, i) => { const p = back(seg(t, 0.15 + i * 0.12, 0.55 + i * 0.12)); e.style.opacity = clamp(p); e.style.transform = `scale(${0.6 + 0.4 * p})`; }); } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card cube" style="width:860px;padding:48px;display:grid;row-gap:24px;--d:28px">
+      <b style="font:800 56px/1.1 var(--disp)">${E(UI('startClan', l))}</b>
+      <div class="lbl">${E(UI('name', l))}</div><div class="input" data-f="0"></div>
+      <div class="lbl">${E(UI('tag', l))}</div><div class="input" data-f="1" style="width:320px"></div>
+      <div class="btnx" data-btn>${E(UI('startClan', l))}</div></div></div>`,
+    update(root, t) {
+      const type = (s, a, b) => s.slice(0, Math.round(s.length * seg(t, a, b)));
+      const f0 = root.querySelector('[data-f="0"]'), f1 = root.querySelector('[data-f="1"]');
+      f0.innerHTML = E(type('Orange Pill Squad', 0.3, 1.3)) + (t < 1.5 ? '<i class="caret"></i>' : '');
+      f1.innerHTML = E(type('OPS', 1.6, 2.1)) + (t >= 1.5 && t < 2.4 ? '<i class="caret"></i>' : '');
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 2.0, 2.6, [880, 1040], [b.left - R.left + b.width * 0.5, b.top - R.top + b.height * 0.3], 2.8));
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card" style="width:880px;padding:48px;display:grid;row-gap:28px">
+      <div class="row"><b style="font:800 56px/1.1 var(--disp)">Orange Pill Squad</b><span class="chipx">OPS</span></div>
+      <div class="muted" style="font:500 26px/1.4 var(--mono)">${E(UI('manageFields', l))}</div>
+      <div class="lbl">${E(UI('currentLogo', l))}</div>
+      <div data-slot style="width:340px;height:340px;border:4px dashed var(--dash);display:grid;place-items:center;position:relative">
+        <span data-empty class="dim" style="font:500 28px/1.2 var(--mono)">${E(UI('noLogoYet', l))}</span>
+        <div data-logo class="cube" style="position:absolute;inset:0;background:var(--raised);display:grid;place-items:center;--cube-face:var(--btc);--d:26px"><img src="${CR}OPS.svg" width="260" height="260" alt=""></div></div></div></div>`,
+    update(root, t) {
+      const p = back(seg(t, 1.0, 1.5)), lg = root.querySelector('[data-logo]');
+      lg.style.opacity = t < 1.0 ? 0 : 1; lg.style.transform = `translateY(${(1 - p) * -380}px)`;
+      root.querySelector('[data-empty]').style.opacity = t < 1.2 ? 1 : 0;
+      root.querySelector('[data-slot]').style.borderColor = t > 1.5 ? 'transparent' : 'var(--dash)';
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card" style="width:880px;padding:48px;display:grid;row-gap:32px">
+      <div class="row"><img src="${CR}OPS.svg" width="96" height="96" alt=""><b style="font:800 52px/1.1 var(--disp)">Orange Pill Squad</b><span class="chipx">OPS</span></div>
+      <div class="btnx" data-btn>${E(UI('createJoinLink', l))}</div>
+      <div data-link class="row" style="background:var(--well);border:2px solid var(--line);padding:16px 16px 16px 24px;justify-content:space-between;flex-wrap:wrap;row-gap:12px"><b style="font:700 28px/1.2 var(--mono)">esports.einundzwanzig.space/i/…</b><span class="btnx" data-copy style="font-size:26px;padding:16px 20px"></span></div>
+      <div class="row" data-members style="gap:18px">${['satsjaeger', 'kai_blitz', 'zap_zoe', 'taproot_tim'].map((n) => `<div data-m style="display:grid;justify-items:center;row-gap:8px">${av(n, 110)}<span class="muted" style="font:500 22px/1.2 var(--mono)">${n}</span></div>`).join('')}</div></div></div>`,
+    update(root, t, len, l) {
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.1, 0.5, [900, 900], [b.left - R.left + b.width * 0.6, b.top - R.top + b.height * 0.3], 0.6));
+      const lk = root.querySelector('[data-link]'), p = eo(seg(t, 0.8, 1.1)); lk.style.opacity = p; lk.style.transform = `translateY(${(1 - p) * 20}px)`;
+      root.querySelector('[data-copy]').textContent = UI(t > 1.7 ? 'linkCopied' : 'copyClanLink', l);
+      root.querySelectorAll('[data-m]').forEach((e, i) => { const q = back(seg(t, i === 0 ? 0 : 1.9 + i * 0.35, (i === 0 ? 0.01 : 2.3 + i * 0.35))); e.style.opacity = clamp(q * 1.5); e.style.transform = `scale(${0.3 + 0.7 * q})`; });
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== invite ===== */
+const inviteCard = (l, w) => `<div class="card cube" style="width:${w}px;padding:44px;display:grid;row-gap:28px;background:var(--ground);--cube-face:var(--btc);--d:28px">
+    <div class="row">${av('satsjaeger', 88)}<b style="font:800 44px/1 var(--disp)">satsjaeger</b></div>
+    <b style="font:800 64px/1.08 var(--disp)">${E(UI('beatMe', l))}</b>
+    <div class="muted" style="font:500 30px/1.45 var(--mono)">${E(UI('tapSeat', l))}</div>
+    <div style="justify-self:center">${boardBox('iv', 420)}</div></div>`;
+S.invite = [
+  { html: () => `<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;align-items:center;justify-items:center">
+      ${['satsjaeger', 'hodlqueen'].map((n, i) => `<div data-p="${i}" class="card" style="width:400px;height:560px;border-radius:48px;display:grid;place-items:center;align-content:center;row-gap:24px">${av(n, 240)}<b style="font:800 40px/1 var(--disp)">${n}</b></div>`).join('')}
+      <div data-line style="position:absolute;left:400px;right:400px;top:50%;height:8px;background:repeating-linear-gradient(90deg,var(--btc) 0 16px,transparent 16px 32px)"></div>
+      <i data-dot style="position:absolute;top:50%;width:36px;height:36px;margin-top:-14px;background:var(--btc);box-shadow:0 0 30px var(--btc)"></i></div>`,
+    update(root, t) {
+      root.querySelectorAll('[data-p]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.25, 0.6 + i * 0.25)); e.style.transform = `translateY(${(1 - p) * 200}px)`; e.style.opacity = clamp(p * 1.4); });
+      const d = root.querySelector('[data-dot]'); const q = ((t - 0.8) % 1.1) / 1.1; d.style.left = (400 + 152 * clamp(q) - 18) + 'px'; d.style.opacity = t > 0.8 ? 1 : 0;
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div class="card" style="width:900px;padding:48px;display:grid;row-gap:30px">
+      <div class="muted" style="font:500 32px/1.4 var(--mono)">${E(UI('inviteReady', l))}</div>
+      <div style="background:var(--well);border:2px solid var(--line);padding:26px;font:700 34px/1.3 var(--mono)">esports.einundzwanzig.space/i/…</div>
+      <div class="btnx" data-btn></div></div></div>`,
+    update(root, t, len, l) {
+      const btn = root.querySelector('[data-btn]'); btn.textContent = UI(t > 1.5 ? 'copied' : 'copyInvite', l);
+      const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.5, 1.2, [880, 1000], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.3], 1.4));
+      btn.style.background = t > 1.5 ? 'var(--win)' : '';
+    } },
+  { html: (l) => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:40px">${inviteCard(l, 820)}<div class="btnx" data-btn style="width:820px">${E(UI('logInSit', l))}</div></div>`,
+    update(root, t) {
+      Kit.board(root.querySelector('#iv .board'), TL().legal[0].fen, {});
+      const c = root.querySelector('.cube'), p = back(seg(t, 0, 0.5)); c.style.transform = `scale(${0.85 + 0.15 * p})`;
+      const btn = root.querySelector('[data-btn]'); const b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 1.0, 1.7, [900, 300], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.3], 1.9));
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div style="width:952px">${ladderCard(l, [{ n: 'satsjaeger', g: 1, wdl: '0 / 1 / 0' }, { n: 'hodlqueen', g: 1, wdl: '0 / 1 / 0' }])}</div></div>`,
+    update(root, t) { ladderUpdate(root, t, [{ elo: 1000, hl: true }, { elo: 1000, hl: true }]); } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ===== watch ===== */
+S.watch = [
+  { html: (l) => phone(`<b style="font:800 40px/1.1 var(--disp)">${E(UI('liveGames', l))}</b>
+      ${[['satsjaeger', 'hodlqueen', 13, 'white'], ['kai_blitz', 'zap_zoe', 7, 'white'], ['taproot_tim', 'lnurl_lena', 6, 'white']].map(([a, b, m, s], i) => `<div class="card" data-i="${i}" style="padding:22px;display:grid;row-gap:12px"><div class="row" style="gap:12px">${av(a, 48)}<b style="font:700 26px/1.2 var(--mono)">${a}</b><span class="dim" style="font:500 22px/1.2 var(--mono)">–</span>${av(b, 48)}<b style="font:700 26px/1.2 var(--mono)">${b}</b></div><div class="row" style="gap:12px;font:500 24px/1.3 var(--mono);color:var(--ink-2)"><i class="dotlive" data-pulse></i>${E(UI('liveMove', l, { move: m, side: UI(s, l) }))}</div></div>`).join('')}`),
+    update(root, t) { bob(root, t); root.querySelectorAll('[data-i]').forEach((e, i) => { const p = eo(seg(t, 0.2 + i * 0.25, 0.7 + i * 0.25)); e.style.opacity = p; e.style.transform = `translateX(${(1 - p) * 60}px)`; }); root.querySelectorAll('[data-pulse]').forEach((d, i) => { d.style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6 + i)))}px rgba(74,222,128,.25)`; }); } },
+  { html: (l) => `<div style="position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:40px 32px;align-content:center;justify-items:center">${[0, 1, 2, 3].map((i) => `<div style="display:grid;row-gap:14px"><div class="row" style="gap:10px;font:700 24px/1.2 var(--mono);color:var(--ink-2)"><i class="dotlive"></i><span data-lbl="${i}"></span></div>${boardBox('w' + i, 420)}</div>`).join('')}</div>`,
+    update(root, t, len, l) {
+      const T = TL(); const sets = [[T.opera, 18, 6], [T.italian, 6, 6], [T.qgd, 6, 6], [T.legal, 4, 6]];
+      sets.forEach(([tl, p0, n], i) => { const r = playBoard(root.querySelector('#w' + i), tl, p0, n, t, 0.3 + i * 0.13, 0.5); const f = tl[p0 + r.done].fen; root.querySelector(`[data-lbl="${i}"]`).textContent = UI('liveMove', l, { move: f.split(' ')[5], side: UI(f.split(' ')[1] === 'w' ? 'white' : 'black', l) }); });
+    } },
+  { html: () => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:28px">${boardBox('w5', 820)}<div data-moves style="width:880px;font:500 32px/1.4 var(--mono);color:var(--ink-2);min-height:90px;display:flex;flex-wrap:wrap;row-gap:4px"></div></div>`,
+    update(root, t, len, l) {
+      const tl = TL().opera; const p0 = 24, n = 9;
+      const r = playBoard(root.querySelector('#w5'), tl, p0, n, t, 0.3, 0.33);
+      const san = Kit.GAMES.opera.san.split(' ');
+      let s = ''; for (let i = Math.max(p0 - 2, p0 + r.done - 6); i < p0 + r.done; i++) s += `<span style="margin-right:.6em;${i === p0 + r.done - 1 ? 'color:var(--btc);font-weight:800' : ''}">${E(Kit.moveLabel('opera', i, l))}</span>`;
+      root.querySelector('[data-moves]').innerHTML = s;
+      const shake = r.mate && r.landed < 0.25 ? (hash(Math.floor(t * 60)) - 0.5) * 24 * (1 - r.landed / 0.25) : 0;
+      root.firstElementChild.style.transform = `translate(${shake}px, ${shake * 0.6}px)`;
+    } },
+  { html: (l) => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:36px">
+      <div class="card" style="width:900px;padding:18px 22px;display:flex;align-items:center;gap:18px"><div class="logo" style="--logo:26px"><span class="mark">21</span></div><span style="flex:1;background:var(--well);border:2px solid var(--line);padding:14px 18px;font:500 24px/1.2 var(--mono);color:var(--ink-3)">${E(UI('search', l))}</span><span data-login style="border:2px solid var(--ink);padding:14px 20px;font:700 26px/1.2 var(--mono)">${E(UI('logIn', l))}</span></div>
+      <div class="row" style="gap:12px;font:700 28px/1.2 var(--mono);color:var(--ink-2);width:900px"><i class="dotlive" data-pulse></i><span>${E(UI('liveMove', l, { move: 17, side: UI('black', l) }))}</span><span style="margin-left:auto;color:var(--chess)">${E(UI('spectators', l))}</span></div>
+      ${boardBox('w6', 760)}</div>`,
+    update(root, t) {
+      const tl = TL().opera; Kit.board(root.querySelector('#w6 .board'), tl[33].fen, { last: tl[33].last, mate: tl[33].check });
+      root.querySelector('[data-pulse]').style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(74,222,128,.25)`;
+      root.querySelector('[data-login]').style.opacity = 0.45;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+/* ---------- timeline ---------- */
+let BEATS = [], DUR = 0;
+function fitCaption(el) {
+  const steps = Kit.STEPS.filter((s) => s <= 120 && s >= 56).reverse();
+  for (const s of steps) {
+    el.style.fontSize = s + 'px';
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    const lines = Math.round((el.getBoundingClientRect().height - parseFloat(getComputedStyle(el).paddingBottom)) / lh);
+    const R = el.getBoundingClientRect();
+    if (lines <= 3 && [...el.querySelectorAll('.w')].every((w) => w.getBoundingClientRect().right <= R.right + 0.5)) { el.dataset.size = s; return; }
+  }
+  el.dataset.fitFailed = '1';
+}
+function init() {
+  const p = Kit.params(), reel = p.reel, lang = p.lang || 'de';
+  document.documentElement.lang = lang;
+  const r = window.__COPY.reels.find((x) => x.id === reel);
+  if (!r) throw new Error('reel not in copy: ' + reel);
+  const beats = r[lang];
+  if (!S[reel] || S[reel].length !== beats.length) throw new Error(`reel ${reel}: ${beats.length} beats in copy, ${S[reel] ? S[reel].length : 0} scenes`);
+  document.getElementById('floor').innerHTML = Kit.floorSVG(1000, 600, { horizon: 0, cam: 560, cell: 0.16, rows: 18, cols: 30 });
+  let at = 0;
+  BEATS = beats.map((b, i) => { const last = i === beats.length - 1; const len = Math.max(3, b.sec) + (last ? 1.0 : 0.6); const x = { i, start: at, len, text: b.text, scene: S[reel][i] }; at += len; return x; });
+  DUR = at;
+  const scenes = document.getElementById('scenes'), capbox = document.getElementById('capbox');
+  scenes.innerHTML = BEATS.map((b) => `<section class="scene" data-beat="${b.i}">${b.scene.html(lang)}</section>`).join('');
+  capbox.innerHTML = BEATS.map((b, i) => i === BEATS.length - 1 && /^[\w.-]+\.[a-z]{2,}$/i.test(b.text)
+    ? `<div class="caption url" data-beat="${b.i}"><span class="slab">${E(b.text)}</span></div>`
+    : `<h1 class="caption" data-beat="${b.i}">${Kit.words(b.text)}</h1>`).join('');
+  document.getElementById('prog').innerHTML = BEATS.map(() => '<i><b></b></i>').join('');
+  document.getElementById('fx').innerHTML = [0, 1, 2, 3, 4, 5].map(() => '<div class="band"></div>').join('') + '<div class="sweep"></div>';
+  // fit captions while visible
+  capbox.querySelectorAll('h1.caption').forEach((c) => { c.classList.add('on'); fitCaption(c); c.classList.remove('on'); });
+  window.__lang = lang;
+  return { duration: DUR, beats: BEATS.map((b) => ({ start: b.start, len: b.len, text: b.text })) };
+}
+let current = -1;
+function frame(u) {
+  const i = Math.max(0, BEATS.findIndex((b, k) => u < b.start + b.len || k === BEATS.length - 1));
+  const b = BEATS[i], t = u - b.start, p = clamp(t / b.len);
+  if (i !== current) {
+    document.querySelectorAll('.scene, .caption').forEach((e) => e.classList.toggle('on', +e.dataset.beat === i));
+    current = i;
+  }
+  const root = document.querySelector(`.scene[data-beat="${i}"]`);
+  b.scene.update(root, t, b.len, window.__lang);
+  // camera push
+  const g = t < 0.24 && i > 0 ? 1 - t / 0.24 : 0;
+  document.getElementById('scenes').style.transform = `scale(${1 + 0.035 * p}) translateX(${g ? (hash(i * 7 + Math.floor(t * 60)) - 0.5) * 40 * g : 0}px)`;
+  // caption slam + chroma
+  const cap = document.querySelector(`.caption[data-beat="${i}"]`);
+  const s = eo(t / 0.2), ch = 1 - eo(t / 0.35);
+  cap.style.opacity = clamp(t / 0.08);
+  cap.style.transform = `scale(${1 + 0.12 * (1 - s)})`;
+  const ex = cap.classList.contains('url') ? '' : (() => { const n = Math.max(3, Math.round(parseFloat(cap.style.fontSize || 112) * 0.07)); const a = []; for (let k = 1; k <= n; k++) a.push(`${k}px ${k}px 0 ${k === n ? '#241B0C' : '#3A2C14'}`); return a.join(','); })();
+  cap.style.textShadow = [ch > 0.01 ? `${-14 * ch}px 0 rgba(34,211,238,${0.8 * ch}), ${14 * ch}px 0 rgba(247,147,26,${0.8 * ch})` : '', ex].filter(Boolean).join(',');
+  // progress
+  document.querySelectorAll('#prog b').forEach((e, k) => { e.style.transform = `scaleX(${k < i ? 1 : k === i ? p : 0})`; });
+  // glitch bands on the cut
+  document.querySelectorAll('.fx .band').forEach((e, k) => {
+    if (g > 0) { const y = hash(i * 13 + k) * 1800, h = 20 + hash(i * 17 + k) * 90; e.style.top = y + 'px'; e.style.height = h + 'px'; e.style.background = k % 2 ? `rgba(34,211,238,${0.35 * g})` : `rgba(247,147,26,${0.35 * g})`; e.style.transform = `translateX(${(hash(i * 31 + k + Math.floor(t * 60)) - 0.5) * 200 * g}px)`; e.style.display = 'block'; }
+    else e.style.display = 'none';
+  });
+  const sw = document.querySelector('.fx .sweep'); sw.style.top = (((u * 700) % 2400) - 200) + 'px';
+}
+/* probe for one frame: caption and scene inside their boxes, nothing overflowing */
+function probeFrame() {
+  const issues = [];
+  const cap = document.querySelector('.caption.on'), CB = document.getElementById('capbox').getBoundingClientRect();
+  const r = cap.getBoundingClientRect();
+  if (cap.dataset.fitFailed) issues.push('caption did not fit');
+  if (r.bottom > CB.bottom + 0.5 || r.right > CB.right + 0.5) issues.push(`caption outside its box (${Math.round(r.right)}, ${Math.round(r.bottom)})`);
+  const sc = document.querySelector('.scene.on'), SB = document.getElementById('scenes').getBoundingClientRect();
+  // effective opacity: an element faded out (itself or via an ancestor) is not on screen
+  const seen = (e) => { for (let x = e; x && x !== document.body; x = x.parentElement) if (+getComputedStyle(x).opacity < 0.02) return false; return true; };
+  sc.querySelectorAll('.card, .rb, .phone, .clk, .btnx, .endcard .mark').forEach((e) => {
+    if (!seen(e)) return;
+    const q = e.getBoundingClientRect();
+    if (q.left < 0 || q.right > 1080 || q.top < SB.top - 60 || q.bottom > CB.top + 8) issues.push(`scene element ${e.className.split(' ')[0]} outside the scene band (${Math.round(q.left)},${Math.round(q.top)},${Math.round(q.right)},${Math.round(q.bottom)})`);
+  });
+  sc.querySelectorAll('b, span, .btnx, .lbl, .input').forEach((e) => { if (seen(e) && e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).display !== 'inline') issues.push(`text clipped: "${e.textContent.trim().slice(0, 30)}"`); });
+  // any text on screen stays 24 px inside the frame
+  sc.querySelectorAll('*').forEach((e) => {
+    if (!seen(e) || ![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return;
+    const q = e.getBoundingClientRect();
+    if (q.width && (q.left < 24 || q.right > 1056)) issues.push(`text off frame: "${e.textContent.trim().slice(0, 30)}" (${Math.round(q.left)}..${Math.round(q.right)})`);
+  });
+  return { caption: cap.dataset.size ? +cap.dataset.size : null, issues };
+}
+window.__init = init; window.frame = frame; window.__probeFrame = probeFrame;
+</script>
+</body>
+</html>
