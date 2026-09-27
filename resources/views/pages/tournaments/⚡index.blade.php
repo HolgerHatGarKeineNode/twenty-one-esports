@@ -119,7 +119,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                         </span>
                         <x-league-time :at="$tournament->starts_at" class="text-ink-2 sm:w-[22%]" />
                         <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
-                        <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>
+                        <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}@if ($tournament->isCasualCup()) · <span data-test="casual-marker">{{ __('Casual') }}</span>@endif</span>
                         <span class="inline-flex h-6 items-center self-start rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi sm:self-auto">{{ $tournament->status->label() }}</span>
                     </li>
                 @endforeach

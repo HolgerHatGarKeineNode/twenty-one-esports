@@ -5,6 +5,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
+use App\Models\ChessInvite;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
@@ -19,12 +20,14 @@ use App\Support\Tournaments\Engine\Entrant;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
 /*
@@ -208,6 +211,19 @@ test('at the close six players start the cup, five extend sign-up once and are t
         ->and($player->notifications()->count())->toBe(1);
 });
 
+test('the draw alone never closes a cup short of players: that is the cups\' own decision', function () {
+    Http::fake(['*/blocks/tip/height' => Http::response('900000')]);
+    cupTick();
+    $cup = openCup();
+    cupSignups($cup, 5);
+    $this->travel(72)->hours();
+
+    app(TournamentDraws::class)->advanceDue();
+
+    expect($cup->refresh()->status)->toBe(TournamentStatus::Signup)
+        ->and($cup->draw_height)->toBeNull();
+});
+
 /* ---------- The bracket ------------------------------------------------------------------------------------- */
 
 test('six players fill an 8-slot double elimination with byes for the top seeds, twelve a 16-slot one; seeding ignores Elo', function (int $n, int $byes, int $upperFirst) {
@@ -275,6 +291,25 @@ test('"Play your cup match": the opponent accepts and the match game starts with
         ->and($game->white_id)->toBe($white->id)
         ->and($invite->refresh()->chess_game_id)->toBe($game->id)
         ->and($game->status)->toBe(ChessGameStatus::Active);
+});
+
+test('the cup page marks the cup casual and lets a player invite their opponent', function () {
+    $cup = runningCup(4);
+    cupTick();
+    $match = openCupMatches($cup)->first();
+    [$white, $black] = matchPlayers($match);
+
+    Livewire::actingAs($white)->test('pages::tournaments.show', ['tournament' => $cup])
+        ->assertSeeHtml('data-test="casual-marker"')
+        ->assertSeeHtml('data-test="cup-match-play"')
+        ->call('playCupMatch')
+        ->assertHasNoErrors()
+        ->assertSeeHtml('data-test="cup-match-waiting"');
+
+    Livewire::actingAs($black)->test('pages::tournaments.show', ['tournament' => $cup])
+        ->assertSeeHtml('data-test="cup-match-accept"')
+        ->call('acceptCupInvite', ChessInvite::query()->sole()->id)
+        ->assertRedirect(route('games.show', ChessGame::query()->sole()));
 });
 
 test('at the deadline the one who tried to play advances, else a draw of lots decides', function () {

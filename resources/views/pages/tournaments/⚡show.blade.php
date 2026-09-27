@@ -1,14 +1,22 @@
 <?php
 
+use App\Enums\ChessGameStatus;
+use App\Enums\ChessInviteStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\ChessInvite;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
+use App\Models\User;
 use App\Support\Cards\ShareCard;
 use App\Support\LeagueTime;
 use App\Support\PageMeta;
 use App\Support\Seo\LocalizedUrls;
 use App\Support\Seo\StructuredData;
+use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessRuleViolation;
+use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
 use App\Support\Tournaments\Preview;
@@ -43,6 +51,11 @@ use Livewire\Component;
  * league's pool (App\Support\Prizes\WalletPrizePool behind
  * TournamentPrizePool); the zap panel, the payouts and the organizer's and
  * admin's links are their own component (components/⚡tournament-pool).
+ *
+ * A casual cup (P25, CasualCups) carries a "Casual" marker, and a player
+ * with an open chess match in it gets the match card: the opponent, the
+ * deadline, the league's auto slot, and "Play your cup match" (an invite
+ * only to that opponent) or the opponent's invite to accept.
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public Tournament $tournament;
@@ -50,6 +63,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public string $closesAt = '';
 
     public string $error = '';
+
+    public string $cupError = '';
 
     public function mount(Tournament $tournament): void
     {
@@ -121,6 +136,95 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             TournamentStatus::Cancelled => __('The tournament was called off.'),
             TournamentStatus::Draft => '',
         };
+    }
+
+    /**
+     * The viewer's open chess match in this casual cup, with its invites.
+     *
+     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null}|null
+     */
+    #[Computed]
+    public function cupMatch(): ?array
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || ! $this->tournament->isCasualCup() || $this->tournament->status !== TournamentStatus::Running || ! $this->tournament->profile()->isChess()) {
+            return null;
+        }
+
+        $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->where('status', 'ready')->whereNull('result')
+            ->where('bracket', '!=', 'bye')->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))
+            ->whereHas('slots.participant', fn ($query) => $query->where('user_id', $user->id))
+            ->with(['round', 'slots.participant', 'chessGame'])->first();
+
+        if ($match === null || $match->round->window_ends_at === null) {
+            return null;
+        }
+
+        $opponent = $match->slots->first(fn ($slot): bool => $slot->participant !== null && $slot->participant->user_id !== $user->id)?->participant;
+        $open = fn () => ChessInvite::query()->where('tournament_match_id', $match->id)->where('status', ChessInviteStatus::Pending)->where('expires_at', '>', now())->latest('id');
+
+        return [
+            'match' => $match,
+            'opponent' => $opponent->name ?? '',
+            'endsAt' => $match->round->window_ends_at,
+            'slot' => CasualCups::autoSlot($match->round->window_ends_at),
+            'game' => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
+            'incoming' => $open()->where('invitee_id', $user->id)->first(),
+            'outgoing' => $open()->where('inviter_id', $user->id)->first(),
+        ];
+    }
+
+    public function playCupMatch(): void
+    {
+        $this->cupAttempt(function (User $user): void {
+            $match = $this->cupMatch['match'] ?? null;
+
+            if ($match === null) {
+                throw new ChessRuleViolation('match_not_open');
+            }
+
+            $game = app(ChessInvites::class)->inviteToCupMatch($user, $match)->game;
+
+            if ($game !== null) {
+                $this->redirectRoute('games.show', ['game' => $game]);
+            }
+        });
+    }
+
+    public function acceptCupInvite(int $inviteId): void
+    {
+        $this->cupAttempt(function (User $user) use ($inviteId): void {
+            $game = app(ChessInvites::class)->accept(ChessInvite::query()->whereNotNull('tournament_match_id')->findOrFail($inviteId), $user);
+            $this->redirectRoute('games.show', ['game' => $game]);
+        });
+    }
+
+    private function cupAttempt(\Closure $action): void
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            $this->redirectRoute('login');
+
+            return;
+        }
+
+        $this->cupError = '';
+
+        try {
+            $action($user);
+        } catch (ChessRuleViolation $violation) {
+            $this->cupError = match ($violation->reason) {
+                'already_playing', 'accept_while_playing' => __('You are in a live game. One live game at a time: finish it, then play your cup match.'),
+                'opponent_playing' => __('Your opponent is in another live game right now. Try again when it is over.'),
+                'invite_closed' => __('That invite is no longer open.'),
+                'match_not_open', 'not_your_match' => __('This match cannot be started now.'),
+                default => __('That did not work, please try again.'),
+            };
+        }
+
+        unset($this->cupMatch);
     }
 
     #[Computed]
@@ -303,6 +407,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <span class="inline-flex h-8 items-center gap-1.5 rounded-sm bg-raised px-3 text-ink-2"><x-icon :name="$chess ? 'pawn' : (app(\App\Games\GameRegistry::class)->find($tournament->game)?->assets()->icon ?? 'trophy')" :size="14" />{{ $gameLine }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->format->label() }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->on_site ? __('On site') : __('Online') }}</span>
+                    @if ($tournament->isCasualCup())
+                        <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2" data-test="casual-marker">{{ __('Casual') }}</span>
+                    @endif
                     @if ($this->canManage)
                         <a href="{{ route('admin.tournaments.edit', $tournament) }}" class="inline-flex h-8 items-center rounded-sm border border-edge px-3 text-ink hover:text-ink" data-test="to-edit">{{ __('Edit') }}</a>
                     @endif
@@ -419,6 +526,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </div>
         @endif
     </section>
+
+    @if ($this->cupMatch)
+        @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
+    @endif
 
     @if ($champion)
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
