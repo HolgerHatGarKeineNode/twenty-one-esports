@@ -21,6 +21,10 @@ import './sanNotation.js';
 import './tournamentLanding.js';
 import './leagueTime.js';
 import './tournamentTv.js';
+import { dropAnswersForDetachedComponents } from './livewireDetached.js';
+
+// A Livewire answer for a component that wire:navigate already took off the page is not morphed into it.
+document.addEventListener('livewire:init', () => dropAnswersForDetachedComponents(window.Livewire));
 
 // Nostr login (P3): Alpine component for <x-nostr-login />.
 document.addEventListener('alpine:init', () => {

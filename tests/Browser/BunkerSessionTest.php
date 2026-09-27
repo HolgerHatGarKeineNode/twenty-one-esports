@@ -14,6 +14,7 @@ use Pest\Browser\Execution;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
+use Tests\Support\BrowserThrottle;
 use Tests\Support\BrowserWait;
 use Tests\Support\TestSigner;
 
@@ -127,6 +128,28 @@ const BUNKER_PROBES = <<<'JS'
     })();
     JS;
 
+/**
+ * Stacks for every uncaught error, and every Alpine expression warning with
+ * the element it came from (connected or not, its scope depth): what found
+ * the late-morph race of resources/js/livewireDetached.js. Printed only when
+ * a page is not clean.
+ */
+const BUNKER_TRACE = <<<'JS'
+    (() => {
+        const push = (entry) => (window.__stacks ??= []).push(entry);
+        window.addEventListener('error', (e) => push(String(e.error?.stack ?? e.message)), true);
+        window.addEventListener('unhandledrejection', (e) => push('rejection ' + String(e.reason?.stack ?? e.reason)));
+        const depth = (el) => String((el._x_dataStack ?? []).length) + '/' + String((el.closest('[x-data]')?._x_dataStack ?? []).length);
+        const warn = console.warn;
+        console.warn = function (...args) {
+            push('warn ' + args.map((x) => x instanceof Element
+                ? 'connected=' + x.isConnected + ' path=' + location.pathname + ' scope=' + depth(x) + ' ' + x.outerHTML.slice(0, 120)
+                : String(x)).join(' | '));
+            return warn.apply(console, args);
+        };
+    })();
+    JS;
+
 /** @return list<array{method: string, client: ?string, ok: bool, error: ?string}> */
 function bunkerRequests(string $log): array
 {
@@ -175,6 +198,7 @@ function bunkerLogin(int $width, int $height, string $pubkey, string $relayUrl, 
     $page = visit('/login')->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->context()->addInitScript(BUNKER_PROBES);
+    $page->context()->addInitScript(BUNKER_TRACE);
     $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from('/login'));
 
@@ -190,7 +214,7 @@ function bunkerLogin(int $width, int $height, string $pubkey, string $relayUrl, 
 
 function bunkerPageClean(Page $page): void
 {
-    expect($page->evaluate('() => window.__errors'))->toBe([])
+    expect($page->evaluate('() => window.__errors'))->toBe([], json_encode($page->evaluate('() => window.__stacks ?? []')))
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 }
 
@@ -217,8 +241,12 @@ test('a bunker login signs every later daily move without a second pairing, acro
     bunkerMove($page, 'g1', 'f3', 3);
     bunkerPageClean($page);
 
-    // 3: after two Livewire navigations (away and back, no page load).
+    // 3: after two Livewire navigations (away and back, no page load), on a
+    // CPU slowed down 6x: a late dock or bell refresh then lands after the
+    // navigation, the race resources/js/livewireDetached.js closes (at load
+    // ~20 it failed one full run in two, throttled every time without the fix).
     bunkerReply($game, $bert, $bertKey, 'b8c6', 4);
+    BrowserThrottle::cpu($page, 6);
     $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate("/"); }');
     BrowserWait::until($page, '() => location.pathname === "/" && window.__sameDocument === true', 15_000);
     $page->evaluate('() => Livewire.navigate('.json_encode($gamePath).')');
@@ -226,6 +254,7 @@ test('a bunker login signs every later daily move without a second pairing, acro
     bunkerWaitForTurn($page, 4);
     bunkerMove($page, 'f1', 'c4', 5);
     bunkerPageClean($page);
+    BrowserThrottle::cpu($page, 1);
 
     // 4: the relay goes away and comes back under the open page, whose remote
     // signer is live since move 3 (Bert's answer arrives over the websocket,
