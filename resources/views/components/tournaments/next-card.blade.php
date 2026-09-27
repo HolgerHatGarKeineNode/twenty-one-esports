@@ -4,12 +4,11 @@
     The next tournament open for sign-up as a large card (Tournaments.dc.html,
     "Next tournament"): the game's cover, the name, game, mode and format,
     the start in the league's zone, the prize pot chip, the places taken and
-    when sign-up closes with the way in. The tournaments index and every game
-    page (series pages, the chess lobby) show it.
+    when sign-up closes with the way in, on the tournaments index. Game pages
+    show the poster instead (<x-tournaments.poster>).
 
-    `cover`: false where the game's cover already heads the page (a series
-    page), so the same picture does not stand twice on top of each other.
-    The slot is an optional note under the places.
+    `cover`: false to leave the cover out. The slot is an optional note
+    under the places.
 --}}
 @php
     $nextPlaces = app(\App\Support\Tournaments\TournamentSignups::class)->places($tournament);

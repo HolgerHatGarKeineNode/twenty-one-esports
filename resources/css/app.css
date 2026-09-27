@@ -2210,6 +2210,13 @@ select:focus[data-flux-control] {
     gap: 4px;
 }
 
+/* A game page's poster (<x-tournaments.poster>): up to 16 seats in one row from lg. */
+@media (width >= 64rem) {
+    .hh-seats.is-wide {
+        grid-template-columns: repeat(16, minmax(0, 1fr));
+    }
+}
+
 .hh-seat {
     position: relative;
     display: block;

@@ -248,6 +248,17 @@ final class HomeHub
     }
 
     /**
+     * One tournament as home's hero shows it, for the poster of a game page
+     * (<x-tournaments.poster>).
+     *
+     * @return Cup
+     */
+    public function cupOf(Tournament $tournament): array
+    {
+        return $this->cup($tournament);
+    }
+
+    /**
      * @return Cup
      */
     private function cup(Tournament $tournament): array

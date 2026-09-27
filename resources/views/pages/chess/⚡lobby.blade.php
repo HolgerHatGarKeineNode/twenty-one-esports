@@ -515,7 +515,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         {{-- The next chess tournament open for sign-up, as on every game page (user, 2026-09-28). --}}
         @if ($this->nextTournament)
-            <x-tournaments.next-card :tournament="$this->nextTournament" heading-id="lobby-next-h" />
+            <x-tournaments.poster :tournament="$this->nextTournament" heading-id="lobby-next-h" />
         @else
             <x-tournaments.next-empty game="chess" heading-id="lobby-next-h" />
         @endif

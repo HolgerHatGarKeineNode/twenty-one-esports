@@ -138,11 +138,18 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         phone's tab bar (full width, the cover alone took 193 px and pushed the invite to 626 px, under the
         tab bar at 603 px of 667). From sm the cover spans both rows next to name and buttons.
     --}}
-    <div class="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 pt-6 pb-4 sm:grid-cols-[320px_minmax(0,1fr)] sm:gap-x-4 sm:gap-y-2 lg:grid-cols-[400px_minmax(0,1fr)] lg:px-12 lg:pt-8">
+    <div @class(['grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-x-3 gap-y-3 px-4 pt-6 pb-4 sm:gap-x-4 sm:gap-y-2 lg:px-12 lg:pt-8',
+        'sm:grid-cols-[320px_minmax(0,1fr)] lg:grid-cols-[400px_minmax(0,1fr)]' => $next === null,
+        'sm:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]' => $next !== null])>
         <x-game-cover :game="$slug" size="header" class="w-full rounded-lg shadow-ring sm:row-span-2" />
         <div class="flex min-w-0 flex-col gap-1 sm:gap-2 sm:self-end">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold sm:text-[28px] lg:text-[34px]">{{ $gameName }}</h1>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
+            <p class="m-0 flex flex-wrap gap-1.5 text-xs font-bold text-ink-2" aria-label="{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}" data-test="game-modes">
+                @foreach (array_keys($modes) as $modeName)
+                    <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5" aria-hidden="true">{{ $modeName }}</span>
+                @endforeach
+                <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5" aria-hidden="true">BO{{ implode('/', $bestOf) }}</span>
+            </p>
         </div>
         <div class="col-span-2 flex flex-wrap gap-2 sm:col-span-1 sm:col-start-2 sm:self-start">
             @auth<x-button :href="route('challenges.create', ['game' => $slug])" data-test="game-page-challenge">{{ __('Challenge a clan') }}</x-button>@endauth
@@ -155,13 +162,13 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     <div class="px-4 pb-4 lg:px-12 lg:pb-5"><livewire:invite-link :game="$slug" place="game" /></div>
 
     {{--
-        The game's next tournament open for sign-up, the tournaments index's card (user, 2026-09-28: every
-        game page lacked a view of the next tournament; it sat as the eighth card of the grid, under the fold).
+        The game's next tournament open for sign-up as a poster (user, 2026-09-28: every game page lacked a
+        view of the next tournament; it sat as the eighth card of the grid, under the fold, and read as text).
         Under the invite, which keeps its place in the phone's first screen (InvitePlacementTest).
     --}}
     <div class="px-4 pb-4 lg:px-12 lg:pb-5" data-test="game-next-tournament">
         @if ($next)
-            <x-tournaments.next-card :tournament="$next" heading-id="game-next-h" :cover="false">{{ __('Captains enter a lineup, solo players get drawn into mix teams. Clan lineup matches count for Elo; mix teams play without Elo.') }}</x-tournaments.next-card>
+            <x-tournaments.poster :tournament="$next" heading-id="game-next-h" />
         @else
             <x-tournaments.next-empty :game="$slug" heading-id="game-next-h" />
         @endif
@@ -200,7 +207,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 @endforeach
             </div>
             <span class="flex justify-between text-[11px] text-ink-3"><span>{{ __('per clan, most first') }}</span><span>{{ __('the rest came from chess') }}</span></span>
-            <p class="m-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Every rated game a clan player plays counts for their clan: win 3, draw 2, loss 1. A series counts once per player, and a won team match or series adds 5. Casual games don\'t count.') }} <a href="{{ route('rules') }}">{{ __('How points are counted') }}</a></p>
+            <a href="{{ route('rules') }}" class="inline-flex min-h-11 items-center self-start text-xs">{{ __('How points are counted') }}</a>
         </section>
 
         {{-- What a series is worth: the Elo formula itself (K 32) --}}
@@ -219,7 +226,6 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     </div>
                 @endforeach
             </div>
-            <p class="m-0 text-xs text-ink-3">{{ __('Modes: :modes · best of :bo', ['modes' => implode(', ', array_keys($modes)), 'bo' => implode(' / ', $bestOf)]) }}</p>
         </section>
 
         {{-- Series per week (P6) --}}
@@ -277,7 +283,6 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             @empty
                 <p class="m-0 px-2 py-2 text-[13px] text-ink-2">{{ __('No open challenge right now.') }}</p>
             @endforelse
-            <p class="m-0 pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Open to every clan. Rated challenges need a mutual opponent connection, casual ones do not.') }}</p>
         </section>
     </div>
 </div>
