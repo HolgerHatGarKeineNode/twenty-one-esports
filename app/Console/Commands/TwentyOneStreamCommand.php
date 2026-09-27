@@ -665,9 +665,9 @@ class TwentyOneStreamCommand extends Command
 
         // Both modes play the music; the scene mode can start at any second.
         try {
-            MusicPlaylist::interleave(MusicPlaylist::order($this->musicFiles(), 1), $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir')));
+            MusicPlaylist::order($this->musicFiles(), 1);
         } catch (InvalidArgumentException) {
-            return 'No usable music in '.config('twentyone.stream.music.dir').' (`<title>__v<n>.m4a`, at least two titles, none with more than half the files; instrumentals must not all share one title).';
+            return 'No usable music in '.config('twentyone.stream.music.dir').' (`<title>__v<n>.m4a`, at least two titles, none with more than half the files).';
         }
 
         $rsvg = (string) config('twentyone.stream.scene.rsvg_convert');

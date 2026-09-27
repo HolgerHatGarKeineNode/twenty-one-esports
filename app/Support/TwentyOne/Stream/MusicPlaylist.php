@@ -113,11 +113,12 @@ final class MusicPlaylist
      * it (several exist in both forms: the same tune twice in a row), nor
      * with the previous instrumental; the list wraps like `order()`.
      *
+     * A slot no instrumental fits (possible only with at most two titles,
+     * all of which are also sung) stays empty rather than failing.
+     *
      * @param  list<string>  $vocals  a valid `order()`
      * @param  list<string>  $instrumentals
      * @return list<string>
-     *
-     * @throws InvalidArgumentException when an instrumental slot has no candidate at all
      */
     public static function interleave(array $vocals, array $instrumentals, Randomizer $random = new Randomizer): array
     {
@@ -153,13 +154,14 @@ final class MusicPlaylist
                 }
             }
 
-            if ($pick === null) {
-                throw new InvalidArgumentException('No instrumental can follow '.basename($vocal).' without repeating a title.');
-            }
-
+            // No instrumental fits here (few titles, all also sung): the slot stays empty, two vocal
+            // tracks follow each other as in order(), and the daemon never dies over the music.
             $list[] = $vocal;
-            $list[] = $pick;
-            $previous = self::title($pick);
+
+            if ($pick !== null) {
+                $list[] = $pick;
+                $previous = self::title($pick);
+            }
         }
 
         return $list;

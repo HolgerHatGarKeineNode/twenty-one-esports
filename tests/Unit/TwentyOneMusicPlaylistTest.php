@@ -123,3 +123,19 @@ test('without instrumentals the vocal order stays as it is', function () {
 
     expect(MusicPlaylist::interleave($vocals, []))->toBe($vocals);
 });
+
+test('instrumentals that are all also sung leave a slot empty instead of failing', function () {
+    $instrumentals = ['/music/instrumental/title-1__v1.m4a', '/music/instrumental/title-2__v1.m4a'];
+
+    foreach (range(1, 100) as $seed) {
+        $random = new Randomizer(new Mt19937($seed));
+        $vocals = MusicPlaylist::order(musicFiles(), 4, $random);
+        $list = MusicPlaylist::interleave($vocals, $instrumentals, $random);
+
+        expect(array_values(array_filter($list, fn (string $file): bool => ! str_contains($file, '/instrumental/'))))->toBe($vocals);
+
+        foreach ($list as $index => $file) {
+            expect(MusicPlaylist::title($file))->not->toBe(MusicPlaylist::title($list[($index + 1) % count($list)]));
+        }
+    }
+});
