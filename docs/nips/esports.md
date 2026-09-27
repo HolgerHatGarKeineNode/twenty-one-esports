@@ -2813,7 +2813,8 @@ with NIP-44; a player without one cannot join and is told why. There is no fallb
 (deprecated, and sender, recipient and time are public), not the league (it would read the data), not
 a plain message. If the host's signer fails during the match (extension locked, bunker unreachable),
 "Can't share, swap host" hands the host seat to the guest before the lobby deadline, instead of a
-no-show.
+no-show: once per match, only before the lobby is shared, and the new host gets the full lobby time
+again. A swap does not move the room's expiration.
 
 **Mute and abuse.** A mute hides a player's messages; muting the opponent of an open 1v1 would also
 hide the lobby. A card from a muted member of an open match therefore collapses to "Lobby card from a
@@ -5683,7 +5684,7 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   allowlist; a separate tournament key would keep the league key narrower but split the authority
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
-- **Lobby and account cards (rev. 9.2)** are specified, not built, and have no example: they live
+- **Lobby and account cards (rev. 9.2)** are built (P23 S2) and have no example: they live
   inside sealed rumors, so there is nothing public to sign and read back. Open: whether nos.lol
   supports NIP-40 (it must, to stay a chat relay for casual rooms); whether other NIP-17 clients reject
   a seal with an `expiration` tag, as NIP-59's "Tags MUST always be empty" would allow; who operates
