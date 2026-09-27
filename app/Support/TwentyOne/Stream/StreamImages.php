@@ -7,14 +7,13 @@ use App\Models\User;
 use App\Support\Clans\ClanLogos;
 use App\Support\Nostr\Blockpile;
 use Closure;
-use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
  * The pictures of the stream scenes as data URIs, read from local files
- * only: the avatars and backdrops StreamImageBuilder wrote
- * (`twentyone.stream.images.dir`), the redrawn clan logos on the public disk
- * (ClanLogos). Nothing here touches the network or the database; a caller
+ * only: the avatars, backdrops and 128 px clan logos StreamImageBuilder wrote
+ * (`twentyone.stream.images.dir`; a logo only from a clan's own redrawn
+ * ClanLogos file, never a foreign picture). Nothing here touches the network or the database; a caller
  * hands in the users and clans it already loaded, or the plain refs
  * (avatarRef(), logoRef()) its cached snapshot kept.
  *
@@ -63,6 +62,14 @@ class StreamImages
     public static function avatarFile(int $userId, string $source): string
     {
         return self::dir().'/avatars/'.sha1($userId.'|'.$source).'.jpg';
+    }
+
+    /**
+     * The small copy of a redrawn clan logo (`clan-logos/<sha256>.png` on the public disk).
+     */
+    public static function logoFile(string $ref): string
+    {
+        return self::dir().'/logos/'.basename($ref);
     }
 
     public static function backdropFile(string $slug): string
@@ -125,7 +132,9 @@ class StreamImages
     }
 
     /**
-     * A clan's redrawn logo (a PNG on the public disk) as a data URI, or null.
+     * A clan's logo as its 128 px PNG copy (StreamImageBuilder), or null
+     * while there is none: the redrawn original (~100 KB) is too heavy for a
+     * frame and is never embedded.
      */
     public function logo(?string $ref): ?string
     {
@@ -133,13 +142,9 @@ class StreamImages
             return null;
         }
 
-        return $this->remember('logo:'.$ref, function () use ($ref): ?string {
-            try {
-                return self::fileUri(Storage::disk('public')->path($ref), 'image/png');
-            } catch (Throwable) {
-                return null;
-            }
-        });
+        $path = self::logoFile($ref);
+
+        return $this->remember('file:'.$path, fn (): ?string => self::fileUri($path, 'image/png'));
     }
 
     public function forClan(?Clan $clan): ?string

@@ -8,7 +8,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('twentyone:stream:images')]
-#[Description('Cache the avatars and build the backdrops the stream scenes embed (StreamImageBuilder)')]
+#[Description('Cache the avatars and clan logos and build the backdrops the stream scenes embed (StreamImageBuilder)')]
 class TwentyOneStreamImagesCommand extends Command
 {
     /**
@@ -24,11 +24,13 @@ class TwentyOneStreamImagesCommand extends Command
         }
 
         $backdrops = $builder->buildBackdrops();
+        $logos = $builder->refreshLogos();
         $avatars = $builder->refreshAvatars();
 
         $this->info(sprintf(
-            'Backdrops: %d built, %d fresh, %d failed. Avatars: %d fetched, %d fresh, %d waiting after a failure, %d failed, %d without a picture, %d old file(s) removed.',
+            'Backdrops: %d built, %d fresh, %d failed. Clan logos: %d built, %d fresh, %d failed, %d old file(s) removed. Avatars: %d fetched, %d fresh, %d waiting after a failure, %d failed, %d without a picture, %d old file(s) removed.',
             $backdrops['built'], $backdrops['fresh'], $backdrops['failed'],
+            $logos['built'], $logos['fresh'], $logos['failed'], $logos['removed'],
             $avatars['fetched'], $avatars['fresh'], $avatars['waiting'], $avatars['failed'], $avatars['none'], $avatars['removed'],
         ));
 

@@ -352,9 +352,10 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
     $logos = app(ClanLogos::class);
     $png = streamPicture(64, 64, [10, 200, 10]);
     $logos->store($png);
-    $logo = 'data:image/png;base64,'.base64_encode($png);
     [$lineup, $captain, $signer] = keyedLineup();
     $lineup->clan->forceFill(['picture' => $logos->urlFor($png)])->save();
+    app(StreamImageBuilder::class)->refreshLogos();
+    $logo = 'data:image/png;base64,'.base64_encode((string) file_get_contents(StreamImages::logoFile($logos->pathFor($png))));
     $teams = openTournament([], rocketLeague: true);
     lineupSignup($teams, $lineup, $captain, $signer);
 
@@ -437,4 +438,84 @@ test('pictures cost the frame no database query', function () {
     expect(DB::getQueryLog())->toBe([])
         ->and($teaser['stats']['ladders']['blitz'][0]['avatar'])->toStartWith('data:image/svg+xml;base64,')
         ->and($slide['tournament']['roster'][0]['avatar'])->toStartWith('data:image/svg+xml;base64,');
+});
+
+/**
+ * A logo like a real upload: 512 px, a transparent ring around a noisy centre (~100 KB as PNG).
+ */
+function streamClanLogo(int $seed): string
+{
+    mt_srand($seed);
+    $image = imagecreatetruecolor(512, 512);
+    imagealphablending($image, false);
+    imagesavealpha($image, true);
+    imagefill($image, 0, 0, (int) imagecolorallocatealpha($image, 0, 0, 0, 127));
+
+    for ($y = 48; $y < 464; $y++) {
+        for ($x = 48; $x < 464; $x++) {
+            imagesetpixel($image, $x, $y, (int) imagecolorallocatealpha($image, mt_rand(0, 255), mt_rand(0, 255), mt_rand(0, 255), 0));
+        }
+    }
+
+    ob_start();
+    imagepng($image, null, 9);
+
+    return (string) ob_get_clean();
+}
+
+test('a clan logo is copied small with its alpha, rebuilt when it changes, and a foreign picture is never used', function () {
+    Storage::fake('public');
+    $logos = app(ClanLogos::class);
+    $original = streamClanLogo(1);
+    $logos->store($original);
+    $ours = Clan::factory()->create(['picture' => $logos->urlFor($original)]);
+    $foreign = Clan::factory()->create(['picture' => 'https://example.com/logo.png']);
+    $builder = app(StreamImageBuilder::class);
+    $copy = StreamImages::logoFile($logos->pathFor($original));
+
+    $first = $builder->refreshLogos();
+    $bytes = (string) file_get_contents($copy);
+    $image = imagecreatefromstring($bytes);
+    $again = $builder->refreshLogos();
+    // The original changes on disk (same name, new content and mtime).
+    Storage::disk('public')->put($logos->pathFor($original), streamClanLogo(2));
+    touch(Storage::disk('public')->path($logos->pathFor($original)), time() + 60);
+    $changed = $builder->refreshLogos();
+
+    expect(strlen($original))->toBeGreaterThan(90 * 1024)
+        ->and($first)->toBe(['built' => 1, 'fresh' => 0, 'failed' => 0, 'removed' => 0])
+        ->and(strlen($bytes))->toBeLessThanOrEqual(30 * 1024)
+        ->and(getimagesizefromstring($bytes)[0])->toBe(128)
+        ->and(getimagesizefromstring($bytes)['mime'])->toBe('image/png')
+        // The transparent ring stays transparent, the centre opaque.
+        ->and(imagecolorsforindex($image, imagecolorat($image, 2, 2))['alpha'])->toBe(127)
+        ->and(imagecolorsforindex($image, imagecolorat($image, 64, 64))['alpha'])->toBe(0)
+        ->and($again)->toBe(['built' => 0, 'fresh' => 1, 'failed' => 0, 'removed' => 0])
+        ->and($changed['built'])->toBe(1)
+        ->and(file_get_contents($copy))->not->toBe($bytes)
+        ->and(app(StreamImages::class)->forClan($ours))->toBe('data:image/png;base64,'.base64_encode((string) file_get_contents($copy)))
+        ->and(app(StreamImages::class)->forClan($foreign))->toBeNull()
+        ->and(File::files(dirname($copy)))->toHaveCount(1);
+    Http::assertNothingSent();
+
+    // A clan that drops its logo leaves no copy behind.
+    $ours->forceFill(['picture' => null])->save();
+
+    expect($builder->refreshLogos()['removed'])->toBe(1)
+        ->and(File::files(dirname($copy)))->toBe([]);
+});
+
+test('a flat logo keeps its soft alpha in full colour', function () {
+    $image = imagecreatetruecolor(512, 512);
+    imagealphablending($image, false);
+    imagesavealpha($image, true);
+    imagefill($image, 0, 0, (int) imagecolorallocatealpha($image, 0, 0, 0, 127));
+    imagefilledrectangle($image, 48, 48, 463, 463, (int) imagecolorallocatealpha($image, 247, 147, 26, 60));
+    ob_start();
+    imagepng($image);
+    $logo = imagecreatefromstring(app(StreamImageBuilder::class)->logoPng((string) ob_get_clean()));
+
+    expect(imageistruecolor($logo))->toBeTrue()
+        ->and(imagecolorsforindex($logo, imagecolorat($logo, 2, 2))['alpha'])->toBe(127)
+        ->and(imagecolorsforindex($logo, imagecolorat($logo, 64, 64)))->toBe(['red' => 247, 'green' => 147, 'blue' => 26, 'alpha' => 60]);
 });

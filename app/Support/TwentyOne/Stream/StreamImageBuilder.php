@@ -3,6 +3,7 @@
 namespace App\Support\TwentyOne\Stream;
 
 use App\Games\GameRegistry;
+use App\Models\Clan;
 use App\Models\User;
 use GdImage;
 use Illuminate\Support\Facades\File;
@@ -22,6 +23,10 @@ use Throwable;
  *   writes a `.failed` marker that holds the next try back for
  *   `retry_seconds`, logs one line and moves on to the next player. Files
  *   of pictures no player uses any more are removed.
+ * - clan logos: every clan's own redrawn logo (ClanLogos, `clan-logos/<sha256>.png`
+ *   on the public disk; a foreign `picture` never) as a 128x128 PNG with its
+ *   alpha under `logos/`, rebuilt when the original's mtime changes; files
+ *   of logos no clan uses any more are removed.
  * - backdrops: every game cover (GameRegistry::coverPath) and the brand
  *   cover, blurred, darkened and written as a 640x360 JPEG (q60) under
  *   `backdrops/<slug>.jpg`, again only when the source's mtime changed
@@ -34,6 +39,11 @@ use Throwable;
 class StreamImageBuilder
 {
     public const AVATAR_SIDE = 128;
+
+    public const LOGO_SIDE = 128;
+
+    /** A logo copy above this is written again with a 255-colour palette (alpha kept). */
+    public const LOGO_MAX_BYTES = 30 * 1024;
 
     public const BACKDROP_WIDTH = 640;
 
@@ -127,6 +137,102 @@ class StreamImageBuilder
 
             return 'failed';
         }
+    }
+
+    /**
+     * Copy every clan's redrawn logo small; the counts per outcome.
+     *
+     * @return array{built: int, fresh: int, failed: int, removed: int}
+     */
+    public function refreshLogos(): array
+    {
+        $counts = ['built' => 0, 'fresh' => 0, 'failed' => 0, 'removed' => 0];
+        $keep = [];
+        $disk = Storage::disk('public');
+        File::ensureDirectoryExists(StreamImages::dir().'/logos');
+
+        foreach (Clan::query()->whereNotNull('picture')->orderBy('id')->get(['id', 'picture']) as $clan) {
+            $ref = StreamImages::logoRef($clan);
+
+            if ($ref === null) {
+                continue;
+            }
+
+            $target = StreamImages::logoFile($ref);
+            $keep[basename($target)] = true;
+
+            try {
+                $source = $disk->path($ref);
+                $mtime = (int) filemtime($source);
+
+                if (is_file($target) && (int) filemtime($target) === $mtime) {
+                    $counts['fresh']++;
+
+                    continue;
+                }
+
+                PlaylistWriter::writeAtomically($target, $this->logoPng((string) file_get_contents($source)));
+                touch($target, $mtime);
+                $counts['built']++;
+            } catch (Throwable $e) {
+                Log::warning('stream logo of clan '.$clan->id.' not built from '.$ref.': '.$e->getMessage());
+                $counts['failed']++;
+            }
+        }
+
+        foreach (File::files(StreamImages::dir().'/logos') as $file) {
+            if (! isset($keep[$file->getFilename()]) && ! str_ends_with($file->getFilename(), '.tmp')) {
+                File::delete($file->getPathname());
+                $counts['removed']++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * A logo redrawn as a 128x128 PNG with its alpha (centre square); past
+     * LOGO_MAX_BYTES again with a 255-colour palette and one transparent
+     * index (alpha then only on or off: at least half transparent is clear).
+     *
+     * @throws StreamImageFailed
+     */
+    public function logoPng(string $bytes): string
+    {
+        $image = $this->decode($bytes);
+        $side = min(imagesx($image), imagesy($image));
+        $logo = imagecreatetruecolor(self::LOGO_SIDE, self::LOGO_SIDE);
+        imagealphablending($logo, false);
+        imagesavealpha($logo, true);
+        imagefill($logo, 0, 0, (int) imagecolorallocatealpha($logo, 0, 0, 0, 127));
+        imagecopyresampled($logo, $image, 0, 0, intdiv(imagesx($image) - $side, 2), intdiv(imagesy($image) - $side, 2), self::LOGO_SIDE, self::LOGO_SIDE, $side, $side);
+        $png = $this->png($logo);
+
+        if (strlen($png) > self::LOGO_MAX_BYTES) {
+            // GD's palette conversion drops the alpha (measured 2026-09-27): keep a
+            // mask of the (mostly) transparent pixels and give them one clear index.
+            $clearPixels = [];
+
+            for ($y = 0; $y < self::LOGO_SIDE; $y++) {
+                for ($x = 0; $x < self::LOGO_SIDE; $x++) {
+                    if (((imagecolorat($logo, $x, $y) >> 24) & 0x7F) >= 64) {
+                        $clearPixels[] = [$x, $y];
+                    }
+                }
+            }
+
+            imagetruecolortopalette($logo, false, 255);
+            $clear = (int) imagecolorallocatealpha($logo, 0, 0, 0, 127);
+            imagecolortransparent($logo, $clear);
+
+            foreach ($clearPixels as [$x, $y]) {
+                imagesetpixel($logo, $x, $y, $clear);
+            }
+
+            $png = $this->png($logo);
+        }
+
+        return $png;
     }
 
     /**
@@ -280,6 +386,14 @@ class StreamImageBuilder
         }
 
         return $image;
+    }
+
+    private function png(GdImage $image): string
+    {
+        ob_start();
+        imagepng($image, null, 9);
+
+        return (string) ob_get_clean();
     }
 
     private function jpeg(GdImage $image, int $quality): string
