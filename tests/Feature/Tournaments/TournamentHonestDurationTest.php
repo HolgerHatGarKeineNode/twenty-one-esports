@@ -278,8 +278,7 @@ test('the chooser computes the honest range with its times and warnings, and the
 
     // Islands render only in the page itself (the browser test covers their updates); here the state behind them.
     $page = Livewire::actingAs($admin)->test('pages::admin.tournament-create')
-        ->set('date', now()->addWeek()->timezone('Europe/Berlin')->format('Y-m-d'))
-        ->set('time', '20:00')
+        ->set('startsAt', now()->addWeek()->timezone('Europe/Berlin')->format('Y-m-d').'T20:00')
         ->call('pickGame', 'ea-sports-fc-26/1v1')
         ->set('players', '16')
         ->call('select', 'two-stage');
@@ -292,10 +291,10 @@ test('the chooser computes the honest range with its times and warnings, and the
         ->and($times['warnings'])->toBe([]);
 
     // 21:00: the typical end passes midnight; a round robin of 16: the worst case passes 10 hours.
-    $page->set('time', '21:00');
+    $page->set('startsAt', now()->addWeek()->timezone('Europe/Berlin')->format('Y-m-d').'T21:00');
     expect($page->instance()->expectedTimes()['warnings'])->toBe(['after-midnight']);
 
-    $page->set('time', '12:00')->call('select', 'round-robin');
+    $page->set('startsAt', now()->addWeek()->timezone('Europe/Berlin')->format('Y-m-d').'T12:00')->call('select', 'round-robin');
     expect($page->instance()->durationRange->latest)->toBeGreaterThan(600.0)
         ->and($page->instance()->expectedTimes()['warnings'])->toBe(['too-long']);
 

@@ -5,6 +5,7 @@ namespace App\Livewire;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Tournaments\DurationRange;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Evaluation;
@@ -78,11 +79,6 @@ abstract class TournamentFormatChooser extends Component
     public string $reportHours = '';
 
     public string $responseMinutes = '';
-
-    /** The start as typed on the page (date `Y-m-d`, time `H:i`), in {@see chooserZone()}. */
-    public string $date = '';
-
-    public string $time = '';
 
     /** Form property => tournament column of each deadline. */
     public const DEADLINE_FIELDS = [
@@ -165,8 +161,11 @@ abstract class TournamentFormatChooser extends Component
 
         $start = null;
 
-        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $this->date) === 1 && preg_match('/^\d{2}:\d{2}$/', $this->time) === 1) {
-            $start = CarbonImmutable::createFromFormat('Y-m-d H:i', "{$this->date} {$this->time}", $this->chooserZone()) ?: null;
+        // The page's start field (`Y-m-d\TH:i`, typed in the league's zone, {@see LeagueTime}).
+        $typed = property_exists($this, 'startsAt') ? (string) $this->startsAt : '';
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $typed) === 1) {
+            $start = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $typed, $this->chooserZone()) ?: null;
         }
 
         return [
@@ -180,11 +179,11 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
-     * The zone date and time are entered in: the one the tournament pages show them in.
+     * The zone the start is entered in: always the league's (Berlin), as on the tournament pages.
      */
     public function chooserZone(): string
     {
-        return (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
+        return LeagueTime::zone();
     }
 
     /**
