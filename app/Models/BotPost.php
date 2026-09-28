@@ -16,10 +16,15 @@ use Illuminate\Support\Carbon;
  * `published_at` set once at least one relay accepted it. A row with
  * `published_at` is never posted again.
  *
+ * `slot` tells apart several notes of one kind on one subject: the
+ * free-places notes (App\Support\StreamBot\FreePlaceNotes) have one row per
+ * tournament and slot ("168h" … "3h"); the one-per-subject notes keep ''.
+ *
  * @property int $id
  * @property string $subject_type
  * @property int $subject_id
  * @property int $kind
+ * @property string $slot
  * @property string|null $event_id
  * @property string|null $event
  * @property int $attempts
@@ -30,10 +35,13 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['subject_type', 'subject_id', 'kind', 'event_id', 'event', 'attempts', 'relays_accepted', 'relays_total', 'attempted_at', 'published_at'])]
+#[Fillable(['subject_type', 'subject_id', 'kind', 'slot', 'event_id', 'event', 'attempts', 'relays_accepted', 'relays_total', 'attempted_at', 'published_at'])]
 class BotPost extends Model
 {
     public const SUBJECT_TOURNAMENT = 'tournament';
+
+    /** A tournament's free-places reminders (P49), one row per slot. */
+    public const SUBJECT_FREE_PLACES = 'tournament_places';
 
     protected function casts(): array
     {

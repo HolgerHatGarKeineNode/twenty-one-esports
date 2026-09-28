@@ -126,7 +126,7 @@ class TournamentNotes
      *
      * @return array{LeagueKey, non-empty-list<string>}|string
      */
-    private function setup(): array|string
+    public function setup(): array|string
     {
         if (! (bool) config('esports.stream_bot.enabled', false)) {
             return 'no notes: ESPORTS_STREAM_BOT_ENABLED is off';
@@ -291,7 +291,7 @@ class TournamentNotes
     }
 
     /** The first league relay (`esports.relays`), where the calendar event is published; null without one. */
-    private function relayHint(): ?string
+    public function relayHint(): ?string
     {
         foreach ((array) config('esports.relays', []) as $relay) {
             if (EventBuilder::isRelayUrl($relay)) {
@@ -314,7 +314,7 @@ class TournamentNotes
         return $pot !== null && $pot > 0 ? number_format($pot) : null;
     }
 
-    private function gameLine(Tournament $tournament): string
+    public function gameLine(Tournament $tournament): string
     {
         $mode = $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode;
 

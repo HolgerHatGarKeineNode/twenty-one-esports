@@ -879,6 +879,18 @@ return [
             'per_run' => 3,
             'retry_minutes' => 10,
         ],
+        // Reminders on the same profile while a tournament still has free places (P49,
+        // twentyone:stream-bot:free-places): one note per slot, a slot being hours before sign-up
+        // closes. A slot is due from its moment until the next slot's moment (or the stop), and
+        // only the latest due slot is posted, so a missed slot is skipped, never posted late.
+        // Nothing within `stop_before_close_minutes` of the close, at most `per_run` per run.
+        'free_places' => [
+            'special_slots_hours' => [168, 72, 24, 3],
+            'cup_slots_hours' => [24, 3],
+            'stop_before_close_minutes' => 60,
+            'per_run' => 3,
+            'retry_minutes' => 10,
+        ],
         'profile' => [
             'name' => 'TWENTY ONE Bot',
             'about' => 'The bot of the TWENTY ONE Esports stream chat: what is on at esports.einundzwanzig.space, with links. Chats only while the stream is live, and posts every new tournament here. It reads no replies.',

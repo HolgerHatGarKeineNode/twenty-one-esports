@@ -250,7 +250,9 @@ final class AdminStatus
     public function botNotes(): array
     {
         $enabled = (bool) config('esports.stream_bot.enabled') && filled(config('esports.stream_bot.nsec'));
-        $unsent = BotPost::query()->whereNull('published_at');
+        // A free-places note (P49) is not retried once its slot passed, so an unsent one counts for a day only.
+        $unsent = BotPost::query()->whereNull('published_at')
+            ->where(fn ($query) => $query->where('subject_type', '!=', BotPost::SUBJECT_FREE_PLACES)->orWhere('created_at', '>=', now()->subDay()));
         $failed = (clone $unsent)->where('attempts', '>', 0)->count();
         $waiting = (clone $unsent)->where('attempts', 0)->count();
         $sent = BotPost::query()->whereNotNull('published_at')->where('published_at', '>=', now()->subDay())->count();

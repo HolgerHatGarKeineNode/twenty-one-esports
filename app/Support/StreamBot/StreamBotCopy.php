@@ -144,6 +144,11 @@ final class StreamBotCopy
         'tournament_note_finished' => [
             ['🏆 Tournament: :name', '🎮 :game · played :starts', '💰 :pot sats in the pot', '👉 Bracket and results: :url'],
         ],
+        // Free-places reminders on the same profile (FreePlaceNotes, P49), while sign-up is open and
+        // places are left; the `nostr:naddr1…` follows after a blank line here too.
+        'tournament_note_places' => [
+            ['🪑 :free of :places places left: :name', '🎮 :game · starts :starts', '⏳ Sign-up closes in :left', '👉 Grab a place: :url'],
+        ],
     ];
 
     /**
@@ -183,6 +188,21 @@ final class StreamBotCopy
         }
 
         return implode("\n", $out);
+    }
+
+    /** "3 days 4 h", "2 h 15 min", "40 min"; never less than a minute. */
+    public static function duration(int $seconds): string
+    {
+        $seconds = max(60, $seconds);
+        $days = intdiv($seconds, 86400);
+        $hours = intdiv($seconds % 86400, 3600);
+        $minutes = intdiv($seconds % 3600, 60);
+
+        if ($days > 0) {
+            return $days.' '.($days === 1 ? 'day' : 'days').($hours > 0 ? ' '.$hours.' h' : '');
+        }
+
+        return $hours > 0 ? $hours.' h'.($minutes > 0 ? ' '.$minutes.' min' : '') : $minutes.' min';
     }
 
     public static function variants(string $template): int

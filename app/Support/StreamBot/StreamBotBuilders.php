@@ -608,16 +608,7 @@ final class StreamBotBuilders
     /** "3 days 4 h", "2 h 15 min", "40 min". */
     private function duration(int $seconds): string
     {
-        $seconds = max(60, $seconds);
-        $days = intdiv($seconds, 86400);
-        $hours = intdiv($seconds % 86400, 3600);
-        $minutes = intdiv($seconds % 3600, 60);
-
-        if ($days > 0) {
-            return $days.' '.($days === 1 ? 'day' : 'days').($hours > 0 ? ' '.$hours.' h' : '');
-        }
-
-        return $hours > 0 ? $hours.' h'.($minutes > 0 ? ' '.$minutes.' min' : '') : $minutes.' min';
+        return StreamBotCopy::duration($seconds);
     }
 
     /**

@@ -356,6 +356,14 @@ Schedule::command('twentyone:stream-bot')->everyMinute()->withoutOverlapping()->
 Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
+ * While a published tournament is open for sign-up and has free places, the
+ * same bot names them at fixed slots before sign-up closes (P49: specials at
+ * 7 d, 3 d, 24 h, 3 h, casual cups at 24 h, 3 h), never within an hour of the
+ * close, a few per run. Same flag and key.
+ */
+Schedule::command('twentyone:stream-bot:free-places')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+/*
  * The game channels (P21, NIP "Game channels"): the fixed kind 40 of every
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The
