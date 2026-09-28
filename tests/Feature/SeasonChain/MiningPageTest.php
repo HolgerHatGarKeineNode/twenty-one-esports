@@ -29,6 +29,15 @@ test('before Block 0 /mining shows the rest state with the countdown and the Pre
         ->assertDontSee('Latest blocks');
 });
 
+test('/mining is the Season page: title, share title and heading say Season, like the navigation', function () {
+    $this->get(route('mining'))
+        ->assertOk()
+        ->assertSee('<title>Season – TWENTY ONE esports</title>', false)
+        ->assertSee('<meta property="og:title" content="Season', false)
+        ->assertSeeInOrder(['<h1', 'Season</h1>'], false)
+        ->assertDontSee('>Mining</h1>', false);
+});
+
 test('in a live season /mining shows mined sats, the blocks with their miners and the change log', function () {
     $season = openSeason();
     $miner = User::factory()->create(['name' => 'satsjaeger']);

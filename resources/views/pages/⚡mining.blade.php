@@ -24,8 +24,8 @@ use Livewire\Component;
 new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title(__('Mining'));
-        app(PageMeta::class)->describe(__('Mining'), __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.'));
+        $view->title(__('Season'));
+        app(PageMeta::class)->describe(__('Season'), __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.'));
     }
 
     /**
@@ -54,7 +54,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
 
 <div class="flex grow flex-col gap-4 px-4 pb-10 lg:gap-6 lg:px-12" data-test="mining" data-state="{{ $state }}">
     <div class="flex flex-col gap-2">
-        <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]">{{ __('Mining') }}</h1>
+        <h1 class="m-0 font-display text-[26px] font-bold lg:text-[34px]">{{ __('Season') }}</h1>
         <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.') }}</p>
     </div>
 
