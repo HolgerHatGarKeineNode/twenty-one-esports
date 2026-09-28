@@ -156,19 +156,9 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:direct-tournament,tournament')->name('tournaments.director');
 });
 
-/*
- * Placeholder pages for the planned routes (screens-v1.md). Each one renders the
- * shell with a "Coming soon" empty state until its phase builds the real page.
- * `page` is a translation key, `section` marks the active main-navigation item.
- */
-$placeholders = [
-    ['rules', 'rules', 'Rules', null],
-    ['protocol', 'protocol', 'Open protocol', null],
-];
-
-foreach ($placeholders as [$uri, $name, $page, $section]) {
-    Route::view($uri, 'pages.coming-soon', ['page' => $page, 'section' => $section])->name($name);
-}
+// The rules (P28) and the open protocol (P29): every number and kind read from the config, the code and the NIP at render time.
+Route::view('rules', 'pages.rules')->name('rules');
+Route::view('protocol', 'pages.protocol')->name('protocol');
 
 /*
  * Nostr profiles of other players (P10a). The browser reads kind 0 from the

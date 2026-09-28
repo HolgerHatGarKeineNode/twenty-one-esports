@@ -56,6 +56,8 @@ function publicPages(): array
         'player' => fn () => [route('players.show', User::factory()->create(['name' => 'satoshi'])->npub), ['ProfilePage']],
         'tournaments' => fn () => [route('tournaments.index'), []],
         'tournament' => fn () => [route('tournaments.show', publishedTournament()), ['SportsEvent', 'BreadcrumbList']],
+        'rules' => fn () => [route('rules'), []],
+        'open protocol' => fn () => [route('protocol'), []],
     ];
 }
 
@@ -146,7 +148,6 @@ test('private and unfinished pages are noindex and name no canonical', function 
         ->not->toContain('rel="alternate" hreflang=');
 })->with([
     'login' => fn ($test) => $test->get(route('login')),
-    'coming soon' => fn ($test) => $test->get(route('rules')),
     'invite link' => fn ($test) => $test->get(app(InviteLinks::class)->create(User::factory()->create(), InviteLinkType::Blitz)->url()),
     'own page' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('dashboard')),
     'settings' => fn ($test) => $test->actingAs(User::factory()->create())->get(route('gaming.edit')),
