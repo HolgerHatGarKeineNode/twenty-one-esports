@@ -60,6 +60,74 @@ class TournamentNotes
      */
     public function run(CarbonImmutable $now): string
     {
+        $setup = $this->setup();
+
+        if (is_string($setup)) {
+            return $setup;
+        }
+
+        [$key, $relays] = $setup;
+        $lines = [];
+
+        foreach ($this->due($now) as $tournament) {
+            try {
+                $lines[] = $this->post($key, $tournament, $relays, $now);
+            } catch (Throwable $e) {
+                // One broken note must not hold back the others; its claim expires and it is tried again.
+                report($e);
+                $lines[] = 'tournament '.$tournament->id.': failed, '.$e->getMessage();
+            }
+        }
+
+        return $lines === [] ? 'no notes: every published tournament has its note' : implode("\n", $lines);
+    }
+
+    /**
+     * A new note for a tournament whose delivered note its author deleted
+     * (a NIP-09 kind-5 request naming the note's id, e.g. sent from a
+     * client logged in with the bot key). Relays that honour the request
+     * refuse that id for good, so the note is signed anew from the
+     * tournament's current state and stored in place of the deleted one.
+     *
+     * Compare-and-set on the deleted id: a second call, or one after the
+     * note was renewed already, changes nothing. A called-off tournament gets
+     * no new note, as in due().
+     */
+    public function renew(Tournament $tournament, string $deletedId, CarbonImmutable $now): string
+    {
+        $setup = $this->setup();
+
+        if (is_string($setup)) {
+            return 'tournament '.$tournament->id.': '.$setup;
+        }
+
+        if ($tournament->status === TournamentStatus::Cancelled || $tournament->address() === null) {
+            return 'tournament '.$tournament->id.': called off or unpublished, its deleted note is not renewed';
+        }
+
+        [$key, $relays] = $setup;
+
+        $reset = BotPost::query()
+            ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])
+            ->where('event_id', $deletedId)
+            ->update(['event_id' => null, 'event' => null, 'published_at' => null, 'attempted_at' => null, 'relays_accepted' => 0, 'relays_total' => 0, 'updated_at' => $now]);
+
+        if ($reset !== 1) {
+            return 'tournament '.$tournament->id.': its note is not '.$deletedId.' (renewed already)';
+        }
+
+        Log::info('Stream bot tournament note deleted by its author, renewing', ['tournament' => $tournament->id, 'deleted' => $deletedId]);
+
+        return $this->post($key, $tournament, $relays, $now);
+    }
+
+    /**
+     * The bot key and the stream relays, or why there are none (fail closed).
+     *
+     * @return array{LeagueKey, non-empty-list<string>}|string
+     */
+    private function setup(): array|string
+    {
         if (! (bool) config('esports.stream_bot.enabled', false)) {
             return 'no notes: ESPORTS_STREAM_BOT_ENABLED is off';
         }
@@ -76,19 +144,7 @@ class TournamentNotes
             return 'no notes: no stream relay to publish to (twentyone.stream.relays)';
         }
 
-        $lines = [];
-
-        foreach ($this->due($now) as $tournament) {
-            try {
-                $lines[] = $this->post($key, $tournament, $relays, $now);
-            } catch (Throwable $e) {
-                // One broken note must not hold back the others; its claim expires and it is tried again.
-                report($e);
-                $lines[] = 'tournament '.$tournament->id.': failed, '.$e->getMessage();
-            }
-        }
-
-        return $lines === [] ? 'no notes: every published tournament has its note' : implode("\n", $lines);
+        return [$key, $relays];
     }
 
     /**
