@@ -70,7 +70,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * @return array{clans: int, newest: Clan|null, players: int, meetups: int, blocks: int}
+     * @return array{clans: int, newest: Clan|null, recent: \Illuminate\Database\Eloquent\Collection<int, Clan>, players: int, meetups: int, blocks: int}
      */
     /** The page's clan numbers, computed once per request. */
     #[Computed]
@@ -85,6 +85,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return [
             'clans' => Clan::query()->count(),
             'newest' => Clan::query()->latest('created_at')->latest('id')->first(),
+            // The marks of the five newest clans, the picture of the counter line (P53).
+            'recent' => Clan::query()->latest('created_at')->latest('id')->limit(5)->get(),
             'players' => ClanMember::query()->count(),
             'meetups' => Clan::query()->whereNotNull('meetup_name')->count(),
             // Rated results since launch: every game or series that moved a rated rating, once.
@@ -169,35 +171,35 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     </div>
 
     @php($counters = $this->counters)
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-6">
-        <div class="flex flex-col gap-2 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="text-[13px] text-ink-2">{{ __('Clans') }}</span>
-            <b class="font-display text-2xl font-bold lg:text-[28px]">{{ $counters['clans'] }}</b>
-            <span class="text-xs text-ink-2">
-                @if ($counters['newest'])
-                    {{ __('newest: :name, :date', ['name' => $counters['newest']->name, 'date' => $counters['newest']->created_at?->translatedFormat('M j')]) }}
-                @else
-                    {{ __('none yet') }}
-                @endif
-            </span>
-        </div>
-        <div class="flex flex-col gap-2 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="text-[13px] text-ink-2">{{ __('Players') }}</span>
-            <b class="font-display text-2xl font-bold lg:text-[28px]">{{ $counters['players'] }}</b>
-            <span class="text-xs text-ink-3">{{ __('in a clan') }}</span>
-        </div>
-        <div class="flex flex-col gap-2 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="text-[13px] text-ink-2">{{ __('Meetups') }}</span>
-            <b class="font-display text-2xl font-bold lg:text-[28px]">{{ $counters['meetups'] }}</b>
-            <span class="text-xs text-ink-3">{{ __('clans linked to an EINUNDZWANZIG meetup') }}</span>
-        </div>
-        <div class="flex flex-col gap-2 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="text-[13px] text-ink-2">{{ __('Blocks mined') }}</span>
-            <b class="font-display text-2xl font-bold lg:text-[28px]">{{ $counters['blocks'] }}</b>
-            <span class="text-xs text-ink-3">{{ __('rated results since launch') }}</span>
-        </div>
+    {{--
+        The numbers folded into one line under the header (P53: four number tiles read as text): the newest
+        clans' marks as the picture, then players, meetups and blocks, each with its icon.
+    --}}
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg bg-card px-4 py-3 text-[13px] text-ink-2 lg:px-6" data-test="clan-counters">
+        <span class="flex items-center gap-3">
+            @if ($counters['recent']->isNotEmpty())
+                <span class="flex gap-1" aria-hidden="true" data-test="clan-counters-marks">
+                    @foreach ($counters['recent'] as $recentClan)
+                        <x-clan-tag :clan="$recentClan" :tile="28" class="flex size-7 shrink-0 items-center justify-center rounded-xs bg-btc-tint text-[9px] font-bold text-btc" />
+                    @endforeach
+                </span>
+            @endif
+            <span><b class="font-display text-lg text-ink tabular-nums">{{ $counters['clans'] }}</b> {{ __('Clans') }}</span>
+        </span>
+        <span class="flex items-center gap-2"><x-icon name="user" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['players'] }}</b> {{ __('Players') }} <span class="text-xs text-ink-3">{{ __('in a clan') }}</span></span>
+        <span class="flex items-center gap-2"><x-icon name="clans" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['meetups'] }}</b> {{ __('Meetups') }}</span>
+        <span class="flex items-center gap-2"><x-icon name="mining" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['blocks'] }}</b> {{ __('Blocks mined') }}</span>
+        <span class="text-xs lg:ml-auto">
+            @if ($counters['newest'])
+                {{ __('newest: :name, :date', ['name' => $counters['newest']->name, 'date' => $counters['newest']->created_at?->translatedFormat('M j')]) }}
+            @else
+                {{ __('none yet') }}
+            @endif
+        </span>
     </div>
 
+    {{-- The map only once a clan is linked to a meetup city: an empty placeholder map said nothing (P53). --}}
+    @if (count($this->pins) > 0)
     <section aria-labelledby="map-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
         <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id="map-h" class="m-0 text-[15px] font-bold">{{ __('Meetup map') }}</h2>
@@ -214,6 +216,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
             <span class="absolute right-3 bottom-2.5 hidden text-[11px] text-ink-3 sm:block">{{ __('Map placeholder: coordinates come from the portal meetup') }}</span>
         </div>
     </section>
+    @endif
 
     <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
         {{-- Strongest clans: Clan Rating of the live season. --}}

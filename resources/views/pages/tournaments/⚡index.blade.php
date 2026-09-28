@@ -47,11 +47,14 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
 
 @php
     $live = Seasons::isLive();
+    // Label, count, icon, fill: one status bar instead of three number tiles (P53). The colours mark state, never alone:
+    // every segment has its icon, word and count in the legend.
     $counts = [
-        [__('Open for sign-up'), $this->tournaments->where('status', TournamentStatus::Signup)->count()],
-        [__('Running'), $this->tournaments->whereIn('status', [TournamentStatus::Drawing, TournamentStatus::Running])->count()],
-        [__('Finished'), $this->tournaments->where('status', TournamentStatus::Finished)->count()],
+        [__('Open for sign-up'), $this->tournaments->where('status', TournamentStatus::Signup)->count(), 'clock', 'bg-btc', 'text-btc-hi', 'signup'],
+        [__('Running'), $this->tournaments->whereIn('status', [TournamentStatus::Drawing, TournamentStatus::Running])->count(), 'play', 'bg-win', 'text-win', 'running'],
+        [__('Finished'), $this->tournaments->where('status', TournamentStatus::Finished)->count(), 'check', 'bg-ink-3', 'text-ink-3', 'finished'],
     ];
+    $countTotal = array_sum(array_column($counts, 1));
     $next = $this->next;
     $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
     // The cups open for sign-up or running stand on the cup board above, grouped by game (P53): the list leaves them out.
@@ -74,14 +77,26 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         @endcan
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-3">
-        @foreach ($counts as [$label, $count])
-            <div class="flex flex-col gap-1 rounded-lg bg-card px-5 py-4">
-                <span class="text-xs text-ink-2">{{ $label }}</span>
-                <span class="font-display text-[28px] font-bold">{{ $count }}</span>
+    <section aria-label="{{ __('Tournaments by state') }}" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6" data-test="tournament-states">
+        @if ($countTotal > 0)
+            <div class="flex h-2 gap-0.5 overflow-hidden rounded-[2px]" aria-hidden="true">
+                @foreach ($counts as [$label, $count, $icon, $fill, $ink, $key])
+                    @if ($count > 0)
+                        <span class="{{ $fill }} h-full first:rounded-l-[2px] last:rounded-r-[2px]" style="flex-grow: {{ $count }}" data-test="state-segment-{{ $key }}"></span>
+                    @endif
+                @endforeach
             </div>
-        @endforeach
-    </div>
+        @endif
+        <ul class="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 text-[13px]">
+            @foreach ($counts as [$label, $count, $icon, $fill, $ink, $key])
+                <li class="inline-flex items-center gap-2 text-ink-2" data-test="state-count-{{ $key }}">
+                    <x-icon :name="$icon" :size="16" :class="$ink" />
+                    <b class="font-display text-lg text-ink tabular-nums">{{ $count }}</b>
+                    <span>{{ $label }}</span>
+                </li>
+            @endforeach
+        </ul>
+    </section>
 
     @if ($next !== null)
         <x-tournaments.next-card :tournament="$next" />

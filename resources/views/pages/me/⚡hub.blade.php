@@ -118,6 +118,8 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
             <h2 id="me-going-h" class="m-0 font-display text-lg font-bold lg:text-xl">{{ __('Running and upcoming') }}</h2>
             @if ($going === [] && $later === [] && $tournaments === [])
                 <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="me-going-empty">{{ __('No match or tournament ahead.') }} <a href="{{ route('tournaments.index') }}" class="inline-flex min-h-11 items-center font-bold text-ink hover:text-ink">{{ __('Find a tournament') }}</a></p>
+                {{-- The next open tournament as the picture (P53); the link above stays the one call to action. --}}
+                <x-tournaments.open-picture class="max-w-md" />
             @else
                 <ul class="m-0 flex list-none flex-col rounded-card bg-card p-0 shadow-ring">
                     @foreach ($tournaments as $entry)
@@ -264,10 +266,8 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                 </a>
             @else
                 <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="me-clan-empty">{{ __('Series are played by clan lineups.') }}</p>
-                <span class="flex flex-wrap gap-3">
-                    <x-button :href="route('clans.index')" variant="secondary">{{ __('Find a clan') }}</x-button>
-                    <x-button :href="route('clans.create')" variant="quiet">{{ __('Start a clan') }}</x-button>
-                </span>
+                {{-- The league's clans as the picture and one button (P53); "Start a clan" stays on the clan list. --}}
+                <x-clans.join-picture :cta="__('Find a clan')" />
             @endif
         </section>
 

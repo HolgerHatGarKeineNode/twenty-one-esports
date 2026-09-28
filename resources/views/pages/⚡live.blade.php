@@ -209,9 +209,20 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                         </span>
                         <p class="m-0 max-w-[44ch] font-display text-base leading-snug font-bold sm:text-xl">{{ __('The stream is off air right now.') }}</p>
                         @if ($this->next)
-                            <p class="m-0 max-w-[52ch] text-[13px] leading-5 text-ink-2" data-test="live-offline-next">
-                                {{ __('Next up:') }} <a href="{{ route('tournaments.show', $this->next) }}">{{ $this->next->name }}</a>, <x-league-time :at="$this->next->starts_at" />
-                            </p>
+                            {{-- The next tournament as a picture (P53): its game's cover, name, start and places. --}}
+                            @php($nextPlaces = app(\App\Support\Tournaments\TournamentSignups::class)->places($this->next))
+                            <a href="{{ route('tournaments.show', $this->next) }}" class="flex max-w-full items-center gap-3 rounded-md border border-line bg-well p-2 pr-4 text-left text-[13px] text-ink-2 hover:border-edge hover:text-ink-2" data-test="live-offline-next">
+                                <x-game-cover :game="$this->next->game" size="thumb" loading="eager" class="w-24 rounded-xs" data-test="live-offline-next-cover" />
+                                <span class="flex min-w-0 flex-col gap-1 leading-tight">
+                                    <span class="text-xs">{{ __('Next up:') }}</span>
+                                    <b class="truncate text-ink">{{ $this->next->name }}</b>
+                                    <x-league-time :at="$this->next->starts_at" class="text-xs" />
+                                    <span class="flex items-center gap-2 text-xs" data-test="live-offline-next-seats">
+                                        <span class="flex h-1 w-20 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true"><span class="block h-full bg-btc" style="width: {{ $nextPlaces['places'] > 0 ? min(100, round(100 * $nextPlaces['taken'] / $nextPlaces['places'], 2)) : 0 }}%"></span></span>
+                                        {{ __(':taken of :places spots taken', ['taken' => $nextPlaces['taken'], 'places' => $nextPlaces['places']]) }}
+                                    </span>
+                                </span>
+                            </a>
                         @else
                             <p class="m-0 max-w-[52ch] text-[13px] leading-5 text-ink-2">{{ __('The games go on meanwhile: every running chess game can be watched on the site.') }}</p>
                         @endif

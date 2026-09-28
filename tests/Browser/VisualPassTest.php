@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\Tournaments\CasualCups;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
@@ -22,7 +23,9 @@ pest()->group('browser');
 | textlich. BILDER!!!! eigentlich überall mal durchscanne"): the cup board
 | with covers, faces in the chess rows of the match list and on the ladder,
 | covers on /live and in the rules' games table, halving and cap bars on
-| /mining. Each page at 1440 and 375 in English and at 375 in German: its
+| /mining; part C: home's line per game, the state bar, the next tournament
+| off air, the share cap split, the clans' line, the empty states and the
+| casual game covers. Each page at 1440 and 375 in English and 375 in German: its
 | picture is there, painted and inside the window, nothing is wider than the
 | window, and the console and the answers stay clean, with a positive control.
 |
@@ -77,24 +80,29 @@ function visualPassShot(Page $page, string $name): void
 }
 
 test('every touched page shows its pictures at 1440 and 375, German at 375, with a clean console', function () {
-    $world = navWorld();
+    navWorld();
     config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
     app(CasualCups::class)->tick();
     $cup = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
-    $player = $world['users']['player'];
+    // A player without a clan or a game: the empty states of /me and the own page show their pictures (P53 part C).
+    $player = User::factory()->member()->create(['name' => 'Lena Loner']);
 
     // Page => the selector of its new pictures and how many at least.
     $pages = [
-        '/tournaments' => ['[data-test=cup-group-cover]', 3],
-        '/' => ['[data-test=cup-group-cover]', 3],
+        '/tournaments' => ['[data-test=cup-group-cover], [data-test^=state-segment-]', 5],
+        '/' => ['[data-test=cup-line-cover]', 3],
         '/chess' => ['[data-test=cup-mention]', 2],
         '/games/rocket-league' => ['[data-test=cup-mention]', 2],
         route('tournaments.show', $cup, false) => ['[data-test=cup-mention]', 1],
         '/matches' => ['[data-test=chess-row-face]', 4],
         '/ladder/chess/blitz' => ['main img[data-avatar]', 6],
-        '/live' => ['[data-test=live-tournament-cover]', 1],
+        '/live' => ['[data-test=live-tournament-cover], [data-test=live-offline-next-cover]', 2],
         '/rules' => ['[data-test=rules-table-cover]', 7],
-        '/mining' => ['[data-test=era-pay-bar]', 6],
+        '/mining' => ['[data-test=era-pay-bar], [data-test=share-cap-bar]', 7],
+        '/clans' => ['[data-test=clan-counters-marks]', 1],
+        '/challenges/casual' => ['[data-test^=casual-game-] picture', 3],
+        '/players/'.$player->npub => ['[data-test=open-picture-cover], [data-test=join-picture]', 2],
+        '/me' => ['[data-test=open-picture-cover], [data-test=join-picture]', 2],
     ];
 
     $page = visit(route('testing.login', ['user' => $player, 'to' => '/robots.txt']))->page();

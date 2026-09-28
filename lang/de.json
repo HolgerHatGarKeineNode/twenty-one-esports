@@ -4852,5 +4852,7 @@
     "No casual cup matches these filters.": "Kein Casual Cup passt zu diesen Filtern.",
     "Show every cup": "Alle Cups zeigen",
     "Filter and sort the cups": "Cups filtern und sortieren",
-    "No other tournament is published yet: the casual cups above are all that is on.": "Noch kein anderes Turnier veröffentlicht: die Casual Cups oben sind alles, was gerade läuft."
+    "No other tournament is published yet: the casual cups above are all that is on.": "Noch kein anderes Turnier veröffentlicht: die Casual Cups oben sind alles, was gerade läuft.",
+    "Tournaments by state": "Turniere nach Stand",
+    ":count clan plays in the league|:count clans play in the league": ":count Clan spielt in der Liga|:count Clans spielen in der Liga"
 }

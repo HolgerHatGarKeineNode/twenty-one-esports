@@ -176,14 +176,20 @@ new #[Title('New 1v1 challenge')] #[Layout('layouts::app', ['section' => 'matche
             @endif
         </label>
 
+        {{-- The game as its cover (P53: the choice read as a text select); a radio group, the cover is the target. --}}
+        <fieldset class="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0" data-test="casual-game">
+            <legend class="mb-1.5 p-0 text-[13px] text-ink-2">{{ __('Game title') }}</legend>
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                @foreach ((array) config('esports.casual.games') as $slug)
+                    <label class="flex cursor-pointer flex-col gap-1.5 rounded-md border border-line bg-well p-1.5 text-[13px] text-ink-2 hover:border-edge has-checked:border-btc has-checked:text-ink has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-btc" data-test="casual-game-{{ $slug }}">
+                        <input type="radio" wire:model="game" name="casual-game" value="{{ $slug }}" class="sr-only">
+                        <x-game-cover :game="$slug" size="card" class="w-full rounded-xs" />
+                        <span class="flex items-center justify-between gap-2 px-0.5 font-bold">{{ GameNames::game($slug) }} <span class="font-normal text-ink-3">1v1</span></span>
+                    </label>
+                @endforeach
+            </div>
+        </fieldset>
         <div class="flex flex-wrap gap-4">
-            <label class="flex flex-col gap-1.5 text-[13px] text-ink-2">{{ __('Game') }}
-                <select wire:model="game" class="{{ $field }}" data-test="casual-game">
-                    @foreach ((array) config('esports.casual.games') as $slug)
-                        <option value="{{ $slug }}">{{ GameNames::game($slug) }} 1v1</option>
-                    @endforeach
-                </select>
-            </label>
             <label class="flex flex-col gap-1.5 text-[13px] text-ink-2">{{ __('Platform') }}
                 <select wire:model="platform" class="{{ $field }}">
                     @foreach (Platform::cases() as $option)

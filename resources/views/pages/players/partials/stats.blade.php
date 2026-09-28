@@ -132,9 +132,8 @@
             </span>
             @if ($tournaments['rows'] === [])
                 <p class="{{ $empty }}" data-test="player-tournaments-empty">{{ __('No tournament played yet.') }}</p>
-                @if ($isMe)
-                    <x-button variant="quiet" :href="route('tournaments.index')" class="self-start">{{ __('See tournaments') }}</x-button>
-                @endif
+                {{-- The next open tournament as the picture (P53); the one button only on the own page. --}}
+                <x-tournaments.open-picture :cta="$isMe ? __('See tournaments') : null" />
             @else
                 @if ($tournaments['prizes'] > 0)
                     <p class="m-0 text-[13px] text-ink-2" data-test="player-prizes">{{ __('Prizes won:') }} <b class="text-btc tabular-nums">{{ PreSeason::formatSats($tournaments['prizes']) }} sats</b></p>
@@ -195,9 +194,8 @@
             <h2 id="ps-clans-h" class="{{ $sideHead }}">{{ __('Clans') }}</h2>
             @if ($clans === [])
                 <p class="{{ $empty }}" data-test="player-clans-empty">{{ $isMe ? __('You are not in a clan.') : __(':name is not in a clan.', ['name' => $name]) }}</p>
-                @if ($isMe)
-                    <x-button variant="quiet" :href="route('clans.index')" class="self-start">{{ __('Find a clan') }}</x-button>
-                @endif
+                {{-- The league's clans as the picture (P53); the one button only on the own page. --}}
+                <x-clans.join-picture :cta="$isMe ? __('Find a clan') : null" />
             @else
                 <ul role="list" class="m-0 list-none p-0">
                     @foreach ($clans as $row)
