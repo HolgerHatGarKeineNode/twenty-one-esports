@@ -63,12 +63,12 @@ test('the season page splits the share cap per era as a bar', function () {
     $this->get(route('mining'))->assertOk()->assertSeeHtml('data-test="share-cap-bar"');
 });
 
-test('the clans page folds its numbers into one line with the newest marks, and shows the map only with a meetup pin', function () {
+test('the clans page folds its numbers into one line above the clan cards, and shows the map only with a meetup pin', function () {
     $clan = Clan::factory()->create();
 
     $this->get(route('clans.index'))->assertOk()
         ->assertSeeHtml('data-test="clan-counters"')
-        ->assertSeeHtml('data-test="clan-counters-marks"')
+        ->assertSeeHtml('data-test="clan-grid"')
         ->assertDontSeeHtml('id="map-h"');
 
     $clan->forceFill(['meetup_name' => 'Einundzwanzig Berlin', 'meetup_city' => 'Berlin', 'meetup_latitude' => 52.52, 'meetup_longitude' => 13.4])->save();
