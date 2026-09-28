@@ -149,6 +149,24 @@ final class StreamBotCopy
         'tournament_note_places' => [
             ['🪑 :free of :places places left: :name', '🎮 :game · starts :starts', '⏳ Sign-up closes in :left', '👉 Grab a place: :url'],
         ],
+        // Pride notes on the same profile (PrideNotes): players named for what they did, tagged; the
+        // rendered slide follows after a blank line. Written by the kommunikator (2026-09-28).
+        'pride_note_win' => [
+            ['⚡ :winner takes the win over :loser (:mode)', '📈 :elo', '👉 Watch the game: :url'],
+            ['🏆 :winner beats :loser in :mode', '📈 :elo', '🎉 Well played to both', '👉 Watch it back: :url'],
+        ],
+        'pride_note_climbers' => [
+            ['🚀 Biggest gainers of the last :days days', ':players', '👉 See the ladder: :url'],
+            ['📈 Climbing fast this week', ':players', '🗓️ Over the last :days days', '👉 :url'],
+        ],
+        'pride_note_signups' => [
+            ['🙌 Welcome aboard: :players', '📝 :count new sign-ups', '❓ Who joins next?', '👉 :url'],
+            ['📝 :count new players just signed up', '🙌 :players', '❓ Who is next?', '👉 :url'],
+        ],
+        'pride_note_prizes' => [
+            ['💰 :pot sats in the pot for :name', '🥇 :places', '🎁 :sponsors', '👉 :url'],
+            ['⚡ :pot sats up for grabs: :name', '🥇 :places', '🎁 :sponsors', '👉 Sign up: :url'],
+        ],
     ];
 
     /**

@@ -86,6 +86,7 @@ class PrideSlides
             ->value('delta');
 
         return [
+            'gameId' => $game->id,
             'winner' => PublicName::clean($winner->displayName()),
             'winnerRef' => StreamImages::avatarRef($winner),
             'loser' => PublicName::clean($loser->displayName()),
@@ -181,6 +182,17 @@ class PrideSlides
             'startsAt' => $tournament->starts_at->copy()->timezone($timezone)->format('D j M, H:i T'),
             'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
         ];
+    }
+
+    /**
+     * read() data (fresh or cached) with its picture refs turned into data URIs, as the views take it.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{win: array<string, mixed>|null, climbers: list<array<string, mixed>>, signups: list<array<string, mixed>>, prizes: array<string, mixed>|null}
+     */
+    public function framed(array $data): array
+    {
+        return $this->frame($data);
     }
 
     /**

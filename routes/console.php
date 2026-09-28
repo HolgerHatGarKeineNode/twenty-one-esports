@@ -364,6 +364,13 @@ Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->witho
 Schedule::command('twentyone:stream-bot:free-places')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
+ * Pride notes on the same profile: the dynamic stream slides (latest win,
+ * climbers, sign-ups, the biggest pot's prizes) with their players tagged,
+ * each type at most once a day in its EU or US slot, only when it changed.
+ */
+Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+/*
  * The game channels (P21, NIP "Game channels"): the fixed kind 40 of every
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The

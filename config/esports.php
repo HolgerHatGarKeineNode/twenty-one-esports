@@ -870,6 +870,22 @@ return [
             'per_run' => 3,
             'retry_minutes' => 10,
         ],
+        // Pride notes on the same profile (twentyone:stream-bot:pride, PrideNotes): the dynamic stream
+        // slides with their players tagged, each type at most once a day in its slot (from `time` for
+        // `window_hours`, in its zone) and only when its text changed. Spread for EU and US readers.
+        'pride_notes' => [
+            'enabled' => (bool) env('ESPORTS_STREAM_BOT_PRIDE_NOTES', true),
+            'window_hours' => 3,
+            'retry_minutes' => 10,
+            // The rendered slides the notes link to (kept 30 days), served at /stream/pride/<hash>.png.
+            'image_dir' => storage_path('app/stream/pride'),
+            'slots' => [
+                'climbers' => ['time' => '12:00', 'timezone' => 'Europe/Berlin'],
+                'signups' => ['time' => '13:00', 'timezone' => 'America/New_York'],
+                'win' => ['time' => '19:00', 'timezone' => 'Europe/Berlin'],
+                'prizes' => ['time' => '19:00', 'timezone' => 'America/New_York'],
+            ],
+        ],
         // Reminders on the same profile while a tournament still has free places (P49,
         // twentyone:stream-bot:free-places): one note per slot, a slot being hours before sign-up
         // closes. A slot is due from its moment until the next slot's moment (or the stop), and

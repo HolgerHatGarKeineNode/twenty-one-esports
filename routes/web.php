@@ -17,6 +17,7 @@ use App\Http\Controllers\SearchController;
 use App\Http\Controllers\ShareCardController;
 use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\StreamCoverController;
+use App\Http\Controllers\StreamPrideImageController;
 use App\Http\Controllers\SwitchLocaleController;
 use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
@@ -108,6 +109,8 @@ Route::livewire('live', 'pages::live')->name('live');
 Route::get('stream/status', LiveStatusController::class)->withoutMiddleware('web')->middleware('throttle:live-status')->name('stream.status');
 // Its 30311 picture (StreamCover), the slide the daemon last rendered; public, no session.
 Route::get('stream/cover.png', StreamCoverController::class)->withoutMiddleware('web')->name('stream.cover');
+// The slides the stream bot's pride notes carry (PrideNotes), by their content hash; public, no session.
+Route::get('stream/pride/{hash}.png', StreamPrideImageController::class)->where('hash', '[0-9a-f]{64}')->withoutMiddleware('web')->name('stream.pride-image');
 
 // Daily chess (P5b): challenge a player, your daily games.
 Route::middleware('auth')->group(function () {
