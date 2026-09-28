@@ -4351,7 +4351,7 @@
     "Tied places share their prizes equally. A team’s prize is split equally among its roster. Rounding is down to whole sats; the rest stays in the pot.": "Geteilte Plätze teilen ihre Preise zu gleichen Teilen. Der Preis eines Teams wird gleichmäßig auf seinen Kader verteilt. Gerundet wird auf ganze Sats ab; der Rest bleibt im Topf.",
     "After the tournament an admin checks the places and approves the payouts. Each player is paid to the Lightning address in their Nostr profile at that moment.": "Nach dem Turnier prüft ein Admin die Platzierungen und gibt die Auszahlungen frei. Jeder Spieler wird an die Lightning-Adresse bezahlt, die sein Nostr-Profil in diesem Moment zeigt.",
     "Without a Lightning address the payout waits until you add one and an admin approves it. A changed address also needs an admin’s approval.": "Ohne Lightning-Adresse wartet die Auszahlung, bis du eine hinterlegst und ein Admin sie freigibt. Auch eine geänderte Adresse braucht die Freigabe eines Admins.",
-    "The league never shows a Lightning address as text.": "Die Liga zeigt eine Lightning-Adresse nie als Text.",
+    "A Lightning address is never shown publicly; only the admins who approve a payout see it.": "Eine Lightning-Adresse wird nie öffentlich angezeigt; nur die Admins, die eine Auszahlung freigeben, sehen sie.",
     "Fair play": "Fair Play",
     "Play every match you accept, and report only what happened.": "Spiel jedes Match, das du annimmst, und melde nur, was passiert ist.",
     "A match you do not show up to is a forfeit, and in casual 1v1 it counts toward the pause above.": "Ein Match, zu dem du nicht erscheinst, ist ein Forfeit und zählt in Casual 1v1 zur Pause oben.",

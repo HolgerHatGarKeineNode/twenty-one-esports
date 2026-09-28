@@ -306,7 +306,7 @@ final class RulesPage
                 __('Tied places share their prizes equally. A team’s prize is split equally among its roster. Rounding is down to whole sats; the rest stays in the pot.'),
                 __('After the tournament an admin checks the places and approves the payouts. Each player is paid to the Lightning address in their Nostr profile at that moment.'),
                 __('Without a Lightning address the payout waits until you add one and an admin approves it. A changed address also needs an admin’s approval.'),
-                __('The league never shows a Lightning address as text.'),
+                __('A Lightning address is never shown publicly; only the admins who approve a payout see it.'),
             ],
             'links' => [[__('Tournaments'), route('tournaments.index')]],
         ];
