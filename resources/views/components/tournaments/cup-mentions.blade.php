@@ -1,4 +1,4 @@
-@props(['game' => null, 'except' => null, 'filters' => false, 'heading' => false])
+@props(['game' => null, 'except' => null, 'filters' => false, 'heading' => false, 'compact' => false])
 
 {{--
     The league's casual cups (P25) as a board (P53): open for sign-up or
@@ -21,6 +21,8 @@
     `except`: a tournament id to leave out (the cup whose page this is).
     `heading`: a "Casual cups" heading (home and the tournaments page); without
     the filter bar it links to the tournaments page, where the filters are.
+    `compact`: one line per game (home: the cups stay a side mention, user
+    2026-09-28); the full board lives on the tournaments page.
     `filters`: the filter bar (game, region, free places, order), without a
     reload; only where every game's cups show (the tournaments page).
     Renders nothing when no cup is on.
@@ -33,7 +35,7 @@
 
     $cupGroups = app(CupBoard::class)->groups($game, $except, auth()->user()?->timezone);
     $cupSingle = $game !== null;
-    $cupFilters = $filters && ! $cupSingle && $cupGroups !== [];
+    $cupFilters = $filters && ! $cupSingle && ! $compact && $cupGroups !== [];
     $cupRegions = CasualCups::regions();
     $cupCount = array_sum(array_map(fn (array $group): int => count($group['cups']), $cupGroups));
     $segBtn = 'inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 border-0 px-3 text-[13px] whitespace-nowrap';
@@ -104,6 +106,44 @@
             </div>
         @endif
 
+        @if ($compact)
+            {{--
+                Home (user, 2026-09-28): one line per game, a side mention. The mini cover, the game, then
+                each region as a link to its cup with its start (the same spoof-guarded time) and its seats.
+            --}}
+            <ul class="m-0 flex list-none flex-col gap-1 p-0" aria-label="{{ __('Casual cups') }}" data-test="cup-compact">
+                @foreach ($cupGroups as $group)
+                    <li wire:key="cup-line-{{ $group['game'] }}" data-cup-group data-game="{{ $group['game'] }}" data-test="cup-line"
+                        class="grid grid-cols-[48px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 rounded-md border border-hairline px-2 py-1.5 lg:grid-cols-[56px_10rem_minmax(0,1fr)_minmax(0,1fr)]">
+                        <x-game-cover :game="$group['game']" size="thumb" class="w-12 rounded-xs lg:w-14" data-test="cup-line-cover" />
+                        <span class="min-w-0 truncate text-[13px] font-bold">{{ GameNames::game($group['game']) }}</span>
+                        @foreach ($group['cups'] as $cup)
+                            @php
+                                $cupRow = $cup['tournament'];
+                                $segment = match (true) { $cup['places'] <= 4 => 'w-2', $cup['places'] <= 8 => 'w-1.5', default => 'w-1' };
+                            @endphp
+                            <a href="{{ route('tournaments.show', $cupRow) }}" wire:key="cup-line-{{ $cupRow->id }}"
+                               class="col-span-2 flex min-h-11 min-w-0 items-center gap-2.5 rounded-sm px-1.5 text-xs text-ink-2 hover:bg-row-hover lg:col-span-1"
+                               data-test="cup-mention" data-region="{{ $cup['regionLabel'] }}" data-cup-row data-region-key="{{ $cup['region'] ?? '' }}">
+                                <span class="sr-only">{{ $cupRow->name }}, {{ $cupRow->status->label() }}</span>
+                                <span class="inline-flex h-6 min-w-9 items-center justify-center rounded-tag bg-raised px-1 font-bold text-ink" aria-hidden="true">{{ $cup['regionLabel'] ?? __('Casual') }}</span>
+                                <time datetime="{{ $cupRow->starts_at->copy()->utc()->format('Y-m-d\TH:i:s\Z') }}" class="flex min-w-0 items-baseline gap-1.5 truncate" data-test="cup-mention-start"
+                                      @unless ($cup['fixedZone']) x-data="cupStart({ at: {{ (int) $cupRow->starts_at->getTimestampMs() }}, zone: @js($cup['zone']) })" @endunless>
+                                    <b class="text-ink tabular-nums" @unless ($cup['fixedZone']) x-text="clock || @js($cup['clock'])" @endunless data-test="cup-clock">{{ $cup['clock'] }}</b>
+                                    <span class="truncate"><span @unless ($cup['fixedZone']) x-text="day || @js($cup['day'])" @endunless data-test="cup-day">{{ $cup['day'] }}</span>, <span class="text-ink-3" @unless ($cup['fixedZone']) x-text="city || @js($cup['city'])" @endunless data-test="cup-city">{{ $cup['city'] }}</span></span>
+                                </time>
+                                <span class="ml-auto flex shrink-0 items-center gap-0.5" aria-hidden="true" data-test="cup-seats">
+                                    @for ($seat = 0; $seat < min($cup['places'], 16); $seat++)
+                                        <span @class([$segment, 'h-3 rounded-[1px]', 'bg-btc' => $seat < $cup['taken'], 'border border-edge' => $seat >= $cup['taken']])></span>
+                                    @endfor
+                                </span>
+                                <span class="sr-only">{{ __(':taken of :places spots taken', ['taken' => $cup['taken'], 'places' => $cup['places']]) }}</span>
+                            </a>
+                        @endforeach
+                    </li>
+                @endforeach
+            </ul>
+        @else
         <ul @if ($cupFilters) x-ref="groups" @endif aria-label="{{ __('Casual cups') }}"
             @class(['m-0 grid list-none gap-2 p-0', 'lg:grid-cols-2' => ! $cupSingle])>
             @foreach ($cupGroups as $group)
@@ -161,6 +201,7 @@
                 </li>
             @endforeach
         </ul>
+        @endif
 
         @if ($cupFilters)
             <div x-show="shown === 0" x-cloak class="flex flex-wrap items-center gap-3 rounded-lg border border-hairline px-4 py-3 text-[13px] text-ink-2" data-test="cup-filter-empty">
