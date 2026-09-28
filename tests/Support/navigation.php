@@ -89,6 +89,7 @@ const NAV_PAGES = [
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],
     'admin.organizers' => ['roles' => ['admin'], 'max' => 2],
     'gaming.edit' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
+    'settings.account' => ['roles' => NAV_LOGGED_IN, 'max' => 2],
     'settings.chess' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'settings.opponents' => ['roles' => NAV_LOGGED_IN, 'max' => 2],
     'settings.badges' => ['roles' => NAV_LOGGED_IN, 'max' => 1],

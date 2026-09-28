@@ -45,11 +45,7 @@ new #[Title('Badges and sharing')] class extends Component {}; ?>
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="badge-settings">
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
-        <span class="grow"></span>
-        @include('pages.settings.partials.nav', ['current' => 'badges'])
-    </div>
+    <x-settings.header current="badges" />
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]">
         <section id="share" aria-labelledby="sh-h" class="flex min-w-0 flex-col gap-4 self-start rounded-lg bg-card px-4 py-5 lg:order-first lg:px-6" data-test="share-moments">

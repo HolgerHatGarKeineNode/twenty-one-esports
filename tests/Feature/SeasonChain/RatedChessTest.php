@@ -182,7 +182,7 @@ test('regression (security gate F3): an account cannot be deleted during a rated
         ->and(ChessGame::query()->whereKey($game->id)->exists())->toBeTrue();
 
     // The settings page says why instead of failing.
-    Livewire::actingAs($b)->test('pages::settings.gaming')
+    Livewire::actingAs($b)->test('pages::settings.account')
         ->set('confirmDeletion', true)
         ->call('deleteAccount')
         ->assertHasErrors('confirmDeletion')

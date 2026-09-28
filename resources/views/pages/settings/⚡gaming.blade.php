@@ -1,47 +1,28 @@
 <?php
 
-use App\Enums\Platform;
-use App\Livewire\Actions\DeleteAccount;
+use App\Games\GameRegistry;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
-use Livewire\WithFileUploads;
 
 /*
- * Esports extras only. Name and picture come from the user's Nostr profile
- * and are edited in their own Nostr client, never here.
+ * Gamer tags (P51): the account names a player may keep here, per game, and
+ * all of them optional. Who sees a saved tag, as of 2026-09-28: the player
+ * alone. It is stored with the account on the league server, never shown on
+ * a profile or to another player and never published on Nostr; the only
+ * place it leaves this page is the player's own card composer in an EA FC
+ * 1v1 room (`ea`, pages/matches/⚡room), where it is a prefill the player
+ * still sends, sealed to the opponent. No flow requires a saved tag.
+ * Avatar, platform, time zone and language moved to the account tab.
  */
-new #[Title('Gaming profile')] class extends Component {
-    use WithFileUploads;
-
-    public ?TemporaryUploadedFile $avatar = null;
-
-    public string $platform = '';
-
+new #[Title('Gamer tags')] class extends Component {
     /** @var array<string, string> */
     public array $gamerTags = [];
 
-    public string $timezone = '';
-
-    public string $locale = '';
-
-    public bool $confirmDeletion = false;
-
     public function mount(): void
     {
-        $user = $this->user();
-
-        $this->platform = $user->platform->value ?? '';
-        $this->gamerTags = array_merge(
-            array_fill_keys(array_keys(config('esports.gamer_tags')), ''),
-            $user->gamer_tags ?? [],
-        );
-        $this->timezone = $user->timezone ?? '';
-        $this->locale = $user->locale ?? app()->getLocale();
+        $this->gamerTags = $this->fields($this->user()->gamer_tags ?? []);
     }
 
     public function save(): void
@@ -49,56 +30,64 @@ new #[Title('Gaming profile')] class extends Component {
         $services = array_keys(config('esports.gamer_tags'));
 
         $validated = $this->validate([
-            'avatar' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'platform' => ['nullable', Rule::enum(Platform::class)],
             'gamerTags' => ['array:'.implode(',', $services)],
             'gamerTags.*' => ['nullable', 'string', 'max:64'],
-            'timezone' => ['nullable', 'timezone:all'],
-            'locale' => ['required', Rule::in(config('app.supported_locales'))],
         ]);
 
-        $user = $this->user();
+        $this->store(array_filter(array_map('trim', $validated['gamerTags'] ?? [])));
+        $this->gamerTags = $this->fields($this->user()->gamer_tags ?? []);
 
-        if ($this->avatar !== null) {
-            $previous = $user->avatar_path;
-            $user->avatar_path = $this->avatar->store('avatars', 'public') ?: null;
-
-            if ($previous !== null) {
-                Storage::disk('public')->delete($previous);
-            }
-
-            $this->avatar = null;
-        }
-
-        $user->fill([
-            'platform' => $validated['platform'] ?: null,
-            'gamer_tags' => array_filter(array_map('trim', $validated['gamerTags'] ?? [])) ?: null,
-            'timezone' => $validated['timezone'] ?: null,
-            'locale' => $validated['locale'],
-        ])->save();
-
-        session()->put('locale', $validated['locale']);
-
-        $this->dispatch('gaming-profile-saved');
+        $this->dispatch('gamer-tags-saved');
     }
 
-    public function removeAvatar(): void
+    /**
+     * Removes one saved tag at once, without saving what else was typed.
+     */
+    public function clear(string $service): void
     {
-        $user = $this->user();
-
-        if ($user->avatar_path !== null) {
-            Storage::disk('public')->delete($user->avatar_path);
-            $user->forceFill(['avatar_path' => null])->save();
+        if (! array_key_exists($service, config('esports.gamer_tags'))) {
+            return;
         }
+
+        $saved = $this->user()->gamer_tags ?? [];
+        unset($saved[$service]);
+
+        $this->store($saved);
+        $this->gamerTags[$service] = '';
     }
 
-    public function deleteAccount(DeleteAccount $deleteAccount): void
+    /**
+     * Removes every saved tag: all accounts private again.
+     */
+    public function clearAll(): void
     {
-        $this->validate(['confirmDeletion' => ['accepted']]);
+        $this->store([]);
+        $this->gamerTags = $this->fields([]);
+    }
 
-        $deleteAccount($this->user());
+    /**
+     * @param  array<string, string>  $tags
+     */
+    private function store(array $tags): void
+    {
+        $this->user()->forceFill(['gamer_tags' => $tags === [] ? null : $tags])->save();
+    }
 
-        $this->redirect(route('home'));
+    /**
+     * One field per service of `esports.gamer_tags`, filled with the saved tag.
+     *
+     * @param  array<string, string>  $saved
+     * @return array<string, string>
+     */
+    private function fields(array $saved): array
+    {
+        $fields = array_fill_keys(array_keys(config('esports.gamer_tags')), '');
+
+        foreach ($fields as $service => $empty) {
+            $fields[$service] = (string) ($saved[$service] ?? '');
+        }
+
+        return $fields;
     }
 
     private function user(): User
@@ -110,74 +99,128 @@ new #[Title('Gaming profile')] class extends Component {
     }
 }; ?>
 
-<section class="w-full max-w-lg space-y-10 px-4 pb-8 lg:max-w-[calc(32rem+6rem)] lg:px-12 lg:pb-10">
-    @include('pages.settings.partials.nav', ['current' => 'gaming'])
+@php
+    $saved = array_filter(auth()->user()->gamer_tags ?? []);
+    $labels = config('esports.gamer_tags');
+    $registry = app(GameRegistry::class);
 
-    <flux:heading size="xl" level="1">{{ __('Gaming profile') }}</flux:heading>
+    // Which tags each game's card holds, and what reads them today. A registered game in no card needs no tag.
+    $cards = [];
+    $placed = [];
 
-    <flux:text>
-        {{ __('Your name and picture come from your Nostr profile. Change them in your Nostr app.') }}
-    </flux:text>
+    foreach ([
+        [['rocket-league'], ['epic', 'steam', 'psn', 'xbox', 'nintendo'], __('Only for you: nothing on this site reads these. In a Rocket League 1v1 the host shares a private match name and password in the room chat instead.')],
+        [['ea-sports-fc-27', 'ea-sports-fc-26'], ['ea'], __('Fills in the EA ID card of your EA Sports FC 1v1 room. It goes out only when you press Send card, and only to your opponent.')],
+    ] as [$games, $services, $use]) {
+        $games = array_values(array_filter($games, fn (string $slug): bool => $registry->find($slug) !== null));
+        $services = array_values(array_filter($services, fn (string $service): bool => isset($labels[$service])));
 
-    <form wire:submit="save" class="space-y-6">
-        <div class="space-y-2">
-            <flux:input type="file" wire:model="avatar" :label="__('Avatar')" accept="image/png,image/jpeg,image/webp" />
+        if ($games !== [] && $services !== []) {
+            $cards[] = ['games' => $games, 'services' => $services, 'use' => $use];
+            $placed = [...$placed, ...$games];
+        }
+    }
 
-            @if (auth()->user()->avatar_path)
-                <flux:button size="sm" variant="ghost" wire:click="removeAvatar">{{ __('Remove avatar') }}</flux:button>
+    $untagged = array_values(array_diff(array_keys($registry->all()), $placed));
+    $gameNames = fn (array $slugs): string => \Illuminate\Support\Arr::join(array_map(fn (string $slug): string => \App\Support\GameNames::game($slug), $slugs), ', ', ' '.__('and').' ');
+@endphp
+
+<div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="gamer-tag-settings">
+    <x-settings.header current="gaming" />
+
+    {{-- Privacy first: what a saved tag is, and the private way. --}}
+    <section aria-labelledby="gt-privacy-h" class="flex flex-col gap-5 rounded-lg bg-card px-4 py-5 shadow-ring lg:px-6" data-test="gamer-tag-privacy">
+        <div class="flex flex-col gap-2">
+            <h2 id="gt-privacy-h" class="m-0 font-display text-lg font-bold lg:text-xl">{{ __('Every field is optional') }}</h2>
+            <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('You can play every game here without one. An empty field keeps that account private.') }}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div class="flex gap-3" data-test="privacy-saved">
+                <x-icon name="lock" :size="18" class="mt-0.5 shrink-0 text-ink-2" />
+                <p class="m-0 max-w-[60ch] text-[13px] leading-normal text-ink-2"><b class="text-ink">{{ __('Saved here') }}</b><br>{{ __('Stored on the league server with your account. Only you see them: they are not on your profile, not shown to other players and not published on Nostr.') }}</p>
+            </div>
+            <div class="flex gap-3" data-test="privacy-room">
+                <x-icon name="key" :size="18" class="mt-0.5 shrink-0 text-ink-2" />
+                <div class="flex flex-col gap-2">
+                    <p class="m-0 max-w-[60ch] text-[13px] leading-normal text-ink-2"><b class="text-ink">{{ __('Shared in a match room') }}</b><br>{{ __('In a 1v1 room you send your EA ID or a private match to your opponent in the room chat, end-to-end encrypted over Nostr (NIP-17). The league only learns that a card went out, never what is in it.') }}</p>
+                    <span class="flex flex-wrap gap-x-5">
+                        <a href="{{ route('rules') }}#casual-1v1" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="privacy-rules-link">{{ __('How a 1v1 works') }}</a>
+                        <a href="{{ route('play') }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="privacy-play-link">{{ __('Play 1v1 casual') }}</a>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex min-h-11 flex-wrap items-center gap-x-4 gap-y-2 border-t border-hairline pt-4" data-test="gamer-tag-state">
+            @if ($saved === [])
+                <span class="flex items-center gap-2 text-[13px] text-win" data-test="all-private"><x-icon name="lock" :size="16" class="shrink-0" />{{ __('Nothing saved. All your accounts stay private.') }}</span>
+            @else
+                <span class="text-[13px] text-ink-2" data-test="saved-count">{{ trans_choice('{1} One tag saved.|[2,*] :count tags saved.', count($saved), ['count' => count($saved)]) }}</span>
+                <x-button variant="quiet" icon="lock" wire:click="clearAll" wire:confirm="{{ __('Remove all saved gamer tags?') }}" data-test="clear-all-tags">{{ __('Keep all private') }}</x-button>
             @endif
         </div>
+    </section>
 
-        <flux:select wire:model="platform" :label="__('Platform')">
-            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
-            @foreach (\App\Enums\Platform::cases() as $case)
-                <flux:select.option value="{{ $case->value }}">{{ $case->label() }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        <flux:fieldset>
-            <flux:legend>{{ __('Gamer tags') }}</flux:legend>
-
-            <div class="space-y-3">
-                @foreach (config('esports.gamer_tags') as $service => $label)
-                    <flux:input wire:model="gamerTags.{{ $service }}" :label="$label" wire:key="tag-{{ $service }}" />
-                @endforeach
+    <form wire:submit="save" class="flex flex-col gap-5" aria-label="{{ __('Gamer tags') }}">
+        {{-- Two columns on a desktop: the first game's card left, the others stacked right. --}}
+        <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-2">
+            <div class="flex min-w-0 flex-col gap-5">
+            @foreach ($cards as $i => $card)
+                @if ($i === 1)
             </div>
-        </flux:fieldset>
+            <div class="flex min-w-0 flex-col gap-5">
+                @endif
+                <section aria-labelledby="gt-card-{{ $i }}" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="tag-card-{{ $card['games'][0] }}">
+                    <div class="flex items-start gap-4">
+                        <x-game-cover :game="$card['games'][0]" size="thumb" class="w-16 rounded-sm sm:w-24" />
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <h3 id="gt-card-{{ $i }}" class="m-0 text-[15px] font-bold">{{ $gameNames($card['games']) }}</h3>
+                            <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="tag-use">{{ $card['use'] }}</p>
+                        </div>
+                    </div>
 
-        <flux:select wire:model="timezone" :label="__('Time zone')">
-            <flux:select.option value="">{{ __('Not set') }}</flux:select.option>
-            @foreach (\DateTimeZone::listIdentifiers() as $zone)
-                <flux:select.option value="{{ $zone }}">{{ $zone }}</flux:select.option>
+                    @foreach ($card['services'] as $service)
+                        <div class="flex flex-col gap-1.5 border-t border-hairline pt-4" wire:key="tag-{{ $service }}" data-test="tag-field-{{ $service }}">
+                            <label for="tag-{{ $service }}" class="text-sm">{{ $labels[$service] }}</label>
+                            <div class="flex gap-2">
+                                <input id="tag-{{ $service }}" wire:model="gamerTags.{{ $service }}" maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="tag-{{ $service }}-state"
+                                       class="h-11 min-w-0 grow rounded-md border border-edge bg-ground px-3 text-[13px] text-ink" data-test="tag-input-{{ $service }}">
+                                @if (isset($saved[$service]))
+                                    <x-button variant="quiet" icon="close" wire:click="clear('{{ $service }}')" class="shrink-0" aria-label="{{ __('Remove your :service tag', ['service' => $labels[$service]]) }}" data-test="tag-clear-{{ $service }}">{{ __('Remove') }}</x-button>
+                                @endif
+                            </div>
+                            @if (isset($saved[$service]))
+                                <span id="tag-{{ $service }}-state" class="flex items-center gap-1.5 text-xs text-ink-2" data-test="tag-state-saved"><x-icon name="check" :size="14" class="shrink-0" />{{ __('Saved. Only you see it.') }}</span>
+                            @else
+                                <span id="tag-{{ $service }}-state" class="flex items-center gap-1.5 text-xs text-win" data-test="tag-state-private"><x-icon name="lock" :size="14" class="shrink-0" />{{ __('Private. Nothing saved.') }}</span>
+                            @endif
+                            @error('gamerTags.'.$service)<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                        </div>
+                    @endforeach
+                </section>
             @endforeach
-        </flux:select>
+            @if (count($cards) < 2)
+            </div>
+            <div class="flex min-w-0 flex-col gap-5">
+            @endif
 
-        <flux:select wire:model="locale" :label="__('Language')">
-            <flux:select.option value="en">English</flux:select.option>
-            <flux:select.option value="de">Deutsch</flux:select.option>
-        </flux:select>
+            @if ($untagged !== [])
+                <section aria-labelledby="gt-card-none" class="flex items-start gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="tag-card-none">
+                    <x-game-cover :game="$untagged[0]" size="thumb" class="w-16 rounded-sm sm:w-24" />
+                    <div class="flex min-w-0 flex-col gap-1">
+                        <h3 id="gt-card-none" class="m-0 text-[15px] font-bold">{{ $gameNames($untagged) }}</h3>
+                        <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Played right here on the site. It needs no gamer tag.') }}</p>
+                    </div>
+                </section>
+            @endif
+            </div>
+        </div>
 
-        <div class="flex items-center gap-4">
-            <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
-            <flux:text x-data="{ shown: false }" x-show="shown" x-cloak
-                x-on:gaming-profile-saved.window="shown = true; setTimeout(() => shown = false, 2000)">
-                {{ __('Saved.') }}
-            </flux:text>
+        <div class="flex flex-wrap items-center gap-4">
+            <x-button type="submit" data-test="gamer-tags-save">{{ __('Save gamer tags') }}</x-button>
+            <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data="{ shown: false }" x-show="shown" x-cloak
+                  x-on:gamer-tags-saved.window="shown = true; setTimeout(() => shown = false, 2000)" data-test="gamer-tags-saved"><x-icon name="check" :size="16" />{{ __('Saved.') }}</span>
         </div>
     </form>
-
-    <flux:separator />
-
-    <div class="space-y-4">
-        <flux:heading level="2">{{ __('Delete account') }}</flux:heading>
-        <flux:text>
-            {{ __('This deletes your gaming profile, avatar and settings on this site and logs you out.') }}
-            {{ __('Results you confirmed stay public on Nostr, because you signed them with your key. Nobody can delete them.') }}
-        </flux:text>
-
-        <form wire:submit="deleteAccount" class="space-y-4">
-            <flux:checkbox wire:model="confirmDeletion" :label="__('I understand and want to delete my account.')" />
-            <flux:button type="submit" variant="danger">{{ __('Delete account') }}</flux:button>
-        </form>
-    </div>
-</section>
+</div>

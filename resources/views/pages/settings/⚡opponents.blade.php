@@ -91,11 +91,7 @@ new #[Title('Opponents')] class extends Component {
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="opponent-settings"
      x-data="nostrAction({ pubkey: @js($user->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })">
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
-        <span class="grow"></span>
-        @include('pages.settings.partials.nav', ['current' => 'opponents'])
-    </div>
+    <x-settings.header current="opponents" />
 
     @error('opponents')<p class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
     <p x-show="error" x-text="error" x-cloak class="m-0 rounded-lg bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert"></p>

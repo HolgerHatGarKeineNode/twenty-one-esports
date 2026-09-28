@@ -151,12 +151,9 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="chess-settings">
-    <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]">{{ __('Settings') }}</h1>
+    <x-settings.header current="chess">
         <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data x-show="$wire.saved" x-cloak data-test="settings-saved"><x-icon name="check" :size="16" />{{ __('Saved, applies from your next move') }}</span>
-        <span class="grow"></span>
-        @include('pages.settings.partials.nav', ['current' => 'chess'])
-    </div>
+    </x-settings.header>
 
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[400px_452px_minmax(0,1fr)]">
         {{-- Preview + keyboard --}}
