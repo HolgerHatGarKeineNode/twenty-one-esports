@@ -5,6 +5,7 @@ use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
+use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualQueue;
 use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\File;
@@ -339,6 +340,47 @@ test('in German, the longest language, the module and the ready prompt still fit
             ->and($module)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
             ->and($prompt)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
             ->and($page->evaluate('() => window.__errors'))->toBe([]);
+    } finally {
+        $relay->stop(1);
+    }
+});
+
+test('a scheduled 1v1 in its check-in window: step 1 "Checked in", the check-in clock and Check in as the one action, at 375 and 1440', function () {
+    [$relay] = casualPlayRelay();
+
+    try {
+        [$anna, $bert] = User::factory()->count(2)->create();
+        TestSigner::forBrowser($anna);
+        $at = now()->addDay()->setTime(20, 0)->getTimestamp();
+        $match = app(CasualChallenges::class)->challenge($anna, $bert, 'rocket-league', Platform::Pc, true, [$at], now()->addDay()->setTime(12, 0)->getTimestamp(), '');
+        $match = app(CasualChallenges::class)->accept($match, $bert, $at, Platform::Pc, true);
+        $this->travelTo(now()->setTimestamp($at)->subMinutes(5));
+
+        $page = casualPlayPage($anna, route('matches.room', $match, false), 375, 812);
+        casualPlayControl($page);
+        // The browser counts with its own clock, not the travelled one of the test: the clock may read a day (h:mm:ss).
+        BrowserWait::until($page, '() => document.querySelector("[data-test=casual-clock]")?.innerText.match(/^\\d+:\\d\\d(:\\d\\d)?$/) !== null', 5_000);
+
+        $narrow = casualPlayGeometry($page, '[data-test=casual-steps]');
+        $state = $page->evaluate('() => ({
+            step: document.querySelector("[data-test=casual-current-step]").innerText,
+            kind: document.querySelector("[data-test=casual-deadline]").dataset.kind,
+            button: Math.round(document.querySelector("[data-test=casual-checkin]").getBoundingClientRect().height),
+        })');
+        casualPlayShot($page, 'casual-scheduled-steps-375', '[data-test=casual-steps]');
+        $page->setViewportSize(1440, 900);
+        $wide = casualPlayGeometry($page, '[data-test=casual-steps]');
+        casualPlayShot($page, 'casual-scheduled-steps-1440', '[data-test=casual-steps]');
+
+        $page->locator('[data-test=casual-checkin]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=casual-checkin]") === null && document.querySelector("[data-test=casual-steps]").innerText.includes("1 of 2 checked in")', 10_000);
+
+        expect($state)->toBe(['step' => 'Step 1 of 5: Checked in', 'kind' => 'checkin', 'button' => 56])
+            ->and($narrow)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
+            ->and($wide)->toMatchArray(['overflow' => 0, 'inWindow' => true, 'small' => [], 'outside' => [], 'clipped' => []])
+            ->and($match->refresh()->readyAt(casualSideOf($match, $anna)))->not->toBeNull()
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     } finally {
         $relay->stop(1);
     }

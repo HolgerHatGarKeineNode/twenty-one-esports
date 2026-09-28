@@ -10,6 +10,7 @@ use App\Models\SeriesMatch;
 use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Dock\OpenMatches;
+use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualLobby;
 use App\Support\Series\CasualMatches;
@@ -391,4 +392,83 @@ test('a casual 1v1 room shows no Elo facts, since it is never rated; a clan seri
 
     $this->actingAs($captain)->get(route('matches.room', $series))->assertOk()
         ->assertSee('data-test="elo-fact"', false)->assertSee('At stake')->assertSee('Elo before');
+});
+
+/*
+ * Scheduled 1v1 (P23 S4) in the same screens: the room's timeline, the dock, the links to the form.
+ */
+
+/**
+ * A scheduled Rocket League 1v1 from Anna to Bert, accepted, the clock `$before` minutes before its start.
+ *
+ * @return array{0: SeriesMatch, 1: User, 2: User}
+ */
+function casualPlayScheduled(int $before): array
+{
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $at = now()->addDay()->setTime(20, 0)->getTimestamp();
+    $match = app(CasualChallenges::class)->challenge($anna, $bert, 'rocket-league', Platform::Pc, true, [$at], now()->addDay()->setTime(12, 0)->getTimestamp(), '');
+    $match = app(CasualChallenges::class)->accept($match, $bert, $at, Platform::Pc, true);
+    test()->travelTo(now()->setTimestamp($at)->subMinutes($before));
+
+    return [$match->refresh(), $anna, $bert];
+}
+
+test('a scheduled match: step 1 is "Checked in", the clock counts to the opening and then to the close, and Check in is the primary action inside the window', function () {
+    [$match, $anna, $bert] = casualPlayScheduled(before: 30);
+
+    Livewire::actingAs($anna)->test('pages::matches.room', ['match' => $match])
+        ->assertSee('Checked in')->assertSee('0 of 2 checked in')
+        ->assertSee('data-kind="checkin"', false)
+        ->assertSee('The check-in opens at')
+        ->assertSee('casualClock('.$match->checkInOpensAt()->getTimestamp().')', false)
+        ->assertDontSee('data-test="casual-checkin"', false)
+        ->assertDontSee('data-test="casual-share"', false);
+
+    $this->travel(21)->minutes();
+
+    $room = Livewire::actingAs($anna)->test('pages::matches.room', ['match' => $match])
+        ->assertSee('Both check in by')
+        ->assertSee('casualClock('.$match->ready_by->getTimestamp().')', false);
+
+    // The big primary button of the step, as Ready.
+    expect(preg_match('/<button[^>]*class="[^"]*min-h-14[^"]*"[^>]*data-test="casual-checkin"/', $room->html()))->toBe(1);
+    $room->call('casualCheckIn')->assertSee('1 of 2 checked in');
+
+    Livewire::actingAs($bert)->test('pages::matches.room', ['match' => $match])->call('casualCheckIn')
+        ->assertSee('data-kind="lobby"', false)
+        ->assertSee('data-test="casual-step-ready" data-done="1"', false);
+});
+
+test('the dock shows a scheduled match as starting, then as check-in on the player until they are in', function () {
+    [$match, $anna] = casualPlayScheduled(before: 30);
+    $dock = app(OpenMatches::class);
+
+    $item = $dock->for($anna)->sole();
+    expect([$item->phase, $item->state, $item->needsYou, $item->tick])->toBe(['ready', 'Starts', false, null]);
+
+    $this->travel(21)->minutes();
+    $item = $dock->for($anna)->sole();
+    expect([$item->state, $item->needsYou, $item->tick['endsAt']])->toBe(['Check in', true, (int) $match->ready_by->getTimestampMs()]);
+
+    app(CasualMatches::class)->checkIn($match, $anna);
+    expect($dock->for($anna)->sole()->needsYou)->toBeFalse();
+});
+
+test('"Schedule a 1v1" leads to the challenge form from the module, each looking player, and a player page', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    app(CasualQueue::class)->setLooking($bert, 'ea-sports-fc-26');
+
+    Livewire::actingAs($anna)->test('casual-play', ['game' => 'ea-sports-fc-26'])
+        ->assertSee(e(route('challenges.casual', ['game' => 'ea-sports-fc-26'])), false)
+        ->assertSee(e(route('challenges.casual', ['to' => $bert->id, 'game' => 'ea-sports-fc-26'])), false);
+
+    $this->actingAs($anna)->get(route('players.show', $bert->npub))->assertOk()
+        ->assertSee('data-test="schedule-1v1"', false)
+        ->assertSee(e(route('challenges.casual', ['to' => $bert->id, 'game' => 'ea-sports-fc-26'])), false);
+
+    // The link opens the form with the player filled in.
+    $this->actingAs($anna)->get(route('challenges.casual', ['to' => $bert->id, 'game' => 'ea-sports-fc-26']))->assertOk()->assertSee(e($bert->displayName()), false);
+    // Not on one's own page.
+    $this->actingAs($bert)->get(route('players.show', $bert->npub))->assertOk()->assertDontSee('data-test="schedule-1v1"', false);
 });
