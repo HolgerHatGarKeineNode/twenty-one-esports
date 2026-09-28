@@ -49,13 +49,28 @@ final class RulesPage
     }
 
     /** "5 minutes", "2 hours", "3 days": a duration in the unit it is set in. */
-    public static function minutes(int $minutes): string
+    public static function minutes(int $minutes, ?string $locale = null): string
     {
         return match (true) {
-            $minutes > 0 && $minutes % 1440 === 0 => trans_choice(':count day|:count days', intdiv($minutes, 1440)),
-            $minutes > 0 && $minutes % 60 === 0 => trans_choice(':count hour|:count hours', intdiv($minutes, 60)),
-            default => trans_choice(':count minute|:count minutes', $minutes),
+            $minutes > 0 && $minutes % 1440 === 0 => trans_choice(':count day|:count days', intdiv($minutes, 1440), [], $locale),
+            $minutes > 0 && $minutes % 60 === 0 => trans_choice(':count hour|:count hours', intdiv($minutes, 60), [], $locale),
+            default => trans_choice(':count minute|:count minutes', $minutes, [], $locale),
         };
+    }
+
+    /**
+     * "1 day" for 1920 minutes, "23 hours" for 1439: a time left in its
+     * largest whole unit, rounded down, worded as {@see minutes()}.
+     */
+    public static function largestUnit(int $minutes, ?string $locale = null): string
+    {
+        $unit = match (true) {
+            $minutes >= 1440 => 1440,
+            $minutes >= 60 => 60,
+            default => 1,
+        };
+
+        return self::minutes(intdiv($minutes, $unit) * $unit, $locale);
     }
 
     public static function seconds(int $seconds): string

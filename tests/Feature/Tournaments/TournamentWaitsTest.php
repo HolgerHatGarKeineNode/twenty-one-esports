@@ -230,7 +230,7 @@ test('the automatic reminders go out at each point before the decision, exactly 
 
     $notice = $a->notifications()->where('data->kind', NotificationKind::TournamentReminder->value)->latest('created_at')->first();
 
-    expect($notice->data['body'])->toContain('The league decides in 5 min.')->toContain('Report the result, or the series goes to the admins.');
+    expect($notice->data['body'])->toContain('The league decides in 5 minutes.')->toContain('Report the result, or the series goes to the admins.');
 });
 
 test('a reminder point inside the wait is skipped, and a paused tournament reminds nobody', function () {

@@ -10,6 +10,7 @@ use App\Models\TournamentReminder;
 use App\Models\User;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use App\Support\Pages\RulesPage;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Throwable;
@@ -163,7 +164,7 @@ final class TournamentReminders
         $locale = $player->locale ?? (string) config('app.locale');
         $action = (string) $wait->actionText($locale, $player);
         $body = $wait->counts() && $wait->decidesAt !== null
-            ? __('The league decides in :minutes min. :action', ['minutes' => max(1, (int) ceil(($wait->decidesAt->getTimestamp() - now()->getTimestamp()) / 60)), 'action' => $action], $locale)
+            ? __('The league decides in :time. :action', ['time' => RulesPage::largestUnit(max(1, (int) ceil(($wait->decidesAt->getTimestamp() - now()->getTimestamp()) / 60)), $locale), 'action' => $action], $locale)
             : $action;
 
         $this->notifier->send($player, NotificationKind::TournamentReminder, new Notice(

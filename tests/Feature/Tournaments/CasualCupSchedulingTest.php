@@ -9,6 +9,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\LeagueTime;
+use App\Support\Pages\RulesPage;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesRuleViolation;
@@ -306,3 +307,34 @@ test('a cup reminder names the auto slot in the recipient\'s time zone and langu
         ->and($reminder($a))->toContain(LeagueTime::stamp($slot))
         ->and(cupWait($match)[0]->actionText())->toContain(LeagueTime::stamp($slot));
 });
+
+test('a reminder names the time left in its largest whole unit, never thousands of minutes', function () {
+    [$cup, $match, $a, $b] = rlCupMatch();
+    $b->forceFill(['locale' => 'de'])->save();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $left = (int) ceil((cupWait($match)[0]->decidesAt->getTimestamp() - now()->getTimestamp()) / 60);
+
+    app(TournamentReminders::class)->remind($cup, $admin, $match->id, $b->id);
+    app(TournamentReminders::class)->remind($cup, $admin, $match->id, $a->id);
+
+    $reminder = fn (User $player): string => (string) $player->notifications()->get()->firstWhere('data.kind', 'tournament_reminder')?->data['body'];
+
+    // The cup's window runs for days: the wait is over a day long.
+    expect($left)->toBeGreaterThan(1440)
+        ->and($reminder($b))->toStartWith('Noch '.trans_choice(':count day|:count days', intdiv($left, 1440), [], 'de').', dann entscheidet die Liga.')
+        ->and($reminder($a))->toStartWith('The league decides in '.trans_choice(':count day|:count days', intdiv($left, 1440), [], 'en').'.');
+});
+
+test('a time left reads in its largest whole unit, rounded down', function (int $minutes, string $text) {
+    expect(RulesPage::largestUnit($minutes, 'en'))->toBe($text);
+})->with([
+    [1, '1 minute'],
+    [59, '59 minutes'],
+    [60, '1 hour'],
+    [119, '1 hour'],
+    [1439, '23 hours'],
+    [1440, '1 day'],
+    [1920, '1 day'],
+    [2880, '2 days'],
+]);

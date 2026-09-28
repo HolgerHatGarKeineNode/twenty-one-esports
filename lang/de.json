@@ -4242,7 +4242,7 @@
     "Agree on a time with your opponent, or the league starts it at :time.": "Vereinbare eine Zeit mit deinem Gegner, sonst startet die Liga das Match am :time.",
     "This match no longer waits for this player.": "Dieses Match wartet nicht mehr auf diesen Spieler.",
     "You reminded this player a moment ago. Try again in :minutes min.": "Du hast diesen Spieler gerade erst erinnert. Versuch es in :minutes Min. wieder.",
-    "The league decides in :minutes min. :action": "Die Liga entscheidet in :minutes Min. :action",
+    "The league decides in :time. :action": "Noch :time, dann entscheidet die Liga. :action",
     "Your match in :tournament": "Dein Match in :tournament",
     "Tournament match reminder": "Erinnerung an dein Turniermatch",
     "your tournament match waits for you, and the league decides it on its own soon": "dein Turniermatch wartet auf dich, und die Liga entscheidet es bald selbst",
