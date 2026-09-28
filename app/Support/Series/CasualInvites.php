@@ -27,7 +27,11 @@ use Illuminate\Support\Facades\DB;
  *   that fits starts the match at once, as a found match;
  * - accept and decline race on the invite row: each is a conditional
  *   update on `pending`, so exactly one of them wins, and a stale copy
- *   never overwrites the winner.
+ *   never overwrites the winner;
+ * - crossing invites (A -> B and B -> A, two "Rematch" clicks) close each
+ *   other: the accept of one withdraws the other in its transaction, and
+ *   the match's claim on both players refuses a second match either way
+ *   (CasualMatches::create()).
  *
  * The inviter gives their platform and crossplay when inviting, the invitee
  * when accepting; platforms that cannot play each other are refused
@@ -211,6 +215,10 @@ final class CasualInvites
 
             SeriesQueueEntry::query()->whereIn('user_id', [$invite->inviter_id, $invitee->id])->delete();
 
+            $crossing = SeriesInvite::query()->where('inviter_id', $invitee->id)->where('invitee_id', $invite->inviter_id)
+                ->where('status', ChessInviteStatus::Pending)->pluck('id');
+            SeriesInvite::query()->whereKey($crossing)->where('status', ChessInviteStatus::Pending)->update(['status' => ChessInviteStatus::Withdrawn, 'updated_at' => now()]);
+
             $match = $this->matches->create($invite->inviter, $invitee, $invite->game, SeriesMatch::ORIGIN_INVITE, [
                 'challenger' => ['platform' => $invite->platform->value, 'crossplay' => $invite->crossplay],
                 'challenged' => ['platform' => $platform->value, 'crossplay' => $crossplay],
@@ -218,6 +226,7 @@ final class CasualInvites
 
             $invite->forceFill(['series_match_id' => $match->id])->save();
             $this->announce($invite->refresh());
+            SeriesInvite::query()->whereKey($crossing)->get()->each(fn (SeriesInvite $withdrawn) => $this->announce($withdrawn));
 
             return $match;
         });

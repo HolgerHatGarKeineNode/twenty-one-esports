@@ -86,9 +86,20 @@ final class CasualQueue
      * Pair this player with the longest-waiting fitting opponent, if any.
      * Returns the new match, or the running match a pairing already gave
      * them. A waiting player who is busy by now (a chess game started from
-     * an invite) leaves the queue instead of being paired.
+     * an invite) leaves the queue instead of being paired. A pairing that
+     * lost the race for a player to another pairing (CasualMatches::claim())
+     * is rolled back whole and tried again on the next poll.
      */
     public function pair(User $user): ?SeriesMatch
+    {
+        try {
+            return $this->pairNow($user);
+        } catch (SeriesRuleViolation $refused) {
+            return $refused->reason === 'already_playing' ? null : throw $refused;
+        }
+    }
+
+    private function pairNow(User $user): ?SeriesMatch
     {
         return DB::transaction(function () use ($user): ?SeriesMatch {
             $entry = SeriesQueueEntry::query()->where('user_id', $user->id)->lockForUpdate()->first();

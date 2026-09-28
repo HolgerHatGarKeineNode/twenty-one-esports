@@ -16,6 +16,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\CasualNotifications;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -51,6 +52,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class CasualMatches
 {
+    /** The states in which a casual 1v1 keeps its players busy (a disputed one waits for an admin). */
+    public const RUNNING = [SeriesStatus::Accepted, SeriesStatus::Reported];
+
     public function __construct(
         private GameRegistry $games,
         private ChessGameService $chess,
@@ -137,7 +141,7 @@ final class CasualMatches
     public static function runningMatchOf(User $user, ?int $except = null): ?SeriesMatch
     {
         return self::playedBy(SeriesMatch::query()->whereNotNull('origin'), $user)
-            ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported])
+            ->whereIn('status', self::RUNNING)
             ->where(fn (Builder $query) => $query->whereNotIn('origin', SeriesMatch::SCHEDULED_ORIGINS)
                 ->orWhere('start_at', '<=', now()->addMinutes((int) config('esports.casual.checkin_before_minutes', 10))))
             ->when($except !== null, fn (Builder $query) => $query->whereKeyNot($except))
@@ -191,9 +195,14 @@ final class CasualMatches
     /**
      * The match of a pairing, in the ready check. Called inside the
      * pairing's transaction (CasualQueue, CasualInvites); the found-match
-     * notification goes out with it.
+     * notification goes out with it. The match claims both players
+     * ({@see claim()}), so a pairing that passed its busy check before
+     * another one committed is refused (`already_playing`) and its
+     * transaction rolls back.
      *
      * @param  array<string, array{platform: string, crossplay: bool}>  $choices  each side's platform and crossplay
+     *
+     * @throws SeriesRuleViolation when a player is claimed by another running match
      */
     public function create(User $challenger, User $challenged, string $game, string $origin, array $choices, ?User $createdBy = null): SeriesMatch
     {
@@ -212,6 +221,8 @@ final class CasualMatches
             'casual' => [...self::pinned(), 'queue' => $choices],
         ]);
 
+        self::claim($match, [$challenger->id, $challenged->id]);
+
         // One intent at a time: a paired player stops searching blitz.
         ChessQueueEntry::query()->whereIn('user_id', [$challenger->id, $challenged->id])->delete();
 
@@ -219,6 +230,32 @@ final class CasualMatches
         $this->announce($match);
 
         return $match;
+    }
+
+    /**
+     * One running casual 1v1 per player, held by `casual_claims` (unique
+     * user id) rather than by the busy check alone, which is a read: two
+     * accepts of crossing invites, or an accept and a queue pairing, can
+     * both read the player as free. A claim whose match left
+     * {@see RUNNING} is taken over here, so no path that ends a match has
+     * to release it, and a claim never outlives its match's hold on the
+     * player.
+     *
+     * @param  list<int>  $userIds
+     *
+     * @throws SeriesRuleViolation when a player is claimed by another running match
+     */
+    private static function claim(SeriesMatch $match, array $userIds): void
+    {
+        DB::table('casual_claims')->whereIn('user_id', $userIds)
+            ->whereNotIn('series_match_id', SeriesMatch::query()->select('id')->whereIn('status', self::RUNNING))
+            ->delete();
+
+        try {
+            DB::table('casual_claims')->insert(array_map(fn (int $userId): array => ['user_id' => $userId, 'series_match_id' => $match->id, 'created_at' => now()], $userIds));
+        } catch (UniqueConstraintViolationException) {
+            throw self::refuse('already_playing');
+        }
     }
 
     /**
