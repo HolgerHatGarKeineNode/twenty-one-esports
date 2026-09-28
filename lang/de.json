@@ -4728,5 +4728,8 @@
     "Posted to your profile, signed by you.": "Auf deinem Profil gepostet, von dir signiert.",
     "Preview: this is what your profile shows": "Vorschau: so erscheint es auf deinem Profil",
     "One chess note (NIP-64, kind 64), signed with your key and quoting the league's record. Apps that know chess show the board; others show this line:": "Eine Schach-Notiz (NIP-64, kind 64), mit deinem Schlüssel signiert, die den Eintrag der Liga zitiert. Apps, die Schach kennen, zeigen das Brett; andere zeigen diese Zeile:",
-    "Sign and post": "Signieren und posten"
+    "Sign and post": "Signieren und posten",
+    "One chess note (NIP-64, kind 64), signed with your key. Apps that know chess show the board; others show this line:": "Eine Schach-Notiz (NIP-64, kind 64), mit deinem Schlüssel signiert. Apps, die Schach kennen, zeigen das Brett; andere zeigen diese Zeile:",
+    "none from the league: casual games are not recorded on Nostr": "keiner von der Liga: Casual-Partien werden nicht auf Nostr eingetragen",
+    "Casual games get no record from the league. The result is saved on the server, and you can post the game yourself.": "Casual-Partien bekommen keinen Eintrag der Liga. Das Ergebnis ist auf dem Server gespeichert, und du kannst die Partie selbst posten."
 }

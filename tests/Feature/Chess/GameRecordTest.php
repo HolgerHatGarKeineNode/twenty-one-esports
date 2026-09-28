@@ -5,6 +5,7 @@ use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessPgn;
 use App\Support\Chess\GameRecords;
 use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\EsportsEventRules;
@@ -30,12 +31,19 @@ function recordLeague(): TestSigner
     return $league;
 }
 
+/** The ladder a rated test game is pinned to. */
+function recordLadder(string $mode): string
+{
+    return '32152:'.str_repeat('8', 64).':chess/'.$mode.'/season-1';
+}
+
 /**
- * Fool's mate: Black mates on move 2.
+ * Fool's mate: Black mates on move 2. Rated by default (pinned to a ladder,
+ * as the rated queue does), casual on request.
  *
  * @return array{0: ChessGame, 1: User, 2: TestSigner, 3: User, 4: TestSigner}
  */
-function foolsMate(string $mode = 'blitz'): array
+function foolsMate(string $mode = 'blitz', bool $rated = true): array
 {
     $whiteKey = new TestSigner;
     $blackKey = new TestSigner;
@@ -44,6 +52,11 @@ function foolsMate(string $mode = 'blitz'): array
     $games = app(ChessGameService::class);
     $game = $games->start($white, $black, $mode);
 
+    if ($rated) {
+        $game->forceFill(['rated' => true, 'ladder_address' => recordLadder($mode), 'pgn_headers' => null])->save();
+        $game->forceFill(['pgn_headers' => ChessPgn::headersFor($game)])->save();
+    }
+
     foreach (['f2f3', 'e7e5', 'g2g4', 'd8h4'] as $uci) {
         $game = $games->move($game->refresh(), $game->turn() === 'w' ? $white : $black, $uci);
     }
@@ -51,7 +64,7 @@ function foolsMate(string $mode = 'blitz'): array
     return [$game->refresh(), $white, $whiteKey, $black, $blackKey];
 }
 
-test('a finished game gets exactly one NIP-64 record, signed by the league when it ends; no player signs anything', function (string $mode, string $event, string $timeControl) {
+test('a finished rated game gets exactly one NIP-64 record, signed by the league when it ends; no player signs anything', function (string $mode, string $event, string $timeControl) {
     $league = recordLeague();
     [$game, $white, , $black] = foolsMate($mode);
     $stored = $game->recordEvent;
@@ -63,7 +76,7 @@ test('a finished game gets exactly one NIP-64 record, signed by the league when 
         ->and($record->hasValidSignature())->toBeTrue()
         ->and($record->tagsNamed('p'))->toBe([[$white->pubkey, '', 'white'], [$black->pubkey, '', 'black']])
         ->and($record->tagsNamed('e'))->toBe([])
-        ->and($record->tagsNamed('a'))->toBe([])
+        ->and($record->tagsNamed('a'))->toBe([[recordLadder($mode), '']])
         ->and($record->tagsNamed('t'))->toBe([])
         ->and($record->tag('alt'))->toContain('anna vs bert, 0-1')
         ->and(array_slice(explode("\n", $record->content), 0, 7))->toBe([
@@ -88,30 +101,41 @@ test('a finished game gets exactly one NIP-64 record, signed by the league when 
 
     expect(NostrEvent::query()->where('kind', 64)->count())->toBe(1);
 })->with([
-    'blitz' => ['blitz', 'TWENTY ONE esports, casual blitz', '300+3'],
-    'daily' => [ChessGame::CORRESPONDENCE, 'TWENTY ONE esports, casual daily chess', '1/86400'],
+    'blitz' => ['blitz', 'TWENTY ONE esports, rated blitz', '300+3'],
+    'daily' => [ChessGame::CORRESPONDENCE, 'TWENTY ONE esports, rated daily chess', '1/86400'],
 ]);
 
-test('a resignation, a flag and an agreed draw are recorded; an abort and a game without a move are not; without a league key the result stands unrecorded', function () {
+test('a casual game gets no league record, in either mode: the league\'s profile carries rated games only', function (string $mode) {
+    recordLeague();
+    [$game] = foolsMate($mode, rated: false);
+
+    expect($game->result)->toBe('0-1')
+        ->and($game->record_event_id)->toBeNull()
+        ->and(NostrEvent::query()->count())->toBe(0);
+
+    Bus::assertNotDispatched(PublishNostrEvent::class);
+})->with(['blitz' => 'blitz', 'daily' => ChessGame::CORRESPONDENCE]);
+
+test('a rated resignation, flag and agreed draw are recorded; an abort and a game without a move are not; without a league key the result stands unrecorded', function () {
     $league = recordLeague();
     $games = app(ChessGameService::class);
 
-    $resigned = ChessGame::factory()->create();
+    $resigned = ChessGame::factory()->create(['rated' => true]);
     $games->move($resigned, $resigned->white, 'e2e4');
     $games->resign($resigned->refresh(), $resigned->white);
 
-    $drawn = ChessGame::factory()->daily()->create();
+    $drawn = ChessGame::factory()->daily()->create(['rated' => true]);
     $games->move($drawn, $drawn->white, 'e2e4');
     $games->offerDraw($drawn->refresh(), $drawn->black);
     $games->acceptDraw($drawn->refresh(), $drawn->white);
 
-    $flagged = ChessGame::factory()->daily()->create();
+    $flagged = ChessGame::factory()->daily()->create(['rated' => true]);
     $games->move($flagged, $flagged->white, 'e2e4');
     $games->move($flagged->refresh(), $flagged->black, 'e7e5');
     $this->travel(86_401)->seconds();
     $this->artisan('chess:check-clocks')->assertSuccessful();
 
-    $aborted = ChessGame::factory()->create();
+    $aborted = ChessGame::factory()->create(['rated' => true]);
     $games->abort($aborted, $aborted->white);
 
     expect($resigned->refresh()->recordEvent?->pubkey)->toBe($league->pubkey)
@@ -121,7 +145,7 @@ test('a resignation, a flag and an agreed draw are recorded; an abort and a game
         ->and($aborted->refresh()->record_event_id)->toBeNull();
 
     config(['esports.league.nsec' => null]);
-    $unkeyed = ChessGame::factory()->create();
+    $unkeyed = ChessGame::factory()->create(['rated' => true]);
     $games->move($unkeyed, $unkeyed->white, 'e2e4');
     $games->resign($unkeyed->refresh(), $unkeyed->black);
 
@@ -181,6 +205,30 @@ test('a player posts the game to their profile only by button: the preview is th
     $page->call('submitGamePost', json_encode($again))->assertReturned(fn (array $r) => $r['error'] === 'already_posted');
 
     expect(NostrEvent::query()->where('kind', 64)->where('pubkey', $black->pubkey)->count())->toBe(1);
+});
+
+test('a casual game\'s post stands alone: the same PGN, signed by the player, without a quote', function () {
+    recordLeague();
+    [$game, $white, $whiteKey] = foolsMate(ChessGame::CORRESPONDENCE, rated: false);
+    $page = Livewire::actingAs($white)->test('pages::games.show', ['game' => $game]);
+    $template = $page->call('prepareGamePost')->effects['returns'][0]['template'];
+
+    expect($template['content'])->toBe(ChessPgn::of($game->load('moves')))
+        ->and($template['content'])->toEndWith("1. f3 e5 2. g4 Qh4# 0-1\n")->toStartWith('[Event "TWENTY ONE esports, casual daily chess"]')
+        ->and(array_column($template['tags'], 0))->toBe(['p', 'p', 'alt']);
+
+    [$signed] = $whiteKey->signTemplates([$template]);
+    $page->call('submitGamePost', json_encode($signed))->assertReturned(fn (array $r) => $r['ok'] === true);
+
+    $post = SignedEvent::fromInput(NostrEvent::query()->findOrFail($game->refresh()->white_post_event_id)->payload());
+
+    expect($post->pubkey)->toBe($white->pubkey)
+        ->and(app(EsportsEventRules::class)->check($post))->toBeNull()
+        ->and($game->record_event_id)->toBeNull()
+        ->and(NostrEvent::query()->where('kind', 64)->count())->toBe(1);
+
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $game])
+        ->assertSee(__('Casual games get no record from the league. The result is saved on the server, and you can post the game yourself.'));
 });
 
 test('a running or aborted game cannot be posted, and the finished page offers the post only to its players', function () {

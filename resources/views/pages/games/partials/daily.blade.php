@@ -330,7 +330,7 @@
     <div class="mx-4 lg:mx-0">
         <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
             [__('Moves'), __('checked by the league server, one by one, and not published')],
-            [__('Record'), __('PGN of this game, signed by the league when the game ends (NIP-64, kind 64)')],
+            [__('Record'), $game->rated ? __('PGN of this game, signed by the league when the game ends (NIP-64, kind 64)') : __('none from the league: casual games are not recorded on Nostr')],
             [__('Your profile'), __('only if you post the game yourself, by button after the game')],
             [__('Relay'), $relay],
             ...($moveNotes > 0 ? [[__('Earlier moves'), trans_choice(':count move was published as its own note before moves stopped being posted; it stays as history.|:count moves were published as their own notes before moves stopped being posted; they stay as history.', $moveNotes)]] : []),

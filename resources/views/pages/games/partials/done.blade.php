@@ -8,7 +8,8 @@
 
     Daily games add ChessStates "Deadline missed" when time ran out; a record
     that is not on a relay yet shows ChessStates "Public record delayed".
-    The record is signed by the league when the game ends (NIP rev. 9.4);
+    The record of a rated game is signed by the league when it ends (NIP
+    rev. 9.4; casual games get none);
     games that ended before carry a player's record or, daily, the last move's
     note. A player posts the game to their own profile only by button
     (partials/post), never on its own.
@@ -258,7 +259,7 @@
                             </span>
                         </div>
                     @elseif (! $aborted)
-                        <span class="border-t border-[#2A2440] py-3 text-[13px] text-ink-2" data-test="record-missing">{{ __('The league has not signed a record of this game. The result is saved on the server.') }}</span>
+                        <span class="border-t border-[#2A2440] py-3 text-[13px] text-ink-2" data-test="record-missing">{{ $game->rated ? __('The league has not signed a record of this game. The result is saved on the server.') : __('Casual games get no record from the league. The result is saved on the server, and you can post the game yourself.') }}</span>
                     @else
                         <span class="border-t border-[#2A2440] py-3 text-[13px] text-ink-2">{{ __('An aborted game gets no record.') }}</span>
                     @endif

@@ -30,9 +30,10 @@ test('the league\'s NIP-64 records of a blitz and a daily game, and a player\'s 
     $games = app(ChessGameService::class);
     $records = app(GameRecords::class);
 
-    // Fool's mate twice, blitz and daily: the moves are no events, the league signs each game's record at the end.
+    // Fool's mate twice, rated blitz and daily: the moves are no events, the league signs each rated game's record at the end.
     foreach (['blitz', ChessGame::CORRESPONDENCE] as $mode) {
         $game = $games->start($white, $black, $mode);
+        $game->forceFill(['rated' => true, 'ladder_address' => '32152:'.$league->pubkey.':chess/'.$mode.'/season-1'])->save();
         foreach (['f2f3', 'e7e5', 'g2g4', 'd8h4'] as $uci) {
             $games->move($game->refresh(), $game->turn() === 'w' ? $white : $black, $uci);
         }

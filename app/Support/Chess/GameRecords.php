@@ -18,32 +18,33 @@ use Illuminate\Support\Facades\DB;
  *
  * - No move is an event. Blitz and daily moves alike run over the league
  *   server, which checks turn, legality and deadline ({@see ChessGameService}).
- * - The league's record: when a game ends with a result, the league key
- *   signs ONE note with the whole game (PGN, result, termination) inside the
- *   transaction that ends it, so the attestation (`2154`) of a rated game can
- *   reference it by `e`. A game gets it once (`record_event_id`); a game
- *   without a move gets none.
+ * - The league's record: when a RATED game ends with a result, the league
+ *   key signs ONE note with the whole game (PGN, result, termination) inside
+ *   the transaction that ends it, so its attestation (`2154`) can reference it
+ *   by `e`. A game gets it once (`record_event_id`); a game without a move
+ *   gets none. Casual games get none: the league key is the league's own
+ *   public profile, and a note per casual game would bury it (user decision,
+ *   2026-09-28).
  * - A player's post: optional, by button after the game ("Post this game to
  *   my profile"), never automatic. The same PGN as a kind-64 note signed by
  *   the player, quoting the league's record with `q` (NIP-18: a quote, not a
- *   reply). At most one per player and game.
- *
- * Casual games are not part of any season: their record has no ladder `a`
- * (NIP "Rest": casual games "at most become a plain NIP-64 note").
+ *   reply) when there is one; a casual game's post stands alone. At most one
+ *   per player and game.
  */
 final class GameRecords
 {
     public function __construct(private SignedEventGate $gate) {}
 
     /**
-     * Sign and queue the league's record of a game that just ended. Call
-     * inside the transaction that ends it, before the attestation. Null when
-     * there is nothing to record (no move, no result, a deleted player) or
-     * no league key is configured; the game's result stands either way.
+     * Sign and queue the league's record of a rated game that just ended.
+     * Call inside the transaction that ends it, before the attestation. Null
+     * for a casual game, when there is nothing to record (no move, no result,
+     * a deleted player) or no league key is configured; the game's result
+     * stands either way.
      */
     public function recordFinished(ChessGame $game): ?NostrEvent
     {
-        if ($game->status !== ChessGameStatus::Finished || $game->record_event_id !== null || $game->ply === 0
+        if (! $game->rated || $game->status !== ChessGameStatus::Finished || $game->record_event_id !== null || $game->ply === 0
             || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true) || $game->white_id === null || $game->black_id === null) {
             return null;
         }
@@ -59,7 +60,7 @@ final class GameRecords
         $pgn = ChessPgn::of($game);
         $tags = $this->playerTags($game);
 
-        if ($game->rated && $game->ladder_address !== null) {
+        if ($game->ladder_address !== null) {
             $tags[] = ['a', $game->ladder_address, ''];
         }
 

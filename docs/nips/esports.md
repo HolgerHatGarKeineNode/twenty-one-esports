@@ -29,7 +29,7 @@ top-ups as plain invoices, fixed prizes per place; **revision 9.2** (2026-09-27)
 cards in the match-room chat of casual 1v1 matches, a chat convention without a new kind;
 **revision 9.3** (2026-09-28): a public chat channel per game with polls, NIP-28 and NIP-88 without a
 new kind; **revision 9.4** (2026-09-28): chess moves are no events in either mode, the league signs one
-game record when a game ends, and a player posts the game to their own profile only by button). Not
+game record when a rated game ends, and a player posts the game to their own profile only by button). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
@@ -77,14 +77,16 @@ kind `64` note on the mover's profile, dozens per game. No new kind.
   names, so a move sent twice is played once, and the deadline (`1/86400`); nothing is signed per
   move. The previous-move `e` chain, the ordering rules for move notes and the query for "the next
   move" are retired.
-- **The record**: signed by the league key, once per finished game with at least one move, in the step
-  that ends the game and before the attestation (`2154`), which references it by `e`. It carries the
-  PGN, the players' `p` tags with roles, the ladder `a` of a rated game, and `alt`. Players no longer
-  sign the record, in blitz either (before, a player's app signed it without a click). The league key
-  now signs `64` ([Keys](#keys)).
+- **The record**: signed by the league key, once per finished **rated** game with at least one move,
+  in the step that ends the game and before the attestation (`2154`), which references it by `e`. It
+  carries the PGN, the players' `p` tags with roles, the ladder `a` and `alt`. Casual games get no
+  league record: the league key is the league's own public profile, and a note per casual game would
+  bury it. Players no longer sign the record, in blitz either (before, a player's app signed it without
+  a click). The league key now signs `64` ([Keys](#keys)). The PGN's `Event` says `rated` or `casual`.
 - **A player's post**: optional, only on the player's click after a preview, never automatic: a kind
-  `64` note by the player with the record's PGN, the same `p` tags, a NIP-18 `q` quoting the record,
-  and `alt`; no `t` tags. At most one per player and game; not league state.
+  `64` note by the player with the game's PGN, the same `p` tags and `alt`, and for a rated game a
+  NIP-18 `q` quoting the league's record; a casual game's post stands alone. No `t` tags. At most one
+  per player and game; not league state.
 - **Games in progress** when the league adopts 9.4: their move notes stay on the relays as history;
   the game goes on from its last move on the server, and at its end the league signs the record with
   the whole game.
@@ -391,10 +393,10 @@ This NIP describes a competitive ladder for team and solo games. Players form **
 change and publishes the current **ladder**. A ladder rates either lineups or single players.
 
 The first game is **chess**, rated per player: every game is a rated solo game, including each
-**board** of a clan team match over two or three boards. Each game ends in one
+**board** of a clan team match over two or three boards. Each rated game ends in one
 [NIP-64](https://github.com/nostr-protocol/nips/blob/master/64.md) game record signed by the league;
 its moves, blitz and correspondence alike, run over the league server and are not events (rev. 9.4),
-and a player may post the finished game to their own profile. A clan's chess
+and a player may post any finished game, rated or casual, to their own profile. A clan's chess
 strength is derived from its players' ratings and needs no events of its own. The second game is
 Rocket League, a team game played in series and rated per lineup. Ratings live in **seasons**: each season is a rating
 epoch whose parameters are published with the ladder, so every rating can be recomputed from the
@@ -683,8 +685,8 @@ describes itself.
 | moves on Nostr | | none: blitz and correspondence moves stay on the league server (rev. 9.4; before, correspondence moves were notes) | none | none |
 
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
-games never produce match-flow events; the league signs their game record like any other (rev. 9.4),
-and a player may post the finished game to their own profile as a plain NIP-64 note.
+games never produce match-flow events and get no league record (rev. 9.4); a player may post the
+finished game to their own profile as a plain NIP-64 note.
 
 ### Rocket League 1v1 (rev. 7.1)
 
@@ -961,9 +963,9 @@ Result Response answers a series report only, never a chess game record (see the
 
 ### Game Record (`64`, reused from NIP-64)
 
-Chess results are not reported by captains. Each game ends in a NIP-64 note (kind `64`, `content` = PGN
-in export format) **signed by the league key**: the **game record** (rev. 9.4; before, it was signed by
-one of the two players). The PGN is the league server's own record of the game, which checked every
+Chess results are not reported by captains. Each rated game ends in a NIP-64 note (kind `64`, `content`
+= PGN in export format) **signed by the league key**: the **game record** (rev. 9.4; before, it was
+signed by one of the two players). The PGN is the league server's own record of the game, which checked every
 move; the league signs it in the same step that ends the game, before the attestation, so the
 attestation of a rated game can reference it. A doctored record is visible to anyone who replays the
 PGN.
@@ -986,14 +988,16 @@ the chess paragraph of [League Attestation](#league-attestation-2154). A `2153` 
 unchanged.
 
 Tags added to the NIP-64 note (NIP-64 allows additional tags): `e` challenge if the game has one, the
-`a` references of the challenge (both lineups and the ladder in a team match, the ladder in a rated
-solo game; none for a casual game), `p` White with role `white` and `p` Black with role `black`,
+`a` references of the challenge (both lineups and the ladder in a team match, the ladder in a solo
+game), `p` White with role `white` and `p` Black with role `black`,
 `board` in a team match, `alt`. The PGN headers `White` and `Black` carry display names; identities
 are the `p` tags. `Result` and the movetext terminator agree.
 
-- **One record per game** (rev. 9.4). The league signs it once, when the game ends with `1-0`, `0-1`
-  or `1/2-1/2` after at least one move; an aborted game, and a director result without a move, get
-  none. A player never signs the record.
+- **One record per rated game** (rev. 9.4). The league signs it once, when the game ends with `1-0`,
+  `0-1` or `1/2-1/2` after at least one move; an aborted game, and a director result without a move,
+  get none. A player never signs the record. **Casual games get no league record**: the league key is
+  the league's own public profile, and a note per casual game would bury it. The PGN's `Event` names
+  the game `rated` or `casual`.
 - **Moves** (rev. 9.4). Moves, clocks, draw offers and chat run over the league server in real time
   and are not events, in blitz and in correspondence. The server plays a move only for the player to
   move, only if it is legal in the current position, and only as the ply the client names, so a
@@ -1003,10 +1007,10 @@ are the `p` tags. `Result` and the movetext terminator agree.
   `forfeit`. The record contains the complete game; `{[%clk h:mm:ss]}` comments may carry the clock
   times.
 - **A player's post** (rev. 9.4). After the game, and only when the player clicks for it, a player may
-  post the game to their own profile: a kind `64` note signed by the player, with the record's
-  `content`, the same `p` tags, a NIP-18 `q` quoting the record
-  (`["q", "<record id>", "<relay>", "<league pubkey>"]`: a quote, not a reply) and an `alt`; no `t`
-  tags. The app shows the note before the signer is asked. At most one per player and game; the league
+  post the game to their own profile: a kind `64` note signed by the player, with the game's PGN (for
+  a rated game the record's `content`), the same `p` tags and an `alt`, and for a rated game a NIP-18
+  `q` quoting the record (`["q", "<record id>", "<relay>", "<league pubkey>"]`: a quote, not a reply);
+  a casual game's post has no `q` and stands alone. No `t` tags. The app shows the note before the signer is asked. At most one per player and game; the league
   archives it and sends it to its relays, the app sends it to the player's NIP-65 write relays. A post
   is not league state: it changes no result, rating or block, and whoever counts results reads the
   league's record and attestations, never a post. It is a kind `64` rather than a kind `1` because
@@ -2191,8 +2195,9 @@ memberships, opponent lists, tournament sign-ups and zaps to the reserve go on. 
   no season and is never attested; an attestation of such a challenge is a league error. The league
   relay does not store them, because only the league publisher writes there and the league refuses
   them. Other relays may store anything; readers ignore them.
-- **Casual chess games**, correspondence too, end in a league game record without an `e` to a challenge
-  and without a ladder `a` (rev. 9.4), which a player may post; they never become part of a chain.
+- **Casual chess games**, correspondence too, get no league record (rev. 9.4); a player may post one as a
+  plain NIP-64 note without an `e` to a challenge, a ladder `a` or a `q`. They never become part of a
+  chain.
 - **Tournaments** (rev. 7) go on as well. One published during rest has a `31923` and, with a solo
   pool, a `2155`, both without a ladder `a`; it stays unrated to its end, also if Block 0 falls into it
   ([Tournaments](#tournaments), "Rated or unrated"). Its sign-up consents (`22150`) are never published
@@ -2353,7 +2358,7 @@ drawn from one version or one attestation, so a posted card keeps showing what h
 | open | time | league | expired | `respond_by` has passed; no event is signed for this |
 | accepted | 2152 | acting captain, either lineup | reported | `created_at >= ` chosen `start`; scores valid for the game and `bo`; roster valid |
 | accepted | the game ends on the server (chess, per game or board) | league | attested (that game) | mate, a draw by rule, a flag, a resignation, an abandoned game or a draw both players agreed to; `2154` `admin` (`forfeit` for a director's no-show), `e` to the game record (rev. 9.4: the league's, signed in the same step); each board is attested on its own; no `2153` |
-| accepted | 64 game record (chess, per game or board) | league (rev. 9.4; before, a player of that game) | unchanged | signed when the game ends, before its `2154`: `created_at >= ` chosen `start`; PGN valid and legal. A player's post of the game (rev. 9.4) is no transition |
+| accepted | 64 game record (chess, per rated game or board) | league (rev. 9.4; before, a player of that game) | unchanged | signed when the game ends, before its `2154`: `created_at >= ` chosen `start`; PGN valid and legal. A player's post of the game (rev. 9.4) is no transition |
 | reported | time | league | attested (`admin`) | the league's confirmation window passed without a response; the league decides from its own record |
 | reported | 2153 `confirmed` | acting captain of the other lineup | confirmed | `e` points at the latest report of this challenge |
 | reported | 2153 `disputed` | acting captain of the other lineup | disputed | as above |
@@ -2468,8 +2473,9 @@ Per kind:
     all moves are legal for the ladder's `variant`, `Result` equals the terminator, `TimeControl`
     equals the ladder's `time_control`. Move notes signed before revision 9.4 followed the ordering
     rules in [Game Record](#game-record-64-reused-from-nip-64). A player's post (rev. 9.4): the author
-    is one of the two `p`, `content` equals the record's, a `q` names the record, no `t`; at most one
-    per player and game; it is never read as a result.
+    is one of the two `p`, `content` is the league's PGN of the game, for a rated game a `q` names the
+    record (a casual game has none), no `t`; at most one per player and game; it is never read as a
+    result.
 16. **2154**: signed by the key in the ladder address; the ladder `a` is the one the challenge names
     (rev. 8.1, stated here although rule 11 and [Rest](#rest-before-block-0-and-between-seasons)
     already imply it; for a chess game the league paired and started without a challenge event, the
@@ -2726,7 +2732,7 @@ may publish any kind. A zooid tenant as the league relay needs changes upstream.
 
 | key | signs | where it lives |
 |---|---|---|
-| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 9.4 `64` (chess game records); rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` (`void-block`), `30000` (admin list); rev. 9.3 `40`, `41`, `43`, `44` (game channels) | remote signer (NIP-46) with exactly this allowlist |
+| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 9.4 `64` (records of rated chess games); rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` (`void-block`), `30000` (admin list); rev. 9.3 `40`, `41`, `43`, `44` (game channels) | remote signer (NIP-46) with exactly this allowlist |
 | admin keys (rev. 5) | `1985` `release-block-0` | each admin's own signer; the board npubs, published in the league's admin list |
 | trust key | `0`, `30382`, `30000` (anchor list) | trust service |
 | league publisher | nothing stored; only NIP-42 `22242` | league server |
@@ -3359,8 +3365,8 @@ link leads to is ordinary protocol data once it happens.
 - **Casual only.** Every game started from a link is casual. A rated Rocket League challenge (`2150`)
   names the challenged captains in `p` and is signed by the challenger before anyone could accept, so
   an open link cannot carry one; casual games produce no match-flow events at all
-  ([Game registry](#game-registry)). A chess game from a link ends in the same league game record
-  (`64`) as any casual chess game.
+  ([Game registry](#game-registry)). A chess game from a link is casual like any other: no
+  league record; a player may post it (`64`).
 - **Clan links send a join request**, never a membership (see [Clan](#clan-32150), "Join
   requests"). Named invitations (the owner lists one player) stay direct.
 - **Referrals** (who invited whom, and whether the account is new) are kept by the league for
@@ -5822,30 +5828,32 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
 
 ### Revision 9.4: a quiet correspondence game
 
-Throwaway keys (league, bob, dave), not those of the earlier rounds. A casual daily game, bob (White)
+Throwaway keys (league, bob, dave), not those of the earlier rounds. A rated daily game, bob (White)
 against dave, played in the app from 2026-09-28 10:05 to 2026-09-29 20:31 UTC: four moves over the
 league server, none of them an event. At the mate the league signs the record; five minutes later dave
 posts the game to his profile with the button. Both notes are the app's own output (`GameRecords`, the
-league key and dave's key in a rolled-back test transaction), published to a local `nak serve` relay
-and read back unchanged, `nak verify` passing. On that relay `{"kinds":[64],"#q":["<record id>"]}`
-returned only the post and `{"kinds":[64],"authors":["<league>"]}` only the record. A rated game's
-record also carries the ladder `a`.
+league key and dave's key in a rolled-back transaction; the game pinned to its ladder as the rated
+pairing does, without a live season, so no attestation), published to a local `nak serve` relay and
+read back unchanged, `nak verify` passing. On that relay `{"kinds":[64],"#q":["<record id>"]}` returned
+only the post and `{"kinds":[64],"authors":["<league>"]}` only the record. A casual game would have no
+record, and its post no `q`.
 
 #### Game Record (`64`), signed by the league
 
 ```json
 {
   "kind": 64,
-  "id": "df0c304c05fb0e4eb2338dcbca4da4f715756b8efdad6c0e55fa4b81f5cfc161",
-  "pubkey": "ba4925c9979b0ce3dabc272850e50aa55f415a4e972c35ac5734d650f1d13af6",
+  "id": "01a1ab986e33c61356b2e2751343175e46267497ad2cca26e00aefcc674bf8a9",
+  "pubkey": "c18219b9c9743958fe90dd247b424e7c41e47a50b15dfaaae724e43d4aa3c371",
   "created_at": 1790713860,
   "tags": [
-    ["p", "40d2e8cc26434464b045902524cf0b6f374a88241eb8572c6a59d44afd3df812", "", "white"],
-    ["p", "29ae857e6e01c479179d2e029f5427eb496d0f0f2d7642d349c6b1cf28572da3", "", "black"],
+    ["p", "bb8431241958aaa66cdb36b020cc0d8ef5afba57001080b45bc569b5b5991c93", "", "white"],
+    ["p", "f8e2621bbc0dbb7777cb0f8ab8f93c35b431d6ff27e0da9f9142ccee737197ba", "", "black"],
+    ["a", "32152:c18219b9c9743958fe90dd247b424e7c41e47a50b15dfaaae724e43d4aa3c371:chess/correspondence/season-4", ""],
     ["alt", "Chess game record #1 (daily): bob vs dave, 0-1 (NIP-64 PGN)"]
   ],
-  "content": "[Event \"TWENTY ONE esports, casual daily chess\"]\n[Site \"https://esports.example/games/1\"]\n[Date \"2026.09.28\"]\n[Round \"-\"]\n[White \"bob\"]\n[Black \"dave\"]\n[Result \"0-1\"]\n[TimeControl \"1/86400\"]\n[Termination \"normal\"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n",
-  "sig": "a53a17be42c840ad4daf25882413934aa4a97018396faa369dc3334a29951276c2c296889cfa56d4729aae7289e35966f0cd0b5588ac675bd89b00c717230fbd"
+  "content": "[Event \"TWENTY ONE esports, rated daily chess\"]\n[Site \"https://esports.example/games/1\"]\n[Date \"2026.09.28\"]\n[Round \"-\"]\n[White \"bob\"]\n[Black \"dave\"]\n[Result \"0-1\"]\n[TimeControl \"1/86400\"]\n[Termination \"normal\"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n",
+  "sig": "449c961824e36743111c8e9921acf93801d349c0c80878853d361fdac0709e2b6b06e2d21efd3e5a9834455bbe944f8d0e35964f71cec137bb438da5df5b5265"
 }
 ```
 
@@ -5854,25 +5862,25 @@ record also carries the ladder `a`.
 ```json
 {
   "kind": 64,
-  "id": "213cbd86db2d4a8cd754ee1767e4c61aaddfd8bf321a5344cd1d5616869b8689",
-  "pubkey": "29ae857e6e01c479179d2e029f5427eb496d0f0f2d7642d349c6b1cf28572da3",
+  "id": "2d755e951d9f256f36c574cbc6926d0226d6b38c34195c75e7120b4b7bb2d92c",
+  "pubkey": "f8e2621bbc0dbb7777cb0f8ab8f93c35b431d6ff27e0da9f9142ccee737197ba",
   "created_at": 1790714160,
   "tags": [
-    ["p", "40d2e8cc26434464b045902524cf0b6f374a88241eb8572c6a59d44afd3df812", "", "white"],
-    ["p", "29ae857e6e01c479179d2e029f5427eb496d0f0f2d7642d349c6b1cf28572da3", "", "black"],
-    ["q", "df0c304c05fb0e4eb2338dcbca4da4f715756b8efdad6c0e55fa4b81f5cfc161", "", "ba4925c9979b0ce3dabc272850e50aa55f415a4e972c35ac5734d650f1d13af6"],
+    ["p", "bb8431241958aaa66cdb36b020cc0d8ef5afba57001080b45bc569b5b5991c93", "", "white"],
+    ["p", "f8e2621bbc0dbb7777cb0f8ab8f93c35b431d6ff27e0da9f9142ccee737197ba", "", "black"],
+    ["q", "01a1ab986e33c61356b2e2751343175e46267497ad2cca26e00aefcc674bf8a9", "", "c18219b9c9743958fe90dd247b424e7c41e47a50b15dfaaae724e43d4aa3c371"],
     ["alt", "Chess game #1 (daily): bob vs dave, 0-1 (NIP-64 PGN)"]
   ],
-  "content": "[Event \"TWENTY ONE esports, casual daily chess\"]\n[Site \"https://esports.example/games/1\"]\n[Date \"2026.09.28\"]\n[Round \"-\"]\n[White \"bob\"]\n[Black \"dave\"]\n[Result \"0-1\"]\n[TimeControl \"1/86400\"]\n[Termination \"normal\"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n",
-  "sig": "aeb182b370d66d655b07225a179dcb9d8765252e54bc088873b83ae1f5b355c6ab1921e8c779e71d4f9f8f11b41342e67662972383cd0037945b4cf7fc36613b"
+  "content": "[Event \"TWENTY ONE esports, rated daily chess\"]\n[Site \"https://esports.example/games/1\"]\n[Date \"2026.09.28\"]\n[Round \"-\"]\n[White \"bob\"]\n[Black \"dave\"]\n[Result \"0-1\"]\n[TimeControl \"1/86400\"]\n[Termination \"normal\"]\n\n1. f3 e5 2. g4 Qh4# 0-1\n",
+  "sig": "c290472b4b29d612050d68fc5ed5a669f3c06d560667933a02cd7f5e3edeab7f404cfeec4bbef088da5925db89be65c72426e4317bb08b0208665d0589387790"
 }
 ```
 
 ## Open points
 
 - **Revision 9.4 was read back from a local `nak serve` relay only**, not from rnostr, strfry and
-  khatru. Not printed: a rated record with the ladder `a` and the attestation that references it (the
-  app's tests check both). How far clients beyond Amethyst draw a kind `64` note on a profile is not
+  khatru. Not printed: the attestation that references the record, and a casual game's post without
+  `q` (the app's tests check both). How far clients beyond Amethyst draw a kind `64` note on a profile is not
   measured.
 
 - **Revisions 9 and 9.1 have no signed example yet.** The pot's `31923` versions, a top-up through the

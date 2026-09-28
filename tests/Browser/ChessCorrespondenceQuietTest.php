@@ -24,7 +24,8 @@ pest()->group('browser');
 | Nostr profile. Now a daily move runs over the league server like a blitz
 | move: Anna on a phone (375 x 812, board clicks and the move bar) and Bert
 | on a desktop (1440 x 900, the move field) play a daily game to mate, and
-| no signer is asked once. At the end the league signs the one record; the
+| no signer is asked once. A casual game gets no league record (only rated
+| games do, tests/Feature/Chess/GameRecordTest.php); the
 | post to a player's own profile waits for the button, shows its preview,
 | and only then asks the signer.
 |
@@ -121,7 +122,7 @@ function quietMove(Page $page, string $from, string $to, bool $phone): void
     $page->locator('[data-test=confirm-daily-move]')->click();
 }
 
-test('a daily game at 375 and 1440: every move over the server with no signature, one league record at the end, and the profile post only by button', function () {
+test('a casual daily game at 375 and 1440: every move over the server with no signature, no note at the end, and the profile post only by button', function () {
     $league = new TestSigner;
     config(['esports.league.nsec' => $league->secret]);
     [$anna, $bert] = User::factory()->count(2)->create();
@@ -162,13 +163,13 @@ test('a daily game at 375 and 1440: every move over the server with no signature
 
     $game->refresh();
 
-    // Server: the game is over, no move is an event, and the one kind-64 note is the league's.
+    // Server: the game is over, no move is an event, and a casual game gets no league record.
     expect($game->status)->toBe(ChessGameStatus::Finished)
         ->and($game->result)->toBe('0-1')
         ->and($game->moves()->pluck('san')->all())->toBe(['f3', 'e5', 'g4', 'Qh4#'])
         ->and($game->moves()->whereNotNull('nostr_event_id')->count())->toBe(0)
-        ->and(NostrEvent::query()->where('kind', 64)->pluck('pubkey')->all())->toBe([$league->pubkey])
-        ->and($game->recordEvent?->payload()['content'])->toEndWith("1. f3 e5 2. g4 Qh4# 0-1\n")
+        ->and(NostrEvent::query()->where('kind', 64)->count())->toBe(0)
+        ->and($game->record_event_id)->toBeNull()
         // Browser: not one signature for four moves and two finished pages.
         ->and(quietSigns($phone))->toBe(0)
         ->and(quietSigns($desk))->toBe(0);
@@ -205,8 +206,9 @@ test('a daily game at 375 and 1440: every move over the server with no signature
     expect($phone->evaluate('() => Alpine.$data(document.querySelector("[data-test=game-post]")).error'))->toBe('')
         ->and(quietSigns($phone))->toBe(1)
         ->and($post?->pubkey)->toBe($anna->pubkey)
-        ->and($post?->payload()['content'])->toBe($game->recordEvent->payload()['content'])
-        ->and($post?->payload()['tags'])->toContain(['q', $game->recordEvent->event_id, '', $league->pubkey])
+        ->and($post?->payload()['content'])->toEndWith("1. f3 e5 2. g4 Qh4# 0-1\n")
+        ->and(array_column($post?->payload()['tags'] ?? [], 0))->toBe(['p', 'p', 'alt'])
+        ->and(NostrEvent::query()->where('kind', 64)->pluck('pubkey')->all())->toBe([$anna->pubkey])
         ->and(collect($post?->payload()['tags'])->where(0, 't')->all())->toBe([])
         ->and($game->black_post_event_id)->toBeNull()
         ->and(quietSigns($desk))->toBe(0);

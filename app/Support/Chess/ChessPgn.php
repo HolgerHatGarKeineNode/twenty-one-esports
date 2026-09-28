@@ -36,7 +36,8 @@ final class ChessPgn
         $date = ($game->created_at ?? now())->utc();
 
         $headers = [
-            'Event' => $game->isCorrespondence() ? 'TWENTY ONE esports, casual daily chess' : 'TWENTY ONE esports, casual blitz',
+            // The league signs the record of a rated game (NIP rev. 9.4): its Event must not say casual.
+            'Event' => 'TWENTY ONE esports, '.($game->rated ? 'rated' : 'casual').($game->isCorrespondence() ? ' daily chess' : ' blitz'),
             'Site' => route('games.show', $game),
             'Date' => $date->format('Y.m.d'),
             'Round' => '-',

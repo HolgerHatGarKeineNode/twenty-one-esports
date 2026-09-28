@@ -1,8 +1,9 @@
 {{--
     "Post this game to my profile" (NIP rev. 9.4), on a finished game's page
     for its players (resources/js/gamePost.js). Optional and never on its own:
-    moves are no events, the league signs the game's record, and this posts
-    the player's own copy (kind 64, the same PGN, quoting the league's record)
+    moves are no events, the league signs the record of a rated game, and
+    this posts the player's own copy (kind 64, the same PGN, quoting the
+    league's record when there is one; a casual game's post stands alone)
     only after the preview and a click on "Sign and post". Once per player.
 --}}
 @php
@@ -45,7 +46,7 @@
     <template x-if="step === 'preview' || step === 'posting'">
         <div class="flex min-w-0 flex-col gap-2.5 rounded-md bg-well px-3.5 py-3" role="group" aria-labelledby="post-pv" data-test="game-post-preview">
             <b id="post-pv" class="text-[13px]">{{ __('Preview: this is what your profile shows') }}</b>
-            <span class="text-xs leading-normal text-ink-2">{{ __('One chess note (NIP-64, kind 64), signed with your key and quoting the league\'s record. Apps that know chess show the board; others show this line:') }}</span>
+            <span class="text-xs leading-normal text-ink-2">{{ $game->record_event_id !== null ? __('One chess note (NIP-64, kind 64), signed with your key and quoting the league\'s record. Apps that know chess show the board; others show this line:') : __('One chess note (NIP-64, kind 64), signed with your key. Apps that know chess show the board; others show this line:') }}</span>
             <span class="min-w-0 text-[13px] break-words text-ink" x-text="alt" data-test="game-post-alt"></span>
             <pre tabindex="0" aria-label="{{ __('PGN of the game') }}" class="m-0 max-h-40 overflow-auto rounded-md bg-ground px-3 py-2 font-mono text-xs leading-[1.6] whitespace-pre-wrap text-ink-2" x-text="template?.content ?? ''" data-test="game-post-pgn"></pre>
             <span class="grid grid-cols-2 gap-2 sm:flex sm:justify-end">

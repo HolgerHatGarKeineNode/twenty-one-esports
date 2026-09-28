@@ -867,7 +867,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     </span>
                 </div>
                 <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
-                    [__('Record'), __('PGN of this game, signed by the league after the last move (NIP-64, kind 64)')],
+                    [__('Record'), $game->rated ? __('PGN of this game, signed by the league after the last move (NIP-64, kind 64)') : __('none from the league: casual games are not recorded on Nostr')],
                     [__('Your profile'), __('only if you post the game yourself, by button after the game')],
                     [__('Moves'), __('league server only, not published one by one')],
                 ]" />

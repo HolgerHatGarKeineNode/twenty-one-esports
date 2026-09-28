@@ -907,9 +907,9 @@ final class ChessGameService
     {
         $this->end($game, ChessGameStatus::Finished, $result, $reason, $at);
 
-        // Same transaction as the result: the game, its rating change, the league's
-        // NIP-64 record and, for a rated game in a live season, its league attestation
-        // (which references that record) commit together.
+        // Same transaction as the result: the game, its rating change and, for a rated
+        // game, the league's NIP-64 record and (in a live season) its league attestation,
+        // which references that record, commit together.
         $this->ratings->applyChessGame($game);
         $this->records->recordFinished($game);
         $this->chains->attestChessGame($game);
