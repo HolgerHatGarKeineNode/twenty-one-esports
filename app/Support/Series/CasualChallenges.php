@@ -167,7 +167,7 @@ final class CasualChallenges
             ->where('created_at', '>', now()->subDay());
 
         return (clone $sent)->count() >= (int) config('esports.casual.challenges_per_day')
-            || $sent->whereJsonContains('sides->challenged', $opponent->id)->count() >= (int) config('esports.casual.challenges_per_recipient_per_day');
+            || $sent->whereIn('id', CasualMatches::onSide($opponent, 'challenged'))->count() >= (int) config('esports.casual.challenges_per_recipient_per_day');
     }
 
     /**

@@ -16,6 +16,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\CasualNotifications;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -164,8 +165,8 @@ final class CasualMatches
             ->where('resolution', SeriesResolution::Forfeit)
             ->where('finished_at', '>=', now()->subHours((int) ($config['window_hours'] ?? 24)))
             ->where(fn (Builder $query) => $query
-                ->where(fn (Builder $q) => $q->where('winner', 'challenged')->whereJsonContains('sides->challenger', $user->id))
-                ->orWhere(fn (Builder $q) => $q->where('winner', 'challenger')->whereJsonContains('sides->challenged', $user->id)))
+                ->where(fn (Builder $q) => $q->where('winner', 'challenged')->whereIn('id', self::onSide($user, 'challenger')))
+                ->orWhere(fn (Builder $q) => $q->where('winner', 'challenger')->whereIn('id', self::onSide($user, 'challenged'))))
             ->orderByDesc('finished_at')
             ->limit($noshows)
             ->get(['id', 'finished_at']);
@@ -185,9 +186,19 @@ final class CasualMatches
      */
     public static function playedBy(Builder $query, User $user): Builder
     {
-        return $query->where(fn (Builder $query) => $query
-            ->whereJsonContains('sides->challenger', $user->id)
-            ->orWhereJsonContains('sides->challenged', $user->id));
+        return $query->whereIn('id', self::onSide($user));
+    }
+
+    /**
+     * The ids of the series with this player on a roster side (or on the
+     * given one): `series_match_players` mirrors `sides`, so this is an
+     * index lookup instead of a JSON scan (as OpenMatches::involving()).
+     */
+    public static function onSide(User $user, ?string $side = null): QueryBuilder
+    {
+        return DB::table('series_match_players')->where('user_id', $user->id)
+            ->when($side !== null, fn (QueryBuilder $query) => $query->where('side', $side))
+            ->select('series_match_id');
     }
 
     /* ---------- Pairing ------------------------------------------------------------------------------------- */
