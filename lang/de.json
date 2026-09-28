@@ -2175,7 +2175,6 @@
     "sats per winning player, era :era": "sats pro siegreichem Spieler, Epoche :era",
     "eras of :days days": "Epochen zu :days Tagen",
     "Supply": "Supply",
-    "fixed at Block 0": "fest ab Block 0",
     "nothing before Block 0": "nichts vor Block 0",
     "Block 1 follows Block 0": "Block 1 folgt auf Block 0",
     "Supply: mined and left": "Supply: geschürft und übrig",
@@ -4839,5 +4838,6 @@
     "Rule 7, the same trust circle, is off": "Regel 7, der gleiche Vertrauenskreis, ist aus",
     "The two players do not both get :percent % or more of their trust from the same person": "Die beiden Spieler beziehen nicht beide :percent % oder mehr ihres Vertrauens von derselben Person",
     "At most :count blocks per pairing until the season ends": "Höchstens :count Blöcke pro Paarung bis zum Ende der Season",
-    "sats at most, paid after the season": "Sats höchstens, ausgezahlt nach der Season"
+    "sats at most, paid after the season": "Sats höchstens, ausgezahlt nach der Season",
+    "not announced yet": "noch nicht angekündigt"
 }

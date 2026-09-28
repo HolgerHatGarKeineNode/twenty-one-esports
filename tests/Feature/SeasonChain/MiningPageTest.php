@@ -34,7 +34,21 @@ test('before Block 0 /mining shows the rest state with the countdown and the Pre
         ->assertSee('(in 1 d 00:00:00)')
         ->assertSee("2\u{00A0}100\u{00A0}000", false)
         ->assertSee('Rules of the Pre-Season draft')
+        ->assertSee('the most it pays out, after the season')
+        ->assertDontSee('fixed at Block 0')
         ->assertDontSee('Latest blocks');
+});
+
+test('before the board saved a chain draft /mining announces no supply, as home and /rules', function () {
+    $this->get(route('mining'))
+        ->assertOk()
+        ->assertSee('data-state="pre-launch"', false)
+        ->assertSee('not announced yet')
+        ->assertDontSee("2\u{00A0}100\u{00A0}000", false);
+
+    saveChainDraft(['supply' => 1_234_567]);
+
+    $this->get(route('mining'))->assertOk()->assertSee("1\u{00A0}234\u{00A0}567", false)->assertDontSee('not announced yet');
 });
 
 test('/mining is the Season page: title, share title and heading say Season, like the navigation', function () {

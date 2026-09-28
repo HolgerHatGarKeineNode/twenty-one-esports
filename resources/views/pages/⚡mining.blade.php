@@ -134,7 +134,10 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 ],
                 default => [
                     [__('Era'), '0', __('eras of :days days', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
-                    [__('Supply'), $sats($chain['supply']), __('fixed at Block 0')],
+                    // The board's saved chain draft only, as home and /rules: no server default is announced.
+                    PreSeason::potSats() === null
+                        ? [__('Supply'), '–', __('not announced yet')]
+                        : [__('Supply'), $sats(PreSeason::potSats()), __('the most it pays out, after the season')],
                     [__('Mined'), '0', __('nothing before Block 0')],
                     [__('Blocks'), '0', __('Block 1 follows Block 0')],
                     [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => 1])],
