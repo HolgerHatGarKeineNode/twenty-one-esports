@@ -4,15 +4,15 @@ namespace App\Support\SeasonChain;
 
 /**
  * The counters of the chain that rules 0, 4, 5, 8 and 9 read: everything
- * mined so far, per game and era, per pairing (day and season) and per
- * winning player, game and UTC day. Voided blocks keep their place in every
- * counter.
+ * mined so far, per share key (the game, or its share group) and era, per
+ * pairing (day and season) and per winning player, share key and UTC day.
+ * Voided blocks keep their place in every counter.
  */
 final class ChainState
 {
     private int $mined = 0;
 
-    /** @var array<string, array<int, int>> game => era => sats */
+    /** @var array<string, array<int, int>> share key => era => sats */
     private array $minedByGameAndEra = [];
 
     /** @var array<string, int> pairing|day => blocks */
@@ -21,7 +21,7 @@ final class ChainState
     /** @var array<string, int> pairing => blocks */
     private array $pairingSeason = [];
 
-    /** @var array<string, int> player|game|day => blocks */
+    /** @var array<string, int> player|share key|day => blocks */
     private array $playerDay = [];
 
     public function mined(): int
@@ -35,9 +35,9 @@ final class ChainState
         return $this->minedByGameAndEra;
     }
 
-    public function minedIn(string $game, int $era): int
+    public function minedIn(string $shareKey, int $era): int
     {
-        return $this->minedByGameAndEra[$game][$era] ?? 0;
+        return $this->minedByGameAndEra[$shareKey][$era] ?? 0;
     }
 
     public function pairingBlocksOn(Candidate $candidate): int
@@ -50,15 +50,16 @@ final class ChainState
         return $this->pairingSeason[$candidate->pairingKey()] ?? 0;
     }
 
-    public function playerBlocksOn(string $player, string $game, string $utcDay): int
+    public function playerBlocksOn(string $player, string $shareKey, string $utcDay): int
     {
-        return $this->playerDay[$player.'|'.$game.'|'.$utcDay] ?? 0;
+        return $this->playerDay[$player.'|'.$shareKey.'|'.$utcDay] ?? 0;
     }
 
-    public function record(Candidate $candidate, Verdict $verdict): void
+    /** $shareKey: the candidate's game, or its share group (ConsensusParameters::shareKey()). */
+    public function record(Candidate $candidate, Verdict $verdict, string $shareKey): void
     {
         $this->mined += $verdict->reward;
-        $this->minedByGameAndEra[$candidate->game][$verdict->era] = $this->minedIn($candidate->game, $verdict->era) + $verdict->reward;
+        $this->minedByGameAndEra[$shareKey][$verdict->era] = $this->minedIn($shareKey, $verdict->era) + $verdict->reward;
 
         $day = $candidate->utcDay();
         $pairing = $candidate->pairingKey();
@@ -66,7 +67,7 @@ final class ChainState
         $this->pairingSeason[$pairing] = ($this->pairingSeason[$pairing] ?? 0) + 1;
 
         foreach ($candidate->winners as $player) {
-            $key = $player.'|'.$candidate->game.'|'.$day;
+            $key = $player.'|'.$shareKey.'|'.$day;
             $this->playerDay[$key] = ($this->playerDay[$key] ?? 0) + 1;
         }
     }

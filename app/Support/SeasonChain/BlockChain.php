@@ -49,7 +49,7 @@ final class BlockChain
         if ($verdict->mines()) {
             $height = count($this->blocks) + 1;
             $this->blocks[] = new Block($height, $candidate, $verdict->era, $verdict->rewardPerPlayer, $verdict->reward);
-            $this->state->record($candidate, $verdict);
+            $this->state->record($candidate, $verdict, $parameters->shareKey($candidate->game));
         }
 
         $this->attestations[] = ['candidate' => $candidate, 'verdict' => $verdict, 'height' => $height, 'parameters' => $parameters];
@@ -111,7 +111,7 @@ final class BlockChain
         return $this->season->supply - $this->state->mined();
     }
 
-    /** @return array<string, array<int, int>> game => era => sats */
+    /** @return array<string, array<int, int>> share key (game or share group) => era => sats */
     public function minedByGameAndEra(): array
     {
         return $this->state->minedByGameAndEra();

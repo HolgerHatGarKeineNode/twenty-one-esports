@@ -15,7 +15,7 @@ final class Candidate
     /**
      * @param  string  $label  the result, e.g. "#212" or "#404/2" for a board
      * @param  string  $match  the challenge the result belongs to (fees are paid per challenge)
-     * @param  string  $game  `chess`, `rocket-league`: share cap and daily limit are per game
+     * @param  string  $game  `chess`, `rocket-league`: share cap and daily limit are per share key (the game, or its group)
      * @param  string  $weightKey  `<game>/<mode>` of the ladder, e.g. `chess/blitz`
      * @param  ?int  $moves  full moves of the counted chess game record; null for a series
      * @param  list<string>  $winners  the winning players (a series: the winning roster)

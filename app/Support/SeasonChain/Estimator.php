@@ -94,7 +94,7 @@ final class Estimator
 
     /**
      * @param  list<array{weight_key: string, game: string, winners: float|int, per_week: float|int}>  $streams  forecast per game and mode
-     * @param  array<string, array<int, int|float>>  $minedByGameAndEra  game => era => sats mined so far
+     * @param  array<string, array<int, int|float>>  $minedByGameAndEra  share key (game or share group) => era => sats mined so far
      * @param  array<numeric-string, float|int>  $passedMilestones  milestone => real week, for milestones already reached
      * @return array{start_week: float|int, forecast_per_week: array<string, float|int>, milestone_weeks: array<numeric-string, float|int|null>, end_mined: int, end_mined_percent: float, per_era: list<array{era: int, budget: int, mined: array<string, int>}>, payout_per_week: list<int>, wins_per_era: list<array<string, int>>, warnings: list<string>}
      */
@@ -103,7 +103,8 @@ final class Estimator
         $parameters = $season->inForceAt($start);
         $eras = $season->eras();
         $eraWeeks = $season->halvingSeconds / self::Week;
-        $games = array_values(array_unique(array_merge(array_column($streams, 'game'), array_keys($parameters->shares))));
+        // Per share key: a share group (both EA Sports FC editions) has one cap for all its games.
+        $games = array_values(array_unique(array_merge(array_map($parameters->shareKey(...), array_column($streams, 'game')), array_keys($parameters->shares))));
         sort($games);
         usort($streams, fn (array $a, array $b): int => $a['weight_key'] <=> $b['weight_key']);
 
@@ -123,7 +124,7 @@ final class Estimator
             foreach ($games as $game) {
                 $want = 0;
                 foreach ($streams as $stream) {
-                    if ($stream['game'] === $game) {
+                    if ($parameters->shareKey($stream['game']) === $game) {
                         $want += $stream['per_week'] * $blockReward($stream, $era);
                     }
                 }

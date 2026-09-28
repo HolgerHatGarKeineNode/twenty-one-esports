@@ -47,8 +47,8 @@ final class ConsensusRules
                 ConsensusRule::DailyLimit => $this->dailyLimit($candidate, $parameters, $chain),
                 ConsensusRule::SameSubtree => $this->sameSubtree($candidate, $parameters->subtree),
                 ConsensusRule::PairingPerSeason => $chain->pairingBlocks($candidate) >= $parameters->pairLimitPerSeason ? ['pairing-season-limit', null] : null,
-                ConsensusRule::ShareCap => $chain->minedIn($candidate->game, $era) + $reward > $season->shareCap($parameters->shareFor($candidate->game), $era)
-                    ? ['share-cap', $candidate->game] : null,
+                ConsensusRule::ShareCap => $chain->minedIn($parameters->shareKey($candidate->game), $era) + $reward > $season->shareCap($parameters->shareFor($candidate->game), $era)
+                    ? ['share-cap', $parameters->shareKey($candidate->game)] : null,
             };
 
             if ($failure !== null) {
@@ -130,7 +130,8 @@ final class ConsensusRules
     }
 
     /**
-     * 5. No winning player has `daily` blocks of this game on that UTC day.
+     * 5. No winning player has `daily` blocks of this game (of its share
+     * group, when it has one) on that UTC day.
      *
      * @return array{0: string, 1: ?string}|null
      */
@@ -139,7 +140,7 @@ final class ConsensusRules
         $daily = $parameters->dailyLimitFor($candidate->game);
 
         foreach ($daily === null ? [] : $candidate->winners as $player) {
-            if ($chain->playerBlocksOn($player, $candidate->game, $candidate->utcDay()) >= $daily) {
+            if ($chain->playerBlocksOn($player, $parameters->shareKey($candidate->game), $candidate->utcDay()) >= $daily) {
                 return ['player-daily-limit', $player];
             }
         }
