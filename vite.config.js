@@ -15,6 +15,7 @@ export default defineConfig({
                 'resources/js/push.js',
                 'resources/js/matchRoom.js',
                 'resources/js/liveChat.js',
+                'resources/js/gameChannel.js',
             ],
             refresh: true,
             fonts: [

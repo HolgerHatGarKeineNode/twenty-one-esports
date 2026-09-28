@@ -68,7 +68,8 @@ use Livewire\Component;
  * blitz ladder's top five. Explanations sit behind the panel's "?"
  * (progressive disclosure), never in the first viewport.
  */
-new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js', 'resources/js/gameChannel.js']])] class extends Component
+{
     public string $error = '';
 
     /**
@@ -527,6 +528,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             @include('pages.chess.partials.lobby-live', ['user' => $user, 'active' => $active])
             @include('pages.chess.partials.lobby-ladder')
         </div>
+
+        {{-- The global chat of chess (P21): a NIP-28 channel with polls, under the lobby, above the weekly events. --}}
+        <livewire:game-channel game="chess" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
         <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:px-6" />

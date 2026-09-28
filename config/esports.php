@@ -892,4 +892,39 @@ return [
         'history' => 80,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Game channels (P21, NIP "Game channels")
+    |--------------------------------------------------------------------------
+    |
+    | The global chat of each game on its overview page (/chess, /games/{slug}):
+    | a NIP-28 public channel per game (kind 40, messages kind 42) with NIP-88
+    | polls (kind 1068, votes kind 1018), read and written in the browser on the
+    | chat relays (`chat.relays`); the server never sees a message and stores
+    | only a viewer's own mutes (ChatMute).
+    |
+    | `creator`: the pubkey (npub or hex) whose kind 40 names each channel.
+    | Unset = the league key's pubkey. The channel ids follow from it
+    | (App\Support\GameChat\GameChannels); `php artisan esports:game-channels`
+    | signs and publishes the kind 40 and 41 with the league key.
+    |
+    | Polls: a question of at most `question_max` characters, 2 to
+    | `max_options` answers of at most `option_max`, closing after one of
+    | `durations` (seconds). Only votes from league players count.
+    |
+    */
+
+    'game_chat' => [
+        'creator' => env('ESPORTS_GAME_CHAT_CREATOR'),
+        'max_length' => 280,
+        'cooldown_ms' => 2000,
+        'history' => 120,
+        'poll' => [
+            'question_max' => 140,
+            'option_max' => 60,
+            'max_options' => 4,
+            'durations' => [3600, 86400, 3 * 86400, 7 * 86400],
+        ],
+    ],
+
 ];

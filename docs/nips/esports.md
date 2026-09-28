@@ -26,14 +26,16 @@ series in tournaments whose players report, with the pairing challenge signed by
 **revision 9** (2026-09-27): the prize pool of a tournament as the league runs it, to the Payout
 `2157` of every winner; **revision 9.1** (2026-09-27): every pot is the tournament's own wallet,
 top-ups as plain invoices, fixed prizes per place; **revision 9.2** (2026-09-27): lobby and account
-cards in the match-room chat of casual 1v1 matches, a chat convention without a new kind). Not
+cards in the match-room chat of casual 1v1 matches, a chat convention without a new kind;
+**revision 9.3** (2026-09-28): a public chat channel per game with polls, NIP-28 and NIP-88 without a
+new kind). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1 and 9.2 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2 and 9.3 (see [Open points](#open-points)).
 
 **Revisions.** A ladder that carries `hashrate` is a **revision-4 ladder**, and every event that
 references it follows revision 4 (the rules marked "rev. 4" below). Ladders without `hashrate`
@@ -2676,7 +2678,7 @@ may publish any kind. A zooid tenant as the league relay needs changes upstream.
 
 | key | signs | where it lives |
 |---|---|---|
-| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` (`void-block`), `30000` (admin list) | remote signer (NIP-46) with exactly this allowlist |
+| league key | `0`, `10002`, `2154`, `2155`, `32152`, `31923`, `31924`, `9734` (payout zaps); rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` (`void-block`), `30000` (admin list); rev. 9.3 `40`, `41`, `43`, `44` (game channels) | remote signer (NIP-46) with exactly this allowlist |
 | admin keys (rev. 5) | `1985` `release-block-0` | each admin's own signer; the board npubs, published in the league's admin list |
 | trust key | `0`, `30382`, `30000` (anchor list) | trust service |
 | league publisher | nothing stored; only NIP-42 `22242` | league server |
@@ -2936,6 +2938,70 @@ source strings, with their entries in `lang/*.json`):
   players (NIP-17). The league cannot read it, so there is no excerpt here." becomes "The chat is
   end-to-end encrypted over Nostr: the league server never receives or stores it, so there is no
   excerpt here." (the sentence about screenshots stays).
+
+### Game channels (rev. 9.3)
+
+Every game has one public chat on its overview page, where anyone talks about the game and the
+players of the league vote in polls. It is public, unlike the match-room chat: messages are signed
+events that every Nostr client can read, not gift wraps.
+
+**Which NIP.** NIP-29 (relay-based groups) would give the league moderation on the relay, but it needs
+a relay that runs the group, and the league has none: its events go to a public default relay set
+(`esports.relays`), and the chat to the chat relays (`esports.chat.relays`). NIP-28 (public chat)
+works on any relay, which is why it stays. The spec marks it `unrecommended` ("try NIP-29 instead");
+the reason to choose it anyway is that there is no group relay, and a channel on the public relays is
+readable in every client that shows NIP-28 channels. The cost: moderation is only client-side (below),
+and anyone can write into the channel from any client.
+
+**The channel.** A kind `40` signed by the channel creator (the league key; the app's
+`esports.game_chat.creator` names its pubkey), one per game, with fixed fields:
+
+| field | value |
+|---|---|
+| `created_at` | `1790553600` (2026-09-28T00:00:00Z) |
+| `tags` | none |
+| `content` | `{"name":"TWENTY ONE esports · <game>","about":"The global chat of <game> in the TWENTY ONE esports league: talk and vote."}`, keys in this order, `<game>` one of `Chess`, `Rocket League`, `EA Sports FC 26`, `EA Sports FC 27` |
+
+The channel id is the event id, and the id is the hash of these fields and the creator's pubkey, not of
+the signature. So every client that knows the creator's pubkey computes the four channel ids without
+the secret and without a relay, and the chat works before the kind `40` is on any relay. The content
+of a kind `40` never changes: a changed name would be another channel. Name, about and relays change
+with a kind `41` of the creator (`e` root to the channel), whose content adds `relays`: the chat relays.
+
+**Messages.** A kind `42` with `["e", <channel id>, <relay>, "root"]` and the text, plus NIP-30 `emoji`
+tags for custom emoji in the text; no `t` tags. The app shows a kind `42` whose root `e` names the
+channel (a positional `e` without marker counts too, as older NIP-28 clients write it). Text is drawn
+as text with the bounds of the stream chat (at most 1120 code points read, 64 tokens, 20 images,
+URLs of at most 2048 characters).
+
+**Polls (NIP-88).** A kind `1068` with the question as `content`, the same root `e` as a message (the
+scope to the channel; NIP-88 itself has none), two to four `option` tags with random alphanumeric ids,
+one `relay` tag per chat relay, `["polltype", "singlechoice"]` and `endsAt`. A vote is a kind `1018`
+with the poll's `e` and one `response`. How the app counts:
+
+- only polls from league players are shown, and only votes from league players are counted; how many
+  other votes arrived is said next to the result, not added to it;
+- one vote per pubkey: the newest `1018` with `created_at` between the poll's `created_at` and
+  `endsAt`, the lowest id on equal `created_at` (as NIP-01 decides for replaceable events); only its
+  first `response` counts, and a vote for an option the poll does not have is ignored, so an earlier
+  valid vote of that pubkey stays;
+- a poll whose `polltype` is `multiplechoice`, without an integer `endsAt` after its creation, or with
+  fewer than two or more than ten valid options is not shown.
+
+Who is a league player is the league's answer to a lookup of pubkeys (name and avatar of those it
+knows); pubkeys are public, and the lookup tells nothing about any message.
+
+**Moderation.** Each reader mutes for themself (the app's mutes, as in the other chats). The creator
+hides a message for every reader of the app with a kind `43` (`e` the message) and a pubkey with a
+kind `44` (`p`), as NIP-28 allows ("Clients MAY hide event 42s for other users"); other clients may
+ignore them. There is no deletion: a relay keeps what it was sent.
+
+**What this does not protect against.** Spam from fresh keys reaches every client; the app shows such
+messages marked "not in the league" and drops their polls and votes from the result, but it shows the
+messages. Poll results are only as good as the relays: a relay may drop votes or accept backdated
+ones (NIP-88 advises relays that refuse both; the chat relays were not checked for that). The creator
+signs kind `40`, `41`, `43` and `44`, which widens the league key's allowlist; a separate channel key
+would keep it narrower.
 
 ## Notifications
 
@@ -3297,6 +3363,7 @@ wanted protected player events would have to accept them from their authenticate
 | 17, 44, 59 | private chat and notifications: kind `14` rumors, NIP-44 sealed (`13`), gift-wrapped (`1059`); DM relay list `10050`; not the ephemeral `21059` |
 | 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind |
 | 24 | `bot` in the notification key's kind `0` |
+| 28 | rev. 9.3: one public channel per game (`40` with fixed fields, `41` metadata, `42` messages, the creator's `43`/`44` as moderation), see [Game channels](#game-channels-rev-93) |
 | 31 | `alt` on every event |
 | 32 | `L`/`l` labels that mark a report as a league report and give its reason; rev. 5: kind `1985` labels for the admins' release of Block 0 (`release-block-0`) and the corrections of the season review (`void-block`) |
 | 40 | deliberately **not** used on challenges (see [Relay behaviour](#relay-behaviour)) |
@@ -3312,6 +3379,7 @@ wanted protected player events would have to accept them from their authenticate
 | 75 | rev. 5: the league reserve is a zap goal (`9041`), the zap target of the reserve pot; tournaments still use no goal |
 | 70 | optional: protected user events (see above) |
 | 98 | the league's login only (`27235` with `u`, `method` and a one-time `challenge`); rev. 7: deliberately **not** used for the tournament consent, see [Tournament Consent](#tournament-consent-22150) |
+| 88 | rev. 9.3: polls in a game channel (`1068` with the channel as root `e`, single choice, `endsAt`; votes `1018`, one per pubkey, league players only) |
 | 85 | trust ranks as user assertions (`30382`) and the trust key's kind `0`, signed by a trust key separate from the league key (one key per algorithm); not used for rating attestations (see [Prior art](#prior-art)) |
 
 ## Kind numbers and collision check
@@ -5724,6 +5792,10 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   allowlist; a separate tournament key would keep the league key narrower but split the authority
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
+- **Game channels (rev. 9.3)** are built (P21) and have no example yet: the four kind `40` are
+  published by `esports:game-channels` once the league key signs them. Open: whether the chat relays
+  accept kind `40`-`44`, `1068` and `1018` from the production host, and whether they refuse backdated
+  votes (NIP-88's advice); whether the league key or a separate channel key should be the creator.
 - **Lobby and account cards (rev. 9.2)** are built (P23 S2) and have no example: they live
   inside sealed rumors, so there is nothing public to sign and read back. Open: whether nos.lol
   supports NIP-40 (it must, to stay a chat relay for casual rooms); whether other NIP-17 clients reject

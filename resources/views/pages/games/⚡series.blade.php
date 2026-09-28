@@ -22,7 +22,8 @@ use Livewire\Component;
  * The page of a series game (Rocket League, EA Sports FC), one per registry
  * entry (`games/{slug}`). From the top: the game, the invite, casual 1v1,
  * the next tournament as a poster and the cups as a side mention (P23, P26
- * first slice).
+ * first slice). After the matches the game's global chat with polls (P21,
+ * components/⚡game-channel).
  *
  * P26 (user, 2026-09-28: "zu textlich und nicht aufregend genug"): the rest
  * shows people and results instead of tables and empty charts.
@@ -37,7 +38,7 @@ use Livewire\Component;
  *  - What a series is worth: the Elo formula (K 32) in one strip.
  * A part without data says so in one line, never an empty chart.
  */
-new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component
+new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/js/gameChannel.js']])] class extends Component
 {
     public string $slug = '';
 
@@ -313,6 +314,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component
             </ul>
         @endif
     </section>
+
+    {{-- The global chat of the game (P21): a NIP-28 channel with polls, after the matches, before the ladder. --}}
+    @if (\App\Support\GameChat\GameChannels::has($slug))
+        <div class="px-4 pb-5 lg:px-12 lg:pb-6"><livewire:game-channel :game="$slug" /></div>
+    @endif
 
     <div class="grid grow grid-cols-1 gap-4 px-4 pb-5 lg:grid-cols-12 lg:items-start lg:gap-5 lg:px-12 lg:pb-6">
         {{-- The ladder's top five (P26) --}}
