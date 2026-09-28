@@ -9,6 +9,7 @@ use App\Http\Controllers\LnurlPayController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
+use App\Http\Controllers\PageCardController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\PlayerSearchController;
 use App\Http\Controllers\ProfileController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\SwitchLocaleController;
 use App\Http\Controllers\TournamentCalendarController;
 use App\Livewire\Actions\Logout;
 use App\Models\InviteLink;
+use App\Support\Cards\PageCard;
 use App\Support\Seo\Sitemap;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -218,6 +220,10 @@ Route::prefix('cards/{locale}')
         Route::get('tournament/{finished}-{format}.png', [ShareCardController::class, 'tournament'])->where('finished', '[0-9]{1,18}')->name('cards.tournament');
         Route::get('tournament-invite/{tournament}-{format}.png', [ShareCardController::class, 'tournamentInvite'])->where('tournament', '[0-9]{1,18}')->name('cards.tournament-invite');
         Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]{1,64}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.wrapped');
+        // The link preview of every public page (P54), one per page and state: 1200 × 630.
+        Route::get('page/{type}/{key}.png', PageCardController::class)
+            ->where(['type' => implode('|', PageCard::TYPES), 'key' => '[a-z0-9][a-z0-9._-]{0,99}'])
+            ->name('cards.page');
     });
 
 // NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.

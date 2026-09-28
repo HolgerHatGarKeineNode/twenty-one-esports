@@ -242,6 +242,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     {
         $view->title(__('Chess'));
         app(PageMeta::class)->describe(__('Chess'), __('Play blitz chess 5+3 live or daily chess against Bitcoiners: find an opponent, watch the live boards and follow your daily games.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('chess'));
 
         $outgoing = $this->outgoing;
         $this->invitedUserId = $outgoing?->invitee_id;

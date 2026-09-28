@@ -23,6 +23,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'scripts' => ['resources/js/
     {
         $view->title(__('Live games'));
         app(PageMeta::class)->describe(__('Live games'), __('Watch the chess games of the TWENTY ONE esports league live: every blitz board and every daily game running now, no login needed.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('games'));
     }
 
     /**

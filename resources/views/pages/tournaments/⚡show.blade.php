@@ -9,7 +9,6 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
-use App\Support\Cards\ShareCard;
 use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\LeagueTime;
@@ -106,9 +105,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 [$tournament->name, LocalizedUrls::for($locale, route('tournaments.show', $tournament))],
             ]));
 
-        // The link preview: the tournament's own card with its cover and places (ShareCard `tournament-invite`).
-        $card = ShareCard::tournamentInvite($tournament);
-        $meta->images = [[$card->url('wide'), 1200, 630, __(':tournament, sign-up and bracket', ['tournament' => $tournament->name])]];
+        // The link preview (P54): places, pot and start while it is open, the podium once it is over.
+        $meta->card(fn () => \App\Support\Cards\PageCard::tournament($tournament));
     }
 
     /**

@@ -66,7 +66,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
         $replace = ['game' => $game, 'mode' => $mode];
         app(PageMeta::class)->describe($title, $this->gameMode->rates === 'player'
             ? __('The rated season ladder and the casual ladder of :game :mode in the TWENTY ONE esports league: rank, rating and results of every player.', $replace)
-            : __('The rated season ladder and the casual ladder of :game :mode in the TWENTY ONE esports league: rank, rating and results of every lineup.', $replace));
+            : __('The rated season ladder and the casual ladder of :game :mode in the TWENTY ONE esports league: rank, rating and results of every lineup.', $replace))
+            ->card(fn () => \App\Support\Cards\PageCard::ladder($this->game, $this->mode));
     }
 
     public function pickPool(string $pool): void

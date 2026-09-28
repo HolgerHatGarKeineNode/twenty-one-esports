@@ -24,6 +24,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     public function rendering(\Illuminate\View\View $view): void
     {
         app(PageMeta::class)->describe(__('Tournaments'), __(':games tournaments of the TWENTY ONE esports league: open sign-ups, running brackets and results, with a draw from a Bitcoin block anyone can re-check.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys(app(\App\Games\GameRegistry::class)->all())))]));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('tournaments'));
     }
 
     /**

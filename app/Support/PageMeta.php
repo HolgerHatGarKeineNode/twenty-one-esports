@@ -2,7 +2,10 @@
 
 namespace App\Support;
 
+use App\Support\Cards\PageCard;
 use App\Support\Seo\SearchIndexing;
+use Closure;
+use Throwable;
 
 /**
  * Search, link-preview and robots tags of the current page (P6b, P14),
@@ -59,6 +62,37 @@ final class PageMeta
         $this->description = $description;
 
         return $this;
+    }
+
+    /**
+     * The page's link preview (P54): its own card, one 1200 × 630 PNG per
+     * page and state; the URL carries the state, so a link shared after a
+     * change shows the new picture. Reading the card's facts never breaks the
+     * page: on any error the preview is the brand card.
+     *
+     * @param  Closure(): PageCard  $card
+     */
+    public function card(Closure $card): self
+    {
+        try {
+            $built = $card();
+            $this->images = [[$built->url(), PageCard::WIDTH, PageCard::HEIGHT, $built->alt()]];
+        } catch (Throwable $e) {
+            report($e);
+            $this->images = [self::brandImage()];
+        }
+
+        return $this;
+    }
+
+    /**
+     * The brand card: the static 1200 × 630 picture a page without a card of its own shows.
+     *
+     * @return array{0: string, 1: int, 2: int, 3: string}
+     */
+    public static function brandImage(): array
+    {
+        return [asset('images/og/fallback.png'), PageCard::WIDTH, PageCard::HEIGHT, 'TWENTY ONE esports'];
     }
 
     /**

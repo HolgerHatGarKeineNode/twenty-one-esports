@@ -44,6 +44,7 @@
 
     app(App\Support\PageMeta::class)->describe(__('Strongest players'),
         __('The strongest players of the TWENTY ONE esports league across every game: one Global Rating from each player’s place on every ladder of the season.'));
+    app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('strongest'));
 @endphp
 
 <x-layouts::app :title="__('Strongest players')" section="strongest">

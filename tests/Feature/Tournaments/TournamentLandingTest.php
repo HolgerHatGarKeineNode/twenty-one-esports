@@ -203,7 +203,7 @@ test('before the draw every format shows its projected bracket with the entries 
     'two stage' => [TournamentFormat::TwoStage, 'Groups if sign-up closed now'],
 ]);
 
-test('the invite card is the preview image of a published tournament and 404s for a draft', function () {
+test('the page card is the preview image of a published tournament, the invite card stays for posts, and both 404 for a draft', function () {
     $tournament = openTournament(['name' => 'Halving Cup']);
     enteredPlayer($tournament, 'satsjaeger', 1200);
     $draft = Tournament::factory()->create();
@@ -211,16 +211,17 @@ test('the invite card is the preview image of a published tournament and 404s fo
     $html = $this->get(route('tournaments.show', $tournament))->getContent();
     preg_match('/property="og:image" content="([^"]+)"/', $html, $image);
 
-    expect($image[1] ?? '')->toContain('/cards/en/tournament-invite/'.$tournament->id.'-wide.png?v=');
+    expect($image[1] ?? '')->toContain('/cards/en/page/tournament/'.$tournament->id.'.png?v=');
 
-    $png = $this->get(route('cards.tournament-invite', ['locale' => 'en', 'tournament' => $tournament->id, 'format' => 'wide'], false))
-        ->assertOk()->assertHeader('Content-Type', 'image/png')->getContent();
+    foreach ([parse_url($image[1], PHP_URL_PATH), route('cards.tournament-invite', ['locale' => 'en', 'tournament' => $tournament->id, 'format' => 'wide'], false)] as $url) {
+        $png = $this->get($url)->assertOk()->assertHeader('Content-Type', 'image/png')->getContent();
+        $size = getimagesizefromstring($png);
 
-    $size = getimagesizefromstring($png);
-
-    expect([$size[0] ?? null, $size[1] ?? null])->toBe([1200, 630]);
+        expect([$size[0] ?? null, $size[1] ?? null])->toBe([1200, 630]);
+    }
 
     $this->get(route('cards.tournament-invite', ['locale' => 'en', 'tournament' => $draft->id, 'format' => 'wide'], false))->assertNotFound();
+    $this->get(route('cards.page', ['locale' => 'en', 'type' => 'tournament', 'key' => $draft->id], false))->assertNotFound();
 });
 
 test('the sign-up page seats the player: open spots and the countdown before, the confirmation with the seed and the invite after', function () {

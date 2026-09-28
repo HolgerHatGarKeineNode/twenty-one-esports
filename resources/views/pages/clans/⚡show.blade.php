@@ -64,6 +64,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
         app(PageMeta::class)
             ->describe($clan->name, $description.($clan->meetup_name ? ' '.__('Meetup: :name', ['name' => $clan->meetup_name]).'.' : ''))
+            ->card(fn () => \App\Support\Cards\PageCard::clan($clan))
             ->addStructuredData(StructuredData::breadcrumbs([
                 [__('Home'), LocalizedUrls::for($locale, route('home'))],
                 [__('Clans'), LocalizedUrls::for($locale, route('clans.index'))],

@@ -23,6 +23,9 @@
 
         return implode(', ', $facts);
     };
+    app(\App\Support\PageMeta::class)
+        ->describe(__('All games and modes'), __('Every game of the TWENTY ONE esports league with its modes: :games. What each one is, how it is rated and where to play it.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys($registry->all())))]))
+        ->card(fn () => \App\Support\Cards\PageCard::page('play'));
 @endphp
 <x-layouts::app :title="__('All games and modes')">
     <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="play-page">

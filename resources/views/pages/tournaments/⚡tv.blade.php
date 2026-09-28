@@ -57,6 +57,13 @@ new #[Layout('layouts::tv')] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__(':tournament on TV', ['tournament' => $this->tournament->name]));
+
+        if ($this->tournament->published_at !== null) {
+            $meta = app(\App\Support\PageMeta::class)
+                ->describe(__(':tournament on TV', ['tournament' => $this->tournament->name]), __(':tournament live on one screen: the bracket, the matches running now and the results.', ['tournament' => $this->tournament->name]))
+                ->card(fn () => \App\Support\Cards\PageCard::tournament($this->tournament));
+            $meta->noindex = true;
+        }
     }
 }; ?>
 

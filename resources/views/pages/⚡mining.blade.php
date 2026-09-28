@@ -32,6 +32,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     {
         $view->title(__('Season'));
         app(PageMeta::class)->describe(__('Season'), __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('mining'));
     }
 
     /**

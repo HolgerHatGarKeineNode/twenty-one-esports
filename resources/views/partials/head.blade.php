@@ -15,7 +15,8 @@
     $shareTitle = $pageMeta->title ?? (filled($title ?? null) ? $title : 'TWENTY ONE esports');
     $indexable = $pageMeta->isIndexable();
     $canonical = $indexable ? App\Support\Seo\LocalizedUrls::for(app()->getLocale(), $pageMeta->url) : $pageMeta->url;
-    $shareImages = $pageMeta->images !== [] || ! $indexable ? $pageMeta->images : [[asset('images/twentyone/cover.png'), 1280, 720, 'TWENTY ONE esports']];
+    // Every page with a preview gets a picture (P54): its own card, else the brand card at the same 1200 × 630.
+    $shareImages = $pageMeta->images !== [] ? $pageMeta->images : [App\Support\PageMeta::brandImage()];
     // JSON_HEX_TAG keeps a `</script>` in a player's name from closing the element.
     $jsonLd = json_encode(['@context' => 'https://schema.org', '@graph' => [App\Support\Seo\StructuredData::organization(), ...$pageMeta->structuredData]],
         JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -54,6 +55,7 @@
     <meta name="twitter:description" content="{{ $pageMeta->description }}">
     @if ($shareImages !== [])
         <meta name="twitter:image" content="{{ $shareImages[0][0] }}">
+        <meta name="twitter:image:alt" content="{{ $shareImages[0][3] }}">
     @endif
 @endif
 @if ($jsonLd !== false)

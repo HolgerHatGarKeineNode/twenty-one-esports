@@ -73,6 +73,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         app(PageMeta::class)
             ->describe($title, $description)
+            ->card(fn () => \App\Support\Cards\PageCard::game($game))
             ->addStructuredData(StructuredData::chessGame($game, $title, LocalizedUrls::for($locale)))
             ->addStructuredData(StructuredData::breadcrumbs([
                 [__('Home'), LocalizedUrls::for($locale, route('home'))],

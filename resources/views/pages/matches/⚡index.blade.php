@@ -30,6 +30,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {
         $view->title(__('Matches'));
         app(PageMeta::class)->describe(__('Matches'), __('Every series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('matches'));
     }
 
     use WithPagination;

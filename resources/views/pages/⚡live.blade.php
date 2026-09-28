@@ -42,6 +42,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
     {
         $view->title(__('Live stream'));
         app(PageMeta::class)->describe(__('Live stream'), __('Watch the TWENTY ONE esports stream: the league\'s live chess games and tournaments, with music, around the clock. No login needed.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('live'));
     }
 
     #[Computed]

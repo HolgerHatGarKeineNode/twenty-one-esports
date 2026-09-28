@@ -58,6 +58,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
         $modes = implode(', ', array_keys(app(GameRegistry::class)->get($this->slug)->modes()));
         $view->title($game);
         app(PageMeta::class)->describe($game, __(':game in the TWENTY ONE esports league: clan lineups play series in :modes, with Elo per lineup, the latest results and open challenges.', ['game' => $game, 'modes' => $modes]));
+        app(PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('hub.'.$this->slug));
     }
 
     #[Computed]

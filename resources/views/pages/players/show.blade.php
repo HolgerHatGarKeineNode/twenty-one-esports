@@ -25,6 +25,7 @@
         .(filled($profile->about) ? ' '.\Illuminate\Support\Str::limit(\Illuminate\Support\Str::squish($profile->about), 100, '…') : '');
     app(\App\Support\PageMeta::class)
         ->describe($name, $description)
+        ->card(fn () => \App\Support\Cards\PageCard::player($user))
         ->addStructuredData(\App\Support\Seo\StructuredData::profilePage($profile, \App\Support\Seo\LocalizedUrls::for(app()->getLocale())));
 @endphp
 <x-layouts::app :title="$name">

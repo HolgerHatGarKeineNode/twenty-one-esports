@@ -65,6 +65,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
         app(PageMeta::class)
             ->describe($title, $description)
+            ->card(fn () => \App\Support\Cards\PageCard::series($match))
             ->addStructuredData(StructuredData::series($match, LocalizedUrls::for($locale)))
             ->addStructuredData(StructuredData::breadcrumbs([
                 [__('Home'), LocalizedUrls::for($locale, route('home'))],

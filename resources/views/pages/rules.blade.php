@@ -9,6 +9,7 @@
     $sections = \App\Support\Pages\RulesPage::sections();
     $season = \App\Support\Series\Ladders::season();
     app(\App\Support\PageMeta::class)->describe(__('Rules'), __('The rules of the TWENTY ONE esports league: casual and rated, games and modes, casual 1v1, chess, clan series, tournaments, casual cups, prize pots, fair play and chat.'));
+    app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('rules'));
 @endphp
 <x-layouts::app :title="__('Rules')">
     <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="rules-page">

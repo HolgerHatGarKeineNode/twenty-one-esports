@@ -336,6 +336,8 @@ const SWEEP_ROUTE_PARAMETERS = [
     'badges.rank.thumb' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1', 'size' => '256'],
     // A pride note slide: served by its content hash, written in the sweep test below.
     'stream.pride-image' => ['hash' => SWEEP_PRIDE_HASH],
+    // A page's link preview (P54): a card type and its key, here the home page's.
+    'cards.page' => ['type' => 'page', 'key' => 'home'],
 ];
 
 /**
@@ -513,7 +515,7 @@ const SWEEP_FLUSH_PATHS = ['/'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV). */
 const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
-    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'stream.cover', 'stream.pride-image'];
+    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'cards.page', 'stream.cover', 'stream.pride-image'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {

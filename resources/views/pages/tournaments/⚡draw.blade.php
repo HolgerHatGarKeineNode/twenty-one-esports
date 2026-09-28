@@ -28,6 +28,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('The draw').': '.$this->tournament->name);
+
+        if ($this->tournament->published_at !== null) {
+            $meta = app(\App\Support\PageMeta::class)
+                ->describe(__('The draw').': '.$this->tournament->name, __(':tournament: the seeds and the bracket drawn from a Bitcoin block, re-checked on this page.', ['tournament' => $this->tournament->name]))
+                ->card(fn () => \App\Support\Cards\PageCard::tournament($this->tournament));
+            $meta->noindex = true;
+        }
     }
 
     /**

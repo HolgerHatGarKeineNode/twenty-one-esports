@@ -98,7 +98,7 @@ final class Sitemap
      */
     private function fixedPages(): array
     {
-        $urls = [route('home'), route('clans.index'), route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'), route('tournaments.index')];
+        $urls = [route('home'), route('clans.index'), route('matches.index'), route('chess.lobby'), route('games.rocket-league'), route('mining'), route('tournaments.index'), route('play')];
 
         foreach (array_keys(app(GameRegistry::class)->series()) as $series) {
             $urls[] = GameNames::page($series);

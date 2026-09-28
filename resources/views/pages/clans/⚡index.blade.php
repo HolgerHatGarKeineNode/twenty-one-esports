@@ -26,6 +26,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     {
         $view->title(__('Clans'));
         app(PageMeta::class)->describe(__('Clans'), __('All clans of the TWENTY ONE esports league: players, meetups on the map, Clan Rating and Hashrate.'));
+        app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('clans'));
     }
 
     #[Url(as: 'q', except: '')]

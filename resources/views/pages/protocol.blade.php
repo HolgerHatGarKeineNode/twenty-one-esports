@@ -21,6 +21,7 @@
         ['document', __('The full protocol')],
     ];
     app(\App\Support\PageMeta::class)->describe(__('Open protocol'), __('What the TWENTY ONE esports league publishes on Nostr, with which keys and on which relays, and how to check every result yourself.'));
+    app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('protocol'));
 @endphp
 <x-layouts::app :title="__('Open protocol')">
     <div class="flex flex-col gap-6 px-4 pb-10 lg:gap-8 lg:px-12 lg:pb-12" data-test="protocol-page">

@@ -57,7 +57,7 @@
         $liveSeason !== null
             ? __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The season is live: every fair rated win mines a block.')
             : __('The esports league of the Bitcoin community EINUNDZWANZIG: blitz and daily chess, Rocket League series between clans, login with Nostr. The Pre-Season starts at Block 0.'),
-    );
+    )->card(fn () => \App\Support\Cards\PageCard::page('home'));
 @endphp
 
 <x-layouts::app section="home" flush :scripts="$live['boards']->isNotEmpty() ? ['resources/js/chess.js'] : []">
