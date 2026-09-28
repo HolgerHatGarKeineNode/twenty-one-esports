@@ -3,9 +3,11 @@
     MobilePlayerHeader.dc.html (390): banner, picture, name, NIP-05, bio,
     clan, website, whether zaps can be received, npub, and the rating chips (P7b: chess
     blitz and each Rocket League lineup, casual before Block 0) and, for a
-    signed-in visitor, "Add as opponent" (P7e). Trust and the
-    stats below the header come with their phases; until then the rest of the
-    page is the "coming soon" state.
+    signed-in visitor, "Add as opponent" (P7e). Below it the rank badges
+    (P11) and the public record (P31, partials/stats): ladders with rating,
+    rank, form, share of wins and peak, the latest results, tournaments with
+    place and paid prize, the season record and the clans. Everything here is
+    public: nothing a guest must not see is read for it.
 --}}
 @php
     $user = $profile->user;
@@ -138,10 +140,6 @@
             <livewire:rank-badges :player="$user" />
         </div>
 
-        <div class="mx-4 rounded-lg shadow-ring-hairline lg:mx-0">
-            <x-empty-state class="px-5 py-8 lg:px-10 lg:py-10"
-                           :heading="__('Coming soon')"
-                           :text="__('Ratings, results and the season record of this player are still being built.')" />
-        </div>
+        @include('pages.players.partials.stats', ['stats' => new \App\Support\Players\PlayerStats($user), 'name' => $name, 'isMe' => $isMe])
     </div>
 </x-layouts::app>
