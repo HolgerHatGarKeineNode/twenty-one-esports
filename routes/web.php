@@ -50,7 +50,8 @@ Route::middleware('guest')->group(function () {
 Route::view('play', 'pages.play')->name('play');
 
 Route::middleware('auth')->group(function () {
-    Route::view('me', 'pages.coming-soon', ['page' => 'Your page', 'section' => null])->name('dashboard');
+    // The player's own hub (P30): what needs them, what runs, where they stand. The header's "Your page".
+    Route::livewire('me', 'pages::me.hub')->name('dashboard');
     Route::post('logout', Logout::class)->name('logout');
     Route::post('notify/block0', NotifyAtBlockZeroController::class)->name('notify.block0');
 });

@@ -2300,6 +2300,40 @@ select:focus[data-flux-control] {
 }
 
 /*
+ * /me (P30): the last ten results as a chain of blocks, newest first. Each
+ * block is the opponent's face standing on the edge of its outcome (the
+ * seats' language on home); the word under the score says the outcome, so
+ * the colour never carries it alone. From lg one row; below it the chain
+ * scrolls sideways inside itself.
+ */
+.me-block {
+    border-bottom: 3px solid var(--color-edge);
+}
+
+.me-block-win {
+    border-bottom-color: var(--color-win);
+}
+
+.me-block-loss {
+    border-bottom-color: var(--color-loss);
+}
+
+/* The link between two blocks, at the height of the faces, across the 12 px gap. */
+.me-chain > li {
+    position: relative;
+}
+
+.me-chain > li + li::before {
+    content: "";
+    position: absolute;
+    top: 33px;
+    right: 100%;
+    width: 12px;
+    height: 2px;
+    background: var(--color-line);
+}
+
+/*
  * The live stream (P20): the tally dot of <x-live-badge> and the floating
  * player. The dot itself never moves; a ring leaves it like a signal leaves
  * an antenna. With reduced motion the ring is gone (opacity 0 is its resting

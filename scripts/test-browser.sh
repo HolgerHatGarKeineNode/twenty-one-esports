@@ -39,7 +39,7 @@
 #   6: NavigationMenusTest, NavigationCrawlStaffTest, InvitePlacementTest (P16 menus and context actions; the walk for organizer and admin), GameChannelTest (P21, the game channels with polls)
 #   7: TournamentLandingTest, PlayerPickerTest, ShellNavigationWidthsTest (the shell at six widths per role, German at the desktop widths), CasualLobbyCardTest (P23 S2, a lobby card host to guest)
 #   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest, TournamentControlTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46; the P18 control), NavigateRaceTest (a late Livewire answer after wire:navigate is not morphed into the old page)
-#   9: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK), HomeHubTest (home as the engagement hub), LiveChatTest (P24, the stream chat on /live over the mini relay)
+#   9: TournamentTvTest (P19, the TV live at 1080p and 4K; its soak test runs only with TV_SOAK), HomeHubTest (home as the engagement hub), LiveChatTest (P24, the stream chat on /live over the mini relay), MeHubTest (P30, the own page)
 # Measured 2026-09-27, every shard in parallel: origin/master (7 shards) ran
 # 69-82 s in shards 1-4 already; a 10-shard split only raised the host load
 # (37 on 24 cores) and with it every shard. The crawl of five roles took 71 s
@@ -179,7 +179,7 @@ SHARD_FILES=(
     "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php tests/Browser/ChessLobbyTest.php tests/Browser/GameChannelTest.php"
     "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php tests/Browser/CasualLobbyCardTest.php"
     "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php tests/Browser/TournamentControlTest.php tests/Browser/NavigateRaceTest.php"
-    "tests/Browser/TournamentTvTest.php tests/Browser/HomeHubTest.php tests/Browser/LiveChatTest.php"
+    "tests/Browser/TournamentTvTest.php tests/Browser/HomeHubTest.php tests/Browser/LiveChatTest.php tests/Browser/MeHubTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

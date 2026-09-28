@@ -247,7 +247,8 @@ final class ShellNavigation
             : null;
 
         return array_values(array_filter([
-            self::link('page', route('players.show', $user->npub), __('Your page'), 'user', 'account-page', 'mobile-page'),
+            // The own hub (P30); the public player page is one click from there.
+            self::link('page', route('dashboard'), __('Your page'), 'user', 'account-page', 'mobile-page'),
             match (true) {
                 $clan !== null => self::link('clan', route('clans.show', $clan), __('Your clan'), 'clans', 'account-clan', 'mobile-clan'),
                 $invite !== null => self::link('invite', route('invites.show', $invite), __('Clan invite from :clan', ['clan' => $invite->clan->name]), 'clans', 'account-clan-invite', 'mobile-clan-invite'),

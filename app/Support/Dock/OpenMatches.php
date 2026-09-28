@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Support\GameNames;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesPresenter;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -436,23 +437,47 @@ final class OpenMatches
     }
 
     /**
+     * The lineups a player plays a series for: an accepted seat, or a lineup
+     * of the clan they own.
+     *
+     * @return Collection<int, int>
+     */
+    public static function lineupsOf(User $user): Collection
+    {
+        return LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')->pluck('lineup_id')
+            ->concat(Lineup::query()->whereIn('clan_id', Clan::query()->where('owner_id', $user->id)->select('id'))->pluck('id'))
+            ->map(intval(...))
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * The series a player is in: a lineup seat, or a roster side (a
+     * tournament's 1v1 or mix team, a casual 1v1). The sides list the players,
+     * mirrored in series_match_players so this is an index lookup, not a JSON
+     * scan per series.
+     *
+     * @param  Builder<SeriesMatch>  $query
+     * @param  Collection<int, int>  $lineups  {@see lineupsOf()}
+     * @return Builder<SeriesMatch>
+     */
+    public static function involving(Builder $query, User $user, Collection $lineups): Builder
+    {
+        return $query->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups)
+            ->orWhereIn('id', DB::table('series_match_players')->where('user_id', $user->id)->select('series_match_id')));
+    }
+
+    /**
      * @return list<DockItem>
      */
     private function series(User $user, ?int $exclude, int $nowMs): array
     {
-        $lineups = LineupSeat::query()->where('user_id', $user->id)->whereNotNull('accepted_at')->pluck('lineup_id')
-            ->concat(Lineup::query()->whereIn('clan_id', Clan::query()->where('owner_id', $user->id)->select('id'))->pluck('id'))
-            ->unique()
-            ->values();
+        $lineups = self::lineupsOf($user);
 
         $user->loadMissing('clanMember');
 
-        $matches = SeriesMatch::query()
+        $matches = self::involving(SeriesMatch::query(), $user, $lineups)
             ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
-            // A lineup seat, or a roster side (a tournament's 1v1 or mix team, a casual 1v1): the sides list the
-            // players, mirrored in series_match_players so this is an index lookup, not a JSON scan per series.
-            ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups)
-                ->orWhereIn('id', DB::table('series_match_players')->where('user_id', $user->id)->select('series_match_id')))
             ->when($exclude !== null, fn ($query) => $query->where('number', '!=', $exclude))
             // Scheduled series join an hour before their start.
             ->where(fn ($query) => $query->where('status', '!=', SeriesStatus::Accepted)->orWhereNull('start_at')->orWhere('start_at', '<=', now()->addMilliseconds(self::STARTS_SOON_MS)))

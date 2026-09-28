@@ -31,6 +31,7 @@ require_once __DIR__.'/Support/wallet.php';
 require_once __DIR__.'/Support/shares.php';
 require_once __DIR__.'/Support/navigation.php';
 require_once __DIR__.'/Support/shell.php';
+require_once __DIR__.'/Support/me.php';
 require_once __DIR__.'/Integration/Support/helpers.php';
 
 pest()->extend(TestCase::class)

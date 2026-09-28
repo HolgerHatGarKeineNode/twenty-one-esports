@@ -48,6 +48,7 @@ const NAV_PAGES = [
     'chess.lobby' => ['roles' => NAV_ROLES, 'max' => 1],
     'chess.challenge' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'me.correspondence' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
+    'dashboard' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
     'games.index' => ['roles' => NAV_ROLES, 'max' => 1],
     'live' => ['roles' => NAV_ROLES, 'max' => 1],
     'games.show' => ['roles' => NAV_ROLES, 'max' => 2],
@@ -100,7 +101,6 @@ const NAV_PAGES = [
  * @var array<string, string>
  */
 const NAV_NOT_PAGES = [
-    'dashboard' => 'placeholder ("Coming soon"): "Your page" opens the player page until the dashboard is built',
     'invites.link' => 'entry point: the invite link a player shares outside the app',
     'challenges.casual' => 'entry point: "Schedule a 1v1" from the casual 1v1 module and a player page, always with ?to=',
     'notifications.dm-off' => 'entry point: the signed link at the end of every DM',
