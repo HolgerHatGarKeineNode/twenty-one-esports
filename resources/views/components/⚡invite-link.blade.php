@@ -184,16 +184,17 @@ new class extends Component
 <div @if ($state === 'hidden') hidden @endif>
 @if ($state !== 'hidden')
     <section aria-labelledby="{{ $id }}-h" x-data="{ open: @js(! $compact) }"
-             class="flex flex-col gap-4 rounded-lg bg-card px-4 py-4 shadow-ring-btc lg:px-6"
+             class="@container flex flex-col gap-4 rounded-lg bg-card px-4 py-4 shadow-ring-btc lg:px-6"
              data-test="invite-module" data-place="{{ $place }}" data-state="{{ $state }}">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+        {{-- On a game page (P56) the module sits in a side column from lg: its own width decides the row, not the window's. --}}
+        <div @class(['flex flex-col gap-3', 'sm:flex-row sm:items-center sm:gap-6' => $place !== 'game', '@xl:flex-row @xl:items-center @xl:gap-6' => $place === 'game'])>
             {{-- The icon centres on a lone heading (compact, below sm) and tops a heading with its text. --}}
-            <span @class(['flex min-w-0 grow gap-3', 'items-center sm:items-start' => $slim, 'items-start' => ! $slim])>
+            <span @class(['flex min-w-0 grow gap-3', 'items-center sm:items-start' => $slim && $place !== 'game', 'items-center @xl:items-start' => $place === 'game', 'items-start' => ! $slim])>
                 <span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-btc-tint text-btc" aria-hidden="true"><x-icon name="link" :size="20" /></span>
                 <span class="flex min-w-0 flex-col gap-1">
                     <h2 id="{{ $id }}-h" class="m-0 font-display text-base leading-[1.25] font-bold break-words">{{ $heading }}</h2>
                     {{-- Below sm the row stays one heading and one button; a link-making player reads this in the options. --}}
-                    <span @class(['max-w-[72ch] text-[13px] leading-normal text-ink-2', 'max-sm:hidden' => $slim])>{{ $text }}</span>
+                    <span @class(['max-w-[68ch] text-[13px] leading-normal text-ink-2', 'max-sm:hidden' => $slim && $place !== 'game', '@max-xl:hidden' => $place === 'game'])>{{ $text }}</span>
                 </span>
             </span>
 

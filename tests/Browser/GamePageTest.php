@@ -172,8 +172,9 @@ test('an EA FC page with nothing played says so in one line per part, no empty c
     gamePageShot($de, 'game-fc27-empty-de-375');
 
     expect($empty['lines'])->each->toBeLessThanOrEqual(90)
-        // No part grows into a big empty box.
-        ->and(max($empty['parts']))->toBeLessThanOrEqual(240)
+        // No part grows into a big empty box. P56: the clans sit in the 4-of-12 side column from lg, where their two
+        // one-line empty states wrap once each (251 px measured at 1440).
+        ->and(max($empty['parts']))->toBeLessThanOrEqual(260)
         ->and($empty['charts'])->toBe(0)
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
         ->and($phone)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => []])
@@ -182,5 +183,107 @@ test('an EA FC page with nothing played says so in one line per part, no empty c
     foreach ([$wide, $de] as $page) {
         expect($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});
+
+/*
+| P56: the landing's head. One primary action in the first viewport above the
+| fixed chrome and not covered, the pulse counts as 44 px links, the hero
+| before the invite before the matches, no line of text longer than 68
+| characters of its own font, nothing wider than the window. A guest and a
+| captain with an open challenge, English and German, 375 x 667 and 1440 x 900.
+*/
+
+/** The head's geometry; `wide` lists every text line over 68 ch (in its own font's "0"). */
+const GAME_LANDING_PROBE = <<<'JS'
+    () => {
+        const root = document.querySelector('[data-test=game-page]');
+        const floor = Math.round(Math.min(innerHeight, ...['[data-test=tab-bar]', '[data-test=dock-mobile-bar]']
+            .map((s) => document.querySelector(s)).filter((el) => el && el.checkVisibility()).map((el) => el.getBoundingClientRect().top)));
+        const cta = document.querySelector('[data-test=game-cta]');
+        const r = cta.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const ctx = document.createElement('canvas').getContext('2d');
+        const lines = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let node; (node = walker.nextNode());) {
+            const text = node.textContent.replace(/\s+/g, ' ').trim();
+            const el = node.parentElement;
+            if (text.length < 30 || !el.checkVisibility()) continue;
+            ctx.font = getComputedStyle(el).font;
+            const ch = ctx.measureText('0').width;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const widest = Math.max(0, ...[...range.getClientRects()].map((x) => x.width));
+            lines.push([Math.round(widest / ch), text.slice(0, 40)]);
+        }
+        const heads = [...root.querySelectorAll('[data-test=game-hero] :is(a[href], button), [data-test=game-pulse] a')].filter((el) => el.checkVisibility());
+        const top = (sel) => { const el = document.querySelector(sel); return el ? el.getBoundingClientRect().top + scrollY : null; };
+        return {
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            floor, ctaTop: Math.round(r.top), ctaBottom: Math.round(r.bottom), ctaHit: !!hit && (hit === cta || cta.contains(hit)),
+            action: cta.dataset.action,
+            order: [top('[data-test=game-cta]'), top('[data-test=invite-module]'), top('[data-test=game-matches]')],
+            small: heads.filter((el) => el.getBoundingClientRect().height < 44).map((el) => (el.dataset.test || el.innerText.trim().slice(0, 20)) + ' ' + Math.round(el.getBoundingClientRect().height)),
+            pulse: [...document.querySelectorAll('[data-test=game-pulse] a')].map((el) => el.dataset.test.replace('game-pulse-', '') + ':' + el.dataset.count),
+            longest: Math.max(0, ...lines.map((l) => l[0])),
+            wide: lines.filter((l) => l[0] > 68),
+            pitch: document.querySelector('[data-test=game-pitch]').innerText,
+        };
+    }
+    JS;
+
+test('the landing leads with one action in the first viewport, pulse links of 44 px and lines of at most 68 ch, guest and captain, English and German', function () {
+    gamePageSeed();
+    $captain = SeriesMatch::query()->where('status', SeriesStatus::Open)->firstOrFail()->challengerLineup->clan->owner;
+    $captain->update(['locale' => 'de']);
+    $en = 'Play alone or with your clan. Every series moves your Elo.';
+    $de = 'Spiel allein oder mit deinem Clan. Jede Serie bewegt dein Elo.';
+
+    // Guests first: the browser keeps the login cookie across the helper's pages.
+    $runs = [
+        ['guest en 375', null, '/games/rocket-league?lang=en', 375, 667, 'login', $en],
+        ['guest de 1440', null, '/games/rocket-league?lang=de', 1440, 900, 'login', $de],
+        ['fc27 guest en 375', null, '/games/ea-sports-fc-27?lang=en', 375, 667, 'login', $en],
+        ['captain de 375', $captain, '/games/rocket-league?lang=de', 375, 667, 'match', $de],
+        ['captain en 1440', $captain, '/games/rocket-league?lang=en', 1440, 900, 'match', $en],
+    ];
+
+    foreach ($runs as $index => [$label, $user, $path, $width, $height, $action, $pitch]) {
+        $page = gamePage($path, $width, $height, $user);
+
+        if ($index === 0) {
+            gamePageControl($page);
+            // Positive control of the line probe: a 120 character line must be caught, then goes again.
+            $page->evaluate('() => { const p = document.createElement("p"); p.id = "probe-line"; p.textContent = "x".repeat(120); document.querySelector("[data-test=game-matches]").append(p); }');
+            expect(collect($page->evaluate(GAME_LANDING_PROBE)['wide'])->pluck(1)->all())->toContain(str_repeat('x', 40));
+            $page->evaluate('() => document.getElementById("probe-line").remove()');
+        }
+
+        $probe = $page->evaluate(GAME_LANDING_PROBE);
+        gamePageShot($page, 'landing-'.str_replace(' ', '-', $label));
+        fwrite(STDERR, "\n[landing] {$label}: ".json_encode(array_diff_key($probe, ['wide' => 0]))."\n");
+
+        expect($probe['overflow'])->toBe(0, $label)
+            ->and($probe['action'])->toBe($action, $label)
+            ->and($probe['pitch'])->toBe($pitch, $label)
+            ->and($probe['ctaTop'])->toBeGreaterThanOrEqual(0, $label)
+            ->and($probe['ctaBottom'])->toBeLessThanOrEqual($probe['floor'], $label)
+            ->and($probe['ctaHit'])->toBeTrue($label)
+            ->and($probe['order'][0])->toBeLessThan($probe['order'][2], $label)
+            ->and($probe['small'])->toBe([], $label)
+            ->and($probe['wide'])->toBe([], $label)
+            ->and($page->evaluate('() => window.__errors'))->toBe([], $label)
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], $label);
+
+        // Below lg the invite follows the hero; from lg it heads the side column, level with the main one.
+        if ($width < 1024) {
+            expect($probe['order'][0])->toBeLessThan($probe['order'][1], $label)
+                ->and($probe['order'][1])->toBeLessThan($probe['order'][2], $label);
+        }
+
+        expect($probe['pulse'])->toBe(str_starts_with($label, 'fc27')
+            ? ['live:0', 'open:0', 'searching:0', 'clans:0', 'ranked:0']
+            : ['live:1', 'open:1', 'searching:0', 'clans:5', 'ranked:5'], $label);
     }
 });

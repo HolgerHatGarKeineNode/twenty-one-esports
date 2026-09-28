@@ -5138,5 +5138,20 @@
     "Your :season on one card": "Deine :season auf einer Karte",
     "Your :season, wrapped": "Deine :season im Rückblick",
     "Your blocks, sats, wins and best rank of the season on one card. Post it, or download it for your chats.": "Deine Blöcke, Sats, Siege und dein bester Rang der Season auf einer Karte. Poste sie oder lade sie für deine Chats herunter.",
-    "Post my season": "Meine Season posten"
+    "Post my season": "Meine Season posten",
+    "Play alone or with your clan. Every series moves your Elo.": "Spiel allein oder mit deinem Clan. Jede Serie bewegt dein Elo.",
+    "Play with your clan. Every series moves your Elo.": "Spiel mit deinem Clan. Jede Serie bewegt dein Elo.",
+    "Play one on one. Every series moves your Elo.": "Spiel eins gegen eins. Jede Serie bewegt dein Elo.",
+    "Open your match :number": "Dein Match :number öffnen",
+    "open challenge|open challenges": "offene Herausforderung|offene Herausforderungen",
+    "searching 1v1": "suchen ein 1v1",
+    "on the ladder": "in der Ladder",
+    "Right now in :game": "Gerade in :game",
+    "Your standing": "Dein Platz",
+    ":rating Elo after :results": ":rating Elo nach :results",
+    ":count series|:count series": ":count Serie|:count Serien",
+    "Join a clan, or play 1v1 without one": "Tritt einem Clan bei oder spiel 1v1 ohne",
+    "Finish your first :game series": "Spiel deine erste :game-Serie zu Ende",
+    "Start in three steps": "In drei Schritten starten",
+    "Done": "Erledigt"
 }

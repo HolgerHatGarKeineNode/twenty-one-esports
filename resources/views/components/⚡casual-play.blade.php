@@ -331,7 +331,7 @@ new class extends Component
     @endif
 
     @if (! $chatOn)
-        <p class="m-0 rounded-md bg-well px-4 py-3 text-[13px] leading-normal text-ink-2" data-test="casual-off">{{ __('Casual 1v1 is off here: it needs the encrypted match chat, where the lobby travels, and this site runs no chat relay right now.') }}</p>
+        <p class="m-0 rounded-md bg-well px-4 py-3 text-[13px] leading-normal text-ink-2" data-test="casual-off"><span class="block max-w-[68ch]">{{ __('Casual 1v1 is off here: it needs the encrypted match chat, where the lobby travels, and this site runs no chat relay right now.') }}</span></p>
     @else
         @if ($error)
             <p role="alert" class="m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss" data-test="casual-error">{{ $error }}</p>
@@ -361,7 +361,7 @@ new class extends Component
 
         @guest
             <div class="flex flex-col gap-3 rounded-md bg-well p-4 sm:flex-row sm:items-center">
-                <p class="m-0 grow text-[13px] leading-normal text-ink-2">{{ __('Find an opponent for :game in seconds: one match, no clan needed.', ['game' => $gameName]) }}</p>
+                <p class="m-0 max-w-[68ch] grow text-[13px] leading-normal text-ink-2">{{ __('Find an opponent for :game in seconds: one match, no clan needed.', ['game' => $gameName]) }}</p>
                 <x-button :href="route('login')" data-test="casual-login">{{ __('Log in to play') }}</x-button>
             </div>
         @else
@@ -466,7 +466,7 @@ new class extends Component
                     <a href="{{ route('challenges.casual', ['game' => $game]) }}" class="inline-flex min-h-11 items-center gap-1.5 text-[13px]" data-test="casual-schedule"><x-icon name="calendar" :size="14" />{{ __('Schedule a 1v1') }}</a>
                 </span>
                 @if ($looking->isEmpty())
-                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="casual-list-empty">{{ __('Nobody else is looking right now. Find an opponent to join the queue, or switch on Looking to play to get invites.') }}</p>
+                    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2" data-test="casual-list-empty">{{ __('Nobody else is looking right now. Find an opponent to join the queue, or switch on Looking to play to get invites.') }}</p>
                 @else
                     <ul role="list" class="m-0 grid list-none grid-cols-1 gap-x-4 p-0 lg:grid-cols-2">
                         @foreach ($looking as $player)
