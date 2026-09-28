@@ -235,3 +235,13 @@ test('the Season page survives a Livewire roundtrip between seasons too', functi
 
     Livewire::test('pages::mining')->call('$refresh')->assertOk()->assertSee('data-state="between"', false);
 });
+
+test('the supply table of an ended season without blocks does not promise a first block', function () {
+    $curve = ['from' => now(), 'to' => now()->addWeeks(24), 'now' => now()->addWeeks(24), 'supply' => 2100000, 'halvings' => [], 'forecast' => null, 'days' => []];
+
+    $ended = view('components.supply-chart', ['curve' => $curve, 'zone' => 'UTC', 'ended' => true])->render();
+    $live = view('components.supply-chart', ['curve' => $curve, 'zone' => 'UTC'])->render();
+
+    expect($ended)->toContain('No block was mined this season.')->not->toContain('mines block 1')
+        ->and($live)->toContain('mines block 1');
+});

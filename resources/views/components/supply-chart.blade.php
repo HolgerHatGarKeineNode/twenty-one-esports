@@ -1,4 +1,4 @@
-@props(['curve', 'zone'])
+@props(['curve', 'zone', 'ended' => false])
 
 @php
     /*
@@ -152,7 +152,7 @@
                             <td class="py-2 text-right whitespace-nowrap">{{ $sats($row['total']) }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="py-3 text-ink-2">{{ __('No block yet. The first fair rated win mines block 1.') }}</td></tr>
+                        <tr><td colspan="4" class="py-3 text-ink-2">{{ $ended ? __('No block was mined this season.') : __('No block yet. The first fair rated win mines block 1.') }}</td></tr>
                     @endforelse
                     @if ($forecast !== null)
                         <tr class="text-ink-2">

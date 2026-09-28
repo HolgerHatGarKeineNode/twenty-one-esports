@@ -139,7 +139,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     @if ($hasChain)
         <section aria-labelledby="supply-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-supply">
             <h2 id="supply-h" class="m-0 text-[15px] font-bold">{{ __('Supply: mined and left') }}</h2>
-            <x-supply-chart :curve="$chain['curve']" :zone="$zone" />
+            <x-supply-chart :curve="$chain['curve']" :zone="$zone" :ended="$ended" />
             @if ($live)
                 <p class="m-0 text-xs text-ink-2">{{ __('At the rate of the last 4 weeks about :sats sats get mined by the season end (:percent %).', ['sats' => $sats($chain['estimate']['end_mined']), 'percent' => $chain['estimate']['end_mined_percent']]) }}</p>
             @endif
