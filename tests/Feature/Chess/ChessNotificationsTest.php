@@ -73,7 +73,7 @@ test('each trigger notifies the right player on both channels', function (string
             $games->move($game->refresh(), $anna, 'g1f3');
 
             // The notice names the move just played, not the first one.
-            expect(Bus::dispatched(SendNostrDm::class)->sole()->text)->toContain('Nf3')->not->toContain('e4');
+            expect(Bus::dispatched(SendNostrDm::class)->sole()->text)->toContain('Nf3')->not->toMatch('/\be4\b/'); // a whole-word e4: the DM's random hex fragment may contain "e4"
 
             return [$bert->id];
         })(),
