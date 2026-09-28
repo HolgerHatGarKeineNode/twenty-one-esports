@@ -24,7 +24,8 @@ use Livewire\Component;
  * after confirmed false reports (decided on the dispute page) and the newest
  * of those reports. Nothing is detected automatically.
  */
-new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
+new #[Title('Fair play')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component
+{
     /** The hex pubkey of the main account, picked in <x-player-picker allow-npub>. */
     public ?string $main = null;
 
