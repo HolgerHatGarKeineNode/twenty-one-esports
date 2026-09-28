@@ -35,7 +35,8 @@ the reserve goal and a reserve balance no longer required at Block 0; **revision
 season settlement as the league runs it, without fees; **revision 9.7** (2026-09-29): share posts of a
 won game or series and "I'm in", which mention the opponents and quote the league's record;
 **revision 9.8** (2026-09-29): notification DMs to the player's DM relays, with NIP-04 for a player without a
-DM relay list;
+DM relay list; a Nostr bar on every page with a Nostr object, follows written by the player's own client,
+direct messages between players;
 **revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
 RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data). Not
 submitted to
@@ -148,6 +149,15 @@ Where a notification DM goes, and a fallback for players whose client does not r
   DNS name, the connection pinned to the checked address; others are never contacted.
 - **Test DM.** A player can send one test DM to themselves from the notification settings, at most one
   a minute, and sees which format went out and how many relays took it.
+- **Follows (client side).** A player can follow another player, a clan owner, a tournament organizer,
+  the league or the stream from the app. The player's own client writes the kind `3` (NIP-02), never
+  the league: see [Follows](#follows-rev-98). Revision 4 read kind `3` only.
+- **Direct messages between players.** Outside the match chat a player can write to another player
+  from the app, NIP-17 when possible and NIP-04 otherwise: see
+  [Direct messages](#direct-messages-rev-98). The league's server never sees these messages.
+- **Nostr bar.** Every page with a Nostr object links it as `nostr:` (NIP-21) and on njump.me: a
+  player's `npub`, a clan's or tournament's `naddr`, a game record's, challenge's or genesis' `nevent`,
+  the stream's `naddr`. A zap there is only a QR code of an LNURL, never an address as text.
 
 ### Changelog of revision 9.7 (2026-09-29)
 
@@ -3118,6 +3128,40 @@ mute list only after reading the newest version, and never from a stale copy.
 (see [Lobby and account cards](#lobby-and-account-cards-rev-92)). The league relay stores the
 gift wraps: ciphertext, recipient, a random time. Clients may cache decrypted messages on the device.
 
+### Direct messages (rev. 9.8)
+
+Outside a match a player writes to another player the way any Nostr client does: a kind `14` rumor
+with only `p` (no `match`), sealed and gift-wrapped as above, published from the browser to the
+relays of the recipient's `10050` and the copy to self to the sender's own. The recipient's `10050`
+and `10002` are read from the configured profile, league and chat relays.
+
+- **NIP-04 fallback.** If the recipient has no `10050` (at least one relay answered) or the sender's
+  signer has no NIP-44, the message is a NIP-04 kind `4` with `p`, encrypted by the sender's signer
+  (`nip04.encrypt`), published to the read relays of the recipient's `10002`, the sender's write
+  relays and the configured relays. It shows sender, recipient and time to the relays, not the text.
+- **Refused.** No encryption in the signer at all; a recipient without `10050` and a signer without
+  NIP-04 (NIP-17: clients "shouldn't try"); NIP-04 when no relay answered the lookup. Nothing is sent.
+- **Signed on click.** The text is visible in the composer; only the send button signs. The league's
+  server is not involved and stores nothing.
+
+### Follows (rev. 9.8)
+
+"Follow" in the app adds one `p` to the player's own follow list (NIP-02 kind `3`), signed by the
+player's signer on click. A kind `3` replaces the whole list, so the app fails closed:
+
+1. It reads the player's NIP-65 list (`10002`) from the configured relays; no answer, no follow.
+2. It reads kind `3` from the player's write relays (or, without a `10002`, the configured relays)
+   and the configured relays. Every write relay must deliver EOSE, else the follow is refused. Of the
+   valid lists the newest wins (NIP-01), signatures checked.
+3. The preview shows how many accounts the player follows now and after; with no list anywhere it says
+   that a new list starts with this one entry.
+4. On click the list is read again; if the count changed since the preview, nothing is signed. The new
+   list is the old one unchanged (every tag in order, the content) plus `["p", <pubkey>]`, with a
+   `created_at` after the old one's; the signed event is compared against it before it is published to
+   the write relays and the configured relays.
+
+The league never writes a kind `3` and does not store follows.
+
 ### Lobby and account cards (rev. 9.2)
 
 Casual 1v1 matches (Rocket League, EA Sports FC 26 and 27) have no lobby form on the server. What one
@@ -3751,13 +3795,13 @@ wanted protected player events would have to accept them from their authenticate
 | NIP | use |
 |---|---|
 | 01 | event model, kind classes, `e`/`p`/`a`/`d` tags, filters |
-| 02 | kind `3` read only: opponent suggestions and mutual contacts; never written, never counted |
+| 02 | kind `3` read: opponent suggestions and mutual contacts, never counted; rev. 9.8: written only by the player's own client when they follow someone from the app, never by the league (see [Follows](#follows-rev-98)) |
 | 03 | optional: OpenTimestamps proof (kind `1040`) that a tournament draw existed before its block |
 | 07, 46, 55 | signing on the client (browser extension, remote signer, Android signer); a Google login through nostr-mill is a NIP-46 bunker (pomegranate) |
 | 09 | deletion requests are accepted by relays but do not change league state |
 | 19, 21 | `naddr` for clans, lineups, ladders; `nevent` for matches and draws; `nostr:` links |
 | 18, 27 | the stream bot's tournament notes (kind `1`): the calendar event as `nostr:naddr1…` in `content` and a `q` tag on its address |
-| 04 | `unrecommended`, deprecated in favor of NIP-17; rev. 9.8: only as the fallback of a notification DM to a player who has no DM relay list `10050` (see [Notifications](#notifications)) |
+| 04 | `unrecommended`, deprecated in favor of NIP-17; rev. 9.8: only as a fallback, for a notification DM to a player who has no DM relay list `10050` (see [Notifications](#notifications)) and for a player's direct message when the recipient has no `10050` or the sender's signer no NIP-44 (see [Direct messages](#direct-messages-rev-98)) |
 | 17, 44, 59 | private chat and notifications: kind `14` rumors, NIP-44 sealed (`13`), gift-wrapped (`1059`); DM relay list `10050`; not the ephemeral `21059` |
 | 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind; rev. 9.9: also on a tournament (`31923` by address) and on the league's record of a rated game (`64`), top-level, see [Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99) |
 | 25 | rev. 9.9: likes (`7`, `+`) of a tournament, a game record or a challenge |

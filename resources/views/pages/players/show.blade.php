@@ -131,6 +131,9 @@
             </div>
         </section>
 
+        {{-- P45: the player on Nostr: open, share, message, zap (QR of their LNURL only), follow --}}
+        <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::player($user, $profile->hasProfile ? $profile->lud16 : null)" class="mx-4 lg:mx-0" />
+
         {{-- On the own page: bring a friend (a daily chess link, the one every player can make) --}}
         @if ($isMe)
             <div class="mx-4 lg:mx-0"><livewire:invite-link place="profile" /></div>

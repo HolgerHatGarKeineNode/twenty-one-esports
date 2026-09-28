@@ -3,15 +3,13 @@
 namespace App\Support\StreamChat;
 
 use App\Models\User;
+use App\Support\Lightning\Lnurl;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignerMessages;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\StreamBot\StreamCoordinates;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
-
-use function BitWasp\Bech32\convertBits;
-use function BitWasp\Bech32\encode;
 
 /**
  * What the /live page hands its chat (P24, resources/js/liveChat.js): the
@@ -95,14 +93,7 @@ final readonly class StreamChat
     {
         $lud16 = config('twentyone.nostr.lud16');
 
-        if (! is_string($lud16) || preg_match('/^([a-z0-9._+-]+)@([a-z0-9.-]+\.[a-z]{2,})$/i', trim($lud16), $parts) !== 1) {
-            return null;
-        }
-
-        $url = 'https://'.strtolower($parts[2]).'/.well-known/lnurlp/'.strtolower($parts[1]);
-        $bytes = array_values(unpack('C*', $url) ?: []);
-
-        return encode('lnurl', convertBits($bytes, count($bytes), 8, 5, true));
+        return Lnurl::fromAddress(is_string($lud16) ? $lud16 : null);
     }
 
     /**

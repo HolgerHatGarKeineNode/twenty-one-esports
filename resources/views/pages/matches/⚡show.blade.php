@@ -149,6 +149,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         <span class="inline-flex min-h-8 items-center rounded-md px-3.5 text-[13px] font-bold {{ $banner[1] }}" data-test="match-banner">{{ $banner[0] }}</span>
     </div>
 
+    {{-- P45: the match on Nostr (its challenge), a message to the other side for its players --}}
+    <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::match($match)" />
+
     @if ($match->tournamentMatch !== null)
         {{-- A tournament match (P8b): its tournament, and the director marker on a director result. --}}
         <div class="flex flex-wrap items-center gap-3 text-[13px]">

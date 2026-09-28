@@ -60,6 +60,11 @@ final class TestSigner
                         encrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip44', structuredClone({ op: 'encrypt', pubkey, text })).then((r) => r.result),
                         decrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip44', structuredClone({ op: 'decrypt', pubkey, text })).then((r) => r.result),
                     },
+                    // P45: the DM fallback for a recipient without a DM relay list.
+                    nip04: {
+                        encrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip04', structuredClone({ op: 'encrypt', pubkey, text })).then((r) => r.result),
+                        decrypt: async (pubkey, text) => post('/__test/nostr/__USER__/nip04', structuredClone({ op: 'decrypt', pubkey, text })).then((r) => r.result),
+                    },
                 };
             })();
             JS);

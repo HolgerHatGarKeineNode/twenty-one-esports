@@ -899,4 +899,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     @else
         @include('pages.games.partials.done', ['game' => $game, 'players' => $players, 'color' => $color, 'chat' => $color ? $this->chatConfig() : null])
     @endif
+
+    {{-- P45: the game on Nostr (the league's NIP-64 record once signed), a message to the opponent.
+         Under the game in every mode: the board owns the first screen. --}}
+    <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::game($game, $game->recordEvent)" class="mx-4 mb-8 lg:mx-12 lg:mb-10" />
 </div>

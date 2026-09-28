@@ -647,6 +647,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
+    {{-- P45: the tournament on Nostr (its NIP-52 calendar event), a message to its organizer --}}
+    @if ($published)
+        <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::tournament($tournament)" class="mx-4 lg:mx-12" />
+    @endif
+
     @if ($champion)
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
         <section aria-labelledby="tw-h" class="mx-4 flex flex-col gap-4 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-center lg:mx-12 lg:px-6" data-test="tournament-winner">

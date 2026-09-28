@@ -781,6 +781,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <a href="{{ route('rules') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs whitespace-nowrap max-lg:hidden">{{ __('How mining works') }}</a>
     </section>
 
+    {{-- P45: the match on Nostr, and a direct message to the other side outside the room chat --}}
+    <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::match($m, 'room')" />
+
     @if ($error)
         <p @class(['m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss', '-order-2' => $casualFirst]) role="alert" data-test="room-error">{{ $error }}</p>
     @endif

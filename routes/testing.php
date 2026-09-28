@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\Wallet\NwcCipher;
 use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Foundation\Http\Middleware\TrimStrings;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
@@ -101,6 +102,18 @@ Route::prefix('__test')->name('testing.')->group(function () {
 
         return response()->json(['result' => $request->json('op') === 'encrypt' ? Nip44::encrypt($text, $key) : Nip44::decrypt($text, $key)]);
     })->name('nostr-nip44')->withoutMiddleware(ValidateCsrfToken::class);
+
+    // NIP-04 of the same stub (P45: the DM fallback), with the league's own NIP-04 (NwcCipher).
+    Route::post('nostr/{user}/nip04', function (Request $request, User $user) {
+        abort_unless(app()->environment('testing'), 404);
+        $secret = Cache::get('test-nostr-secret:'.$user->id) ?? abort(404);
+        $peer = (string) $request->json('pubkey');
+        $text = (string) $request->json('text');
+
+        return response()->json(['result' => $request->json('op') === 'encrypt'
+            ? NwcCipher::encrypt(NwcCipher::NIP04, $text, $secret, $peer)
+            : NwcCipher::decrypt(NwcCipher::NIP04, $text, $secret, $peer)]);
+    })->name('nostr-nip04')->withoutMiddleware(ValidateCsrfToken::class);
 
     // A local live HLS stream for the live player's browser test (P20,
     // Tests\Support\LiveStreamFixture): a moving playlist window over

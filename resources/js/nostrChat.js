@@ -87,6 +87,20 @@ export async function wrapMessage(signer, { sender, recipient, content, match, n
 }
 
 /**
+ * A direct message between two players outside any match (P45, the Nostr
+ * bar's "Message"): a kind-14 rumor with only `p`, the way any NIP-17 client
+ * writes it, sealed and wrapped to the recipient and to the sender herself.
+ */
+export async function wrapDirectMessage(signer, { sender, recipient, content, now = Math.floor(Date.now() / 1000) }) {
+    const plain = { pubkey: sender, created_at: now, kind: 14, tags: [['p', recipient]], content };
+    const rumor = { ...plain, id: getEventHash(plain) };
+    const toRecipient = giftWrap(await seal(signer, rumor, recipient, now), recipient, now);
+    const toSelf = giftWrap(await seal(signer, rumor, sender, now), sender, now);
+
+    return { rumor, toRecipient, toSelf };
+}
+
+/**
  * nostr-tools' verifyEvent() caches its verdict on the event object under a
  * symbol, and an object spread copies that symbol: a changed copy of a
  * verified event would "verify" without being checked (found by

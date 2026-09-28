@@ -146,6 +146,9 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('Every fair rated win is a block, counted in the order the league saves results. Rewards halve every era and are paid once, after the season review.') }}</p>
     </div>
 
+    {{-- P45: the season chain on Nostr (its genesis), the reserve's zap QR, a follow of the league key --}}
+    <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::season($chain['season'], $this->reserveZapQr)" />
+
     @unless ($live)
         <section class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#3A2A12] lg:px-8 lg:py-7" data-test="mining-rest">
             <x-empty-state :heading="$ended ? __('The chain rests between seasons') : __('The chain starts at Block 0')" :text="Seasons::restMessage($viewer instanceof User ? $viewer : null)">

@@ -179,7 +179,7 @@ SHARD_FILES=(
     "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php tests/Browser/ChessLobbyTest.php tests/Browser/GameChannelTest.php tests/Browser/NostrCommentsTest.php"
     "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php tests/Browser/CasualLobbyCardTest.php tests/Browser/PlayerStatsTest.php tests/Browser/FairPlayAdminTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/LeagueSettingsAdminTest.php"
     "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php tests/Browser/TournamentControlTest.php tests/Browser/NavigateRaceTest.php"
-    "tests/Browser/TournamentTvTest.php tests/Browser/HomeHubTest.php tests/Browser/LiveChatTest.php tests/Browser/MeHubTest.php tests/Browser/SettingsTabsTest.php"
+    "tests/Browser/TournamentTvTest.php tests/Browser/HomeHubTest.php tests/Browser/LiveChatTest.php tests/Browser/MeHubTest.php tests/Browser/SettingsTabsTest.php tests/Browser/NostrBarTest.php"
 )
 
 # Guard against a new tests/Browser/*Test.php file that nobody assigned to a

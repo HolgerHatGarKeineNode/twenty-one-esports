@@ -280,6 +280,9 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                 </div>
             </div>
 
+            {{-- P45: the stream on Nostr (its NIP-53 live event) and a follow of the stream key; its zap QR is right above. --}}
+            <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::stream(\App\Support\StreamBot\StreamCoordinates::fromConfig())" />
+
             {{-- The programme: what is on the stream. Under the stage from lg; the second view below lg. --}}
             <aside id="live-programme" class="flex flex-col rounded-lg bg-card max-lg:order-first" :class="tab === 'programme' ? '' : 'max-lg:hidden'" aria-label="{{ __('On the stream') }}" data-test="live-programme">
                 <section aria-labelledby="live-now-h" class="flex flex-col gap-2 px-4 py-4 lg:px-5" data-test="live-now">
