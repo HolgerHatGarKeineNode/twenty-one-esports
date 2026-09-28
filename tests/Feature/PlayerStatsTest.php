@@ -4,6 +4,7 @@ use App\Enums\ClanRole;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanDeparture;
@@ -14,10 +15,12 @@ use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\Season;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\Payouts\TournamentPlacements;
+use App\Support\Players\PlayerStats;
 use Illuminate\Support\Facades\DB;
 
 /*
@@ -256,4 +259,45 @@ test('the record costs the same queries for two results as for twelve', function
     $count($few);
 
     expect($count($many))->toBe($count($few));
+});
+
+test('a player with more tournaments than listed: six rows read, the count and the prize total over all of them', function () {
+    $player = User::factory()->create();
+    $extra = 3;
+    $tournaments = Tournament::factory()->count(PlayerStats::TOURNAMENTS + $extra)
+        ->sequence(fn ($sequence) => ['name' => 'Cup '.$sequence->index, 'starts_at' => now()->subDays(20 - $sequence->index)])
+        ->create(['status' => TournamentStatus::Finished, 'published_at' => now()->subMonth()]);
+
+    foreach ($tournaments as $tournament) {
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => 'x', 'rating' => 1000, 'members' => [$player->id]]);
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => User::factory()->create()->id, 'name' => 'y', 'rating' => 1000]);
+        TournamentPayout::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'pubkey' => $player->pubkey, 'name' => 'x', 'place' => 1, 'amount_sats' => 1_000,
+            'idempotency_key' => TournamentPayout::keyFor($tournament->id, $player->pubkey, 1), 'status' => PayoutStatus::Paid]);
+    }
+
+    $hydrated = ['participants' => 0, 'payouts' => 0, 'tournaments' => 0];
+    TournamentParticipant::retrieved(function () use (&$hydrated): void {
+        $hydrated['participants']++;
+    });
+    TournamentPayout::retrieved(function () use (&$hydrated): void {
+        $hydrated['payouts']++;
+    });
+    Tournament::retrieved(function () use (&$hydrated): void {
+        $hydrated['tournaments']++;
+    });
+
+    $stats = (new PlayerStats($player))->tournaments();
+
+    expect($stats['count'])->toBe(PlayerStats::TOURNAMENTS + $extra)
+        ->and($stats['prizes'])->toBe((PlayerStats::TOURNAMENTS + $extra) * 1_000)
+        // Newest start first.
+        ->and(array_map(fn (array $row): string => $row['tournament']->name, $stats['rows']))->toBe(['Cup 8', 'Cup 7', 'Cup 6', 'Cup 5', 'Cup 4', 'Cup 3'])
+        ->and(array_column($stats['rows'], 'prize'))->toBe(array_fill(0, PlayerStats::TOURNAMENTS, 1_000))
+        ->and(array_column($stats['rows'], 'of'))->toBe(array_fill(0, PlayerStats::TOURNAMENTS, 2))
+        // Only the listed tournaments and the player's entries in them are loaded; payouts only as sums.
+        ->and($hydrated)->toBe(['participants' => PlayerStats::TOURNAMENTS, 'payouts' => 0, 'tournaments' => PlayerStats::TOURNAMENTS]);
+
+    $this->get(route('players.show', $player->npub))->assertOk()
+        ->assertSee(trans_choice(':count played|:count played', PlayerStats::TOURNAMENTS + $extra))
+        ->assertSee("9\u{00A0}000 sats", false);
 });

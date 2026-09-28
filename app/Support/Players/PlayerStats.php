@@ -133,24 +133,29 @@ final class PlayerStats
     public function tournaments(): array
     {
         $me = $this->user->id;
-        $entries = TournamentParticipant::query()
-            ->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))
-            ->whereHas('tournament', fn ($query) => $query->whereIn('status', [TournamentStatus::Running, TournamentStatus::Finished])->whereNotNull('published_at'))
-            ->with(['tournament' => fn ($query) => $query->withCount('participants')])->get()
-            ->sortByDesc(fn (TournamentParticipant $entry): int => $entry->tournament->starts_at->getTimestamp())
-            ->unique('tournament_id')->values();
+        $entered = fn ($query) => $query->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me));
+        $played = Tournament::query()->whereIn('status', [TournamentStatus::Running, TournamentStatus::Finished])->whereNotNull('published_at')
+            ->whereHas('participants', $entered);
 
-        $paid = TournamentPayout::query()->where('user_id', $me)->where('status', PayoutStatus::Paid)
-            ->get(['tournament_id', 'amount_sats'])->groupBy('tournament_id')
-            ->map(fn (Collection $payouts): int => (int) $payouts->sum('amount_sats'));
+        // Three aggregates and two bounded reads, however many tournaments the player has.
+        $count = (clone $played)->count();
+        $tournaments = $played->withCount('participants')->orderByDesc('starts_at')->orderByDesc('id')->limit(self::TOURNAMENTS)->get();
+        $ids = $tournaments->modelKeys();
+        $entries = $ids === [] ? collect() : $entered(TournamentParticipant::query()->whereIn('tournament_id', $ids))->orderBy('id')->get()->unique('tournament_id')->keyBy('tournament_id');
+        $paid = TournamentPayout::query()->where('user_id', $me)->where('status', PayoutStatus::Paid);
+        $prizes = (int) (clone $paid)->sum('amount_sats');
+        $perRow = $ids === [] || $prizes === 0 ? collect() : $paid->whereIn('tournament_id', $ids)
+            ->select('tournament_id')->selectRaw('sum(amount_sats) as sats')->groupBy('tournament_id')
+            ->toBase()->pluck('sats', 'tournament_id');
         $placements = app(TournamentPlacements::class);
         $rows = [];
 
-        // Places are read from the stored bracket, so only for the tournaments listed.
-        foreach ($entries->take(self::TOURNAMENTS) as $entry) {
+        foreach ($tournaments as $tournament) {
+            $entry = $entries->get($tournament->id);
             $place = null;
 
-            foreach ($placements->of($entry->tournament) ?? [] as $group) {
+            // Places are read from the stored bracket, so only for the tournaments listed.
+            foreach ($entry === null ? [] : ($placements->of($tournament) ?? []) as $group) {
                 if (in_array($entry->id, $group['participants'], true)) {
                     $place = $group['place'];
                     break;
@@ -158,14 +163,14 @@ final class PlayerStats
             }
 
             $rows[] = [
-                'tournament' => $entry->tournament,
+                'tournament' => $tournament,
                 'place' => $place,
-                'of' => (int) $entry->tournament->getAttribute('participants_count'),
-                'prize' => $paid[$entry->tournament_id] ?? null,
+                'of' => (int) $tournament->getAttribute('participants_count'),
+                'prize' => isset($perRow[$tournament->id]) ? (int) $perRow[$tournament->id] : null,
             ];
         }
 
-        return ['rows' => $rows, 'count' => $entries->count(), 'prizes' => (int) $paid->sum()];
+        return ['rows' => $rows, 'count' => $count, 'prizes' => $prizes];
     }
 
     /**
