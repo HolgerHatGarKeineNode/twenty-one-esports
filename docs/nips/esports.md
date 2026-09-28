@@ -35,14 +35,15 @@ the reserve goal and a reserve balance no longer required at Block 0; **revision
 season settlement as the league runs it, without fees; **revision 9.7** (2026-09-29): share posts of a
 won game or series and "I'm in", which mention the opponents and quote the league's record;
 **revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
-RSVPs to a tournament, each signed by the player on a click). Not
+RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7 and 9.9 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.9 and 9.10 (see [Open points](#open-points)).
+Revision 9.10 needs none: it adds no event and no tag.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -75,7 +76,8 @@ begun earlier keeps its move notes as history and goes on from its last move wit
 The rules marked "rev. 9.7" concern share posts only; no ladder depends on them, and they apply from
 the day a league adopts revision 9.7. The rules marked "rev. 9.9" concern comments, likes and RSVPs
 only; no ladder and no league state depends on them, and they apply from the day a league adopts
-revision 9.9.
+revision 9.9. The rules marked "rev. 9.10" concern opponent requests and their notification only; they change no
+event and no gate, and apply from the day a league adopts revision 9.10.
 
 ### Changelog of revision 9.9 (2026-09-29)
 
@@ -124,7 +126,8 @@ NIP-51 follow set, and everything below is league data.
   happens between the two unless the player adds them back.
 - **Refusals name the fix.** Where rated play is refused or skipped because two players do not list
   each other (a rated challenge, its accept, the rated blitz queue), the app says so with the name
-  and offers the add, or Accept when the other lists you already, and the casual alternative.
+  and offers the add, or Accept when the other lists you already, and the casual alternative. The
+  rated queue says it in counts only and names nobody: who searches right now is live presence.
 
 ### Changelog of revision 9.7 (2026-09-29)
 
@@ -1726,6 +1729,17 @@ A player's opponent list is a NIP-51 follow set with `d` = `esports/<league key>
 in hex, so lists for different leagues never mix), a `title`, one `p` per listed player, and `alt`.
 "Add as opponent" in the app appends a `p`; accepting a request adds the requester. Two players
 **list each other** when the newest opponent list of each contains the other.
+
+**Requests** (rev. 9.10). A player whose newest list names you while yours does not name them has
+asked you for rated games. The app tells you once per requester (Opponent request, see
+[Notifications](#notifications)) and shows the request with league facts only: when they joined,
+their finished games, whether they are Trusted, their clan, and who on your list lists them too.
+Accept is the ordinary signed add. Decline is league data, never an event: it hides the request and
+stops notifications from that player, and can be undone. Their list still names you, because it is
+their list; no rated game happens between you unless you add them back. Where rated play is refused
+or skipped because two players do not list each other, the app says so and offers the add, or Accept,
+and the casual alternative. The rated queue says it in counts only: who searches right now is not
+shown, since that is live presence beyond what the lists publish.
 
 Why a follow set and not the contact list: kind `3` is replaceable and holds the user's whole
 social graph. An app that writes it from a stale copy deletes follows, because every new version
@@ -3382,6 +3396,10 @@ ordinary notification DMs as above:
   signed events.
 - By default only **no-show claimed**, **result to confirm**, **1v1 challenge received** and the
   **start reminder** go out as a DM: each asks an offline player to act before a deadline.
+- **Opponent request** (rev. 9.10): a new list version that adds a player tells that player once per
+  requester; not for a re-publish, a removal, a version signed more than a day ago, when the player
+  lists the requester already, or after a decline, and at most a configured number per requester and
+  UTC day. Like a clan join request it goes out as a DM by default.
 - **Never the lobby.** The DM says that the lobby was shared, never its name, password or an EA ID;
   the players exchange those end-to-end encrypted in the match chat, and the league refuses to store
   them for a casual 1v1: it keeps only the fact that the lobby was shared and that the guest joined.

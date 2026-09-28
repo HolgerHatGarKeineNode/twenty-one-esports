@@ -105,6 +105,8 @@ new #[Title('Opponents')] class extends Component {
     $players = User::query()->with('clanMember.clan')->whereIn('pubkey', [...$entries, ...$asking, ...$declined])->get()->keyBy('pubkey');
     $asking = array_values(array_filter($asking, fn (string $pubkey): bool => $players->has($pubkey)));
     $declined = array_values(array_filter($declined, fn (string $pubkey): bool => $players->has($pubkey)));
+    // One batch for every card (P57 review: no queries per request).
+    $signals = $requests->signals($user, $players->filter(fn (User $player): bool => in_array($player->pubkey, $asking, true))->values());
     $row = 'grid min-h-7 grid-cols-[112px_minmax(0,1fr)] items-baseline gap-x-2 py-0.5';
 @endphp
 
@@ -140,7 +142,7 @@ new #[Title('Opponents')] class extends Component {
                         @php
                             $player = $players->get($pubkey);
                             $name = $player->displayName();
-                            $facts = $requests->signals($user, $player);
+                            $facts = $signals[$pubkey];
                         @endphp
                         <li wire:key="request-{{ $pubkey }}" class="flex flex-col gap-3 rounded-md bg-well p-4 shadow-ring-hairline" data-test="opponent-request" data-pubkey="{{ $pubkey }}">
                             <x-player-link :user="$player" class="flex min-h-11 min-w-0 items-center gap-3 self-start text-ink hover:text-ink">

@@ -5238,5 +5238,8 @@
     "You and :name do not list each other as opponents yet, so you cannot accept this rated challenge.": "Du und :name führt euch noch nicht gegenseitig als Gegner, darum kannst du diese gewertete Herausforderung nicht annehmen.",
     "Challenge them to a casual match instead": "Stattdessen zu einer Casual-Partie herausfordern",
     ":count other player searches rated right now, but you do not list each other, so the queue cannot pair you.|:count other players search rated right now, but you list each other with none of them, so the queue cannot pair you.": ":count anderer Spieler sucht gerade gewertet, aber ihr führt euch nicht gegenseitig als Gegner, darum kann die Warteschlange euch nicht paaren.|:count andere Spieler suchen gerade gewertet, aber gegenseitig als Gegner führst du keinen von ihnen, darum kann die Warteschlange dich nicht paaren.",
-    "Search casual instead": "Stattdessen casual suchen"
+    "Search casual instead": "Stattdessen casual suchen",
+    ":count player in the queue lists you. Accept the request on your Opponents page and the queue can pair you.|:count players in the queue list you. Accept their requests on your Opponents page and the queue can pair you.": ":count Spieler in der Warteschlange führt dich. Nimm die Anfrage auf deiner Gegner-Seite an, dann kann die Warteschlange euch paaren.|:count Spieler in der Warteschlange führen dich. Nimm ihre Anfragen auf deiner Gegner-Seite an, dann kann die Warteschlange dich paaren.",
+    "A rated game needs both of you to add the other as an opponent. Casual pairs you with anyone.": "Eine gewertete Partie braucht, dass ihr euch gegenseitig als Gegner hinzufügt. Casual paart dich mit allen.",
+    "Open your requests": "Deine Anfragen öffnen"
 }

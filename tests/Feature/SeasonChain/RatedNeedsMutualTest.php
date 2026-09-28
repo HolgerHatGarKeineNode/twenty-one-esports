@@ -137,7 +137,7 @@ test('answer: the challenged captain who does not list the sender sees why a rat
     $this->actingAs($b[1])->get(route('matches.room', $match))->assertOk()->assertDontSee('data-test="needs-mutual"', false);
 });
 
-test('rated queue: players searching rated who do not list each other are told, the one listed sees the request, accepts it, and the next poll pairs them', function () {
+test('rated queue: players searching rated who do not list each other are told in counts only, the one listed is sent to the requests, accepts, and the next poll pairs them', function () {
     config(['esports.chess.rated_queue' => true]);
     app()->bind(TrustFacts::class, AnchoredTrustFacts::class);
     $signers = [];
@@ -157,11 +157,16 @@ test('rated queue: players searching rated who do not list each other are told, 
     $annaLobby = Livewire::actingAs($anna)->test('pages::chess.lobby')->call('findOpponent', true);
 
     expect(ChessQueueEntry::query()->where('rated', true)->count())->toBe(2);
+    // Counts only: nobody searching is named (live presence, P57 review).
     $annaLobby->assertSee('1 other player searches rated right now, but you do not list each other, so the queue cannot pair you.')
-        ->assertSee("Accept bert's request");
+        ->assertSee('1 player in the queue lists you. Accept the request on your Opponents page and the queue can pair you.')
+        ->assertSeeHtml('href="'.route('settings.opponents').'#requests"')
+        ->assertDontSee('bert');
     Livewire::actingAs($bert)->test('pages::chess.lobby')
         ->assertSee('1 other player searches rated right now, but you do not list each other, so the queue cannot pair you.')
-        ->assertDontSee("Accept anna's request", false);
+        ->assertSee('A rated game needs both of you to add the other as an opponent. Casual pairs you with anyone.')
+        ->assertDontSeeHtml('data-test="needs-mutual-requests"')
+        ->assertDontSee('>anna<', false);
 
     // Anna accepts (the notice's button is the signed add); the poll pairs them rated.
     p57List($anna, $signers['anna'], $bert);

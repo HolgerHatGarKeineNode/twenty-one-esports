@@ -116,11 +116,17 @@
                 {{ trans_choice(':count player searching right now.|:count players searching right now.', $searching) }}
                 {{ __('Your range: ±:range around :rating, it opens by :step every :seconds s. As soon as someone fits, the game starts, no extra click.', ['range' => app(ChessQueue::class)->range($entry), 'rating' => $entry->rating, 'step' => $range['step'], 'seconds' => $range['every_seconds']]) }}
             </span>
-            {{-- P57: the rated queue skips players who do not list each other; say so, and offer the fix. --}}
+            {{-- P57: the rated queue skips players who do not list each other; say so in counts (nobody is named: presence), and offer the fix. --}}
             @php($ratedQueue = $this->ratedQueue)
             @if ($entry->rated && $ratedQueue['others'] > 0 && $ratedQueue['mutual'] === 0)
-                <x-opponents.needs-mutual class="self-stretch text-left" :players="$ratedQueue['asking']"
-                    :heading="trans_choice(':count other player searches rated right now, but you do not list each other, so the queue cannot pair you.|:count other players search rated right now, but you list each other with none of them, so the queue cannot pair you.', $ratedQueue['others'])">
+                <x-opponents.needs-mutual class="self-stretch text-left"
+                    :heading="trans_choice(':count other player searches rated right now, but you do not list each other, so the queue cannot pair you.|:count other players search rated right now, but you list each other with none of them, so the queue cannot pair you.', $ratedQueue['others'])"
+                    :note="$ratedQueue['asking'] > 0
+                        ? trans_choice(':count player in the queue lists you. Accept the request on your Opponents page and the queue can pair you.|:count players in the queue list you. Accept their requests on your Opponents page and the queue can pair you.', $ratedQueue['asking'])
+                        : __('A rated game needs both of you to add the other as an opponent. Casual pairs you with anyone.')">
+                    @if ($ratedQueue['asking'] > 0)
+                        <x-button :href="route('settings.opponents').'#requests'" data-test="needs-mutual-requests">{{ __('Open your requests') }}</x-button>
+                    @endif
                     <x-button variant="quiet" wire:click="searchCasualInstead" data-test="needs-mutual-casual">{{ __('Search casual instead') }}</x-button>
                 </x-opponents.needs-mutual>
             @endif

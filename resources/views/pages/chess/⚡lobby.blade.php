@@ -162,10 +162,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
      * P57: the rated queue pairs only players who list each other, and skips
      * everyone else in silence. While searching rated, this says how many
      * others search rated in this mode, how many of them list each other
-     * with this player, and who of them lists this player already (a
-     * request one click accepts). Nobody else is named.
+     * with this player, and how many of them list this player without
+     * being on their list (open requests). Counts only: who searches right
+     * now is live presence, beyond what the public lists say (P57 review).
      *
-     * @return array{others: int, mutual: int, asking: Collection<int, User>}
+     * @return array{others: int, mutual: int, asking: int}
      */
     #[Computed]
     public function ratedQueue(): array
@@ -174,18 +175,19 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         $entry = $this->entry;
 
         if (! $user instanceof User || $entry === null || ! $entry->rated) {
-            return ['others' => 0, 'mutual' => 0, 'asking' => collect()];
+            return ['others' => 0, 'mutual' => 0, 'asking' => 0];
         }
 
         $opponents = app(Opponents::class);
-        $others = ChessQueueEntry::query()->where('rated', true)->where('mode', $entry->mode)->where('user_id', '!=', $user->id)->with('user')->get()->pluck('user');
+        $others = ChessQueueEntry::query()->where('rated', true)->where('mode', $entry->mode)->where('user_id', '!=', $user->id)
+            ->join('users', 'users.id', '=', 'chess_queue_entries.user_id')->pluck('users.pubkey');
         $mine = $opponents->entries($user);
         $listingMe = $opponents->listedBy($user);
 
         return [
             'others' => $others->count(),
-            'mutual' => $others->filter(fn (User $other): bool => in_array($other->pubkey, $mine, true) && in_array($other->pubkey, $listingMe, true))->count(),
-            'asking' => $others->filter(fn (User $other): bool => ! in_array($other->pubkey, $mine, true) && in_array($other->pubkey, $listingMe, true))->values(),
+            'mutual' => $others->filter(fn (string $other): bool => in_array($other, $mine, true) && in_array($other, $listingMe, true))->count(),
+            'asking' => $others->filter(fn (string $other): bool => ! in_array($other, $mine, true) && in_array($other, $listingMe, true))->count(),
         ];
     }
 

@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\OpponentRequests;
 use App\Support\SeasonChain\Opponents;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -176,18 +177,58 @@ test('the request card shows only league records: joined, finished games, clan, 
     $newbie = User::factory()->withPubkey($newbieSigner->pubkey)->create(['name' => 'newbie']);
     listChange($newbie, $newbieSigner, $this->alice, 'add');
 
-    $bob = app(OpponentRequests::class)->signals($this->alice, $this->bob);
+    $signals = app(OpponentRequests::class)->signals($this->alice, User::query()->whereKey([$this->bob->id, $newbie->id])->get());
+    $bob = $signals[$this->bob->pubkey];
     expect($bob['games'])->toBe(2)
         ->and($bob['clan'])->toBe('Laser Eyes')
         ->and($bob['same_clan'])->toBeFalse()
         ->and($bob['vouched'])->toBe(1)
         ->and($bob['trusted'])->toBeNull()
         ->and($bob['new'])->toBeFalse()
-        ->and(app(OpponentRequests::class)->signals($this->alice, $newbie)['new'])->toBeTrue();
+        ->and($signals[$newbie->pubkey]['new'])->toBeTrue();
 
     Livewire::actingAs($this->alice)->test('pages::settings.opponents')
         ->assertSee('2 open')
         ->assertSeeInOrder(['bob', 'Games here', '2 finished', 'Clan', 'Laser Eyes', 'Your opponents', '1 on your list lists them too'])
         ->assertSeeInOrder(['newbie', 'none finished yet', 'no clan', 'nobody on your list lists them', 'New account with no games here yet.'])
         ->assertDontSee('Trust</dt>', false);
+});
+
+/**
+ * Add $n requesters of alice, each with a clan and a finished game (so every
+ * fact of the card is read), then render her Opponents page and count its
+ * queries. Returns [queries, request cards rendered].
+ *
+ * @return array{0: int, 1: int}
+ */
+function requestPageQueries(User $alice, int $n): array
+{
+    foreach (range(1, $n) as $i) {
+        $signer = new TestSigner;
+        $requester = User::factory()->withPubkey($signer->pubkey)->create();
+        Clan::factory()->create(['owner_id' => $requester->id]);
+        ChessGame::factory()->finished()->create(['white_id' => $requester->id]);
+        listChange($requester, $signer, $alice, 'add');
+    }
+
+    // One render first: the first render of a test also fills per-process lookups; count the second.
+    $page = Livewire::actingAs($alice);
+    $page->test('pages::settings.opponents');
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $html = $page->test('pages::settings.opponents')->html();
+    $queries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    return [$queries, substr_count($html, 'data-test="opponent-request"')];
+}
+
+test('P57 review: the Opponents page runs as many queries for 25 requests as for 5 (no query per card)', function () {
+    [$five, $cardsAtFive] = requestPageQueries($this->alice, 5);
+    [$twentyFive, $cardsAtTwentyFive] = requestPageQueries($this->alice, 20);
+
+    fwrite(STDERR, "\n[p57] opponents page queries: 5 requests {$five}, 25 requests {$twentyFive}\n");
+
+    expect([$cardsAtFive, $cardsAtTwentyFive])->toBe([5, 25])
+        ->and($twentyFive)->toBe($five);
 });

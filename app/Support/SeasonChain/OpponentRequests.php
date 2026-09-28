@@ -8,13 +8,13 @@ use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\OpponentRequest;
-use App\Models\SeriesMatch;
 use App\Models\TrustRank;
 use App\Models\User;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
-use App\Support\Series\CasualMatches;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Opponent requests (P57): a player whose newest opponent list names you
@@ -144,47 +144,74 @@ final class OpponentRequests
     }
 
     /**
-     * What the league knows about a requester, for judging a fake or a bot:
-     * only league records, nothing guessed.
+     * What the league knows about each requester, for judging a fake or a
+     * bot: only league records, nothing guessed. One batch for all cards
+     * of the page, so the number of queries does not grow with the number
+     * of requests (P57 review): the requesters' clans are read through
+     * `clanMember.clan`, loaded here when the caller did not.
      *
-     * @return array{joined: CarbonInterface|null, games: int, trusted: bool|null, member: bool, clan: string|null, same_clan: bool, meetup: string|null, vouched: int, new: bool}
+     * @param  Collection<int, User>  $requesters
+     * @return array<string, array{joined: CarbonInterface|null, games: int, trusted: bool|null, member: bool, clan: string|null, same_clan: bool, meetup: string|null, vouched: int, new: bool}> by pubkey
      */
-    public function signals(User $viewer, User $requester): array
+    public function signals(User $viewer, Collection $requesters): array
     {
-        $games = ChessGame::query()->where('status', ChessGameStatus::Finished)
-            ->where(fn ($query) => $query->where('white_id', $requester->id)->orWhere('black_id', $requester->id))->count()
-            + SeriesMatch::query()->whereIn('id', CasualMatches::onSide($requester))
-                ->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->count();
+        if ($requesters->isEmpty()) {
+            return [];
+        }
 
-        $gate = app(RatedTrustGate::class);
-        $trusted = $gate->isAvailable()
-            ? (int) TrustRank::query()->where('pubkey', $requester->pubkey)->value('rank') >= RatedTrustGate::minimum()
+        $requesters->loadMissing('clanMember.clan');
+        $ids = $requesters->pluck('id')->all();
+        $pubkeys = $requesters->pluck('pubkey')->all();
+
+        // Finished chess games per player (a player is white or black, never both in one game).
+        $chess = [];
+        foreach (['white_id', 'black_id'] as $column) {
+            foreach (ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn($column, $ids)
+                ->groupBy($column)->selectRaw($column.' as player, count(*) as games')->get() as $row) {
+                $chess[(int) $row->getAttribute('player')] = ($chess[(int) $row->getAttribute('player')] ?? 0) + (int) $row->getAttribute('games');
+            }
+        }
+
+        // Confirmed or resolved series with the player on a roster side (series_match_players mirrors `sides`).
+        $series = DB::table('series_match_players')->join('series_matches', 'series_matches.id', '=', 'series_match_players.series_match_id')
+            ->whereIn('series_match_players.user_id', $ids)
+            ->whereIn('series_matches.status', [SeriesStatus::Confirmed->value, SeriesStatus::Resolved->value])
+            ->groupBy('series_match_players.user_id')
+            ->selectRaw('series_match_players.user_id as player, count(distinct series_match_players.series_match_id) as games')
+            ->pluck('games', 'player')->all();
+
+        $ranks = app(RatedTrustGate::class)->isAvailable()
+            ? TrustRank::query()->whereIn('pubkey', $pubkeys)->pluck('rank', 'pubkey')->all()
             : null;
+        $minimum = $ranks === null ? 0 : RatedTrustGate::minimum();
 
-        $theirClan = $requester->clanMember?->clan;
         $myClan = $viewer->clanMember?->clan;
-        $sameClan = $theirClan !== null && $myClan !== null && $theirClan->is($myClan);
-        $meetup = ! $sameClan && $theirClan?->meetup_name !== null && $theirClan->meetup_name === $myClan?->meetup_name
-            ? $theirClan->meetup_name : null;
-
-        // Players on the viewer's own list whose newest list names the requester too.
         $newest = OpponentLists::forLeague()?->newestEntries() ?? [];
-        $vouched = count(array_filter($this->opponents->entries($viewer),
-            fn (string $entry): bool => $entry !== $requester->pubkey && in_array($requester->pubkey, $newest[$entry] ?? [], true)));
+        $mine = $newest[$viewer->pubkey] ?? [];
+        $recent = now()->subDays(self::NEW_ACCOUNT_DAYS);
+        $signals = [];
 
-        $joined = $requester->created_at;
+        foreach ($requesters as $requester) {
+            $games = ($chess[$requester->id] ?? 0) + (int) ($series[$requester->id] ?? 0);
+            $theirClan = $requester->clanMember?->clan;
+            $sameClan = $theirClan !== null && $myClan !== null && $theirClan->is($myClan);
+            $joined = $requester->created_at;
 
-        return [
-            'joined' => $joined,
-            'games' => $games,
-            'trusted' => $trusted,
-            'member' => $requester->is_member,
-            'clan' => $theirClan?->name,
-            'same_clan' => $sameClan,
-            'meetup' => $meetup,
-            'vouched' => $vouched,
-            'new' => $games === 0 && $joined !== null && $joined->greaterThan(now()->subDays(self::NEW_ACCOUNT_DAYS)),
-        ];
+            $signals[$requester->pubkey] = [
+                'joined' => $joined,
+                'games' => $games,
+                'trusted' => $ranks === null ? null : (int) ($ranks[$requester->pubkey] ?? 0) >= $minimum,
+                'member' => $requester->is_member,
+                'clan' => $theirClan?->name,
+                'same_clan' => $sameClan,
+                'meetup' => ! $sameClan && $theirClan?->meetup_name !== null && $theirClan->meetup_name === $myClan?->meetup_name ? $theirClan->meetup_name : null,
+                // Players on the viewer's own list whose newest list names the requester too.
+                'vouched' => count(array_filter($mine, fn (string $entry): bool => $entry !== $requester->pubkey && in_array($requester->pubkey, $newest[$entry] ?? [], true))),
+                'new' => $games === 0 && $joined !== null && $joined->greaterThan($recent),
+            ];
+        }
+
+        return $signals;
     }
 
     private function notify(User $player, User $requester): void
