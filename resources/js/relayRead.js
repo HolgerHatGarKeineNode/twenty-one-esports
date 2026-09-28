@@ -123,6 +123,14 @@ export function writeRelaysOf(relayList) {
         .map((tag) => tag[1]));
 }
 
+/** The player's write relays, or the configured relays when they have no relay list. */
+export async function writeRelaysFor(pubkey, relays, options = {}) {
+    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }], options);
+    const own = writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002));
+
+    return own.length > 0 ? own : relayUrls(relays);
+}
+
 /**
  * The player's profile badge lists as the league needs them:
  *

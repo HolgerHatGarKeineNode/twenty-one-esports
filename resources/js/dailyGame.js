@@ -3,14 +3,13 @@
  * ChessOverlays "Daily move, double-check"): one move per day, no running
  * clock, a deadline per move.
  *
- * A move is chosen on the board or typed, the server checks it and returns
- * the NIP-64 note for it (the whole game so far plus this move), the player
- * confirms ("Make my move", once more if double-check is on), the signer
- * signs, and the server plays the move only together with that signature.
+ * A move is chosen on the board or typed, the server checks it (previewMove),
+ * the player confirms ("Make my move", once more if double-check is on), and
+ * the server plays it. Like a blitz move it is not an event and needs no
+ * signature (NIP rev. 9.4): the league signs one record when the game ends,
+ * and each player may post the game to their profile by button after that.
  */
 import { Chess } from 'chess.js';
-import { ensureSigner } from './nostrSign.js';
-import { signerMessage, signTemplate } from './signing.js';
 import { boardKey } from './hotkeys.js';
 import { moveSound, playSound } from './sounds.js';
 import { displaySan, inputSan } from './sanNotation.js';
@@ -202,7 +201,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
             this.busy = true;
             this.error = '';
             try {
-                const answer = await this.$wire.prepareMove(uci, this.state.ply + 1);
+                const answer = await this.$wire.previewMove(uci, this.state.ply + 1);
                 if (!answer?.ok) {
                     this.error = this.t.errors[answer?.error] ?? this.t.errors.default;
                     if (answer?.error === 'out_of_sync' || answer?.error === 'game_over') this.resync();
@@ -211,7 +210,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
                 }
                 const chess = new Chess(this.state.fen);
                 const move = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] });
-                this.pending = { uci, san: answer.move.san, template: answer.move.template, fen: chess.fen(), describe: this.describe(move) };
+                this.pending = { uci, san: answer.move.san, fen: chess.fen(), describe: this.describe(move) };
                 this.selected = '';
                 this.dots = [];
             } finally {
@@ -265,23 +264,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
             this.busy = true;
             this.error = '';
             try {
-                if (!(await ensureSigner())) {
-                    this.error = this.t.signer.noSigner;
-
-                    return;
-                }
-                // signTemplate hands the signer a plain copy: pending.template is
-                // Alpine's reactive proxy, which NIP-07 extensions (nos2x, Alby)
-                // cannot structured-clone for their postMessage.
-                let event;
-                try {
-                    event = await signTemplate(this.pending.template, { pubkey: this.t.pubkey });
-                } catch (error) {
-                    this.error = signerMessage(this.t.signer, error);
-
-                    return;
-                }
-                const answer = await wire.playMove(this.pending.uci, this.state.ply + 1, JSON.stringify(event));
+                const answer = await wire.playMove(this.pending.uci, this.state.ply + 1);
                 if (!answer?.ok) {
                     this.error = this.t.errors[answer?.error] ?? this.t.errors.default;
                     this.pending = null;

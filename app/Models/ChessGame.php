@@ -52,7 +52,9 @@ use Illuminate\Support\Carbon;
  * @property int|null $rematch_id
  * @property int $version
  * @property array<string, string>|null $pgn_headers
- * @property int|null $record_event_id
+ * @property int|null $record_event_id the league's NIP-64 record of the finished game (rev. 9.4; before: a player's record, or a daily game's last move note)
+ * @property int|null $white_post_event_id White's own kind-64 post of this game, made by button (rev. 9.4)
+ * @property int|null $black_post_event_id Black's own kind-64 post of this game, made by button (rev. 9.4)
  * @property int|null $reminded_ply
  * @property int|null $tournament_match_id the tournament match this game plays (P8b)
  * @property int|null $tournament_game 1 for the first game of that match, 2 for a replay after a knockout draw, …
@@ -77,7 +79,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['number', 'mode', 'rated', 'gate_at_accept', 'clans_at_accept', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'start_fen', 'fen', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'rematch_offer', 'rematch_of_id', 'rematch_id', 'version', 'ended_at',
-    'pgn_headers', 'record_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at', 'first_move_seconds'])]
+    'pgn_headers', 'record_event_id', 'white_post_event_id', 'black_post_event_id', 'reminded_ply', 'white_gone_ms', 'black_gone_ms', 'white_notify', 'black_notify', 'white_remind', 'black_remind', 'tournament_match_id', 'tournament_game', 'ladder_address', 'white_seen_at', 'black_seen_at', 'first_move_seconds'])]
 class ChessGame extends Model
 {
     /** @use HasFactory<ChessGameFactory> */

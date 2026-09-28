@@ -83,7 +83,7 @@ final class ProtocolPage
         $stream = config('twentyone.nostr.npub');
 
         return [
-            ['name' => __('League key'), 'signs' => __('ladders, tournaments and their calendar, attestations of every result, the season chain'), 'npub' => $npub(LeagueKey::fromConfig()?->pubkey())],
+            ['name' => __('League key'), 'signs' => __('ladders, tournaments and their calendar, attestations and chess game records of every result, the season chain'), 'npub' => $npub(LeagueKey::fromConfig()?->pubkey())],
             ['name' => __('Trust key'), 'signs' => __('trust ranks and the anchor list'), 'npub' => $npub(LeagueKey::trust()?->pubkey())],
             ['name' => __('Badge key'), 'signs' => __('rank badges and their awards'), 'npub' => $npub(LeagueKey::badge()?->pubkey())],
             ['name' => __('Notification key'), 'signs' => __('the encrypted notifications sent to players'), 'npub' => $npub($fromSecret(config('esports.notifications.nsec')))],

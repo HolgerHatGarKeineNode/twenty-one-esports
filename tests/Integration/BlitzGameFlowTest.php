@@ -7,6 +7,7 @@ use Pest\Browser\Playwright\Page;
 use Tests\Integration\Support\RelayCheck;
 use Tests\Integration\Support\Stack;
 use Tests\Support\BrowserWait;
+use Tests\Support\TestSigner;
 
 pest()->group('integration');
 
@@ -20,9 +21,10 @@ pest()->group('integration');
 | each other in the lobby's queue, play a few moves live, White resigns.
 | Rated (both Trusted, mutually listed, esports.chess.rated_queue via
 | ESPORTS_RATED_CHESS on the real server env — Stack::env()): the finished
-| game's NIP-64 record (kind 64) is checked against the relay, signature
-| included. No Result Response (2153) check: see the note at the end of
-| the test — the chess path does not publish one.
+| game's NIP-64 record (kind 64), signed by the league (NIP rev. 9.4), is
+| checked against the relay, signature included, and no player signed a
+| note on their own. No Result Response (2153) check: see the note at the
+| end of the test — the chess path does not publish one.
 |
 */
 
@@ -45,7 +47,7 @@ function playChessMove(Page $page, string $san): void
     $page->locator('[data-test=san-input]')->press('Enter');
 }
 
-test('two Trusted players are paired for rated blitz, play, and White resigns; the game record and its answer are on the relay', function () {
+test('two Trusted players are paired for rated blitz, play, and White resigns; the league\'s game record is on the relay, and no player posted anything', function () {
     // Pest\Browser\Support\BrowserTestIdentifier only scans THIS closure's
     // own source for a literal `visit(` call to decide whether to start the
     // Playwright driver; integrationPage() in a different file does not
@@ -102,15 +104,9 @@ test('two Trusted players are paired for rated blitz, play, and White resigns; t
     expect($game->status)->toBe(ChessGameStatus::Finished)
         ->and($game->result)->toBe('0-1');
 
-    // resources/js/chess.js: on seeing "finished" the client asks $wire for
-    // the record template, signs it (window.nostr, the browserStub here) and
-    // submits it — asynchronous, no UI state this test already waits on
-    // marks it done. Poll instead of asserting immediately after resign.
-    for ($i = 0; $i < 60 && $game->refresh()->record_event_id === null; $i++) {
-        usleep(250_000);
-    }
-
-    expect($game->record_event_id)->not->toBeNull('the NIP-64 record was not submitted within 15s of the game finishing');
+    // NIP rev. 9.4: the league signs the record in the transaction that ends the game; no client signs one.
+    expect($game->record_event_id)->not->toBeNull('the league did not sign the NIP-64 record when the game ended')
+        ->and($game->recordEvent->pubkey)->toBe((new TestSigner(Stack::instance()->leagueSecret))->pubkey);
 
     $relay = new RelayCheck(Stack::instance()->relayUrl);
 
@@ -140,7 +136,10 @@ test('two Trusted players are paired for rated blitz, play, and White resigns; t
         ->and($record->hasValidSignature())->toBeTrue()
         ->and($record->content)->toContain('0-1')
         ->and($pTagOf($record, 'white'))->toBe($game->white->pubkey)
-        ->and($pTagOf($record, 'black'))->toBe($game->black->pubkey);
+        ->and($pTagOf($record, 'black'))->toBe($game->black->pubkey)
+        ->and($record->pubkey)->toBe($game->recordEvent->pubkey)
+        // Never automatic: neither player's app posted a note of the game.
+        ->and(collect($records)->filter(fn ($event) => in_array($event->pubkey, [$anna->pubkey, $bert->pubkey], true))->all())->toBe([]);
 
     // No Result Response (2153) follows the record: docs/nips/esports.md
     // ("Game Record", revision note of 2026-09-27) dropped it for chess, which

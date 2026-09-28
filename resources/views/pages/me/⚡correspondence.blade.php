@@ -323,7 +323,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                                 @php($delta = $myDeltas[$game->id] ?? null)
                                 <td @class(['px-2 tabular-nums', 'text-win' => $delta > 0, 'text-loss' => $delta < 0, 'text-ink-3' => ! $delta])>{{ $delta === null ? '–' : ($delta > 0 ? '+'.$delta : ($delta < 0 ? '−'.abs($delta) : '±0')) }}</td>
                                 <td class="px-2 text-ink-2">{{ $game->ended_at?->diffForHumans() }}</td>
-                                <td @class(['px-2', 'text-win' => $game->record_event_id, 'text-ink-3' => ! $game->record_event_id])>{{ $game->record_event_id ? __('verified') : ($game->result ? __('not signed yet') : '–') }}</td>
+                                <td @class(['px-2', 'text-win' => $game->record_event_id, 'text-ink-3' => ! $game->record_event_id])>{{ $game->record_event_id ? __('verified') : ($game->result ? __('saved on the server') : '–') }}</td>
                             </tr>
                         @endforeach
                     </tbody>

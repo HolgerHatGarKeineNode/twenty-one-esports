@@ -282,7 +282,7 @@ new #[Title('Challenge')] #[Layout('layouts::app', ['section' => 'chess'])] clas
             @endunless
             <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
                 [__('Record'), __('a casual challenge stays with the league (no kind 2150)')],
-                [__('Moves'), __('each move a NIP-64 note, signed by the player who makes it')],
+                [__('Moves'), __('checked by the league server, one by one, and not published')],
                 [__('From'), $me->shortNpub()],
                 [__('To'), $opponent ? $opponent->shortNpub().' ('.$opponent->displayName().')' : '–'],
             ]" />

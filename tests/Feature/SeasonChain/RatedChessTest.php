@@ -128,6 +128,14 @@ test('rated blitz end to end: paired with a pinned gate, rated, attested and min
             ['clan', $white->pubkey, $game->clans_at_accept[$white->pubkey]],
         )
         ->and(collect($tags)->firstWhere(0, 'block'))->toBe(['block', '1', $this->season->genesisId()]);
+
+    // NIP rev. 9.4: the league signed the game's record in the same transaction, and the attestation names it.
+    $record = $game->recordEvent;
+
+    expect($record?->pubkey)->toBe($this->season->league_pubkey)
+        ->and($record->payload()['tags'])->toContain(['a', $game->ladder_address, ''])
+        ->and($record->payload()['content'])->toContain('[Result "1-0"]')
+        ->and(collect($tags)->where(0, 'e')->values()->all())->toBe([['e', $record->event_id, '', $this->season->league_pubkey]]);
 });
 
 test('the rated queue refuses while rated chess is off, without trust ranks or for an untrusted player, and never pairs two players who do not list each other', function () {

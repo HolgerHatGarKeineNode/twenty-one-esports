@@ -18,7 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string $fen position after the move
  * @property int $spent_ms thinking time of this move
  * @property int $clock_ms mover's time left after the move, increment included (daily: time that was left of the move's 24 h)
- * @property int|null $nostr_event_id the player's signed kind-64 note of a daily move
+ * @property int|null $nostr_event_id the mover's signed kind-64 note of a daily move played before NIP rev. 9.4 (history; moves since are no events)
  * @property Carbon|null $created_at
  * @property-read ChessGame $game
  * @property-read NostrEvent|null $nostrEvent

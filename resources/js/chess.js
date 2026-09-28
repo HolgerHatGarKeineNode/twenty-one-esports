@@ -7,10 +7,8 @@
 import { Chess } from 'chess.js';
 import { dailyGame } from './dailyGame.js';
 import { gameChat } from './gameChat.js';
+import { gamePost } from './gamePost.js';
 import { boardKey } from './hotkeys.js';
-import { ensureSigner } from './nostrSign.js';
-import { restoreSigner } from './millAuth.js';
-import { signTemplate } from './signing.js';
 import { moveSound, playSound, sounds } from './sounds.js';
 import { displaySan, inputSan } from './sanNotation.js';
 
@@ -164,42 +162,6 @@ function watchConnection(onChange) {
 // Static boards (lobby thumbnails) build their cells inline.
 window.chessBoardCells = boardCells;
 
-/**
- * Sign a server-prepared template with the player's signer, if one is
- * there without asking to connect (extension, or a remote signer already
- * connected on this page). Returns the signed event, or null.
- */
-async function signQuietly(template, pubkey) {
-    if (!template) return null;
-    // A remote signer paired on an earlier page comes back without a dialog.
-    if (typeof window.nostr?.signEvent !== 'function') await restoreSigner();
-    if (typeof window.nostr?.signEvent !== 'function') return null;
-    try {
-        // signTemplate signs a plain copy and logs a refusal with its reason (console.warn).
-        return await signTemplate(template, { pubkey });
-    } catch {
-        return null;
-    }
-}
-
-/**
- * NIP-64 final record (NIP "Game Record"): when a game ends, the players'
- * app signs the finished PGN and the first valid one counts. Nothing to click
- * (ChessGame: "Nothing to click afterwards"); without a signer at hand the
- * finished game's page offers it instead.
- */
-async function publishRecord(wire, pubkey, { connect = false } = {}) {
-    // $wire resolves its component lazily; do it now, before any await (see dailyGame.js commit()).
-    void wire.$id;
-    // Only an explicit click may open the signer connect dialog.
-    if (connect && !(await ensureSigner())) return;
-    const template = await wire.recordTemplate();
-    const event = await signQuietly(template, pubkey);
-    if (event) await wire.submitRecord(JSON.stringify(event));
-}
-
-window.chessPublishRecord = publishRecord;
-
 function chatNotice(text) {
     window.dispatchEvent(new CustomEvent('chess-chat-notice', { detail: { at: Date.now(), text } }));
 }
@@ -208,6 +170,7 @@ function chatNotice(text) {
 
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('gameChat', gameChat);
+    window.Alpine.data('gamePost', gamePost);
     window.Alpine.data('dailyGame', (config) => dailyGame(config, boardCells, kingInCheck));
 
     window.Alpine.data('chessGame', (config) => ({
@@ -234,7 +197,6 @@ document.addEventListener('alpine:init', () => {
         opponentGoneAt: null,
         disconnectDismissed: false,
         opponentGoneNoticed: false,
-        recording: false,
         lowTimePlayed: false,
         soundedPly: 0,
         lastSyncAt: 0,
@@ -397,10 +359,6 @@ document.addEventListener('alpine:init', () => {
                 const sound = endSound(state, this.color);
                 // After the last move's click, not on top of it.
                 if (sound) setTimeout(() => playSound(sound), 250);
-            }
-            if (ended && this.color && !state.recorded && !this.recording) {
-                this.recording = true;
-                publishRecord(this.$wire, this.t.pubkey).finally(() => (this.recording = false));
             }
             this.receivedAt = performance.now();
             this.lastSyncAt = this.receivedAt;

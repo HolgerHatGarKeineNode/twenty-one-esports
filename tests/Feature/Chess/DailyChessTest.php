@@ -12,7 +12,6 @@ use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessQueue;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\DailyChallenges;
-use App\Support\Chess\GameRecords;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Support\Facades\Bus;
@@ -38,15 +37,16 @@ function dailyPlayers(): array
 }
 
 /**
- * One daily move the way the page plays it: prepare, sign, play.
+ * One daily move the way the page plays it (NIP rev. 9.4): no note, no
+ * signature, the server checks and stores it.
+ *
+ * @return array{ok: bool, error: string|null, state: array<string, mixed>}
  */
-function playDaily(ChessGame $game, User $user, TestSigner $signer, string $uci): ChessGame
+function playDaily(ChessGame $game, User $user, string $uci, ?int $ply = null): array
 {
-    $records = app(GameRecords::class);
-    $ply = $game->refresh()->ply + 1;
-    [$signed] = $signer->signTemplates([$records->prepareMove($game, $user, $uci, $ply)['template']]);
-
-    return $records->playSigned($game, $user, $uci, $ply, json_encode($signed));
+    return Livewire::actingAs($user)->test('pages::games.show', ['game' => $game])
+        ->call('playMove', $uci, $ply ?? $game->refresh()->ply + 1)
+        ->effects['returns'][0];
 }
 
 function dailyRefusal(Closure $action): ?string
@@ -87,50 +87,102 @@ test('a daily challenge starts a casual daily game with the chosen colours, acce
     expect(dailyRefusal(fn () => $challenges->accept($late, $carl)))->toBe('challenge_closed');
 });
 
-test('a daily move is played only with the mover\'s signed NIP-64 note, chained to the previous move', function () {
-    [$white, $whiteKey, $black, $blackKey] = dailyPlayers();
+test('a daily move is played by the league server alone: no note, no signature, nothing for any relay', function () {
+    [$white, , $black] = dailyPlayers();
     $game = ChessGame::factory()->daily()->create(['white_id' => $white->id, 'black_id' => $black->id]);
 
-    playDaily($game, $white, $whiteKey, 'e2e4');
-    playDaily($game, $black, $blackKey, 'e7e5');
+    // The double-check shows what the move is; nothing is signed for it.
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $game])
+        ->call('previewMove', 'e2e4', 1)
+        ->assertReturned(fn (array $r) => $r === ['ok' => true, 'error' => null, 'move' => ['san' => 'e4', 'result' => '*', 'check' => false]]);
 
-    $notes = NostrEvent::query()->where('kind', 64)->orderBy('id')->get();
-    $first = SignedEvent::fromInput($notes[0]->payload());
-    $second = SignedEvent::fromInput($notes[1]->payload());
+    expect(playDaily($game, $white, 'e2e4'))->toMatchArray(['ok' => true, 'error' => null])
+        ->and(playDaily($game, $black, 'e7e5'))->toMatchArray(['ok' => true, 'error' => null]);
 
-    expect($game->refresh()->ply)->toBe(2)
-        ->and($game->moves()->pluck('nostr_event_id')->all())->toBe($notes->pluck('id')->all())
-        ->and($first->pubkey)->toBe($white->pubkey)
-        ->and($first->hasValidSignature())->toBeTrue()
-        ->and($first->tagsNamed('p'))->toBe([[$white->pubkey, '', 'white'], [$black->pubkey, '', 'black']])
-        ->and($first->tagsNamed('e'))->toBe([])
-        ->and($first->content)->toContain('[Result "*"]')->toContain("\n\n1. e4 *\n")
-        ->and($second->pubkey)->toBe($black->pubkey)
-        ->and($second->tagsNamed('e'))->toBe([[$first->id]])
-        ->and($second->content)->toContain('1. e4 e5 *');
+    $state = app(ChessGameService::class)->snapshot($game->refresh());
 
-    Bus::assertDispatchedTimes(PublishNostrEvent::class, 2);
+    expect($game->ply)->toBe(2)
+        ->and($game->fen)->toBe('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2')
+        ->and($game->moves()->pluck('san')->all())->toBe(['e4', 'e5'])
+        ->and($game->moves()->whereNotNull('nostr_event_id')->count())->toBe(0)
+        ->and(NostrEvent::query()->count())->toBe(0)
+        ->and($state['moves'][0])->not->toHaveKey('event')
+        ->and($state['posted'])->toBe(['w' => false, 'b' => false]);
 
-    // A note that is not the prepared one, or signed by the other player, plays nothing.
-    $records = app(GameRecords::class);
-    $template = $records->prepareMove($game, $white, 'g1f3', 3)['template'];
-    [$doctored] = $whiteKey->signTemplates([[...$template, 'content' => str_replace('Nf3', 'Nc3', $template['content'])]]);
-    [$foreign] = $blackKey->signTemplates([$template]);
+    Bus::assertNotDispatched(PublishNostrEvent::class);
 
-    expect(dailyRefusal(fn () => $records->playSigned($game, $white, 'g1f3', 3, json_encode($doctored))))->toBe('not_the_prepared_event')
-        ->and(dailyRefusal(fn () => $records->playSigned($game, $white, 'g1f3', 3, json_encode($foreign))))->toBe('foreign_author')
-        ->and(dailyRefusal(fn () => $records->playSigned($game, $white, 'g1f3', 3, '{"id":"x"}')))->toBe('malformed')
-        ->and($game->refresh()->ply)->toBe(2)
-        ->and(NostrEvent::query()->count())->toBe(2);
+    // A page opened before the change asks for a note to sign: it is told to reload, and nothing is played.
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $game])
+        ->call('prepareMove', 'g1f3', 3)
+        ->assertReturned(['ok' => false, 'error' => 'reload', 'move' => null]);
+
+    expect($game->refresh()->ply)->toBe(2);
+});
+
+test('the server refuses an illegal move, a move out of turn, a move sent twice and a spectator; nothing is stored', function () {
+    [$white, , $black] = dailyPlayers();
+    $spectator = User::factory()->create();
+    $game = ChessGame::factory()->daily()->create(['white_id' => $white->id, 'black_id' => $black->id]);
+
+    expect(playDaily($game, $white, 'e2e5')['error'])->toBe('illegal_move')
+        ->and(playDaily($game, $black, 'e7e5')['error'])->toBe('not_your_turn')
+        ->and(playDaily($game, $spectator, 'e2e4')['error'])->toBe('not_a_player')
+        ->and(playDaily($game, $white, 'e2e4', 2)['error'])->toBe('out_of_sync')
+        ->and($game->refresh()->ply)->toBe(0);
+
+    // A retry of the same move (a second tab, a double click) is played once.
+    expect(playDaily($game, $white, 'e2e4', 1)['ok'])->toBeTrue()
+        ->and(playDaily($game, $white, 'e2e4', 1)['error'])->toBe('not_your_turn')
+        ->and($game->refresh()->ply)->toBe(1)
+        ->and($game->moves()->count())->toBe(1);
+
+    // The preview checks the same things and plays nothing.
+    Livewire::actingAs($black)->test('pages::games.show', ['game' => $game])
+        ->call('previewMove', 'e7e4', 2)->assertReturned(fn (array $r) => $r['error'] === 'illegal_move')
+        ->call('previewMove', 'e7e5', 5)->assertReturned(fn (array $r) => $r['error'] === 'out_of_sync');
+
+    expect($game->refresh()->ply)->toBe(1);
+});
+
+test('a daily game in progress at the change continues server-side from its last move: the old notes stay, nothing is played twice', function () {
+    [$white, $whiteKey, $black, $blackKey] = dailyPlayers();
+    $games = app(ChessGameService::class);
+    $game = $games->start($white, $black, ChessGame::CORRESPONDENCE);
+    $games->move($game, $white, 'e2e4', 1);
+    $games->move($game->refresh(), $black, 'e7e5', 2);
+
+    // Before rev. 9.4 each of these moves was its mover's signed kind-64 note, chained by `e`.
+    $first = NostrEvent::fromSigned(SignedEvent::fromInput($whiteKey->sign(64, [['p', $white->pubkey, '', 'white'], ['p', $black->pubkey, '', 'black'], ['alt', 'move 1']], '[Event "?"]')));
+    $second = NostrEvent::fromSigned(SignedEvent::fromInput($blackKey->sign(64, [['p', $white->pubkey, '', 'white'], ['p', $black->pubkey, '', 'black'], ['e', $first->event_id], ['alt', 'move 2']], '[Event "?"]')));
+    $game->moves()->where('ply', 1)->update(['nostr_event_id' => $first->id]);
+    $game->moves()->where('ply', 2)->update(['nostr_event_id' => $second->id]);
+    $before = NostrEvent::query()->orderBy('id')->pluck('raw', 'id')->all();
+
+    // An open tab replays Black's old move, and White's next one: the first is refused, the second is played.
+    expect(playDaily($game, $black, 'e7e5', 2)['error'])->toBe('not_your_turn')
+        ->and(playDaily($game, $white, 'e7e5', 2)['error'])->toBe('out_of_sync')
+        ->and(playDaily($game, $white, 'g1f3', 3)['ok'])->toBeTrue();
+
+    $game->refresh();
+
+    expect($game->ply)->toBe(3)
+        ->and($game->moves()->orderBy('ply')->pluck('nostr_event_id')->all())->toBe([$first->id, $second->id, null])
+        ->and(NostrEvent::query()->orderBy('id')->pluck('raw', 'id')->all())->toBe($before);
+
+    // The running game names its history; the move form asks for no signer.
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $game])
+        ->assertSee(__('Earlier moves'))
+        ->assertSee(trans_choice(':count move was published as its own note before moves stopped being posted; it stays as history.|:count moves were published as their own notes before moves stopped being posted; they stay as history.', 2))
+        ->assertDontSee('each move is its own NIP-64 note');
 });
 
 test('a missed daily deadline ends the game: aborted before both first moves, lost on time after', function () {
-    [$white, $whiteKey, $black, $blackKey] = dailyPlayers();
+    [$white, , $black] = dailyPlayers();
     $early = ChessGame::factory()->daily()->create(['white_id' => $white->id, 'black_id' => $black->id]);
     $late = ChessGame::factory()->daily()->create(['white_id' => $white->id, 'black_id' => $black->id]);
 
-    playDaily($late, $white, $whiteKey, 'e2e4');
-    playDaily($late, $black, $blackKey, 'e7e5');
+    playDaily($late, $white, 'e2e4');
+    playDaily($late, $black, 'e7e5');
 
     // White has 24 h for the third move; one second before the end the game still runs.
     $this->travel(86_399)->seconds();
@@ -145,7 +197,8 @@ test('a missed daily deadline ends the game: aborted before both first moves, lo
         ->and($late->refresh()->status)->toBe(ChessGameStatus::Finished)
         ->and($late->result)->toBe('0-1')
         ->and($late->end_reason)->toBe(ChessEndReason::Timeout)
-        ->and(dailyRefusal(fn () => playDaily($late, $white, $whiteKey, 'g1f3')))->toBe('game_over');
+        ->and(playDaily($late, $white, 'g1f3', 3)['error'])->toBe('game_over')
+        ->and($late->refresh()->ply)->toBe(2);
 });
 
 test('daily games never block live play', function () {

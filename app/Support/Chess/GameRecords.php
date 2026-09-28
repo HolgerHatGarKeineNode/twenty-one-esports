@@ -5,137 +5,130 @@ namespace App\Support\Chess;
 use App\Enums\ChessGameStatus;
 use App\Jobs\PublishNostrEvent;
 use App\Models\ChessGame;
-use App\Models\ChessMove;
 use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Nostr\EsportsEventRules;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
+use App\Support\SeasonChain\LeagueKey;
 use Illuminate\Support\Facades\DB;
 
 /**
- * NIP-64 game notes (kind 64), signed by the players, never by the league
- * (NIP "Game Record": "signed by one of its two players"; the league key
- * signs only attestations, and a casual game gets none).
+ * NIP-64 game notes (kind 64), NIP rev. 9.4 ("Game Record"):
  *
- * - Daily moves: every move is a note by the player who moves, with the
- *   whole game so far (result `*`) and an `e` to the previous move's note.
- *   The move that ends the game (mate, a draw by rule) carries the result
- *   and is at once the game's final record.
- * - Final record: a note with the finished game (result and termination),
- *   offered to both players when the game ends; the first valid one the
- *   league accepts counts, a second is refused.
+ * - No move is an event. Blitz and daily moves alike run over the league
+ *   server, which checks turn, legality and deadline ({@see ChessGameService}).
+ * - The league's record: when a game ends with a result, the league key
+ *   signs ONE note with the whole game (PGN, result, termination) inside the
+ *   transaction that ends it, so the attestation (`2154`) of a rated game can
+ *   reference it by `e`. A game gets it once (`record_event_id`); a game
+ *   without a move gets none.
+ * - A player's post: optional, by button after the game ("Post this game to
+ *   my profile"), never automatic. The same PGN as a kind-64 note signed by
+ *   the player, quoting the league's record with `q` (NIP-18: a quote, not a
+ *   reply). At most one per player and game.
  *
- * Casual games are not part of any season: no `e` to a challenge, no ladder
- * `a` (NIP "Rest": "Casual correspondence games may be published as plain
- * NIP-64 notes without an `e` to a challenge and without a ladder `a`").
- *
- * The league builds each note's template from its own record of the game;
- * the browser signs it; the signed note must equal the template
- * (SignedEventGate) and is published through the RelayPublisher.
+ * Casual games are not part of any season: their record has no ladder `a`
+ * (NIP "Rest": casual games "at most become a plain NIP-64 note").
  */
 final class GameRecords
 {
-    public function __construct(private ChessGameService $games, private SignedEventGate $gate) {}
+    public function __construct(private SignedEventGate $gate) {}
 
     /**
-     * The template of the next daily move, and what the move is.
-     *
-     * @return array{template: array{kind: int, tags: list<list<string>>, content: string, created_at: int}, san: string, result: string, check: bool}
-     *
-     * @throws ChessRuleViolation
+     * Sign and queue the league's record of a game that just ended. Call
+     * inside the transaction that ends it, before the attestation. Null when
+     * there is nothing to record (no move, no result, a deleted player) or
+     * no league key is configured; the game's result stands either way.
      */
-    public function prepareMove(ChessGame $game, User $user, string $uci, int $ply): array
+    public function recordFinished(ChessGame $game): ?NostrEvent
     {
-        if (! $game->isCorrespondence()) {
-            throw new ChessRuleViolation('not_daily');
+        if ($game->status !== ChessGameStatus::Finished || $game->record_event_id !== null || $game->ply === 0
+            || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true) || $game->white_id === null || $game->black_id === null) {
+            return null;
         }
 
-        $preview = $this->games->preview($game, $user, $uci, $ply);
+        $league = LeagueKey::fromConfig();
+
+        if ($league === null) {
+            return null;
+        }
+
+        // Fresh: the move that ended the game was stored after any earlier load of the relation.
+        $game->load('moves');
+        $pgn = ChessPgn::of($game);
+        $tags = $this->playerTags($game);
+
+        if ($game->rated && $game->ladder_address !== null) {
+            $tags[] = ['a', $game->ladder_address, ''];
+        }
+
+        $tags[] = ['alt', $this->alt($game, 'Chess game record')];
+
+        $event = $league->publish(EsportsEventRules::GAME_RECORD_KIND, $tags, $pgn, now()->getTimestamp());
+        $game->record_event_id = $event->id;
+        $game->setRelation('recordEvent', $event);
+
+        return $event;
+    }
+
+    /**
+     * The note a player would post: exactly what the preview shows and the
+     * signer signs.
+     *
+     * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
+     *
+     * @throws ChessRuleViolation not_a_player, not_finished, already_posted
+     */
+    public function postTemplate(ChessGame $game, User $user): array
+    {
+        $color = $game->colorOf($user) ?? throw new ChessRuleViolation('not_a_player');
+
+        if ($game->status !== ChessGameStatus::Finished || $game->ply === 0 || $game->white_id === null || $game->black_id === null) {
+            throw new ChessRuleViolation('not_finished');
+        }
+
+        if ($this->postOf($game, $color) !== null) {
+            throw new ChessRuleViolation('already_posted');
+        }
+
+        $record = $game->recordEvent;
+
+        if ($record === null) {
+            $game->load('moves');
+        }
+
+        $tags = $this->playerTags($game);
+
+        if ($record !== null) {
+            $tags[] = ['q', $record->event_id, '', $record->pubkey];
+        }
+
+        $tags[] = ['alt', $this->alt($game, 'Chess game')];
 
         return [
-            'template' => [...$this->template($game, $preview['pgn'], $this->previousNote($game, $ply)), 'created_at' => now()->getTimestamp()],
-            'san' => $preview['san'],
-            'result' => $preview['result'],
-            'check' => str_contains($preview['san'], '+') || str_contains($preview['san'], '#'),
+            'kind' => EsportsEventRules::GAME_RECORD_KIND,
+            'tags' => $tags,
+            'content' => $record !== null ? (string) ($record->payload()['content'] ?? '') : ChessPgn::of($game),
+            'created_at' => now()->getTimestamp(),
         ];
     }
 
     /**
-     * Play a daily move with the player's signed note of it. The note is
-     * checked inside the move's transaction: an invalid note plays nothing.
+     * Store and publish a player's post of the game, once per player.
      *
      * @throws ChessRuleViolation
      * @throws RejectedEvent
      */
-    public function playSigned(ChessGame $game, User $user, string $uci, int $ply, mixed $signed): ChessGame
+    public function submitPost(ChessGame $game, User $user, mixed $signed): NostrEvent
     {
-        if (! $game->isCorrespondence()) {
-            throw new ChessRuleViolation('not_daily');
-        }
-
-        return $this->games->move($game, $user, $uci, $ply, function (ChessGame $game, ChessMove $move) use ($user, $signed): void {
-            $previous = $this->previousNote($game, $move->ply);
-            $game->load('moves');
-
-            $event = $this->gate->check($signed, $this->template($game, ChessPgn::of($game), $previous), $user);
-
-            // NIP "Game Record": a move is not signed before the move it follows.
-            if ($previous !== null && $event->createdAt < $previous->signed_at) {
-                throw new RejectedEvent('created_at_before_previous_move');
-            }
-
-            $stored = NostrEvent::fromSigned($event);
-            $move->forceFill(['nostr_event_id' => $stored->id])->save();
-
-            if (! $game->isActive()) {
-                $game->record_event_id = $stored->id;
-            }
-
-            PublishNostrEvent::dispatch($stored);
-        });
-    }
-
-    /**
-     * The final record's template, or null when there is nothing to sign:
-     * the game runs, was aborted, or already has its record.
-     *
-     * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}|null
-     */
-    public function finalTemplate(ChessGame $game): ?array
-    {
-        if ($game->status !== ChessGameStatus::Finished || $game->record_event_id !== null) {
-            return null;
-        }
-
-        $game->loadMissing('moves');
-        $last = $game->isCorrespondence() ? $game->moves->last()?->nostrEvent : null;
-
-        return [...$this->template($game, ChessPgn::of($game), $last), 'created_at' => now()->getTimestamp()];
-    }
-
-    /**
-     * Store and publish a player's final record, if it is the first valid one.
-     *
-     * @throws ChessRuleViolation
-     * @throws RejectedEvent
-     */
-    public function submitFinal(ChessGame $game, User $user, mixed $signed): NostrEvent
-    {
-        if ($game->colorOf($user) === null) {
-            throw new ChessRuleViolation('not_a_player');
-        }
-
         return DB::transaction(function () use ($game, $user, $signed): NostrEvent {
             $locked = ChessGame::query()->lockForUpdate()->findOrFail($game->id);
-            $template = $this->finalTemplate($locked);
+            $color = $locked->colorOf($user) ?? throw new ChessRuleViolation('not_a_player');
+            $event = $this->gate->check($signed, $this->postTemplate($locked, $user), $user);
 
-            if ($template === null) {
-                throw new ChessRuleViolation($locked->record_event_id !== null ? 'already_recorded' : 'not_finished');
-            }
-
-            $stored = NostrEvent::fromSigned($this->gate->check($signed, $template, $user));
-            $locked->forceFill(['record_event_id' => $stored->id, 'version' => $locked->version + 1])->save();
+            $stored = NostrEvent::fromSigned($event);
+            $locked->forceFill([($color === 'w' ? 'white' : 'black').'_post_event_id' => $stored->id])->save();
 
             PublishNostrEvent::dispatch($stored);
 
@@ -144,38 +137,31 @@ final class GameRecords
     }
 
     /**
-     * @return array{kind: int, tags: list<list<string>>, content: string}
+     * The player's post of this game, if they made one.
+     *
+     * @param  'w'|'b'  $color
      */
-    private function template(ChessGame $game, string $pgn, ?NostrEvent $previous): array
+    public function postOf(ChessGame $game, string $color): ?int
     {
-        $headers = ChessPgn::headersFor($game);
-
-        $tags = [
-            ['p', $game->white->pubkey, '', 'white'],
-            ['p', $game->black->pubkey, '', 'black'],
-        ];
-
-        if ($previous !== null) {
-            $tags[] = ['e', $previous->event_id];
-        }
-
-        $result = preg_match('/\[Result "([^"]*)"\]/', $pgn, $match) === 1 ? $match[1] : '*';
-
-        $tags[] = ['alt', $game->isCorrespondence()
-            ? "Daily chess game {$game->number()}: {$headers['White']} vs {$headers['Black']}, {$result} (NIP-64 PGN)"
-            : "Chess game {$game->number()}: {$headers['White']} vs {$headers['Black']}, {$result} (NIP-64 PGN)"];
-
-        return ['kind' => EsportsEventRules::GAME_RECORD_KIND, 'tags' => $tags, 'content' => $pgn];
+        return $color === 'w' ? $game->white_post_event_id : $game->black_post_event_id;
     }
 
     /**
-     * The signed note of the move before `ply` (none before the first move).
+     * @return list<list<string>>
      */
-    private function previousNote(ChessGame $game, int $ply): ?NostrEvent
+    private function playerTags(ChessGame $game): array
     {
-        return $ply <= 1 ? null : ChessMove::query()
-            ->where('chess_game_id', $game->id)
-            ->where('ply', $ply - 1)
-            ->first()?->nostrEvent;
+        return [
+            ['p', $game->white->pubkey, '', 'white'],
+            ['p', $game->black->pubkey, '', 'black'],
+        ];
+    }
+
+    private function alt(ChessGame $game, string $what): string
+    {
+        $headers = ChessPgn::headersFor($game);
+        $mode = $game->isCorrespondence() ? 'daily' : 'blitz';
+
+        return "{$what} {$game->number()} ({$mode}): {$headers['White']} vs {$headers['Black']}, {$game->result} (NIP-64 PGN)";
     }
 }

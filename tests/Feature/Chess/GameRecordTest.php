@@ -5,10 +5,10 @@ use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
-use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\GameRecords;
 use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\EsportsEventRules;
+use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Support\Facades\Bus;
 use Livewire\Livewire;
@@ -19,35 +19,55 @@ beforeEach(function () {
     Bus::fake([PublishNostrEvent::class]);
 });
 
-test('a finished game gets exactly one NIP-64 record, signed by one of its players and published', function () {
+/**
+ * The league key of these tests, as `esports.league.nsec`.
+ */
+function recordLeague(): TestSigner
+{
+    $league = new TestSigner;
+    config(['esports.league.nsec' => $league->secret]);
+
+    return $league;
+}
+
+/**
+ * Fool's mate: Black mates on move 2.
+ *
+ * @return array{0: ChessGame, 1: User, 2: TestSigner, 3: User, 4: TestSigner}
+ */
+function foolsMate(string $mode = 'blitz'): array
+{
     $whiteKey = new TestSigner;
     $blackKey = new TestSigner;
     $white = User::factory()->withPubkey($whiteKey->pubkey)->create(['name' => 'anna']);
     $black = User::factory()->withPubkey($blackKey->pubkey)->create(['name' => 'bert']);
     $games = app(ChessGameService::class);
-    $records = app(GameRecords::class);
+    $game = $games->start($white, $black, $mode);
 
-    $game = $games->start($white, $black);
     foreach (['f2f3', 'e7e5', 'g2g4', 'd8h4'] as $uci) {
         $game = $games->move($game->refresh(), $game->turn() === 'w' ? $white : $black, $uci);
     }
 
-    $template = $records->finalTemplate($game->refresh());
-    [$signed] = $blackKey->signTemplates([$template]);
-    $stored = $records->submitFinal($game, $black, json_encode($signed));
-    $event = SignedEvent::fromInput($stored->payload());
+    return [$game->refresh(), $white, $whiteKey, $black, $blackKey];
+}
+
+test('a finished game gets exactly one NIP-64 record, signed by the league when it ends; no player signs anything', function (string $mode, string $event, string $timeControl) {
+    $league = recordLeague();
+    [$game, $white, , $black] = foolsMate($mode);
+    $stored = $game->recordEvent;
+    $record = SignedEvent::fromInput($stored->payload());
 
     // NIP-64: kind 64, PGN in export format (Seven Tag Roster first, in order), result as terminator.
-    expect($event->kind)->toBe(64)
-        ->and($event->pubkey)->toBe($black->pubkey)
-        ->and($event->hasValidSignature())->toBeTrue()
-        ->and(app(EsportsEventRules::class)->check($event))->toBeNull()
-        ->and($event->tagsNamed('p'))->toBe([[$white->pubkey, '', 'white'], [$black->pubkey, '', 'black']])
-        ->and($event->tagsNamed('e'))->toBe([])
-        ->and($event->tagsNamed('a'))->toBe([])
-        ->and($event->tag('alt'))->toContain('anna vs bert, 0-1')
-        ->and(array_slice(explode("\n", $event->content), 0, 7))->toBe([
-            '[Event "TWENTY ONE esports, casual blitz"]',
+    expect($record->kind)->toBe(64)
+        ->and($record->pubkey)->toBe($league->pubkey)
+        ->and($record->hasValidSignature())->toBeTrue()
+        ->and($record->tagsNamed('p'))->toBe([[$white->pubkey, '', 'white'], [$black->pubkey, '', 'black']])
+        ->and($record->tagsNamed('e'))->toBe([])
+        ->and($record->tagsNamed('a'))->toBe([])
+        ->and($record->tagsNamed('t'))->toBe([])
+        ->and($record->tag('alt'))->toContain('anna vs bert, 0-1')
+        ->and(array_slice(explode("\n", $record->content), 0, 7))->toBe([
+            '[Event "'.$event.'"]',
             '[Site "'.route('games.show', $game).'"]',
             '[Date "'.now()->utc()->format('Y.m.d').'"]',
             '[Round "-"]',
@@ -55,32 +75,137 @@ test('a finished game gets exactly one NIP-64 record, signed by one of its playe
             '[Black "bert"]',
             '[Result "0-1"]',
         ])
-        ->and($event->content)->toContain('[TimeControl "300+3"]')->toContain('[Termination "normal"]')->toEndWith("1. f3 e5 2. g4 Qh4# 0-1\n")
-        ->and($game->refresh()->record_event_id)->toBe($stored->id);
+        ->and($record->content)->toContain('[TimeControl "'.$timeControl.'"]')->toContain('[Termination "normal"]')->toEndWith("1. f3 e5 2. g4 Qh4# 0-1\n")
+        ->and(NostrEvent::query()->where('kind', 64)->pluck('pubkey')->all())->toBe([$league->pubkey]);
 
     Bus::assertDispatched(PublishNostrEvent::class, fn (PublishNostrEvent $job) => $job->event->is($stored));
+    Bus::assertDispatchedTimes(PublishNostrEvent::class, 1);
 
-    // The first valid record counts; the other player's later one is refused.
-    [$late] = $whiteKey->signTemplates([$template]);
-    expect(fn () => $records->submitFinal($game, $white, json_encode($late)))->toThrow(ChessRuleViolation::class)
-        ->and(NostrEvent::query()->where('kind', 64)->count())->toBe(1)
-        ->and($records->finalTemplate($game->refresh()))->toBeNull();
+    // Idempotent: the game has its record; every later call and the clock sweep add none.
+    expect(app(GameRecords::class)->recordFinished($game))->toBeNull()
+        ->and(app(ChessGameService::class)->checkClock($game)->record_event_id)->toBe($stored->id);
+    $this->artisan('chess:check-clocks')->assertSuccessful();
+
+    expect(NostrEvent::query()->where('kind', 64)->count())->toBe(1);
+})->with([
+    'blitz' => ['blitz', 'TWENTY ONE esports, casual blitz', '300+3'],
+    'daily' => [ChessGame::CORRESPONDENCE, 'TWENTY ONE esports, casual daily chess', '1/86400'],
+]);
+
+test('a resignation, a flag and an agreed draw are recorded; an abort and a game without a move are not; without a league key the result stands unrecorded', function () {
+    $league = recordLeague();
+    $games = app(ChessGameService::class);
+
+    $resigned = ChessGame::factory()->create();
+    $games->move($resigned, $resigned->white, 'e2e4');
+    $games->resign($resigned->refresh(), $resigned->white);
+
+    $drawn = ChessGame::factory()->daily()->create();
+    $games->move($drawn, $drawn->white, 'e2e4');
+    $games->offerDraw($drawn->refresh(), $drawn->black);
+    $games->acceptDraw($drawn->refresh(), $drawn->white);
+
+    $flagged = ChessGame::factory()->daily()->create();
+    $games->move($flagged, $flagged->white, 'e2e4');
+    $games->move($flagged->refresh(), $flagged->black, 'e7e5');
+    $this->travel(86_401)->seconds();
+    $this->artisan('chess:check-clocks')->assertSuccessful();
+
+    $aborted = ChessGame::factory()->create();
+    $games->abort($aborted, $aborted->white);
+
+    expect($resigned->refresh()->recordEvent?->pubkey)->toBe($league->pubkey)
+        ->and($resigned->recordEvent->payload()['content'])->toContain('[Result "0-1"]')->toEndWith("1. e4 0-1\n")
+        ->and($drawn->refresh()->recordEvent?->payload()['content'])->toContain('[Result "1/2-1/2"]')
+        ->and($flagged->refresh()->recordEvent?->payload()['content'])->toContain('[Termination "time forfeit"]')->toEndWith("1. e4 e5 0-1\n")
+        ->and($aborted->refresh()->record_event_id)->toBeNull();
+
+    config(['esports.league.nsec' => null]);
+    $unkeyed = ChessGame::factory()->create();
+    $games->move($unkeyed, $unkeyed->white, 'e2e4');
+    $games->resign($unkeyed->refresh(), $unkeyed->black);
+
+    expect($unkeyed->refresh()->result)->toBe('1-0')
+        ->and($unkeyed->record_event_id)->toBeNull()
+        ->and(NostrEvent::query()->where('kind', 64)->count())->toBe(3);
 });
 
-test('the page hands the record template only to players, and only once the game is over', function () {
-    $game = ChessGame::factory()->create();
+test('a player posts the game to their profile only by button: the preview is the exact note, signed by them, once', function () {
+    $league = recordLeague();
+    [$game, $white, $whiteKey, $black, $blackKey] = foolsMate(ChessGame::CORRESPONDENCE);
     $spectator = User::factory()->create();
+    $record = $game->recordEvent;
 
-    Livewire::actingAs($game->white)->test('pages::games.show', ['game' => $game])
-        ->call('recordTemplate')->assertReturned(null);
+    // Never automatic: the game is over and not one player-signed note exists.
+    expect(NostrEvent::query()->where('kind', 64)->where('pubkey', '!=', $league->pubkey)->count())->toBe(0);
 
-    app(ChessGameService::class)->move($game, $game->white, 'e2e4');
-    app(ChessGameService::class)->move($game->refresh(), $game->black, 'e7e5');
-    app(ChessGameService::class)->resign($game->refresh(), $game->black);
+    Livewire::actingAs($spectator)->test('pages::games.show', ['game' => $game])
+        ->call('prepareGamePost')->assertReturned(['ok' => false, 'error' => 'not_a_player', 'template' => null]);
 
-    Livewire::actingAs($spectator)->test('pages::games.show', ['game' => $game])->call('recordTemplate')->assertReturned(null);
-    Livewire::actingAs($game->white)->test('pages::games.show', ['game' => $game])
-        ->call('recordTemplate')->assertReturned(fn (array $template) => $template['kind'] === 64 && str_contains($template['content'], '[Result "1-0"]'));
+    $page = Livewire::actingAs($black)->test('pages::games.show', ['game' => $game]);
+    $template = $page->call('prepareGamePost')->effects['returns'][0]['template'];
+
+    expect($template['kind'])->toBe(64)
+        ->and($template['content'])->toBe($record->payload()['content'])
+        ->and($template['tags'])->toBe([
+            ['p', $white->pubkey, '', 'white'],
+            ['p', $black->pubkey, '', 'black'],
+            ['q', $record->event_id, '', $league->pubkey],
+            ['alt', 'Chess game '.$game->number().' (daily): anna vs bert, 0-1 (NIP-64 PGN)'],
+        ]);
+
+    // A doctored note, or one signed by the other player, posts nothing.
+    [$doctored] = $blackKey->signTemplates([[...$template, 'content' => str_replace('0-1', '1-0', $template['content'])]]);
+    [$foreign] = $whiteKey->signTemplates([$template]);
+    $page->call('submitGamePost', json_encode($doctored))->assertReturned(fn (array $r) => $r['error'] === 'signature_rejected');
+    $page->call('submitGamePost', json_encode($foreign))->assertReturned(fn (array $r) => $r['error'] === 'signature_rejected');
+
+    expect($game->refresh()->black_post_event_id)->toBeNull();
+
+    [$signed] = $blackKey->signTemplates([$template]);
+    $page->call('submitGamePost', json_encode($signed))->assertReturned(fn (array $r) => $r['ok'] === true && $r['state']['posted'] === ['w' => false, 'b' => true]);
+
+    $post = NostrEvent::query()->findOrFail($game->refresh()->black_post_event_id);
+
+    expect($post->pubkey)->toBe($black->pubkey)
+        ->and($post->kind)->toBe(64)
+        ->and(app(EsportsEventRules::class)->check(SignedEvent::fromInput($post->payload())))->toBeNull()
+        ->and($game->white_post_event_id)->toBeNull()
+        ->and($game->record_event_id)->toBe($record->id);
+
+    Bus::assertDispatched(PublishNostrEvent::class, fn (PublishNostrEvent $job) => $job->event->is($post));
+
+    // Once per player: a second preview and a second post are refused.
+    [$again] = $blackKey->signTemplates([[...$template, 'created_at' => $template['created_at'] + 1]]);
+    $page->call('prepareGamePost')->assertReturned(['ok' => false, 'error' => 'already_posted', 'template' => null]);
+    $page->call('submitGamePost', json_encode($again))->assertReturned(fn (array $r) => $r['error'] === 'already_posted');
+
+    expect(NostrEvent::query()->where('kind', 64)->where('pubkey', $black->pubkey)->count())->toBe(1);
+});
+
+test('a running or aborted game cannot be posted, and the finished page offers the post only to its players', function () {
+    recordLeague();
+    $running = ChessGame::factory()->daily()->create();
+    app(ChessGameService::class)->move($running, $running->white, 'e2e4');
+    $aborted = ChessGame::factory()->create();
+    app(ChessGameService::class)->abort($aborted, $aborted->white);
+    [$finished, $white] = foolsMate();
+
+    Livewire::actingAs($running->white)->test('pages::games.show', ['game' => $running])
+        ->call('prepareGamePost')->assertReturned(fn (array $r) => $r['error'] === 'not_finished');
+    Livewire::actingAs($aborted->white)->test('pages::games.show', ['game' => $aborted])
+        ->call('prepareGamePost')->assertReturned(fn (array $r) => $r['error'] === 'not_finished')
+        ->assertDontSeeHtml('data-test="game-post"');
+
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $finished])
+        ->assertSeeHtml('data-test="game-post"')
+        ->assertSee(__('Post this game to my profile'))
+        ->assertDontSeeHtml('chessPublishRecord');
+    Livewire::actingAs(User::factory()->create())->test('pages::games.show', ['game' => $finished])
+        ->assertDontSeeHtml('data-test="game-post"');
+
+    // A page opened before the change asks for a record to sign at the end: there is none.
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $finished])->call('recordTemplate')->assertReturned(null);
 });
 
 test('a disconnected opponent can be claimed against only after the timeout and only while gone', function () {
@@ -153,4 +278,48 @@ test('the current version of an addressable event of any age reaches a relay tha
 
     expect($latest->deliveries()->where('relay', $new)->exists())->toBeTrue()
         ->and($first->deliveries()->count())->toBe(0);
+});
+
+test('the kind-64 filters of the NIP\'s query table find the league\'s record and the player\'s post, and nothing else', function () {
+    $league = recordLeague();
+    [$game, $white, , $black, $blackKey] = foolsMate(ChessGame::CORRESPONDENCE);
+    $records = app(GameRecords::class);
+    [$signed] = $blackKey->signTemplates([$records->postTemplate($game, $black)]);
+    $records->submitPost($game, $black, json_encode($signed));
+    $record = SignedEvent::fromInput($game->refresh()->recordEvent->payload());
+    $post = SignedEvent::fromInput(NostrEvent::query()->findOrFail($game->black_post_event_id)->payload());
+
+    // A move chain signed before rev. 9.4: the second note points at the first.
+    $whiteKey = new TestSigner;
+    $first = SignedEvent::fromInput($whiteKey->sign(64, [['p', $white->pubkey, '', 'white'], ['alt', 'move 1']], '[Event "?"]'));
+    $second = SignedEvent::fromInput($blackKey->sign(64, [['e', $first->id], ['alt', 'move 2']], '[Event "?"]'));
+
+    $nip = (string) file_get_contents(base_path('docs/nips/esports.md'));
+    $table = str($nip)->after("\n## Queries\n")->before("\n## ")->toString();
+    $filters = [];
+    foreach (explode("\n", $table) as $line) {
+        if (str_contains($line, '"kinds":[64]') && preg_match('/^\| (.+?) \| `(\{.+?\})`/', $line, $row) === 1) {
+            $filters[$row[1]] = $row[2];
+        }
+    }
+
+    expect(array_keys($filters))->toBe([
+        'the game records of a chess match (all boards)',
+        'a player\'s chess game records (rev. 9.4)',
+        'the posts of one game record by its players (rev. 9.4)',
+        'the moves of a correspondence game before rev. 9.4',
+    ])->and($table)->not->toContain('the next move of a correspondence game');
+
+    $fill = fn (string $filter, array $values): array => json_decode(strtr($filter, $values), true, flags: JSON_THROW_ON_ERROR);
+    $matches = new ReflectionMethod(RelayReader::class, 'matches');
+    $found = fn (array $filter) => array_values(array_map(
+        fn (SignedEvent $event) => $event->id,
+        array_filter([$record, $post, $first, $second], fn (SignedEvent $event) => $matches->invoke(null, $event, $filter)),
+    ));
+
+    expect($found($fill($filters['a player\'s chess game records (rev. 9.4)'], ['<league>' => $league->pubkey, '<player>' => $black->pubkey])))->toBe([$record->id])
+        ->and($found($fill($filters['the posts of one game record by its players (rev. 9.4)'], ['<record id>' => $record->id])))->toBe([$post->id])
+        ->and($found($fill($filters['the moves of a correspondence game before rev. 9.4'], ['<id of a move note>' => $first->id])))->toBe([$second->id])
+        // A casual game has no challenge: the match filter finds nothing of it, and never a post.
+        ->and($found($fill($filters['the game records of a chess match (all boards)'], ['<league>' => $league->pubkey, '<challenge id>' => str_repeat('a', 64)])))->toBe([]);
 });

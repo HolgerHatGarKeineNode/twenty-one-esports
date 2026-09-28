@@ -35,11 +35,12 @@ use Livewire\Component;
  * figure of the designs is replaced by "casual" wording.
  *
  * P5b: a daily game (mode `correspondence`) shows ChessCorrespondence /
- * MobileChessCorrespondence (partials/daily); each daily move is signed by
- * the mover as a NIP-64 note (GameRecords). Both have the NIP-17 chat
- * (partials/chat, in daily games since P5d); a live game also has the
+ * MobileChessCorrespondence (partials/daily). Its moves run over the server
+ * like blitz moves and are not events (NIP rev. 9.4). Both have the NIP-17
+ * chat (partials/chat, in daily games since P5d); a live game also has the
  * "opponent disconnected" overlay with claim-win.
- * At the end of any game the players' app signs the NIP-64 record.
+ * At the end of a game the league signs its NIP-64 record (GameRecords); a
+ * player may post the game to their own profile by button, never on its own.
  */
 new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts' => ['resources/js/chess.js']])] class extends Component {
     #[Locked]
@@ -172,40 +173,16 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         return $this->act(fn (ChessGameService $games, User $user) => $games->claimWin($this->game, $user, app(PresenceLookup::class)));
     }
 
-    /* ---------- NIP-64 records ------------------------------------------------------------------------------ */
+    /* ---------- The player's own post of the game (NIP-64, rev. 9.4) ----------------------------------------- */
 
     /**
-     * The final record to sign, or null (game runs, aborted, already recorded, spectator).
+     * The note "Post this game to my profile" signs: the preview shows it,
+     * the signer signs it. Nothing is posted without that click.
      *
-     * @return array<string, mixed>|null
+     * @return array{ok: bool, error: string|null, template: array<string, mixed>|null}
      */
     #[Json]
-    public function recordTemplate(): ?array
-    {
-        $this->game->refresh();
-
-        return $this->game->colorOf(auth()->user()) === null ? null : app(GameRecords::class)->finalTemplate($this->game);
-    }
-
-    /**
-     * @param  string  $signed  the signed event as JSON (never trimmed: TrimStrings skips nothing inside it)
-     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
-     */
-    #[Json]
-    public function submitRecord(string $signed): array
-    {
-        return $this->act(fn (ChessGameService $games, User $user) => app(GameRecords::class)->submitFinal($this->game, $user, $signed));
-    }
-
-    /* ---------- Daily moves --------------------------------------------------------------------------------- */
-
-    /**
-     * Check a daily move and return the note to sign for it.
-     *
-     * @return array{ok: bool, error: string|null, move: array<string, mixed>|null}
-     */
-    #[Json]
-    public function prepareMove(string $uci, int $ply): array
+    public function prepareGamePost(): array
     {
         $user = auth()->user();
 
@@ -214,20 +191,82 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 throw new ChessRuleViolation('not_a_player');
             }
 
-            return ['ok' => true, 'error' => null, 'move' => app(GameRecords::class)->prepareMove($this->game, $user, $uci, $ply)];
+            return ['ok' => true, 'error' => null, 'template' => app(GameRecords::class)->postTemplate($this->game->refresh(), $user)];
+        } catch (ChessRuleViolation $violation) {
+            return ['ok' => false, 'error' => $violation->reason, 'template' => null];
+        }
+    }
+
+    /**
+     * @param  string  $signed  the signed post as JSON (never trimmed: TrimStrings skips nothing inside it)
+     * @return array{ok: bool, error: string|null, state: array<string, mixed>}
+     */
+    #[Json]
+    public function submitGamePost(string $signed): array
+    {
+        return $this->act(fn (ChessGameService $games, User $user) => app(GameRecords::class)->submitPost($this->game, $user, $signed));
+    }
+
+    /**
+     * A page opened before rev. 9.4 asks for the final record to sign at the
+     * end of a game: there is none any more (the league signs it).
+     */
+    #[Json]
+    public function recordTemplate(): null
+    {
+        return null;
+    }
+
+    /* ---------- Daily moves --------------------------------------------------------------------------------- */
+
+    /**
+     * Check a daily move without playing it: what the double-check shows.
+     *
+     * @return array{ok: bool, error: string|null, move: array{san: string, result: string, check: bool}|null}
+     */
+    #[Json]
+    public function previewMove(string $uci, int $ply): array
+    {
+        $user = auth()->user();
+
+        try {
+            if (! $user instanceof User) {
+                throw new ChessRuleViolation('not_a_player');
+            }
+
+            $preview = app(ChessGameService::class)->preview($this->game, $user, $uci, $ply);
+
+            return ['ok' => true, 'error' => null, 'move' => [
+                'san' => $preview['san'],
+                'result' => $preview['result'],
+                'check' => str_contains($preview['san'], '+') || str_contains($preview['san'], '#'),
+            ]];
         } catch (ChessRuleViolation $violation) {
             return ['ok' => false, 'error' => $violation->reason, 'move' => null];
         }
     }
 
     /**
-     * @param  string  $signed  the player's signed note of this move, as JSON
+     * A daily page opened before rev. 9.4 would ask for a note to sign per
+     * move. Nothing is signed any more: it is told to reload.
+     *
+     * @return array{ok: false, error: string, move: null}
+     */
+    #[Json]
+    public function prepareMove(string $uci = '', int $ply = 0): array
+    {
+        return ['ok' => false, 'error' => 'reload', 'move' => null];
+    }
+
+    /**
+     * Play a daily move: checked and stored by the server, no signature, no event.
+     *
      * @return array{ok: bool, error: string|null, state: array<string, mixed>}
      */
     #[Json]
-    public function playMove(string $uci, int $ply, string $signed): array
+    public function playMove(string $uci, int $ply): array
     {
-        return $this->act(fn (ChessGameService $games, User $user) => app(GameRecords::class)->playSigned($this->game, $user, $uci, $ply, $signed));
+        return $this->act(fn (ChessGameService $games, User $user) => $games->move($this->game, $user, $uci, $ply));
     }
 
     /**
@@ -418,7 +457,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                 'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
                 'already_playing' => __('One of you is already in another live game.'), 'no_claim' => __('The win cannot be claimed: your opponent is back or not gone long enough.'),
-                'signature_rejected' => __('Your confirmation did not match this move. Nothing was played.'), 'already_recorded' => __('The game record is already published.'),
+                'signature_rejected' => __('Your signature did not match the post. Nothing was posted.'), 'already_posted' => __('You already posted this game.'),
+                'not_finished' => __('Only a finished game can be posted.'), 'reload' => __('This page is out of date. Please reload it.'),
                 'default' => __('That did not work. The board shows the server\'s state.')],
             'disconnected' => [
                 'title' => __(':name disconnected', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
@@ -707,6 +747,10 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                     <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
                                                 </div>
                                             </template>
+                                            {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
+                                            <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
+                                                <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Post this game to my profile') }}</a>
+                                            </template>
                                         </div>
                                     </template>
                                     <template x-if="outcome.key === 'aborted'">
@@ -823,8 +867,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     </span>
                 </div>
                 <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
-                    [__('Record'), __('PGN of this game, published after the last move (NIP-64, kind 64)')],
-                    [__('Confirmation'), __(':white or :black, signed automatically by the app (kind 64)', ['white' => $players['w']['name'], 'black' => $players['b']['name']])],
+                    [__('Record'), __('PGN of this game, signed by the league after the last move (NIP-64, kind 64)')],
+                    [__('Your profile'), __('only if you post the game yourself, by button after the game')],
                     [__('Moves'), __('league server only, not published one by one')],
                 ]" />
             </div>

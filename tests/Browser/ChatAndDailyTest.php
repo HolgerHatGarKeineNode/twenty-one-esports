@@ -286,7 +286,7 @@ test('the match dock turns a daily tab live when the opponent moves, and its pan
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });
 
-test('a daily move signed by one player is there for the other after a reload', function () {
+test('a daily move made by one player is there for the other after a reload, and no signer is asked for it', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
     TestSigner::forBrowser($anna);
     TestSigner::forBrowser($bert);
@@ -301,26 +301,33 @@ test('a daily move signed by one player is there for the other after a reload', 
     $pageA->evaluate('() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "f" }))');
     BrowserWait::until($pageA, '() => Alpine.$data(document.querySelector("[data-test=daily-game]")).flipped === true', 2_000);
 
+    // Every call of the signer from here on is counted (NIP rev. 9.4: a move is no event, nothing is signed).
+    $pageA->evaluate('() => { window.__signs = 0; const sign = window.nostr.signEvent; window.nostr.signEvent = (draft) => { window.__signs++; return sign(draft); }; }');
+
     $pageA->locator('[data-test=daily-san-input]')->fill('e4');
     $pageA->locator('[data-test=daily-san-input]')->press('Enter');
     BrowserWait::until($pageA, '() => document.querySelector("[data-test=pending-move]")?.innerText === "1. e4"', 5_000);
     $pageA->locator('[data-test=make-move]')->click();
     // Double-check is on by default (ChessSettings), so the move needs the second confirmation.
     $pageA->locator('[data-test=confirm-daily-move]')->click();
-    // Wait for either outcome, so a refused signature fails with its message instead of a timeout.
+    // Wait for either outcome, so a refusal fails with its message instead of a timeout.
     BrowserWait::until($pageA, '() => { const d = Alpine.$data(document.querySelector("[data-test=daily-game]")); return d.state.ply === 1 || d.error !== ""; }', 10_000);
-    expect($pageA->evaluate('() => Alpine.$data(document.querySelector("[data-test=daily-game]")).error'))->toBe('');
+    expect($pageA->evaluate('() => Alpine.$data(document.querySelector("[data-test=daily-game]")).error'))->toBe('')
+        ->and($pageA->evaluate('() => window.__signs'))->toBe(0);
+
+    // Positive control: the counter does count a signature.
+    $pageA->evaluate('() => window.nostr.signEvent({ kind: 1, tags: [], content: "control", created_at: Math.floor(Date.now() / 1000) })');
+    expect($pageA->evaluate('() => window.__signs'))->toBe(1);
 
     $pageB->reload();
     BrowserWait::until($pageB, '() => window.Alpine && document.querySelector("[data-test=daily-moves]")?.innerText.includes("e4") && Alpine.$data(document.querySelector("[data-test=daily-game]")).myTurn === true', 10_000);
 
     $move = $game->refresh()->moves()->sole();
-    $note = $move->nostrEvent;
 
     expect($game->ply)->toBe(1)
-        ->and($note?->kind)->toBe(64)
-        ->and($note?->pubkey)->toBe($anna->pubkey)
-        ->and($note?->payload()['content'])->toContain('1. e4 *')
+        ->and($move->san)->toBe('e4')
+        ->and($move->nostr_event_id)->toBeNull()
+        ->and(NostrEvent::query()->where('kind', 64)->count())->toBe(0)
         ->and($pageA->evaluate('() => window.__errors'))->toBe([])
         ->and($pageB->evaluate('() => window.__errors'))->toBe([]);
 });
@@ -356,11 +363,16 @@ test('a daily game at 1440x900 keeps at least eight moves in view, on your move 
     expect(min($counts))->toBeGreaterThanOrEqual(8, 'rows in view: '.json_encode($counts));
 });
 
-test('a daily move the signer refuses says why, logs the signer\'s error, and goes through once signed', function () {
+test('posting a finished game: the signer refusing says why, logs the signer\'s error, and it goes through once signed', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
     [$anna, $bert] = User::factory()->count(2)->create();
     TestSigner::forBrowser($anna);
     TestSigner::forBrowser($bert);
-    $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    $games = app(ChessGameService::class);
+    $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    foreach (['f2f3', 'e7e5', 'g2g4', 'd8h4'] as $i => $uci) {
+        $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+    }
 
     $page = visit(BrowserLogin::url($anna))->page();
     $page->context()->addInitScript(P5B_COLLECTOR);
@@ -372,7 +384,9 @@ test('a daily move the signer refuses says why, logs the signer\'s error, and go
         console.warn = (...args) => { window.__warnings.push(args.map((a) => (a instanceof Error ? a.message : String(a))).join(' ')); warn.apply(console, args); };
         const stub = window.nostr.signEvent;
         window.__signMode = 'ok';
+        window.__signs = 0;
         window.nostr.signEvent = async (draft) => {
+            window.__signs++;
             if (window.__signMode === 'deny') throw new Error('nos2x-fox: Insufficient permissions, required signEvent');
             if (window.__signMode === 'timeout') throw new Error('NIP-46 sign_event timed out');
             if (window.__signMode === 'broken') throw new Error('nos2x: no private key found');
@@ -382,20 +396,23 @@ test('a daily move the signer refuses says why, logs the signer\'s error, and go
         };
         JS);
     $page->goto(ComputeUrl::from(route('games.show', $game, false)));
-    BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=daily-game]"))?.myTurn === true', 10_000);
+    $post = 'Alpine.$data(document.querySelector("[data-test=game-post]"))';
+    BrowserWait::until($page, '() => window.Alpine && '.$post.'?.step === "idle"', 10_000);
 
-    $page->locator('[data-test=daily-san-input]')->fill('e4');
-    $page->locator('[data-test=daily-san-input]')->press('Enter');
-    BrowserWait::until($page, '() => document.querySelector("[data-test=pending-move]")?.innerText === "1. e4"', 5_000);
+    // Nothing is signed on its own: the finished page asked the signer nothing.
+    expect($page->evaluate('() => window.__signs'))->toBe(0);
 
-    $daily = 'Alpine.$data(document.querySelector("[data-test=daily-game]"))';
-    $attempt = function (string $mode) use ($page, $daily): string {
-        $page->evaluate('() => { window.__signMode = '.json_encode($mode).'; '.$daily.'.error = ""; }');
-        $page->locator('[data-test=make-move]')->click();
-        $page->locator('[data-test=confirm-daily-move]')->click();
-        BrowserWait::until($page, '() => '.$daily.'.error !== "" || '.$daily.'.state.ply === 1', 10_000);
+    $page->locator('[data-test=game-post-open]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-post-alt]")?.innerText.includes("0-1")', 5_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=game-post-pgn]").innerText'))->toContain('1. f3 e5 2. g4 Qh4# 0-1')
+        ->and($page->evaluate('() => window.__signs'))->toBe(0);
 
-        return $page->evaluate('() => '.$daily.'.error');
+    $attempt = function (string $mode) use ($page, $post): string {
+        $page->evaluate('() => { window.__signMode = '.json_encode($mode).'; '.$post.'.error = ""; }');
+        $page->locator('[data-test=game-post-sign]')->click();
+        BrowserWait::until($page, '() => '.$post.'.error !== "" || '.$post.'.step === "done"', 10_000);
+
+        return $page->evaluate('() => '.$post.'.error');
     };
 
     $labels = SignerMessages::labels();
@@ -404,13 +421,16 @@ test('a daily move the signer refuses says why, logs the signer\'s error, and go
         ->and($attempt('timeout'))->toBe($labels['unreachable'])
         ->and($attempt('otherKey'))->toBe($labels['wrongKey'])
         ->and($attempt('broken'))->toBe(str_replace(':reason', 'nos2x: no private key found', $labels['signerFailed']))
-        ->and($game->refresh()->ply)->toBe(0)
+        ->and($game->refresh()->white_post_event_id)->toBeNull()
         ->and($attempt('ok'))->toBe('');
 
     $warnings = $page->evaluate('() => window.__warnings');
+    $stored = NostrEvent::query()->find($game->refresh()->white_post_event_id);
 
-    expect($game->refresh()->ply)->toBe(1)
-        ->and($warnings)->toHaveCount(4)
+    expect($stored?->pubkey)->toBe($anna->pubkey)
+        ->and($stored?->kind)->toBe(64)
+        ->and($page->evaluate('() => document.querySelector("[data-test=game-post-done]").checkVisibility()'))->toBeTrue()
+        ->and($warnings)->toHaveCount(4, json_encode($warnings))
         ->and($warnings[0])->toContain('(declined)')->toContain('Insufficient permissions')
         ->and($warnings[1])->toContain('(unreachable)')->toContain('NIP-46 sign_event timed out')
         ->and($warnings[2])->toContain('logged in as '.$anna->pubkey)

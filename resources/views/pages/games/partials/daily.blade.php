@@ -17,8 +17,6 @@
     bio: a daily game has one running clock, and the bio is in the player card.
 --}}
 @php
-    use App\Support\Nostr\NostrKeys;
-
     $config = $this->dailyConfig();
     $viewer = auth()->user();
     $settings = $viewer?->chessSettings();
@@ -26,10 +24,9 @@
     $opponentUser = $game->opponentOf($viewer);
     $channels = array_filter([$settings?->dmFor('your_move') ? __('Nostr DM') : null, $settings?->push ? __('browser push') : null]);
     $channelSummary = $channels === [] ? __('Notifications are off') : __(':channels on', ['channels' => implode(' '.__('and').' ', $channels)]);
-    $moves = $game->moves()->with('nostrEvent')->get();
-    $firstNote = $moves->first()?->nostrEvent;
-    $lastNote = $moves->last()?->nostrEvent;
-    // The moves' notes go to the league relays; the chat relays carry only gift wraps (P5d: public in production).
+    // Rev. 9.4: moves are no events. A game begun before keeps the notes of its earlier moves as history.
+    $moveNotes = $game->moves()->whereNotNull('nostr_event_id')->count();
+    // The league's record goes to the league relays; the chat relays carry only gift wraps (P5d: public in production).
     $relay = config('esports.relays')[0] ?? __('none configured');
     $started = $game->created_at?->timezone($viewer->timezone ?? config('app.timezone'));
     $myColorName = $color === 'w' ? __('White') : ($color === 'b' ? __('Black') : null);
@@ -332,10 +329,11 @@
     {{-- Proof --}}
     <div class="mx-4 lg:mx-0">
         <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="[
-            [__('Game'), $firstNote ? NostrKeys::shortNevent($firstNote->event_id, $firstNote->pubkey, 64) : __('first note with the first move')],
-            [__('Moves'), __('each move is its own NIP-64 note, chained to the previous one, confirmed automatically by the player who made it')],
+            [__('Moves'), __('checked by the league server, one by one, and not published')],
+            [__('Record'), __('PGN of this game, signed by the league when the game ends (NIP-64, kind 64)')],
+            [__('Your profile'), __('only if you post the game yourself, by button after the game')],
             [__('Relay'), $relay],
-            [__('Last move'), $lastNote ? NostrKeys::shortNevent($lastNote->event_id, $lastNote->pubkey, 64).', '.($lastNote->pubkey === $game->white->pubkey ? $players['w']['name'] : $players['b']['name']) : __('none yet')],
+            ...($moveNotes > 0 ? [[__('Earlier moves'), trans_choice(':count move was published as its own note before moves stopped being posted; it stays as history.|:count moves were published as their own notes before moves stopped being posted; they stay as history.', $moveNotes)]] : []),
         ]" />
     </div>
 

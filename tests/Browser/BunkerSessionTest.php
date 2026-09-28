@@ -1,9 +1,9 @@
 <?php
 
 use App\Models\ChessGame;
+use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
-use App\Support\Chess\GameRecords;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignerMessages;
 use Illuminate\Process\InvokedProcess;
@@ -27,19 +27,21 @@ pest()->group('browser');
 |--------------------------------------------------------------------------
 |
 | Reported: a bunker created in Amber signs the login, and then every daily
-| move asks for a bunker again. Here the real login button, the real
+| move asked for a bunker again. Here the real login button, the real
 | nostr-mill dialog and the real NIP-46 client talk to an emulated Amber
 | bunker (tests/Support/amber-bunker.mjs: one-time secret, a spent secret is
 | refused, the authorised client key is served) over a local `nak serve`
 | relay. Never a public relay: every websocket the page opens is recorded
 | and must be local.
 |
-| After the one login pairing, four daily moves are signed: straight after
-| login, after a full reload, after two Livewire navigations, and after the
-| relay went away and came back under the open page. No second dialog, one
-| `connect` in the bunker's log, every move signed by the player's key.
-| Logout removes the stored session: a move afterwards asks again and the
-| bunker hears nothing.
+| Daily moves are no longer signed (NIP rev. 9.4), so the signature after
+| the login is the one the game page still asks for: "Post this game to my
+| profile" on a finished game. After the one login pairing, four games are
+| posted: straight after login, after a full reload, after two Livewire
+| navigations, and after the relay went away and came back under the open
+| page. No second dialog, one `connect` in the bunker's log, every post
+| signed by the player's key. Logout removes the stored session: a post
+| afterwards asks again and the bunker hears nothing.
 |
 */
 
@@ -158,37 +160,49 @@ function bunkerRequests(string $log): array
     ));
 }
 
-function bunkerDaily(): string
+function bunkerPostPanel(): string
 {
-    return 'Alpine.$data(document.querySelector("[data-test=daily-game]"))';
+    return 'Alpine.$data(document.querySelector("[data-test=game-post]"))';
 }
 
-function bunkerWaitForTurn(Page $page, int $ply): void
+/**
+ * Finished daily games of Anna (White) against Bert, fool's mate: nothing is
+ * signed while they are played, the league signs each record at the end.
+ *
+ * @return list<ChessGame>
+ */
+function bunkerFinishedGames(User $anna, User $bert, int $count): array
 {
-    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=daily-game]") && '.bunkerDaily().'.myTurn === true && '.bunkerDaily().'.state.ply === '.$ply, 15_000);
+    $games = app(ChessGameService::class);
+    $finished = [];
+
+    for ($i = 0; $i < $count; $i++) {
+        $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+        foreach (['f2f3', 'e7e5', 'g2g4', 'd8h4'] as $ply => $uci) {
+            $game = $games->move($game->refresh(), $ply % 2 === 0 ? $anna : $bert, $uci);
+        }
+        $finished[] = $game->refresh();
+    }
+
+    return $finished;
 }
 
-/** Play a daily move on the board (both widths), confirm it, and wait for the outcome. */
-function bunkerMove(Page $page, string $from, string $to, int $plyAfter): void
+function bunkerWaitForPost(Page $page): void
 {
-    $page->locator('[data-square="'.$from.'"]')->click();
-    $page->locator('[data-square="'.$to.'"]')->click();
-    BrowserWait::until($page, '() => '.bunkerDaily().'.pending !== null', 5_000);
-    $page->evaluate('() => '.bunkerDaily().'.makeMove()');
-    $page->locator('[data-test=confirm-daily-move]')->click();
-    BrowserWait::until($page, '() => '.bunkerDaily().'.state.ply === '.$plyAfter.' || '.bunkerDaily().'.error !== "" || Number(sessionStorage.getItem("__millOpens") ?? "0") > 1', 45_000);
+    BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=game-post]") && '.bunkerPostPanel().'.step === "idle"', 15_000);
+}
+
+/** Post the finished game on the page: open the preview, sign, and wait for the outcome. */
+function bunkerPost(Page $page): void
+{
+    $page->locator('[data-test=game-post-open]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-post-sign]") !== null', 5_000);
+    $page->locator('[data-test=game-post-sign]')->click();
+    BrowserWait::until($page, '() => '.bunkerPostPanel().'.step === "done" || '.bunkerPostPanel().'.error !== "" || Number(sessionStorage.getItem("__millOpens") ?? "0") > 1', 45_000);
 
     expect($page->evaluate('() => Number(sessionStorage.getItem("__millOpens") ?? "0")'))->toBe(1, 'the signer dialog opened again')
-        ->and($page->evaluate('() => '.bunkerDaily().'.error'))->toBe('')
-        ->and($page->evaluate('() => '.bunkerDaily().'.state.ply'))->toBe($plyAfter);
-}
-
-/** Bert answers on the server, signed with his own key, the way his browser would. */
-function bunkerReply(ChessGame $game, User $bert, TestSigner $bertKey, string $uci, int $ply): void
-{
-    $records = app(GameRecords::class);
-    $prepared = $records->prepareMove($game->refresh(), $bert, $uci, $ply);
-    $records->playSigned($game->refresh(), $bert, $uci, $ply, $bertKey->signTemplates([$prepared['template']])[0]);
+        ->and($page->evaluate('() => '.bunkerPostPanel().'.error'))->toBe('')
+        ->and($page->evaluate('() => '.bunkerPostPanel().'.step'))->toBe('done');
 }
 
 /** Log in through the real button and mill's remote-signer card, with the bunker:// URI Amber would show. */
@@ -217,69 +231,69 @@ function bunkerPageClean(Page $page): void
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 }
 
-test('a bunker login signs every later daily move without a second pairing, across reload, navigation and a relay drop, and logout forgets it', function (int $width, int $height) {
+test('a bunker login signs every later post of a game without a second pairing, across reload, navigation and a relay drop, and logout forgets it', function (int $width, int $height) {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
     $anna = User::factory()->create(['name' => 'anna-bunker', 'pubkey' => $this->player->pubkey, 'npub' => NostrKeys::hexToNpub($this->player->pubkey), 'locale' => 'en']);
     $bert = User::factory()->create(['name' => 'bert-bunker', 'locale' => 'en']);
-    $bertKey = TestSigner::forBrowser($bert);
-    $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
-    $gamePath = route('games.show', $game, false);
+    $games = bunkerFinishedGames($anna, $bert, 5);
+    $path = fn (int $i): string => route('games.show', $games[$i], false);
 
     $page = bunkerLogin($width, $height, $this->player->pubkey, $this->relayUrl, $this->connectSecret);
     bunkerPageClean($page);
 
     // 1: right after the login's full page load.
-    $page->goto(ComputeUrl::from($gamePath));
-    bunkerWaitForTurn($page, 0);
-    bunkerMove($page, 'e2', 'e4', 1);
+    $page->goto(ComputeUrl::from($path(0)));
+    bunkerWaitForPost($page);
+    bunkerPost($page);
     bunkerPageClean($page);
 
     // 2: after a full reload.
-    bunkerReply($game, $bert, $bertKey, 'e7e5', 2);
+    $page->goto(ComputeUrl::from($path(1)));
     $page->reload();
-    bunkerWaitForTurn($page, 2);
-    bunkerMove($page, 'g1', 'f3', 3);
+    bunkerWaitForPost($page);
+    bunkerPost($page);
     bunkerPageClean($page);
 
     // 3: after two Livewire navigations (away and back, no page load), on a
     // CPU slowed down 6x: a late dock or bell refresh then lands after the
     // navigation, the race resources/js/livewireDetached.js closes (at load
     // ~20 it failed one full run in two, throttled every time without the fix).
-    bunkerReply($game, $bert, $bertKey, 'b8c6', 4);
     BrowserThrottle::cpu($page, 6);
     $page->evaluate('() => { window.__sameDocument = true; Livewire.navigate("/"); }');
     BrowserWait::until($page, '() => location.pathname === "/" && window.__sameDocument === true', 15_000);
-    $page->evaluate('() => Livewire.navigate('.json_encode($gamePath).')');
-    BrowserWait::until($page, '() => location.pathname === '.json_encode($gamePath).' && window.__sameDocument === true', 15_000);
-    bunkerWaitForTurn($page, 4);
-    bunkerMove($page, 'f1', 'c4', 5);
+    $page->evaluate('() => Livewire.navigate('.json_encode($path(2)).')');
+    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(2)).' && window.__sameDocument === true', 15_000);
+    bunkerWaitForPost($page);
+    bunkerPost($page);
     bunkerPageClean($page);
     BrowserThrottle::cpu($page, 1);
 
     // 4: the relay goes away and comes back under the open page, whose remote
-    // signer is live since move 3 (Bert's answer arrives over the websocket,
-    // no reload: a reload would start a fresh client after the drop).
-    bunkerReply($game, $bert, $bertKey, 'g8f6', 6);
-    bunkerWaitForTurn($page, 6);
-    expect($page->evaluate('() => window.__sameDocument'))->toBeTrue();
+    // signer is live since post 3 (the next game is reached by navigation, no
+    // reload: a reload would start a fresh client after the drop).
+    $page->evaluate('() => Livewire.navigate('.json_encode($path(3)).')');
+    BrowserWait::until($page, '() => location.pathname === '.json_encode($path(3)).' && window.__sameDocument === true', 15_000);
+    bunkerWaitForPost($page);
     $this->relay->stop(1);
     $this->relay = bunkerRelayStart($this->relayPort);
     Execution::instance()->wait(1.5);
-    bunkerMove($page, 'd2', 'd3', 7);
+    bunkerPost($page);
 
     $requests = bunkerRequests($this->bunkerLog);
     $connects = array_values(array_filter($requests, fn (array $r): bool => $r['method'] === 'connect'));
     $signs = array_values(array_filter($requests, fn (array $r): bool => $r['method'] === 'sign_event'));
-    $annaMoves = $game->refresh()->moves()->with('nostrEvent')->get()->filter(fn ($move): bool => $move->ply % 2 === 1);
+    $posts = ChessGame::query()->whereIn('id', array_map(fn (ChessGame $game): int => $game->id, array_slice($games, 0, 4)))->get()
+        ->map(fn (ChessGame $game) => NostrEvent::query()->find($game->white_post_event_id));
 
     expect($connects)->toHaveCount(1)
         ->and($connects[0]['ok'])->toBeTrue()
-        // The login and the four moves; every request from the one paired client key, every one served.
+        // The login and the four posts; every request from the one paired client key, every one served.
         ->and(count($signs))->toBeGreaterThanOrEqual(5)
         ->and(array_unique(array_column($requests, 'client')))->toBe([$connects[0]['client']])
         ->and(array_filter($requests, fn (array $r): bool => ! $r['ok']))->toBe([])
-        ->and($annaMoves)->toHaveCount(4)
-        ->and($annaMoves->map(fn ($move) => $move->nostrEvent?->pubkey)->unique()->values()->all())->toBe([$anna->pubkey])
-        ->and($annaMoves->map(fn ($move) => $move->nostrEvent?->kind)->unique()->values()->all())->toBe([64]);
+        ->and($posts->filter()->count())->toBe(4)
+        ->and($posts->map(fn ($post) => $post?->pubkey)->unique()->values()->all())->toBe([$anna->pubkey])
+        ->and($posts->map(fn ($post) => $post?->kind)->unique()->values()->all())->toBe([64]);
 
     // The session is stored for Anna, and its client key stays in the browser: not in
     // the markup, not in a server session payload, not in the app log. Only booleans
@@ -303,21 +317,18 @@ test('a bunker login signs every later daily move without a second pairing, acro
     // Compared as booleans: a failure message must not print the stored client key.
     expect($page->evaluate('() => [localStorage.getItem("esports:nip46:session") === null, sessionStorage.getItem("mill:nip46:state") === null]'))->toBe([true, true]);
 
-    // Negative: logged in again without a signer, a move asks to connect, and the bunker hears nothing.
+    // Negative: logged in again without a signer, a post asks to connect, and the bunker hears nothing.
     $heard = count(bunkerRequests($this->bunkerLog));
-    bunkerReply($game, $bert, $bertKey, 'd7d6', 8);
-    $page->goto(ComputeUrl::from(route('testing.login', ['user' => $anna, 'to' => $gamePath], false)));
-    bunkerWaitForTurn($page, 8);
-    $page->locator('[data-square="c2"]')->click();
-    $page->locator('[data-square="c3"]')->click();
-    BrowserWait::until($page, '() => '.bunkerDaily().'.pending !== null', 5_000);
-    $page->evaluate('() => '.bunkerDaily().'.makeMove()');
-    $page->locator('[data-test=confirm-daily-move]')->click();
+    $page->goto(ComputeUrl::from(route('testing.login', ['user' => $anna, 'to' => $path(4)], false)));
+    bunkerWaitForPost($page);
+    $page->locator('[data-test=game-post-open]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-post-sign]") !== null', 5_000);
+    $page->locator('[data-test=game-post-sign]')->click();
     BrowserWait::until($page, '() => Number(sessionStorage.getItem("__millOpens") ?? "0") === 2', 10_000);
     Execution::instance()->wait(1.0);
 
     expect(bunkerRequests($this->bunkerLog))->toHaveCount($heard)
-        ->and($game->refresh()->ply)->toBe(8);
+        ->and($games[4]->refresh()->white_post_event_id)->toBeNull();
 
     // Another player logs in on this browser: a session stored for Anna is gone on his first page.
     $page->evaluate('() => localStorage.setItem("esports:nip46:session", JSON.stringify({ clientSecretKey: "1".repeat(64), remotePubkey: '.json_encode($anna->pubkey).', relays: ['.json_encode($this->relayUrl).'], userPubkey: '.json_encode($anna->pubkey).' }))');
@@ -338,39 +349,35 @@ test('a bunker login signs every later daily move without a second pairing, acro
 ]);
 
 test('a bunker that revoked this browser gets a clear message, the stored session goes, and only the next try opens the connect dialog', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
     $anna = User::factory()->create(['name' => 'anna-bunker', 'pubkey' => $this->player->pubkey, 'npub' => NostrKeys::hexToNpub($this->player->pubkey), 'locale' => 'en']);
     $bert = User::factory()->create(['name' => 'bert-bunker', 'locale' => 'en']);
-    $bertKey = TestSigner::forBrowser($bert);
-    $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    [$first, $second] = bunkerFinishedGames($anna, $bert, 2);
 
     $page = bunkerLogin(1440, 900, $this->player->pubkey, $this->relayUrl, $this->connectSecret);
-    $page->goto(ComputeUrl::from(route('games.show', $game, false)));
-    bunkerWaitForTurn($page, 0);
-    bunkerMove($page, 'e2', 'e4', 1);
-    bunkerReply($game, $bert, $bertKey, 'e7e5', 2);
-    $page->reload();
-    bunkerWaitForTurn($page, 2);
+    $page->goto(ComputeUrl::from(route('games.show', $first, false)));
+    bunkerWaitForPost($page);
+    bunkerPost($page);
+    $page->goto(ComputeUrl::from(route('games.show', $second, false)));
+    bunkerWaitForPost($page);
 
     // The player removes this app in Amber (SIGUSR2 to the emulated bunker).
     $this->bunker->signal(12);
     Execution::instance()->wait(0.5);
 
-    $page->locator('[data-square="g1"]')->click();
-    $page->locator('[data-square="f3"]')->click();
-    BrowserWait::until($page, '() => '.bunkerDaily().'.pending !== null', 5_000);
-    $page->evaluate('() => '.bunkerDaily().'.makeMove()');
-    $page->locator('[data-test=confirm-daily-move]')->click();
-    BrowserWait::until($page, '() => '.bunkerDaily().'.error !== ""', 15_000);
+    $page->locator('[data-test=game-post-open]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-post-sign]") !== null', 5_000);
+    $page->locator('[data-test=game-post-sign]')->click();
+    BrowserWait::until($page, '() => '.bunkerPostPanel().'.error !== ""', 15_000);
 
-    expect($page->evaluate('() => '.bunkerDaily().'.error'))->toBe(SignerMessages::labels()['revoked'])
+    expect($page->evaluate('() => '.bunkerPostPanel().'.error'))->toBe(SignerMessages::labels()['revoked'])
         ->and($page->evaluate('() => [localStorage.getItem("esports:nip46:session") === null, typeof window.nostr]'))->toBe([true, 'undefined'])
         ->and($page->evaluate('() => Number(sessionStorage.getItem("__millOpens") ?? "0")'))->toBe(1)
-        ->and($game->refresh()->ply)->toBe(2);
+        ->and($second->refresh()->white_post_event_id)->toBeNull();
 
     // The next try is the reconnect: the dialog opens, and nothing reached the bunker in between.
     $heard = count(bunkerRequests($this->bunkerLog));
-    $page->evaluate('() => '.bunkerDaily().'.makeMove()');
-    $page->locator('[data-test=confirm-daily-move]')->click();
+    $page->locator('[data-test=game-post-sign]')->click();
     BrowserWait::until($page, '() => Number(sessionStorage.getItem("__millOpens") ?? "0") === 2', 10_000);
 
     $requests = bunkerRequests($this->bunkerLog);

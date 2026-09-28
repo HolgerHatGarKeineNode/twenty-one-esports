@@ -8,16 +8,17 @@ use App\Models\ChessMove;
 
 /**
  * The PGN of a game: the "Game file" of ChessGameDone and the `content` of
- * the NIP-64 note (kind 64) the players sign.
+ * the NIP-64 note (kind 64) the league signs when the game ends, which a
+ * player may also post to their profile (NIP rev. 9.4).
  *
  * NIP-64 asks publishers for PGN "export format": the Seven Tag Roster first
  * and in order (Event, Site, Date, Round, White, Black, Result), movetext
  * lines of at most 80 characters, the result as the movetext terminator.
  *
  * The tag values are frozen when the game starts (`pgn_headers`): a player
- * renaming their Nostr profile mid-game must not change the text the other
- * player already signed, and every note of a daily game carries identical
- * headers (NIP "Game Record": a move is the previous PGN plus one move).
+ * renaming their Nostr profile mid-game must not change the game's text, and
+ * a daily game begun before rev. 9.4 already has per-move notes with these
+ * headers (then: a move was the previous PGN plus one move).
  */
 final class ChessPgn
 {

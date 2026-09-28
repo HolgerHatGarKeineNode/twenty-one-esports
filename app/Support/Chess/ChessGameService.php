@@ -49,7 +49,9 @@ use Illuminate\Support\Facades\DB;
  * increment added after the move.
  *
  * Daily games (mode `correspondence`, P5b) share the table and the rules:
- * there is no running clock, the side to move has one day (`initial_ms`,
+ * their moves run over this server like blitz moves and are not events
+ * (NIP rev. 9.4; before, every daily move was the mover's signed kind-64
+ * note). There is no running clock, the side to move has one day (`initial_ms`,
  * from the PGN TimeControl `1/86400`) and `deadline_ms` is simply "now plus
  * one day" after every move. A missed deadline before both first moves
  * aborts the game, later it loses on time, exactly like a blitz flag. A
@@ -64,7 +66,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class ChessGameService
 {
-    public function __construct(private GameRegistry $games, private RatingService $ratings, private SeasonChains $chains) {}
+    public function __construct(private GameRegistry $games, private RatingService $ratings, private SeasonChains $chains, private GameRecords $records) {}
 
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
@@ -216,19 +218,14 @@ final class ChessGameService
     /**
      * Play one move in UCI (`e2e4`, `e7e8q`). `expectedPly` is the ply the
      * client believes it is making (1 = White's first move); a mismatch means
-     * the client is behind and is refused instead of guessed at.
-     *
-     * `record` runs inside the same transaction once the move is applied (and
-     * the game ended, if it did): a daily move checks and stores the player's
-     * signed note there, and anything it throws undoes the move.
-     *
-     * @param  (Closure(ChessGame, ChessMove): void)|null  $record
+     * the client is behind and is refused instead of guessed at, so a move
+     * sent twice (a retry, a second tab) is played once.
      *
      * @throws ChessRuleViolation
      */
-    public function move(ChessGame $game, User $user, string $uci, ?int $expectedPly = null, ?Closure $record = null): ChessGame
+    public function move(ChessGame $game, User $user, string $uci, ?int $expectedPly = null): ChessGame
     {
-        return $this->change($game, function (ChessGame $game, int $now) use ($user, $uci, $expectedPly, $record): void {
+        return $this->change($game, function (ChessGame $game, int $now) use ($user, $uci, $expectedPly): void {
             $color = $this->playerColor($game, $user);
 
             if ($game->turn() !== $color) {
@@ -263,7 +260,7 @@ final class ChessGameService
             $fen = $chess->fen();
             $ply = $game->ply + 1;
 
-            $stored = ChessMove::query()->create([
+            ChessMove::query()->create([
                 'chess_game_id' => $game->id,
                 'ply' => $ply,
                 'uci' => $uci,
@@ -295,17 +292,13 @@ final class ChessGameService
             if ($outcome !== null) {
                 $this->finish($game, $outcome[0], $outcome[1], $now);
             }
-
-            if ($record !== null) {
-                $record($game, $stored);
-            }
         });
     }
 
     /**
      * Where a move would lead, without playing it: the SAN, whether it ends
-     * the game, and the resulting PGN. A daily move is signed on this text
-     * before the server plays it.
+     * the game, and the resulting PGN. A daily move is shown to the player
+     * this way before they make it.
      *
      * @return array{san: string, fen: string, result: string, reason: ChessEndReason|null, pgn: string}
      *
@@ -486,6 +479,7 @@ final class ChessGameService
             }
 
             $this->end($game, ChessGameStatus::Finished, $result, ChessEndReason::Director, $now);
+            $this->records->recordFinished($game);
             $this->chains->attestChessGame($game);
         });
     }
@@ -713,6 +707,8 @@ final class ChessGameService
             'deadline' => $game->isActive() ? $game->deadline_ms : null,
             'firstMoveDeadline' => $game->isActive() && ! $game->clocksRunning() && ! $game->isCorrespondence() ? $game->deadline_ms : null,
             'recorded' => $game->record_event_id !== null,
+            // Each player's own post of the game (rev. 9.4: optional, by button, never automatic).
+            'posted' => ['w' => $game->white_post_event_id !== null, 'b' => $game->black_post_event_id !== null],
             'drawOffer' => $game->draw_offer,
             'rematchOffer' => $game->rematch_offer,
             'rematchUrl' => $game->rematch_id !== null ? route('games.show', $game->rematch_id) : null,
@@ -722,7 +718,7 @@ final class ChessGameService
         ];
 
         if ($withMoves) {
-            $state['moves'] = $game->moves()->with('nostrEvent:id,event_id')->get()->map(fn (ChessMove $move) => $this->moveState($move))->all();
+            $state['moves'] = $game->moves()->get()->map(fn (ChessMove $move) => $this->moveState($move))->all();
         }
 
         return $state;
@@ -769,7 +765,7 @@ final class ChessGameService
     }
 
     /**
-     * @return array{ply: int, uci: string, san: string, spent: int, at: int|null, event: string|null}
+     * @return array{ply: int, uci: string, san: string, spent: int, at: int|null}
      */
     private function moveState(ChessMove $move): array
     {
@@ -779,7 +775,6 @@ final class ChessGameService
             'san' => $move->san,
             'spent' => $move->spent_ms,
             'at' => $move->created_at?->getTimestampMs(),
-            'event' => $move->nostrEvent?->event_id,
         ];
     }
 
@@ -912,9 +907,11 @@ final class ChessGameService
     {
         $this->end($game, ChessGameStatus::Finished, $result, $reason, $at);
 
-        // Same transaction as the result: the game, its rating change and, for a
-        // rated game in a live season, its league attestation commit together.
+        // Same transaction as the result: the game, its rating change, the league's
+        // NIP-64 record and, for a rated game in a live season, its league attestation
+        // (which references that record) commit together.
         $this->ratings->applyChessGame($game);
+        $this->records->recordFinished($game);
         $this->chains->attestChessGame($game);
         $this->moveBracket($game);
     }
@@ -929,6 +926,7 @@ final class ChessGameService
     private function forfeitAgainst(ChessGame $game, string $loser, int $at): void
     {
         $this->end($game, ChessGameStatus::Finished, $loser === 'w' ? '0-1' : '1-0', ChessEndReason::Forfeit, $at);
+        $this->records->recordFinished($game);
         $this->chains->attestChessGame($game);
         $this->moveBracket($game);
     }

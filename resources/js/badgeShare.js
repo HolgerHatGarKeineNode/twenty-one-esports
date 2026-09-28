@@ -22,15 +22,7 @@
  */
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
-import { newest, publishToRelays, readProfileBadges, readRelays, relayUrls, writeRelaysOf } from './relayRead.js';
-
-/** The player's write relays, or the configured relays when they have no relay list. */
-async function writeRelaysFor(pubkey, relays) {
-    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }]);
-    const own = writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002));
-
-    return own.length > 0 ? own : relayUrls(relays);
-}
+import { publishToRelays, readProfileBadges, writeRelaysFor } from './relayRead.js';
 
 function profileBadge({ pubkey, relays = [], messages = {} }) {
     return {

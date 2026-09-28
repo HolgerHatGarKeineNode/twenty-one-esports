@@ -1,15 +1,17 @@
 {{--
     A finished or aborted game (ChessGameDone.dc.html): result, facts, replay
     with the move list as buttons, the game file (PGN) to copy or download,
-    and the Proof with the players' NIP-64 record. Each player's rating shows
+    and the Proof with the league's NIP-64 record. Each player's rating shows
     with this game's change (casual Elo before Block 0, P7b); Hashrate says
     what a rated game mined (P7e, ChessGameService::mining()) and stays
     "does not count" for casual games.
 
     Daily games add ChessStates "Deadline missed" when time ran out; a record
-    that is not signed or not on a relay yet shows ChessStates "Public record
-    delayed". The record is signed by the player's app without a click where
-    a signer is at hand (resources/js/chess.js publishRecord), else by button.
+    that is not on a relay yet shows ChessStates "Public record delayed".
+    The record is signed by the league when the game ends (NIP rev. 9.4);
+    games that ended before carry a player's record or, daily, the last move's
+    note. A player posts the game to their own profile only by button
+    (partials/post), never on its own.
 --}}
 @php
     use App\Enums\ChessEndReason;
@@ -37,7 +39,17 @@
     $relays = $record?->deliveries()->get() ?? collect();
     $accepted = $relays->where('accepted', true)->count();
     $configured = count(config('esports.relays', []));
-    $recorder = $record === null ? null : ($record->pubkey === $game->white->pubkey ? 'w' : 'b');
+    // Who signed the record: the league (rev. 9.4), or a player for a game that ended before.
+    $recorder = match (true) {
+        $record === null => null,
+        $record->pubkey === $game->white?->pubkey => 'w',
+        $record->pubkey === $game->black?->pubkey => 'b',
+        default => 'league',
+    };
+    $recorderName = $recorder === null ? null : ($recorder === 'league' ? __('The league') : $players[$recorder]['name']);
+    // The per-move notes of a daily game played before rev. 9.4 stay as its history.
+    $moveNotes = $daily ? $game->moves->whereNotNull('nostr_event_id')->count() : 0;
+    $postable = ! $aborted && ($color ?? null) !== null && $game->status === ChessGameStatus::Finished && $game->ply > 0;
     $viewerZone = auth()->user()->timezone ?? config('app.timezone');
     $days = $game->ended_at && $game->created_at ? max(1, (int) ceil($game->created_at->diffInHours($game->ended_at) / 24)) : 1;
     $missedDeadline = $daily && $game->end_reason === ChessEndReason::Timeout;
@@ -83,6 +95,11 @@
             @endforeach
         </div>
     </section>
+
+    {{-- The player's own post of the game: optional, by button (rev. 9.4) --}}
+    @if ($postable)
+        @include('pages.games.partials.post', ['game' => $game, 'color' => $color])
+    @endif
 
     {{-- Play again (players only): the same opponent as a daily challenge, the next blitz pairing, or a friend by link --}}
     @if (! $aborted && ($color ?? null) !== null)
@@ -152,7 +169,7 @@
             <span class="text-[13px] leading-normal text-ink-2">{{ __('Your result is final and already saved. Publishing the verifiable copy is taking longer than usual; we retry on our own.') }}</span>
             <div class="flex flex-col text-[13px]">
                 <span class="flex h-9 items-center gap-2.5 border-b border-hairline"><x-icon name="check" :size="16" class="text-win" /><span class="grow">{{ __('Result :result, saved', ['result' => $result]) }}</span><span class="text-xs text-win">{{ __('done') }}</span></span>
-                <span class="flex h-9 items-center gap-2.5 border-b border-hairline"><x-icon name="check" :size="16" class="text-win" /><span class="grow">{{ __('Game record signed by :name', ['name' => $players[$recorder ?? 'w']['name']]) }}</span><span class="text-xs text-win">{{ __('automatic') }}</span></span>
+                <span class="flex h-9 items-center gap-2.5 border-b border-hairline"><x-icon name="check" :size="16" class="text-win" /><span class="grow">{{ __('Game record signed by :name', ['name' => $recorderName ?? '']) }}</span><span class="text-xs text-win">{{ __('done') }}</span></span>
                 <span class="flex h-9 items-center gap-2.5 border-b border-hairline"><x-icon name="close" :size="16" class="text-loss" /><span class="grow">{{ __('Public copy') }}</span><span class="text-xs text-loss">{{ __('retrying') }}</span></span>
             </div>
         </section>
@@ -214,8 +231,7 @@
             </div>
 
             {{-- Proof: the NIP-64 record --}}
-            <details class="group rounded-md bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" data-test="record-proof"
-                     @if ($color !== null && ! $aborted && $record === null) x-data x-init="window.chessPublishRecord && window.nostr && window.chessPublishRecord($wire, @js(auth()->user()?->pubkey)).then(() => $wire.$refresh())" @endif>
+            <details class="group rounded-md bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" data-test="record-proof">
                 <summary class="flex min-h-11 cursor-pointer items-center gap-2.5 px-4 text-[13px] text-ink-2">
                     <x-icon name="shield-check" :size="16" class="text-proof" /><b class="text-ink">{{ __('Proof') }}</b><span>{{ __('Verifiable record') }}</span><span class="grow"></span>
                     <span class="text-xs text-proof group-open:hidden">{{ __('show') }}</span><span class="hidden text-xs text-proof group-open:inline">{{ __('hide') }}</span>
@@ -226,7 +242,7 @@
                         <div class="grid min-h-12 grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-[#2A2440] text-[13px]" data-test="record-row">
                             <x-icon name="shield-check" :size="18" class="text-proof" />
                             <span class="flex min-w-0 flex-col gap-0.5">
-                                <span><span class="whitespace-nowrap">{{ $players[$recorder]['name'] }}</span> <span class="text-ink-2">· {{ __('published the PGN') }}</span></span>
+                                <span><span class="whitespace-nowrap">{{ $recorderName }}</span> <span class="text-ink-2">· {{ __('published the PGN') }}</span></span>
                                 <span class="truncate text-xs text-proof" title="{{ NostrKeys::nevent($record->event_id, $record->pubkey, 64) }}">{{ NostrKeys::shortNevent($record->event_id, $record->pubkey, 64) }}</span>
                             </span>
                             <span class="flex items-center gap-1 text-xs {{ $publicState === 'published' ? 'text-win' : 'text-ink-3' }}"><x-icon name="check" :size="14" />{{ $record->created_at?->timezone($viewerZone)->format('H:i') }}</span>
@@ -242,15 +258,12 @@
                             </span>
                         </div>
                     @elseif (! $aborted)
-                        <div class="flex flex-col gap-2 border-t border-[#2A2440] py-3 text-[13px] text-ink-2" data-test="record-missing">
-                            <span>{{ __('Not signed yet. Either player can sign the game record; the first one counts.') }}</span>
-                            @if ($color !== null)
-                                <x-button variant="quiet" icon="shield-check" class="self-start" x-data
-                                          x-on:click="window.chessPublishRecord?.($wire, {{ \Illuminate\Support\Js::from(auth()->user()?->pubkey) }}, { connect: true }).then(() => $wire.$refresh())">{{ __('Sign the game record') }}</x-button>
-                            @endif
-                        </div>
+                        <span class="border-t border-[#2A2440] py-3 text-[13px] text-ink-2" data-test="record-missing">{{ __('The league has not signed a record of this game. The result is saved on the server.') }}</span>
                     @else
                         <span class="border-t border-[#2A2440] py-3 text-[13px] text-ink-2">{{ __('An aborted game gets no record.') }}</span>
+                    @endif
+                    @if ($moveNotes > 0)
+                        <span class="border-t border-[#2A2440] py-2 text-xs text-ink-2" data-test="record-move-notes">{{ trans_choice(':count earlier move was published as its own note, before moves stopped being posted.|:count earlier moves were published as their own notes, before moves stopped being posted.', $moveNotes) }}</span>
                     @endif
                     <pre tabindex="0" aria-label="{{ __('PGN of the game') }}" class="mt-2 mb-0 h-[196px] overflow-auto rounded-md bg-ground px-3.5 py-3 font-mono text-xs leading-[1.6] whitespace-pre-wrap text-ink-2 shadow-[inset_0_0_0_1px_#2A2440]">{{ $pgn }}</pre>
                 </div>

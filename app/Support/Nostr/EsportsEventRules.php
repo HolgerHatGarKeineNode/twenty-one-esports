@@ -23,10 +23,11 @@ use App\Support\Tournaments\TournamentSignups;
  *  7. 32150 Clan         8. 32151 Lineup (structure; clan membership of the
  *                           listed players is checked by the caller's template)
  *  9. 12150 Clan Membership (at most one clan, lineups of that clan)
- * 15. 64 Game Record, the structure of a casual game note: one `p` White and
- *     one `p` Black, the author is one of them, `e` references are event
- *     ids, the content is PGN. Legality, headers and the move chain are the
- *     league's own record (App\Support\Chess\GameRecords builds the
+ * 15. 64 Game Record, the structure of a player's post of a game (rev. 9.4:
+ *     moves are no events; the league signs the record itself): one `p`
+ *     White and one `p` Black, the author is one of them, `e` and `q`
+ *     references are event ids, the content is PGN. Legality and headers are
+ *     the league's own record (App\Support\Chess\GameRecords builds the
  *     template from the server-checked game, and the signed note must equal it).
  *
  * 11-14 2150-2153, the structure of the rated series flow (P6a; built and
@@ -477,7 +478,7 @@ final class EsportsEventRules
             return 'record_players';
         }
 
-        foreach ($event->tagsNamed('e') as $e) {
+        foreach ([...$event->tagsNamed('e'), ...$event->tagsNamed('q')] as $e) {
             if (preg_match('/^[0-9a-f]{64}$/', $e[0] ?? '') !== 1) {
                 return 'record_e';
             }
