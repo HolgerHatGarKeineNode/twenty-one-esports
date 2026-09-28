@@ -42,10 +42,10 @@ use Livewire\WithPagination;
  * the review of the last ended season (SeasonReview). There is no settle
  * action: the season-chain payout is not built.
  *
- * Every admin sees the page and may edit the rating draft (authorized again
- * in the action); releasing Block 0 and changing chain rules is for the
- * board (the public admin list) only, checked again in SeasonRelease and
- * SeasonChains.
+ * Every admin sees the page; editing the rating draft, releasing Block 0
+ * and changing chain rules is for the board (the public admin list) only
+ * (P39), shown read-only to the others and checked again in RatingSettings,
+ * SeasonRelease and SeasonChains.
  */
 new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     use WithPagination;
@@ -692,14 +692,18 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     {{-- Rating, rank and hashrate values for Block 0 (P35, RatingSettings) --}}
     @php($locked = $this->settingsLocked)
+    @php($readOnly = $locked || ! $this->isBoard)
     @php($labels = $this->settingLabels())
     @php($limit = fn (string $key): string => __(':min to :max', ['min' => RatingSettings::LIMITS[$key][0], 'max' => RatingSettings::LIMITS[$key][1]]))
     <x-admin.panel :title="__('Rating, ranks and hashrate')" :meta="$locked ? __('frozen at Block 0 in the signed ladders') : __('the values Block 0 releases the season with')" data-test="season-settings">
         <p class="m-0 text-xs text-ink-2">{{ $locked
             ? __('A season has been released. Its ladders carry these values, and every rating is replayed from them, so they cannot change during or after the season.')
-            : __('Every admin can change these until Block 0. The release freezes them for the whole season; each change is logged below with who made it.') }}</p>
+            : __('The board can change these until Block 0. The release freezes them for the whole season; each change is logged below with who made it.') }}</p>
+        @if (! $locked && ! $this->isBoard)
+            <p class="m-0 text-xs text-ink-3" data-test="settings-board-only">{{ __('Only a board member on the public admin list can change these values.') }}</p>
+        @endif
         <form wire:submit="saveSettings" class="flex flex-col gap-4">
-            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-6" @disabled($locked)>
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-6" data-test="settings-fields-rating" @disabled($readOnly)>
                 <legend class="mb-2 text-xs text-ink-2">{{ __('Rating') }}</legend>
                 @foreach (array_keys(RatingSettings::defaults()['rating']) as $key)
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ $labels['rating.'.$key] }}
@@ -708,7 +712,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     </label>
                 @endforeach
             </fieldset>
-            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 sm:grid-cols-3 lg:grid-cols-7" @disabled($locked)>
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 sm:grid-cols-3 lg:grid-cols-7" data-test="settings-fields-tiers" @disabled($readOnly)>
                 <legend class="mb-2 text-xs text-ink-2">{{ __('Minimum rating per rank (:range, each above the one below; Bronze I starts at 0)', ['range' => $limit('tiers')]) }}</legend>
                 @foreach (array_keys(RatingSettings::defaults()['tiers']) as $token)
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ RankTiers::label($token) }}
@@ -716,13 +720,13 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     </label>
                 @endforeach
             </fieldset>
-            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled($locked)>
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" data-test="settings-fields-hashrate" @disabled($readOnly)>
                 <legend class="mb-2 text-xs text-ink-2">{{ __('Clan hashrate points per rated result (:range)', ['range' => $limit('hashrate')]) }}</legend>
                 @foreach (array_keys(RatingSettings::defaults()['hashrate']) as $key)
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ $labels['hashrate.'.$key] }}<input type="text" inputmode="numeric" wire:model="hashrate.{{ $key }}" class="{{ $input }}" data-test="setting-hashrate-{{ $key }}"></label>
                 @endforeach
             </fieldset>
-            @unless ($locked)
+            @unless ($readOnly)
                 <span class="flex flex-wrap items-center gap-3">
                     <button type="submit" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc" data-test="save-settings">{{ __('Save the values') }}</button>
                 </span>

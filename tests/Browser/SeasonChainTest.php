@@ -310,6 +310,8 @@ test('a series change reaches the other captain\'s match dock over Reverb, witho
 test('AdminSeason P35: rating settings, soft-reset preview and season review stay clean and inside 375 and 1440 px, with round-trips', function () {
     $admin = User::factory()->create(['name' => 'satsjaeger']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);
+    // The rating draft is the board's (P39).
+    config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
 
     // Positive control: an injected throw and a 404 fetch must show up as problems.
     $control = chainPage($admin, route('admin.season'), 'window.addEventListener("load", () => { setTimeout(() => { throw new Error("p35-positive-control"); }, 0); fetch("/p35-positive-control-missing"); });');
@@ -321,7 +323,7 @@ test('AdminSeason P35: rating settings, soft-reset preview and season review sta
         ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('404 ')
         ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('p35-positive-control-missing');
 
-    // Before Block 0: every admin edits the draft through a Livewire round-trip.
+    // Before Block 0: a board member edits the draft through a Livewire round-trip.
     $page = chainPage($admin, route('admin.season'));
 
     expect(chainProblems($page, [route('admin.season')]))->toBe([]);

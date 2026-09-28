@@ -5,6 +5,7 @@ namespace App\Support\Rating;
 use App\Models\Season;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
+use App\Support\Board;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use Illuminate\Support\Facades\DB;
 
@@ -153,9 +154,11 @@ final class RatingSettings
     }
 
     /**
-     * Save a new draft and its audit row; null when nothing changed. Refused
-     * once a season has been released; the check runs inside the
-     * transaction, so a release that commits first wins.
+     * Save a new draft and its audit row; null when nothing changed. Only a
+     * board member on the public admin list may (P39), as for the release of
+     * Block 0 (SeasonRelease::refusal()). Refused once a season has been
+     * released; that check runs inside the transaction, so a release that
+     * commits first wins.
      *
      * @param  Values  $values  validated
      *
@@ -163,6 +166,10 @@ final class RatingSettings
      */
     public static function saveDraft(User $admin, array $values): ?SeasonSettingChange
     {
+        if (! Board::contains($admin->pubkey)) {
+            throw new SeasonReleaseRefused(__('Only a board member on the public admin list can change these values.'));
+        }
+
         return DB::transaction(function () use ($admin, $values): ?SeasonSettingChange {
             if (self::locked()) {
                 throw new SeasonReleaseRefused(__('A season has been released: its rating, rank and hashrate values are frozen in its signed ladders and cannot change.'));

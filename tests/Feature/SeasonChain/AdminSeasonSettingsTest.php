@@ -1,8 +1,8 @@
 <?php
 
 /*
- * AdminSeason, P35: the rating, rank and hashrate draft for Block 0 (every
- * admin, logged, locked once a season is released and frozen onto it), the
+ * AdminSeason, P35: the rating, rank and hashrate draft for Block 0 (the
+ * board only (P39), logged, locked once a season is released and frozen onto it), the
  * read-only soft-reset preview (NIP "Season transition") and the review of
  * the last ended season.
  */
@@ -20,6 +20,7 @@ use App\Support\Rating\EloRating;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\RatingSettings;
 use App\Support\Rating\SoftReset;
+use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\SeasonReview;
 use App\Support\Series\Ladders;
 use Illuminate\Contracts\Queue\Job;
@@ -33,6 +34,7 @@ beforeEach(function () {
     Queue::fake();
     $this->admin = User::factory()->create(['name' => 'satsjaeger']);
     Admin::query()->create(['pubkey' => $this->admin->pubkey]);
+    config(['esports.board' => [NostrKeys::hexToNpub($this->admin->pubkey)]]);
 });
 
 /** A rated row of season `$slug`. */
@@ -53,6 +55,8 @@ test('the page no longer lists what is not built, and shows the three new sectio
 
 test('a player who is not an admin can neither open the page nor save the settings', function () {
     $player = User::factory()->create();
+    // A board member counts as an admin; this one is only on the admin list.
+    config(['esports.board' => []]);
 
     $this->actingAs($player)->get(route('admin.season'))->assertForbidden();
 
@@ -63,6 +67,29 @@ test('a player who is not an admin can neither open the page nor save the settin
     $page->set('rating.k', '24')->call('saveSettings')->assertForbidden();
 
     expect(SeasonSettingChange::query()->count())->toBe(0);
+});
+
+test('an admin who is not on the board sees the draft read-only, and the action refuses', function () {
+    $other = User::factory()->create();
+    Admin::query()->create(['pubkey' => $other->pubkey]);
+
+    $page = Livewire::actingAs($other)->test('pages::admin.season')
+        ->assertSet('rating.k', '32')
+        ->assertSee('Only a board member on the public admin list can change these values.')
+        ->assertDontSee('data-test="save-settings"', false)
+        ->assertSeeHtml('data-test="settings-fields-rating" disabled');
+
+    $page->set('rating.k', '24')->call('saveSettings')
+        ->assertSet('settingsError', 'Only a board member on the public admin list can change these values.');
+
+    expect(SeasonSettingChange::query()->count())->toBe(0)
+        ->and(fn () => RatingSettings::saveDraft($other, array_replace_recursive(RatingSettings::defaults(), ['rating' => ['k' => 24]])))
+        ->toThrow(SeasonReleaseRefused::class, 'Only a board member on the public admin list can change these values.');
+
+    // A board member sees the same form editable.
+    Livewire::actingAs($this->admin)->test('pages::admin.season')
+        ->assertSee('data-test="save-settings"', false)
+        ->assertDontSeeHtml('data-test="settings-fields-rating" disabled');
 });
 
 test('an admin saves the draft: logged with who and what, and in force before Block 0', function () {
