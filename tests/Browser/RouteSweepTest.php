@@ -18,8 +18,10 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Invites\InviteLinks;
+use App\Support\StreamBot\PrideNotes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
@@ -323,6 +325,8 @@ function buildSweepFixtures(?User $user): array
  *
  * @var array<string, array<string, string>>
  */
+const SWEEP_PRIDE_HASH = '5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed';
+
 const SWEEP_ROUTE_PARAMETERS = [
     'ladder.show' => ['game' => 'chess', 'mode' => 'blitz'],
     // The page of a series game: a registry slug (EA Sports FC 27), not free text.
@@ -330,6 +334,8 @@ const SWEEP_ROUTE_PARAMETERS = [
     // Rank badge artwork (P11): a game slug and a tier, not the chess game fixture.
     'badges.rank' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1'],
     'badges.rank.thumb' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1', 'size' => '256'],
+    // A pride note slide: served by its content hash, written in the sweep test below.
+    'stream.pride-image' => ['hash' => SWEEP_PRIDE_HASH],
 ];
 
 /**
@@ -673,6 +679,10 @@ test('every route renders without console errors, page errors, bad responses or 
         Admin::query()->create(['pubkey' => $user->pubkey]);
         test()->actingAs($user);
     }
+
+    config(['esports.stream_bot.pride_notes.image_dir' => storage_path('framework/testing/pride')]);
+    File::ensureDirectoryExists(storage_path('framework/testing/pride'));
+    File::put(PrideNotes::imagePath(SWEEP_PRIDE_HASH), (string) base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
 
     $routes = [...sweepRoutes(buildSweepFixtures($user)), ...sweepExtraPages($user)];
     expect($routes)->not->toBeEmpty();
