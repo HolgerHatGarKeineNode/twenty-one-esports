@@ -249,3 +249,38 @@ test('the dock reads a player\'s series without a query per series', function ()
     expect(dockKeys($player))->toHaveCount(3)
         ->and($queries())->toBe($one);
 });
+
+test('a roster-side series reaches its players through series_match_players, kept in step with the sides', function () {
+    [$anna, $bert, $cleo] = User::factory()->count(3)->create();
+    $series = dockSeries(Lineup::factory()->ready()->create(), 'challenger', [
+        'status' => SeriesStatus::Disputed,
+        'sides' => ['challenger' => [$anna->id], 'challenged' => [$bert->id, 999_999]],
+    ]);
+
+    expect(DB::table('series_match_players')->where('series_match_id', $series->id)->orderBy('side')->pluck('user_id', 'side')->all())
+        ->toBe(['challenged' => $bert->id, 'challenger' => $anna->id])
+        ->and(dockKeys($anna))->toBe(['series-'.$series->number])
+        ->and(dockKeys($cleo))->toBe([]);
+
+    $series->update(['sides' => ['challenger' => [$cleo->id], 'challenged' => [$bert->id]]]);
+
+    expect(dockKeys($anna))->toBe([])
+        ->and(dockKeys($cleo))->toBe(['series-'.$series->number])
+        ->and(dockKeys($bert))->toBe(['series-'.$series->number]);
+});
+
+test('the migration backfills series_match_players from the sides of existing series', function () {
+    $anna = User::factory()->create();
+    $series = dockSeries(Lineup::factory()->ready()->create(), 'challenger', [
+        'status' => SeriesStatus::Disputed,
+        'sides' => ['challenger' => [$anna->id], 'challenged' => [999_999]],
+    ]);
+    $migration = require database_path('migrations/2026_09_28_060000_create_series_match_players_table.php');
+
+    $migration->down();
+    $migration->up();
+
+    expect(DB::table('series_match_players')->get(['series_match_id', 'user_id', 'side'])->map(fn ($row) => (array) $row)->all())
+        ->toBe([['series_match_id' => $series->id, 'user_id' => $anna->id, 'side' => 'challenger']])
+        ->and(dockKeys($anna))->toBe(['series-'.$series->number]);
+});

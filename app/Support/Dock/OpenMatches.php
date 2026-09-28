@@ -22,6 +22,7 @@ use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * What a player has open, for the match dock (P5f, MatchDock.dc.html
@@ -448,9 +449,10 @@ final class OpenMatches
 
         $matches = SeriesMatch::query()
             ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
-            // A lineup seat, or a roster side (a tournament's 1v1 or mix team, a casual 1v1): the sides list the players.
+            // A lineup seat, or a roster side (a tournament's 1v1 or mix team, a casual 1v1): the sides list the
+            // players, mirrored in series_match_players so this is an index lookup, not a JSON scan per series.
             ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups)
-                ->orWhereJsonContains('sides->challenger', $user->id)->orWhereJsonContains('sides->challenged', $user->id))
+                ->orWhereIn('id', DB::table('series_match_players')->where('user_id', $user->id)->select('series_match_id')))
             ->when($exclude !== null, fn ($query) => $query->where('number', '!=', $exclude))
             // Scheduled series join an hour before their start.
             ->where(fn ($query) => $query->where('status', '!=', SeriesStatus::Accepted)->orWhereNull('start_at')->orWhere('start_at', '<=', now()->addMilliseconds(self::STARTS_SOON_MS)))

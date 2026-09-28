@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * A series between two lineups (Rocket League), from the challenge to the
@@ -132,6 +133,36 @@ class SeriesMatch extends Model
     public function countedRoster(): array
     {
         return $this->resolved_roster ?? ($this->latestReport instanceof SeriesReport ? $this->latestReport->roster : []);
+    }
+
+    /**
+     * `series_match_players` mirrors `sides` (one row per player and side),
+     * so the series of a player is an index lookup (OpenMatches). Written
+     * with the series, in its transaction; ids without a users row are
+     * skipped rather than failing the series.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn (SeriesMatch $match) => $match->syncSidePlayers());
+        static::updated(function (SeriesMatch $match): void {
+            if ($match->wasChanged('sides')) {
+                $match->syncSidePlayers();
+            }
+        });
+    }
+
+    public function syncSidePlayers(): void
+    {
+        DB::table('series_match_players')->where('series_match_id', $this->id)->delete();
+
+        foreach (self::SIDES as $side) {
+            $ids = array_values(array_unique(array_map(intval(...), $this->sides[$side] ?? [])));
+
+            if ($ids !== []) {
+                DB::table('series_match_players')->insertUsing(['series_match_id', 'user_id', 'side'],
+                    DB::table('users')->whereIn('id', $ids)->selectRaw('?, id, ?', [$this->id, $side]));
+            }
+        }
     }
 
     protected function casts(): array
