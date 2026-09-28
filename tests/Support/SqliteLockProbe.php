@@ -32,9 +32,14 @@ final class SqliteLockProbe
      *                                    (factories, other writes) that should not themselves race the
      *                                    holder, so only `$action` is measured against the contention.
      * @param  callable(): T  $action  Runs while the concurrent writer holds the lock — the call under test.
+     * @param  int  $busyTimeoutMs  well above `$holdMs`: on a loaded host the lock is held past a
+     *                              tight budget (2026-09-28: 1000 ms against a 700 ms hold failed at
+     *                              `BEGIN IMMEDIATE` once in a full parallel suite and in 1 of 10 runs
+     *                              beside 48 busy processes; 5000 ms: 10 of 10). The margin does not
+     *                              weaken the test: under DEFERRED all three probe tests still fail.
      * @return T
      */
-    public static function run(callable $setup, callable $action, int $busyTimeoutMs = 1000, int $holdMs = 700): mixed
+    public static function run(callable $setup, callable $action, int $busyTimeoutMs = 5000, int $holdMs = 700): mixed
     {
         $dbPath = storage_path('framework/testing/lock-probe-'.uniqid('', true).'.sqlite');
         $marker = storage_path('framework/testing/lock-probe-'.uniqid('', true).'.marker');
