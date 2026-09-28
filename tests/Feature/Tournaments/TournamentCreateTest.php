@@ -197,10 +197,9 @@ test('an organizer lists only their own tournaments and never manages the organi
     $this->actingAs($organizer)->get(route('admin.tournaments'))
         ->assertOk()->assertSee('Mine')->assertDontSee('Someone else&#039;s', false)->assertDontSee(__('Add organizer'));
 
-    Livewire::actingAs($organizer)->test('pages::admin.tournaments')
-        ->set('organizerKey', User::factory()->create()->npub)
-        ->call('addOrganizer')
-        ->assertForbidden();
+    // The organizers have their own page since P17, for admins only.
+    $this->actingAs($organizer)->get(route('admin.organizers'))->assertForbidden();
+    Livewire::actingAs($organizer)->test('pages::admin.organizers')->assertForbidden();
 });
 
 test('an admin unlocks and removes an organizer, who can then create tournaments', function () {
@@ -209,7 +208,7 @@ test('an admin unlocks and removes an organizer, who can then create tournaments
 
     expect(Gate::forUser($player)->allows('create-tournaments'))->toBeFalse();
 
-    Livewire::actingAs($admin)->test('pages::admin.tournaments')
+    Livewire::actingAs($admin)->test('pages::admin.organizers')
         ->set('organizerKey', $player->npub)
         ->call('addOrganizer')
         ->assertHasNoErrors()
@@ -219,7 +218,7 @@ test('an admin unlocks and removes an organizer, who can then create tournaments
 
     expect(Gate::forUser($player)->allows('create-tournaments'))->toBeTrue();
 
-    Livewire::actingAs($admin)->test('pages::admin.tournaments')
+    Livewire::actingAs($admin)->test('pages::admin.organizers')
         ->call('removeOrganizer', TournamentOrganizer::query()->sole()->id);
 
     expect(Gate::forUser($player->refresh())->allows('create-tournaments'))->toBeFalse();

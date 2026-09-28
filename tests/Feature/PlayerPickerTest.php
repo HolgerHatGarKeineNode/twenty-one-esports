@@ -247,7 +247,7 @@ test('the organizers take a picked key, with or without an account, and refuse n
     User::factory()->create(['name' => 'nonce_nick']);
     $stranger = pickerStrangerKey();
 
-    Livewire::actingAs($admin)->test('pages::admin.tournaments')
+    Livewire::actingAs($admin)->test('pages::admin.organizers')
         ->call('addOrganizer')
         ->assertHasErrors(['organizerKey' => __('Pick a player from the suggestions or paste a full npub.')])
         ->set('organizerKey', 'nonce_nick')->call('addOrganizer')->assertHasErrors(['organizerKey'])

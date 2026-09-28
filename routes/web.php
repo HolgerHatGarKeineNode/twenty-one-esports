@@ -55,10 +55,6 @@ Route::middleware('auth')->group(function () {
     Route::post('notify/block0', NotifyAtBlockZeroController::class)->name('notify.block0');
 });
 
-Route::middleware(['auth', 'admin'])->group(function () {
-    Route::view('admin/status', 'pages.coming-soon', ['page' => 'Admin', 'section' => 'admin'])->name('admin.status');
-});
-
 /*
  * Clans, lineups and invites (P4). `clans/create` is registered before
  * `clans/{clan}` so "create" is never taken for a clan slug.

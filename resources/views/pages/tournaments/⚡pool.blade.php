@@ -186,15 +186,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
     $invoice = $this->invoice;
 @endphp
 
-<div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="pool-settings">
-    <div class="flex flex-col gap-2">
-        <a href="{{ route('tournaments.show', $tournament) }}" class="text-xs text-ink-2">← {{ $tournament->name }}</a>
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
-            <h1 class="m-0 font-display text-[28px] font-bold break-words lg:text-[34px]">{{ __('Prize pool') }}</h1>
-            <x-tournaments.manage-actions :tournament="$tournament" :except="['pool']" class="lg:ml-auto lg:shrink-0" />
-        </div>
-        <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('The pot is a wallet of this tournament’s own: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from that wallet.') }}</p>
-    </div>
+<x-admin.page active="tournaments" :title="__('Prize pool')" :lead="__('The pot is a wallet of this tournament’s own: anyone can add sats to it, sponsors too. You set the prizes and the sponsors; an admin checks the tournament at its end and pays the winners from that wallet.')" :crumbs="[[__('Tournaments'), route('admin.tournaments')], [$tournament->name, route('tournaments.show', $tournament)]]" data-test="pool-settings">
+    <x-slot:actions>
+        <x-tournaments.manage-actions :tournament="$tournament" :except="['pool']" />
+    </x-slot:actions>
 
     @error('pool')<p class="m-0 rounded-md bg-loss-tint px-4 py-3 text-[13px] text-loss" role="alert" data-test="pool-error">{{ $message }}</p>@enderror
 
@@ -304,4 +299,4 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends PrizeP
         @endunless
     </section>
     @endif
-</div>
+</x-admin.page>

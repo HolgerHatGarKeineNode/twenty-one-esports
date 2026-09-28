@@ -9,7 +9,12 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    // The admin home (P17): what the league, the tournaments and the servers are doing, read-only.
+    Route::livewire('status', 'pages::admin.status')->name('status');
+
     Route::livewire('admins', 'pages::admin.admins')->name('admins');
+    // Organizers (P8a): who may create tournaments; own page since P17.
+    Route::livewire('organizers', 'pages::admin.organizers')->name('organizers');
 
     // The season chain (P7c): status, estimator, Block 0 release, rule changes.
     Route::livewire('season', 'pages::admin.season')->name('season');

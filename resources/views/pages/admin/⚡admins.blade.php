@@ -7,10 +7,11 @@ use App\Support\Nostr\NostrKeys;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Admins')] class extends Component {
+new #[Title('Admins')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     /** The hex pubkey picked in <x-player-picker allow-npub>; null = nothing picked. */
     public ?string $key = null;
 
@@ -50,6 +51,17 @@ new #[Title('Admins')] class extends Component {
         return array_values(User::query()->whereIn('pubkey', [...Board::pubkeys(), ...$this->admins->pluck('pubkey')->all()])->pluck('id')->all());
     }
 
+    /**
+     * The accounts behind the listed keys, by hex pubkey: a name and a picture where there is one.
+     *
+     * @return array<string, User>
+     */
+    #[Computed]
+    public function users(): array
+    {
+        return User::query()->whereIn('pubkey', [...Board::pubkeys(), ...$this->admins->pluck('pubkey')->all()])->get()->keyBy('pubkey')->all();
+    }
+
     public function add(): void
     {
         Gate::authorize('admin');
@@ -76,7 +88,7 @@ new #[Title('Admins')] class extends Component {
         ]);
 
         $this->reset('key');
-        unset($this->admins, $this->adminUserIds);
+        unset($this->admins, $this->adminUserIds, $this->users);
     }
 
     public function remove(int $adminId): void
@@ -85,48 +97,41 @@ new #[Title('Admins')] class extends Component {
 
         Admin::query()->whereKey($adminId)->delete();
 
-        unset($this->admins, $this->adminUserIds);
+        unset($this->admins, $this->adminUserIds, $this->users);
     }
 }; ?>
 
-<div class="flex grow flex-col" data-test="admin-admins">
-<x-admin.nav active="admins" />
+@php($me = auth()->user()?->pubkey)
 
-<section class="w-full max-w-2xl space-y-8 px-4 pt-8 pb-8 lg:max-w-[calc(42rem+6rem)] lg:px-12 lg:pb-10">
-    <flux:heading size="xl" level="1">{{ __('Admins') }}</flux:heading>
-
-    <div class="space-y-2">
-        <flux:heading level="2">{{ __('Board') }}</flux:heading>
-        <flux:text>{{ __('Board members are always admins. The list is maintained in the configuration.') }}</flux:text>
-
-        <ul class="space-y-1">
-            @foreach ($this->board as $npub)
-                <li class="font-mono text-sm break-all" wire:key="board-{{ $npub }}">{{ $npub }}</li>
+<x-admin.page active="admins" :title="__('Admins')" :lead="__('Admins decide disputes, send payouts and release seasons. Board members are always admins.')" data-test="admin-admins">
+    <x-admin.panel :title="__('Board')" :meta="__('from the configuration, not editable here')" flush>
+        <ul class="m-0 flex list-none flex-col p-0">
+            @foreach (\App\Support\Board::pubkeys() as $pubkey)
+                @php($npub = \App\Support\Nostr\NostrKeys::hexToNpub($pubkey))
+                <x-admin.key-row :npub="$npub" :user="$this->users[$pubkey] ?? null" :note="$pubkey === $me ? __('that’s you') : null" wire:key="board-{{ $pubkey }}" />
             @endforeach
         </ul>
-    </div>
+    </x-admin.panel>
 
-    <div class="space-y-4">
-        <flux:heading level="2">{{ __('Further admins') }}</flux:heading>
-
-        <form wire:submit="add" class="flex items-end gap-2">
-            <x-player-picker id="admin-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="$this->adminUserIds" class="flex-1" />
-            <flux:button type="submit" variant="primary">{{ __('Add admin') }}</flux:button>
+    <x-admin.panel :title="__('Further admins')" :meta="__('added here, by any admin')">
+        <form wire:submit="add" class="flex flex-col gap-1.5">
+            <span class="flex flex-wrap items-end gap-2">
+                <x-player-picker id="admin-key" wire:model="key" allow-npub :label="__('Player or npub')" :exclude="$this->adminUserIds" class="min-w-0 grow basis-[16rem] lg:max-w-[560px]" />
+                <x-button type="submit" variant="quiet">{{ __('Add admin') }}</x-button>
+            </span>
+            @error('key')<span class="text-xs text-loss" role="alert" data-test="admin-key-error">{{ $message }}</span>@enderror
         </form>
-        @error('key')<p class="m-0 text-sm text-loss" role="alert" data-test="admin-key-error">{{ $message }}</p>@enderror
 
-        <ul class="space-y-2">
-            @forelse ($this->admins as $admin)
-                <li class="flex items-center justify-between gap-4" wire:key="admin-{{ $admin->id }}">
-                    <span class="font-mono text-sm break-all">{{ $admin->npub() }}</span>
-                    <flux:button size="sm" variant="danger" wire:click="remove({{ $admin->id }})">
-                        {{ __('Remove') }}
-                    </flux:button>
-                </li>
-            @empty
-                <li><flux:text>{{ __('No further admins yet.') }}</flux:text></li>
-            @endforelse
-        </ul>
-    </div>
-</section>
-</div>
+        @if ($this->admins->isEmpty())
+            <x-admin.empty :text="__('No further admins yet. Pick a player above to add one.')" />
+        @else
+            <ul class="m-0 flex list-none flex-col p-0">
+                @foreach ($this->admins as $admin)
+                    <x-admin.key-row :npub="$admin->npub()" :user="$this->users[$admin->pubkey] ?? null" :note="$admin->pubkey === $me ? __('that’s you') : null" wire:key="admin-{{ $admin->id }}">
+                        <x-button variant="secondary" wire:click="remove({{ $admin->id }})" wire:confirm="{{ __('Remove this admin?') }}">{{ __('Remove') }}</x-button>
+                    </x-admin.key-row>
+                @endforeach
+            </ul>
+        @endif
+    </x-admin.panel>
+</x-admin.page>
