@@ -11,14 +11,30 @@
  *           relays (NIP-65), as the share posts do (badgeShare.js)
  *
  * Signed events travel as JSON strings (TrimStrings must never touch them).
+ * Once posted, `postUrl` opens the note on njump.me (the page gives it for a
+ * game posted before; a fresh post builds it from the signed event).
  */
+import { encodeBytes } from 'nostr-tools/nip19';
 import { ensureSigner } from './nostrSign.js';
 import { signerMessage, signTemplate } from './signing.js';
 import { publishToRelays, writeRelaysFor } from './relayRead.js';
 
-export function gamePost({ pubkey, relays = [], posted = false, preview = false, labels = {} }) {
+/**
+ * The note's `nevent` in the league's TLV order (id, author, kind; NostrKeys::nevent()), so the
+ * link after posting is the one the page shows after a reload. nostr-tools writes the TLVs the other
+ * way round: the same note, another string.
+ */
+export function noteLink({ id, pubkey, kind }) {
+    const hex = (h) => h.match(/../g).map((b) => parseInt(b, 16));
+    const bytes = [0, 32, ...hex(id), 2, 32, ...hex(pubkey), 3, 4, (kind >>> 24) & 255, (kind >>> 16) & 255, (kind >>> 8) & 255, kind & 255];
+
+    return 'https://njump.me/' + encodeBytes('nevent', new Uint8Array(bytes));
+}
+
+export function gamePost({ pubkey, relays = [], posted = false, postUrl = null, preview = false, labels = {} }) {
     return {
         step: posted ? 'done' : 'idle',
+        postUrl,
         template: null,
         error: '',
         warning: '',
@@ -97,6 +113,7 @@ export function gamePost({ pubkey, relays = [], posted = false, preview = false,
 
                     return;
                 }
+                this.postUrl = noteLink(signed);
                 this.step = 'done';
                 this.onRelays = await publishToRelays(await writeRelaysFor(pubkey, relays), signed);
                 if (this.onRelays === 0) this.warning = labels.notOnYourRelays ?? '';

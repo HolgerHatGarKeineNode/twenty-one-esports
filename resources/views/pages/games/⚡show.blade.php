@@ -760,7 +760,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                                                 </template>
                                                 {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
                                                 <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
-                                                    <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Post this game to my profile') }}</a>
+                                                    <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Share this game on Nostr') }}</a>
                                                 </template>
                                             </div>
                                         </template>

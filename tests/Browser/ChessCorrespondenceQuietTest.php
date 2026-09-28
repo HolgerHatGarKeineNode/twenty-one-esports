@@ -5,6 +5,7 @@ use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\Nostr\NostrKeys;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -50,6 +51,38 @@ beforeEach(function () {
         $app['livewire']->flushState();
     });
 });
+
+/**
+ * The share card of a finished game (P55): its gap to the result above, its
+ * heading, whether the share button is inside the first viewport, any text
+ * or button label cut off by its box, and the document's widths.
+ */
+const QUIET_POST_CARD = <<<'JS'
+    () => {
+        const card = document.querySelector('[data-test=game-post]');
+        const result = document.querySelector('[data-test=result-banner]');
+        const box = card.getBoundingClientRect();
+        const spill = [...card.querySelectorAll('*')]
+            .filter((el) => el.checkVisibility() && (el.getBoundingClientRect().right > box.right + 1 || el.getBoundingClientRect().left < box.left - 1))
+            .map((el) => (el.dataset.test ?? el.tagName) + ':' + el.textContent.trim().slice(0, 24));
+        const button = document.querySelector('[data-test=game-post-open]');
+        const cut = [...card.querySelectorAll('h2, p, a, button, span')]
+            .filter((el) => el.checkVisibility() && el.children.length === 0 && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) && getComputedStyle(el).overflow !== 'visible')
+            .map((el) => el.textContent.trim());
+        return {
+            gap: Math.round(card.getBoundingClientRect().top - result.getBoundingClientRect().bottom),
+            heading: card.querySelector('h2').innerText.trim(),
+            // The floor of the first viewport: the top of what is fixed at the bottom (the chat sheet, the tab bar).
+            firstViewport: button.getBoundingClientRect().bottom + scrollY <= Math.min(innerHeight, ...[...document.body.querySelectorAll('*')].filter((el) => getComputedStyle(el).position === 'fixed' && el.checkVisibility() && el.getBoundingClientRect().top > innerHeight / 2).map((el) => el.getBoundingClientRect().top)),
+            buttonNoWrap: button.scrollWidth <= button.clientWidth + 1,
+            cut,
+            spill,
+            // What reaches past the viewport, innermost first: the name of a sideways scroll.
+            wide: [...document.body.querySelectorAll('*')].filter((el) => !el.closest('header')).filter((el) => el.checkVisibility() && el.getBoundingClientRect().right > innerWidth + 1 && ![...el.children].some((c) => c.getBoundingClientRect().right > innerWidth + 1)).slice(0, 6).map((el) => (el.dataset.test ?? el.tagName + '.' + String(el.className).split(' ')[0]) + ':' + Math.round(el.getBoundingClientRect().right) + ':' + el.textContent.trim().slice(0, 30)),
+            doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+        };
+    }
+    JS;
 
 /** Counts every call of the stubbed signer, across reloads of the tab. */
 const QUIET_SIGN_COUNTER = <<<'JS'
@@ -293,14 +326,36 @@ test('a casual daily game at 375 and 1440: every move over the server with no si
     quietClean($phone, '375 after the game');
     quietClean($desk, '1440 after the game');
 
-    // The finished page offers the post; nothing is posted until the click.
+    // The finished page offers the post right under the result, with the rematch beside it; nothing is posted until the click.
+    $cards = [];
     foreach (['375' => $phone, '1440' => $desk] as $width => $page) {
         BrowserWait::until($page, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=game-post]"))?.step === "idle"', 10_000);
         $sizes["{$width} post"] = quietLayout($page, '[data-test=game-post]');
         $sizes["{$width} post button"] = quietLayout($page, '[data-test=game-post-open]');
-        $page->evaluate('() => document.querySelector("[data-test=game-post]").scrollIntoView({ block: "center" })');
-        shellShot($page, "p52-{$width}-post");
+        $sizes["{$width} rematch"] = quietLayout($page, '[data-test=game-post] [data-test=challenge-again]');
+        $sizes["{$width} post board"] = quietLayout($page, '[data-test=game-post-board]');
+        $cards[$width] = $page->evaluate(QUIET_POST_CARD);
+        $page->evaluate('() => window.scrollTo(0, 0)');
+        shellShot($page, "p55-{$width}-post-card");
     }
+
+    // P55: the card follows the result at once, both actions are 44 px and in the first viewport; side by side from sm, stacked on a phone.
+    foreach ($cards as $width => $card) {
+        expect($card['gap'])->toBeLessThanOrEqual(24, "{$width}: the share card sits right under the result")
+            ->and($card['firstViewport'])->toBeTrue("{$width}: the share button is in the first viewport")
+            ->and($card['cut'])->toBe([], "{$width}: text cut off")
+            ->and($card['spill'])->toBe([], "{$width}: out of the card");
+    }
+    expect($cards['375']['heading'])->toBe('Keep this game on your profile')
+        ->and($cards['1440']['heading'])->toBe('You won — show it')
+        ->and($sizes['375 post button']['box']['height'])->toBe(44)
+        ->and($sizes['375 rematch']['box']['height'])->toBe(44)
+        ->and($sizes['375 rematch']['box']['top'])->toBeGreaterThan($sizes['375 post button']['box']['top'])
+        ->and($sizes['375 rematch']['box']['width'])->toBe($sizes['375 post button']['box']['width'])
+        ->and($sizes['1440 post button']['box']['height'])->toBe(44)
+        ->and($sizes['1440 rematch']['box']['height'])->toBe(44)
+        ->and($sizes['1440 rematch']['box']['top'])->toBe($sizes['1440 post button']['box']['top'])
+        ->and($sizes['1440 rematch']['box']['left'])->toBeGreaterThan($sizes['1440 post button']['box']['right']);
 
     // Anna posts from her phone: the preview first, the exact note, then the signer once.
     $phone->locator('[data-test=game-post-open]')->click();
@@ -329,12 +384,34 @@ test('a casual daily game at 375 and 1440: every move over the server with no si
         ->and($game->black_post_event_id)->toBeNull()
         ->and(quietSigns($desk))->toBe(0);
 
+    // Posted: the card says so and links to the note on njump.me, the same link after a reload.
+    $view = $phone->evaluate('() => document.querySelector("[data-test=game-post-view]")?.href ?? null');
+    expect($phone->evaluate('() => document.querySelector("[data-test=game-post-posted]").checkVisibility()'))->toBeTrue()
+        ->and($view)->toBe('https://njump.me/'.NostrKeys::nevent($post->event_id, $post->pubkey, 64));
+
     // A reload keeps it posted.
     $phone->reload();
     BrowserWait::until($phone, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=game-post]"))?.step === "done"', 10_000);
+    expect($phone->evaluate('() => document.querySelector("[data-test=game-post-view]").href'))->toBe($view);
 
-    $phone->evaluate('() => document.querySelector("[data-test=game-post]").scrollIntoView({ block: "center" })');
-    shellShot($phone, 'p52-375-posted');
+    $phone->evaluate('() => window.scrollTo(0, 0)');
+    shellShot($phone, 'p55-375-posted');
+
+    // German on the phone: the longer words still fit the card (Bert's view, the winner's line).
+    $bert->forceFill(['locale' => 'de'])->save();
+    $deskDe = quietPage($bert, 375, 812, $path);
+    BrowserWait::until($deskDe, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=game-post]"))?.step === "idle"', 10_000);
+    $german = $deskDe->evaluate(QUIET_POST_CARD);
+    $deskDe->evaluate('() => window.scrollTo(0, 0)');
+    shellShot($deskDe, 'p55-375-de-post-card');
+    quietClean($deskDe, '375 German post card');
+    expect($german['heading'])->toBe('Du hast gewonnen — zeig es')
+        ->and($german['cut'])->toBe([], 'German 375: text cut off')
+        ->and($german['spill'])->toBe([], 'German 375: out of the card')
+        // The page chrome's game strip reaches past 375 px in German (reported, not this card's): nothing below the header may.
+        ->and($german['wide'])->toBe([], 'German 375: past the viewport outside the header')
+        ->and($german['firstViewport'])->toBeTrue('German 375: the share button is in the first viewport');
+    fwrite(STDERR, "\n[p55-post-card] ".json_encode($cards + ['375 de' => $german]));
     fwrite(STDERR, "\n[p52-quiet] ".json_encode($sizes));
 
     foreach ($sizes as $what => $size) {

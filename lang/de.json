@@ -5009,5 +5009,13 @@
     "Back to the current position": "Zurück zur aktuellen Stellung",
     "Home End": "Pos1 Ende",
     "first move, back to the current position": "erster Zug, zurück zur aktuellen Stellung",
+    "Final position of :number": "Endstellung von :number",
+    "You won — show it": "Du hast gewonnen — zeig es",
+    "Keep this game on your profile": "Behalte diese Partie auf deinem Profil",
+    "Share the board and every move as one note on Nostr, signed by you. You see the note first; nothing is posted until you sign it.": "Teile das Brett und jeden Zug als eine Notiz auf Nostr, von dir signiert. Du siehst die Notiz zuerst; gepostet wird erst, wenn du signierst.",
+    "Share this game on Nostr": "Partie auf Nostr teilen",
+    "Posted": "Gepostet",
+    "View it on Nostr": "Auf Nostr ansehen",
+    "Rematch challenges :name to daily chess, one move a day. Or invite a friend by link.": "Revanche fordert :name zu Fernschach heraus, ein Zug pro Tag. Oder lade jemanden per Link ein.",
     "Move, e.g. :move": "Zug, z. B. :move"
 }

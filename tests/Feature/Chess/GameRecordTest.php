@@ -9,6 +9,7 @@ use App\Support\Chess\ChessPgn;
 use App\Support\Chess\GameRecords;
 use App\Support\Chess\PresenceLookup;
 use App\Support\Nostr\EsportsEventRules;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use Illuminate\Support\Facades\Bus;
@@ -205,6 +206,18 @@ test('a player posts the game to their profile only by button: the preview is th
     $page->call('submitGamePost', json_encode($again))->assertReturned(fn (array $r) => $r['error'] === 'already_posted');
 
     expect(NostrEvent::query()->where('kind', 64)->where('pubkey', $black->pubkey)->count())->toBe(1);
+
+    // The finished page greets the winner, says the game is posted and links to the note on njump.me.
+    Livewire::actingAs($black)->test('pages::games.show', ['game' => $game])
+        ->assertSee(__('You won — show it'))
+        ->assertSeeHtml(NostrKeys::nevent($post->event_id, $post->pubkey, 64))
+        ->assertSeeHtml('data-test="game-post-board"');
+    // The loser gets the neutral line and the button, nothing posted for them.
+    Livewire::actingAs($white)->test('pages::games.show', ['game' => $game])
+        ->assertSee(__('Keep this game on your profile'))
+        ->assertDontSee(__('You won — show it'))
+        ->assertSee(__('Share this game on Nostr'))
+        ->assertDontSeeHtml(NostrKeys::nevent($post->event_id, $post->pubkey, 64));
 });
 
 test('a casual game\'s post stands alone: the same PGN, signed by the player, without a quote', function () {
@@ -247,7 +260,7 @@ test('a running or aborted game cannot be posted, and the finished page offers t
 
     Livewire::actingAs($white)->test('pages::games.show', ['game' => $finished])
         ->assertSeeHtml('data-test="game-post"')
-        ->assertSee(__('Post this game to my profile'))
+        ->assertSee(__('Share this game on Nostr'))
         ->assertDontSeeHtml('chessPublishRecord');
     Livewire::actingAs(User::factory()->create())->test('pages::games.show', ['game' => $finished])
         ->assertDontSeeHtml('data-test="game-post"');
