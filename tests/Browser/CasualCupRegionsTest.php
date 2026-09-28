@@ -3,6 +3,7 @@
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\CupBoard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -253,4 +254,97 @@ test('by start orders the game groups by their earliest cup and the rows by star
         ->and($state['groups'][1]['rows'])->toBe(['us', 'eu'])
         ->and($page->evaluate('() => document.querySelector("[data-test=cup-sort-start]").getAttribute("aria-pressed")'))->toBe('true')
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
+});
+
+/*
+ * The organizers' tournaments above the cup board (user, 2026-09-28: "alle
+ * manuell angelegten Turniere sind die WICHTIGSTEN ... oben groß und nicht
+ * unten klein"): the hero and every card, with its cover drawn in 16:9,
+ * before the first casual cup, at 1440 and 375, in English and German.
+ */
+const ORGANIZER_STATE = <<<'JS'
+    () => {
+        const box = (el) => { const r = el.getBoundingClientRect(); return { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY), left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width), height: Math.round(r.height) }; };
+        const cover = (el) => { const img = el.querySelector('[data-game-cover] img'); if (!img) return null; const r = img.getBoundingClientRect(); return { loaded: img.complete && img.naturalWidth > 0, ratio: Math.round(100 * r.width / r.height) / 100, height: Math.round(r.height), loading: img.getAttribute('loading') }; };
+        const hero = document.querySelector('[data-test=next-tournament]');
+        return {
+            lang: document.documentElement.lang,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            width: window.innerWidth,
+            hero: hero ? { id: hero.dataset.tournament, ...box(hero), cover: cover(hero) } : null,
+            cards: [...document.querySelectorAll('[data-test=organizer-card]')].map((el) => ({ id: el.dataset.tournament, state: el.dataset.state, ...box(el), cover: cover(el), city: el.querySelector('[data-test=organizer-card-start] .text-ink-3')?.textContent.trim() })),
+            board: box(document.querySelector('[data-test=cup-mentions]')),
+        };
+    }
+    JS;
+
+test('the organizers\' tournaments stand above the casual cups, large and with their covers, at 1440 and 375 in English and German', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
+    app(CasualCups::class)->tick();
+    $now = CarbonImmutable::now();
+    $made = function (string $name, TournamentStatus $status, CarbonImmutable $startsAt, array $attributes = []): Tournament {
+        $tournament = Tournament::factory()->create(['name' => $name, 'starts_at' => $startsAt, 'created_by_id' => organizer()->id, ...$attributes]);
+        $tournament->forceFill(['status' => $status, 'published_at' => now()->subDay(), 'signup_closes_at' => $startsAt->subHour()])->save();
+
+        return $tournament;
+    };
+    $hero = $made('EINUNDZWANZIG Fifa 2026', TournamentStatus::Signup, $now->addDays(3), ['game' => 'ea-sports-fc-26', 'mode' => '1v1']);
+    $open = $made('21,000 Sats, Zero Ball Control', TournamentStatus::Signup, $now->addDays(4), ['game' => 'rocket-league', 'mode' => '3v3']);
+    $running = $made('Friday Blitz at the Bitcoin Bar Berlin', TournamentStatus::Running, $now->subHour());
+    $finished = $made('Blitz Night Leipzig', TournamentStatus::Finished, $now->subDays(8));
+    $cards = [(string) $open->id, (string) $running->id, (string) $finished->id];
+    $endClock = function (string $lang) use ($hero): string {
+        app()->setLocale($lang);
+        $clock = CupBoard::start($hero->expectedEnd()['typical'], 'America/New_York')['clock'];
+        app()->setLocale('en');
+
+        return $clock;
+    };
+
+    foreach ([[1440, 900, 'en'], [375, 812, 'en'], [1440, 900, 'de'], [375, 812, 'de']] as [$width, $height, $lang]) {
+        $page = cupRegionsPage('/tournaments', $width, $height, '[data-test=organizer-card]');
+
+        if ($lang === 'de') {
+            $page->goto(ComputeUrl::from('/locale/de'));
+            $page->goto(ComputeUrl::from('/tournaments'));
+            BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=organizer-card]") !== null && document.fonts.status === "loaded"', 10_000);
+        }
+
+        if ($width === 1440 && $lang === 'en') {
+            cupRegionsControl($page);
+        }
+
+        // Every cover drawn: scroll the lazy ones into view, then back.
+        $page->evaluate('() => new Promise((resolve) => { window.scrollTo(0, document.body.scrollHeight); setTimeout(() => { window.scrollTo(0, 0); resolve(true); }, 400); })');
+        BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=organizer-tournaments] [data-game-cover] img")].every((img) => img.complete && img.naturalWidth > 0)', 10_000);
+        $state = $page->evaluate(ORGANIZER_STATE);
+        cupRegionsShot($page, "organizers-first-{$width}-{$lang}");
+
+        expect([$width, $lang, $state['lang'], $state['overflow']])->toBe([$width, $lang, $lang, 0])
+            ->and($state['hero']['id'])->toBe((string) $hero->id)
+            ->and($state['hero']['cover']['loaded'])->toBeTrue()
+            ->and($state['hero']['cover']['loading'])->toBe('eager')
+            ->and($state['hero']['bottom'])->toBeLessThan($state['board']['top'])
+            ->and(array_column($state['cards'], 'id'))->toBe($cards)
+            ->and(array_column($state['cards'], 'state'))->toBe(['open', 'running', 'finished'])
+            // A guest in New York reads each start on their own clock, the hero's expected end too.
+            ->and(array_unique(array_column($state['cards'], 'city')))->toBe(['New York'])
+            ->and($page->evaluate('() => document.querySelector("[data-test=open-end]").innerText'))->toContain($endClock($lang));
+
+        foreach ($state['cards'] as $card) {
+            expect($card['bottom'])->toBeLessThan($state['board']['top'])
+                ->and($card['cover']['loaded'])->toBeTrue()
+                ->and($card['cover']['loading'])->toBe('lazy')
+                ->and($card['cover']['ratio'])->toBeGreaterThanOrEqual(1.76)->toBeLessThanOrEqual(1.79)
+                ->and($card['right'])->toBeLessThanOrEqual($state['width']);
+        }
+
+        // Large: at 1440 the hero's cover is at least 400 px high and a card's 170; on a phone every card spans the column.
+        $width === 1440
+            ? expect($state['hero']['cover']['height'])->toBeGreaterThanOrEqual(400)->and(min(array_column(array_column($state['cards'], 'cover'), 'height')))->toBeGreaterThanOrEqual(170)
+            : expect(array_unique(array_column($state['cards'], 'width')))->toBe([343])->and($state['hero']['width'])->toBe(343);
+
+        expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
 });

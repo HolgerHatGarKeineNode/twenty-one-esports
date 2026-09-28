@@ -6,6 +6,7 @@ use App\Models\Tournament;
 use App\Support\PageMeta;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\FormatCopy;
+use App\Support\Tournaments\OrganizerBoard;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -14,11 +15,16 @@ use Livewire\Component;
 
 /*
  * Tournaments (Tournaments.dc.html; before Block 0 the head of
- * TournamentsPrelaunch.dc.html): the next tournament open for sign-up, every
- * published tournament, and the formats in one line each. Drafts never show
- * here. Tournaments with a prize pot carry its chip (P9, <x-prize-chip>);
- * the artboard's line "rated tournament games mine blocks" is outdated
- * (user, 2026-09-26: tournaments never mine).
+ * TournamentsPrelaunch.dc.html). The organizers' tournaments come first and
+ * large, with their covers (user, 2026-09-28: "alle manuell angelegten
+ * Turniere sind die WICHTIGSTEN ... oben groß und nicht unten klein"): the
+ * one whose sign-up closes next as the hero, then every other one as a card
+ * in one grid, open first, then in progress, then past (OrganizerBoard).
+ * The casual cups' board follows, then the ended cups as a list and the
+ * formats in one line each. Drafts never show here. Tournaments with a
+ * prize pot carry its chip (P9, <x-prize-chip>); the artboard's line
+ * "rated tournament games mine blocks" is outdated (user, 2026-09-26:
+ * tournaments never mine).
  */
 new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -44,6 +50,15 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         return Tournament::query()->special()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
             ->orderBy('signup_closes_at')->first();
     }
+
+    /**
+     * @return array{open: list<array<string, mixed>>, progress: list<array<string, mixed>>, past: list<array<string, mixed>>}
+     */
+    #[Computed]
+    public function organizers(): array
+    {
+        return app(OrganizerBoard::class)->groups(viewerZone: auth()->user()?->timezone);
+    }
 }; ?>
 
 @php
@@ -58,8 +73,22 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     $countTotal = array_sum(array_column($counts, 1));
     $next = $this->next;
     $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
-    // The cups open for sign-up or running stand on the cup board above, grouped by game (P53): the list leaves them out.
-    $listed = $this->tournaments->reject(fn (Tournament $t): bool => $t->isCasualCup() && in_array($t->status, [TournamentStatus::Signup, TournamentStatus::Running], true));
+    // The organizers' tournaments, the hero taken out of its group; the covers of the first screen load at once.
+    $organizers = $this->organizers;
+    $hero = null;
+    foreach ($organizers['open'] as $index => $card) {
+        if ($next !== null && $card['tournament']->id === $next->id) {
+            $hero = $card;
+            unset($organizers['open'][$index]);
+        }
+    }
+    // One grid for the rest, in the board's order (open, in progress, past): no half-empty row per state, the chip says it.
+    $cards = [...array_values($organizers['open']), ...$organizers['progress'], ...$organizers['past']];
+    $organizerCount = count($cards) + ($hero === null ? 0 : 1);
+    // The covers of the first screen load at once: the hero's, or without one the first row of cards.
+    $eager = $hero === null ? 4 : 0;
+    // The cups open for sign-up or running stand on the cup board (P53); the ended ones are listed under it.
+    $listed = $this->tournaments->filter(fn (Tournament $t): bool => $t->isCasualCup() && ! in_array($t->status, [TournamentStatus::Signup, TournamentStatus::Running], true));
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="tournaments-index">
@@ -78,7 +107,31 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         @endcan
     </div>
 
-    <section aria-label="{{ __('Tournaments by state') }}" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6" data-test="tournament-states">
+    {{-- The organizers' tournaments: first, large, with their covers; never behind a casual cup. --}}
+    <section aria-labelledby="organizers-h" class="flex flex-col gap-4 lg:gap-6" data-test="organizer-tournaments">
+        <h2 id="organizers-h" class="sr-only">{{ __('Organizer tournaments') }}</h2>
+        @if ($organizerCount === 0)
+            <div class="flex flex-col gap-2 rounded-card bg-card px-4 py-6 shadow-ring-hairline lg:px-6" data-test="organizer-empty">
+                <p class="m-0 font-display text-xl font-bold">{{ __('No organizer tournament yet') }}</p>
+                <p class="m-0 max-w-[65ch] text-[13px] leading-normal text-ink-2">{{ __('When an organizer publishes a tournament, it shows here first, with its game, start, places and prize pot.') }}</p>
+            </div>
+        @endif
+        @if ($hero !== null)
+            <x-tournaments.next-card :card="$hero" />
+        @endif
+        @if ($cards !== [])
+            <ul class="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6 xl:grid-cols-4" aria-label="{{ __('Organizer tournaments') }}">
+                @foreach ($cards as $card)
+                    <li class="flex min-w-0" wire:key="organizer-{{ $card['tournament']->id }}">
+                        <x-tournaments.organizer-card :card="$card" :loading="$eager-- > 0 ? 'eager' : 'lazy'" class="w-full" />
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </section>
+
+    {{-- Every tournament by state, cups included: the overview between the organizers' cards and the cup board. --}}
+    <section aria-label="{{ __('Tournaments by state') }}" class="mt-4 flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6" data-test="tournament-states">
         @if ($countTotal > 0)
             <div class="flex h-2 gap-0.5 overflow-hidden rounded-[2px]" aria-hidden="true">
                 @foreach ($counts as [$label, $count, $icon, $fill, $ink, $key])
@@ -99,16 +152,11 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
         </ul>
     </section>
 
-    @if ($next !== null)
-        <x-tournaments.next-card :tournament="$next" />
-    @endif
     <x-tournaments.cup-mentions heading filters />
 
+    @if ($listed->isNotEmpty())
     <section aria-labelledby="all-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
-        <h2 id="all-h" class="m-0 text-[15px] font-bold">{{ __('All tournaments') }}</h2>
-        @if ($listed->isEmpty())
-            <p class="m-0 text-[13px] text-ink-2">{{ $this->tournaments->isEmpty() ? __('No tournament is published yet.') : __('No other tournament is published yet: the casual cups above are all that is on.') }}</p>
-        @else
+        <h2 id="all-h" class="m-0 text-[15px] font-bold">{{ __('Past casual cups') }}</h2>
             <ul class="m-0 flex list-none flex-col p-0">
                 @foreach ($listed as $tournament)
                     <li class="flex flex-col gap-1 border-t border-hairline py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-4" wire:key="t-{{ $tournament->id }}" data-test="tournament-item">
@@ -118,13 +166,13 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                         </span>
                         <x-league-time :at="$tournament->starts_at" class="text-ink-2 sm:w-[22%]" />
                         <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
-                        <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}@if ($tournament->isCasualCup()) · <span data-test="casual-marker">{{ __('Casual') }}</span>@endif</span>
+                        <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>
                         <span class="inline-flex h-6 items-center self-start rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi sm:self-auto">{{ $tournament->status->label() }}</span>
                     </li>
                 @endforeach
             </ul>
-        @endif
     </section>
+    @endif
 
     <section aria-labelledby="formats-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
         <h2 id="formats-h" class="m-0 text-[15px] font-bold">{{ __('Formats') }}</h2>

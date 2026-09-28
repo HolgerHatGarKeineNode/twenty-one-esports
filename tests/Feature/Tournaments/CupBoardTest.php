@@ -95,9 +95,11 @@ test('the tournaments page has the filter bar and every row carries game, region
         ->and(substr_count($html, 'data-test="cup-group-cover"'))->toBe(3)
         ->and(substr_count($html, 'data-test="cup-filter-game-'))->toBe(5);
 
-    // A running cup reads "Running" with the play icon; the list names only the special tournament.
-    $list = str($html)->after('id="all-h"')->before('id="formats-h"')->toString();
-    expect($list)->toContain('RL Sunday')->not->toContain('Casual Cup')
+    // A running cup reads "Running" with the play icon; the special tournament is a card above the board, and no
+    // cup has ended, so there is no list of past cups under it (OrganizerBoardTest).
+    $organizers = str($html)->after('data-test="organizer-tournaments"')->before('data-test="cup-mentions"')->toString();
+    expect($organizers)->toContain('RL Sunday')->not->toContain('Casual Cup')
+        ->and($html)->not->toContain('id="all-h"')
         ->and(substr_count($html, 'data-test="cup-status"'))->toBe(6);
     expect($special->refresh()->isCasualCup())->toBeFalse();
 });

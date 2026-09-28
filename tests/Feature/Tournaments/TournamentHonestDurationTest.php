@@ -253,8 +253,9 @@ test('the tournament page shows a start and an open end, never a fixed end, in E
     $this->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSeeText("Open end, expected around {$expected}")
         ->assertDontSeeText('Planned duration');
+    // The index's hero names it on the same clock as its start: 11:55 PM in English (OrganizerBoard).
     $this->get(route('tournaments.index'))->assertOk()
-        ->assertSeeText("Open end, expected around {$expected}");
+        ->assertSeeText('Open end, expected around 11:55 PM');
     $this->withSession(['locale' => 'de'])->get(route('tournaments.show', $tournament))->assertOk()
         ->assertSeeText("Ende offen, voraussichtlich gegen {$expected}")
         ->assertDontSeeText('Geplante Dauer');

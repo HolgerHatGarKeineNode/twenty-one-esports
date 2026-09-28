@@ -5079,5 +5079,10 @@
     "Approved to pay": "Zur Auszahlung freigegeben",
     "Paid so far": "Bisher ausgezahlt",
     "Only a board member on the public admin list can void blocks and approve the settlement list.": "Nur ein Vorstandsmitglied auf der öffentlichen Admin-Liste kann Blöcke für ungültig erklären und die Abrechnungsliste freigeben.",
-    "Voiding blocks and approving the list is for the board (the public admin list). Paying is open to every admin.": "Blöcke für ungültig erklären und die Liste freigeben ist Sache des Vorstands (der öffentlichen Admin-Liste). Auszahlen kann jeder Admin."
+    "Voiding blocks and approving the list is for the board (the public admin list). Paying is open to every admin.": "Blöcke für ungültig erklären und die Liste freigeben ist Sache des Vorstands (der öffentlichen Admin-Liste). Auszahlen kann jeder Admin.",
+    "Mined, waiting for the review": "Geschürft, wartet auf die Prüfung",
+    "Past casual cups": "Vergangene Casual Cups",
+    "Organizer tournaments": "Turniere der Veranstalter",
+    "No organizer tournament yet": "Noch kein Turnier eines Veranstalters",
+    "When an organizer publishes a tournament, it shows here first, with its game, start, places and prize pot.": "Veröffentlicht ein Veranstalter ein Turnier, steht es hier ganz oben, mit Spiel, Start, Plätzen und Preistopf."
 }

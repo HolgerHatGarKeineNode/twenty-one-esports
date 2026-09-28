@@ -210,8 +210,9 @@ test('the calendar file is public, in UTC and folded, and a draft has none', fun
 test('cards and lists name the zone: the index, the game page and the admin list', function () {
     $tournament = openTournament(['starts_at' => CarbonImmutable::parse('2026-10-03 18:00', 'UTC')], rocketLeague: true);
 
+    // The index's cards read the start like the cup board: day, clock and the city of the zone (OrganizerBoard).
     $this->get(route('tournaments.index').'?lang=de')->assertOk()
-        ->assertSee('Sa, 3. Okt 2026, 20:00 MESZ')->assertSee('datetime="2026-10-03T18:00:00Z"', false);
+        ->assertSeeInOrder(['datetime="2026-10-03T18:00:00Z"', '>20:00</b>', '>Sa, 3. Okt</span>', '>Berlin</span>'], false);
     $this->get(route('games.rocket-league').'?lang=en')->assertOk()->assertSee('Sat, 3 Oct 2026, 8:00 PM CEST');
     $admin = User::factory()->create();
     Admin::query()->create(['pubkey' => $admin->pubkey]);
