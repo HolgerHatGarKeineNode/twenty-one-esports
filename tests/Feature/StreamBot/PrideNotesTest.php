@@ -2,6 +2,7 @@
 
 use App\Models\BotPost;
 use App\Models\ChessGame;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
@@ -114,4 +115,18 @@ test('outside every slot, or with the flag off, nothing is posted; a dry run pos
     expect(app(PrideNotes::class)->run(now()->toImmutable()))->toContain('pride_notes.enabled is off')
         ->and($this->published)->toBe([])
         ->and(BotPost::query()->count())->toBe(0);
+});
+
+test('the biggest pot\'s prizes go out in the US evening slot with the tournament\'s own link and no player tagged', function () {
+    // Sat 2026-09-26 23:30 UTC = 19:30 in New York: the prizes slot (19:00, 3 h).
+    $this->travelTo(Carbon::parse('2026-09-26 23:30:00', 'UTC'));
+    $pot = openTournament(['name' => 'Sats Cup', 'starts_at' => now()->addDays(3), 'signup_closes_at' => now()->addDays(2)]);
+    $pot->forceFill(['pot_source' => Tournament::POT_WALLET, 'prize_target_sats' => 21000, 'prize_split' => [50, 30, 20]])->save();
+
+    $log = app(PrideNotes::class)->run(now()->toImmutable());
+
+    expect($log)->toContain('prizes: posted')
+        ->and($this->published)->toHaveCount(1)
+        ->and($this->published[0]->content)->toContain('21,000', 'Sats Cup', '10,395 / 6,237 / 4,158 sats', route('tournaments.show', $pot))
+        ->and(collect($this->published[0]->tags)->where(0, 'p')->all())->toBe([]);
 });

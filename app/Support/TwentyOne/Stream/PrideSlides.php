@@ -180,7 +180,8 @@ class PrideSlides
             'places' => array_map(fn (array $place): array => ['place' => $place['place'], 'sats' => $place['sats']], $this->pools->projection($tournament)),
             'sponsors' => $tournament->sponsors()->orderBy('id')->limit(3)->pluck('name')->map(fn ($name): string => PublicName::clean((string) $name))->all(),
             'startsAt' => $tournament->starts_at->copy()->timezone($timezone)->format('D j M, H:i T'),
-            'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
+            // A full https link: the pride note needs one (StreamBotCopy::violations), the slide drops the scheme.
+            'url' => route('tournaments.show', $tournament),
         ];
     }
 
