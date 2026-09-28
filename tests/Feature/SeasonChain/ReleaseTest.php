@@ -76,6 +76,7 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
     $genesis = SignedEvent::fromInput($events[SeasonChains::GENESIS]->payload());
     $label = SignedEvent::fromInput($events[SeasonRelease::LABEL]->payload());
     $adminList = SignedEvent::fromInput($events[SeasonRelease::ADMIN_LIST]->payload());
+    $announcement = SignedEvent::fromInput($events[SeasonRelease::ANNOUNCEMENT]->payload());
 
     $ladders = NostrEvent::query()->where('kind', Ladders::KIND)->orderBy('d')->pluck('d')->all();
 
@@ -93,6 +94,9 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
         ->and($label->createdAt)->toBeLessThanOrEqual($genesis->createdAt)
         ->and($label->tag('x'))->toBe(SeasonRelease::digest($genesis->content, $genesis->tags))
         ->and($adminList->tagsNamed('p'))->toBe([[$this->board->pubkey]])
+        // No hashtags (a standing rule): the season's calendar event carries no `t`.
+        ->and($announcement->kind)->toBe(31923)
+        ->and($announcement->tagsNamed('t'))->toBe([])
         ->and($adminList->tag('d'))->toBe('esports/'.$this->league->pubkey.'/admins')
         ->and($season->genesis_at->getTimestamp())->toBe($genesis->createdAt)
         ->and($season->ends_at->getTimestamp())->toBe((int) $genesis->tag('ends'))

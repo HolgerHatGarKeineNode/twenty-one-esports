@@ -53,6 +53,9 @@ test('publishing signs the tournament and the league calendar with the league ke
         ->and($tournament->address())->toBe('31923:'.$this->league->pubkey.':'.$tournament->slug)
         ->and($tags)->toContain(['d', $tournament->slug], ['title', $tournament->name], ['location', route('tournaments.show', $tournament)], ['a', '31924:'.$this->league->pubkey.':tournaments', ''])
         ->and(collect($tags)->pluck(0)->all())->toContain('start', 'end', 'D', 'start_tzid', 'alt')
+        // No hashtags (a standing rule): no `t` tag, and no `#` in the text.
+        ->and(collect($tags)->pluck(0)->all())->not->toContain('t')
+        ->and($event->payload()['content'])->not->toContain('#')
         ->and($calendar->payload()['tags'])->toContain(['a', $tournament->address(), ''])
         ->and($event->raw)->not->toContain('bracket');
     Queue::assertPushed(PublishNostrEvent::class, 2);

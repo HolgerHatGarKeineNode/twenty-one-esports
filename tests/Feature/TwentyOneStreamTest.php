@@ -135,7 +135,6 @@ test('the live event puts one m3u8 streaming tag and a four-element host p tag i
             ['starts', '1790000000'],
             ['ends', '1790003600'],
             ['streaming', $url],
-            ['t', 'bitcoin'], ['t', 'esports'], ['t', 'nostr'], ['t', 'einundzwanzig'], ['t', 'gaming'],
             ['p', $this->key->pubkey, '', 'host'],
         ]);
 

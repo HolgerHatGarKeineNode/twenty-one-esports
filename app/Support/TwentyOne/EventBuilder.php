@@ -60,9 +60,10 @@ final class EventBuilder
      * Client rules this enforces (zapstream.md A.1-A.7): exactly one
      * `streaming` tag, its URL ending in `.m3u8` with nothing after it, and
      * the `p` tag with all four elements (Primal reads `t[3]` of every `p`).
-     * `current_participants` only when the viewers were counted.
+     * `current_participants` only when the viewers were counted. No `t`
+     * tag: the league posts no hashtags (a standing rule of this project).
      *
-     * @param  array{d: string, title: string, summary: string, image: string, t?: list<string>}  $stream
+     * @param  array{d: string, title: string, summary: string, image: string}  $stream
      */
     public function liveActivity(array $stream, string $streamingUrl, string $hostPubkey, string $status, int $starts, ?int $ends = null, ?int $currentParticipants = null): Event
     {
@@ -91,10 +92,6 @@ final class EventBuilder
 
         if ($currentParticipants !== null) {
             $tags[] = ['current_participants', (string) max(0, $currentParticipants)];
-        }
-
-        foreach ($stream['t'] ?? [] as $topic) {
-            $tags[] = ['t', $topic];
         }
 
         $tags[] = ['p', $hostPubkey, '', 'host'];

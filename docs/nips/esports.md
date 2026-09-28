@@ -1250,8 +1250,10 @@ states the prizes of its pot (see [Prize pool funding](#prize-pool-funding)).
 | `r` | the rules page |
 | `a` | the league calendar (`31924:<league>:tournaments`), and the ladder the matches are rated on; rev. 7: the ladder only in a rated tournament, see below |
 | `zap` | the pool key, weight `1` (NIP-57 appendix G): zaps go to the pool, not to the league key; rev. 7: only while the tournament has a prize pool, see below; rev. 9: dropped again when the pool closes; rev. 9.1: never, a tournament's pot is its own wallet and takes no zaps |
-| `t` | hashtags, e.g. `esports` and the game |
 | `alt` | NIP-31 text |
+
+No `t` tag: the league posts no hashtags (since 2026-09-28; versions signed before carry `esports` and
+the game, and are replaced by a new version without them).
 
 `content` states format, match size, seeding, how results are reached (players or directors), whether
 the matches are rated, and the prize split in words. **What a tournament event never
@@ -3231,7 +3233,6 @@ bounty with its window for free.
 | `p` | the target, role `target` (NIP-52 participant role) |
 | `a` | the ladder the claim must be played on |
 | `zap` | the pool key, weight `1` |
-| `t` | `esports`, the game, `bounty` |
 | `location`, `alt` | the bounty page; NIP-31 text |
 
 **Claim rule `bounty-v1`.** The bounty goes to the winner of the **first** attestation, in the ladder's
@@ -4811,8 +4812,6 @@ The `zap` tag routes zaps to the pool key.
     ["start_tzid", "Europe/Berlin"],
     ["location", "https://example.org/tournaments/rl-2v2-cup-1"],
     ["r", "https://example.org/tournaments/rl-2v2-cup-1/rules"],
-    ["t", "esports"],
-    ["t", "rocketleague"],
     ["a", "31924:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:tournaments", "wss://relay.example.org"],
     ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:rocket-league/2v2/season-4", "wss://relay.example.org"],
     ["zap", "3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504", "wss://relay.example.org", "1"],
@@ -5223,8 +5222,6 @@ All of it recomputes from relay data alone, on each of the three relays (relay p
     ["start_tzid", "Europe/Berlin"],
     ["location", "https://example.org/"],
     ["r", "https://example.org/rules"],
-    ["t", "esports"],
-    ["t", "season"],
     ["alt", "Calendar event: TWENTY ONE Esports Pre-Season, Block 0 planned for 2026-09-25 15:45 UTC"]
   ],
   "content": "Pre-Season: build your clan, find opponents, mine the first blocks. Looser rules than later seasons.",
@@ -5567,9 +5564,6 @@ required for an attestation after `effective`.
     ["p", "e221ff8c3afc1a9e4a6e1d589cbcb6b85beb93d1beed2f8ce8347876b4c0413e", "wss://relay.example.org", "target"],
     ["a", "32152:8a0f19d2c34bc11582c2ee67470d69379673852cb1939bc9a2eaf81d1ddc4753:chess/blitz/pre-season", "wss://relay.example.org"],
     ["zap", "3fe2a96fc8d3efe65eb05be97ab7b483b73c56118acbae12e75ac950e1d7e504", "wss://relay.example.org", "1"],
-    ["t", "esports"],
-    ["t", "chess"],
-    ["t", "bounty"],
     ["alt", "Esports bounty: beat alice in a rated chess blitz game of the Pre-Season"]
   ],
   "content": "Claim rule bounty-v1 on chess/blitz/pre-season. Paid with the season's settlement; unclaimed, it goes to the league reserve.",

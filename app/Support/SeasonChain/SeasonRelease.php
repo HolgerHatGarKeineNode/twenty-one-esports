@@ -372,8 +372,6 @@ final class SeasonRelease
             ['end', (string) $end],
             ['start_tzid', (string) config('esports.preseason.display_timezone', 'UTC')],
             ['location', (string) config('app.url')],
-            ['t', 'esports'],
-            ['t', 'season'],
             ['alt', 'Calendar event: TWENTY ONE Esports Pre-Season, Block 0 at '.gmdate('Y-m-d H:i', $start).' UTC'],
         ];
     }

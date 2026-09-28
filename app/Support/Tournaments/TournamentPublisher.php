@@ -211,7 +211,8 @@ final class TournamentPublisher
      * day of the timeframe, the ladder `a` only when it was frozen with the
      * first version (rated tournament), and `end` at the pot's close once it
      * closed (P9). No `zap` tag: a tournament pot is its own wallet, never
-     * zapped through the league's pool key.
+     * zapped through the league's pool key. No `t` tag: the league posts no
+     * hashtags (a standing rule of this project, 2026-09-28).
      *
      * @return list<list<string>>
      */
@@ -240,8 +241,6 @@ final class TournamentPublisher
             ['start_tzid', $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : (string) config('esports.preseason.display_timezone', 'UTC')],
             ['location', $page],
             ['r', route('rules')],
-            ['t', 'esports'],
-            ['t', str_replace('-', '', $tournament->game)],
             ['a', Tournament::CALENDAR.':'.$league.':tournaments', ''],
         ];
 
