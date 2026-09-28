@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\File;
  * own 16:9 frame) into one file, `twentyone.stream.cover.path`, which
  * StreamCoverController serves.
  *
- * The slides take turns: the hero of every tournament open for sign-up, then
+ * The slides take turns: the hero of every tournament open for sign-up but
+ * the casual cups (TournamentSlides::featured()), then
  * the prize pot, casual cup, join and ladder teasers. One file is overwritten, nothing piles up; the
  * URL carries the picture's hash (`?v=`), so a changed picture is a new URL
  * for every client cache, and an unchanged one republishes nothing. The live

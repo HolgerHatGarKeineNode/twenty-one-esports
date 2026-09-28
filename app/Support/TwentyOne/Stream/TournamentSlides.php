@@ -127,6 +127,26 @@ class TournamentSlides
     }
 
     /**
+     * The ids of the tournaments that get their own slides (hero, bracket,
+     * the cover): every one but the casual cups, which d2 shows together.
+     *
+     * @param  list<array<string, mixed>>  $frames  frames() of this poll
+     * @return list<int>
+     */
+    public static function featured(array $frames): array
+    {
+        $ids = [];
+
+        foreach ($frames as $frame) {
+            if (($frame['cup'] ?? false) !== true && is_int($frame['id'] ?? null)) {
+                $ids[] = $frame['id'];
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * "6d 06:05:01" up to the deadline, "06:05:01" below a day, "00:00:00" once it passed.
      */
     public static function countdown(int $deadlineMs, int $nowMs): string

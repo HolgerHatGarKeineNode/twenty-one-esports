@@ -241,3 +241,8 @@ test('changed tournaments reach the slide data once the cache period passed, not
         ->and(collect($after)->firstWhere('id', $tournament->id)['roster'][0]['avatar'])->toBe('data:image/jpeg;base64,'.base64_encode('one'))
         ->and(collect($later)->firstWhere('id', $tournament->id)['roster'][0]['avatar'])->toBe('data:image/jpeg;base64,'.base64_encode('two'));
 });
+
+test('the casual cups get no slides of their own; d2 shows them together', function () {
+    expect(TournamentSlides::featured([['id' => 1, 'cup' => true], ['id' => 2, 'cup' => false], ['id' => 3], ['id' => 4, 'cup' => true]]))->toBe([2, 3])
+        ->and(TournamentSlides::featured([]))->toBe([]);
+});

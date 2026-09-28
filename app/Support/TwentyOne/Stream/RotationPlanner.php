@@ -9,17 +9,19 @@ namespace App\Support\TwentyOne\Stream;
  * With games (active, daily included, or ended within the hysteresis the
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
- * the same look when two or more games run, then TEASERS from the pool of
- * thirteen, continuing where the last round stopped. Without games a round is
- * the teasers alone, and every `loopEvery`-th such round (the first one
+ * the same look when two or more games run, then the EVERY_ROUND teasers
+ * (prize pots, casual cups), then TEASERS from the pool of eleven,
+ * continuing where the last round stopped. Without games a round is the
+ * teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
  *
  * Upcoming tournaments (open for sign-up, soonest close first, as the
- * caller orders them) come in every round while there is one: a round with
- * games is MATCH, GALLERY, then TOURNAMENT hero and bracket in the round's
- * look, then the teasers; a round without games that is not the loop is
- * the tournament's hero and bracket and one teaser. Several tournaments
- * take turns, one per round.
+ * caller orders them; the caller leaves the casual cups out, d2 shows them)
+ * come in every round while there is one: a round with games is MATCH,
+ * GALLERY, then TOURNAMENT hero and bracket in the round's look, then the
+ * teasers; a round without games that is not the loop is the tournament's
+ * hero and bracket, the EVERY_ROUND teasers and one teaser. Several
+ * tournaments take turns, one per round.
  *
  * Games have priority: a game that appears during a round without games
  * takes over at the end of the current teaser, and ends the loop at once.
@@ -40,7 +42,10 @@ final class RotationPlanner
 
     public const LOOKS = ['a', 'b', 'c'];
 
-    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd1', 'd2', 'd3', 'd4'];
+    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4'];
+
+    /** Teasers in every round, before the pool's: prize pots (d1), casual cups (d2). */
+    public const EVERY_ROUND = ['d1', 'd2'];
 
     /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4). */
     public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4'];
@@ -62,7 +67,7 @@ final class RotationPlanner
     /** @var array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}|null */
     private ?array $slot = null;
 
-    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int}> the rest of the current round */
+    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string}> the rest of the current round */
     private array $queue = [];
 
     private bool $roundWithGames = false;
@@ -178,6 +183,11 @@ final class RotationPlanner
     private function plan(array $games, array $tournaments): void
     {
         $teasers = array_fill(0, max(1, $this->teasersPerRound), ['kind' => self::TEASER]);
+        $everyRound = [];
+
+        foreach (self::EVERY_ROUND as $scene) {
+            $everyRound[] = ['kind' => self::TEASER, 'scene' => $scene];
+        }
 
         if ($games === []) {
             $this->roundWithGames = false;
@@ -185,9 +195,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->tournamentSlides($this->nextLook(), $tournaments), ['kind' => self::TEASER]];
+                $this->queue = [...$this->tournamentSlides($this->nextLook(), $tournaments), ...$everyRound, ['kind' => self::TEASER]];
             } else {
-                $this->queue = $teasers;
+                $this->queue = [...$everyRound, ...$teasers];
             }
 
             return;
@@ -201,6 +211,7 @@ final class RotationPlanner
             // Skipped when fewer than two games are on show by then (slotFor()).
             ['kind' => self::GALLERY, 'look' => $look],
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
+            ...$everyRound,
             ...$teasers,
         ];
     }
@@ -227,7 +238,7 @@ final class RotationPlanner
     }
 
     /**
-     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int}  $entry
+     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string}  $entry
      * @param  list<array{id: int, blitz: bool}>  $games
      * @param  list<int>  $tournaments
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}|null null when it no longer applies
@@ -248,7 +259,7 @@ final class RotationPlanner
             case self::LOOP:
                 return $this->slot(self::LOOP, null, null, $start + $this->loopSeconds);
             default:
-                $scene = self::TEASERS[$this->teaser++ % count(self::TEASERS)];
+                $scene = $entry['scene'] ?? self::TEASERS[$this->teaser++ % count(self::TEASERS)];
 
                 return $this->slot(self::TEASER, $scene, null, $start + $this->teaserSeconds);
         }

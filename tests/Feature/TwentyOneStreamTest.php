@@ -602,9 +602,9 @@ test('an open tournament brings its slides into the rotation, and their countdow
     $output = Artisan::output();
     $countdowns = array_values(array_unique(file($this->dir.'/countdowns', FILE_IGNORE_NEW_LINES) ?: []));
 
-    expect($output)->toContain('rotation: promo loop', 'rotation: ta1 tournament '.$tournament->id.', rendered in', 'rotation: ta2 tournament '.$tournament->id.', rendered in', 'rotation: a3 teaser')
+    expect($output)->toContain('rotation: promo loop', 'rotation: ta1 tournament '.$tournament->id.', rendered in', 'rotation: ta2 tournament '.$tournament->id.', rendered in', 'rotation: d1 teaser')
         ->and(strpos($output, 'rotation: ta1 tournament'))->toBeLessThan(strpos($output, 'rotation: ta2 tournament'))
-        ->and(strpos($output, 'rotation: ta2 tournament'))->toBeLessThan(strpos($output, 'rotation: a3 teaser'))
+        ->and(strpos($output, 'rotation: ta2 tournament'))->toBeLessThan(strpos($output, 'rotation: d1 teaser'))
         ->and($output)->not->toContain('not built')
         // A render per second while the slide is on: the countdown moves.
         ->and(count($countdowns))->toBeGreaterThanOrEqual(2)
@@ -624,7 +624,7 @@ test('upcoming tournaments that cannot be read leave the rotation to the teasers
     $output = Artisan::output();
 
     expect(substr_count($output, 'upcoming tournaments not read, keeping the last 0: PDOException'))->toBe(1)
-        ->and($output)->toContain('rotation: promo loop', 'rotation: a3 teaser', 'rotation: a4 teaser')
+        ->and($output)->toContain('rotation: promo loop', 'rotation: d1 teaser', 'rotation: d2 teaser')
         ->and($output)->not->toContain(' tournament ');
 });
 
@@ -1013,7 +1013,8 @@ test('a teaser whose numbers change mid-slide is rendered again with the new dat
     config(['twentyone.stream.scene.rsvg_convert' => $this->dir.'/rsvg-convert']);
     shortRotation();
     config(['twentyone.stream.rotation.teaser_seconds' => 4, 'twentyone.stream.stats.cache_seconds' => 1]);
-    // Another process adds a result while the ladder teaser is on: after its first render.
+    // Another process adds a result while the ladder teaser is on: after its first render. It comes
+    // after the loop (1 s) and the pots and cups teasers of every round (4 s each).
     $added = false;
     View::composer('stream.rotation.a3-ladders', function () use (&$added): void {
         if (! $added) {
@@ -1023,7 +1024,7 @@ test('a teaser whose numbers change mid-slide is rendered again with the new dat
         }
     });
 
-    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5.5]);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 13.5]);
     $output = Artisan::output();
     // The ladder teaser's frames, in the order they were sent.
     $ladders = array_values(array_filter(explode('<!--end-->', (string) @file_get_contents($this->dir.'/renders')), fn (string $svg): bool => str_contains($svg, '>Blitz 5+3<') && str_contains($svg, '>Daily<')));

@@ -319,7 +319,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), array_column($tournaments, 'id'));
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments));
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
@@ -602,7 +602,7 @@ class TwentyOneStreamCommand extends Command
     private function advanceCover(StreamCover $cover, SceneSource $source, array $tournaments, array $games, int $more, array $stats, float $now): void
     {
         try {
-            $label = $cover->advance($now, array_column($tournaments, 'id'), fn (string $scene, ?int $tournamentId): array => [
+            $label = $cover->advance($now, TournamentSlides::featured($tournaments), fn (string $scene, ?int $tournamentId): array => [
                 ...$source->rotation($scene, null, $games, $more, (int) ($now * 1000), $stats, collect($tournaments)->firstWhere('id', $tournamentId), $tournaments),
                 'viewers' => null,
             ]);
