@@ -8,6 +8,8 @@ use App\Games\GameRegistry;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\LeagueTime;
+use App\Support\PreSeason;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -249,9 +251,10 @@ final class CasualNotifications
         }
     }
 
+    /** "Di, 29. Sep 2026, 20:00 MESZ": in the recipient's own time zone and language. */
     private function time(CarbonInterface $at, User $player): string
     {
-        return $at->copy()->timezone($player->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i');
+        return LeagueTime::stamp($at, PreSeason::timezoneFor($player), $this->locale($player));
     }
 
     /**

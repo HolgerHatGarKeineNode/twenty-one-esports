@@ -11,6 +11,7 @@ use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
+use App\Support\LeagueTime;
 use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\CasualQueue;
@@ -155,6 +156,21 @@ test('both players get the reminder 15 minutes before and the check-in call 10 m
     expect($scheduler->tick())->toMatchArray(['checkin_opened' => 1])
         ->and($scheduler->tick()['checkin_opened'])->toBe(0)
         ->and(casualAlerts())->toContain([$anna->id, 'casual_checkin'], [$bert->id, 'casual_checkin']);
+});
+
+test('every time in a casual notification is written in the recipient\'s language and time zone', function () {
+    Event::fake([UserNotified::class]);
+    $anna = User::factory()->create(['locale' => 'en', 'timezone' => 'Asia/Tokyo']);
+    $bert = User::factory()->create(['locale' => 'de', 'timezone' => 'America/New_York']);
+    $body = fn (User $user, string $kind): string => Event::dispatched(UserNotified::class)
+        ->map(fn (array $args) => $args[0])->first(fn (UserNotified $event) => $event->userId === $user->id && $event->alert['kind'] === $kind)?->alert['body'] ?? '';
+    $start = now()->addDay()->setTime(20, 0)->getTimestamp();
+
+    $match = app(CasualChallenges::class)->challenge($anna, $bert, 'rocket-league', Platform::Pc, true, [$start], now()->addDay()->setTime(12, 0)->getTimestamp());
+    $match = app(CasualChallenges::class)->accept($match, $bert, $start, Platform::Pc, true);
+
+    expect($body($bert, 'casual_challenge'))->toContain(LeagueTime::stamp($match->respond_by, 'America/New_York', 'de'))
+        ->and($body($anna, 'casual_challenge_answer'))->toContain(LeagueTime::stamp($match->start_at, 'Asia/Tokyo', 'en'));
 });
 
 test('the check-in opens 10 minutes before, and the match starts once both are in', function () {
