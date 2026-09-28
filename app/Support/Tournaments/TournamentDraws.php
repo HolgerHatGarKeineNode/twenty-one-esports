@@ -28,7 +28,8 @@ use Throwable;
  *    order), and the P8a engine builds and stores the bracket with the
  *    block hash as its seed. Then the first matches start (TournamentRunner).
  *
- * Fewer than two entries after the close calls the tournament off. Fail
+ * Fewer than two entries after the close calls the tournament off, with a
+ * new version of its 31923 that says so (as an admin's abort). Fail
  * closed: without the league key or a readable block nothing moves; the
  * scheduler tries again (`tournaments:tick`).
  */
@@ -40,6 +41,7 @@ final class TournamentDraws
         private BitcoinBlocks $blocks,
         private TournamentBrackets $brackets,
         private TournamentRunner $runner,
+        private TournamentPublisher $publisher,
     ) {}
 
     /**
@@ -119,6 +121,8 @@ final class TournamentDraws
 
             if ($entries < 2) {
                 $locked->forceFill(['status' => TournamentStatus::Cancelled])->save();
+                // A new version of the 31923 says it is called off (NIP-52 has no status for it).
+                $this->publisher->republish($locked);
 
                 return true;
             }
@@ -203,7 +207,7 @@ final class TournamentDraws
         }
 
         $started = DB::transaction(function () use ($tournament, $hash): bool {
-            $locked = Tournament::query()->lockForUpdate()->findOrFail($tournament->id);
+            $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id);
 
             if ($locked->status !== TournamentStatus::Drawing || $locked->participants()->exists()) {
                 return false;
@@ -213,6 +217,7 @@ final class TournamentDraws
 
             if ($locked->participants()->count() < 2) {
                 $locked->forceFill(['status' => TournamentStatus::Cancelled, 'draw_hash' => $hash])->save();
+                $this->publisher->republish($locked);
 
                 return false;
             }

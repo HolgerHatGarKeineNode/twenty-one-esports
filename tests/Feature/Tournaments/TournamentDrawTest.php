@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TournamentStatus;
+use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -122,7 +123,57 @@ test('without a readable block the draw waits, and without two entries the tourn
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Signup);
 
     $up = true;
+    $first = $tournament->event_id;
+    $this->travel(1)->seconds();
     $this->artisan('tournaments:advance')->assertSuccessful();
 
     expect($tournament->refresh()->status)->toBe(TournamentStatus::Cancelled);
+    drawCalledOffPublished($tournament, $first);
+});
+
+/** A new version of the tournament's 31923 says it is called off (NIP-52 has no status for it), and the calendar follows. */
+function drawCalledOffPublished(Tournament $tournament, ?int $first): void
+{
+    $event = $tournament->refresh()->event;
+
+    expect($event->id)->not->toBe($first)
+        ->and($event->kind)->toBe(Tournament::CALENDAR_EVENT)
+        ->and(NostrEvent::query()->where('kind', Tournament::CALENDAR_EVENT)->where('d', $tournament->slug)->count())->toBe(2)
+        ->and(collect($event->payload()['tags'])->firstWhere(0, 'title')[1])->toStartWith('Called off: ')
+        ->and($event->payload()['content'])->toStartWith('This tournament was called off by the league.');
+
+    Queue::assertPushed(PublishTournamentCalendar::class);
+}
+
+test('a draw that leaves fewer than two participants calls the tournament off and says so on Nostr', function () {
+    $hash = hash('sha256', 'block 900001');
+    $tip = 900000;
+    Http::fake(function ($request) use (&$tip, $hash) {
+        return match (true) {
+            str_ends_with($request->url(), '/blocks/tip/height') => Http::response((string) $tip),
+            str_ends_with($request->url(), '/block-height/900001') => Http::response($hash),
+            str_ends_with($request->url(), '/block/'.$hash) => Http::response(['timestamp' => now()->addMinutes(10)->getTimestamp()]),
+            default => Http::response('', 404),
+        };
+    });
+
+    $tournament = openTournament(['capacity' => 4], rocketLeague: true);
+    [$lineupA, $captainA, $signerA] = keyedLineup();
+    [$lineupB, $captainB, $signerB] = keyedLineup();
+    lineupSignup($tournament, $lineupA, $captainA, $signerA);
+    $gone = lineupSignup($tournament, $lineupB, $captainB, $signerB);
+
+    $this->travel(25)->hours();
+    $draws = app(TournamentDraws::class);
+    expect($draws->close($tournament->refresh()))->toBeTrue();
+
+    // The second entry is gone before the block (an admin removed it).
+    $gone->forceFill(['removed_at' => now()])->save();
+    $first = $tournament->refresh()->event_id;
+    $this->travel(1)->seconds();
+    $tip = 900006;
+
+    expect($draws->resolve($tournament->refresh()))->toBeFalse()
+        ->and($tournament->refresh()->status)->toBe(TournamentStatus::Cancelled);
+    drawCalledOffPublished($tournament, $first);
 });
