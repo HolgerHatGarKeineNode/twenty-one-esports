@@ -7,6 +7,7 @@ use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 use Database\Factories\SeriesMatchFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -457,11 +458,11 @@ class SeriesMatch extends Model
 
     /**
      * A casual deadline in the unit its key names: the value pinned at the
-     * pairing, else `esports.casual.<key>`.
+     * pairing, else `esports.casual.<key>` as in force now (LeagueSettings).
      */
     public function casualSetting(string $key): int
     {
-        return (int) ($this->casual[$key] ?? config('esports.casual.'.$key));
+        return (int) ($this->casual[$key] ?? LeagueSettings::get('esports.casual.'.$key));
     }
 
     public function readyAt(string $side): ?CarbonInterface

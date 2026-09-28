@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonImmutable;
 
 /**
@@ -37,7 +38,7 @@ final class Estimator
         $milestones = config('season.estimator.milestones');
 
         return new self(
-            (int) config('season.estimator.window_days'),
+            (int) LeagueSettings::get('season.estimator.window_days'),
             $milestones,
             (int) config('season.estimator.min_weeks'),
             (int) config('season.estimator.max_weeks'),

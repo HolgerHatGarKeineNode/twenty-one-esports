@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\CasualNotifications;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -157,7 +158,7 @@ final class CasualMatches
      */
     public function lockedUntil(User $user): ?CarbonInterface
     {
-        $config = (array) config('esports.casual.lock');
+        $config = (array) LeagueSettings::get('esports.casual.lock');
         $noshows = max(1, (int) ($config['noshows'] ?? 2));
 
         // A casual cup's no-shows are the cup's business (P25 S3): they never lock the queue.
@@ -218,7 +219,7 @@ final class CasualMatches
     public function create(User $challenger, User $challenged, string $game, string $origin, array $choices, ?User $createdBy = null): SeriesMatch
     {
         $now = now();
-        $config = (array) config('esports.casual');
+        $config = (array) LeagueSettings::get('esports.casual');
 
         $match = SeriesMatch::query()->create([
             ...$this->attributes($challenger, $challenged, $game, $origin, $createdBy),
@@ -300,7 +301,7 @@ final class CasualMatches
      */
     public static function pinned(): array
     {
-        $config = (array) config('esports.casual');
+        $config = (array) LeagueSettings::get('esports.casual');
 
         return array_map(intval(...), array_intersect_key($config, array_flip([
             'ready_seconds', 'lobby_minutes', 'join_minutes', 'contest_minutes', 'report_minutes', 'confirm_minutes', 'checkin_before_minutes', 'checkin_after_minutes',

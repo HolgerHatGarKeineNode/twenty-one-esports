@@ -22,6 +22,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Weekly events (P10): recurring slots; the scheduler dates them (events:schedule-weekly).
     Route::livewire('events', 'pages::admin.events')->name('events');
 
+    // League settings (P44): the operational values an admin changes, with their log.
+    Route::livewire('settings', 'pages::admin.settings')->name('settings');
+
     // Trust (P7d): the reports the trust job read, dismissals and exclusions.
     Route::livewire('trust', 'pages::admin.trust')->name('trust');
 

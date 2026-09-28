@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualMatches;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonInterface;
 
 /**
@@ -212,7 +213,7 @@ final class ChessQueue
      */
     private function pairingLimitReached(User $a, User $b, bool $rated): bool
     {
-        $limit = config('esports.chess.pairing_limit_per_day.'.($rated ? 'rated' : 'casual'));
+        $limit = LeagueSettings::get('esports.chess.pairing_limit_per_day.'.($rated ? 'rated' : 'casual'));
 
         if ($limit === null) {
             return false;

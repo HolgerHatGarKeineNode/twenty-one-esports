@@ -375,7 +375,7 @@ new class extends Component
             @elseif ($locked)
                 <p class="m-0 flex items-center gap-3 rounded-md bg-loss-tint px-4 py-3 text-[13px] leading-normal" data-test="casual-locked">
                     <x-icon name="lock" :size="18" class="shrink-0 text-loss" />
-                    <span><b class="text-ink">{{ __('You can play again at :time.', ['time' => $locked->copy()->timezone($zone)->format('H:i')]) }}</b> <span class="text-ink-2">{{ __('After :noshows missed matches within :hours hours, casual 1v1 pauses for :minutes minutes.', ['noshows' => (int) config('esports.casual.lock.noshows'), 'hours' => (int) config('esports.casual.lock.window_hours'), 'minutes' => (int) config('esports.casual.lock.minutes')]) }}</span></span>
+                    <span><b class="text-ink">{{ __('You can play again at :time.', ['time' => $locked->copy()->timezone($zone)->format('H:i')]) }}</b> <span class="text-ink-2">{{ __('After :noshows missed matches within :hours hours, casual 1v1 pauses for :minutes minutes.', ['noshows' => (int) \App\Support\Settings\LeagueSettings::get('esports.casual.lock.noshows'), 'hours' => (int) \App\Support\Settings\LeagueSettings::get('esports.casual.lock.window_hours'), 'minutes' => (int) \App\Support\Settings\LeagueSettings::get('esports.casual.lock.minutes')]) }}</span></span>
                 </p>
             @endif
 

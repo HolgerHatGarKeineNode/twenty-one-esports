@@ -26,6 +26,7 @@ final class AdminNavigation
         'seasons' => 'league',
         'disputes' => 'league',
         'events' => 'league',
+        'settings' => 'league',
         'tournaments' => 'tournaments',
         'payouts' => 'tournaments',
         'admins' => 'people',
@@ -68,6 +69,7 @@ final class AdminNavigation
                 self::item('seasons', __('Seasons'), route('admin.season')),
                 self::item('disputes', __('Disputes'), route('admin.disputes'), $openCases),
                 self::item('events', __('Weekly events'), route('admin.events')),
+                self::item('settings', __('League settings'), route('admin.settings')),
             ]],
             ['key' => 'tournaments', 'label' => self::groupLabel('tournaments'), 'items' => [
                 // Not „Tournaments“ again: the group already says it, the strip would read it twice.

@@ -208,5 +208,8 @@ test('the queries do not grow with entrants, boards, results, newcomers or ladde
     expect($many)->toBe($few)->and($few)->toBeLessThanOrEqual(HOME_QUERY_BUDGET);
 });
 
-/** Measured 2026-09-27 for a guest with three open tournaments (one with a pot): 46 queries, shell included; the rest is headroom for the shell. */
-const HOME_QUERY_BUDGET = 50;
+/**
+ * Measured 2026-09-27 for a guest with three open tournaments (one with a pot): 46 queries, shell included; the rest is headroom for the shell.
+ * 51 since 2026-09-28 (P44): the league settings in force are one more query per request (LeagueSettings::overrides()), the headroom was used up.
+ */
+const HOME_QUERY_BUDGET = 51;

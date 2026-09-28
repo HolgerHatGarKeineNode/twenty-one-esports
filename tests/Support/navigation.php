@@ -84,6 +84,7 @@ const NAV_PAGES = [
     'admin.payouts' => ['roles' => ['admin'], 'max' => 2],
     'admin.season' => ['roles' => ['admin'], 'max' => 2],
     'admin.events' => ['roles' => ['admin'], 'max' => 2],
+    'admin.settings' => ['roles' => ['admin'], 'max' => 2],
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
     'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],

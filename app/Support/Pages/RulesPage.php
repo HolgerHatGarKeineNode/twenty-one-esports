@@ -17,6 +17,7 @@ use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentDeadlines;
 
@@ -207,7 +208,7 @@ final class RulesPage
      */
     private static function casual(): array
     {
-        $c = (array) config('esports.casual');
+        $c = (array) LeagueSettings::get('esports.casual');
         $games = implode(', ', array_map(GameNames::game(...), (array) $c['games']));
         $excluded = collect((array) $c['crossplay_excluded'])->map(fn (array $platforms, string $game) => GameNames::game($game).': '.implode(', ', $platforms))->implode('; ');
 
@@ -333,7 +334,7 @@ final class RulesPage
      */
     private static function cups(): array
     {
-        $c = (array) config('esports.casual_cups');
+        $c = (array) LeagueSettings::get('esports.casual_cups');
         $e = (array) $c['evening'];
         $sizes = (array) $c['sizes'];
         $slots = array_map(fn (array $region): array => [

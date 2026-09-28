@@ -13,6 +13,7 @@ use App\Support\Prizes\WalletPrizePool;
 use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\Wallet\NwcTransport;
@@ -124,9 +125,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
 
-        // The rating settings are looked up once per request (RatingSettings); a
-        // queue worker keeps one request for its whole life, so once per job.
-        Event::listen(JobProcessing::class, fn () => RatingSettings::forget());
+        // The rating and league settings are looked up once per request
+        // (RatingSettings, LeagueSettings); a queue worker keeps one request
+        // for its whole life, so once per job.
+        Event::listen(JobProcessing::class, function (): void {
+            RatingSettings::forget();
+            LeagueSettings::forget();
+        });
 
         // `composer dev` also runs the scheduler: the chess flag sweep
         // (routes/console.php) is part of how a clock runs out.

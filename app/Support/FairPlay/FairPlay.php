@@ -7,6 +7,7 @@ use App\Models\FalseReport;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\LeagueTime;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonImmutable;
 
 /**
@@ -180,17 +181,17 @@ final class FairPlay
 
     public static function threshold(): int
     {
-        return max(1, (int) config('esports.fair_play.false_reports', 2));
+        return max(1, (int) LeagueSettings::get('esports.fair_play.false_reports'));
     }
 
     public static function windowDays(): int
     {
-        return max(1, (int) config('esports.fair_play.window_days', 30));
+        return max(1, (int) LeagueSettings::get('esports.fair_play.window_days'));
     }
 
     public static function lockDays(): int
     {
-        return max(1, (int) config('esports.fair_play.lock_days', 7));
+        return max(1, (int) LeagueSettings::get('esports.fair_play.lock_days'));
     }
 
     /**

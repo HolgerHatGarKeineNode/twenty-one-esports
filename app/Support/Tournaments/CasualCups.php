@@ -16,6 +16,7 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentRound;
 use App\Models\TournamentSignup;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\Settings\LeagueSettings;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -129,7 +130,7 @@ final class CasualCups
     {
         $regions = [];
 
-        foreach ((array) config('esports.casual_cups.regions', []) as $key => $region) {
+        foreach ((array) LeagueSettings::get('esports.casual_cups.regions') as $key => $region) {
             $region = (array) $region;
             $timezone = (string) ($region['timezone'] ?? '');
             $weekday = strtolower((string) ($region['weekday'] ?? ''));
@@ -187,7 +188,7 @@ final class CasualCups
 
     public static function minSignupHours(): int
     {
-        return max(0, (int) config('esports.casual_cups.min_signup_hours', 48));
+        return max(0, (int) LeagueSettings::get('esports.casual_cups.min_signup_hours'));
     }
 
     /**
@@ -225,7 +226,7 @@ final class CasualCups
      */
     public static function sizes(): array
     {
-        $sizes = array_values(array_unique(array_filter(array_map(intval(...), (array) config('esports.casual_cups.sizes', [4, 8, 16])), fn (int $size): bool => $size >= 2)));
+        $sizes = array_values(array_unique(array_filter(array_map(intval(...), (array) LeagueSettings::get('esports.casual_cups.sizes')), fn (int $size): bool => $size >= 2)));
         sort($sizes);
 
         return $sizes === [] ? [16] : $sizes;
@@ -376,7 +377,7 @@ final class CasualCups
      */
     public static function eveningStart(CarbonInterface $closedAt, ?string $timezone = null): CarbonImmutable
     {
-        $evening = (array) config('esports.casual_cups.evening', []);
+        $evening = (array) LeagueSettings::get('esports.casual_cups.evening');
         [$hour, $minute] = array_map(intval(...), explode(':', (string) ($evening['start'] ?? '20:00')) + [1 => '0']);
 
         return CarbonImmutable::instance($closedAt)->setTimezone($timezone ?? self::defaultTimezone())

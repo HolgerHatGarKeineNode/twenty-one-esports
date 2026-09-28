@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Support\LeagueTime;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentSignups;
 use Carbon\CarbonImmutable;
@@ -93,7 +94,7 @@ class FreePlaceNotes
      */
     public function due(CarbonImmutable $now): array
     {
-        $perRun = max(0, (int) config('esports.stream_bot.free_places.per_run', 3));
+        $perRun = max(0, (int) LeagueSettings::get('esports.stream_bot.free_places.per_run'));
         $longest = max([0, ...$this->slotHours(false), ...$this->slotHours(true)]);
 
         if ($perRun === 0 || $longest === 0) {
@@ -298,7 +299,7 @@ class FreePlaceNotes
      */
     private function slotHours(bool $cup): array
     {
-        $hours = array_map('intval', (array) config('esports.stream_bot.free_places.'.($cup ? 'cup_slots_hours' : 'special_slots_hours'), []));
+        $hours = array_map('intval', (array) LeagueSettings::get('esports.stream_bot.free_places.'.($cup ? 'cup_slots_hours' : 'special_slots_hours')));
         $hours = array_values(array_unique(array_filter($hours, fn (int $slot): bool => $slot > 0)));
         rsort($hours);
 
@@ -307,7 +308,7 @@ class FreePlaceNotes
 
     private function stopMinutes(): int
     {
-        return max(0, (int) config('esports.stream_bot.free_places.stop_before_close_minutes', 60));
+        return max(0, (int) LeagueSettings::get('esports.stream_bot.free_places.stop_before_close_minutes'));
     }
 
     /** A claim older than this is released: its run failed or crashed. */
