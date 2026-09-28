@@ -9,6 +9,7 @@ use App\Support\Nostr\Blockpile;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\TwentyOne\Stream\TournamentSlides;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Tests\Support\TestSigner;
@@ -246,4 +247,20 @@ test('changed tournaments reach the slide data once the cache period passed, not
 test('the casual cups get no slides of their own; d2 shows them together', function () {
     expect(TournamentSlides::featured([['id' => 1, 'cup' => true], ['id' => 2, 'cup' => false], ['id' => 3], ['id' => 4, 'cup' => true]]))->toBe([2, 3])
         ->and(TournamentSlides::featured([]))->toBe([]);
+});
+
+test('a casual cup shows its times in its region\'s zone: the US cup at 8 pm Eastern, the EU cup at 8 pm Berlin', function () {
+    // Stored in UTC, as the app does: 20:00 in New York is 00:00 UTC, 20:00 in Berlin 18:00 UTC.
+    $usStart = CarbonImmutable::parse('2026-10-03 20:00', 'America/New_York')->utc();
+    $euStart = CarbonImmutable::parse('2026-10-03 20:00', 'Europe/Berlin')->utc();
+    $us = openTournament(['cup_series' => 'chess-us', 'starts_at' => $usStart, 'signup_closes_at' => $usStart]);
+    $eu = openTournament(['cup_series' => 'chess-eu', 'starts_at' => $euStart, 'signup_closes_at' => $euStart]);
+    $special = openTournament(['starts_at' => $usStart, 'signup_closes_at' => $usStart->subHour()]);
+    $slides = app(TournamentSlides::class);
+    $now = (int) now()->getTimestampMs();
+
+    expect($slides->data($us, $now))->toMatchArray(['startsAt' => 'Sat 3 Oct, 20:00 EDT', 'region' => 'US'])
+        ->and($slides->data($eu, $now))->toMatchArray(['startsAt' => 'Sat 3 Oct, 20:00 CEST', 'region' => 'EU'])
+        // Every other tournament stays in the league's zone.
+        ->and($slides->data($special, $now)['startsAt'])->toBe('Sun 4 Oct, 02:00 CEST');
 });

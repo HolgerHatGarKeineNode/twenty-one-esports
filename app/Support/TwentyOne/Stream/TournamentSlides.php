@@ -174,7 +174,8 @@ class TournamentSlides
      */
     private function snapshot(Tournament $tournament): array
     {
-        $timezone = (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
+        // A casual cup shows its times in its region's zone (the US cups at 8 pm Eastern), every other tournament in the league's.
+        $timezone = $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
         $landing = new TournamentLanding($tournament, null);
         $places = $landing->places();
         $countdown = $landing->countdown();
