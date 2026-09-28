@@ -32,7 +32,8 @@ use Livewire\Component;
  * Making the link opens its landing page, where it is copied and shared.
  * Invite links are casual and allowed before Block 0: nothing to gate here.
  */
-new class extends Component {
+new class extends Component
+{
     #[Locked]
     public string $game = 'chess';
 
@@ -175,6 +176,8 @@ new class extends Component {
         default => '',
     };
     $colorLabel = ['random' => __('Random'), 'white' => __('White'), 'black' => __('Black')];
+    // A game page (P26) keeps the module to one row below sm in every state: heading and button, the text from sm.
+    $slim = ($type !== null && $compact) || $place === 'game';
 @endphp
 
 {{-- A hidden module keeps its root (Livewire needs one) but takes no place, not even a flex gap. --}}
@@ -185,12 +188,12 @@ new class extends Component {
              data-test="invite-module" data-place="{{ $place }}" data-state="{{ $state }}">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
             {{-- The icon centres on a lone heading (compact, below sm) and tops a heading with its text. --}}
-            <span @class(['flex min-w-0 grow gap-3', 'items-center sm:items-start' => $type !== null && $compact, 'items-start' => ! ($type !== null && $compact)])>
+            <span @class(['flex min-w-0 grow gap-3', 'items-center sm:items-start' => $slim, 'items-start' => ! $slim])>
                 <span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-btc-tint text-btc" aria-hidden="true"><x-icon name="link" :size="20" /></span>
                 <span class="flex min-w-0 flex-col gap-1">
                     <h2 id="{{ $id }}-h" class="m-0 font-display text-base leading-[1.25] font-bold break-words">{{ $heading }}</h2>
                     {{-- Below sm the row stays one heading and one button; a link-making player reads this in the options. --}}
-                    <span @class(['max-w-[72ch] text-[13px] leading-normal text-ink-2', 'max-sm:hidden' => $type !== null && $compact])>{{ $text }}</span>
+                    <span @class(['max-w-[72ch] text-[13px] leading-normal text-ink-2', 'max-sm:hidden' => $slim])>{{ $text }}</span>
                 </span>
             </span>
 

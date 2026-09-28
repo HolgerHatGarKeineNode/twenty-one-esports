@@ -54,9 +54,9 @@ test('every game page shows its own next tournament near the top: name, start wi
         // Near the top: before the page's first section below it.
         ->and(strpos($html, 'data-test="next-tournament"'))->toBeLessThan(strpos($html, $section));
 })->with([
-    'rocket league' => ['/games/rocket-league', 'rocket-league', '3v3', 'aria-labelledby="rl-hr"'],
-    'ea sports fc 26' => ['/games/ea-sports-fc-26', 'ea-sports-fc-26', '1v1', 'aria-labelledby="rl-hr"'],
-    'ea sports fc 27' => ['/games/ea-sports-fc-27', 'ea-sports-fc-27', '1v1', 'aria-labelledby="rl-hr"'],
+    'rocket league' => ['/games/rocket-league', 'rocket-league', '3v3', 'data-test="game-matches"'],
+    'ea sports fc 26' => ['/games/ea-sports-fc-26', 'ea-sports-fc-26', '1v1', 'data-test="game-matches"'],
+    'ea sports fc 27' => ['/games/ea-sports-fc-27', 'ea-sports-fc-27', '1v1', 'data-test="game-matches"'],
     'chess' => ['/chess', 'chess', 'blitz', 'data-test="lobby-daily"'],
 ]);
 
