@@ -31,7 +31,8 @@ use Livewire\Component;
  * has one. There is no balance check (user, 2026-09-28): a payment the
  * wallet cannot make fails with "top up the payout wallet" and is retried.
  * Admins only (gate `admin`, as tournament payouts), on mount and in every
- * action, and again in SeasonSettlement.
+ * action, and again in SeasonSettlement; voiding a block and approving the
+ * list are the board's (P39), shown to other admins without the controls.
  */
 new class extends Component {
     #[Locked]
@@ -202,6 +203,7 @@ new class extends Component {
     $input = 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-[13px] text-ink';
     $address = fn (bool $has): string => $has ? '✓ '.__('has address') : __('missing');
     $blocker = $approved ? null : app(SeasonSettlement::class)->blocker($season);
+    $isBoard = \App\Support\Board::contains((string) auth()->user()?->pubkey);
 @endphp
 
 <div class="flex flex-col gap-4" data-test="season-settlement" data-approved="{{ $approved ? 'yes' : 'no' }}">
@@ -281,7 +283,7 @@ new class extends Component {
             <p class="m-0 text-[13px] text-ink-2">{{ __('No block is voided.') }}</p>
         @endforelse
 
-        @if ($reviewOpen)
+        @if ($reviewOpen && $isBoard)
             <form wire:submit="void" wire:confirm="{{ __('Void this block? The correction is published on Nostr with its reason and cannot be undone.') }}" class="grid grid-cols-1 gap-3 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-end" data-test="void-form">
                 <label class="flex flex-col gap-1.5 text-xs text-ink-2">{{ __('Block height') }}
                     <input type="text" inputmode="numeric" wire:model="voidHeight" class="{{ $input }}" data-test="void-height">
@@ -297,6 +299,8 @@ new class extends Component {
     @if (! $approved)
         @if ($blocker)
             <p class="m-0 text-[13px] text-loss" data-test="settlement-blocker">{{ $blocker }}</p>
+        @elseif (! $isBoard)
+            <p class="m-0 text-[13px] text-ink-2" data-test="settlement-board-only">{{ __('Voiding blocks and approving the list is for the board (the public admin list). Paying is open to every admin.') }}</p>
         @else
             <div><x-button wire:click="approve" wire:confirm="{{ __('Approve the list? The review closes: no block can be voided after it.') }}" data-test="approve-settlement">{{ __('Approve the list') }}</x-button></div>
         @endif

@@ -10,6 +10,7 @@ use App\Models\SeasonBlockVoid;
 use App\Models\SeasonPayout;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Board;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\LightningAddress;
@@ -55,7 +56,10 @@ use Throwable;
  * stay in the reserve. A payout that has an approved address but failed at
  * the wallet is the league's to retry and does not run out.
  *
- * Admins only (gate `admin`), as for tournament payouts (PayoutApproval).
+ * Voiding a block and approving the list are the board's (the public
+ * admin list, Board), like the other chain actions (P39); approving an
+ * address and paying are any admin's (gate `admin`), as for tournament
+ * payouts (PayoutApproval).
  * Fail closed: without the league key nothing is voided or approved, and a
  * replay that differs from the stored chain blocks the approval.
  */
@@ -189,7 +193,7 @@ final class SeasonSettlement
      */
     public function void(Season $season, User $admin, int $height, string $reason): SeasonBlockVoid
     {
-        self::assertAdmin($admin);
+        self::assertBoard($admin);
         $reason = trim($reason);
 
         if ($reason === '' || mb_strlen($reason) > self::REASON_MAX) {
@@ -267,7 +271,7 @@ final class SeasonSettlement
      */
     public function approve(Season $season, User $admin): Season
     {
-        self::assertAdmin($admin);
+        self::assertBoard($admin);
 
         if (($blocker = $this->blocker($season)) !== null) {
             throw new SeasonSettlementRefused($blocker);
@@ -444,6 +448,14 @@ final class SeasonSettlement
         } catch (Throwable $exception) {
             // A notice that fails never undoes the approval.
             report($exception);
+        }
+    }
+
+    /** @throws SeasonSettlementRefused */
+    private static function assertBoard(User $admin): void
+    {
+        if (! Board::contains($admin->pubkey)) {
+            throw new SeasonSettlementRefused(__('Only a board member on the public admin list can void blocks and approve the settlement list.'));
         }
     }
 

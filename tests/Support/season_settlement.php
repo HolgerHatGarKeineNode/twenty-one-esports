@@ -66,3 +66,12 @@ function settlementWallet(): FakeNwcWallet
 
     return $wallet;
 }
+
+/** A board member (the public admin list, `esports.board`): voids blocks and approves the settlement list. */
+function aBoardMember(): User
+{
+    $board = User::factory()->create();
+    config(['esports.board' => [...(array) config('esports.board', []), $board->npub]]);
+
+    return $board;
+}

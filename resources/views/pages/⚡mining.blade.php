@@ -66,10 +66,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     }
 
     /**
-     * The ended season's corrections and paid payouts (P37), null while a
-     * season is live or before Block 0.
+     * The ended season's corrections, paid payouts and what is owed (P37),
+     * null while a season is live or before Block 0. Before the approval
+     * `owed` is the review's replay with the voids so far (it may still
+     * change); after it, the approved payouts. Amounts owed or paid only,
+     * never a wallet balance.
      *
-     * @return array{paid: Collection<int, SeasonPayout>, voids: Collection<int, SeasonBlockVoid>}|null
+     * @return array{paid: Collection<int, SeasonPayout>, voids: Collection<int, SeasonBlockVoid>, approved: bool, owed: int, owed_players: int, paid_sats: int}|null
      */
     #[Computed]
     public function settlement(): ?array
@@ -80,7 +83,20 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             return null;
         }
 
-        return ['paid' => SeasonSettlement::paid($season), 'voids' => $season->blockVoids()->orderBy('height')->get()];
+        $paid = SeasonSettlement::paid($season);
+        $approved = $season->settlement_approved_at !== null;
+
+        if ($approved) {
+            $owed = (int) $season->payouts()->sum('amount_sats');
+            $players = $season->payouts()->count();
+        } else {
+            $rows = array_filter(app(SeasonSettlement::class)->review($season)['rows'], fn (array $row): bool => $row['payout'] > 0);
+            $owed = array_sum(array_column($rows, 'payout'));
+            $players = count($rows);
+        }
+
+        return ['paid' => $paid, 'voids' => $season->blockVoids()->orderBy('height')->get(), 'approved' => $approved,
+            'owed' => $owed, 'owed_players' => $players, 'paid_sats' => (int) $paid->sum('amount_sats')];
     }
 
     /**
@@ -342,10 +358,17 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <dl class="m-0 flex flex-col text-[13px]">
                     @foreach ([
                         [__('Season end'), $date($chain['season']->ends_at)],
-                        [__('Mined, waiting for the review'), __(':sats sats, :players', ['sats' => $sats($chain['mined']), 'players' => trans_choice(':count player|:count players', $chain['miner_count'])])],
+                        ...match (true) {
+                            $settlement === null => [[__('Mined so far, paid after the review'), __(':sats sats, :players', ['sats' => $sats($chain['mined']), 'players' => trans_choice(':count player|:count players', $chain['miner_count'])]), 'mined']],
+                            ! $settlement['approved'] => [[__('Waiting for the review, corrections may still lower it'), __(':sats sats, :players', ['sats' => $sats($settlement['owed']), 'players' => trans_choice(':count player|:count players', $settlement['owed_players'])]), 'review']],
+                            default => [
+                                [__('Approved to pay'), __(':sats sats, :players', ['sats' => $sats($settlement['owed']), 'players' => trans_choice(':count player|:count players', $settlement['owed_players'])]), 'approved'],
+                                [__('Paid so far'), __(':sats sats, :players', ['sats' => $sats($settlement['paid_sats']), 'players' => trans_choice(':count player|:count players', $settlement['paid']->count())]), 'paid'],
+                            ],
+                        },
                         [__('Without a valid address'), __('the sats wait :days days for a claim, then go to the reserve', ['days' => intdiv($chain['season']->claim_seconds, 86400)])],
-                    ] as [$term, $value])
-                        <div class="flex flex-col gap-0.5 border-b border-hairline py-2.5 last:border-0"><dt class="text-xs text-ink-2">{{ $term }}</dt><dd class="m-0">{{ $value }}</dd></div>
+                    ] as $item)
+                        <div class="flex flex-col gap-0.5 border-b border-hairline py-2.5 last:border-0" @isset($item[2]) data-test="payouts-{{ $item[2] }}" @endisset><dt class="text-xs text-ink-2">{{ $item[0] }}</dt><dd class="m-0">{{ $item[1] }}</dd></div>
                     @endforeach
                 </dl>
             </section>

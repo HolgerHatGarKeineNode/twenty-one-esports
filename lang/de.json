@@ -4558,7 +4558,6 @@
     "Halving": "Halving",
     "League reserve": "Liga-Reserve",
     "Mined in total": "Geschürft gesamt",
-    "Mined, waiting for the review": "Geschürft, wartet auf die Prüfung",
     "mining stopped :when": "Mining gestoppt :when",
     "No block was mined this season.": "In dieser Season wurde kein Block geschürft.",
     "Nobody is paid during the season. After the season review each player is paid once, to their Lightning address.": "Während der Season wird niemand ausgezahlt. Nach der Season-Prüfung wird jeder Spieler einmal an seine Lightning-Adresse ausgezahlt.",
@@ -5074,5 +5073,11 @@
     "Payout event": "Payout-Event",
     "No season payout has been paid yet.": "Bisher wurde keine Season-Auszahlung gezahlt.",
     "Season payout": "Season-Auszahlung",
-    "your season sats wait for a Lightning address in your Nostr profile": "deine Season-sats warten auf eine Lightning-Adresse in deinem Nostr-Profil"
+    "your season sats wait for a Lightning address in your Nostr profile": "deine Season-sats warten auf eine Lightning-Adresse in deinem Nostr-Profil",
+    "Mined so far, paid after the review": "Bisher geschürft, ausgezahlt nach der Prüfung",
+    "Waiting for the review, corrections may still lower it": "Wartet auf die Prüfung, Korrekturen können den Betrag noch senken",
+    "Approved to pay": "Zur Auszahlung freigegeben",
+    "Paid so far": "Bisher ausgezahlt",
+    "Only a board member on the public admin list can void blocks and approve the settlement list.": "Nur ein Vorstandsmitglied auf der öffentlichen Admin-Liste kann Blöcke für ungültig erklären und die Abrechnungsliste freigeben.",
+    "Voiding blocks and approving the list is for the board (the public admin list). Paying is open to every admin.": "Blöcke für ungültig erklären und die Liste freigeben ist Sache des Vorstands (der öffentlichen Admin-Liste). Auszahlen kann jeder Admin."
 }

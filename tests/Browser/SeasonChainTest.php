@@ -580,7 +580,7 @@ test('AdminSeason P37: an admin voids a block, approves the settlement and pays 
     Http::swap(new HttpFactory);
     $wallet = fakeWallet();
     fakeLightningAddresses($wallet);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     $admin->forceFill(['name' => 'satsjaeger', 'locale' => 'en'])->save();
     $alice = settlementPlayer('Alice');
     $bob = settlementPlayer('Bob');

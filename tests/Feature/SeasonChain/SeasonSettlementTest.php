@@ -36,7 +36,7 @@ test('the review replays the chain: per player the mined sats of their blocks, a
     $bob = settlementPlayer('Bob', null);
     $bob->forceFill(['lud16' => null])->save();
     $season = settledSeason([[$alice, 1], [$alice, 2], [$bob, 3]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
 
     $chain = app(SeasonChains::class)->chain($season);
     $review = app(SeasonSettlement::class)->review($season);
@@ -64,7 +64,7 @@ test('a void takes the block off its player\'s payout and publishes a void-block
     settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1], [$alice, 2]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     $before = app(SeasonSettlement::class)->review($season)['rows'][0]['payout'];
 
     Livewire::actingAs($admin)->test('season-settlement', ['season' => $season])
@@ -101,7 +101,7 @@ test('no block is voided before the season ends or after the list is approved', 
     settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1], [$alice, 2]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     $settlement = app(SeasonSettlement::class);
 
     $season->forceFill(['ends_at' => now()->addDay()])->save();
@@ -118,7 +118,7 @@ test('the approval writes one payout per player with sats, once, and nothing is 
     $alice = settlementPlayer('Alice');
     $bob = settlementPlayer('Bob');
     $season = settledSeason([[$alice, 1], [$bob, 2], [$bob, 3]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->void($season, $admin, 1, 'Farmed');
 
     Livewire::actingAs($admin)->test('season-settlement', ['season' => $season])
@@ -140,7 +140,7 @@ test('a payout is paid once through the league wallet, also on a double click an
     $wallet = settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1], [$alice, 2]]);
-    app(SeasonSettlement::class)->approve($season, anAdmin());
+    app(SeasonSettlement::class)->approve($season, aBoardMember());
     $payout = payoutOf($season, $alice);
 
     PaySeasonPayout::dispatch($payout->id);
@@ -160,7 +160,7 @@ test('two attempts at the same moment: the one holding the lease pays, the other
     $wallet = settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1]]);
-    app(SeasonSettlement::class)->approve($season, anAdmin());
+    app(SeasonSettlement::class)->approve($season, aBoardMember());
     $payout = payoutOf($season, $alice);
 
     $payout->forceFill(['lease_until' => now()->addMinute(), 'lease_owner' => 'first'])->save();
@@ -174,7 +174,7 @@ test('the Payout 2157 names the genesis, the player, each paid block and the inv
     settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1], [$alice, 2], [$alice, 3]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->void($season, $admin, 2, 'Farmed');
     app(SeasonSettlement::class)->approve($season, $admin);
     $payout = payoutOf($season, $alice);
@@ -220,7 +220,7 @@ test('a wallet that cannot pay fails the payout with the top-up hint, and a retr
     $wallet = settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->approve($season, $admin);
     $payout = payoutOf($season, $alice);
     $wallet->balanceMsats = 1_000;
@@ -249,7 +249,7 @@ test('a Lightning address changed less than 72 hours ago waits, and an admin app
     $alice = settlementPlayer('Alice');
     $alice->forceFill(['lud16_changed_at' => now()->subHours(10)])->save();
     $season = settledSeason([[$alice, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     $settlement = app(SeasonSettlement::class);
     $settlement->approve($season, $admin);
     $payout = payoutOf($season, $alice);
@@ -277,7 +277,7 @@ test('an address changed after the approval is not paid: the payout waits for th
     $wallet = settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->approve($season, $admin);
     $payout = payoutOf($season, $alice);
 
@@ -295,7 +295,7 @@ test('an approved address is not paid while the profile changed it within 72 hou
     $wallet = settlementWallet();
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1]]);
-    app(SeasonSettlement::class)->approve($season, anAdmin());
+    app(SeasonSettlement::class)->approve($season, aBoardMember());
     $payout = payoutOf($season, $alice);
 
     // Changed away and back: the address matches the approved one, but it moved an hour ago.
@@ -328,7 +328,7 @@ test('a player without a Lightning address waits and is told to add one to their
     $alice = settlementPlayer('Alice');
     $alice->forceFill(['lud16' => null])->save();
     $season = settledSeason([[$alice, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->approve($season, $admin);
     $payout = payoutOf($season, $alice);
     $notification = $alice->notifications()->sole();
@@ -355,7 +355,7 @@ test('after the claim window a payout that still waits for an address is over; i
     $bob = settlementPlayer('Bob');
     $bob->forceFill(['lud16' => null])->save();
     $season = settledSeason([[$alice, 1], [$bob, 2]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->approve($season, $admin);
     app(PayoutRunner::class)->run(payoutOf($season, $alice), true);
     $waiting = payoutOf($season, $bob);
@@ -378,7 +378,7 @@ test('a linked second account wins no season payout: withheld at approval, relea
     $main = settlementPlayer('Main');
     $second = settlementPlayer('Second');
     $season = settledSeason([[$second, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     AccountLink::query()->create(['main_user_id' => $main->id, 'main_pubkey' => $main->pubkey, 'linked_user_id' => $second->id, 'linked_pubkey' => $second->pubkey,
         'linked_by_id' => $admin->id, 'linked_by_pubkey' => $admin->pubkey, 'reason' => 'Same person']);
 
@@ -388,35 +388,80 @@ test('a linked second account wins no season payout: withheld at approval, relea
     expect($payout->status)->toBe(PayoutStatus::Open)->and($payout->reason)->toBe('linked_account');
 });
 
-test('only admins settle: the settlement refuses a player, and the page section is not theirs', function () {
+test('only the board voids and approves; any admin pays; a player does nothing', function () {
     settlementWallet();
     $alice = settlementPlayer('Alice');
-    $season = settledSeason([[$alice, 1]]);
+    $season = settledSeason([[$alice, 1], [$alice, 2]]);
     $player = User::factory()->create();
+    $admin = anAdmin();
     $settlement = app(SeasonSettlement::class);
 
-    expect(fn () => $settlement->void($season, $player, 1, 'No'))->toThrow(SeasonSettlementRefused::class, 'Only an admin')
-        ->and(fn () => $settlement->approve($season, $player))->toThrow(SeasonSettlementRefused::class, 'Only an admin');
+    expect(fn () => $settlement->void($season, $player, 1, 'No'))->toThrow(SeasonSettlementRefused::class, 'Only a board member')
+        ->and(fn () => $settlement->approve($season, $player))->toThrow(SeasonSettlementRefused::class, 'Only a board member')
+        ->and(fn () => $settlement->void($season, $admin, 1, 'No'))->toThrow(SeasonSettlementRefused::class, 'Only a board member')
+        ->and(fn () => $settlement->approve($season, $admin))->toThrow(SeasonSettlementRefused::class, 'Only a board member')
+        ->and($season->blockVoids()->count())->toBe(0);
 
     Livewire::actingAs($player)->test('season-settlement', ['season' => $season])->assertForbidden();
     $this->actingAs($player)->get(route('admin.season'))->assertForbidden();
 
-    // A board member (the public admin list) is an admin as well.
-    $board = User::factory()->create();
-    config(['esports.board' => [$board->npub]]);
-    $settlement->approve($season, $board);
+    // An admin who is not on the board sees the list, without the void form and the approval.
+    Livewire::actingAs($admin)->test('season-settlement', ['season' => $season])
+        ->assertSeeHtml('data-test="settlement-board-only"')
+        ->assertDontSeeHtml('data-test="void-form"')
+        ->assertDontSeeHtml('data-test="approve-settlement"')
+        ->set('voidHeight', '1')->set('voidReason', 'No')->call('void')
+        ->assertSet('error', __('Only a board member on the public admin list can void blocks and approve the settlement list.'))
+        ->call('approve')
+        ->assertSet('error', __('Only a board member on the public admin list can void blocks and approve the settlement list.'));
+
+    // The board voids and approves; then the admin pays.
+    $board = aBoardMember();
+    Livewire::actingAs($board)->test('season-settlement', ['season' => $season])
+        ->assertSeeHtml('data-test="void-form"')
+        ->set('voidHeight', '2')->set('voidReason', 'Farmed')->call('void')->assertSet('error', '')
+        ->call('approve')->assertSet('error', '');
     expect($season->refresh()->settlement_approved_by_id)->toBe($board->id);
 
     $payout = payoutOf($season, $alice);
-    $admin = anAdmin();
     Livewire::actingAs($admin)->test('season-settlement', ['season' => $season])->call('pay', $payout->id);
     expect($payout->refresh()->status)->toBe(PayoutStatus::Paid);
+});
+
+test('the Payouts card on /mining follows the state: mined so far, waiting for the review with voids, then approved and paid', function () {
+    settlementWallet();
+    $alice = settlementPlayer('Alice');
+    $bob = settlementPlayer('Bob');
+    $season = settledSeason([[$alice, 1], [$alice, 2], [$bob, 3]]);
+    $reward = app(SeasonChains::class)->chain($season)->blocks()[0]->rewardPerPlayer;
+    $sats = fn (int $value): string => PreSeason::formatSats($value);
+    $card = fn () => $this->get(route('mining'))->assertOk();
+
+    // Live: what is mined so far.
+    $season->forceFill(['ends_at' => now()->addDay()])->save();
+    $card()->assertSeeHtml('data-test="payouts-mined"')->assertSee('Mined so far, paid after the review')->assertSee($sats(3 * $reward).' sats, 2 players');
+
+    // Ended, review open: the replay with the voids so far, and it says it may change.
+    $season->forceFill(['ends_at' => now()->subHour()])->save();
+    $board = aBoardMember();
+    app(SeasonSettlement::class)->void($season, $board, 2, 'Farmed');
+    $card()->assertSeeHtml('data-test="payouts-review"')->assertSee('Waiting for the review, corrections may still lower it')
+        ->assertSee($sats(2 * $reward).' sats, 2 players')->assertDontSee($sats(3 * $reward).' sats');
+
+    // Approved: the approved total, not the raw mined total; then what is paid.
+    app(SeasonSettlement::class)->approve($season->refresh(), $board);
+    $card()->assertSeeHtml('data-test="payouts-approved"')->assertSee('Approved to pay')
+        ->assertSee($sats(2 * $reward).' sats, 2 players')->assertDontSee($sats(3 * $reward).' sats')
+        ->assertSee('Paid so far')->assertSee('0 sats, 0 players')->assertDontSee('Mined so far');
+
+    app(PayoutRunner::class)->run(payoutOf($season, $alice), true);
+    $card()->assertSee($sats($reward).' sats, 1 player');
 });
 
 test('without the league key nothing is voided or approved', function () {
     $alice = settlementPlayer('Alice');
     $season = settledSeason([[$alice, 1]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     config(['esports.league.nsec' => null]);
 
     expect(fn () => app(SeasonSettlement::class)->void($season, $admin, 1, 'Farmed'))->toThrow(SeasonSettlementRefused::class, 'league key')
@@ -431,7 +476,7 @@ test('a stored chain the replay does not reproduce blocks the approval', functio
     SeasonAttestation::query()->where('season_id', $season->id)->update(['label' => '#999']);
 
     expect(app(SeasonSettlement::class)->blocker($season))->toContain('differs from the stored blocks at block 1')
-        ->and(fn () => app(SeasonSettlement::class)->approve($season, anAdmin()))->toThrow(SeasonSettlementRefused::class, 'differs');
+        ->and(fn () => app(SeasonSettlement::class)->approve($season, aBoardMember()))->toThrow(SeasonSettlementRefused::class, 'differs');
 });
 
 test('/mining lists the paid season payouts only, with their Payout event, never an unpaid amount or an address', function () {
@@ -439,7 +484,7 @@ test('/mining lists the paid season payouts only, with their Payout event, never
     $alice = settlementPlayer('Alice');
     $bob = settlementPlayer('Bob');
     $season = settledSeason([[$alice, 1], [$bob, 2], [$bob, 3]]);
-    $admin = anAdmin();
+    $admin = aBoardMember();
     app(SeasonSettlement::class)->void($season, $admin, 3, 'Reciprocal results within a pairing.');
     app(SeasonSettlement::class)->approve($season, $admin);
     app(PayoutRunner::class)->run(payoutOf($season, $alice), true);
