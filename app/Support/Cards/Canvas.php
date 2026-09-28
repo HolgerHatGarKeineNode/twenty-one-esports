@@ -33,6 +33,14 @@ final class Canvas
 
     public GdImage $image;
 
+    /**
+     * Texts that did not fit, while a probe listens (tests only, PageCardsTest):
+     * every fit() that had to cut, and every text drawn past the right edge.
+     *
+     * @var list<string>|null
+     */
+    public static ?array $cuts = null;
+
     public function __construct(public readonly int $width, public readonly int $height, public readonly int $scale = 2, string $ground = self::GROUND)
     {
         $image = imagecreatetruecolor(max(1, $width * $scale), max(1, $height * $scale));
@@ -115,6 +123,10 @@ final class Canvas
 
     public function text(string $text, string $face, int $px, int|float $x, int|float $baseline, string $color): void
     {
+        if (self::$cuts !== null && $x + $this->width($text, $face, $px) > $this->width) {
+            self::$cuts[] = "overflow: {$text}";
+        }
+
         imagettftext($this->image, $this->pt($px) * $this->scale, 0, (int) round($x * $this->scale), (int) round($baseline * $this->scale), $this->color($color), $this->font($face), $this->printable($text));
     }
 
@@ -138,6 +150,10 @@ final class Canvas
 
         if ($this->width($text, $face, $px) <= $max) {
             return $text;
+        }
+
+        if (self::$cuts !== null) {
+            self::$cuts[] = "cut: {$text}";
         }
 
         while (mb_strlen($text) > 1 && $this->width($text.'…', $face, $px) > $max) {
@@ -187,6 +203,34 @@ final class Canvas
         }
 
         return array_map(fn (string $line): string => $this->fit($line, $face, $px, $max), $lines);
+    }
+
+    /**
+     * How many lines the text takes at this size without cutting anything,
+     * null when a single word is wider than $max. A measurement only: it
+     * draws nothing and cuts nothing, so a size can be tried and dropped.
+     */
+    public function lineCount(string $text, string $face, int $px, int $max): ?int
+    {
+        $count = 0;
+        $line = '';
+
+        foreach (preg_split('/\s+/u', $this->printable($text)) ?: [] as $word) {
+            if ($this->width($word, $face, $px) > $max) {
+                return null;
+            }
+
+            $try = $line === '' ? $word : $line.' '.$word;
+
+            if ($line !== '' && $this->width($try, $face, $px) > $max) {
+                $count++;
+                $line = $word;
+            } else {
+                $line = $try;
+            }
+        }
+
+        return $count + ($line === '' ? 0 : 1);
     }
 
     /**

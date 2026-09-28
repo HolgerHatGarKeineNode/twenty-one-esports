@@ -4,15 +4,18 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\InviteLinkType;
 use App\Enums\PayoutStatus;
+use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
+use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Cards\Canvas;
 use App\Support\Cards\PageCard;
 use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
@@ -308,4 +311,87 @@ test('the counts of a fixed page are cached for a minute; entity cards read fres
     Clan::factory()->create();
 
     expect(PageCard::page('clans')->facts['figures'][0][1])->toBe($before);
+});
+
+test('no text on any card is cut or runs off the edge, in English or German, with long but realistic names and amounts', function () {
+    $season = openSeason();
+    [$satoshi, $hodler, $hal] = [
+        User::factory()->create(['name' => 'Satoshi Nakamoto']),
+        User::factory()->create(['name' => 'HalvingHodler21']),
+        User::factory()->create(['name' => 'Lightning Larry']),
+    ];
+
+    foreach ([[$satoshi, 2412], [$hodler, 2388], [$hal, 2350]] as [$user, $rating]) {
+        foreach ([Rating::RATED => $season->slug, Rating::CASUAL => ''] as $pool => $slug) {
+            Rating::query()->create(['pool' => $pool, 'season' => $slug, 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id,
+                'rating' => $rating, 'results' => 188, 'wins' => 120, 'draws' => 18, 'losses' => 50]);
+        }
+    }
+
+    // Games: every way to end (the longest reasons among them), in a tournament, a daily one running, a rating change.
+    $cup = finishedCup();
+    $cup->forceFill(['name' => 'Genesis Blitz Cup Autumn'])->save();
+    $games = [];
+
+    foreach (ChessEndReason::cases() as $index => $reason) {
+        $games[] = ChessGame::factory()->rated()->finished(['1-0', '0-1', '1/2-1/2'][$index % 3], $reason)->create(['white_id' => $satoshi->id, 'black_id' => $hodler->id, 'ply' => 131,
+            'tournament_match_id' => $cup->matches()->value('id')]);
+    }
+    $games[] = ChessGame::factory()->daily()->create(['white_id' => $hodler->id, 'black_id' => $satoshi->id, 'ply' => 97, 'fen' => 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 2 49']);
+    $newcomer = User::factory()->create(['name' => 'Satoshi Nakamoto']);
+    $changed = ChessGame::factory()->finished('0-1', ChessEndReason::Checkmate)->create(['white_id' => $hodler->id, 'black_id' => $newcomer->id]);
+    RatingChange::query()->create(['rating_id' => Rating::query()->where(['user_id' => $hodler->id, 'pool' => Rating::CASUAL])->value('id'), 'source' => RatingChange::CHESS, 'source_id' => $changed->id,
+        'score' => 0, 'before' => 2388, 'after' => 2371, 'delta' => -17, 'results_before' => 187, 'revision' => 1]);
+    $games[] = $changed;
+
+    // Tournaments: a big pot with a first payout, a finished cup paying a million per place, a casual cup.
+    $open = openTournament(['name' => 'Genesis Blitz Cup Autumn', 'capacity' => 64]);
+    $open->forceFill(['pool_opened_at' => now(), 'pot_source' => Tournament::POT_WALLET, 'prize_target_sats' => 1_000_000])->save();
+    TournamentPayout::query()->create(['tournament_id' => $open->id, 'user_id' => null, 'participant_id' => null, 'pubkey' => str_repeat('b', 64),
+        'name' => 'x', 'place' => 1, 'amount_sats' => 1_000, 'idempotency_key' => 'p54-long-open', 'status' => PayoutStatus::Paid]);
+
+    foreach ($cup->participants()->orderBy('id')->get() as $index => $entry) {
+        $entry->forceFill(['name' => ['Satoshi Nakamoto', 'HalvingHodler21', 'Lightning Larry', 'Hal Finney'][$index] ?? $entry->name])->save();
+        TournamentPayout::query()->create(['tournament_id' => $cup->id, 'user_id' => $entry->user_id, 'participant_id' => $entry->id, 'pubkey' => $entry->user?->pubkey ?? str_repeat('c', 64),
+            'name' => $entry->name, 'place' => $index + 1, 'amount_sats' => 1_000_000, 'idempotency_key' => 'p54-long-'.$index, 'status' => PayoutStatus::Paid]);
+    }
+    $casual = openTournament(['name' => 'Casual Chess Cup US', 'cup_series' => 'chess-us']);
+
+    // A clan and a decided series with long names.
+    $lions = Clan::factory()->create(['name' => 'Lightning Network Lions', 'clantag' => 'WWWW', 'owner_id' => $satoshi->id, 'owner_pubkey' => $satoshi->pubkey]);
+    $series = SeriesMatch::factory()->accepted()->create(['challenger_name' => 'Lightning Network Lions', 'challenged_name' => 'Orange Pill Academy']);
+    $series->forceFill(['status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'result_games' => [['winner' => 'challenger'], ['winner' => 'challenger']]])->save();
+
+    $cards = [
+        ...array_map(fn (ChessGame $game): Closure => fn () => PageCard::game($game->refresh()), $games),
+        fn () => PageCard::tournament($open->refresh()),
+        fn () => PageCard::tournament($cup->refresh()),
+        fn () => PageCard::tournament($casual->refresh()),
+        fn () => PageCard::player($satoshi->refresh()),
+        fn () => PageCard::player($newcomer->refresh()),
+        fn () => PageCard::clan($lions->refresh()),
+        fn () => PageCard::series($series->refresh()),
+        fn () => PageCard::ladder('chess', 'blitz'),
+        fn () => PageCard::ladder('rocket-league', '2v2'),
+        ...array_map(fn (string $page): Closure => fn () => PageCard::page($page), [...PageCard::PAGES, 'hub.rocket-league', 'hub.ea-sports-fc-27', 'hub.ea-sports-fc-26']),
+    ];
+    $cuts = [];
+
+    foreach (['en', 'de'] as $locale) {
+        app()->setLocale($locale);
+
+        foreach ($cards as $card) {
+            Canvas::$cuts = [];
+            $built = $card();
+            $built->render();
+
+            foreach (Canvas::$cuts as $cut) {
+                $cuts[] = "{$locale} {$built->type} {$built->key}: {$cut}";
+            }
+        }
+    }
+
+    Canvas::$cuts = null;
+
+    expect($cuts)->toBe([]);
 });

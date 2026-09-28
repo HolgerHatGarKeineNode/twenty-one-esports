@@ -65,6 +65,9 @@ final class PageCard
 
     private const DARK = '#17120A';
 
+    /** The least room between the places count and the pot on the line above the places. */
+    public const SEATS_GAP = 64;
+
     private Canvas $c;
 
     /**
@@ -180,7 +183,11 @@ final class PageCard
         $f = $this->facts;
 
         return match ($this->type) {
-            'game' => $this->gameHeadline().'. '.$f['white']['name'].' '.__('(white)').', '.$f['black']['name'].' '.__('(black)').'.',
+            'game' => match ($f['result']) {
+                '1-0' => __(':name won', ['name' => $f['white']['name']]),
+                '0-1' => __(':name won', ['name' => $f['black']['name']]),
+                default => $this->gameHeadline(),
+            }.'. '.$f['white']['name'].' '.__('(white)').', '.$f['black']['name'].' '.__('(black)').'.',
             'tournament' => $f['name'].'. '.$this->tournamentStatus().'.',
             'player' => $f['name'].($f['best'] !== null ? '. '.$this->bestLine() : '').'.',
             'clan' => $f['name'].'. '.trans_choice(':count player|:count players', (int) $f['members']).'.',
@@ -250,8 +257,8 @@ final class PageCard
         $this->gamePlayer($f['white'], 'white', $x, 48 + $size, $width, $winner, true);
 
         // The state: the result in the orange block, the live move, or the aborted game.
-        $block = 116;
-        $y = 48 + (int) round(($size - $block) / 2);
+        $block = 96;
+        $y = 176;
         [$face, $label, $ink] = match ($f['status']) {
             'active' => [self::LIVE, __('Live'), self::DARK],
             'aborted' => ['#3A3A42', '–', Canvas::INK],
@@ -262,18 +269,24 @@ final class PageCard
             }, self::DARK],
         };
         $this->c->block($x, $y + 8, $block, $face);
-        $labelSize = $this->c->fitSize($label, 'display', [44, 36, 30], $block - 20);
+        $labelSize = $this->c->fitSize($label, 'display', [40, 34, 30], $block - 16);
         $this->c->text($label, 'display', $labelSize, $x + ($block - $this->c->width($label, 'display', $labelSize)) / 2, $y + 8 + $block / 2 + $labelSize * 0.36, $ink);
 
-        $tx = $x + $block + 36;
+        // Beside the block: who won (by colour: the crown on the name says who) and the kind of game.
+        $tx = $x + $block + 28;
         $headline = $this->gameHeadline();
-        $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30], self::RIGHT - $tx);
+        $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], self::RIGHT - $tx);
         $this->c->text($this->c->fit($headline, 'display', $headSize, self::RIGHT - $tx), 'display', $headSize, $tx, $y + 50, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
-        // How it ended with the number of moves when that fits the line, else how it ended.
+        $this->c->text($this->c->fit($this->gameKind(), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 92, Canvas::INK_3);
+
+        // Under it, the full width of the column: how it ended (with the moves when that fits), and the tournament.
         [$long, $short] = $this->gameDetail();
-        $detail = $this->c->width($long, 'mono', self::MIN) <= self::RIGHT - $tx ? $long : $short;
-        $this->c->text($this->c->fit($detail, 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 96, Canvas::INK_2);
-        $this->c->text($this->c->fit($this->gameKind(), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 136, Canvas::INK_3);
+        $detail = $this->c->width($long, 'mono', self::MIN) <= $width ? $long : $short;
+        $this->c->text($this->c->fit($detail, 'mono', self::MIN, $width), 'mono', self::MIN, $x, $y + 146, Canvas::INK_2);
+
+        if ($f['tournament'] !== null) {
+            $this->c->text($this->c->fit((string) $f['tournament'], 'mono', self::MIN, $width), 'mono', self::MIN, $x, $y + 184, Canvas::ORANGE);
+        }
     }
 
     /**
@@ -286,7 +299,7 @@ final class PageCard
     {
         $won = $winner === $colour;
         $lost = $winner !== null && ! $won;
-        $size = $won ? 112 : 88;
+        $size = $won ? 104 : 80;
         $y = $bottom ? $edge - $size : $edge;
 
         if ($won) {
@@ -297,7 +310,7 @@ final class PageCard
 
         $tx = $x + $size + 28;
         $max = self::RIGHT - $tx;
-        $nameSize = $won ? $this->c->fitSize((string) $p['name'], 'display', [40, 34, 30], $max - 52) : 32;
+        $nameSize = $won ? $this->c->fitSize((string) $p['name'], 'display', [40, 34, 30, 28], $max - 52) : 32;
         $nameFace = $won ? 'display' : 'mono-bold';
         $nameX = $tx;
 
@@ -311,11 +324,18 @@ final class PageCard
         $line = $y + $size / 2 + 38;
         $this->c->rect($tx, $line - 22, 24, 24, $colour === 'white' ? '#F4F4F5' : '#5C5C60');
         $this->c->rect($tx + 2, $line - 20, 20, 20, $colour === 'white' ? '#F4F4F5' : '#0A0A0B');
-        $rating = $p['provisional'] ? __(':rating Elo, provisional', ['rating' => $p['rating']]) : __(':rating Elo', ['rating' => $p['rating']]);
+        $delta = $p['delta'] !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
+        $rating = __(':rating Elo', ['rating' => $p['rating']]);
+        $provisional = __(':rating Elo, provisional', ['rating' => $p['rating']]);
+        $room = $max - 40 - ($delta === null ? 0 : $this->c->width($delta, 'mono-bold', self::MIN) + 16);
+
+        // "provisional" when there is room for it beside the change, else the rating alone.
+        if ($p['provisional'] && $this->c->width($provisional, 'mono', self::MIN) <= $room) {
+            $rating = $provisional;
+        }
         $this->c->text($rating, 'mono', self::MIN, $tx + 40, $line, $lost ? Canvas::INK_3 : Canvas::INK_2);
 
-        if ($p['delta'] !== null && $p['delta'] !== 0) {
-            $delta = ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']);
+        if ($delta !== null) {
             $this->c->text($delta, 'mono-bold', self::MIN, $tx + 40 + $this->c->width($rating, 'mono', self::MIN) + 16, $line, $p['delta'] > 0 ? self::WIN : self::LOSS);
         }
     }
@@ -328,8 +348,8 @@ final class PageCard
             'active' => __('Move :move', ['move' => intdiv((int) $f['ply'], 2) + 1]),
             'aborted' => __('Aborted'),
             default => match ($f['result']) {
-                '1-0' => __(':name won', ['name' => $f['white']['name']]),
-                '0-1' => __(':name won', ['name' => $f['black']['name']]),
+                '1-0' => __('White wins'),
+                '0-1' => __('Black wins'),
                 default => __('Draw'),
             },
         };
@@ -366,7 +386,7 @@ final class PageCard
             'fifty_move_rule' => __('50-move rule'),
             'insufficient_material' => __('Insufficient material'),
             'abandoned' => __('Opponent left'),
-            'director' => __('Entered by the tournament director'),
+            'director' => __('Set by the director'),
             'forfeit' => __('Forfeit'),
             default => null,
         };
@@ -375,7 +395,7 @@ final class PageCard
         return $reason === null ? [$count, $count] : [$reason.' '.trans_choice('after :count move|after :count moves', $moves), $reason];
     }
 
-    /** "Rated blitz 5+3", and the tournament it belongs to; the game's number is in the preview's title. */
+    /** "Rated blitz 5+3"; the game's number is in the preview's title, its tournament on a line of its own. */
     private function gameKind(): string
     {
         $f = $this->facts;
@@ -386,7 +406,7 @@ final class PageCard
             default => __('Casual blitz 5+3'),
         };
 
-        return $f['tournament'] !== null ? $kind.', '.$f['tournament'] : $kind;
+        return $kind;
     }
 
     /* ---------- Tournament ------------------------------------------------------------------------------------- */
@@ -412,9 +432,10 @@ final class PageCard
 
             $this->podium(array_map(fn (array $entry): array => [
                 ...$entry,
-                'line' => ($entry['paid'] ?? null) !== null ? __(':sats sats paid', ['sats' => ShareCard::sats((int) $entry['paid'])]) : null,
+                'line' => ($entry['paid'] ?? null) !== null ? __(':sats sats', ['sats' => ShareCard::sats((int) $entry['paid'])]) : null,
                 'line_colour' => Canvas::ORANGE,
-            ], self::rows($podium)), '', 40);
+                'line2' => ($entry['paid'] ?? null) !== null ? __('paid') : null,
+            ], self::rows($podium)), '', 24);
 
             return;
         }
@@ -475,13 +496,26 @@ final class PageCard
         $f = $this->facts;
         $taken = (int) $f['taken'];
         $places = max(1, (int) $f['places']);
-        $this->c->text(__(':taken of :places places taken', ['taken' => $taken, 'places' => $places]), 'mono-bold', self::MIN, $x, $y - 22, Canvas::INK);
+        $count = __(':taken of :places places taken', ['taken' => $taken, 'places' => $places]);
+        $this->c->text($count, 'mono-bold', self::MIN, $x, $y - 22, Canvas::INK);
 
         if ($f['pot'] !== null) {
-            // "X of Y sats": what is still to be won of the pot as the tournament sets it.
-            $pot = (int) $f['left'] < (int) $f['pot']
-                ? __(':left of :total sats to win', ['left' => ShareCard::sats((int) $f['left']), 'total' => ShareCard::sats((int) $f['pot'])])
-                : __(':total sats to win', ['total' => ShareCard::sats((int) $f['pot'])]);
+            // "X of Y sats": what is still to be won of the pot as the tournament sets it; the longest
+            // form that keeps SEATS_GAP to the count on its left.
+            $replace = ['left' => ShareCard::sats((int) $f['left']), 'total' => ShareCard::sats((int) $f['pot'])];
+            $forms = (int) $f['left'] < (int) $f['pot']
+                ? [__(':left of :total sats to win', $replace), __(':left of :total sats', $replace), __(':left sats to win', $replace)]
+                : [__(':total sats to win', $replace), __(':total sats', $replace)];
+            $room = $width - $this->c->width($count, 'mono-bold', self::MIN) - self::SEATS_GAP;
+            $pot = end($forms);
+
+            foreach ($forms as $form) {
+                if ($this->c->width($form, 'mono-bold', self::MIN) <= $room) {
+                    $pot = $form;
+
+                    break;
+                }
+            }
             $this->c->textRight($pot, 'mono-bold', self::MIN, $x + $width, $y - 22, Canvas::ORANGE);
         }
 
@@ -599,10 +633,10 @@ final class PageCard
                 $this->c->rect($x - 3, 64 - 3, $tile + 6, $tile + 6, Canvas::GROUND);
             }
             $this->clanTile((string) $s['tag'], $s['logo'], $x, 64, $tile);
-            $this->textCenter((string) $s['name'], 'display', 30, $x + $tile / 2, 64 + $tile + 56, $winner !== null && ! $won ? Canvas::INK_2 : Canvas::INK, 380);
+            $after = $this->textCenterLines((string) $s['name'], 'display', [30, 28], $x + $tile / 2, 64 + $tile + 56, $winner !== null && ! $won ? Canvas::INK_2 : Canvas::INK, 400, 2);
 
             if ($won) {
-                $this->crown((int) ($x + $tile / 2 - 20), 64 + $tile + 76, 40, 30);
+                $this->crown((int) ($x + $tile / 2 - 20), (int) $after - 14, 40, 30);
             }
         }
 
@@ -614,8 +648,8 @@ final class PageCard
         $this->c->text($label, 'display', $size, $center - $this->c->width($label, 'display', $size) / 2, 72 + $block / 2 + $size * 0.36, is_array($score) ? self::DARK : Canvas::INK);
 
         $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.__('best of :n', ['n' => $f['best_of']]).', '.($f['rated'] ? __('rated') : __('casual'));
-        $this->textCenter($line, 'mono', self::MIN, $center, 404, Canvas::INK_2, 1000);
-        $this->textCenter($this->seriesStatus(), 'mono-bold', self::MIN, $center, 452, $f['status'] === 'accepted' ? Canvas::ORANGE : Canvas::INK, 1000);
+        $this->textCenter($line, 'mono', self::MIN, $center, 436, Canvas::INK_2, 1000);
+        $this->textCenter($this->seriesStatus(), 'mono-bold', self::MIN, $center, 480, $f['status'] === 'accepted' ? Canvas::ORANGE : Canvas::INK, 1000);
     }
 
     private function seriesStatus(): string
@@ -724,7 +758,8 @@ final class PageCard
 
             // Names and lines share one baseline across the podium.
             $baseline = 406 + $shift;
-            $this->textCenter((string) $entry['name'], 'mono-bold', 30, $cx, $baseline, Canvas::INK, 320);
+            $nameSize = $this->c->fitSize((string) $entry['name'], 'mono-bold', [30, 28], 340);
+            $this->textCenter((string) $entry['name'], 'mono-bold', $nameSize, $cx, $baseline, Canvas::INK, 340);
 
             if (($entry['line'] ?? null) !== null) {
                 $this->textCenter((string) $entry['line'], 'mono', self::MIN, $cx, $baseline + 40, (string) ($entry['line_colour'] ?? Canvas::INK_2), 330);
@@ -840,7 +875,7 @@ final class PageCard
         $tournaments = (array) $f['tournaments'];
 
         if ($tournaments !== []) {
-            $this->c->text($this->c->fit(__('Tournament running: :names', ['names' => implode(', ', $tournaments)]), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::ORANGE);
+            $this->c->text($this->c->fit(__('Tournament running: :names', ['names' => $tournaments[0]]), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::ORANGE);
         } else {
             $this->c->text($this->c->fit(__('Chess, tournaments and music, around the clock'), 'mono', self::MIN, self::RIGHT - self::M), 'mono', self::MIN, self::M, 420, Canvas::INK_2);
         }
@@ -857,17 +892,19 @@ final class PageCard
         [$size, $lines] = [40, 3];
 
         foreach ([60, 52, 46, 40] as $candidate) {
-            if (count($this->c->wrap($title, 'display', $candidate, $max)) <= 2) {
+            $count = $this->c->lineCount($title, 'display', $candidate, $max);
+
+            if ($count !== null && $count <= 2) {
                 [$size, $lines] = [$candidate, 2];
 
                 break;
             }
         }
         $after = $this->c->paragraph($title, 'display', $size, self::M, 64 + $size, $max, $lines, Canvas::INK, 1.12);
-        $after = $this->c->paragraph($this->pageLine(), 'mono', 30, self::M, $after + 16, $max, 2, Canvas::INK_2, 1.35);
+        $after = $this->c->paragraph($this->pageLine(), 'mono', 30, self::M, $after + 16, $max, 3, Canvas::INK_2, 1.35);
 
         if (is_array($f['next'])) {
-            $this->c->text($this->c->fit(__('Next: :name, :utc UTC', ['name' => $f['next']['name'], 'utc' => $f['next']['starts_utc']]), 'mono-bold', self::MIN, 800), 'mono-bold', self::MIN, self::M, $after + 8, Canvas::ORANGE);
+            $this->c->paragraph(__('Next: :name, :utc UTC', ['name' => $f['next']['name'], 'utc' => $f['next']['starts_utc']]), 'mono-bold', self::MIN, self::M, $after + 8, 800, 2, Canvas::ORANGE, 1.3);
         }
 
         $this->pageMotif(896, 64, 240);
@@ -1119,6 +1156,33 @@ final class PageCard
         $this->c->rect($x, $y + $size - 10, $size, 10, '#B9640A');
         $px = $this->c->fitSize($tag, 'display', [(int) round($size * 0.3), (int) round($size * 0.24), (int) round($size * 0.18)], $size - 24);
         $this->c->text($tag, 'display', max(self::MIN, $px), $x + ($size - $this->c->width($tag, 'display', max(self::MIN, $px))) / 2, $y + $size / 2 + $px * 0.36, self::DARK);
+    }
+
+    /**
+     * Centred text as large as one of $sizes fits in $maxLines lines; returns the baseline after the last line.
+     *
+     * @param  list<int>  $sizes  largest first
+     */
+    private function textCenterLines(string $text, string $face, array $sizes, int|float $center, int|float $baseline, string $colour, int $max, int $maxLines): float
+    {
+        $size = (int) end($sizes);
+
+        foreach ($sizes as $candidate) {
+            $count = $this->c->lineCount($text, $face, $candidate, $max);
+
+            if ($count !== null && $count <= $maxLines) {
+                $size = $candidate;
+
+                break;
+            }
+        }
+
+        foreach ($this->c->lines($text, $face, $size, $max, $maxLines) as $line) {
+            $this->textCenter($line, $face, $size, $center, $baseline, $colour, $max);
+            $baseline += $size * 1.2;
+        }
+
+        return $baseline;
     }
 
     private function textCenter(string $text, string $face, int $px, int|float $center, int|float $baseline, string $colour, int $max): void
