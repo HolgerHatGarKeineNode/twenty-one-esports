@@ -3,9 +3,11 @@
 namespace App\Support\SeasonChain;
 
 use App\Enums\ChessGameStatus;
+use App\Enums\IncomingPaymentStatus;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
+use App\Models\IncomingPayment;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
@@ -106,11 +108,120 @@ final class ChainOverview
             'mined_by_game_and_era' => $chain->minedByGameAndEra(),
             'latest' => $this->latest($blocks->take(10)->values()->all()),
             'miners' => $this->miners($blocks->values()->all()),
+            'miner_count' => $blocks->flatMap(fn (SeasonAttestation $block): array => $block->winners())->unique()->count(),
             'rejected' => $season->attestations()->whereNotNull('candidate')->whereNull('height')->selectRaw('reason, count(*) as total')->groupBy('reason')->pluck('total', 'reason')->map(fn (mixed $n): int => (int) $n)->all(),
             'changes' => $season->parameterChanges()->with('changedBy')->orderByDesc('effective_at')->orderByDesc('id')->get(),
-            'estimate' => Estimator::fromConfig()->fromChain($chain, $now),
+            'estimate' => $estimate = Estimator::fromConfig()->fromChain($chain, $now),
+            'curve' => $this->supplyCurve($season, $chain, $now, $estimate['end_mined']),
             'in_force' => $parameters->inForceAt($now),
         ];
+    }
+
+    /**
+     * A season that has ended, as it stood at its last second: mining has
+     * stopped, no era is current and nothing is forecast any more.
+     *
+     * @return array<string, mixed>
+     */
+    public function ended(Season $season): array
+    {
+        $last = CarbonImmutable::instance($season->ends_at)->subSecond();
+        $chain = $this->live($season, $last);
+
+        return [
+            ...$chain,
+            'era' => null,
+            'next_halving' => null,
+            'blocks_today' => 0,
+            'schedule' => array_map(fn (array $row): array => [...$row, 'current' => false], $chain['schedule']),
+            'estimate' => [...$chain['estimate'], 'end_mined' => $chain['mined'], 'end_mined_percent' => round($chain['mined'] / max(1, $chain['supply']) * 100, 1)],
+            'curve' => [...$chain['curve'], 'now' => CarbonImmutable::instance($season->ends_at), 'forecast' => null],
+        ];
+    }
+
+    /**
+     * Sats mined over time, one point per UTC day with blocks: the supply
+     * chart of /mining. Read from the replayed chain, the same blocks the
+     * "Mined" figure sums, so the line ends where that figure says; no query
+     * of its own, and at most one point per day of the season. `forecast` is
+     * the estimator's total at the season end, null once it has ended.
+     *
+     * @return array{from: CarbonImmutable, to: CarbonImmutable, now: CarbonImmutable, supply: int, halvings: list<array{era: int, from: CarbonImmutable}>, forecast: int|null, days: list<array{day: string, at: CarbonImmutable, blocks: int, sats: int, total: int}>}
+     */
+    public function supplyCurve(Season $season, BlockChain $chain, CarbonImmutable $now, ?int $forecast): array
+    {
+        $from = CarbonImmutable::instance($season->genesis_at);
+        $to = CarbonImmutable::instance($season->ends_at);
+        $total = 0;
+        $days = [];
+
+        foreach ($chain->blocks() as $block) {
+            $at = $block->candidate->attestedAt->utc();
+            $day = $at->format('Y-m-d');
+            $total += $block->reward;
+            $last = array_key_last($days);
+
+            if ($last !== null && $days[$last]['day'] === $day) {
+                $days[$last] = ['day' => $day, 'at' => $at, 'blocks' => $days[$last]['blocks'] + 1, 'sats' => $days[$last]['sats'] + $block->reward, 'total' => $total];
+            } else {
+                $days[] = ['day' => $day, 'at' => $at, 'blocks' => 1, 'sats' => $block->reward, 'total' => $total];
+            }
+        }
+
+        // Era starts as SeasonParameters::eraStart() counts them, without replaying the change log.
+        $halvings = [];
+
+        for ($era = 2; $from->addSeconds(($era - 1) * max(1, $season->halving_seconds))->lt($to); $era++) {
+            $halvings[] = ['era' => $era, 'from' => $from->addSeconds(($era - 1) * $season->halving_seconds)];
+        }
+
+        return [
+            'from' => $from,
+            'to' => $to,
+            'now' => $now->lt($to) ? $now : $to,
+            'supply' => $season->supply,
+            'halvings' => $halvings,
+            'forecast' => $now->lt($to) ? $forecast : null,
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * The latest settled zaps and payments into the league reserve, and how
+     * many there are. Amounts per receipt only: the reserve's total is a
+     * balance, and a public page never shows a balance as a pot.
+     *
+     * @return array{count: int, latest: list<array{name: string, sats: int, at: CarbonImmutable}>}
+     */
+    public function reserveZaps(int $limit = 5): array
+    {
+        $settled = IncomingPayment::query()->where('pot', IncomingPayment::RESERVE)->where('status', IncomingPaymentStatus::Settled);
+        $rows = (clone $settled)->orderByDesc('settled_at')->orderByDesc('id')->limit($limit)->get(['source', 'payer_pubkey', 'amount_sats', 'settled_at']);
+        $payers = [];
+
+        foreach ($rows as $payment) {
+            if ($payment->source === 'zap' && $payment->payer_pubkey !== null) {
+                $payers[] = $payment->payer_pubkey;
+            }
+        }
+
+        $names = $this->names($payers);
+        $latest = [];
+
+        foreach ($rows as $payment) {
+            $latest[] = [
+                'name' => match (true) {
+                    $payment->source === 'zap' && $payment->payer_pubkey !== null => $names[$payment->payer_pubkey] ?? substr($payment->payer_pubkey, 0, 8),
+                    $payment->source === 'sponsor' => __('a sponsor'),
+                    $payment->source === 'lnurl' => __('a Lightning payment'),
+                    default => __('anonymous'),
+                },
+                'sats' => $payment->amount_sats,
+                'at' => CarbonImmutable::instance($payment->settled_at ?? now()),
+            ];
+        }
+
+        return ['count' => $settled->count(), 'latest' => $latest];
     }
 
     /**

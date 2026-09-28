@@ -184,6 +184,76 @@ test('/mining and AdminSeason stay clean before Block 0, through the release, an
         ->and(app(SeasonChains::class)->chain($season->refresh())->season->changes())->toHaveCount(1);
 });
 
+const SUPPLY_MEASURE = <<<'JS'
+    () => {
+        const plot = document.querySelector('[data-test=supply-plot]');
+        plot.scrollIntoView({block: 'center'});
+        const card = plot.closest('section').getBoundingClientRect();
+        const p = plot.getBoundingClientRect();
+        plot.dispatchEvent(new PointerEvent('pointermove', {clientX: p.left + p.width * 0.1, clientY: p.top + 20, bubbles: true}));
+        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+            const tip = document.querySelector('[data-test=supply-tooltip]');
+            const t = tip ? tip.getBoundingClientRect() : null;
+            const summary = document.querySelector('[data-test=supply-table] summary').getBoundingClientRect();
+            resolve({
+                plot: [Math.round(p.left - card.left), Math.round(card.right - p.right), Math.round(p.width), Math.round(p.height)],
+                tip: t ? [Math.round(t.left - p.left), Math.round(p.right - t.right), tip.innerText] : null,
+                summaryHeight: Math.round(summary.height),
+                legend: document.querySelector('[data-test=supply-chart] ul').innerText,
+            });
+        })));
+    }
+    JS;
+
+test('the Season page supply chart fits, reads out on hover and focus at 375 and 1440 px, in German too, with a quiet console', function () {
+    $season = openSeason(['genesis_at' => now()->subDays(20)->startOfSecond(), 'ends_at' => now()->subDays(20)->startOfSecond()->addWeeks(24)]);
+    $players = User::factory()->count(4)->create();
+    foreach (range(1, 6) as $height) {
+        chainBlock($season->id, $height, $players[$height % 4], $players[($height + 1) % 4], CarbonImmutable::now()->subDays(19 - 3 * $height), 1 + $height);
+    }
+    $viewer = User::factory()->create();
+    $page = chainPage($viewer, route('mining'));
+
+    expect(chainProblems($page, [route('mining')]))->toBe([]);
+
+    $measured = [];
+    foreach ([['en', 1440, 900, 260], ['en', 375, 800, 200], ['de', 375, 800, 200]] as [$locale, $width, $height, $plotHeight]) {
+        if ($locale === 'de') {
+            $page->goto(ComputeUrl::from(route('locale.switch', 'de')));
+        }
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('mining')));
+        $data = $page->evaluate(SUPPLY_MEASURE);
+        $measured["{$locale}-{$width}"] = $data;
+
+        expect($data['plot'][0])->toBeGreaterThanOrEqual(0)
+            ->and($data['plot'][1])->toBeGreaterThanOrEqual(0)
+            ->and($data['plot'][3])->toBe($plotHeight)
+            ->and($data['tip'])->not->toBeNull()
+            ->and($data['tip'][0])->toBeGreaterThanOrEqual(0)
+            ->and($data['tip'][1])->toBeGreaterThanOrEqual(0)
+            ->and($data['summaryHeight'])->toBeGreaterThanOrEqual(44)
+            ->and($data['legend'])->toContain($locale === 'de' ? 'Prognose' : 'Forecast')
+            ->and($page->evaluate('() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]'))->toBe([$width, $width]);
+    }
+    fwrite(STDERR, "\n[season-chart] ".json_encode($measured)."\n");
+
+    // Keyboard: focus on the plot reads out the newest point.
+    $page->evaluate('() => { document.activeElement?.blur(); document.querySelector("[data-test=supply-plot]").focus(); }');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=supply-tooltip]")?.innerText.includes("Heute")', 3_000);
+
+    // Positive control: the collector sees a thrown error and a 404 on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("season-control"); }); fetch("/season-control-missing"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("season-control")) && window.__errors.some((e) => e.startsWith("404"))', 5_000);
+
+    // The ended season, as it closed.
+    $season->forceFill(['genesis_at' => now()->subDays(30), 'ends_at' => now()->subHour()])->save();
+    $page->goto(ComputeUrl::from(route('locale.switch', 'en')));
+
+    expect(chainProblems($page, [route('mining')]))->toBe([])
+        ->and($page->evaluate('() => document.querySelector("[data-test=mining]").dataset.state'))->toBe('between');
+});
+
 test('the admin trust page stays clean at 375 and 1440 px with reports, and a dismissal round-trips', function () {
     $admin = User::factory()->create(['name' => 'satsjaeger']);
     Admin::query()->create(['pubkey' => $admin->pubkey]);

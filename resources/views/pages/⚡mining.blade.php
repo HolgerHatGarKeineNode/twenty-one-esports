@@ -11,17 +11,20 @@ use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 /*
- * /mining (Mining.dc.html, MobileMining.dc.html), from the real chain (P7c):
- * the live season's tip, supply mined and left, the era schedule with what a
- * win pays, the share of each game per era, the latest blocks, the top
- * miners, why wins did not mine, the rules in force and the public change
- * log. Before Block 0 and between seasons: the rest state with the countdown
- * and the Pre-Season draft (config/season.php), which the board releases.
+ * /mining, the Season page (Mining.dc.html, MobileMining.dc.html), from the
+ * real chain (P7c, P33): the supply mined over time with the forecast, the
+ * era schedule with what a win pays, the latest blocks, the top miners, why
+ * wins did not mine, the league reserve with its zaps, the payout rules, the
+ * season review and the rules in force with their change log. Between
+ * seasons: the ended season as it closed. Before Block 0: the rest state
+ * with the countdown and the Pre-Season draft (config/season.php), which the
+ * board releases.
  *
- * Not built here (later phases): the supply chart over time, fees and zaps,
- * the league reserve, payouts and the season review (P9, P10).
+ * Amounts are configured, mined, or received per zap; no pot ever shows a
+ * wallet balance.
  */
-new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
+new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
+{
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Season'));
@@ -29,6 +32,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
     }
 
     /**
+     * The live season, else the latest ended one as it closed, else the draft.
+     *
      * @return array<string, mixed>
      */
     #[Computed]
@@ -36,7 +41,22 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
     {
         $season = Seasons::live();
 
-        return $season === null ? app(ChainOverview::class)->draft() : app(ChainOverview::class)->live($season);
+        if ($season !== null) {
+            return app(ChainOverview::class)->live($season);
+        }
+
+        $ended = Seasons::latest();
+
+        return $ended === null ? app(ChainOverview::class)->draft() : app(ChainOverview::class)->ended($ended);
+    }
+
+    /**
+     * @return array{count: int, latest: list<array{name: string, sats: int, at: \Carbon\CarbonImmutable}>}
+     */
+    #[Computed]
+    public function zaps(): array
+    {
+        return app(ChainOverview::class)->reserveZaps();
     }
 }; ?>
 
@@ -44,12 +64,16 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
     $viewer = auth()->user();
     $zone = PreSeason::timezoneFor($viewer instanceof User ? $viewer : null);
     $chain = $this->chain;
-    $live = $chain['season'] !== null;
     $state = Seasons::state();
+    $live = $state === 'live';
+    $ended = $state === 'between';
+    $hasChain = $chain['season'] !== null;
     $sats = fn (int $value): string => PreSeason::formatSats($value);
     $date = fn ($at, string $format = 'D j M, H:i'): string => $at->copy()->setTimezone($zone)->locale(app()->getLocale())->translatedFormat($format);
     $inForce = $chain['in_force'];
     $games = array_keys($inForce->shares + $inForce->daily);
+    $zaps = $this->zaps;
+    $unmined = $hasChain ? max(0, $chain['supply'] - ($live ? $chain['estimate']['end_mined'] : $chain['mined'])) : null;
 @endphp
 
 <div class="flex grow flex-col gap-4 px-4 pb-10 lg:gap-6 lg:px-12" data-test="mining" data-state="{{ $state }}">
@@ -60,11 +84,17 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
 
     @unless ($live)
         <section class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#3A2A12] lg:px-8 lg:py-7" data-test="mining-rest">
-            <x-empty-state :heading="$state === 'between' ? __('The chain rests between seasons') : __('The chain starts at Block 0')" :text="Seasons::restMessage($viewer instanceof User ? $viewer : null)">
+            <x-empty-state :heading="$ended ? __('The chain rests between seasons') : __('The chain starts at Block 0')" :text="Seasons::restMessage($viewer instanceof User ? $viewer : null)">
                 <a href="{{ route('chess.lobby') }}" class="btn-p inline-flex h-11 items-center rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Play a casual game') }}</a>
-                <a href="{{ route('home') }}#block0" class="inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Block 0 countdown') }}</a>
+                @unless ($ended)
+                    <a href="{{ route('home') }}#block0" class="inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Block 0 countdown') }}</a>
+                @endunless
             </x-empty-state>
-            <p class="m-0 text-xs text-ink-3">{{ __('The numbers below are the Pre-Season draft. The board can still change them before it releases Block 0.') }}</p>
+            @if ($ended)
+                <p class="m-0 text-xs text-ink-3">{{ __('The numbers below are the season that ended :when, as it closed.', ['when' => $date($chain['season']->ends_at, 'D j M')]) }}</p>
+            @else
+                <p class="m-0 text-xs text-ink-3">{{ __('The numbers below are the Pre-Season draft. The board can still change them before it releases Block 0.') }}</p>
+            @endif
         </section>
     @endunless
 
@@ -72,19 +102,30 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
         @php
             // Only a game whose wins can mine now headlines what a win pays (rated chess may be off).
             $firstKey = collect(array_keys($chain['rewards_now']))->first(fn (string $key): bool => ChainOverview::mines($key));
-            $stats = $live ? [
-                [__('Era'), (string) $chain['era'], $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'])]) : __('last era')],
-                [__('Mined'), $sats($chain['mined']), __(':percent % of :supply', ['percent' => number_format($chain['mined'] / max(1, $chain['supply']) * 100, 1), 'supply' => $sats($chain['supply'])])],
-                [__('Left in the pot'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
-                [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
-                [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => $chain['era'] ?? 1])],
-            ] : [
-                [__('Era'), '0', __('eras of :days days', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
-                [__('Supply'), $sats($chain['supply']), __('fixed at Block 0')],
-                [__('Mined'), '0', __('nothing before Block 0')],
-                [__('Blocks'), '0', __('Block 1 follows Block 0')],
-                [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => 1])],
-            ];
+            $minedOf = $hasChain ? __(':percent % of :supply', ['percent' => number_format($chain['mined'] / max(1, $chain['supply']) * 100, 1), 'supply' => $sats($chain['supply'])]) : '';
+            $stats = match (true) {
+                $live => [
+                    [__('Era'), (string) $chain['era'], $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'])]) : __('last era')],
+                    [__('Mined'), $sats($chain['mined']), $minedOf],
+                    [__('Left in the pot'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
+                    [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
+                    [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => $chain['era'] ?? 1])],
+                ],
+                $ended => [
+                    [__('Blocks'), (string) $chain['blocks'], __('at the season end')],
+                    [__('Mined'), $sats($chain['mined']), $minedOf],
+                    [__('Not mined'), $sats((int) $unmined), __('goes to the league reserve')],
+                    [__('Players who mined'), (string) $chain['miner_count'], __('each paid once, after the review')],
+                    [__('Season'), trans_choice(':count week|:count weeks', (int) round($chain['season']->genesis_at->diffInDays($chain['season']->ends_at) / 7)), __(':from to :to', ['from' => $date($chain['season']->genesis_at, 'j M'), 'to' => $date($chain['season']->ends_at, 'j M Y')])],
+                ],
+                default => [
+                    [__('Era'), '0', __('eras of :days days', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
+                    [__('Supply'), $sats($chain['supply']), __('fixed at Block 0')],
+                    [__('Mined'), '0', __('nothing before Block 0')],
+                    [__('Blocks'), '0', __('Block 1 follows Block 0')],
+                    [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => 1])],
+                ],
+            };
         @endphp
         @foreach ($stats as [$label, $value, $sub])
             <div @class(['flex min-w-0 flex-col gap-1 rounded-lg bg-card px-4 py-4', 'col-span-2 lg:col-span-1' => $loop->last])>
@@ -95,20 +136,13 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
         @endforeach
     </section>
 
-    @if ($live)
-        <section aria-labelledby="supply-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
-            <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <h2 id="supply-h" class="m-0 text-[15px] font-bold">{{ __('Supply: mined and left') }}</h2>
-                <span class="text-xs text-ink-3">{{ __('Block 0 :from to the season end :to', ['from' => $date($chain['season']->genesis_at, 'D j M'), 'to' => $date($chain['season']->ends_at, 'D j M')]) }}</span>
-            </span>
-            @php($minedShare = $chain['mined'] / max(1, $chain['supply']) * 100)
-            <div class="relative h-4 overflow-hidden rounded-sm bg-well" role="img" aria-label="{{ __(':mined of :supply sats mined', ['mined' => $sats($chain['mined']), 'supply' => $sats($chain['supply'])]) }}">
-                <span class="absolute inset-y-0 left-0 bg-btc" style="width: {{ number_format($minedShare, 3, '.', '') }}%"></span>
-                @foreach ([50, 75, 87.5, 93.75] as $mark)
-                    <span class="absolute inset-y-0 w-px bg-ground" style="left: {{ $mark }}%" aria-hidden="true"></span>
-                @endforeach
-            </div>
-            <p class="m-0 text-xs text-ink-2">{{ __('At the rate of the last 4 weeks about :sats sats get mined by the season end (:percent %).', ['sats' => $sats($chain['estimate']['end_mined']), 'percent' => $chain['estimate']['end_mined_percent']]) }}</p>
+    @if ($hasChain)
+        <section aria-labelledby="supply-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-supply">
+            <h2 id="supply-h" class="m-0 text-[15px] font-bold">{{ __('Supply: mined and left') }}</h2>
+            <x-supply-chart :curve="$chain['curve']" :zone="$zone" />
+            @if ($live)
+                <p class="m-0 text-xs text-ink-2">{{ __('At the rate of the last 4 weeks about :sats sats get mined by the season end (:percent %).', ['sats' => $sats($chain['estimate']['end_mined']), 'percent' => $chain['estimate']['end_mined_percent']]) }}</p>
+            @endif
         </section>
     @endif
 
@@ -140,7 +174,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
                                 <td class="py-2 pr-3 text-right">{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                             @endforeach
                             @foreach ($games as $game)
-                                @php($minedHere = (int) ($live ? ($chain['mined_by_game_and_era'][$game][$row['era']] ?? 0) : 0))
+                                @php($minedHere = (int) ($hasChain ? ($chain['mined_by_game_and_era'][$game][$row['era']] ?? 0) : 0))
                                 <td class="py-2 pr-3 text-right whitespace-nowrap">{{ $sats($minedHere) }} <span class="text-ink-3">/ {{ $sats($row['caps'][$game] ?? 0) }}</span></td>
                             @endforeach
                         </tr>
@@ -154,7 +188,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
         @endunless
     </section>
 
-    @if ($live)
+    @if ($hasChain)
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
             <section aria-labelledby="latest-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:col-span-8 lg:px-6" data-test="mining-latest">
                 <h2 id="latest-h" class="m-0 text-[15px] font-bold">{{ __('Latest blocks') }} <span class="font-normal text-ink-3">{{ __('mined, pending the season review') }}</span></h2>
@@ -168,7 +202,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
                         <span class="flex flex-col items-end gap-0.5"><b>{{ $sats($block['reward']) }}</b><span class="text-xs whitespace-nowrap text-ink-3">{{ $date($block['at'], 'D H:i') }}</span></span>
                     </div>
                 @empty
-                    <p class="m-0 py-4 text-[13px] text-ink-2">{{ __('No block yet. The first fair rated win mines block 1.') }}</p>
+                    <p class="m-0 py-4 text-[13px] text-ink-2">{{ $ended ? __('No block was mined this season.') : __('No block yet. The first fair rated win mines block 1.') }}</p>
                 @endforelse
             </section>
 
@@ -196,8 +230,64 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
         </section>
     @endif
 
+    <div @class(['grid grid-cols-1 gap-4 lg:gap-6', 'lg:grid-cols-2' => $hasChain])>
+        <section aria-labelledby="reserve-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-reserve">
+            <h2 id="reserve-h" class="m-0 text-[15px] font-bold">{{ __('League reserve') }}</h2>
+            <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Zaps to the league, the unmined rest of a season and voided blocks. Nothing here is promised to a later season.') }}</p>
+            <dl class="m-0 flex flex-col text-[13px]">
+                @if ($unmined !== null)
+                    <div class="flex items-baseline justify-between gap-3 border-b border-hairline py-2.5" data-test="reserve-unmined">
+                        <dt class="text-ink-2">{{ $live ? __('Unmined rest at the season end, at the current rate') : __('Unmined rest of the season') }}</dt>
+                        <dd class="m-0 font-bold whitespace-nowrap">{{ $live ? '~' : '' }}{{ $sats($unmined) }}</dd>
+                    </div>
+                @endif
+                <div class="flex items-baseline justify-between gap-3 py-2.5">
+                    <dt class="text-ink-2">{{ __('Zaps') }}</dt>
+                    <dd class="m-0 text-ink-3" data-test="reserve-zap-count">{{ trans_choice(':count zap|:count zaps', $zaps['count']) }}</dd>
+                </div>
+            </dl>
+            @if ($zaps['latest'] !== [])
+                <ul class="m-0 -mt-2 flex list-none flex-col p-0 text-[13px]" data-test="reserve-zaps">
+                    @foreach ($zaps['latest'] as $zap)
+                        <li class="grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-3 border-b border-hairline py-2 last:border-0">
+                            <span class="truncate">{{ $zap['name'] }}</span>
+                            <b class="whitespace-nowrap">{{ $sats($zap['sats']) }}</b>
+                            <span class="text-xs whitespace-nowrap text-ink-3">{{ $date($zap['at'], 'j M') }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        </section>
+
+        @if ($hasChain)
+            <section aria-labelledby="payouts-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-payouts">
+                <h2 id="payouts-h" class="m-0 text-[15px] font-bold">{{ __('Payouts') }}</h2>
+                <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Nobody is paid during the season. After the season review each player is paid once, to their Lightning address.') }}</p>
+                <dl class="m-0 flex flex-col text-[13px]">
+                    @foreach ([
+                        [__('Season end'), $date($chain['season']->ends_at)],
+                        [__('Mined, waiting for the review'), __(':sats sats, :players', ['sats' => $sats($chain['mined']), 'players' => trans_choice(':count player|:count players', $chain['miner_count'])])],
+                        [__('Without a valid address'), __('the sats wait :days days for a claim, then go to the reserve', ['days' => intdiv($chain['season']->claim_seconds, 86400)])],
+                    ] as [$term, $value])
+                        <div class="flex flex-col gap-0.5 border-b border-hairline py-2.5 last:border-0"><dt class="text-xs text-ink-2">{{ $term }}</dt><dd class="m-0">{{ $value }}</dd></div>
+                    @endforeach
+                </dl>
+            </section>
+        @endif
+    </div>
+
+    @if ($hasChain)
+        <section aria-labelledby="review-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-review">
+            <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h2 id="review-h" class="m-0 text-[15px] font-bold">{{ __('Season review') }}</h2>
+                <span class="text-xs text-ink-3">{{ $live ? __('opens :when', ['when' => $date($chain['season']->ends_at)]) : __('mining stopped :when', ['when' => $date($chain['season']->ends_at)]) }}</span>
+            </span>
+            <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('At the season end every game is checked for farming. Each correction is published with its block and reason; voided sats go to the reserve. Then each player is paid once.') }}</p>
+        </section>
+    @endif
+
     <section aria-labelledby="rules-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-rules">
-        <h2 id="rules-h" class="m-0 text-[15px] font-bold">{{ $live ? __('Rules in force now') : __('Rules of the Pre-Season draft') }}</h2>
+        <h2 id="rules-h" class="m-0 text-[15px] font-bold">{{ match (true) { $live => __('Rules in force now'), $ended => __('Rules at the season end'), default => __('Rules of the Pre-Season draft') } }}</h2>
         <dl class="m-0 grid grid-cols-1 gap-x-6 text-[13px] md:grid-cols-2">
             @foreach ([
                 [__('Game weights, per winning player'), collect($inForce->weights)->map(fn ($milli, $key) => ChainOverview::keyLabel((string) $key).' '.SeasonRelease::factor((int) $milli).'×')->implode(', ')],
@@ -211,7 +301,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
             @endforeach
         </dl>
 
-        @if ($live)
+        @if ($hasChain)
             <h3 class="m-0 mt-2 text-[13px] font-bold">{{ __('Change log') }}</h3>
             <ol class="m-0 flex list-none flex-col p-0" data-test="mining-changes">
                 @foreach ($chain['changes'] as $change)
@@ -225,7 +315,9 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component {
                     <span class="text-ink-2">{{ $chain['season']->genesis_message }}</span>
                 </li>
             </ol>
-            <p class="m-0 text-xs text-ink-3">{{ __('Any board member can adjust a limit during the season. A change counts only for blocks saved after it takes effect, never back.') }}</p>
+            @if ($live)
+                <p class="m-0 text-xs text-ink-3">{{ __('Any board member can adjust a limit during the season. A change counts only for blocks saved after it takes effect, never back.') }}</p>
+            @endif
         @endif
     </section>
 </div>
