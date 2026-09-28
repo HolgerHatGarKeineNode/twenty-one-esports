@@ -242,14 +242,17 @@ test('every rotation scene renders from the real data: moves in SAN, the QR code
 
     // The feature slides: a tournament without a pot or cup gives the empty states; with them, the pot and the cup.
     $withPot = $renderer->svg($source->rotation('d1', null, [], 0, 0, $stats, null, [[...$slide, 'id' => 99, 'pot' => 4000], [...$slide, 'pot' => 21000]]), RotationPlanner::VIEWS['d1']);
-    $withCup = $renderer->svg($source->rotation('d2', null, [], 0, 0, $stats, null, [[...$slide, 'cup' => true, 'taken' => 3, 'places' => 16]]), RotationPlanner::VIEWS['d2']);
+    // One tile per game, a row per region (EU before US, whatever order they come in).
+    $withCup = $renderer->svg($source->rotation('d2', null, [], 0, 0, $stats, null, [[...$slide, 'id' => 98, 'cup' => true, 'region' => 'US', 'taken' => 1, 'places' => 4], [...$slide, 'cup' => true, 'region' => 'EU', 'taken' => 3, 'places' => 16]]), RotationPlanner::VIEWS['d2']);
 
     expect($svgs['d1'])->toContain('Put sats')->not->toContain('PLAY FOR SATS')
         ->and($svgs['d2'])->toContain('No cup is open right now.')
         ->and($svgs['d3'].$svgs['d4'])->toContain('<path style="stroke:#17120a"')
         ->and($withPot)->toContain('>25,000</text>', 'in 2 open prize pots', '21,000 sats', '4,000 sats', 'Cup &lt;script')
         ->and(strpos($withPot, '21,000 sats'))->toBeLessThan(strpos($withPot, '4,000 sats'))
-        ->and($withCup)->toContain('3 / 16 signed up', 'Chess');
+        ->and($withCup)->toContain('EU · 3 / 16 signed up', 'US · 1 / 4 signed up', 'Chess')
+        ->and(strpos($withCup, 'EU · 3'))->toBeLessThan(strpos($withCup, 'US · 1'))
+        ->and(substr_count($withCup, 'data-unit="cup-game-'))->toBe(1);
 });
 
 test('a started game, a move and a result reach the scene data on the next poll, without a cache', function () {

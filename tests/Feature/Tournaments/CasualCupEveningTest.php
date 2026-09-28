@@ -134,8 +134,8 @@ test('at the close three players switch to a round robin evening at 20:00 Berlin
     cupSignups($cup, 3);
     $beforeSwitch = count(eveningVersions($cup));
 
-    // P27: 2 to 5 at the close play their evening at once; the extension is for fewer than 2.
-    $this->travel(72)->hours();
+    // P27: 2 to 5 at the close (the EU slot, Saturday 20:00) play their evening the next day; the extension is for fewer than 2.
+    $this->travelTo($cup->signup_closes_at);
     $done = cupTick();
     $cup->refresh();
     $versions = eveningVersions($cup);
@@ -146,11 +146,11 @@ test('at the close three players switch to a round robin evening at 20:00 Berlin
     expect($done['cups']['evenings'])->toBe(1)
         ->and($cup->status)->toBe(TournamentStatus::Drawing)
         ->and($cup->format)->toBe(TournamentFormat::RoundRobin)
-        ->and($cup->starts_at->setTimezone('Europe/Berlin')->format('Y-m-d H:i'))->toBe('2026-10-09 20:00')
+        ->and($cup->starts_at->setTimezone('Europe/Berlin')->format('Y-m-d H:i'))->toBe('2026-10-11 20:00')
         ->and(count($versions))->toBe($beforeSwitch + 1)
         ->and((int) $tags['start'])->toBe($cup->starts_at->getTimestamp())
         ->and((int) $tags['end'])->toBe($cup->starts_at->getTimestamp() + $plan['span_minutes'] * 60)
-        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup #1: live evening Fri 9 Oct, 20:00 CEST');
+        ->and(User::query()->findOrFail($player)->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup EU #1: live evening Sun 11 Oct, 20:00 CEST');
 
     // The block comes: the round robin is drawn, and nothing starts before the evening; no further version.
     $tip = 900001;

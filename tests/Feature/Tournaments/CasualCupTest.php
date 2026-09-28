@@ -55,19 +55,22 @@ beforeEach(function () {
 
 /* ---------- Opening and numbering --------------------------------------------------------------------------- */
 
-test('two ticks open exactly one chess cup, published by the league like an admin tournament', function () {
+test('two ticks open exactly one chess cup per region, published by the league like an admin tournament', function () {
     cupTick();
     cupTick();
 
-    $cup = Tournament::query()->sole();
+    $cup = openCup();
 
-    expect($cup->name)->toBe('Chess Casual Cup #1')
+    expect(Tournament::query()->orderBy('cup_series')->pluck('cup_series')->all())->toBe(['chess-eu', 'chess-us'])
+        ->and($cup->name)->toBe('Chess Casual Cup EU #1')
         ->and($cup->status)->toBe(TournamentStatus::Signup)
         ->and($cup->format)->toBe(TournamentFormat::DoubleElimination)
         ->and($cup->formatOptions()->grandFinal)->toBe('single')
         ->and($cup->capacity)->toBe(4)
         ->and($cup->ladder_address)->toBeNull()
-        ->and($cup->signup_closes_at->equalTo(now()->addHours(72)))->toBeTrue()
+        // Monday 10:00 UTC: the first EU slot at least 48 h away is Saturday 20:00 Berlin; sign-up closes at the start.
+        ->and($cup->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-10-10 18:00')
+        ->and($cup->starts_at->equalTo($cup->signup_closes_at))->toBeTrue()
         ->and(NostrEvent::query()->findOrFail($cup->event_id)->kind)->toBe(Tournament::CALENDAR_EVENT);
 });
 
@@ -78,15 +81,15 @@ test('a concurrent run that opened the cup first leaves one cup, not two', funct
     DB::listen(function ($query) use (&$rival) {
         if ($rival === null && str_contains($query->sql, 'max("cup_number")')) {
             $rival = Tournament::factory()->create([
-                'name' => 'Chess Casual Cup #1', 'created_by_id' => null, 'status' => TournamentStatus::Signup,
-                'cup_series' => 'chess', 'cup_number' => 1, 'cup_open_series' => 'chess',
+                'name' => 'Chess Casual Cup EU #1', 'created_by_id' => null, 'status' => TournamentStatus::Signup,
+                'cup_series' => 'chess-eu', 'cup_number' => 1, 'cup_open_series' => 'chess-eu',
             ]);
         }
     });
 
-    expect(app(CasualCups::class)->ensure('chess'))->toBeNull()
+    expect(app(CasualCups::class)->ensure('chess', 'eu'))->toBeNull()
         ->and($rival)->not->toBeNull()
-        ->and(Tournament::query()->where('cup_series', 'chess')->pluck('id')->all())->toBe([$rival->id]);
+        ->and(Tournament::query()->where('cup_series', 'chess-eu')->pluck('id')->all())->toBe([$rival->id]);
 });
 
 test('the next cup opens a day after the last final, and a called-off cup gives its number back', function () {
@@ -103,12 +106,13 @@ test('the next cup opens a day after the last final, and a called-off cup gives 
     $this->travel(1)->hours();
     cupTick();
     $second = openCup();
-    expect($second->name)->toBe('Chess Casual Cup #2');
+    expect($second->name)->toBe('Chess Casual Cup EU #2');
 
-    // #2 gets nobody: extended once, then called off; its number is free again.
-    $this->travel(72)->hours();
+    // #2 gets nobody: extended once (to the next week's slot), then called off; its number is free again.
+    $this->travelTo($second->signup_closes_at);
     cupTick();
-    $this->travel(48)->hours();
+    expect($second->refresh()->signup_closes_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-17 20:00');
+    $this->travelTo($second->signup_closes_at);
     cupTick();
 
     expect($second->refresh()->status)->toBe(TournamentStatus::Cancelled)
@@ -117,8 +121,8 @@ test('the next cup opens a day after the last final, and a called-off cup gives 
     $this->travel(24)->hours();
     cupTick();
 
-    expect(openCup()->name)->toBe('Chess Casual Cup #2')
-        ->and(Tournament::query()->where('cup_series', 'chess')->count())->toBe(3);
+    expect(openCup()->name)->toBe('Chess Casual Cup EU #2')
+        ->and(Tournament::query()->where('cup_series', 'chess-eu')->count())->toBe(3);
 });
 
 test('an admin edit never changes what makes a cup: game, mode, format, capacity, name or rating stay; the description may change', function (array $change) {
@@ -172,15 +176,17 @@ test('at the close six players start the cup, a lone player extends sign-up once
     $lone = openCup();
     cupSignups($lone, 1);
 
-    $this->travel(72)->hours();
+    $this->travelTo($lone->signup_closes_at->max($six->signup_closes_at));
     cupTick();
 
+    // The extension is the region's next slot, a week later on the same clock.
     expect($six->refresh()->status)->toBe(TournamentStatus::Drawing)
         ->and($lone->refresh()->status)->toBe(TournamentStatus::Signup)
         ->and($lone->cup_extended_at)->not->toBeNull()
-        ->and($lone->signup_closes_at->equalTo(now()->addHours(48)))->toBeTrue();
+        ->and($lone->signup_closes_at->equalTo(now()->addWeek()))->toBeTrue()
+        ->and($lone->starts_at->equalTo($lone->signup_closes_at))->toBeTrue();
 
-    $this->travel(48)->hours();
+    $this->travelTo($lone->signup_closes_at);
     cupTick();
 
     $player = User::query()->findOrFail($lone->signups()->firstOrFail()->members[0]);
@@ -196,7 +202,7 @@ test('the draw alone never closes a cup short of players: that is the cups\' own
     cupTick();
     $cup = openCup();
     cupSignups($cup, 5);
-    $this->travel(72)->hours();
+    $this->travelTo($cup->signup_closes_at);
 
     app(TournamentDraws::class)->advanceDue();
 
@@ -256,7 +262,7 @@ test('round 1 opens with a 48 h window; nothing starts before the auto slot, the
             $notices = $player->notifications()->get()->pluck('data');
 
             expect($notices)->toHaveCount(1)
-                ->and($notices[0]['title'])->toBe('Chess Casual Cup #1: your match is open')
+                ->and($notices[0]['title'])->toBe('Chess Casual Cup EU #1: your match is open')
                 ->and($notices[0]['body'])->toContain($opponent)
                 ->and($notices[0]['body'])->toContain('Tue 6 Oct, 20:00')
                 ->and($notices[0]['url'])->toBe(route('tournaments.show', $cup));
@@ -274,7 +280,7 @@ test('round 1 opens with a 48 h window; nothing starts before the auto slot, the
     // Started while the players may be away: both of every game are told, with their colour and the game link.
     foreach (ChessGame::query()->whereNotNull('tournament_match_id')->get() as $game) {
         foreach (['White' => $game->white, 'Black' => $game->black] as $color => $player) {
-            $started = $player->notifications()->get()->pluck('data')->firstWhere('title', 'Chess Casual Cup #1: your game is on');
+            $started = $player->notifications()->get()->pluck('data')->firstWhere('title', 'Chess Casual Cup EU #1: your game is on');
 
             expect($started)->not->toBeNull()
                 ->and($started['body'])->toContain("You play {$color} against {$game->opponentOf($player)->displayName()}")
@@ -300,7 +306,7 @@ test('"Play your cup match": the opponent accepts and the match game starts with
         ->and($game->status)->toBe(ChessGameStatus::Active);
 
     // The inviter hears the game is on; the one who accepted is taken to the board and gets no second notice.
-    $started = fn (User $player) => $player->notifications()->get()->pluck('data')->where('title', 'Chess Casual Cup #1: your game is on')->count();
+    $started = fn (User $player) => $player->notifications()->get()->pluck('data')->where('title', 'Chess Casual Cup EU #1: your game is on')->count();
 
     expect($started($black))->toBe(1)
         ->and($started($white))->toBe(0);

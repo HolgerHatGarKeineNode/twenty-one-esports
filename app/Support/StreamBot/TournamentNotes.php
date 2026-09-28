@@ -11,6 +11,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\Tournaments\CasualCups;
 use App\Support\TwentyOne\EventBuilder;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -135,7 +136,8 @@ class TournamentNotes
             $body = StreamBotCopy::render($template, 0, [
                 'name' => StreamBotCopy::clean($tournament->name, self::NAME_LENGTH),
                 'game' => $this->gameLine($tournament),
-                'starts' => LeagueTime::stamp($tournament->starts_at),
+                // A casual cup on its region's clock (a US cup in New York time), everything else in the league's.
+                'starts' => LeagueTime::stamp($tournament->starts_at, $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : null),
                 'pot' => $this->pot($tournament),
                 'url' => route('tournaments.show', $tournament),
             ]);

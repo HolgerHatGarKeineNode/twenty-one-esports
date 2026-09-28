@@ -19,10 +19,10 @@ use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\Tournaments\TournamentScheduler;
 
-/** The open cup of chess, if any. */
+/** The open EU cup of chess, if any. */
 function openCup(): ?Tournament
 {
-    return Tournament::query()->where('cup_open_series', 'chess')->first();
+    return Tournament::query()->where('cup_open_series', 'chess-eu')->first();
 }
 
 /** `$n` keyed players signed up solo to the cup. */
@@ -45,11 +45,11 @@ function cupSignups(Tournament $cup, int $n): void
 function runningCup(int $n, TournamentFormat $format = TournamentFormat::DoubleElimination, array $options = ['grandFinal' => 'single'], string $game = 'chess', string $mode = 'blitz'): Tournament
 {
     $cup = Tournament::factory()->create([
-        'name' => 'Chess Casual Cup #1', 'format' => $format, 'game' => $game, 'mode' => $mode,
+        'name' => 'Chess Casual Cup EU #1', 'format' => $format, 'game' => $game, 'mode' => $mode,
         'options' => FormatOptions::fromArray($options, GameProfile::for($game, $mode))->toArray(),
         'capacity' => 16, 'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running,
         'slug' => 'chess-casual-cup-1-'.fake()->unique()->numberBetween(1, 1_000_000), 'starts_at' => now(), 'created_by_id' => null,
-        'cup_series' => $game, 'cup_number' => 1, 'cup_open_series' => $game,
+        'cup_series' => "{$game}-eu", 'cup_number' => 1, 'cup_open_series' => "{$game}-eu",
     ]);
 
     foreach (range(1, $n) as $index) {

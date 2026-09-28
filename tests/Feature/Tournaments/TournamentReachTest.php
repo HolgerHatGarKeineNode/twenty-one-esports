@@ -148,10 +148,10 @@ test('the prize pot heads the tournament page: the pot, the podium and the paid 
 });
 
 test('a special tournament heads every page even when a casual cup starts sooner; the cup is only a side mention', function () {
-    $cup = openFor('chess', 'blitz', ['name' => 'Chess Casual Cup #1', 'cup_series' => 'chess', 'cup_number' => 1,
+    $cup = openFor('chess', 'blitz', ['name' => 'Chess Casual Cup EU #1', 'cup_series' => 'chess-eu', 'cup_number' => 1,
         'signup_closes_at' => now()->addHours(2), 'starts_at' => now()->addHours(3), 'published_at' => now()]);
     $special = openFor('chess', 'blitz', ['name' => 'Friday Blitz Special', 'published_at' => now()]);
-    $rlCup = openFor('rocket-league', '3v3', ['name' => 'Rocket League Casual Cup #1', 'cup_series' => 'rocket-league', 'cup_number' => 1, 'published_at' => now()]);
+    $rlCup = openFor('rocket-league', '3v3', ['name' => 'Rocket League Casual Cup EU #1', 'cup_series' => 'rocket-league-eu', 'cup_number' => 1, 'published_at' => now()]);
 
     $pages = [
         '/chess' => 'data-test="next-tournament" data-tournament="',
@@ -164,7 +164,7 @@ test('a special tournament heads every page even when a casual cup starts sooner
 
         expect(str($html)->after($hero)->before('"')->toString())->toBe((string) $special->id, $url)
             ->and($html)->toContain('data-test="cup-mention"')
-            ->and(strpos($html, 'Chess Casual Cup #1'))->toBeGreaterThan(strpos($html, $hero), $url);
+            ->and(strpos($html, 'Chess Casual Cup EU #1'))->toBeGreaterThan(strpos($html, $hero), $url);
     }
 
     // A game with only a cup: the empty state and the cup's row, never a cup poster.

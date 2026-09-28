@@ -6,7 +6,7 @@
     times to propose or accept (partials/cup-schedule).
 --}}
 @php
-    $tz = auth()->user()?->timezone ?? (string) config('esports.casual_cups.timezone', 'Europe/Berlin');
+    $tz = auth()->user()?->timezone ?? $cup['zone'];
     $format = fn ($at) => $at->copy()->setTimezone($tz)->translatedFormat('D j M, H:i');
 @endphp
 <section aria-labelledby="cup-match-h" class="mx-4 flex flex-col gap-3 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] lg:mx-12 lg:px-6" data-test="cup-match">

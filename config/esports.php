@@ -379,11 +379,21 @@ return [
     | Automatic casual cups (P25, App\Support\Tournaments\CasualCups)
     |--------------------------------------------------------------------------
     |
-    | enabled: the games whose cup series runs (comma-separated
-    | `ESPORTS_CASUAL_CUP_GAMES`); per game at most one cup is open at a
-    | time. All four games run by default (Rocket League and EA Sports FC
-    | since P25 S3, on the casual scheduled flow). games: the mode each
-    | series plays, its name, and the series lengths (finals = grand final).
+    | enabled: the games whose cup series run (comma-separated
+    | `ESPORTS_CASUAL_CUP_GAMES`). All four games run by default (Rocket
+    | League and EA Sports FC since P25 S3, on the casual scheduled flow).
+    | games: the mode each series plays, its name, and the series lengths
+    | (finals = grand final).
+    |
+    | regions (user, 2026-09-28: separate EU and US cups): every enabled game
+    | runs one cup series per region, keyed "<game>-<region>" and named
+    | "<Game> Casual Cup <label> #n"; per game and region at most one cup is
+    | open at a time. A cup starts at its region's slot (`weekday` at `time`
+    | in `timezone`, daylight saving included): the first one that leaves at
+    | least min_signup_hours of sign-up. Sign-up closes at the start. The
+    | first region is where the cups opened before the regions went.
+    | timezone: the zone of a cup without a region and of a player without
+    | one.
     |
     | sizes (P27): a cup opens with the first size of places; whenever only
     | one place is left (3/4, 7/8 ...) the league raises it to the next size,
@@ -391,8 +401,8 @@ return [
     | A cup full at its last size, or full once growth is frozen, starts at
     | once. At the close it plays with whoever signed up: min_players or more
     | a double elimination, 2 to min_players - 1 a small cup's live evening
-    | (below); fewer than 2 extend sign-up once by extension_hours, then the
-    | cup is called off. More than 8 players play a 16-slot bracket; the top
+    | (below); fewer than 2 extend sign-up once to the region's next slot,
+    | then the cup is called off. More than 8 players play a 16-slot bracket; the top
     | seeds get the byes. gap_hours: the next cup of a game opens this long
     | after the previous final or call-off.
     |
@@ -400,7 +410,7 @@ return [
     | the moment a round opens, which is as soon as the round before it is
     | done; max_days after the start every open match is decided at once.
     | auto_slot: a chess match nobody started is started by the league at
-    | this time (timezone) on the window's last evening. invite_minutes: how
+    | this time (the region's zone) on the window's last evening. invite_minutes: how
     | long a "Play your cup match" invite stays open. Rocket League and EA
     | Sports FC (S3): either player proposes one to three times inside the
     | window, the other accepts one within answer_hours (at the latest by the
@@ -411,7 +421,7 @@ return [
     | still runs, as one live evening instead of round windows: 2 players
     | play one match (chess: duel_games games, colours alternating; the
     | series games a best of duel_best_of), 3 to 5 a round robin; 0 or 1 is
-    | called off. It starts at `start` (timezone above) `days_after_close`
+    | called off. It starts at `start` (the region's zone) `days_after_close`
     | days after sign-up closed; the league starts each round's games at the
     | round's start, rounds follow each other after `break_minutes`. A round
     | is decided `grace_minutes` after its planned length (the game profile's
@@ -431,8 +441,11 @@ return [
         'sizes' => [4, 8, 16],
         'growth_freeze_minutes' => 60,
         'min_players' => 6,
-        'signup_hours' => 72,
-        'extension_hours' => 48,
+        'regions' => [
+            'eu' => ['label' => 'EU', 'timezone' => 'Europe/Berlin', 'weekday' => 'saturday', 'time' => '20:00'],
+            'us' => ['label' => 'US', 'timezone' => 'America/New_York', 'weekday' => 'saturday', 'time' => '20:00'],
+        ],
+        'min_signup_hours' => 48,
         'gap_hours' => 24,
         'window_hours' => 48,
         'large_window_hours' => 36,

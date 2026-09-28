@@ -1166,12 +1166,13 @@ final class RotationKit
     }
 
     /**
-     * The open casual cups (TournamentSlides' `cup`), one per game, in the order given (soonest close first).
+     * The open casual cups (TournamentSlides' `cup`), one entry per game in the order given (soonest close
+     * first), each with its regions' cups (EU and US, user 2026-09-28), at most `$regions`, by region.
      *
      * @param  list<array<string, mixed>>  $upcoming
-     * @return list<array{game: string, cover: string|null, taken: int, places: int, closes: string}>
+     * @return list<array{game: string, cover: string|null, regions: list<array{region: string, taken: int, places: int, closes: string}>}>
      */
-    public static function cups(array $upcoming, int $limit): array
+    public static function cups(array $upcoming, int $limit, int $regions = 2): array
     {
         $cups = [];
 
@@ -1181,20 +1182,27 @@ final class RotationKit
             }
 
             $game = self::text($t, 'game');
+            $region = self::text($t, 'region');
 
-            if ($game === '' || isset($cups[$game])) {
+            if ($game === '' || isset($cups[$game]['regions'][$region])) {
                 continue;
             }
 
-            $cups[$game] = [
-                'game' => $game,
-                'cover' => self::coverUri($t['cover'] ?? null),
+            $cups[$game]['game'] = $game;
+            $cups[$game]['cover'] ??= self::coverUri($t['cover'] ?? null);
+            $cups[$game]['regions'][$region] = [
+                'region' => $region,
                 'taken' => is_int($t['taken'] ?? null) ? $t['taken'] : 0,
                 'places' => is_int($t['places'] ?? null) ? $t['places'] : 0,
                 'closes' => self::text($t, 'signupClosesAt'),
             ];
         }
 
-        return array_slice(array_values($cups), 0, $limit);
+        return array_slice(array_values(array_map(function (array $cup) use ($regions): array {
+            ksort($cup['regions']);
+            $cup['regions'] = array_slice(array_values($cup['regions']), 0, max(1, $regions));
+
+            return $cup;
+        }, $cups)), 0, $limit);
     }
 }

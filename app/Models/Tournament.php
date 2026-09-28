@@ -84,9 +84,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $pot_balance_at when that balance was read
  * @property string|null $pot_balance_error why the latest read failed (the last good value stays)
  * @property Carbon|null $paused_at set while an organizer or admin paused the running tournament (P18, TournamentControl)
- * @property string|null $cup_series the game of its casual cup series (P25, CasualCups); null for every other tournament
+ * @property string|null $cup_series its casual cup series (P25, CasualCups): "<game>-<region>", "chess-eu"; null for every other tournament
  * @property int|null $cup_number its number in that series; null once called off (the number is taken again)
- * @property string|null $cup_open_series the series while the cup is open, null once it ended (unique: one open cup per game)
+ * @property string|null $cup_open_series the series while the cup is open, null once it ended (unique: one open cup per game and region)
  * @property Carbon|null $cup_extended_at when its sign-up was extended (once)
  * @property Carbon|null $cup_ended_at when it finished or was called off
  * @property Carbon|null $created_at

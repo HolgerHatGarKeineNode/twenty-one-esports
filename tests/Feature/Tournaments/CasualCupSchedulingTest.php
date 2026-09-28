@@ -184,9 +184,9 @@ test('nobody checked in: not replayed, the cup rule decides (the proposer tried 
 });
 
 test('Rocket League and EA Sports FC cups open with their own series lengths', function (string $game, string $name, int $bestOf, int $finalBestOf) {
-    $cup = app(CasualCups::class)->ensure($game);
+    $cup = app(CasualCups::class)->ensure($game, 'eu');
 
-    expect($cup->name)->toBe("{$name} Casual Cup #1")
+    expect($cup->name)->toBe("{$name} Casual Cup EU #1")
         ->and($cup->mode)->toBe('1v1')
         ->and($cup->capacity)->toBe(4)
         ->and($cup->formatOptions()->bestOf)->toBe($bestOf)

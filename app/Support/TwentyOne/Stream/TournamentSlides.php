@@ -6,6 +6,7 @@ use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\Prizes\PrizePool;
+use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentLanding;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -242,6 +243,8 @@ class TournamentSlides
             // The feature slides (d1 prize pots, d2 casual cups) read these.
             'pot' => app(PrizePool::class)->shownPotSats($tournament),
             'cup' => $tournament->isCasualCup(),
+            // "EU" / "US" for a casual cup (d2 lists every game's regions), null otherwise.
+            'region' => $tournament->isCasualCup() ? CasualCups::regionLabel($tournament) : null,
         ];
     }
 

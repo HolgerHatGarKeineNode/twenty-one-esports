@@ -256,7 +256,7 @@ final class TournamentWaits
             return $base->make('not_started', consequence: $tournament->isPaused() ? 'Starts when the tournament resumes' : 'The league starts it shortly');
         }
 
-        $slot = CasualCups::autoSlot($endsAt);
+        $slot = CasualCups::autoSlot($endsAt, CasualCups::timezoneOf($tournament));
         $params = ['time' => LeagueTime::stamp($slot)];
 
         if ($tournament->profile()->isChess()) {

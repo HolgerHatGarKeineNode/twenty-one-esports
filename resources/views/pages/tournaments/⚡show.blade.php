@@ -148,7 +148,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     /**
      * The viewer's open chess match in this casual cup, with its invites.
      *
-     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null, series: bool, agreed: \Carbon\CarbonImmutable|null, seriesMatch: \App\Models\SeriesMatch|null, mine: bool}|null
+     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, zone: string, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null, series: bool, agreed: \Carbon\CarbonImmutable|null, seriesMatch: \App\Models\SeriesMatch|null, mine: bool}|null
      */
     #[Computed]
     public function cupMatch(): ?array
@@ -175,7 +175,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             'match' => $match,
             'opponent' => $opponent->name ?? '',
             'endsAt' => $match->round->window_ends_at,
-            'slot' => CasualCups::autoSlot($match->round->window_ends_at),
+            'slot' => CasualCups::autoSlot($match->round->window_ends_at, CasualCups::timezoneOf($this->tournament)),
+            'zone' => CasualCups::timezoneOf($this->tournament),
             'evening' => CasualCups::isEvening($this->tournament),
             'game' => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
             'incoming' => $open()->where('invitee_id', $user->id)->first(),
@@ -532,6 +533,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2 lg:self-start">
 
                 @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
+
+                {{-- A casual cup names the other region's cup of its game (EU and US, user 2026-09-28). --}}
+                @if ($tournament->isCasualCup())
+                    <div class="contents" data-test="cup-other-regions"><x-tournaments.cup-mentions :game="$tournament->game" :except="$tournament->id" /></div>
+                @endif
 
                 @if (filled($tournament->description))
                     <p class="m-0 max-w-[60ch] text-[15px] leading-relaxed whitespace-pre-line text-ink-2" data-test="tournament-description">{{ $tournament->description }}</p>

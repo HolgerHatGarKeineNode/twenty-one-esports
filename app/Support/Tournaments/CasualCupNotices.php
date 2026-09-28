@@ -14,6 +14,7 @@ use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * What the league tells the players of its casual cups (P25, CasualCups),
@@ -46,19 +47,43 @@ final class CasualCupNotices
      */
     public function eveningAnnounced(Tournament $cup, array $plan): void
     {
-        $ids = TournamentSignup::query()->where('tournament_id', $cup->id)->active()->get()
-            ->flatMap(fn (TournamentSignup $signup): array => $signup->members)->all();
-
-        foreach (User::query()->whereKey(array_values(array_unique(array_map(intval(...), $ids))))->get() as $player) {
+        foreach ($this->signedUp($cup) as $player) {
             $locale = $this->locale($player);
 
-            $this->send($player, $cup, __(':tournament: live evening :start', ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player)], $locale),
+            $this->send($player, $cup, __(':tournament: live evening :start', ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player, $cup)], $locale),
                 __('Few signed up, so the cup is one evening: :format, :games games for you, about :minutes minutes. The league starts every game on the board; be online.', [
                     'format' => __($cup->format->label(), [], $locale),
                     'games' => $plan['games_per_player'],
                     'minutes' => $plan['span_minutes'],
                 ], $locale), $locale);
         }
+    }
+
+    /**
+     * A cup moved to its region's slot (the EU/US split, user 2026-09-28):
+     * every signed-up player hears the new start once, in their zone.
+     */
+    public function moved(Tournament $cup): void
+    {
+        foreach ($this->signedUp($cup) as $player) {
+            $locale = $this->locale($player);
+
+            $this->send($player, $cup, __(':tournament now starts :start', ['tournament' => $cup->name, 'start' => $this->time($cup->starts_at, $player, $cup)], $locale),
+                __('The casual cups now run on a fixed evening per region (EU and US). You stay signed up; sign-up closes at the start.', [], $locale), $locale);
+        }
+    }
+
+    /**
+     * The players signed up to a cup, members of a lineup each.
+     *
+     * @return Collection<int, User>
+     */
+    private function signedUp(Tournament $cup): Collection
+    {
+        $ids = TournamentSignup::query()->where('tournament_id', $cup->id)->active()->get()
+            ->flatMap(fn (TournamentSignup $signup): array => $signup->members)->all();
+
+        return User::query()->whereKey(array_values(array_unique(array_map(intval(...), $ids))))->get();
     }
 
     /**
@@ -83,10 +108,10 @@ final class CasualCupNotices
                 $body = $cup->profile()->isChess()
                     ? __('Play :opponent by :deadline: when you are both online, start it from the cup page. Otherwise the league starts your game at :slot.', [
                         'opponent' => $opponent->name,
-                        'deadline' => $this->time($round->window_ends_at, $player),
-                        'slot' => $this->time(CasualCups::autoSlot($round->window_ends_at), $player),
+                        'deadline' => $this->time($round->window_ends_at, $player, $cup),
+                        'slot' => $this->time(CasualCups::autoSlot($round->window_ends_at, CasualCups::timezoneOf($cup)), $player, $cup),
                     ], $locale)
-                    : __('Play :opponent by :deadline.', ['opponent' => $opponent->name, 'deadline' => $this->time($round->window_ends_at, $player)], $locale);
+                    : __('Play :opponent by :deadline.', ['opponent' => $opponent->name, 'deadline' => $this->time($round->window_ends_at, $player, $cup)], $locale);
 
                 $this->send($player, $cup, __(':tournament: your match is open', ['tournament' => $cup->name], $locale), $body, $locale);
             }
@@ -105,7 +130,7 @@ final class CasualCupNotices
         }
 
         $locale = $this->locale($opponent);
-        $times = implode(', ', array_map(fn (int $at): string => $this->time(CarbonImmutable::createFromTimestamp($at), $opponent), $match->schedule['proposals'] ?? []));
+        $times = implode(', ', array_map(fn (int $at): string => $this->time(CarbonImmutable::createFromTimestamp($at), $opponent, $match->tournament), $match->schedule['proposals'] ?? []));
 
         $this->send($opponent, $match->tournament, __(':name suggests times for your cup match', ['name' => $proposer->displayName()], $locale),
             __(':times · accept one on the cup page.', ['times' => $times], $locale), $locale);
@@ -125,7 +150,7 @@ final class CasualCupNotices
 
         $locale = $this->locale($proposer);
 
-        $this->send($proposer, $match->tournament, __(':name accepted :time for your cup match', ['name' => $acceptor->displayName(), 'time' => $this->time($agreed, $proposer)], $locale),
+        $this->send($proposer, $match->tournament, __(':name accepted :time for your cup match', ['name' => $acceptor->displayName(), 'time' => $this->time($agreed, $proposer, $match->tournament)], $locale),
             __('Check in in the match room from :minutes minutes before.', ['minutes' => (int) config('esports.casual.checkin_before_minutes', 10)], $locale), $locale);
     }
 
@@ -181,9 +206,10 @@ final class CasualCupNotices
         $this->notifier->send($player, NotificationKind::TournamentNews, new Notice($title, $body, route('tournaments.show', $cup), null, __('Open tournament', [], $locale)));
     }
 
-    private function time(CarbonInterface $at, User $player): string
+    /** In the player's zone, else the cup's (its region's). */
+    private function time(CarbonInterface $at, User $player, Tournament $cup): string
     {
-        return $at->copy()->setTimezone($player->timezone ?? (string) config('esports.casual_cups.timezone', 'Europe/Berlin'))->format('D j M, H:i T');
+        return $at->copy()->setTimezone($player->timezone ?? CasualCups::timezoneOf($cup))->format('D j M, H:i T');
     }
 
     private function locale(User $user): string

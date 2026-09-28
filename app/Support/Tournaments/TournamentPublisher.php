@@ -236,7 +236,8 @@ final class TournamentPublisher
             ['start', (string) $start],
             ['end', (string) $end],
             ...array_map(fn (int $day): array => ['D', (string) $day], range(intdiv($start, 86400), intdiv(max($start, $end - 1), 86400))),
-            ['start_tzid', (string) config('esports.preseason.display_timezone', 'UTC')],
+            // A casual cup starts at its region's slot, on that region's clock (America/New_York for a US cup).
+            ['start_tzid', $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : (string) config('esports.preseason.display_timezone', 'UTC')],
             ['location', $page],
             ['r', route('rules')],
             ['t', 'esports'],

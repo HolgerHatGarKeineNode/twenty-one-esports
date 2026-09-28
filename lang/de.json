@@ -4661,5 +4661,16 @@
     "Undone links": "Aufgehobene Verknüpfungen",
     "every link stays in the record": "jede Verknüpfung bleibt im Protokoll",
     "Unlinked by :admin on :time: :reason": "Aufgehoben von :admin am :time: :reason",
-    "No link was undone yet.": "Noch keine Verknüpfung aufgehoben."
+    "No link was undone yet.": "Noch keine Verknüpfung aufgehoben.",
+    "The league opens a casual cup per game and region (:regions) on its own, one at a time each, numbered in order.": "Die Liga eröffnet pro Spiel und Region (:regions) selbst einen Casual Cup, jeweils einen zur Zeit, fortlaufend nummeriert.",
+    "2 to :max players play one live evening at :start in the cup’s region, the day after sign-up closed: 2 players one match, 3 to 5 a round robin, about :budget of play each.": "2 bis :max Spieler spielen einen Live-Abend um :start in der Region des Cups, am Tag nach Anmeldeschluss: 2 Spieler ein Match, 3 bis 5 jeder gegen jeden, etwa :budget Spielzeit pro Person.",
+    "Fewer than 2 players: sign-up is extended once to the region’s next start time, then the cup is called off. The next cup opens :gap after a final or a call-off.": "Weniger als 2 Spieler: Die Anmeldung verlängert sich einmal bis zur nächsten Startzeit der Region, dann fällt der Cup aus. Der nächste Cup öffnet :gap nach einem Finale oder einer Absage.",
+    "Rocket League and EA FC players propose one to three times in the window; the other answers within :answer. Without an agreement the match starts at :slot in the cup’s region on the window’s last evening.": "In Rocket League und EA FC schlagen die Spieler im Fenster ein bis drei Zeiten vor; der andere antwortet binnen :answer. Ohne Einigung startet das Match um :slot (Zeit der Region des Cups) am letzten Abend des Fensters.",
+    "Start (:region)": "Start (:region)",
+    ":weekday :time (:zone)": ":weekday :time (:zone)",
+    "at least :duration": "mindestens :duration",
+    "Each cup starts at its region’s next start time that leaves at least :duration of sign-up; sign-up closes at the start.": "Jeder Cup startet zur nächsten Startzeit seiner Region, die mindestens :duration Anmeldung lässt; die Anmeldung schließt mit dem Start.",
+    "America/New_York": "Amerika/New York",
+    ":tournament now starts :start": ":tournament startet jetzt :start",
+    "The casual cups now run on a fixed evening per region (EU and US). You stay signed up; sign-up closes at the start.": "Die Casual Cups laufen jetzt an einem festen Abend pro Region (EU und US). Du bleibst angemeldet; die Anmeldung schließt mit dem Start."
 }
