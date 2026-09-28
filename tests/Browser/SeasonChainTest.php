@@ -486,7 +486,9 @@ test('AdminSeason P38: the board plans the next season and releases it with the 
     $page->locator('#genesis-message')->fill('Winter Season: every fair win is a block');
     $page->locator('[data-test=retype-supply]')->fill('2100000');
     $page->locator('[data-test=release-button]')->click();
-    BrowserWait::until($page, '() => document.querySelector("[data-test=season-notice]")?.innerText.includes("Winter Season")', 10_000);
+    BrowserWait::until($page, '() => document.querySelector("[data-test=season-notice]")?.innerText.includes("Winter Season") || document.querySelector("[data-test=release-error]") !== null || [...document.querySelectorAll("[data-test=release-block0] [role=alert]")].some((alert) => alert.innerText.trim() !== "")', 15_000);
+
+    expect($page->evaluate('() => [...document.querySelectorAll("[data-test=release-block0] [role=alert]")].map((alert) => alert.innerText.trim()).filter(Boolean)'))->toBe([]);
 
     $season = Season::query()->where('slug', 'season-1')->sole();
     $seeds = Rating::query()->where(['pool' => Rating::RATED, 'season' => 'season-1'])->orderByDesc('rating')->pluck('rating')->all();
