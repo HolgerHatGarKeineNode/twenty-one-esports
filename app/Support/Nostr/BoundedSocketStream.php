@@ -18,6 +18,9 @@ use Phrity\Net\SocketStream;
  */
 final class BoundedSocketStream extends SocketStream
 {
+    /** Shortest wait ever set on the socket, in seconds. */
+    public const MIN_WAIT = 0.01;
+
     private int $bytesRead = 0;
 
     /**
@@ -85,7 +88,17 @@ final class BoundedSocketStream extends SocketStream
      */
     public function setTimeout(int|float $timeout, ?int $microseconds = null): bool
     {
-        return parent::setTimeout(max(0.01, min((float) $timeout, $this->deadline - microtime(true))));
+        return parent::setTimeout(self::waitSeconds(min((float) $timeout, $this->deadline - microtime(true))));
+    }
+
+    /**
+     * The wait handed to stream_set_timeout(): never below MIN_WAIT. A few
+     * hundred nanoseconds left would round to (0 s, 0 µs), and on a TLS socket
+     * that means "no timeout", a read that blocks for good (P45 re-audit).
+     */
+    public static function waitSeconds(float $left): float
+    {
+        return max(self::MIN_WAIT, $left);
     }
 
     private function waitAtMostUntilDeadline(): void
@@ -96,6 +109,6 @@ final class BoundedSocketStream extends SocketStream
             throw new RelayLimitExceeded('relay read past its deadline');
         }
 
-        parent::setTimeout($left);
+        parent::setTimeout(self::waitSeconds($left));
     }
 }

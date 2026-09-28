@@ -31,7 +31,7 @@ const HEX_PUBKEY = /^[0-9a-f]{64}$/;
 
 export class FollowRefused extends Error {
     /**
-     * @param {'not_read'|'no_relay_list'|'bad_pubkey'|'self'|'already'|'changed'|'mismatch'} code
+     * @param {'not_read'|'no_relay_list'|'confirm_new_list'|'bad_pubkey'|'self'|'already'|'changed'|'mismatch'} code
      */
     constructor(code) {
         super(code);
@@ -93,7 +93,7 @@ export function followPreview(read, target) {
     const before = new Set(followed(read.list)).size;
     const already = followed(read.list).includes(target);
 
-    return { before, after: already ? before : before + 1, already, fresh: read.list === null };
+    return { before, after: already ? before : before + 1, already, fresh: read.list === null, newIdentity: read.newIdentity === true };
 }
 
 /**
@@ -136,15 +136,19 @@ export function checkSigned(signed, template, me) {
  * follows the preview counted), sign the new list, check it, publish it to
  * the write relays and the configured relays.
  *
- * @param {{ me: string, target: string, relays: string[], expectBefore?: number|null, signer?: object, now?: number, options?: object }} args
+ * @param {{ me: string, target: string, relays: string[], expectBefore?: number|null, allowNewList?: boolean, signer?: object, now?: number, options?: object }} args
  * @returns {Promise<{ event: object, published: number, before: number, after: number }>}
  */
-export async function follow({ me, target, relays, expectBefore = null, signer = globalThis.window?.nostr, now = Math.floor(Date.now() / 1000), options = {} }) {
+export async function follow({ me, target, relays, expectBefore = null, allowNewList = false, signer = globalThis.window?.nostr, now = Math.floor(Date.now() / 1000), options = {} }) {
     const read = await readFollowList(me, relays, options);
     const template = followTemplate(read, target, { me, now });
     const preview = followPreview(read, target);
 
     if (expectBefore !== null && preview.before !== expectBefore) throw new FollowRefused('changed');
+
+    // A new identity's list starts from nothing. The player's real list may live on relays nobody read
+    // (re-audit: a 1-follow list then shadows 380 follows on the most-read relays), so never silently.
+    if (read.newIdentity && !allowNewList) throw new FollowRefused('confirm_new_list');
 
     const signed = checkSigned(await signTemplate(template, { pubkey: me, signer }), template, me);
     const published = await publishToRelays([...read.writeRelays, ...relayUrls(relays)], signed, options);

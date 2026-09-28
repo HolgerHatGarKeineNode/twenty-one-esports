@@ -83,7 +83,11 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
             }
         },
 
-        async confirmFollow() {
+        /**
+         * `allowNewList`: the player chose "Start a new list" (re-audit: a new
+         * identity's list is never written silently).
+         */
+        async confirmFollow(allowNewList = false) {
             if (this.followStep !== 'preview') return;
             this.followStep = 'signing';
             this.followError = '';
@@ -94,7 +98,7 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
 
                     return;
                 }
-                const result = await follow({ me, target, relays, expectBefore: this.followInfo?.before ?? null });
+                const result = await follow({ me, target, relays, expectBefore: this.followInfo?.before ?? null, allowNewList });
                 this.followInfo = { ...this.followInfo, published: result.published };
                 this.followStep = result.published > 0 ? 'done' : 'unpublished';
             } catch (error) {
@@ -103,7 +107,8 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
                     this.followStep = 'refused';
                     const key = { changed: 'followChanged', already: 'followAlready', no_relay_list: 'followNoRelayList' }[error.code] ?? 'followNotRead';
                     this.followError = this.label(key, { answered: 0, asked: 0 });
-                    if (error.code === 'changed') this.readFollow();
+                    // The list changed, or turned out to be a new one since the preview: show the new state.
+                    if (error.code === 'changed' || error.code === 'confirm_new_list') this.readFollow();
 
                     return;
                 }

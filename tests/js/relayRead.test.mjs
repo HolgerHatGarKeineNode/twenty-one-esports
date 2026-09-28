@@ -182,7 +182,13 @@ test('audit F2 (B): no configured relay holds a relay list; not read, although e
 test('new identity: every configured relay answered, no relay list, no badge list; read, the configured relays stand in', async () => {
     const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [], eose: true }, 'ws://config-b': { events: [], eose: true } });
 
-    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+    // Re-audit: without the player's "Start a new list" nothing counts as read.
+    const unconfirmed = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+    assert.equal(unconfirmed.read, false);
+    assert.equal(unconfirmed.relayList, 'confirm_new_list');
+    assert.deepEqual(unconfirmed.writeRelays, []);
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200, allowNewList: true });
 
     assert.equal(result.read, true);
     assert.equal(result.relayList, 'new');
@@ -232,4 +238,14 @@ test('new identity, but a relay goes silent on the badge read after answering th
     assert.equal(result.read, false);
     assert.equal(result.relayList, 'not_read');
     assert.equal(connections['ws://config-b'], 2);
+});
+
+test('"Start a new list" never overrides a badge list that exists: still not read', async () => {
+    const stale = sign(10008, [['a', '30009:' + 'a'.repeat(64) + ':x'], ['e', '1'.repeat(64)]], 1_600_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [stale], eose: true }, 'ws://config-b': { events: [], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200, allowNewList: true });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'none');
 });

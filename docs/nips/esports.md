@@ -2456,7 +2456,8 @@ comes back from an older `30008`.
   the player's NIP-65 write relays MUST have been read, or the app MUST NOT write (a relay that is
   down may hold the newest list). Rev. 9.8: without a relay list the app writes only for a new
   identity (every configured relay answered, none holds a `10002`, a `10008` or a `30008` of the
-  player); then the configured relays stand in for the write relays. Otherwise it does not write:
+  player), and only after the player chose "Start a new list" (their real list may live on relays
+  nobody read); then the configured relays stand in for the write relays. Otherwise it does not write:
   a list on the configured relays may be a stale copy of one kept elsewhere. It never falls back to a
   copy it archived
   earlier. When the read returns no list although the app knows one, it MUST NOT write either.
@@ -3164,7 +3165,9 @@ player's signer on click. A kind `3` replaces the whole list, so the app fails c
    may hold the list; if none has one, the configured relays prove nothing about where the player's
    follow list lives (a stale copy there was signed over 380 follows in the audit). One exception: a
    new identity. Every configured relay answered, none holds a `10002` and none holds a kind `3` of
-   the player: there is nothing to shorten, and the new list starts on the configured relays.
+   the player: nothing the app read can be shortened, but the player's real list may live on relays
+   nobody read. The app therefore says so and writes only after the player chose "Start a new list";
+   the new list then starts on the configured relays.
 2. It reads kind `3` from the player's write relays and the configured relays. Every write relay must
    deliver EOSE, else the follow is refused. Of the
    valid lists the newest wins (NIP-01), signatures checked.

@@ -41,7 +41,11 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
         template: null,
         published: 0,
 
-        async start(badge) {
+        /**
+         * `allowNewList`: the player chose "Start a new list" after being told
+         * that no badge list and no relay list of theirs was found.
+         */
+        async start(badge, allowNewList = false) {
             if (this.step === 'reading' || this.step === 'signing') {
                 return;
             }
@@ -52,7 +56,14 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
             this.step = 'reading';
 
             try {
-                const result = await readProfileBadges(pubkey, relays);
+                const result = await readProfileBadges(pubkey, relays, { allowNewList });
+
+                // Re-audit: a new badge list only on the player's word.
+                if (! result.read && result.relayList === 'confirm_new_list') {
+                    this.step = 'newList';
+
+                    return;
+                }
 
                 // P45 audit F2: no relay list, but a badge list somewhere; where the newest lives is unknown.
                 if (! result.read && result.relayList === 'none') {

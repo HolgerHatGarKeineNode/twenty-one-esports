@@ -166,7 +166,9 @@ export async function readOwnWriteRelays(pubkey, configured, options = {}) {
  *    new identity. Every configured relay answered, none has a relay list
  *    and none has a badge list (10008 or 30008): nothing can be dropped, so
  *    the configured relays stand in for the write relays (`relayList`
- *    'new'). Any partial answer or any list found: refused;
+ *    'new'), but only with `options.allowNewList` (the player chose "Start a
+ *    new list"; without it `relayList` is 'confirm_new_list'). Any partial
+ *    answer or any list found: refused;
  * 2. the newest valid 10008 and 30008 `profile_badges` from the write relays
  *    and the configured relays; the write relays are the ones that must answer.
  *
@@ -199,6 +201,11 @@ export async function readProfileBadges(pubkey, configured, options = {}) {
     if (newIdentity && (! complete || found.length > 0)) {
         // A list exists, or may exist on a silent relay, and nobody knows where the player keeps it.
         return { read: false, found: [], answered, asked: mustAnswer.length, writeRelays: [], relayList: complete ? 'none' : 'not_read' };
+    }
+
+    // Re-audit: a new list may shadow a real one on relays nobody read; only on the player's word.
+    if (newIdentity && options.allowNewList !== true) {
+        return { read: false, found: [], answered, asked: mustAnswer.length, writeRelays: [], relayList: 'confirm_new_list' };
     }
 
     return {

@@ -199,6 +199,16 @@ new class extends Component {
                 <button type="button" x-on:click="cancel()" x-bind:disabled="step === 'signing'" class="inline-flex h-11 cursor-pointer items-center rounded-md px-3 text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
             </div>
         </div>
+        {{-- P45 re-audit: no relay list and no badge list anywhere read; a new list only on the player's word. --}}
+        <div x-show="step === 'newList'" x-cloak role="alertdialog" aria-labelledby="rb-new-list-h" data-test="badge-new-list"
+             class="flex flex-col gap-3 rounded-md bg-ground p-4 shadow-[inset_0_0_0_1px_#F7931A]">
+            <p id="rb-new-list-h" class="m-0 text-[13px] leading-normal">{{ __('We found no badge list of yours on the relays we read. Adding the badge here starts a NEW list with only this badge. If you already show badges on your profile, add it from your usual client instead.') }}</p>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" x-on:click="step = 'idle'; start(badge, true)" data-test="badge-new-list-start"
+                        class="btn-p inline-flex h-11 cursor-pointer items-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc">{{ __('Start a new list') }}</button>
+                <button type="button" x-on:click="cancel()" class="inline-flex h-11 cursor-pointer items-center rounded-md px-3 text-[13px] text-ink-2 hover:text-ink">{{ __('Cancel') }}</button>
+            </div>
+        </div>
         <p x-show="step === 'reading'" x-cloak role="status" class="m-0 text-xs text-ink-2">{{ __('Reading your current badges from your relays…') }}</p>
         <p x-show="error" x-text="error" x-cloak class="m-0 text-[13px] text-loss" role="alert"></p>
         <p x-show="warning" x-text="warning" x-cloak class="m-0 text-[13px] text-loss" role="alert" data-test="badge-warning"></p>

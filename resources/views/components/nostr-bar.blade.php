@@ -164,11 +164,17 @@
                 <div class="flex min-w-0 flex-col gap-2">
                     <p class="m-0 text-[13px]" data-test="nostr-follow-preview"
                        x-text="@js(__('You follow :before accounts. After this: :after, with :name added. Nothing else changes.', ['name' => $name])).replace(':before', followInfo.before).replace(':after', followInfo.after)"></p>
-                    <p class="m-0 text-xs leading-normal text-loss" x-show="followInfo.fresh" data-test="nostr-follow-fresh">{{ __('No follow list of yours was found on your relays. This starts a new list with :name only. If you follow people in another app, check there first that its relays are yours too.', ['name' => $name]) }}</p>
+                    <p class="m-0 text-xs leading-normal text-loss" x-show="followInfo.fresh && ! followInfo.newIdentity" data-test="nostr-follow-fresh">{{ __('No follow list of yours was found on your relays. This starts a new list with :name only. If you follow people in another app, check there first that its relays are yours too.', ['name' => $name]) }}</p>
+                    {{-- Re-audit: no relay list and no follow list anywhere read. The real one may live elsewhere, so a new list only on the player's word. --}}
+                    <p class="m-0 text-xs leading-normal text-loss" x-show="followInfo.newIdentity" role="alert" data-test="nostr-follow-new-list-warning">{{ __('We found no follow list of yours on the relays we read. Following here starts a NEW list with only this person. If you already follow people, follow from your usual client instead.') }}</p>
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" data-test="nostr-follow-sign" x-on:click="confirmFollow()" x-bind:disabled="followStep === 'signing'"
+                        <button type="button" data-test="nostr-follow-sign" x-show="! followInfo.newIdentity" x-on:click="confirmFollow()" x-bind:disabled="followStep === 'signing'"
                                 class="btn-p inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc disabled:cursor-default disabled:opacity-60">
                             <x-icon name="check" :size="16" class="shrink-0" /><span x-text="followStep === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Sign and follow'))">{{ __('Sign and follow') }}</span>
+                        </button>
+                        <button type="button" data-test="nostr-follow-new-list" x-show="followInfo.newIdentity" x-on:click="confirmFollow(true)" x-bind:disabled="followStep === 'signing'"
+                                class="btn-p inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc disabled:cursor-default disabled:opacity-60">
+                            <x-icon name="check" :size="16" class="shrink-0" /><span x-text="followStep === 'signing' ? @js(__('Waiting for your signer…')) : @js(__('Start a new list'))">{{ __('Start a new list') }}</span>
                         </button>
                         <button type="button" class="{{ $button }}" x-on:click="close()">{{ __('Cancel') }}</button>
                     </div>

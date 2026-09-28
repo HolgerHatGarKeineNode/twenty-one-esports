@@ -268,6 +268,27 @@ test('follow: the preview counts the existing follows, the signed list keeps the
     $page->locator('[data-test=nostr-follow]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=nostr-follow-panel]")?.dataset.step === "refused"', 15_000);
 
+    // Re-audit: a new identity (no relay list, no follow list anywhere read) starts a list only after "Start a new list".
+    $fresh = User::factory()->create(['locale' => 'en']);
+    TestSigner::forBrowser($fresh);
+    $fresh->refresh();
+    $freshPage = nostrBarPage($fresh, route('players.show', $other->npub, false), 375);
+    $freshPage->locator('[data-test=nostr-follow]')->click();
+    BrowserWait::until($freshPage, '() => document.querySelector("[data-test=nostr-follow-new-list]")?.checkVisibility() === true', 15_000);
+
+    expect($freshPage->evaluate('() => document.querySelector("[data-test=nostr-follow-new-list-warning]").textContent.trim()'))
+        ->toBe('We found no follow list of yours on the relays we read. Following here starts a NEW list with only this person. If you already follow people, follow from your usual client instead.')
+        ->and($freshPage->evaluate('() => document.querySelector("[data-test=nostr-follow-sign]").checkVisibility()'))->toBeFalse()
+        ->and(nostrBarQuery($this->relayUrl, '-k 3 -a '.$fresh->pubkey))->toBe([]);
+    nostrBarShot($freshPage, 'nostr-bar-follow-new-list-375');
+
+    $freshPage->locator('[data-test=nostr-follow-new-list]')->click();
+    BrowserWait::until($freshPage, '() => document.querySelector("[data-test=nostr-follow-done]")?.checkVisibility() === true', 15_000);
+    $started = nostrBarQuery($this->relayUrl, '-k 3 -a '.$fresh->pubkey);
+    expect($started)->toHaveCount(1)
+        ->and($started[0]['tags'])->toBe([['p', $other->pubkey]])
+        ->and($freshPage->evaluate('() => window.__errors'))->toBe([]);
+
     expect($page->evaluate('() => document.querySelector("[data-test=nostr-follow-error]").textContent.trim()'))->toStartWith('No relay list of yours (NIP-65, kind 10002) was found')
         ->and(nostrBarQuery($this->relayUrl, '-k 3 -a '.$noList->pubkey))->toHaveCount(1)
         ->and(count(nostrBarQuery($this->relayUrl, '-k 3 -a '.$noList->pubkey)[0]['tags']))->toBe(3);

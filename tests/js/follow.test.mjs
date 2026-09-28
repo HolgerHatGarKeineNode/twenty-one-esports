@@ -122,9 +122,9 @@ test('the newest valid list counts, not the longest, and a forged newer copy is 
 });
 
 test('the preview counts what changes, and says when no list exists at all', () => {
-    assert.deepEqual(followPreview({ read: true, list: bigList }, target), { before: 380, after: 381, already: false, fresh: false });
-    assert.deepEqual(followPreview({ read: true, list: null }, target), { before: 0, after: 1, already: false, fresh: true });
-    assert.deepEqual(followPreview({ read: true, list: bigList }, others[5]), { before: 380, after: 380, already: true, fresh: false });
+    assert.deepEqual(followPreview({ read: true, list: bigList }, target), { before: 380, after: 381, already: false, fresh: false, newIdentity: false });
+    assert.deepEqual(followPreview({ read: true, list: null }, target), { before: 0, after: 1, already: false, fresh: true, newIdentity: false });
+    assert.deepEqual(followPreview({ read: true, list: bigList }, others[5]), { before: 380, after: 380, already: true, fresh: false, newIdentity: false });
 });
 
 test('already followed, oneself and a malformed key are refused', () => {
@@ -274,12 +274,32 @@ test('new identity: every configured relay answered, no relay list, no kind 3 an
     const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
     assert.equal(read.read, true);
     assert.equal(read.newIdentity, true);
-    assert.deepEqual(followPreview(read, target), { before: 0, after: 1, already: false, fresh: true });
+    assert.deepEqual(followPreview(read, target), { before: 0, after: 1, already: false, fresh: true, newIdentity: true });
 
-    const result = await follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, expectBefore: 0, options });
+    // Re-audit: never silently. Without the player's "Start a new list" nothing is signed or sent.
+    let signed = 0;
+    await assert.rejects(
+        follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer: { signEvent: async (d) => { signed++; return finalizeEvent(d, secret); } }, expectBefore: 0, options }),
+        (error) => error instanceof FollowRefused && error.code === 'confirm_new_list',
+    );
+    assert.equal(signed, 0);
+    assert.deepEqual(sent, []);
+
+    // With it: one p, to the configured relays.
+    const result = await follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, expectBefore: 0, allowNewList: true, options });
     assert.deepEqual(result.event.tags, [['p', target]]);
     assert.deepEqual([...new Set(sent.map((event) => event.id))].length, 1);
     assert.equal(result.published, 2);
+});
+
+test('allowNewList never overrides a list that exists: with own write relays the real list is the base', async () => {
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [ownRelayList], eose: true },
+        'ws://own-write': { events: [realList], eose: true },
+    })[url] ?? { down: true }, []);
+
+    const result = await follow({ me, target, relays: ['ws://config-a'], signer, allowNewList: true, options: { WebSocketImpl, timeoutMs: 200 } });
+    assert.equal(result.event.tags.length, 381);
 });
 
 test('new identity, but one configured relay did not answer: refused, nothing signed or sent', async () => {
