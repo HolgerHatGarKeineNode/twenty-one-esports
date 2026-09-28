@@ -19,6 +19,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\Job;
 use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -288,4 +289,31 @@ test('a board-only value: an admin off the board sees it read-only and is refuse
         ->and(FairPlay::threshold())->toBe(2)
         ->and(leagueSettingsRefusal($this->admin, ['esports.fair_play.false_reports' => '5']))->toBe([])
         ->and(FairPlay::threshold())->toBe(5);
+});
+
+test('a cold lookup is one query, with no process state to warm it', function () {
+    LeagueSettings::save($this->admin, ['esports.fair_play.lock_days' => '10']);
+    LeagueSettings::forget();
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $overrides = LeagueSettings::overrides();
+    LeagueSettings::overrides();
+    $queries = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    expect($overrides)->toBe(['esports.fair_play.lock_days' => 10])
+        ->and($queries)->toHaveCount(1)
+        ->and((new ReflectionClass(LeagueSettings::class))->getStaticProperties())->toBe([]);
+});
+
+test('without the log table the defaults apply, and the surrounding transaction stays usable', function () {
+    Schema::drop('league_setting_changes');
+    LeagueSettings::forget();
+
+    expect(LeagueSettings::overrides())->toBe([])
+        ->and(FairPlay::lockDays())->toBe(7)
+        ->and(CasualCups::sizes())->toBe([4, 8, 16])
+        ->and(DB::transactionLevel())->toBeGreaterThan(0)
+        ->and(User::query()->whereKey($this->admin->id)->exists())->toBeTrue();
 });

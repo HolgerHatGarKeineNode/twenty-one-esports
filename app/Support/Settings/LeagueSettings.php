@@ -5,8 +5,9 @@ namespace App\Support\Settings;
 use App\Models\LeagueSettingChange;
 use App\Models\User;
 use App\Support\Board;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * The league settings an admin changes on /admin/settings (P44): one
@@ -41,9 +42,6 @@ use Illuminate\Support\Facades\Schema;
 final class LeagueSettings
 {
     private const MEMO = 'league-settings.overrides';
-
-    /** @var array<string, true> connection and database => the log table exists */
-    private static array $logExists = [];
 
     public const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -146,16 +144,11 @@ final class LeagueSettings
     {
         $attributes = request()->attributes;
 
-        if (! $attributes->has(self::MEMO) && ! self::logExists()) {
-            return [];
-        }
-
         if (! $attributes->has(self::MEMO)) {
             $definitions = self::definitions();
             $overrides = [];
-            $newest = LeagueSettingChange::query()->selectRaw('max(id)')->groupBy('key');
 
-            foreach (LeagueSettingChange::query()->whereIn('id', $newest)->get(['key', 'after']) as $row) {
+            foreach (self::newestRows() as $row) {
                 if ($row->after === null || ! isset($definitions[$row->key])) {
                     continue;
                 }
@@ -175,21 +168,40 @@ final class LeagueSettings
     }
 
     /**
-     * Whether the log table exists. A data migration that runs before it
-     * (2026_09_28_163510, CasualCups::splitIntoRegions()) reads the cup
-     * settings: it gets the defaults. Asked per connection and database
-     * until the table is there, then never again in this process.
+     * The newest log row of every key, in one query. Without the log table
+     * there are none, so the defaults apply: the data migration
+     * 2026_09_28_163510 (CasualCups::splitIntoRegions()) reads the cup
+     * settings before the table is created, and a deploy serves requests
+     * before it migrates. Inside a transaction the query runs in a
+     * savepoint, so the failed statement does not abort the transaction
+     * (PostgreSQL). Every other database error is thrown.
+     *
+     * @return EloquentCollection<int, LeagueSettingChange>
      */
-    private static function logExists(): bool
+    private static function newestRows(): EloquentCollection
     {
-        $connection = DB::connection();
-        $key = $connection->getName().'|'.(string) $connection->getDatabaseName();
+        $query = fn (): EloquentCollection => LeagueSettingChange::query()
+            ->whereIn('id', LeagueSettingChange::query()->selectRaw('max(id)')->groupBy('key'))
+            ->get(['key', 'after']);
 
-        if (! isset(self::$logExists[$key]) && Schema::hasTable('league_setting_changes')) {
-            self::$logExists[$key] = true;
+        try {
+            return DB::transactionLevel() > 0 ? DB::transaction($query) : $query();
+        } catch (QueryException $exception) {
+            if (self::isMissingLog($exception)) {
+                return new EloquentCollection;
+            }
+
+            throw $exception;
         }
+    }
 
-        return isset(self::$logExists[$key]);
+    /** "no such table" (SQLite), 42P01 (PostgreSQL), 42S02 (MySQL), for the log table. */
+    private static function isMissingLog(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+
+        return str_contains($message, 'league_setting_changes')
+            && (str_contains($message, 'no such table') || in_array((string) $exception->getCode(), ['42P01', '42S02'], true));
     }
 
     public static function forget(): void
