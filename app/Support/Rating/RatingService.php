@@ -157,7 +157,10 @@ final class RatingService
      * result of a closed season and one whose changes no longer count are
      * left as they are (null). Idempotent: a second call with the same
      * outcome finds nothing to change (null). Rank badges and an unshown
-     * placement reveal follow the corrected ratings.
+     * placement reveal follow the corrected ratings. Weekly quest credits
+     * do not move: they are keyed by the result, not its revision, so the
+     * corrected side earns what it has not earned yet and a credit already
+     * given stays (quests are decoration, {@see ResultEngagement}).
      *
      * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null the effect, as {@see correction()}
      */
@@ -204,7 +207,8 @@ final class RatingService
             }
 
             return ['effect' => $effect, 'game' => $c->game, 'mode' => $c->mode, 'subjects' => [$c->subject, $d->subject]];
-        });
+            // Called on its own, a transient lock retries; inside a caller's transaction the caller's attempts apply.
+        }, 3);
 
         if ($done === null) {
             return null;

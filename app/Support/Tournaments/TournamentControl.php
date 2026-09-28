@@ -192,7 +192,8 @@ final class TournamentControl
             ]));
 
             return true;
-        });
+            // A transient lock (a double submit racing itself) retries the whole decision, re-read under the lock.
+        }, 3);
 
         if ($changed) {
             $this->runner->sync($tournament->refresh(), 'result');

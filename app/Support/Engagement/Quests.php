@@ -16,7 +16,9 @@ use Carbon\CarbonInterface;
  *
  * Idempotent: every credit is keyed by (player, quest, week, result) with a
  * unique index and written with insertOrIgnore. A result reported twice, a
- * double confirmation or a retried job counts once.
+ * double confirmation or a retried job counts once. A corrected result
+ * (RatingService::correct()) is the same result: a credit already given
+ * stays, the corrected side earns only what it had not earned yet.
  */
 final class Quests
 {

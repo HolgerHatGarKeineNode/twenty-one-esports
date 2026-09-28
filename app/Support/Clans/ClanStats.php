@@ -253,20 +253,30 @@ final class ClanStats
 
         if ($lead instanceof Lineup) {
             $pool = Ratings::pool(Ladders::isOpen($lead->game, $lead->mode));
+            // In the order the results happened: a corrected result (RatingService::correct()) keeps its time
+            // but gets a newer id. The line adds the deltas up to the rating now; a corrected change's
+            // before/after were recorded at the correction and do not chain with its neighbours.
             $changes = RatingChange::query()
                 ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
                 ->where(['ratings.pool' => $pool, 'ratings.season' => Ratings::season($pool, $lead->game, $lead->mode) ?? '', 'ratings.subject' => 'lineup:'.$lead->id])
-                ->orderBy('rating_changes.id')
-                ->get(['rating_changes.before', 'rating_changes.after']);
+                ->orderBy('rating_changes.created_at')->orderBy('rating_changes.revision')->orderBy('rating_changes.id')
+                ->toBase()->get(['rating_changes.delta', 'ratings.rating as now']);
+            $deltas = $changes->map(fn (object $row): int => (int) $row->delta)->all();
 
-            if ($changes->isNotEmpty()) {
-                $line = [(int) $changes->first()->before, ...$changes->pluck('after')->map(fn ($after): int => (int) $after)->all()];
+            if ($deltas !== []) {
+                $point = (int) $changes->first()->now - array_sum($deltas);
+                $line = [$point];
+
+                foreach ($deltas as $delta) {
+                    $point += $delta;
+                    $line[] = $point;
+                }
             }
         }
 
         return [
             'stats' => [['Series', $recentSeries, $series], ['Wins', $recentWins, $wins], ['Goals (team)', $recentGoals, $goals]],
-            'line' => array_values($line),
+            'line' => $line,
             'matches' => array_values($rows),
         ];
     }

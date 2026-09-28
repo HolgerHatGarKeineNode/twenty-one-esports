@@ -36,6 +36,7 @@ use App\Support\Tournaments\TournamentView;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
 use Tests\Support\TrustedFacts;
 
@@ -398,4 +399,38 @@ test('the result form states the Elo effect before the save, and the log keeps i
         ->call('$refresh')->assertOk();
 
     expect(TournamentModerationEntry::query()->where('tournament_id', $tournament->id)->sole()->details['elo'])->toBe(['+20/−20', '−20/+20']);
+});
+
+/* ---------- The migration's rollback -------------------------------------------------------------------------- */
+
+/** The column lists of the unique indexes of rating_changes. */
+function ecUniqueIndexes(): array
+{
+    return collect(Schema::getIndexes('rating_changes'))->filter(fn (array $index): bool => $index['unique'] && ! $index['primary'])
+        ->map(fn (array $index): array => $index['columns'])->sortBy(fn (array $columns): int => count($columns))->values()->all();
+}
+
+test('rolling the migration back is refused once a correction exists, and the unique index stays', function () {
+    openSeason(['slug' => 'season-1']);
+    [, $series, $a, $b] = ecDuel();
+    app(RatingService::class)->correct(ecPlay($series, $a, $b), 0.0);
+    $migration = require database_path('migrations/2026_09_28_022912_add_reverts_to_rating_changes.php');
+
+    expect(fn () => $migration->down())->toThrow(RuntimeException::class, 'corrected results')
+        ->and(ecUniqueIndexes())->toBe([['rating_id', 'source', 'source_id', 'revision']])
+        ->and(RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->count())->toBe(4);
+});
+
+test('without corrections the migration rolls back to the old unique index and forward again', function () {
+    $migration = require database_path('migrations/2026_09_28_022912_add_reverts_to_rating_changes.php');
+
+    $migration->down();
+
+    expect(ecUniqueIndexes())->toBe([['rating_id', 'source', 'source_id']])
+        ->and(Schema::hasColumns('rating_changes', ['revision']))->toBeFalse();
+
+    $migration->up();
+
+    expect(ecUniqueIndexes())->toBe([['rating_id', 'source', 'source_id', 'revision']])
+        ->and(Schema::hasColumns('rating_changes', ['revision', 'reverted_at']))->toBeTrue();
 });

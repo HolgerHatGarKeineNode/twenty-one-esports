@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -27,17 +28,35 @@ return new class extends Migration
             $table->timestamp('reverted_at')->nullable();
         });
 
+        // The new index before the old one goes: at no point is the table without a unique index.
+        Schema::table('rating_changes', function (Blueprint $table) {
+            $table->unique(['rating_id', 'source', 'source_id', 'revision']);
+        });
+
         Schema::table('rating_changes', function (Blueprint $table) {
             $table->dropUnique(['rating_id', 'source', 'source_id']);
-            $table->unique(['rating_id', 'source', 'source_id', 'revision']);
         });
     }
 
+    /**
+     * Refused once a correction exists: its rows share (rating, source,
+     * source id) with the rows it reverted, so the old unique index cannot
+     * hold them, and dropping them would drop the audit trail. The old index
+     * is added before the new one goes, so a failure leaves a unique index
+     * in place either way.
+     */
     public function down(): void
     {
+        if (DB::table('rating_changes')->where('revision', '>', 0)->orWhereNotNull('reverted_at')->exists()) {
+            throw new RuntimeException('rating_changes holds corrected results (revision > 0 or reverted_at set); rolling back would lose them. Resolve them by hand first.');
+        }
+
+        Schema::table('rating_changes', function (Blueprint $table) {
+            $table->unique(['rating_id', 'source', 'source_id']);
+        });
+
         Schema::table('rating_changes', function (Blueprint $table) {
             $table->dropUnique(['rating_id', 'source', 'source_id', 'revision']);
-            $table->unique(['rating_id', 'source', 'source_id']);
         });
 
         Schema::table('rating_changes', function (Blueprint $table) {

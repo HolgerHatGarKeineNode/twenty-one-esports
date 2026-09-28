@@ -1,14 +1,21 @@
 <?php
 
 use App\Enums\ClanRole;
+use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
+use App\Models\Lineup;
 use App\Models\Rating;
+use App\Models\RatingChange;
+use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Clans\ClanStats;
+use App\Support\Engagement\ClanHashrate;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\TrustFacts;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\TrustedFacts;
 
 /*
@@ -104,4 +111,36 @@ test('before Block 0 every rated clan panel shows its empty state and no numbers
     $this->actingAs($owner)->get(route('clans.manage', $clan))->assertOk()->assertSee(__('starts at Block 0'));
 
     $this->get(route('games.rocket-league'))->assertOk()->assertSee('data-test="rl-hashrate-empty"', false);
+});
+
+test('the Elo line of a clan runs in the order the results happened, also after its first result was corrected', function () {
+    Queue::fake();
+    openSeason(['slug' => 'season-1']);
+    $lead = Lineup::factory()->mode('3v3')->ready()->create();
+    $other = Lineup::factory()->mode('3v3')->ready()->create();
+    $key = ['pool' => Rating::RATED, 'season' => 'season-1', 'game' => 'rocket-league', 'mode' => '3v3'];
+    $a = Rating::query()->create($key + ['subject' => 'lineup:'.$lead->id, 'lineup_id' => $lead->id, 'rating' => 1036, 'results' => 2, 'wins' => 2]);
+    $b = Rating::query()->create($key + ['subject' => 'lineup:'.$other->id, 'lineup_id' => $other->id, 'rating' => 964, 'results' => 2, 'losses' => 2]);
+    $series = [];
+
+    // Two confirmed series won by the lead lineup, recorded as RatingService::apply() records them.
+    foreach ([[1000, 20, 0, 3], [1020, 16, 1, 2]] as [$before, $delta, $results, $hoursAgo]) {
+        $match = SeriesMatch::factory()->create(['challenger_lineup_id' => $lead->id, 'challenged_lineup_id' => $other->id, 'status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'rated' => true]);
+        $at = now()->subHours($hoursAgo);
+
+        foreach ([[$a, $b, 1.0, $before, $delta], [$b, $a, 0.0, 2000 - $before, -$delta]] as [$own, $opponent, $score, $from, $moved]) {
+            (new RatingChange)->forceFill(['rating_id' => $own->id, 'opponent_rating_id' => $opponent->id, 'source' => RatingChange::SERIES, 'source_id' => $match->id,
+                'score' => $score, 'before' => $from, 'after' => $from + $moved, 'delta' => $moved, 'results_before' => $results, 'created_at' => $at, 'updated_at' => $at])->save();
+        }
+
+        $series[] = $match;
+    }
+
+    expect(app(ClanStats::class)->record($lead->clan)['line'])->toBe([1000, 1020, 1036]);
+
+    // The first series corrected to a loss: -20 instead of +20; the second keeps its +16.
+    app(RatingService::class)->correct($series[0], 0.0);
+
+    expect($a->refresh()->rating)->toBe(996)
+        ->and((new ClanStats(app(ClanHashrate::class)))->record($lead->clan)['line'])->toBe([1000, 980, 996]);
 });
