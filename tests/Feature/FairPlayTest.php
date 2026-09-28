@@ -526,3 +526,18 @@ test('a locked player sees the end of the lock where rated play is refused: ches
     $this->actingAs(User::factory()->create());
     expect(FairPlay::message($captainA->pubkey))->toBe($captainA->displayName().' cannot play rated until '.$until.' after confirmed false result reports.');
 });
+
+/* ---------- The rules ------------------------------------------------------------------------------------------ */
+
+test('the rules state both fair-play rules with the numbers in force', function () {
+    config(['esports.fair_play' => ['false_reports' => 3, 'window_days' => 14, 'lock_days' => 5]]);
+
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('3 within 14 days')
+        ->assertSee('5 days')
+        ->assertSee('3 confirmed false reports within 14 days mean no rated play for 5 days from the last one.')
+        ->assertSee('If an admin rules a disputed result report false, the reporting side loses the match')
+        ->assertSee('only the main account plays rated matches and wins prizes, and results between the accounts are void');
+
+    $this->get(route('rules', ['lang' => 'de']))->assertOk()->assertSee('Ein Spieler, ein Konto');
+});

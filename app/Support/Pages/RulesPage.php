@@ -6,6 +6,7 @@ use App\Enums\TournamentFormat;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
+use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RatingSettings;
@@ -337,11 +338,18 @@ final class RulesPage
             'id' => 'fair-play',
             'title' => __('Fair play'),
             'lead' => __('Play every match you accept, and report only what happened.'),
+            'facts' => [
+                [__('False reports before a pause'), __(':count within :days days', ['count' => FairPlay::threshold(), 'days' => FairPlay::windowDays()])],
+                [__('No rated play after that'), trans_choice(':count day|:count days', FairPlay::lockDays())],
+            ],
             'items' => [
                 __('A match you do not show up to is a forfeit, and in casual 1v1 it counts toward the pause above.'),
                 __('For a dispute, keep a screenshot of the end screen or the match history. Only admins see evidence.'),
                 __('Reports about players count for trust :count times per reporter and season.', ['count' => (int) config('esports.trust.reports_per_author')]),
                 __('Admins decide disputes and can void or correct a result. Their decision is shown on the match.'),
+                __('If an admin rules a disputed result report false, the reporting side loses the match and the captain who reported gets a confirmed false report.'),
+                __(':count confirmed false reports within :days days mean no rated play for :lock days from the last one. Casual play stays open, and the page where rated play is refused says until when.', ['count' => FairPlay::threshold(), 'days' => FairPlay::windowDays(), 'lock' => FairPlay::lockDays()]),
+                __('One player, one account in the league. An admin can link the accounts of one player: only the main account plays rated matches and wins prizes, and results between the accounts are void. Unlinking brings rated play and prizes back; voided results stay void.'),
             ],
             'links' => [[__('How results are verified'), route('protocol')]],
         ];
