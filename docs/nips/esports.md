@@ -31,14 +31,15 @@ cards in the match-room chat of casual 1v1 matches, a chat convention without a 
 new kind; **revision 9.4** (2026-09-28): chess moves are no events in either mode, the league signs one
 game record when a rated game ends, and a player posts the game to their own profile only by button;
 **revision 9.5** (2026-09-28): share groups in the Season Genesis, parameter changes that add a game,
-the reserve goal and a reserve balance no longer required at Block 0). Not
+the reserve goal and a reserve balance no longer required at Block 0; **revision 9.6** (2026-09-28): the
+season settlement as the league runs it, without fees). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3 and 9.5 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5 and 9.6 (see [Open points](#open-points)).
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -68,6 +69,28 @@ revision 9.1 (a league pot of revision 9 becomes no pot; see [Prize pool funding
 The rules marked "rev. 9.4" concern chess game notes only; they apply to every chess game that ends
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
+
+### Changelog of revision 9.6 (2026-09-28)
+
+The season settlement as this league runs it ([Review and corrections](#review-and-corrections),
+[Payout](#payout-2157)). No new kind and no new tag; the events are those of revision 5.
+
+- **No fees.** Players never pay fees in this league, so a season Payout (`2157`) never carries an
+  `e` to a challenge for its fees, and the amount a reader derives is the rewards of the player's
+  blocks that were not voided. The fee rules stay in the text as protocol only, marked not applicable.
+- **Corrections end with the approved list.** An admin approves the list of who gets how much before
+  the first payment; `void-block` labels are signed only before that approval, which is before the
+  season's first payout, as the rule already requires.
+- **A plain Lightning payment.** The league pays the invoice of the player's Lightning address; it
+  does not pay a settlement with a zap, so there is no NIP-57 receipt to check.
+- **Address freeze.** A payment goes only to the address an admin approved. If the player's profile
+  names another address, or its address changed less than 72 hours before, the payout waits; an admin
+  approves the new address once 72 hours have passed since the change.
+- **Claim window.** A payout that still waits for an address `claim` seconds after the season's first
+  payout is not paid; its amount stays in the reserve. A payout whose address was approved but whose
+  payment the league's wallet could not make is the league's to retry and does not run out.
+- **No balance check.** Nothing checks the league wallet's balance before a payment; a payment the
+  wallet cannot make is not published, and the league pays again after a top-up.
 
 ### Changelog of revision 9.5 (2026-09-28)
 
@@ -2146,7 +2169,8 @@ During the season every block is a **pending reward**. After `ends` the league r
 anomalies (for example reciprocal results within a pairing, shared anchors, move and timing patterns;
 the analysis and its evidence stay off Nostr). Every correction is a NIP-32 label signed by the league
 key: `L` = `space.einundzwanzig.esports`, `l` = `void-block`, one `e` per voided block, and the public
-reason in `content`. A label counts only if it was published before the season's first payout. A voided
+reason in `content`. A label counts only if it was published before the season's first payout (rev.
+9.6: this league signs labels only until an admin approves the settlement list, before any payout). A voided
 block keeps its height and its place in every counter; its reward and its fees go to the reserve.
 Ratings do not change.
 
@@ -2169,7 +2193,7 @@ player's Lightning address. Two occasions:
 
 | tag | meaning |
 |---|---|
-| `e` | season settlement: the genesis (the season's supply); one `e` per block paid; one `e` per challenge whose fees it pays; for a bounty, the claiming attestation if it is not one of the blocks |
+| `e` | season settlement: the genesis (the season's supply); one `e` per block paid; one `e` per challenge whose fees it pays (**not applicable in this league: players never pay fees**, rev. 9.6); for a bounty, the claiming attestation if it is not one of the blocks |
 | `a` | season settlement: each bounty (`31923`) whose prize it pays; tournament settlement: the tournament |
 | `p` | the player |
 | `bolt11` | the invoice the player's Lightning address issued |
@@ -2178,16 +2202,27 @@ player's Lightning address. Two occasions:
 
 The amount is the invoice's; the event names no amount of its own. It must equal the sum a reader
 derives for the referenced items: the rewards of the player's blocks that were not voided, their share
-of the referenced fees, and the referenced prizes. A player without a valid Lightning address at
+of the referenced fees, and the referenced prizes. (Rev. 9.6: in this league there are no fees, so the
+sum is the rewards of the blocks and the prizes.) A player without a valid Lightning address at
 settlement has the `claim` window from the season's first payout; afterwards the amount returns to the
 reserve. A payout that failed is not published.
+
+**As this league settles a season (rev. 9.6).** After `ends` the league replays the chain from its
+attestations and the review's labels; an admin approves the list of who gets how much, and every
+payment is started by an admin, one player at a time. Nothing checks the wallet's balance first: a
+payment the wallet cannot make fails, is not published, and is made again after a top-up. The payment
+goes only to the Lightning address an admin approved; if the profile names another address, or its
+address changed less than 72 hours before, the payout waits until an admin approves the new address,
+which is possible once 72 hours have passed since the change. The payment is a plain Lightning
+payment, never a zap. The `claim` window runs out only for payouts that still wait for an address.
 
 **How a player checks it.** `{"kinds":[2157],"authors":["<league>"],"#p":["<me>"]}`, then: the
 preimage hashes to the invoice's payment hash; that payment hash is the incoming payment in my
 wallet; the invoice's description hash is the hash of my Lightning address's metadata (LUD-06; its
 `text/identifier` is my address); the amount equals what I derive from my blocks, fees and prizes.
 If my wallet supports NIP-57 the league pays with a zap (its request's `e` is the genesis), and my
-LNURL server's receipt is a second, independent record.
+LNURL server's receipt is a second, independent record (rev. 9.6: this league pays a plain Lightning
+payment, so there is no such receipt).
 
 **What it proves.** The preimage proves that the invoice was paid, and the invoice's signature names
 the node that issued it; the description hash ties it to the address. That the node is the player's
