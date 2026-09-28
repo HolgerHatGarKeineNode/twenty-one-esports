@@ -54,7 +54,7 @@
 
             <p class="m-0 border-t border-hairline pt-4 text-xs leading-normal text-ink-2">
                 {{ __('Every notification, and turning DMs back on:') }}
-                <a href="{{ route('settings.chess') }}#notifications" class="font-bold text-ink hover:text-btc-hi" data-test="dm-off-settings">{{ __('Notification settings') }}</a>
+                <a href="{{ route('settings.notifications') }}" class="font-bold text-ink hover:text-btc-hi" data-test="dm-off-settings">{{ __('Notification settings') }}</a>
                 {{ __('(after logging in)') }}
             </p>
         </section>

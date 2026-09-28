@@ -297,7 +297,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
             <h2 id="me-settings-h" class="m-0 font-display text-lg font-bold lg:text-xl">{{ __('Settings') }}</h2>
             <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">
                 @foreach ([
-                    ['bell', __('Notifications'), route('settings.chess').'#notifications', 'me-settings-notifications'],
+                    ['bell', __('Notifications'), route('settings.notifications'), 'me-settings-notifications'],
                     ['user', __('Gamer tags'), route('gaming.edit'), 'me-settings-tags'],
                     ['clans', __('Opponents'), route('settings.opponents'), 'me-settings-opponents'],
                     ['award', __('Badges and sharing'), route('settings.badges'), 'me-settings-badges'],

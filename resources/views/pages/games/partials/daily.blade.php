@@ -351,7 +351,7 @@
                 </button>
             </template>
             <template x-if="! (myTurn && pending)">
-                <x-button variant="quiet" icon="bell" :href="route('settings.chess')" class="h-[52px] text-sm">{{ __('Change notifications') }}</x-button>
+                <x-button variant="quiet" icon="bell" :href="route('settings.notifications')" class="h-[52px] text-sm">{{ __('Change notifications') }}</x-button>
             </template>
         @endif
     </div>

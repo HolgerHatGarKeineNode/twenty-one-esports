@@ -122,7 +122,7 @@ function settingsMeasure(Page $page, string $label, int $width, string $heading)
     fwrite(STDERR, "\n[settings] {$label} {$width}px: ".json_encode($layout)."\n");
 
     expect($layout['scrollWidth'])->toBeLessThanOrEqual($layout['clientWidth'])
-        ->and($layout['tabs'])->toBe(5)
+        ->and($layout['tabs'])->toBe(6)
         ->and($layout['activeCount'])->toBe(1)
         ->and($layout['active'])->toBe($heading)
         ->and($layout['heading'])->toBe($heading)
@@ -148,7 +148,8 @@ test('every settings page has the same tabs, the active one names the heading an
         foreach ([
             'gaming.edit' => 'Gamer tags',
             'settings.account' => 'Account',
-            'settings.chess' => 'Chess and notifications',
+            'settings.notifications' => 'Notifications',
+            'settings.chess' => 'Chess',
             'settings.opponents' => 'Opponents',
             'settings.badges' => 'Badges and sharing',
         ] as $route => $heading) {
@@ -206,6 +207,23 @@ test('a gamer tag is saved and removed in the browser, and the tabs switch with 
         settingsMeasure($page, 'badges after wire:navigate', $width, 'Badges and sharing');
         settingsClean($page);
     }
+});
+
+test('an old link to the chess settings at #notifications lands on the notifications tab', function () {
+    $user = User::factory()->create(['locale' => 'en']);
+    // settingsOpen() lands on the page without the fragment (ComputeUrl drops it), so go there again with it.
+    $page = settingsOpen(route('settings.chess', absolute: false), 375, $user);
+    $page->evaluate('() => { window.location.href = window.location.pathname + "#notifications"; window.location.reload(); }');
+    BrowserWait::until($page, '() => location.pathname === "/settings/notifications" && document.querySelector("[data-test=settings-heading]")?.innerText.trim() === "Notifications" && document.readyState === "complete"', 10_000);
+
+    settingsMeasure($page, 'notifications from the old anchor', 375, 'Notifications');
+    expect($page->evaluate('() => document.getElementById("notifications") !== null && document.querySelector("[data-test=switch-dm]") !== null'))->toBeTrue();
+    settingsClean($page);
+
+    // Without the anchor the chess tab stays where it is.
+    $chess = settingsOpen(route('settings.chess', absolute: false), 375, $user);
+    expect($chess->evaluate('() => location.pathname'))->toBe('/settings/chess');
+    settingsClean($chess);
 });
 
 test('the German gamer tag page fits a phone', function () {

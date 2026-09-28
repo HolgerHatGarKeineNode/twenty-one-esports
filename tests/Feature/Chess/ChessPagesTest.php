@@ -34,6 +34,7 @@ test('every chess page survives a Livewire roundtrip', function (string $page, b
     }],
     'challenge a player' => ['pages::chess.challenge', false, fn () => ['to' => (string) User::factory()->create()->id]],
     'chess settings' => ['pages::settings.chess', false, fn () => []],
+    'notification settings' => ['pages::settings.notifications', false, fn () => []],
 ]);
 
 test('every logged-in page is on the online presence channel, guests get no websocket there', function () {

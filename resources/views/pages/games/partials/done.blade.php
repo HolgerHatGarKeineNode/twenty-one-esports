@@ -139,7 +139,7 @@
                 <div class="grid min-h-10 grid-cols-[110px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span @class(['text-win' => ($mining['status'] ?? null) === 'block'])>{{ $mining['text'] ?? __('casual games do not count') }}</span></div>
             </div>
             @if ($lost)
-                <a href="{{ route('settings.chess') }}" class="text-[13px] font-bold text-ink hover:text-btc-hi">{{ __('Turn on reminders before the deadline') }}</a>
+                <a href="{{ route('settings.notifications') }}" class="text-[13px] font-bold text-ink hover:text-btc-hi">{{ __('Turn on reminders before the deadline') }}</a>
             @endif
         </section>
     @endif

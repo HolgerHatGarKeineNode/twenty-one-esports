@@ -234,6 +234,8 @@ test('the EA ID card says when it was filled in from the gamer tags, and not whe
 
         // A changed value is no prefill any more, and nothing went out on its own.
         $hostPage->locator('[data-test=card-account-id]')->fill('Other_EA');
+        // Alpine hides the line on its next tick, not within fill().
+        BrowserWait::until($hostPage, '() => !document.querySelector("[data-test=card-account-prefilled]").checkVisibility()', 5_000);
         expect($hostPage->evaluate($prefilled))->toBeNull()
             ->and($match->refresh()->lobby_shared_at)->toBeNull();
 

@@ -210,7 +210,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
                     <span class="text-xs leading-normal text-ink-2">{{ __('You only see new moves here. Turn on a reminder so no deadline slips by.') }}</span>
                 @endif
             </span>
-            <x-button variant="quiet" :href="route('settings.chess').'#notifications'" data-test="correspondence-notifications-change">{{ __('Change') }}</x-button>
+            <x-button variant="quiet" :href="route('settings.notifications')" data-test="correspondence-notifications-change">{{ __('Change') }}</x-button>
         </span>
     </section>
 

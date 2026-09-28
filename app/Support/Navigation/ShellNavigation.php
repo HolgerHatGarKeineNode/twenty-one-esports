@@ -256,7 +256,7 @@ final class ShellNavigation
             },
             self::link('daily', route('me.correspondence'), __('Your daily games'), 'calendar'),
             self::link('settings', route('gaming.edit'), __('Settings'), 'settings', null, 'mobile-settings'),
-            self::link('notifications', route('settings.chess').'#notifications', __('Notifications'), 'bell', 'account-menu-notifications', 'mobile-notifications'),
+            self::link('notifications', route('settings.notifications'), __('Notifications'), 'bell', 'account-menu-notifications', 'mobile-notifications'),
             self::link('chess-settings', route('settings.chess'), __('Chess settings'), 'settings', null, 'mobile-chess-settings'),
             self::link('badges', route('settings.badges'), __('Badges and sharing'), 'award', 'account-badges', 'mobile-badges'),
             $this->isAdmin || $this->isOrganizer ? self::link('tournaments', route('admin.tournaments'), __('Your tournaments'), 'trophy', 'account-tournaments', 'mobile-tournaments') : null,

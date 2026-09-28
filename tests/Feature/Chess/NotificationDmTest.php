@@ -91,17 +91,17 @@ test('the default covers only the kinds that need the player, an explicit on cov
 test('the settings switch shows a default DM as on and its first tap stores off', function () {
     $fresh = User::factory()->create(['chess_settings' => ['sound' => false]]);
 
-    Livewire::actingAs($fresh)->test('pages::settings.chess')
+    Livewire::actingAs($fresh)->test('pages::settings.notifications')
         ->assertSeeHtml('role="switch" aria-checked="true" aria-label="Notifications by Nostr DM" data-test="switch-dm"')
-        ->call('toggle', 'sound');
+        ->call('setRemindHours', ChessSettings::REMIND_HOURS[0]);
 
     // Another switch saved: the DM choice stays unmade.
     expect($fresh->refresh()->chess_settings['dm'] ?? null)->toBeNull();
 
-    Livewire::actingAs($fresh)->test('pages::settings.chess')->call('toggle', 'dm');
+    Livewire::actingAs($fresh)->test('pages::settings.notifications')->call('toggle', 'dm');
     expect($fresh->refresh()->chessSettings()->dm)->toBeFalse();
 
-    Livewire::actingAs($fresh)->test('pages::settings.chess')->call('toggle', 'dm');
+    Livewire::actingAs($fresh)->test('pages::settings.notifications')->call('toggle', 'dm');
     expect($fresh->refresh()->chessSettings()->dm)->toBeTrue();
 });
 
@@ -262,11 +262,11 @@ test('a link in the challenge message never reaches the DM', function () {
 
 test('the notification settings are linked from the account menu and the daily games card', function () {
     $bert = User::factory()->create();
-    $settings = route('settings.chess');
+    $settings = route('settings.notifications');
 
     $this->actingAs($bert)->get(route('me.correspondence'))
         ->assertOk()
-        ->assertSee('href="'.$settings.'#notifications"', false)
+        ->assertSee('href="'.$settings.'"', false)
         ->assertSee('data-test="account-menu-notifications"', false)
         ->assertSee('data-test="mobile-notifications"', false)
         ->assertSee('data-test="correspondence-notifications-change"', false);

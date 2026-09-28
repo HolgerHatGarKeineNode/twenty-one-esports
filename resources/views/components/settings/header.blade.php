@@ -15,7 +15,8 @@
     $tabs = [
         'gaming' => [route('gaming.edit'), __('Gamer tags'), 'settings-gamer-tags-tab'],
         'account' => [route('settings.account'), __('Account'), 'settings-account-tab'],
-        'chess' => [route('settings.chess'), __('Chess and notifications'), 'settings-chess-tab'],
+        'notifications' => [route('settings.notifications'), __('Notifications'), 'settings-notifications-tab'],
+        'chess' => [route('settings.chess'), __('Chess'), 'settings-chess-tab'],
         'opponents' => [route('settings.opponents'), __('Opponents'), 'settings-opponents-tab'],
         'badges' => [route('settings.badges'), __('Badges and sharing'), 'settings-badges-tab'],
     ];

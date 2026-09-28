@@ -16,8 +16,8 @@ pest()->group('browser');
 |--------------------------------------------------------------------------
 |
 | A guest opens the signed "Turn off these DMs" link, turns every DM off and
-| lands on the confirmation; a logged-in player opens the chess settings at
-| #notifications. Both at 375 and 1440 px: no horizontal overflow, the card
+| lands on the confirmation; a logged-in player opens the notification settings
+| (P51: its own tab). Both at 375 and 1440 px: no horizontal overflow, the card
 | inside the viewport, and a clean page.
 |
 | Collected on every page (the collector of ClanEditTest): console.error,
@@ -149,7 +149,7 @@ test('the notification settings fit 375 and 1440 px and explain the DM channel',
     foreach ([375, 1440] as $width) {
         $anna = User::factory()->create(['locale' => 'en']);
 
-        $page = dmPagesOpen(route('settings.chess', absolute: false).'#notifications', $width, $anna);
+        $page = dmPagesOpen(route('settings.notifications', absolute: false), $width, $anna);
         BrowserWait::until($page, '() => document.querySelector("[data-test=dm-explained]") !== null && document.readyState === "complete"', 10_000);
 
         dmPagesMeasure($page, '#notifications', 'settings #notifications', $width);

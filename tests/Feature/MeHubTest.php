@@ -113,7 +113,7 @@ test('what needs the player, what runs and comes, ratings, results, clan and Loo
         ->toContain('data-game="rocket-league" data-on="true"')
         ->toContain('data-game="chess" data-on="false"')
         ->toContain('data-test="me-settings-notifications"')
-        ->toContain(route('settings.chess').'#notifications')
+        ->toContain(route('settings.notifications'))
         ->toContain('data-test="invite-module" data-place="me"');
 });
 

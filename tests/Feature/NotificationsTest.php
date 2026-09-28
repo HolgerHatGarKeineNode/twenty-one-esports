@@ -12,6 +12,7 @@ use App\Support\Chess\DailyChallenges;
 use App\Support\Notifications\ClanNotifications;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
+use Livewire\Exceptions\MethodNotFoundException;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -178,16 +179,24 @@ test('a broken notification store never undoes the pairing', function () {
     Event::assertNotDispatched(UserNotified::class);
 });
 
-test('sound, volume and every notification switch are saved from the chess settings', function () {
+test('sound and volume are saved from the chess settings, every notification switch from the notification settings', function () {
     $user = User::factory()->create();
 
     Livewire::actingAs($user)->test('pages::settings.chess')
         ->call('toggle', 'sound')
         ->call('setVolume', 35)
-        ->call('toggleTrigger', 'match_found')
         ->assertDispatched('sound-settings', enabled: false, volume: 35)
         ->call('setVolume', 101)
         ->assertStatus(422);
+
+    Livewire::actingAs($user)->test('pages::settings.notifications')
+        ->call('toggleTrigger', 'match_found')
+        ->assertSet('saved', true);
+
+    // Each page takes only its own switches.
+    expect(fn () => Livewire::actingAs($user)->test('pages::settings.chess')->call('toggleTrigger', 'match_found'))->toThrow(MethodNotFoundException::class);
+    Livewire::actingAs($user)->test('pages::settings.chess')->call('toggle', 'dm')->assertStatus(422);
+    Livewire::actingAs($user)->test('pages::settings.notifications')->call('toggle', 'sound')->assertStatus(422);
 
     $settings = $user->refresh()->chessSettings();
     expect($settings->sound)->toBeFalse()

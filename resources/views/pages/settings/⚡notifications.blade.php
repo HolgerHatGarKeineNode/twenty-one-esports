@@ -1,0 +1,168 @@
+<?php
+
+use App\Enums\NotificationKind;
+use App\Models\PushSubscription;
+use App\Models\User;
+use App\Support\Chess\ChessSettings;
+use App\Support\Notifications\NotificationDm;
+use App\Support\Notifications\WebPush;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\Title;
+use Livewire\Component;
+
+/*
+ * Notifications (P51, split off the chess settings): the channels (bell,
+ * browser push, Nostr DM, the daily-move reminder) and a switch per
+ * NotificationKind. Off means nothing at all for that event (no bell entry,
+ * no toast, no push, no DM). Every change is saved at once; the values live
+ * in ChessSettings, as before the split.
+ *
+ * Nostr DM (ChessSettings::dmFor): shown on unless switched off. A player who
+ * never touched it gets DMs only for what needs them (NotificationKind::
+ * dmByDefault()); switched on here, every notification that leaves the page.
+ */
+new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources/js/push.js']])] class extends Component {
+    public bool $saved = false;
+
+    public function toggle(string $key): void
+    {
+        abort_unless($key === 'dm', 422);
+
+        // `dm` unset means on (by default for some kinds): the first tap turns it off.
+        $this->store([...$this->settings()->toArray(), 'dm' => ! $this->settings()->dmOn()]);
+    }
+
+    public function toggleTrigger(string $trigger): void
+    {
+        abort_unless(in_array($trigger, ChessSettings::triggers(), true), 422);
+
+        $settings = $this->settings()->toArray();
+        $settings['triggers'][$trigger] = ! $settings['triggers'][$trigger];
+        $this->store($settings);
+    }
+
+    public function setRemindHours(int $hours): void
+    {
+        abort_unless(in_array($hours, ChessSettings::REMIND_HOURS, true), 422);
+
+        $this->store([...$this->settings()->toArray(), 'remindHours' => $hours]);
+    }
+
+    public function setPush(bool $on): void
+    {
+        $this->store([...$this->settings()->toArray(), 'push' => $on]);
+    }
+
+    /**
+     * This browser's push subscription (PushSubscription.toJSON()).
+     */
+    public function savePushSubscription(string $json): bool
+    {
+        $data = json_decode($json, true);
+        $endpoint = is_array($data) ? ($data['endpoint'] ?? null) : null;
+        $key = is_array($data) ? ($data['keys']['p256dh'] ?? null) : null;
+        $auth = is_array($data) ? ($data['keys']['auth'] ?? null) : null;
+
+        if (! is_string($endpoint) || ! str_starts_with($endpoint, 'https://') || strlen($endpoint) > 500
+            || ! is_string($key) || strlen(WebPush::base64UrlDecode($key)) !== 65
+            || ! is_string($auth) || strlen(WebPush::base64UrlDecode($auth)) !== 16) {
+            return false;
+        }
+
+        PushSubscription::query()->updateOrCreate(['endpoint' => $endpoint], ['user_id' => $this->user()->id, 'public_key' => $key, 'auth_token' => $auth]);
+        $this->setPush(true);
+
+        return true;
+    }
+
+    public function removePushSubscription(string $endpoint): void
+    {
+        PushSubscription::query()->where('user_id', $this->user()->id)->where('endpoint', $endpoint)->delete();
+    }
+
+    public function settings(): ChessSettings
+    {
+        return $this->user()->chessSettings();
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     */
+    private function store(array $settings): void
+    {
+        $this->user()->forceFill(['chess_settings' => ChessSettings::fromArray($settings)->toArray()])->save();
+        $this->saved = true;
+    }
+
+    private function user(): User
+    {
+        $user = Auth::user();
+        abort_unless($user instanceof User, 403);
+
+        return $user;
+    }
+}; ?>
+
+@php
+    $settings = $this->settings();
+    $user = auth()->user();
+    $webPush = WebPush::fromConfig();
+    $dmReady = NotificationDm::fromConfig()->isConfigured();
+@endphp
+
+<div class="flex grow flex-col gap-5 px-4 pb-8 lg:px-12 lg:pb-10" data-test="notification-settings">
+    <x-settings.header current="notifications">
+        <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data x-show="$wire.saved" x-cloak data-test="settings-saved"><x-icon name="check" :size="16" />{{ __('Saved.') }}</span>
+    </x-settings.header>
+
+    <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+        <section id="notifications" aria-labelledby="ch-h" class="flex scroll-mt-20 flex-col rounded-lg bg-card px-4 py-5 lg:px-6" data-test="notification-channels">
+            <h2 id="ch-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Channels') }}</h2>
+            <div class="flex min-h-[61px] items-center gap-4 border-b border-hairline py-2" data-test="channel-bell">
+                <span class="flex min-w-0 grow flex-col gap-0.5"><span class="text-sm">{{ __('Bell and the page you are on') }}</span><span class="text-xs text-ink-2">{{ __('always, for every kind switched on') }}</span></span>
+                <x-icon name="bell" :size="18" class="shrink-0 text-ink-2" />
+            </div>
+                {{-- Browser push: this browser subscribes in resources/js/push.js --}}
+                <div class="flex min-h-[61px] items-center gap-4 border-b border-hairline py-2" x-data="pushToggle(@js(['on' => $settings->push && $user->pushSubscriptions()->exists(), 'vapidKey' => $webPush->isConfigured() ? $webPush->publicKey() : null, 'labels' => [
+                    'allowed' => __('allowed in this browser'), 'notHere' => __('not set up in this browser yet'), 'denied' => __('blocked in this browser\'s settings'),
+                    'unsupported' => __('this browser has no push'), 'notConfigured' => __('not set up on this server yet'), 'failed' => __('That did not work. Please try again.'),
+                ]]))">
+                    <span class="flex min-w-0 grow flex-col gap-0.5"><span class="text-sm">{{ __('Reminders by browser push') }}</span><span class="text-xs text-ink-2" x-text="error || hint"></span></span>
+                    <span class="text-xs text-ink-2" x-text="on ? @js(__('on')) : @js(__('off'))"></span>
+                    <button type="button" role="switch" :aria-checked="on ? 'true' : 'false'" aria-label="{{ __('Reminders by browser push') }}" x-on:click="toggle()" :disabled="busy || ! supported" data-test="push-toggle"
+                            class="relative h-8 w-[50px] shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50" :class="on ? 'bg-btc' : 'bg-ground shadow-[inset_0_0_0_1px_#63636A]'">
+                        <span class="absolute top-1 size-6 rounded-full transition-all" :class="on ? 'left-[22px] bg-ground' : 'left-1 bg-edge'"></span>
+                    </button>
+                </div>
+
+                @php($dmHint = match (true) {
+                    ! $dmReady => __('to your Nostr inbox · not set up on this server yet'),
+                    $settings->dm === null => __('on by default for what needs you: challenges, your daily move, reminders, clan join requests'),
+                    $settings->dm => __('every notification below that leaves this page'),
+                    default => __('off · the league sends you no DM'),
+                })
+                @include('pages.settings.partials.switch', ['label' => __('Notifications by Nostr DM'), 'hint' => $dmHint, 'on' => $settings->dmOn(), 'action' => "toggle('dm')", 'test' => 'dm'])
+
+                <div class="flex min-h-[61px] items-center gap-4 py-2">
+                    <span class="flex min-w-0 grow flex-col gap-0.5"><label for="remind-hours" class="text-sm">{{ __('Remind me when') }}</label><span class="text-xs text-ink-2">{{ __('are left before your move is due') }}</span></span>
+                    <select id="remind-hours" wire:change="setRemindHours($event.target.value)" data-test="remind-hours"
+                            class="h-11 rounded-lg border border-edge bg-ground px-3 text-[13px] text-ink">
+                        @foreach (ChessSettings::REMIND_HOURS as $hours)
+                            <option value="{{ $hours }}" @selected($settings->remindHours === $hours)>{{ $hours }} h</option>
+                        @endforeach
+                    </select>
+                </div>
+                <span class="border-t border-hairline pt-3 text-xs leading-normal text-ink-3" data-test="channels-explained">{{ __('Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.') }}</span>
+                <span class="pt-2 text-xs leading-normal text-ink-3" data-test="dm-explained">{{ __('Nostr DMs come from the league\'s own notification key, never from another player. They are on by default for what needs you while you are away. Turn them off with the switch above, or with the link at the end of every DM, no login needed.') }}</span>
+        </section>
+
+            <section aria-labelledby="nf-h" class="flex flex-col self-start rounded-lg bg-card px-4 py-5 lg:px-6" data-test="notify-about">
+                <h2 id="nf-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Notify me about') }}</h2>
+                @foreach (NotificationKind::cases() as $kind)
+                    @php([$label, $hint] = $kind->setting())
+                    @include('pages.settings.partials.switch', ['label' => __($label), 'hint' => __($hint, ['hours' => $settings->remindHours]), 'on' => $settings->wants($kind->value), 'action' => "toggleTrigger('{$kind->value}')", 'test' => 'trigger-'.$kind->value])
+                @endforeach
+            </section>
+    </div>
+</div>
