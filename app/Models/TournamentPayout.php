@@ -91,6 +91,7 @@ class TournamentPayout extends Model
             'no_lud16' => __('No Lightning address in the player’s Nostr profile yet. The prize waits until they add one.'),
             'lud16_changed' => __('Lightning address changed since approval. An admin approves the new one before it is paid.'),
             'account_deleted' => __('The account was deleted. The prize stays in the pool.'),
+            'linked_account' => __('Withheld: an admin linked this account to another account of the same player. Only the main account wins prizes; an admin reviews it.'),
             'lnurl_unreachable' => __('The Lightning address did not answer.'),
             'lnurl_invalid' => __('The Lightning address is not a valid LNURL-pay endpoint.'),
             'amount_out_of_range' => __('The Lightning address does not accept this amount.'),

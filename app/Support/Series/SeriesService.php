@@ -12,6 +12,7 @@ use App\Events\SeriesMatchChanged;
 use App\Games\GameRegistry;
 use App\Jobs\PublishNostrEvent;
 use App\Models\DisputeEvidence;
+use App\Models\FalseReport;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
 use App\Models\MatchNumber;
@@ -22,6 +23,7 @@ use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEvent;
@@ -168,7 +170,7 @@ final class SeriesService
             $refusal = $this->trustGate->forChallenge($challenger, $challenged, $author, $this->captainPubkeys($challenged));
 
             if ($refusal !== null) {
-                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
+                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal, [$author->pubkey, ...$this->captainPubkeys($challenged)]));
             }
         }
 
@@ -335,6 +337,13 @@ final class SeriesService
         }
 
         $fresh = $this->fresh($match);
+        $gatekeepers = [(string) $fresh->createdBy?->pubkey, $user->pubkey];
+
+        // Fair play (P41): a barred captain is left out of the pin; say why, with the end of the bar.
+        if (FairPlay::barred($gatekeepers) !== []) {
+            throw new SeriesRuleViolation(RatedTrustGate::FAIR_PLAY, RatedTrustGate::message(RatedTrustGate::FAIR_PLAY, $gatekeepers));
+        }
+
         $pin = $this->trustGate->pinForAccept($fresh, $user);
         $refusal = $pin->refusal()
             ?? ($fresh->challengerLineup === null || $fresh->challengedLineup === null
@@ -413,7 +422,7 @@ final class SeriesService
             $refusal = $match->rated ? $this->trustGate->forAccept($match, $user) : null;
 
             if ($refusal !== null) {
-                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal));
+                throw new SeriesRuleViolation($refusal, RatedTrustGate::message($refusal, [(string) $match->createdBy?->pubkey, $user->pubkey]));
             }
         }
 
@@ -1025,7 +1034,12 @@ final class SeriesService
      * is public. Admins never decide a case of their own clan or one they play
      * in (AdminDisputes.dc.html, security gate P8c F1).
      *
-     * @param  array{type: 'report', report: int}|array{type: 'result', games: list<array{winner: string, challenger: int|null, challenged: int|null}>}|array{type: 'forfeit', winner: string}|array{type: 'void'}  $decision
+     * `false_report` (P41) decides a dispute against the captain who reported:
+     * the disputed report was false, so his side loses by forfeit, and he gets
+     * a confirmed false report ({@see FalseReport}); enough of them bar him
+     * from rated play for a while ({@see FairPlay::lockedUntil()}).
+     *
+     * @param  array{type: 'report', report: int}|array{type: 'result', games: list<array{winner: string, challenger: int|null, challenged: int|null}>}|array{type: 'forfeit', winner: string}|array{type: 'void'}|array{type: 'false_report', report: int}  $decision
      *
      * @throws SeriesRuleViolation
      */
@@ -1047,12 +1061,14 @@ final class SeriesService
                 ? [SeriesResolution::Forfeit, $decision['winner'], $match->latestReport?->games]
                 : throw new SeriesRuleViolation('winner', __('Pick the side that wins by forfeit.')),
             'void' => [SeriesResolution::Void, 'none', $match->latestReport?->games],
+            'false_report' => $this->decideFalseReport($match, (int) $decision['report']),
         };
 
         $roster = $this->decisionRoster($match, $decision);
+        $falseReport = $decision['type'] === 'false_report' ? $match->reports()->whereKey((int) $decision['report'])->first() : null;
 
         // The decision and its rating change commit together.
-        DB::transaction(function () use ($match, $admin, $resolution, $winner, $games, $reason, $roster): void {
+        DB::transaction(function () use ($match, $admin, $resolution, $winner, $games, $reason, $roster, $falseReport): void {
             $updated = SeriesMatch::query()->whereKey($match->id)->where('status', $match->status)->update([
                 'status' => SeriesStatus::Resolved,
                 'resolution' => $resolution,
@@ -1066,6 +1082,16 @@ final class SeriesService
 
             if ($updated !== 1) {
                 throw new SeriesRuleViolation('changed', __('This match changed in between. Please look again.'));
+            }
+
+            if ($falseReport?->user !== null) {
+                FalseReport::query()->create([
+                    'user_id' => $falseReport->user->id,
+                    'pubkey' => $falseReport->user->pubkey,
+                    'series_match_id' => $match->id,
+                    'series_report_id' => $falseReport->id,
+                    'decided_by_id' => $admin->id,
+                ]);
             }
 
             $this->rateAndAttest($match);
@@ -1518,6 +1544,27 @@ final class SeriesService
         $wins = $report->score();
 
         return [SeriesResolution::Admin, $wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged', $report->games];
+    }
+
+    /**
+     * A disputed report was false (P41): the reporting side loses by forfeit.
+     * Only the report the other captain disputed, while the match is still
+     * disputed.
+     *
+     * @return array{0: SeriesResolution, 1: string, 2: null}
+     *
+     * @throws SeriesRuleViolation
+     */
+    private function decideFalseReport(SeriesMatch $match, int $reportId): array
+    {
+        $report = $match->reports()->whereKey($reportId)->first()
+            ?? throw new SeriesRuleViolation('report_missing', __('This report does not belong to the match.'));
+
+        if ($match->status !== SeriesStatus::Disputed || $report->status !== ReportStatus::Disputed) {
+            throw new SeriesRuleViolation('not_disputed', __('Only a report the other captain disputed can be ruled false.'));
+        }
+
+        return [SeriesResolution::Forfeit, SeriesMatch::otherSide($report->side), null];
     }
 
     /**

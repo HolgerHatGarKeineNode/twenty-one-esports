@@ -25,6 +25,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Trust (P7d): the reports the trust job read, dismissals and exclusions.
     Route::livewire('trust', 'pages::admin.trust')->name('trust');
 
+    // Fair play (P41): linked accounts of one person, and players locked after confirmed false reports.
+    Route::livewire('fair-play', 'pages::admin.fair-play')->name('fair-play');
+
     // Tournament payouts (P9): the admin check at the end and the payments; `?tournament=<id>`.
     Route::livewire('payouts', 'pages::admin.payouts')->name('payouts');
 

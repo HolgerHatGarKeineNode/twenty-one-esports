@@ -27,7 +27,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 {
     public SeriesMatch $match;
 
-    /** `report:<id>`, `result`, `void`, `forfeit:<side>` */
+    /** `report:<id>`, `result`, `void`, `forfeit:<side>`, `false:<report id>` (P41: the disputed report was false) */
     public string $decision = '';
 
     /** @var list<array{c: int|string|null, d: int|string|null, winner: string|null}> */
@@ -66,6 +66,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             'report' => ['type' => 'report', 'report' => (int) $value],
             'forfeit' => ['type' => 'forfeit', 'winner' => (string) $value],
             'void' => ['type' => 'void'],
+            'false' => ['type' => 'false_report', 'report' => (int) $value],
             'result' => ['type' => 'result', 'games' => $this->enteredGames()],
             default => null,
         };
@@ -148,6 +149,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         'report' => ($r = $reports->firstWhere('id', (int) $value)) ? __('decided by admin, winner :clan, series :a : :b', ['clan' => $case->sideName($r->score()['challenger'] > $r->score()['challenged'] ? 'challenger' : 'challenged'), 'a' => $r->score()['challenger'], 'b' => $r->score()['challenged']]) : '',
         'forfeit' => __('forfeit, winner :clan', ['clan' => $case->sideName((string) $value)]),
         'void' => __('void, no winner'),
+        'false' => ($r = $reports->firstWhere('id', (int) $value)) ? __('forfeit, winner :clan; :name gets a confirmed false report', ['clan' => $case->sideName(SeriesMatch::otherSide($r->side)), 'name' => $r->user?->displayName() ?? __('the captain')]) : '',
         'result' => __('decided by admin, the entered games'),
         default => __('pick a decision'),
     };
@@ -270,6 +272,14 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     <button type="button" role="radio" wire:click="$set('decision', 'void')" aria-checked="{{ $decision === 'void' ? 'true' : 'false' }}" data-test="decide-void" @class([$option, 'border-btc bg-btc-press' => $decision === 'void', 'border-line bg-ground' => $decision !== 'void'])>
                         <b class="text-[13px]">{{ __('Void match') }}</b><span class="text-xs text-ink-2">{{ __('no winner') }}</span>
                     </button>
+                    @foreach ($reports as $r)
+                        @if ($case->status === SeriesStatus::Disputed && $r->status === \App\Enums\ReportStatus::Disputed)
+                            <button type="button" role="radio" wire:click="$set('decision', 'false:{{ $r->id }}')" aria-checked="{{ $decision === 'false:'.$r->id ? 'true' : 'false' }}" data-test="decide-false-report"
+                                    @class([$option, 'border-btc bg-btc-press' => $decision === 'false:'.$r->id, 'border-line bg-ground' => $decision !== 'false:'.$r->id])>
+                                <b class="text-[13px]">{{ __('False report by :tag', ['tag' => $case->sideTag($r->side)]) }}</b><span class="text-xs text-ink-2">{{ __(':clan wins; counts against :name', ['clan' => $case->sideTag(SeriesMatch::otherSide($r->side)), 'name' => $r->user?->displayName() ?? __('the captain')]) }}</span>
+                            </button>
+                        @endif
+                    @endforeach
                     @foreach (SeriesMatch::SIDES as $side)
                         <button type="button" role="radio" wire:click="$set('decision', 'forfeit:{{ $side }}')" aria-checked="{{ $decision === 'forfeit:'.$side ? 'true' : 'false' }}" @class([$option, 'border-btc bg-btc-press' => $decision === 'forfeit:'.$side, 'border-line bg-ground' => $decision !== 'forfeit:'.$side])>
                             <b class="text-[13px]">{{ __('Forfeit') }}</b><span class="text-xs text-ink-2">{{ __(':clan wins, no game played', ['clan' => $case->sideTag($side)]) }}</span>

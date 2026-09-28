@@ -4,6 +4,7 @@ namespace App\Support\Chess;
 
 use App\Models\ClanMember;
 use App\Models\User;
+use App\Support\FairPlay\FairPlay;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\Seasons;
@@ -42,6 +43,11 @@ final class RatedChess
 
         if (! $this->gate->isAvailable()) {
             return RatedTrustGate::message(RatedTrustGate::NOT_COMPUTED);
+        }
+
+        // Fair play (P41): a linked second account or a lock after false reports; the message says until when.
+        if (($barred = FairPlay::message($user->pubkey, $user)) !== null) {
+            return $barred;
         }
 
         if (! $this->gate->pin([$user->pubkey], [$user->pubkey, $user->pubkey])->isEligible($user->pubkey)) {

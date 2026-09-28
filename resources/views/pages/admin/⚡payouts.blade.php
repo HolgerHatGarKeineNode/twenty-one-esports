@@ -322,7 +322,7 @@ new #[Title('Payouts')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                     </td>
                                     <td class="py-2.5 pr-3 font-mono text-[11px] text-ink-3" title="{{ $payout->idempotency_key }}">{{ substr($payout->idempotency_key, 0, 10) }}…</td>
                                     <td class="py-2.5 text-right whitespace-nowrap">
-                                        @if ($payout->status === PayoutStatus::Open && ($newAddress = \App\Support\Payouts\PayoutRunner::currentAddress($payout)) !== null)
+                                        @if ($payout->status === PayoutStatus::Open && $payout->reason !== \App\Support\FairPlay\AccountLinks::WITHHELD && ($newAddress = \App\Support\Payouts\PayoutRunner::currentAddress($payout)) !== null)
                                             <x-button variant="quiet" wire:click="approveAddress({{ $payout->id }}, '{{ $newAddress }}')" wire:confirm="{{ __('Pay this prize to :address from now on?', ['address' => $newAddress]) }}" data-test="approve-address">{{ __('Approve :address', ['address' => $newAddress]) }}</x-button>
                                         @endif
                                         @if ($payout->status->isPayable())

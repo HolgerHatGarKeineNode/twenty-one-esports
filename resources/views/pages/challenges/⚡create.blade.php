@@ -8,6 +8,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
+use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\PreSeason;
@@ -367,7 +368,9 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $ladderOpen = $lineup !== null && Ladders::isOpen($lineup->game, $lineup->mode);
     // After Block 0 rated play also needs trust ranks (RatedTrustGate); without them it stays locked.
     $trustReady = app(RatedTrustGate::class)->isAvailable();
-    $ratedOpen = $ladderOpen && $trustReady;
+    // Fair play (P41): a linked second account or a player locked after false reports sees why, with the end.
+    $fairPlay = $ladderOpen && $trustReady ? FairPlay::message($me->pubkey, $me) : null;
+    $ratedOpen = $ladderOpen && $trustReady && $fairPlay === null;
     $block0 = PreSeason::block0At();
     $card = 'rounded-lg bg-card px-4 py-5 lg:px-6';
     $choice = 'flex min-h-[88px] cursor-pointer flex-col gap-1.5 rounded-lg border bg-ground px-5 py-4 text-left lg:px-12';
@@ -450,7 +453,9 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                         @else
                             <span role="radio" aria-checked="false" aria-disabled="true" class="{{ $choice }} cursor-not-allowed border-line opacity-60" data-test="type-rated-locked">
                                 <b class="font-display text-lg lg:text-xl">{{ __('Rated') }}</b>
-                                @if ($ladderOpen && ! $trustReady)
+                                @if ($fairPlay !== null)
+                                    <span class="text-xs leading-normal text-ink-2 lg:text-[13px]" data-test="rated-fair-play">{{ $fairPlay }}</span>
+                                @elseif ($ladderOpen && ! $trustReady)
                                     <span class="text-xs leading-normal text-ink-2 lg:text-[13px]" data-test="rated-needs-trust">{{ __('Rated play opens once trust ranks are computed') }}</span>
                                 @else
                                     <span class="text-xs leading-normal text-ink-2 lg:text-[13px]">{{ __('from Block 0') }}</span>

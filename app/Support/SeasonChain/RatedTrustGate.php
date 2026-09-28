@@ -5,6 +5,7 @@ namespace App\Support\SeasonChain;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\FairPlay\FairPlay;
 
 /**
  * The trust gate of rated play (NIP "Trust gate"; plan: rated only for
@@ -21,6 +22,11 @@ use App\Models\User;
  * {@see NoTrustFacts}) every rated action is refused with
  * `trust_not_computed`, a missing rank counts as below the minimum, a
  * missing connection as not connected.
+ *
+ * Fair play (P41): a player barred by {@see FairPlay} (a linked second
+ * account, a lock after confirmed false reports) is left out of every pin,
+ * so he is never eligible; a barred gatekeeper refuses the match with
+ * {@see self::FAIR_PLAY}, whose message names the player and the end.
  */
 final class RatedTrustGate
 {
@@ -31,6 +37,8 @@ final class RatedTrustGate
     public const NOT_CONNECTED = 'not_connected';
 
     public const NOT_ENOUGH_ELIGIBLE = 'not_enough_eligible';
+
+    public const FAIR_PLAY = 'fair_play';
 
     public function __construct(private TrustFacts $facts) {}
 
@@ -53,12 +61,16 @@ final class RatedTrustGate
     /**
      * @param  list<string>  $players  pubkeys of every rated player
      * @param  array{0: string, 1: string}  $gatekeepers
-     * @return self::NOT_COMPUTED|self::NOT_TRUSTED|self::NOT_CONNECTED|null
+     * @return self::NOT_COMPUTED|self::NOT_TRUSTED|self::NOT_CONNECTED|self::FAIR_PLAY|null
      */
     public function refusal(array $players, array $gatekeepers): ?string
     {
         if (! $this->facts->available()) {
             return self::NOT_COMPUTED;
+        }
+
+        if (FairPlay::barred($gatekeepers) !== []) {
+            return self::FAIR_PLAY;
         }
 
         return $this->pin($players, $gatekeepers)->refusal();
@@ -73,7 +85,11 @@ final class RatedTrustGate
      */
     public function pin(array $players, array $gatekeepers): GatePin
     {
-        return GatePin::fromFacts($players, $gatekeepers, $this->facts->at($players, $gatekeepers), self::minimum());
+        $pin = GatePin::fromFacts($players, $gatekeepers, $this->facts->at($players, $gatekeepers), self::minimum());
+        $barred = FairPlay::barred(array_keys($pin->players));
+
+        // A barred player is not pinned: never eligible, and a barred gatekeeper refuses the pin.
+        return $barred === [] ? $pin : new GatePin($pin->trustKey, $pin->minimum, $pin->gatekeepers, $pin->connected, array_diff_key($pin->players, $barred), $pin->sides);
     }
 
     /**
@@ -119,6 +135,10 @@ final class RatedTrustGate
             return self::NOT_COMPUTED;
         }
 
+        if (FairPlay::barred($gatekeepers) !== []) {
+            return self::FAIR_PLAY;
+        }
+
         $pin = $this->pin(self::players($a, $b), $gatekeepers);
 
         return $pin->refusal() ?? self::sidesRefusal($pin, $a, $b);
@@ -156,9 +176,24 @@ final class RatedTrustGate
         return $this->pin($players, [(string) $match->createdBy?->pubkey, $answering->pubkey]);
     }
 
-    /** The refusal in plain words. */
-    public static function message(string $refusal): string
+    /**
+     * The refusal in plain words. For {@see self::FAIR_PLAY} the first barred
+     * of `$gatekeepers` is named, with the end of his bar.
+     *
+     * @param  list<string>  $gatekeepers  pubkeys
+     */
+    public static function message(string $refusal, array $gatekeepers = []): string
     {
+        if ($refusal === self::FAIR_PLAY) {
+            foreach ($gatekeepers as $pubkey) {
+                if (($message = FairPlay::message($pubkey)) !== null) {
+                    return $message;
+                }
+            }
+
+            return __('A captain of this match is barred from rated play under the fair-play rules.');
+        }
+
         return match ($refusal) {
             self::NOT_COMPUTED => __('Rated play opens once trust ranks are computed. Until then every match is casual.'),
             self::NOT_TRUSTED => __('Rated play needs both captains to be Trusted (trust rank :minimum or more).', ['minimum' => self::minimum()]),

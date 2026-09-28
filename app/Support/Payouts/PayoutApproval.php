@@ -7,6 +7,8 @@ use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\FairPlay\AccountLinks;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Prizes\PotBalances;
 use App\Support\Prizes\PrizePool;
@@ -81,6 +83,11 @@ final class PayoutApproval
         }
 
         $address = PayoutRunner::currentAddress($payout);
+
+        // A prize withheld for a linked account (P41) is not released by an address approval.
+        if ($payout->reason === AccountLinks::WITHHELD || FairPlay::isLinked($payout->pubkey)) {
+            throw new TournamentRuleViolation('withheld', __('This prize is withheld: the account is linked to another account of the same player. Unlink it first if the link was wrong.'));
+        }
 
         if ($payout->status !== PayoutStatus::Open || $address === null) {
             throw new TournamentRuleViolation('no_new_address', __('This payout has no new Lightning address to approve.'));

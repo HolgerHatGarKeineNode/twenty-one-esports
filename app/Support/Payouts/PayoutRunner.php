@@ -5,6 +5,8 @@ namespace App\Support\Payouts;
 use App\Enums\PayoutStatus;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\FairPlay\AccountLinks;
+use App\Support\FairPlay\FairPlay;
 use App\Support\Lightning\Bolt11;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Lightning\LightningAddressFailure;
@@ -77,6 +79,14 @@ final class PayoutRunner
             $payout->refresh();
 
             $refused = false;
+
+            // A linked second account wins nothing (P41): withheld, never started, never re-routed.
+            if ($start && $payout->status->isPayable() && FairPlay::isLinked($payout->pubkey)) {
+                TournamentPayout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])
+                    ->update(['status' => PayoutStatus::Open, 'reason' => AccountLinks::WITHHELD]);
+
+                return;
+            }
 
             if ($start && $payout->status->isPayable()) {
                 // The wallet refused the last attempt outright: an expired invoice may be replaced.

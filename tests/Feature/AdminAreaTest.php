@@ -67,8 +67,8 @@ test('every admin page renders the admin nav with every group and the breadcrumb
 
     // The loop must have met every admin page; a filter that matches nothing proves nothing.
     expect($checked)->toContain('admin.status', 'admin.admins', 'admin.organizers', 'admin.disputes', 'admin.disputes.show', 'admin.season', 'admin.trust',
-        'admin.events', 'admin.payouts', 'admin.tournaments', 'admin.tournaments.create', 'admin.tournaments.edit')
-        ->and(count($checked))->toBe(12);
+        'admin.events', 'admin.payouts', 'admin.tournaments', 'admin.tournaments.create', 'admin.tournaments.edit', 'admin.fair-play')
+        ->and(count($checked))->toBe(13);
 });
 
 test('the prize pool page of a tournament carries the admin frame for an admin', function () {

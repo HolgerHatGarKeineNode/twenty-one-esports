@@ -14,6 +14,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Engagement\Placements;
 use App\Support\Engagement\ResultEngagement;
+use App\Support\FairPlay\FairPlay;
 use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
@@ -69,6 +70,11 @@ final class RatingService
             return false;
         }
 
+        // Two accounts of one person (P41): their results are void and rate nothing.
+        if (FairPlay::samePerson(array_filter([$game->white_id]), array_filter([$game->black_id]))) {
+            return false;
+        }
+
         if ($game->rated && ! $this->pinAdmits(GatePin::fromArray($game->gate_at_accept), [$game->white->pubkey, $game->black->pubkey])) {
             return false;
         }
@@ -100,6 +106,13 @@ final class RatingService
         $subjects = self::seriesSubjects($match);
 
         if ($subjects === null) {
+            return false;
+        }
+
+        // Two accounts of one person on opposite sides (P41): their results are void and rate nothing.
+        $sides = FairPlay::seriesSides($match);
+
+        if (FairPlay::samePerson($sides['challenger'], $sides['challenged'])) {
             return false;
         }
 

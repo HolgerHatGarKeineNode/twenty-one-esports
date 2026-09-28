@@ -497,6 +497,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Fair play (P41)
+    |--------------------------------------------------------------------------
+    |
+    | Linked accounts: an admin links the accounts of one person and names the
+    | main account (App\Support\FairPlay\AccountLinks). Every other account
+    | of the person plays no rated match and wins no prize; results between
+    | the accounts are void. Nothing is detected automatically.
+    |
+    | False reports: an admin who decides a dispute against the captain who
+    | reported (the reported result was false) records a confirmed false
+    | report. `false_reports` of them within `window_days` days bar that
+    | player from rated play for `lock_days` days from the last one
+    | (App\Support\FairPlay\FairPlay::lockedUntil()). /rules states these
+    | numbers, read at render time.
+    |
+    */
+
+    'fair_play' => [
+        'false_reports' => (int) env('ESPORTS_FAIR_PLAY_FALSE_REPORTS', 2),
+        'window_days' => (int) env('ESPORTS_FAIR_PLAY_WINDOW_DAYS', 30),
+        'lock_days' => (int) env('ESPORTS_FAIR_PLAY_LOCK_DAYS', 7),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Trust key and trust job (P7d, NIP "Trust", `anchored-trust-v1`)
     |--------------------------------------------------------------------------
     |

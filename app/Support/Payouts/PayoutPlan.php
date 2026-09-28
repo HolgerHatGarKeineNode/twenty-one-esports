@@ -5,6 +5,8 @@ namespace App\Support\Payouts;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\FairPlay\AccountLinks;
+use App\Support\FairPlay\FairPlay;
 
 /**
  * Who gets what from a tournament's pot (P9, open question 10 with the CEO
@@ -21,6 +23,9 @@ use App\Models\User;
  * - Every division rounds down to whole sats. What is left (remainders,
  *   places the split names but nobody holds, the shares of deleted
  *   accounts) stays in the pot's wallet.
+ * - A second account linked to the main account of the same person (P41,
+ *   {@see AccountLinks}) wins nothing: its share is not written and stays in
+ *   the pot, never moved to a teammate or the next place.
  *
  * Pure apart from reading the participants and their users.
  */
@@ -77,6 +82,10 @@ final class PayoutPlan
                 }
 
                 foreach (User::query()->whereIn('id', $memberIds)->orderBy('id')->get() as $user) {
+                    if (FairPlay::isLinked($user->pubkey)) {
+                        continue;
+                    }
+
                     $rows[] = ['place' => $place, 'participant' => $participant, 'user' => $user, 'amount' => $perPlayer];
                     $paid += $perPlayer;
                 }
