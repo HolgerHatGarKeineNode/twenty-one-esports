@@ -4,7 +4,7 @@
     The emoji picker (P24), ported from einundzwanzig-group
     (resources/views/components/emoji-picker.blade.php): recently used, search,
     one tab per emoji group, and first a tab with the viewer's own NIP-30
-    emoji. Data and logic: emojiPicker() in resources/js/liveChat.js.
+    emoji. Data and logic: emojiPicker() in resources/js/emojiPicker.js.
     Picking calls insertEmoji(text, emojiTag, label) of the chat around it
     (Alpine scope chain; the panel is teleported, the scope goes with it).
 
