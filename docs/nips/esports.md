@@ -77,9 +77,10 @@ The rules marked "rev. 9.4" concern chess game notes only; they apply to every c
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
 The rules marked "rev. 9.7" concern share posts only; no ladder depends on them, and they apply from
-the day a league adopts revision 9.7. The rules marked "rev. 9.9" concern comments, likes and RSVPs
-only; no ladder and no league state depends on them, and they apply from the day a league adopts
-revision 9.9. The rules marked "rev. 9.10" concern opponent requests and their notification only; they change no
+the day a league adopts revision 9.7. The rules marked "rev. 9.8" concern notification DMs, follows
+and direct messages only; no event of the league changes. The rules marked "rev. 9.9" concern
+comments, likes and RSVPs only; no ladder and no league state depends on them, and they apply from
+the day a league adopts revision 9.9. The rules marked "rev. 9.10" concern opponent requests and their notification only; they change no
 event and no gate, and apply from the day a league adopts revision 9.10.
 
 ### Changelog of revision 9.10 (2026-09-29)
@@ -141,12 +142,14 @@ Where a notification DM goes, and a fallback for players whose client does not r
   its profile and chat relays, and sends the gift wrap to the relays of the `10050` as well as to its
   chat relays. Revision 4 said "to the relays of the player's `10050`"; the app sent to the chat relays
   only.
-- **NIP-04 fallback.** If at least one relay answered the lookup and the player has no `10050`, the DM
-  is a NIP-04 kind `4` from the notification key, to the read relays of the player's `10002` and the
-  chat relays. A lookup no relay answered is not "no list": the DM stays NIP-17. NIP-04 is still
-  `unrecommended`; it is used for this one case only.
-- **Relays a player names are untrusted.** At most five of each list, `wss://` on port 443 of a public
-  DNS name, the connection pinned to the checked address; others are never contacted.
+- **NIP-04 fallback.** If every relay answered the lookup and the player has no `10050`, the DM is a
+  NIP-04 kind `4` from the notification key, to the read relays of the player's `10002` and the chat
+  relays. A lookup that not every relay answered is not "no list": the DM stays NIP-17, and a `10050`
+  one relay returned is used. NIP-04 is still `unrecommended`; it is used for this one case only.
+- **Relays a player names are untrusted.** Each connection ends after `relay_timeout_seconds` and
+  64 KiB of answer, however the relay drips or what length a frame announces. At most five of each
+  list, `wss://` on port 443 of a public DNS name, the connection pinned to the checked address;
+  others are never contacted.
 - **Test DM.** A player can send one test DM to themselves from the notification settings, at most one
   a minute, and sees which format went out and how many relays took it.
 - **Daily digest.** Per notification type a player chooses a DM at once or one digest DM a day.
@@ -3136,8 +3139,11 @@ with only `p` (no `match`), sealed and gift-wrapped as above, published from the
 relays of the recipient's `10050` and the copy to self to the sender's own. The recipient's `10050`
 and `10002` are read from the configured profile, league and chat relays.
 
-- **NIP-04 fallback.** If the recipient has no `10050` (at least one relay answered) or the sender's
-  signer has no NIP-44, the message is a NIP-04 kind `4` with `p`, encrypted by the sender's signer
+- **NIP-04 fallback.** If the recipient has no `10050` (every relay asked answered) or the sender's
+  signer has no NIP-44, the message can be a NIP-04 kind `4` with `p`. The app asks the sender first
+  and says why; it never sends NIP-04 on its own. If not every relay answered, a missing `10050` is
+  not known and the message goes NIP-17 to the configured relays. The NIP-04 event is encrypted by the
+  sender's signer
   (`nip04.encrypt`), published to the read relays of the recipient's `10002`, the sender's write
   relays and the configured relays. It shows sender, recipient and time to the relays, not the text.
 - **Refused.** No encryption in the signer at all; a recipient without `10050` and a signer without
@@ -3150,9 +3156,12 @@ and `10002` are read from the configured profile, league and chat relays.
 "Follow" in the app adds one `p` to the player's own follow list (NIP-02 kind `3`), signed by the
 player's signer on click. A kind `3` replaces the whole list, so the app fails closed:
 
-1. It reads the player's NIP-65 list (`10002`) from the configured relays; no answer, no follow.
-2. It reads kind `3` from the player's write relays (or, without a `10002`, the configured relays)
-   and the configured relays. Every write relay must deliver EOSE, else the follow is refused. Of the
+1. It reads the player's NIP-65 list (`10002`) from the configured relays. Without a `10002` that
+   names write relays the follow is refused: if not every configured relay answered, the silent one
+   may hold the list; if none has one, the configured relays prove nothing about where the player's
+   follow list lives (a stale copy there was signed over 380 follows in the audit).
+2. It reads kind `3` from the player's write relays and the configured relays. Every write relay must
+   deliver EOSE, else the follow is refused. Of the
    valid lists the newest wins (NIP-01), signatures checked.
 3. The preview shows how many accounts the player follows now and after; with no list anywhere it says
    that a new list starts with this one entry.
@@ -3435,13 +3444,13 @@ The league notifies players by Nostr DM from a dedicated **notification key**, b
   (`04.md`); its events show sender, recipient and time to everyone. A notification is a kind `14`
   rumor sealed by the notification key and wrapped to the player only; there is no copy to the sender.
 - **Where to (rev. 9.8).** The league looks up the player's `10050` and `10002` on its profile and chat
-  relays (the newest of each, NIP-01) and remembers an answered lookup for 30 minutes. With a `10050`:
-  the gift wrap goes to its relays and to the chat relays. Without one, when at least one relay
-  answered: a NIP-04 kind `4` from the notification key with `p` (and `match`), `content` NIP-04
+  relays (the newest of each, NIP-01), within 12 seconds, and remembers a complete lookup (every relay
+  answered) for 30 minutes, a partial one not at all. With a `10050`: the gift wrap goes to its relays
+  and to the chat relays. Without one, when every relay answered: a NIP-04 kind `4` from the notification key with `p` (and `match`), `content` NIP-04
   encrypted, to the read relays of the `10002` and the chat relays: the one case in which this league
   uses NIP-04, so that a player whose client reads no NIP-17 still gets the message. It shows every
-  relay that the notification key wrote to the player at that time, nothing more. When no relay
-  answered the lookup, the gift wrap goes to the chat relays. Relays taken from a player's list are
+  relay that the notification key wrote to the player at that time, nothing more. When not every relay
+  answered and none returned a `10050`, the gift wrap goes to the chat relays. Relays taken from a player's list are
   untrusted: at most five per list, `wss://` on 443 of a public DNS name, the connection pinned to the
   checked address. (Revisions 4 to 9.7: to the relays of the `10050` and to none without one; the app
   sent to the chat relays only.)

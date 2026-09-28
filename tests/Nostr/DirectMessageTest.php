@@ -14,5 +14,5 @@ test('a DM goes NIP-17 to a recipient with a DM relay list, NIP-04 to one withou
         ->run(['node', '--test', 'tests/js/directMessage.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 8')->toContain('ℹ skipped 0');
 });

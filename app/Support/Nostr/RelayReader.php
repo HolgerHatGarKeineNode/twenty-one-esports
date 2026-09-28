@@ -77,14 +77,19 @@ class RelayReader
      * @param  list<array<string, mixed>>  $filters
      * @param  list<string>|null  $relays
      * @param  array<string, true>  $known
+     * @param  float|null  $until  microtime after which no further relay is read (they count as not answered)
      * @return array{events: list<SignedEvent>, answered: int}
      */
-    public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1): array
+    public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1, ?float $until = null): array
     {
         $collected = [];
         $answered = 0;
 
         foreach ($relays ?? config('esports.relays', []) as $relay) {
+            if ($until !== null && microtime(true) >= $until) {
+                break;
+            }
+
             $read = $this->read($relay, $filters, $known + $collected, $perAuthor);
 
             // A failed read (null): nothing of this relay counts this time.

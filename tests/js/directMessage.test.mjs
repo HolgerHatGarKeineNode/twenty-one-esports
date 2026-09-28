@@ -93,7 +93,7 @@ test('recipient without a DM relay list: NIP-04 kind 4 to their inbox, readable 
     const sent = [];
     const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [erinRelayList], eose: true } }, sent);
 
-    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], options: { WebSocketImpl, timeoutMs: 200 } });
+    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } });
 
     assert.equal(result.format, 'nip04');
     assert.ok(sent.every((s) => s.event.kind === 4 && s.event.pubkey === alice));
@@ -106,7 +106,7 @@ test('a signer without NIP-44 falls back to NIP-04 even when the recipient has a
     const sent = [];
     const WebSocketImpl = fakeSockets({ 'ws://lookup': { events: [erinDmList, erinRelayList], eose: true } }, sent);
 
-    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret, { with44: false }), relays: ['ws://lookup'], options: { WebSocketImpl, timeoutMs: 200 } });
+    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret, { with44: false }), relays: ['ws://lookup'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } });
 
     assert.equal(result.format, 'nip04');
     assert.ok(sent.length > 0 && sent.every((s) => s.event.kind === 4));
@@ -142,4 +142,35 @@ test('no relay answered the lookup but the signer has NIP-44: NIP-17 to the fall
 test('an empty message or one to oneself is refused', async () => {
     await assert.rejects(sendDirectMessage({ sender: alice, recipient: erin, content: '   ', signer: keySigner(aliceSecret), relays: [] }), (error) => error.code === 'empty');
     await assert.rejects(sendDirectMessage({ sender: alice, recipient: alice, content: 'x', signer: keySigner(aliceSecret), relays: [] }), (error) => error.code === 'self');
+});
+
+/*
+ * P45 security audit F3, after the auditor's probe_dm_route.mjs: before the fix a lookup that only
+ * some relays answered decided "no DM relay list" and sent NIP-04 without asking.
+ */
+test('audit F3: the relay holding the DM relay list is down, the other answers: NIP-17, never NIP-04', async () => {
+    const sent = [];
+    const WebSocketImpl = fakeSockets({ 'ws://a': { down: true }, 'ws://b': { events: [erinRelayList], eose: true } }, sent);
+
+    const result = await sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: keySigner(aliceSecret), relays: ['ws://a', 'ws://b'], allowNip04: true, options: { WebSocketImpl, timeoutMs: 200 } });
+
+    assert.equal(result.format, 'nip17');
+    assert.ok(sent.length > 0 && sent.every((s) => s.event.kind === 1059));
+});
+
+test('audit F3: NIP-04 is never sent without the sender agreeing, and says why', async () => {
+    for (const [relays, signer, reason] of [
+        [{ 'ws://lookup': { events: [erinRelayList], eose: true } }, keySigner(aliceSecret), 'no_dm_relays'],
+        [{ 'ws://lookup': { events: [erinDmList], eose: true } }, keySigner(aliceSecret, { with44: false }), 'no_nip44'],
+    ]) {
+        const sent = [];
+        let signed = 0;
+        const counting = { ...signer, signEvent: async (draft) => { signed++; return signer.signEvent(draft); } };
+        await assert.rejects(
+            sendDirectMessage({ sender: alice, recipient: erin, content: 'hi', signer: counting, relays: ['ws://lookup'], options: { WebSocketImpl: fakeSockets(relays, sent), timeoutMs: 200 } }),
+            (error) => error instanceof DirectMessageRefused && error.code === 'confirm_nip04' && error.reason === reason,
+        );
+        assert.equal(signed, 0, reason);
+        assert.deepEqual(sent, [], reason);
+    }
 });

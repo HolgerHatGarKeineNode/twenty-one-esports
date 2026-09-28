@@ -218,6 +218,8 @@ test('follow: the preview counts the existing follows, the signed list keeps the
     // The viewer's follow list, written by another client, on the relay only.
     $old = array_map(fn () => ['p', (new TestSigner)->pubkey], range(1, 3));
     nostrBarSend($this->relayUrl, $signer->sign(3, [...$old, ['t', 'kept']], '', now()->getTimestamp() - 3600));
+    // Where it lives: the viewer's relay list (audit F2: without one, follow refuses).
+    nostrBarSend($this->relayUrl, $signer->sign(10002, [['r', $this->relayUrl]], '', now()->getTimestamp() - 3600));
 
     $page = nostrBarPage($viewer, route('players.show', $player->npub, false), 1440);
     $page->locator('[data-test=nostr-follow]')->click();
@@ -255,6 +257,20 @@ test('follow: the preview counts the existing follows, the signed list keeps the
 
     $after = nostrBarQuery($this->relayUrl, '-k 3 -a '.$viewer->pubkey);
     expect($after)->toHaveCount(1)->and($after[0]['id'])->toBe($lists[0]['id']);
+
+    // Audit F2: a player whose relay list nobody has, with a follow list on the relay: refused, the list untouched.
+    config(['esports.profile_relays' => [$this->relayUrl], 'esports.relays' => [$this->relayUrl]]);
+    $noList = User::factory()->create(['locale' => 'en']);
+    $noListSigner = TestSigner::forBrowser($noList);
+    $noList->refresh();
+    nostrBarSend($this->relayUrl, $noListSigner->sign(3, $old, '', now()->getTimestamp() - 60));
+    $page = nostrBarPage($noList, route('players.show', $other->npub, false), 1440);
+    $page->locator('[data-test=nostr-follow]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=nostr-follow-panel]")?.dataset.step === "refused"', 15_000);
+
+    expect($page->evaluate('() => document.querySelector("[data-test=nostr-follow-error]").textContent.trim()'))->toStartWith('No relay list of yours (NIP-65, kind 10002) was found')
+        ->and(nostrBarQuery($this->relayUrl, '-k 3 -a '.$noList->pubkey))->toHaveCount(1)
+        ->and(count(nostrBarQuery($this->relayUrl, '-k 3 -a '.$noList->pubkey)[0]['tags']))->toBe(3);
 });
 
 test('"Send a test DM" in the notification settings delivers a NIP-17 DM to the player\'s DM relays and says so, at 375 and 1440', function () {
@@ -342,6 +358,13 @@ test('message: NIP-17 to a player with a DM relay list, NIP-04 to one without; e
     $page->locator('[data-test=nostr-message]')->click();
     $page->locator('[data-test=nostr-dm-text]')->fill('hi from the league page');
     $page->locator('[data-test=nostr-dm-send]')->click();
+
+    // Audit F3: never a silent downgrade. The sender is asked, with the confirmed reason, and nothing is out yet.
+    BrowserWait::until($page, '() => document.querySelector("[data-test=nostr-dm-confirm]")?.checkVisibility() === true', 15_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=nostr-dm-confirm]").innerText.trim()'))->toStartWith('Every relay asked answered, and Legacy Lars has no DM relay list')
+        ->and(nostrBarQuery($this->relayUrl, '-k 4 -a '.$viewer->pubkey))->toBe([]);
+    nostrBarShot($page, 'nostr-bar-message-confirm-nip04-1440');
+    $page->locator('[data-test=nostr-dm-send-nip04]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=nostr-dm-sent-nip04]")?.checkVisibility() === true', 15_000);
 
     $dms = nostrBarQuery($this->relayUrl, '-k 4 -a '.$viewer->pubkey);

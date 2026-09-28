@@ -7,10 +7,11 @@
  * copy drops follows the player made elsewhere, with no way back. So this
  * module fails closed:
  *
- * - The list counts as read only when every relay that must hold it (the
- *   player's NIP-65 write relays, or the configured relays without a relay
- *   list) delivered EOSE (relayRead.js). Anything less: refused, nothing is
- *   signed or sent.
+ * - The list counts as read only when every relay that must hold it, the
+ *   player's NIP-65 write relays, delivered EOSE (relayRead.js). Without a
+ *   relay list, or when the relay that may hold it did not answer, nobody
+ *   knows where the list lives: refused (P45 audit F2; the configured
+ *   relays are no proof). Anything less: refused, nothing is signed or sent.
  * - Of the valid lists the newest wins (NIP-01), never the longest or the
  *   first to arrive; a forged copy does not count (signature checked).
  * - The new list is the old one unchanged (every tag, the content) plus one
@@ -21,14 +22,14 @@
  * No DOM or Alpine import: tests/js/follow.test.mjs runs it in Node with fake
  * relays and a key-backed signer.
  */
-import { newest, publishToRelays, readRelays, relayUrls, writeRelaysOf } from './relayRead.js';
+import { newest, publishToRelays, readOwnWriteRelays, readRelays, relayUrls } from './relayRead.js';
 import { signTemplate } from './signing.js';
 
 const HEX_PUBKEY = /^[0-9a-f]{64}$/;
 
 export class FollowRefused extends Error {
     /**
-     * @param {'not_read'|'bad_pubkey'|'self'|'already'|'changed'|'mismatch'} code
+     * @param {'not_read'|'no_relay_list'|'bad_pubkey'|'self'|'already'|'changed'|'mismatch'} code
      */
     constructor(code) {
         super(code);
@@ -41,23 +42,26 @@ export class FollowRefused extends Error {
  * The player's follow list as the league needs it: the newest valid kind 3,
  * and whether every relay that must answer did.
  *
- * @returns {Promise<{ read: boolean, list: object|null, writeRelays: string[], answered: number, asked: number }>}
+ * @returns {Promise<{ read: boolean, reason: 'not_read'|'no_relay_list'|null, list: object|null, writeRelays: string[], answered: number, asked: number }>}
  */
 export async function readFollowList(pubkey, configured, options = {}) {
     const relays = relayUrls(configured);
-    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }], options);
+    const own = await readOwnWriteRelays(pubkey, relays, options);
 
-    if (!lists.some((result) => result.eose)) {
-        return { read: false, list: null, writeRelays: [], answered: 0, asked: relays.length };
+    // Where the list lives is unknown: refuse, never fall back to the configured relays (audit F2).
+    if (own.writeRelays.length === 0) {
+        return { read: false, reason: own.complete ? 'no_relay_list' : 'not_read', list: null, writeRelays: [], answered: own.answered, asked: own.asked };
     }
 
-    const own = writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002));
-    const mustAnswer = own.length > 0 ? own : relays;
+    const mustAnswer = own.writeRelays;
     const results = await readRelays([...mustAnswer, ...relays], [{ kinds: [3], authors: [pubkey] }], options);
     const answered = results.filter((result) => result.eose && mustAnswer.includes(result.url)).length;
 
+    const read = answered === mustAnswer.length;
+
     return {
-        read: mustAnswer.length > 0 && answered === mustAnswer.length,
+        read,
+        reason: read ? null : 'not_read',
         list: newest(results.flatMap((result) => result.events), pubkey, 3),
         writeRelays: mustAnswer,
         answered,
@@ -86,7 +90,7 @@ export function followPreview(read, target) {
  * the current list's, so it replaces it. Throws FollowRefused otherwise.
  */
 export function followTemplate(read, target, { me = null, now = Math.floor(Date.now() / 1000) } = {}) {
-    if (!read?.read) throw new FollowRefused('not_read');
+    if (!read?.read) throw new FollowRefused(read?.reason === 'no_relay_list' ? 'no_relay_list' : 'not_read');
     if (!HEX_PUBKEY.test(target ?? '')) throw new FollowRefused('bad_pubkey');
     if (me !== null && target === me) throw new FollowRefused('self');
     if (followed(read.list).includes(target)) throw new FollowRefused('already');

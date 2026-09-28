@@ -132,13 +132,39 @@ export async function writeRelaysFor(pubkey, relays, options = {}) {
 }
 
 /**
+ * The player's own write relays from their NIP-65 relay list (10002), read
+ * from the configured relays: the only relays that can be required to hold
+ * the player's newest replaceable lists.
+ *
+ * Empty `writeRelays` means unknown, and a caller that replaces a list must
+ * then refuse (P45 security audit F2): either not every configured relay
+ * answered, so the one holding the 10002 may be the silent one (`complete`
+ * false), or none holds one, and the configured relays are no proof of where
+ * the player's lists live (measured: 380 follows on the player's own relay, a
+ * 3-follow copy on a configured one, a 4-follow list signed).
+ *
+ * @returns {Promise<{ writeRelays: string[], complete: boolean, answered: number, asked: number }>}
+ */
+export async function readOwnWriteRelays(pubkey, configured, options = {}) {
+    const relays = relayUrls(configured);
+    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }], options);
+    const answered = lists.filter((result) => result.eose).length;
+
+    return {
+        writeRelays: writeRelaysOf(newest(lists.flatMap((result) => result.events), pubkey, 10002)),
+        complete: relays.length > 0 && answered === relays.length,
+        answered,
+        asked: relays.length,
+    };
+}
+
+/**
  * The player's profile badge lists as the league needs them:
  *
- * 1. the NIP-65 relay list (10002) from the configured relays; if none of
- *    them delivered EOSE, the write relays are unknown and nothing is read;
+ * 1. the player's own write relays (readOwnWriteRelays); unknown, and
+ *    nothing is read (P45 audit F2);
  * 2. the newest valid 10008 and 30008 `profile_badges` from the write relays
- *    and the configured relays; the write relays (or, without a relay list,
- *    the configured relays) are the ones that must answer.
+ *    and the configured relays; the write relays are the ones that must answer.
  *
  * `read` is true only when every one of those relays delivered EOSE: a relay
  * that is down may hold the newest list, and writing without it would drop
@@ -148,15 +174,13 @@ export async function writeRelaysFor(pubkey, relays, options = {}) {
  */
 export async function readProfileBadges(pubkey, configured, options = {}) {
     const relays = relayUrls(configured);
-    const lists = await readRelays(relays, [{ kinds: [10002], authors: [pubkey] }], options);
+    const own = await readOwnWriteRelays(pubkey, relays, options);
 
-    if (! lists.some((result) => result.eose)) {
-        return { read: false, found: [], answered: 0, asked: relays.length, writeRelays: [] };
+    if (own.writeRelays.length === 0) {
+        return { read: false, found: [], answered: 0, asked: 0, writeRelays: [], relayList: own.complete ? 'none' : 'not_read' };
     }
 
-    const relayList = newest(lists.flatMap((result) => result.events), pubkey, 10002);
-    const own = writeRelaysOf(relayList);
-    const mustAnswer = own.length > 0 ? own : relays;
+    const mustAnswer = own.writeRelays;
     const results = await readRelays([...mustAnswer, ...relays], [
         { kinds: [10008], authors: [pubkey] },
         { kinds: [30008], authors: [pubkey], '#d': ['profile_badges'] },

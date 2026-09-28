@@ -87,7 +87,9 @@ test('the newest valid list wins, not the first to arrive, and a forged newer on
     const older = sign(10008, [['a', '30009:' + 'a'.repeat(64) + ':x'], ['e', '1'.repeat(64)]], 1_700_000_000);
     const newer = sign(10008, [['a', '30009:' + 'b'.repeat(64) + ':y'], ['e', '2'.repeat(64)]], 1_700_000_100);
     const forgedNewest = { ...sign(10008, [], 1_700_000_200), sig: '1'.repeat(128) };
-    const WebSocketImpl = fakeSockets({ 'ws://a': { events: [older, forgedNewest], eose: true }, 'ws://b': { events: [newer], eose: true } });
+    // P45 audit F2: the write relays come from the player's relay list, never from the configured relays.
+    const relayList = sign(10002, [['r', 'ws://a'], ['r', 'ws://b']], 1_700_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://a': { events: [relayList, older, forgedNewest], eose: true }, 'ws://b': { events: [newer], eose: true } });
 
     const result = await readProfileBadges(pubkey, ['ws://a', 'ws://b'], { WebSocketImpl, timeoutMs: 200 });
 
@@ -146,4 +148,32 @@ test('publishing counts only OK true', async () => {
     assert.equal(await publishToRelay('ws://yes', event, { WebSocketImpl, timeoutMs: 200 }), true);
     assert.equal(await publishToRelay('ws://no', event, { WebSocketImpl, timeoutMs: 200 }), false);
     assert.equal(await publishToRelay('ws://down', event, { WebSocketImpl, timeoutMs: 200 }), false);
+});
+
+/*
+ * P45 security audit F2 applied to the badge lists: without the player's own
+ * write relays nothing counts as read, so the league never builds a 10008 from
+ * a configured relay's stale copy.
+ */
+test('audit F2 (A): the relay holding the relay list does not answer; not read', async () => {
+    const relayList = sign(10002, [['r', 'ws://own-write']], 1_700_000_000);
+    const stale = sign(10008, [['a', '30009:' + 'a'.repeat(64) + ':x'], ['e', '1'.repeat(64)]], 1_600_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://config-b': { events: [stale], eose: true }, 'ws://own-write': { events: [relayList], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'not_read');
+    assert.deepEqual(result.found, []);
+});
+
+test('audit F2 (B): no configured relay holds a relay list; not read, although every relay answered', async () => {
+    const stale = sign(10008, [['a', '30009:' + 'a'.repeat(64) + ':x'], ['e', '1'.repeat(64)]], 1_600_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [stale], eose: true }, 'ws://config-b': { events: [], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'none');
+    assert.deepEqual(result.found, []);
 });

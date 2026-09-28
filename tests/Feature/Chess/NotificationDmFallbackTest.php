@@ -35,21 +35,22 @@ const DM_INBOX_RELAY = 'ws://127.0.0.1:13';
  * A reader that answers from `$events`, `answered` relays reaching EOSE, and
  * counts how often it was asked.
  */
-function fakeDmLookup(array $events, int $answered = 1): RelayReader
+function fakeDmLookup(array $events, ?int $answered = null): RelayReader
 {
     $reader = new class extends RelayReader
     {
         public array $events = [];
 
-        public int $answered = 1;
+        /** Relays that answered to EOSE; null: every relay asked. */
+        public ?int $answered = null;
 
         public int $asked = 0;
 
-        public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1): array
+        public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1, ?float $until = null): array
         {
             $this->asked++;
 
-            return ['events' => $this->events, 'answered' => $this->answered];
+            return ['events' => $this->events, 'answered' => $this->answered ?? count($relays ?? [])];
         }
     };
 
@@ -122,6 +123,28 @@ test('a lookup no relay answered is no missing list: the DM stays NIP-17 on the 
     expect($delivery->format)->toBe('nip17')
         ->and($delivery->event->kind)->toBe(1059)
         ->and(array_keys(deliveriesOf($delivery->event)))->toBe([DM_CHAT_RELAY]);
+});
+
+test('audit F3: one of two lookup relays silent and no list seen: NIP-17, not NIP-04, and nothing is remembered', function () {
+    $reader = fakeDmLookup([$this->player->sign(10002, [['r', DM_INBOX_RELAY, 'read']])], answered: 1);
+
+    $route = app(DmRelays::class)->for($this->player->pubkey);
+    $delivery = NotificationDm::fromConfig()->deliver($this->user, 'A challenge');
+
+    expect($route->known)->toBeFalse()
+        ->and($route->format())->toBe('nip17')
+        ->and($delivery->format)->toBe('nip17')
+        ->and($delivery->event->kind)->toBe(1059)
+        ->and($reader->asked)->toBe(2);
+});
+
+test('audit F3: a DM relay list found in a partial answer is used', function () {
+    fakeDmLookup([$this->player->sign(10050, [['relay', DM_PLAYER_RELAY]])], answered: 1);
+
+    $delivery = NotificationDm::fromConfig()->deliver($this->user, 'A challenge');
+
+    expect($delivery->format)->toBe('nip17')
+        ->and(array_keys(deliveriesOf($delivery->event)))->toEqualCanonicalizing([DM_CHAT_RELAY, DM_PLAYER_RELAY]);
 });
 
 test('the newest DM relay list counts, even when an older one had relays', function () {

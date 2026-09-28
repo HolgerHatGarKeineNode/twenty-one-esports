@@ -35,6 +35,7 @@
                  'signer' => \App\Support\Nostr\SignerMessages::labels(),
                  'failed' => __('That did not work. Please try again.'),
                  'followNotRead' => __('Your follow list could not be read from all your relays (:answered of :asked answered). Nothing was changed. Please try again later.'),
+                 'followNoRelayList' => __('No relay list of yours (NIP-65, kind 10002) was found, so it is unknown where your follow list lives. Nothing was changed. Publish a relay list in your Nostr app first.'),
                  'followChanged' => __('Your follow list changed in the meantime. Here is the new state; nothing was sent.'),
                  'followAlready' => __('You already follow :name.', ['name' => $name]),
                  'dm_no_encryption' => __('Your signer cannot encrypt messages (neither NIP-44 nor NIP-04).'),
@@ -137,7 +138,19 @@
                 <span class="min-w-0 basis-60 grow text-xs leading-normal text-ink-3">{{ __('Encrypted and signed by your own signer, sent from this browser to :name\'s relays. The league does not store it.', ['name' => $name]) }}</span>
             </div>
             <p role="status" class="m-0 text-xs text-win" x-show="dmStep === 'sent' && dmFormat === 'nip17'" x-cloak data-test="nostr-dm-sent">{{ __('Sent, end-to-end encrypted (NIP-17).') }}</p>
-            <p role="status" class="m-0 text-xs text-win" x-show="dmStep === 'sent' && dmFormat === 'nip04'" x-cloak data-test="nostr-dm-sent-nip04">{{ __('Sent as an older NIP-04 DM, because :name has no DM relay list or your signer has no NIP-44. Relays can see who wrote to whom and when, not what.', ['name' => $name]) }}</p>
+            {{-- P45 audit F3: the older format only after the sender agreed, with the confirmed reason. --}}
+            <div class="flex min-w-0 flex-col gap-2 rounded-md bg-well px-3 py-3" x-show="dmStep === 'confirm'" x-cloak data-test="nostr-dm-confirm" role="alertdialog" aria-labelledby="nostr-dm-confirm-text-{{ $bar->context }}">
+                <p id="nostr-dm-confirm-text-{{ $bar->context }}" class="m-0 text-xs leading-normal text-ink">
+                    <span x-show="dmConfirm === 'no_dm_relays'">{{ __('Every relay asked answered, and :name has no DM relay list, so NIP-17 cannot reach them. Send it as an older NIP-04 DM? Relays then see who wrote to whom and when, not what.', ['name' => $name]) }}</span>
+                    <span x-show="dmConfirm === 'no_nip44'">{{ __('Your signer cannot do NIP-44, so this can only go as an older NIP-04 DM. Send it that way? Relays then see who wrote to whom and when, not what.') }}</span>
+                </p>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" data-test="nostr-dm-send-nip04" x-on:click="sendDm(true)"
+                            class="btn-p inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc">{{ __('Send as NIP-04') }}</button>
+                    <button type="button" class="{{ $button }}" x-on:click="dmStep = 'idle'; dmConfirm = ''">{{ __('Cancel') }}</button>
+                </div>
+            </div>
+            <p role="status" class="m-0 text-xs text-win" x-show="dmStep === 'sent' && dmFormat === 'nip04'" x-cloak data-test="nostr-dm-sent-nip04">{{ __('Sent as an older NIP-04 DM. Relays can see who wrote to whom and when, not what.') }}</p>
             <p role="alert" class="m-0 text-xs text-loss" x-show="dmStep === 'unsent'" x-cloak>{{ __('Signed, but no relay took it. Please try again later.') }}</p>
             <p role="alert" class="m-0 text-xs text-loss" x-show="dmError" x-text="dmError" x-cloak data-test="nostr-dm-error"></p>
         </div>

@@ -53,6 +53,8 @@ function fakeSockets(relays, sent = []) {
 }
 
 const relayList = sign(10002, [['r', 'ws://write-a'], ['r', 'ws://write-b', 'write'], ['r', 'ws://read-only', 'read']], 1_700_000_000);
+// A relay list whose only write relay is the configured one (for the tests about the kind 3 itself).
+const selfList = sign(10002, [['r', 'ws://config']], 1_700_000_000);
 const bigList = sign(3, [...others.map((p) => ['p', p]), ['t', 'kept-as-is'], ['p', others[0], 'wss://hint', 'petname']], 1_700_000_100, '{"wss://legacy":{"read":true,"write":true}}');
 
 test('a follow list that one write relay could not deliver is refused, and nothing is signed or sent', async () => {
@@ -110,7 +112,7 @@ test('the newest valid list counts, not the longest, and a forged newer copy is 
     const newer = sign(3, [['p', others[1]]], 1_700_000_500);
     const forged = { ...sign(3, [], 1_700_009_999), sig: '0'.repeat(128) };
     const WebSocketImpl = fakeSockets({
-        'ws://config': { events: [older, forged, newer], eose: true },
+        'ws://config': { events: [selfList, older, forged, newer], eose: true },
     });
 
     const read = await readFollowList(me, ['ws://config'], { WebSocketImpl, timeoutMs: 200 });
@@ -132,7 +134,7 @@ test('already followed, oneself and a malformed key are refused', () => {
 });
 
 test('a list changed between preview and click is not overwritten', async () => {
-    const WebSocketImpl = fakeSockets({ 'ws://config': { events: [bigList], eose: true } });
+    const WebSocketImpl = fakeSockets({ 'ws://config': { events: [selfList, bigList], eose: true } });
     await assert.rejects(
         follow({ me, target, relays: ['ws://config'], signer, expectBefore: 12, options: { WebSocketImpl, timeoutMs: 200 } }),
         (error) => error.code === 'changed',
@@ -144,4 +146,114 @@ test('a signed event that dropped a follow is caught before it is sent', () => {
     const shorter = finalizeEvent({ ...template, tags: template.tags.slice(1) }, secret);
     assert.throws(() => checkSigned(shorter, template, me), (error) => error.code === 'mismatch');
     assert.equal(checkSigned(finalizeEvent({ ...template }, secret), template, me).kind, 3);
+});
+
+/*
+ * P45 security audit F2, after the auditor's probe_follow.mjs: the newest kind 3 (380 follows) lives
+ * on the player's own write relay, an older one (3 follows) on a configured relay. Before the fix
+ * both cases signed a kind 3 with 4 follows.
+ */
+function auditRelays(behaviour, sent) {
+    const count = {};
+    return class {
+        constructor(url) {
+            this.url = url;
+            count[url] = (count[url] ?? 0) + 1;
+            this.b = behaviour(url, count[url]);
+            queueMicrotask(() => (this.b.down ? this.onerror?.({}) : this.onopen?.()));
+        }
+
+        send(text) {
+            const frame = JSON.parse(text);
+            const reply = (data) => queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(data) }));
+            if (frame[0] === 'REQ') {
+                const kinds = frame.slice(2).flatMap((filter) => filter.kinds ?? []);
+                for (const event of this.b.events ?? []) if (kinds.includes(event.kind)) reply(['EVENT', frame[1], event]);
+                if (this.b.eose) reply(['EOSE', frame[1]]);
+            } else if (frame[0] === 'EVENT') {
+                sent.push(frame[1]);
+                reply(['OK', frame[1].id, true, '']);
+            }
+        }
+
+        close() {}
+    };
+}
+
+const ownRelayList = sign(10002, [['r', 'ws://own-write']], 1_700_000_000);
+const staleList = sign(3, others.slice(0, 3).map((p) => ['p', p]), 1_600_000_000);
+const realList = sign(3, others.map((p) => ['p', p]), 1_700_000_100);
+
+test('audit F2 (A): the relay holding the relay list does not answer; refused, nothing signed or sent', async () => {
+    const sent = [];
+    let signed = 0;
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { down: true },
+        'ws://config-b': { events: [staleList], eose: true },
+        'ws://own-write': { events: [ownRelayList, realList], eose: true },
+    })[url] ?? { down: true }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
+    assert.equal(read.read, false);
+    assert.equal(read.reason, 'not_read');
+
+    await assert.rejects(
+        follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer: { signEvent: async (d) => { signed++; return finalizeEvent(d, secret); } }, options }),
+        (error) => error.code === 'not_read',
+    );
+    assert.equal(signed, 0);
+    assert.deepEqual(sent, []);
+});
+
+test('audit F2 (B): no configured relay holds a relay list; refused as "no relay list", nothing signed or sent', async () => {
+    const sent = [];
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [staleList], eose: true },
+        'ws://config-b': { events: [], eose: true },
+        'ws://own-write': { events: [ownRelayList, realList], eose: true },
+    })[url] ?? { down: true }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
+    assert.equal(read.read, false);
+    assert.equal(read.reason, 'no_relay_list');
+
+    await assert.rejects(
+        follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, options }),
+        (error) => error.code === 'no_relay_list',
+    );
+    assert.deepEqual(sent, []);
+});
+
+test('audit F2 control: with the relay list read, the 380 follows on the own relay are the base', async () => {
+    const sent = [];
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [ownRelayList, staleList], eose: true },
+        'ws://config-b': { events: [], eose: true },
+        'ws://own-write': { events: [realList], eose: true },
+    })[url] ?? { down: true }, sent);
+
+    const result = await follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, options: { WebSocketImpl, timeoutMs: 200 } });
+    assert.equal(result.event.tags.length, 381);
+    assert.ok(sent.length > 0 && sent.every((event) => event.tags.length === 381));
+});
+
+test('audit F2 (A, transient): a relay that misses only some reads never leads to a shorter list', async () => {
+    const sent = [];
+    const WebSocketImpl = auditRelays((url, n) => {
+        if (url === 'ws://config-a') return n % 2 === 1 ? { down: true } : { events: [ownRelayList, staleList], eose: true };
+        return ({ 'ws://config-b': { events: [], eose: true }, 'ws://own-write': { events: [realList], eose: true } })[url] ?? { down: true };
+    }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    // Preview: the 10002 read missed, refused. Click: read again; whatever comes out, never fewer follows.
+    assert.equal((await readFollowList(me, ['ws://config-a', 'ws://config-b'], options)).read, false);
+    try {
+        const result = await follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, options });
+        assert.equal(result.event.tags.length, 381);
+    } catch (error) {
+        assert.equal(error.code, 'not_read');
+    }
+    assert.ok(sent.every((event) => event.tags.length === 381));
 });

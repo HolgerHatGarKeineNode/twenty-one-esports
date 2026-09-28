@@ -24,6 +24,18 @@ class SendNostrDm implements ShouldQueue
 
     public const TEST_RESULT_MINUTES = 60;
 
+    /**
+     * P45 audit F1: one attempt, ended at 75 s, well under the queue's
+     * retry_after (90 s), so a relay that holds the worker can never make the
+     * DM go out twice. The lookup takes at most DmRelays::LOOKUP_SECONDS plus
+     * one read, each relay of the delivery at most relay_timeout_seconds.
+     */
+    public int $tries = 1;
+
+    public int $timeout = 75;
+
+    public bool $failOnTimeout = true;
+
     public function __construct(public User $user, public string $text, public ?int $match = null, public bool $test = false)
     {
         $this->afterCommit();
@@ -32,6 +44,16 @@ class SendNostrDm implements ShouldQueue
     public static function testResultKey(User $user): string
     {
         return 'dm-test:'.$user->id;
+    }
+
+    /**
+     * Also after a timeout: the settings page does not wait on a test forever.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        if ($this->test) {
+            Cache::put(self::testResultKey($this->user), ['state' => 'failed', 'format' => null, 'accepted' => 0, 'asked' => 0, 'at' => now()->getTimestamp()], now()->addMinutes(self::TEST_RESULT_MINUTES));
+        }
     }
 
     public function handle(): void

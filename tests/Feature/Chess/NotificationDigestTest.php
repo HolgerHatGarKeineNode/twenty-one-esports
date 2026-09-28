@@ -6,6 +6,7 @@ use App\Models\NotificationDigestItem;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Notifications\DmDigest;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -91,19 +92,50 @@ test('switched back to at once, what already waits still goes in the last digest
     expect(app(DmDigest::class)->run())->toBe(1)->and(digestDmsTo($bert))->toHaveCount(1);
 });
 
-test('more than fifteen: the first fifteen and a count of the rest', function () {
+test('more than fifteen: the newest fifteen, oldest of them first, and a count of the rest; only fifteen rows are loaded', function () {
     $bert = User::factory()->create(['locale' => 'en']);
 
     foreach (range(1, 18) as $n) {
         NotificationDigestItem::query()->create(['user_id' => $bert->id, 'kind' => 'challenge', 'title' => 'Challenge '.$n, 'body' => 'from someone', 'url' => '/games/'.$n]);
     }
 
+    $loaded = 0;
+    NotificationDigestItem::retrieved(function () use (&$loaded): void {
+        $loaded++;
+    });
+
     app(DmDigest::class)->run();
     [$text] = digestDmsTo($bert);
 
     expect(substr_count($text, '• '))->toBe(15)
-        ->and($text)->toContain('Challenge 15: from someone')->not->toContain('Challenge 16:')
-        ->toContain('… and 3 more in the bell on the site.');
+        ->and(explode("\n", $text)[0])->toBe('Your TWENTY ONE esports digest: 18 notifications')
+        ->and($text)->toContain('Challenge 18: from someone')->toContain('Challenge 4: from someone')->not->toContain('Challenge 3:')
+        ->and(strpos($text, 'Challenge 4:'))->toBeLessThan(strpos($text, 'Challenge 18:'))
+        ->and($text)->toContain('… and 3 more in the bell on the site.')
+        ->and($loaded)->toBe(15)
+        ->and(NotificationDigestItem::query()->count())->toBe(0);
+});
+
+test('one player whose digest fails does not stop the others; their items wait for the next run', function () {
+    Exceptions::fake();
+    $bad = User::factory()->create();
+    $good = User::factory()->create();
+
+    foreach ([$bad, $good] as $user) {
+        NotificationDigestItem::query()->create(['user_id' => $user->id, 'kind' => 'challenge', 'title' => 'x', 'body' => 'y', 'url' => '/']);
+    }
+
+    User::retrieved(function (User $user) use ($bad): void {
+        if ($user->id === $bad->id) {
+            throw new RuntimeException('probe: this player breaks');
+        }
+    });
+
+    expect(app(DmDigest::class)->run())->toBe(1)
+        ->and(digestDmsTo($good))->toHaveCount(1)
+        ->and(NotificationDigestItem::query()->where('user_id', $bad->id)->count())->toBe(1)
+        ->and(NotificationDigestItem::query()->where('user_id', $good->id)->count())->toBe(0);
+    Exceptions::assertReported(RuntimeException::class);
 });
 
 test('the digest is in the player\'s language', function () {

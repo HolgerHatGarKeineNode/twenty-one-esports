@@ -5,13 +5,17 @@ namespace App\Support\Notifications;
 use App\Jobs\SendNostrDm;
 use App\Models\NotificationDigestItem;
 use App\Models\User;
+use App\Support\Chess\ChessSettings;
 use Illuminate\Support\Collection;
+use Throwable;
 
 /**
  * The daily DM digest (P45): every notification a player chose to get "once
  * a day" (ChessSettings::digestFor) waits as a NotificationDigestItem, and
  * once a day each player with waiting items gets ONE notification DM that
- * lists them, newest last, at most MAX_ITEMS with a count of the rest.
+ * lists them: the newest MAX_ITEMS (oldest of them first) and a count of the
+ * rest. At most MAX_ITEMS rows are loaded per player, and one player's failure
+ * does not stop the run (P45 audit).
  *
  * Rechecked when it goes out: an item whose kind the player has switched off
  * since, or whose DM they no longer want, is dropped, not sent (one switched
@@ -40,23 +44,51 @@ final class DmDigest
         $sent = 0;
 
         foreach (NotificationDigestItem::query()->distinct()->pluck('user_id')->map(intval(...)) as $userId) {
-            $items = NotificationDigestItem::query()->where('user_id', $userId)->orderBy('id')->get();
-            $user = User::query()->find($userId);
-
-            if ($user !== null) {
-                $settings = $user->chessSettings();
-                $wanted = $items->filter(fn (NotificationDigestItem $item): bool => $settings->wants($item->kind) && $settings->dmFor($item->kind))->values();
-
-                if ($wanted->isNotEmpty()) {
-                    SendNostrDm::dispatch($user, self::text($user, $wanted));
-                    $sent++;
-                }
+            // One player's failure never stops the others' digests; their items wait for the next run.
+            try {
+                $sent += $this->digestFor($userId) ? 1 : 0;
+            } catch (Throwable $exception) {
+                report($exception);
             }
-
-            NotificationDigestItem::query()->whereIn('id', $items->pluck('id'))->delete();
         }
 
         return $sent;
+    }
+
+    /**
+     * One player's digest. At most MAX_ITEMS rows are loaded (the newest, shown
+     * oldest first); the rest is only counted, in the database. Everything up
+     * to the newest row seen is deleted afterwards, a row that arrives
+     * meanwhile waits for the next digest.
+     */
+    private function digestFor(int $userId): bool
+    {
+        $upTo = NotificationDigestItem::query()->where('user_id', $userId)->max('id');
+
+        if ($upTo === null) {
+            return false;
+        }
+
+        $pending = NotificationDigestItem::query()->where('user_id', $userId)->where('id', '<=', $upTo);
+        $user = User::query()->find($userId);
+        $queued = false;
+
+        if ($user !== null) {
+            $settings = $user->chessSettings();
+            $kinds = array_values(array_filter(ChessSettings::triggers(), fn (string $kind): bool => $settings->wants($kind) && $settings->dmFor($kind)));
+            $wanted = (clone $pending)->whereIn('kind', $kinds);
+            $total = (clone $wanted)->count();
+
+            if ($total > 0) {
+                $shown = (clone $wanted)->orderByDesc('id')->limit(self::MAX_ITEMS)->get()->reverse()->values();
+                SendNostrDm::dispatch($user, self::text($user, $shown, $total));
+                $queued = true;
+            }
+        }
+
+        $pending->delete();
+
+        return $queued;
     }
 
     /**
@@ -64,22 +96,23 @@ final class DmDigest
      * (title and body as one plain line, the link on its own line), the rest
      * as a count, and the opt-out line last, in the player's language.
      *
-     * @param  Collection<int, NotificationDigestItem>  $items
+     * @param  Collection<int, NotificationDigestItem>  $shown  at most MAX_ITEMS, oldest first
+     * @param  int  $total  every notification of this digest, shown or not
      */
-    public static function text(User $user, Collection $items): string
+    public static function text(User $user, Collection $shown, int $total): string
     {
         $locale = $user->locale ?? (string) config('app.locale');
-        $lines = [trans_choice('Your TWENTY ONE esports digest: :count notification|Your TWENTY ONE esports digest: :count notifications', $items->count(), [], $locale)];
+        $lines = [trans_choice('Your TWENTY ONE esports digest: :count notification|Your TWENTY ONE esports digest: :count notifications', $total, [], $locale)];
 
-        foreach ($items->take(self::MAX_ITEMS) as $item) {
+        foreach ($shown->take(self::MAX_ITEMS) as $item) {
             $lines[] = '';
             $lines[] = '• '.PlainText::line($item->title.': '.$item->body);
             $lines[] = Notice::onApp($item->url);
         }
 
-        if ($items->count() > self::MAX_ITEMS) {
+        if ($total > $shown->take(self::MAX_ITEMS)->count()) {
             $lines[] = '';
-            $lines[] = __('… and :count more in the bell on the site.', ['count' => $items->count() - self::MAX_ITEMS], $locale);
+            $lines[] = __('… and :count more in the bell on the site.', ['count' => $total - $shown->take(self::MAX_ITEMS)->count()], $locale);
         }
 
         return implode("\n", $lines)."\n\n".NotificationDmOptOut::line($user);

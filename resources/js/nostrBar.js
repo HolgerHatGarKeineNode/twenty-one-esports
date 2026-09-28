@@ -29,6 +29,7 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
         dmStep: 'idle',
         dmFormat: '',
         dmError: '',
+        dmConfirm: '',
 
         toggle(name) {
             this.panel = this.panel === name ? null : name;
@@ -67,7 +68,9 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
                 const read = await readFollowList(me, relays);
                 if (!read.read) {
                     this.followStep = 'refused';
-                    this.followError = this.label('followNotRead', { answered: read.answered, asked: read.asked });
+                    this.followError = read.reason === 'no_relay_list'
+                        ? this.label('followNoRelayList')
+                        : this.label('followNotRead', { answered: read.answered, asked: read.asked });
 
                     return;
                 }
@@ -98,7 +101,8 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
                 if (error instanceof FollowRefused) {
                     // The list changed or could not be read again: show it anew, never send.
                     this.followStep = 'refused';
-                    this.followError = this.label(error.code === 'changed' ? 'followChanged' : (error.code === 'already' ? 'followAlready' : 'followNotRead'), { answered: 0, asked: 0 });
+                    const key = { changed: 'followChanged', already: 'followAlready', no_relay_list: 'followNoRelayList' }[error.code] ?? 'followNotRead';
+                    this.followError = this.label(key, { answered: 0, asked: 0 });
                     if (error.code === 'changed') this.readFollow();
 
                     return;
@@ -109,10 +113,15 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
             }
         },
 
-        async sendDm() {
+        /**
+         * `allowNip04`: the sender agreed to the older format on the confirmation
+         * (P45 audit F3: never a silent downgrade).
+         */
+        async sendDm(allowNip04 = false) {
             if (!me || !dm || this.dmStep === 'sending' || this.dmText.trim() === '') return;
             this.dmStep = 'sending';
             this.dmError = '';
+            this.dmConfirm = '';
             try {
                 if (!(await ensureSigner())) {
                     this.dmError = labels.signer?.noSigner ?? this.label('failed');
@@ -122,11 +131,17 @@ export function nostrBar({ me = null, follow: target = null, dm = null, relays =
                 }
                 const { DirectMessageRefused, sendDirectMessage } = await import('./directMessage.js');
                 try {
-                    const result = await sendDirectMessage({ sender: me, recipient: dm, content: this.dmText, signer: window.nostr, relays });
+                    const result = await sendDirectMessage({ sender: me, recipient: dm, content: this.dmText, signer: window.nostr, relays, allowNip04 });
                     this.dmFormat = result.format;
                     this.dmStep = result.delivered > 0 ? 'sent' : 'unsent';
                     if (result.delivered > 0) this.dmText = '';
                 } catch (error) {
+                    if (error instanceof DirectMessageRefused && error.code === 'confirm_nip04') {
+                        this.dmConfirm = error.reason;
+                        this.dmStep = 'confirm';
+
+                        return;
+                    }
                     if (error instanceof DirectMessageRefused) {
                         this.dmError = this.label('dm_' + error.code);
                         this.dmStep = 'idle';

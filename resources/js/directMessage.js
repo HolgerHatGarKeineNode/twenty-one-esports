@@ -9,12 +9,14 @@
  * - NIP-17 (kind 14 sealed in 13, wrapped in 1059) when the signer can do
  *   NIP-44 and the recipient has a DM relay list (`10050`): to those relays,
  *   and a copy to the sender's own DM relays (or the fallback relays).
- * - NIP-04 (kind 4) when the recipient has no `10050`, or the signer has no
- *   NIP-44 but has NIP-04: to the recipient's NIP-65 read relays and the
- *   sender's write relays, plus the fallback relays.
- * - If no relay answered the lookup, it is not known whether the recipient
- *   has a `10050`: NIP-17 to the fallback relays if the signer can, else
- *   refused. Without any encryption in the signer: refused.
+ * - NIP-04 (kind 4) when EVERY lookup relay answered and none has a `10050`
+ *   for the recipient, or the signer has no NIP-44 but has NIP-04: to the
+ *   recipient's NIP-65 read relays and the sender's write relays, plus the
+ *   fallback relays. Never silently: sendDirectMessage() refuses with
+ *   `confirm_nip04` and the reason until the sender agreed (allowNip04).
+ * - If not every relay answered, a missing `10050` is not known (P45 audit
+ *   F3): NIP-17 to the fallback relays if the signer can, else refused
+ *   when nothing answered. Without any encryption in the signer: refused.
  *
  * Loaded on demand by the Nostr bar (nostrBar.js), so the NIP-44 code is not
  * in every page's bundle. No DOM or Alpine import: tests/js/directMessage.test.mjs
@@ -60,23 +62,34 @@ export async function routeDirectMessage({ sender, recipient, signer, relays, op
         { kinds: [10050, 10002], authors: [recipient, sender] },
     ], options);
     const read = results.some((result) => result.eose);
+    // Only an answer from EVERY lookup relay makes a missing 10050 a fact (P45 audit F3).
+    const complete = results.length > 0 && results.every((result) => result.eose);
     const events = results.flatMap((result) => result.events);
     const theirDm = dmRelaysOf(newest(events, recipient, 10050));
     const ownDm = dmRelaysOf(newest(events, sender, 10050));
     const nip44 = canEncrypt(signer);
     const nip04 = canNip04(signer);
+    const nip04Route = (reason) => ({
+        format: 'nip04',
+        reason,
+        read,
+        complete,
+        recipientRelays: readRelaysOf(newest(events, recipient, 10002)),
+        ownRelays: writeRelaysOf(newest(events, sender, 10002)),
+    });
 
-    if (nip44 && (theirDm.length > 0 || !read)) {
-        return { format: 'nip17', read, recipientRelays: theirDm, ownRelays: ownDm };
+    if (nip44 && (theirDm.length > 0 || !complete)) {
+        return { format: 'nip17', reason: null, read, complete, recipientRelays: theirDm, ownRelays: ownDm };
     }
 
-    if (nip04 && read) {
-        return {
-            format: 'nip04',
-            read,
-            recipientRelays: readRelaysOf(newest(events, recipient, 10002)),
-            ownRelays: writeRelaysOf(newest(events, sender, 10002)),
-        };
+    // No NIP-44 in the signer: NIP-04 is the only way, whatever the recipient has.
+    if (!nip44 && nip04 && read) {
+        return nip04Route('no_nip44');
+    }
+
+    // Every relay answered and none has a 10050: confirmed.
+    if (nip04 && complete) {
+        return nip04Route('no_dm_relays');
     }
 
     // NIP-17 without a `10050` "shouldn't try"; NIP-04 without an answered lookup has nowhere to go.
@@ -90,13 +103,20 @@ export async function routeDirectMessage({ sender, recipient, signer, relays, op
  *
  * @returns {Promise<{ format: 'nip17'|'nip04', delivered: number, events: object[] }>}
  */
-export async function sendDirectMessage({ sender, recipient, content, signer, relays, now = Math.floor(Date.now() / 1000), options = {} }) {
+export async function sendDirectMessage({ sender, recipient, content, signer, relays, allowNip04 = false, now = Math.floor(Date.now() / 1000), options = {} }) {
     const text = String(content ?? '').trim();
 
     if (text === '') throw new DirectMessageRefused('empty');
     if (recipient === sender) throw new DirectMessageRefused('self');
 
     const route = await routeDirectMessage({ sender, recipient, signer, relays, options });
+
+    // Never a silent downgrade (P45 audit F3): NIP-04 only after the sender said yes to it, with the reason.
+    if (route.format === 'nip04' && !allowNip04) {
+        const refusal = new DirectMessageRefused('confirm_nip04');
+        refusal.reason = route.reason;
+        throw refusal;
+    }
     const fallback = relayUrls(relays);
 
     if (route.format === 'nip17') {

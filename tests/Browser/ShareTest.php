@@ -166,6 +166,8 @@ test('badges go on the Nostr profile without losing the old list, a share post r
     // The player's existing profile badges, written by another client, on the relay only.
     $existing = $signer->sign(10008, [['a', '30009:'.str_repeat('a', 64).':bravery'], ['e', str_repeat('1', 64)]], '', now()->getTimestamp() - 3600);
     relaySend($this->relayUrl, $existing);
+    // P45 audit F2: the badge list is read only from the player's own write relays, named by their relay list.
+    relaySend($this->relayUrl, $signer->sign(10002, [['r', $this->relayUrl]], '', now()->getTimestamp() - 3600));
 
     $pages = [
         'badges' => route('settings.badges', absolute: false),
@@ -470,6 +472,8 @@ test('a forged copy served first does not hide the real list, a write relay that
 
     [$relay, $url] = shareMiniRelay([$forged, $real, $relayList]);
     config(['esports.profile_relays' => [$url], 'esports.relays' => []]);
+    // P45 audit F2: Anna's lists are read from her own write relays only, so her relay list names this one.
+    relaySend($url, $annaKey->sign(10002, [['r', $url]], '', now()->getTimestamp() - 3600));
 
     try {
         // Bert: the write relay never answers, so nothing is read and the league refuses.

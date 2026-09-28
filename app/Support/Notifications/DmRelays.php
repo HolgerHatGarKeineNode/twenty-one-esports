@@ -14,8 +14,10 @@ use Illuminate\Support\Facades\Cache;
  * discovery relays the browser already asks for profiles, plus the relays
  * the notification DMs have always gone to.
  *
- * Only a lookup that at least one relay answered to EOSE is remembered, for
- * CACHE_MINUTES: a failed lookup is not "no list" ({@see DmRoute::$known}).
+ * Only a complete lookup (every relay answered to EOSE within LOOKUP_SECONDS)
+ * is remembered, for CACHE_MINUTES, and only it can say "no list"
+ * ({@see DmRoute::$known}): a relay that did not answer may hold the newest
+ * 10050 (audit F3). A 10050 found in a partial answer is still used.
  * Relay URLs come from a signed event of the player and are untrusted: at
  * most MAX_RELAYS of each list, `ws(s)://` only; where the server may really
  * connect is decided when publishing ({@see RelayPublisher::publishGuarded()}).
@@ -25,6 +27,9 @@ final class DmRelays
     public const CACHE_MINUTES = 30;
 
     public const MAX_RELAYS = 5;
+
+    /** The whole lookup's time; relays not read by then count as not answered. */
+    public const LOOKUP_SECONDS = 12.0;
 
     public function __construct(private readonly RelayReader $reader) {}
 
@@ -64,17 +69,20 @@ final class DmRelays
         $read = $this->reader->fetchCounted([
             ['kinds' => [10050], 'authors' => [$pubkey], 'limit' => 1],
             ['kinds' => [10002], 'authors' => [$pubkey], 'limit' => 1],
-        ], $relays, perAuthor: 4);
+        ], $relays, perAuthor: 4, until: microtime(true) + self::LOOKUP_SECONDS);
 
-        if ($read['answered'] === 0) {
-            return DmRoute::unknown();
-        }
-
+        // Complete: every lookup relay answered to EOSE. Only then is a missing 10050 a fact (audit F3).
+        $complete = $read['answered'] === count($relays);
         $route = new DmRoute(
-            true,
+            $complete,
             self::urls(self::newest($read['events'], $pubkey, 10050), fn (array $tag): bool => ($tag[0] ?? null) === 'relay'),
             self::urls(self::newest($read['events'], $pubkey, 10002), fn (array $tag): bool => ($tag[0] ?? null) === 'r' && in_array($tag[2] ?? 'read', ['read'], true)),
         );
+
+        // A partial answer is never remembered: the next DM asks again.
+        if (! $complete) {
+            return $route;
+        }
 
         Cache::put($key, ['dm' => $route->dmRelays, 'inbox' => $route->inboxRelays], now()->addMinutes(self::CACHE_MINUTES));
 

@@ -6,9 +6,10 @@ namespace App\Support\Notifications;
  * Where one DM to one player goes (NIP "Notifications", rev. 9.7): what the
  * lookup of the player's lists found ({@see DmRelays}).
  *
- * `known` is true only when at least one lookup relay answered to EOSE: a
- * lookup nobody answered says nothing about the player, so it never counts as
- * "has no DM relay list". `dmRelays` are the relays of the newest `10050`,
+ * `known` is true only when EVERY lookup relay answered to EOSE: a relay
+ * that did not answer may hold the player's newest list, so only a complete
+ * answer counts as "has no DM relay list" (P45 audit F3). `dmRelays` may be
+ * filled while `known` is false: a list some relay returned is used. `dmRelays` are the relays of the newest `10050`,
  * `inboxRelays` the read relays of the newest NIP-65 list (`10002`).
  */
 final readonly class DmRoute
@@ -33,7 +34,7 @@ final readonly class DmRoute
     }
 
     /**
-     * NIP-17 unless the lookup answered and the player has no `10050`: then
+     * NIP-17 unless every lookup relay answered and none has a `10050`: then
      * NIP-04, the only DM a client without NIP-17 reads (P45, the user's
      * decision of 2026-09-28). An unanswered lookup stays NIP-17, the format
      * that shows the least to the relays.

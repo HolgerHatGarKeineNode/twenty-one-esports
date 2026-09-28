@@ -2,9 +2,10 @@
 
 namespace App\Support\Wallet;
 
+use App\Support\Nostr\BoundedSocketStream;
+use App\Support\Nostr\BoundedStreamFactory;
 use Phrity\Net\Context;
 use Phrity\Net\SocketClient;
-use Phrity\Net\StreamFactory;
 use Psr\Http\Message\UriInterface;
 
 /**
@@ -13,12 +14,15 @@ use Psr\Http\Message\UriInterface;
  * rebinding). TLS still verifies the certificate against the host name
  * (`peer_name`, also the SNI), and the HTTP handshake still says `Host:` with
  * the name, so the relay sees an ordinary client.
+ *
+ * With a deadline (P45 audit F1, the relays of a player's DM relay list) every
+ * read also stops at that deadline and a byte budget ({@see BoundedSocketStream}).
  */
-final class PinnedStreamFactory extends StreamFactory
+final class PinnedStreamFactory extends BoundedStreamFactory
 {
-    public function __construct(private readonly string $host, private readonly string $ip)
+    public function __construct(private readonly string $host, private readonly string $ip, ?float $deadline = null, int $maxBytes = 65536)
     {
-        parent::__construct();
+        parent::__construct($deadline, $maxBytes);
     }
 
     public function createSocketClient(UriInterface $uri, ?Context $context = null): SocketClient

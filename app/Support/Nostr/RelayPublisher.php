@@ -23,9 +23,18 @@ use WebSocket\Message\Text;
  * Uses the websocket client that swentel/nostr-php depends on (phrity); the
  * library's own Relay::send() reads exactly one frame and would take an
  * AUTH or NOTICE frame for the answer.
+ *
+ * A relay gets relay_timeout_seconds in all, and MAX_BYTES of answer in all
+ * (an OK frame is well under 1 KiB; the budget leaves room for an AUTH or
+ * NOTICE first): past either the connection is dropped as a failed delivery,
+ * however the relay drips or what it announces (BoundedSocketStream). A
+ * player may name the relays of a DM, so this is what keeps a hostile one
+ * from holding or killing the queue worker.
  */
 final class RelayPublisher
 {
+    public const MAX_BYTES = 65536;
+
     /**
      * @param  list<string>|null  $relays  null = config('esports.relays')
      * @return array<string, array{accepted: bool, message: string}>
@@ -99,9 +108,10 @@ final class RelayPublisher
         try {
             $client = new Client($relay);
 
-            if ($pin !== null && $pin['ip'] !== null) {
-                $client->setStreamFactory(new PinnedStreamFactory($pin['host'], $pin['ip']));
-            }
+            // Every read stops at the deadline and the byte budget, inside a frame too (P45 audit F1).
+            $client->setStreamFactory($pin !== null && $pin['ip'] !== null
+                ? new PinnedStreamFactory($pin['host'], $pin['ip'], $deadline, self::MAX_BYTES)
+                : new BoundedStreamFactory($deadline, self::MAX_BYTES));
 
             $client->setTimeout($timeout);
             $client->text('["EVENT",'.$event->raw.']');
