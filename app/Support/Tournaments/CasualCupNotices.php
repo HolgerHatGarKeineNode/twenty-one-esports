@@ -178,7 +178,7 @@ final class CasualCupNotices
 
     private function send(User $player, Tournament $cup, string $title, string $body, string $locale): void
     {
-        $this->notifier->send($player, NotificationKind::TournamentNews, new Notice($title, $body, route('tournaments.show', $cup), null, __('Open', [], $locale)));
+        $this->notifier->send($player, NotificationKind::TournamentNews, new Notice($title, $body, route('tournaments.show', $cup), null, __('Open tournament', [], $locale)));
     }
 
     private function time(CarbonInterface $at, User $player): string

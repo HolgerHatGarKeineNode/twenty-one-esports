@@ -319,6 +319,10 @@ test('a reminder names the time left in its largest whole unit, never thousands 
     app(TournamentReminders::class)->remind($cup, $admin, $match->id, $a->id);
 
     $reminder = fn (User $player): string => (string) $player->notifications()->get()->firstWhere('data.kind', 'tournament_reminder')?->data['body'];
+    $button = fn (User $player): string => (string) $player->notifications()->get()->firstWhere('data.kind', 'tournament_reminder')?->data['action'];
+
+    // The button names where it leads, not the "Open" of a status ("Offen").
+    expect([$button($b), $button($a)])->toBe(['Match öffnen', 'Open match']);
 
     // The cup's window runs for days: the wait is over a day long.
     expect($left)->toBeGreaterThan(1440)

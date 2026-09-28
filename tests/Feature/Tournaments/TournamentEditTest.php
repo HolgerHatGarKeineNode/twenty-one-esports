@@ -174,6 +174,9 @@ test('removing a sign-up frees its place, keeps the consent, notifies the player
         ->and($signups->prepareSolo($tournament, $cleo))->toHaveCount(1)
         ->and($notice->data['kind'])->toBe(NotificationKind::TournamentEntryRemoved->value)
         ->and($notice->data['body'])->toContain('No-show at the last two events')
+        // The button names where it leads, not the "Open" of a status ("Offen").
+        ->and($notice->data['action'])->toBe('Open tournament')
+        ->and(__('Open tournament', [], 'de'))->toBe('Turnier öffnen')
         ->and($bob->notifications()->count())->toBe(0)
         ->and(TournamentModerationEntry::query()->sole()->only(['action', 'subject', 'reason']))
         ->toBe(['action' => 'removed', 'subject' => $removed->name, 'reason' => 'No-show at the last two events'])

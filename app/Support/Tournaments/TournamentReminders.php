@@ -172,7 +172,7 @@ final class TournamentReminders
             $body,
             $wait->url,
             null,
-            __('Open', [], $locale),
+            __('Open match', [], $locale),
         ), sender: $sender);
     }
 }

@@ -175,7 +175,7 @@ final class TournamentModeration
                 __('Reason: :reason', ['reason' => __($reason, [], $locale)], $locale),
                 route('tournaments.show', $tournament),
                 null,
-                __('Open', [], $locale),
+                __('Open tournament', [], $locale),
             ));
         }
     }

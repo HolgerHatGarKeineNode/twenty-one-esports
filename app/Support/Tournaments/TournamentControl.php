@@ -933,7 +933,7 @@ final class TournamentControl
                 __($body, [], $locale),
                 route('tournaments.show', $tournament),
                 null,
-                __('Open', [], $locale),
+                __('Open tournament', [], $locale),
             ), sender: $sender);
         }
     }
