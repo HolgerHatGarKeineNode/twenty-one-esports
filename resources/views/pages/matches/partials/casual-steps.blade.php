@@ -11,7 +11,7 @@
     $iHost = $mySide === $hostSide;
     $otherName = $m->sideName($mySide === null ? 'challenged' : \App\Models\SeriesMatch::otherSide($mySide));
     $deadline = $m->casualNextDeadline();
-    $running = $m->status === \App\Enums\SeriesStatus::Accepted && $m->start_at !== null;
+    $running = $m->casualUnderWay();
     $isRl = $m->game === 'rocket-league';
     $lobbyDue = $m->casualLobbyDueAt();
     $joinDue = $m->casualJoinDueAt();
@@ -26,12 +26,15 @@
     $canSwap = $running && $iHost && $m->lobby_shared_at === null && $m->host_swapped_at === null && $m->noshow_reported_at === null && ($lobbyDue?->isFuture() ?? false);
     $at = fn ($time) => $time === null ? '' : \App\Support\Series\SeriesPresenter::time($time, $viewer, 'H:i');
     $casualSteps = [
-        ['ready', __('Ready'), $m->start_at !== null, $m->start_at !== null ? $at($m->start_at) : __(':n of 2 ready', ['n' => $readyCount])],
+        $m->isScheduledPairing()
+            ? ['ready', __('Checked in'), $m->bothCheckedIn(), $m->bothCheckedIn() ? $at($m->start_at) : __(':n of 2 checked in', ['n' => $readyCount])]
+            : ['ready', __('Ready'), $m->start_at !== null, $m->start_at !== null ? $at($m->start_at) : __(':n of 2 ready', ['n' => $readyCount])],
         ['lobby', $isRl ? __('Lobby shared') : __('EA ID shared'), $m->lobby_shared_at !== null, $m->lobby_shared_at !== null ? $at($m->lobby_shared_at).($m->lobby_seen_at !== null ? ', '.__('opened') : '') : __('host :name', ['name' => $m->sideName($hostSide)])],
         ['joined', __('Joined'), $m->joined_at !== null, $m->joined_at !== null ? $at($m->joined_at) : __('guest :name', ['name' => $m->sideName($guestSide)])],
     ];
     $deadlineText = $deadline === null ? null : match ($deadline['kind']) {
         'ready' => __('Both press Ready by :time', ['time' => $at($deadline['at'])]),
+        'checkin' => __('Both check in by :time', ['time' => $at($deadline['at'])]),
         'lobby' => __(':name shares the lobby by :time', ['name' => $m->sideName($hostSide), 'time' => $at($deadline['at'])]),
         'join' => __(':name joins by :time', ['name' => $m->sideName($guestSide), 'time' => $at($deadline['at'])]),
         'contest' => __(':name answers the no-show claim by :time', ['name' => $m->sideName((string) $deadline['side']), 'time' => $at($deadline['at'])]),
@@ -78,6 +81,8 @@
                     <p x-show="error" x-text="error" class="m-0 text-loss" role="alert"></p>
                 </div>
             @endif
+        @elseif ($m->awaitsCheckIn())
+            @include('pages.matches.partials.casual-checkin')
         @elseif ($running)
             @if ($claimAgainstMe)
                 <p class="m-0 text-loss">{{ __(':name says you did not show up. Answer before :time, or the match is scored as a forfeit.', ['name' => $otherName, 'time' => $at($m->casualContestDueAt())]) }}</p>

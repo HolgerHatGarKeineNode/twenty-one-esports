@@ -8,6 +8,7 @@ use App\Games\GameRegistry;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -22,6 +23,9 @@ use Illuminate\Database\Eloquent\Collection;
  * - casual_noshow: the opponent claims you did not show, contest in time
  * - casual_report: the opponent reported the result, confirm or dispute
  * - casual_result: the match ended (confirmed, decided, forfeit, void)
+ * - casual_challenge: a scheduled 1v1 challenge came in (P23 S4)
+ * - casual_challenge_answer: it was accepted, declined or expired
+ * - casual_reminder / casual_checkin: before the agreed start
  *
  * Never lobby data (NIP "Notifications"): the lobby itself only ever
  * travels in the end-to-end encrypted match chat.
@@ -166,6 +170,88 @@ final class CasualNotifications
                 ));
             }
         }
+    }
+
+    public function challengeReceived(SeriesMatch $match): void
+    {
+        foreach ($this->players($match, 'challenged') as $player) {
+            $locale = $this->locale($player);
+
+            $this->notifier->send($player, NotificationKind::CasualChallenge, new Notice(
+                __(':name challenges you to a 1v1', ['name' => $match->challenger_name], $locale),
+                __(':game 1v1 · match :number. Pick one of :count times by :time.', [
+                    'game' => $this->games->name($match->game),
+                    'number' => $match->label(),
+                    'count' => count($match->proposals),
+                    'time' => $this->time($match->respond_by, $player),
+                ], $locale),
+                route('matches.room', $match),
+                $match->number,
+                __('Answer', [], $locale),
+            ), sender: $match->createdBy);
+        }
+    }
+
+    /**
+     * @param  'accepted'|'declined'|'expired'  $answer
+     */
+    public function challengeAnswered(SeriesMatch $match, string $answer): void
+    {
+        foreach ($this->players($match, 'challenger') as $player) {
+            $locale = $this->locale($player);
+            $name = $match->challenged_name;
+
+            $this->notifier->send($player, NotificationKind::CasualChallengeAnswer, new Notice(
+                match ($answer) {
+                    'accepted' => __(':name accepted your 1v1 challenge', ['name' => $name], $locale),
+                    'declined' => __(':name declined your 1v1 challenge', ['name' => $name], $locale),
+                    default => __('Your 1v1 challenge to :name expired', ['name' => $name], $locale),
+                },
+                $answer === 'accepted' && $match->start_at !== null
+                    ? __('Match :number starts :time. Check in from :minutes minutes before.', ['number' => $match->label(), 'time' => $this->time($match->start_at, $player), 'minutes' => $match->casualSetting('checkin_before_minutes')], $locale)
+                    : __('Match :number will not be played.', ['number' => $match->label()], $locale),
+                route('matches.room', $match),
+                $match->number,
+            ));
+        }
+    }
+
+    public function reminder(SeriesMatch $match): void
+    {
+        foreach (SeriesMatch::SIDES as $side) {
+            foreach ($this->players($match, $side) as $player) {
+                $locale = $this->locale($player);
+
+                $this->notifier->send($player, NotificationKind::CasualReminder, new Notice(
+                    __('Your 1v1 against :name starts :time', ['name' => $match->sideName(SeriesMatch::otherSide($side)), 'time' => $this->time($match->start_at ?? now(), $player)], $locale),
+                    __('Match :number: check in from :minutes minutes before the start, or you lose by forfeit.', ['number' => $match->label(), 'minutes' => $match->casualSetting('checkin_before_minutes')], $locale),
+                    route('matches.room', $match),
+                    $match->number,
+                ));
+            }
+        }
+    }
+
+    public function checkInOpen(SeriesMatch $match): void
+    {
+        foreach (SeriesMatch::SIDES as $side) {
+            foreach ($this->players($match, $side) as $player) {
+                $locale = $this->locale($player);
+
+                $this->notifier->send($player, NotificationKind::CasualCheckIn, new Notice(
+                    __('Check in for your 1v1 against :name', ['name' => $match->sideName(SeriesMatch::otherSide($side))], $locale),
+                    __('Match :number: check in by :time, or you lose by forfeit.', ['number' => $match->label(), 'time' => $this->time($match->ready_by ?? now(), $player)], $locale),
+                    route('matches.room', $match),
+                    $match->number,
+                    __('Check in', [], $locale),
+                ));
+            }
+        }
+    }
+
+    private function time(CarbonInterface $at, User $player): string
+    {
+        return $at->copy()->timezone($player->timezone ?? config('esports.preseason.display_timezone'))->format('D H:i');
     }
 
     /**

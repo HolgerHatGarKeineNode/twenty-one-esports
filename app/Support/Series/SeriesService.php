@@ -172,32 +172,7 @@ final class SeriesService
             }
         }
 
-        $now = now()->getTimestamp();
-        $proposals = array_values(array_unique(array_map(intval(...), $draft->proposals)));
-        sort($proposals);
-        $planLimit = $now + (int) config('esports.series.plan_max_days', 14) * 86400;
-
-        if ($proposals === [] || count($proposals) > 3) {
-            throw new SeriesRuleViolation('proposals_count', __('Suggest one to three times.'));
-        }
-
-        foreach ($proposals as $start) {
-            if ($start <= $now || $start > $planLimit) {
-                throw new SeriesRuleViolation('proposal_time', __('Every suggested time has to lie in the future, at most :days days ahead.', ['days' => (int) config('esports.series.plan_max_days', 14)]));
-            }
-        }
-
-        $respondLimit = $now + (int) config('esports.series.respond_max_days', 7) * 86400;
-
-        if ($draft->respondBy <= $now || $draft->respondBy > $respondLimit || $draft->respondBy > $proposals[0]) {
-            throw new SeriesRuleViolation('respond_by', __('The reply deadline has to be in the future, at the latest at the first suggested time.'));
-        }
-
-        $message = trim((string) $draft->message);
-
-        if (mb_strlen($message) > 140) {
-            throw new SeriesRuleViolation('message', __('The message can be at most 140 characters.'));
-        }
+        ['proposals' => $proposals, 'message' => $message] = self::schedule($draft->proposals, $draft->respondBy, $draft->message);
 
         $match = new SeriesMatch([
             'number' => $this->reserveNumber($author),
@@ -226,6 +201,50 @@ final class SeriesService
             : [];
 
         return ['match' => $match, 'templates' => $templates];
+    }
+
+    /**
+     * The schedule of a challenge (a lineup's, or a casual 1v1's, P23 S4):
+     * one to three suggested starts in the future, at most `plan_max_days`
+     * ahead; a reply deadline in the future, at most `respond_max_days`
+     * ahead and not after the first start; a message of up to 140
+     * characters. Returns the starts sorted and without duplicates.
+     *
+     * @param  list<int>  $proposals  unix seconds
+     * @return array{proposals: list<int>, message: string}
+     *
+     * @throws SeriesRuleViolation
+     */
+    public static function schedule(array $proposals, int $respondBy, ?string $message): array
+    {
+        $now = now()->getTimestamp();
+        $proposals = array_values(array_unique(array_map(intval(...), $proposals)));
+        sort($proposals);
+        $planLimit = $now + (int) config('esports.series.plan_max_days', 14) * 86400;
+
+        if ($proposals === [] || count($proposals) > 3) {
+            throw new SeriesRuleViolation('proposals_count', __('Suggest one to three times.'));
+        }
+
+        foreach ($proposals as $start) {
+            if ($start <= $now || $start > $planLimit) {
+                throw new SeriesRuleViolation('proposal_time', __('Every suggested time has to lie in the future, at most :days days ahead.', ['days' => (int) config('esports.series.plan_max_days', 14)]));
+            }
+        }
+
+        $respondLimit = $now + (int) config('esports.series.respond_max_days', 7) * 86400;
+
+        if ($respondBy <= $now || $respondBy > $respondLimit || $respondBy > $proposals[0]) {
+            throw new SeriesRuleViolation('respond_by', __('The reply deadline has to be in the future, at the latest at the first suggested time.'));
+        }
+
+        $message = trim((string) $message);
+
+        if (mb_strlen($message) > 140) {
+            throw new SeriesRuleViolation('message', __('The message can be at most 140 characters.'));
+        }
+
+        return ['proposals' => $proposals, 'message' => $message];
     }
 
     /**
@@ -359,6 +378,11 @@ final class SeriesService
     {
         $match = $this->fresh($match);
 
+        // A casual 1v1 challenge (P23 S4) is answered with a platform: CasualChallenges.
+        if ($match->isCasualPairing()) {
+            throw CasualMatches::refuse('casual_match');
+        }
+
         if ($match->status !== SeriesStatus::Open) {
             throw new SeriesRuleViolation('not_open', __('This challenge is no longer open.'));
         }
@@ -409,11 +433,14 @@ final class SeriesService
     /**
      * Every open challenge whose reply deadline passed ends as expired. No
      * event is signed for this (NIP state machine: "open | time | expired").
+     * A casual 1v1 challenge (P23 S4) is left to `casual:tick`, which tells
+     * the challenger (CasualChallenges::expireDue()).
      */
     public function expireDue(): int
     {
         return SeriesMatch::query()
             ->where('status', SeriesStatus::Open)
+            ->whereNull('origin')
             ->where('respond_by', '<', now())
             ->update(['status' => SeriesStatus::Expired, 'finished_at' => now()]);
     }
@@ -1136,6 +1163,11 @@ final class SeriesService
     {
         if ($match->isCasualPairing() && $match->noshow_reported_at !== null) {
             throw CasualMatches::refuse('noshow_pending');
+        }
+
+        // A scheduled casual 1v1 (P23 S4) is played once both checked in.
+        if ($match->isCasualPairing() && $match->status === SeriesStatus::Accepted && ! $match->casualUnderWay()) {
+            throw CasualMatches::refuse('not_checked_in');
         }
     }
 

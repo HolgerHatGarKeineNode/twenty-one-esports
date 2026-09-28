@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Platform;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Models\ChatMute;
@@ -8,6 +9,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Rating\Ratings;
+use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
@@ -40,6 +42,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     public array $sheet = [];
 
     public ?int $pickedStart = null;
+
+    /** A scheduled casual 1v1 (P23 S4): the platform the challenged player answers with. */
+    public string $casualPlatform = '';
+
+    public bool $casualCrossplay = true;
 
     public string $reason = '';
 
@@ -79,6 +86,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         }
 
         $this->pickedStart = $match->proposals[0] ?? null;
+        $this->casualPlatform = $this->user()->platform?->value ?? Platform::Pc->value;
         $this->readSheet();
 
         return null;
@@ -247,6 +255,29 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     }
 
     /* Casual 1v1 (P23): the steps of the room, each a CasualMatches action. */
+
+    /* Scheduled casual 1v1 (P23 S4): answer the challenge, check in. */
+
+    public function casualAccept(): void
+    {
+        $this->attempt(fn () => app(CasualChallenges::class)->accept($this->match, $this->user(), (int) $this->pickedStart,
+            Platform::tryFrom($this->casualPlatform) ?? throw CasualMatches::refuse('platforms_incompatible'), $this->casualCrossplay));
+    }
+
+    public function casualDecline(): void
+    {
+        $this->attempt(fn () => app(CasualChallenges::class)->decline($this->match, $this->user()));
+    }
+
+    public function casualWithdraw(): void
+    {
+        $this->attempt(fn () => app(CasualChallenges::class)->withdraw($this->match, $this->user()));
+    }
+
+    public function casualCheckIn(): void
+    {
+        $this->attempt(fn () => app(CasualMatches::class)->checkIn($this->match, $this->user()));
+    }
 
     public function casualReady(): void
     {
@@ -697,7 +728,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     @endif
 
     {{-- Challenge, still open: answer, withdraw or wait --}}
-    @if ($m->status === SeriesStatus::Open)
+    @if ($m->status === SeriesStatus::Open && $casual)
+        @include('pages.matches.partials.casual-challenge')
+    @elseif ($m->status === SeriesStatus::Open)
         <section aria-labelledby="answer-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(\App\Support\Nostr\SignerMessages::labels()) })" data-test="answer-card">
             <h2 id="answer-h" class="m-0 text-[15px] font-bold">{{ __('Challenge from :clan', ['clan' => $m->challenger_name]) }}</h2>
             @if ($m->message)<p class="m-0 text-[13px] text-ink-2">“{{ $m->message }}”</p>@endif

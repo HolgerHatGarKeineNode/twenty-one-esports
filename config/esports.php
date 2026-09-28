@@ -267,6 +267,18 @@ return [
     | lock: `noshows` forfeited no-shows within `window_hours` lock the player
     | out of casual play (queue, invites) for `minutes` from the last one.
     |
+    | Scheduled 1v1 challenges (P23 S4, App\Support\Series\CasualChallenges):
+    | 1 to 3 suggested times and a reply deadline, within
+    | `series.plan_max_days` / `series.respond_max_days`. The opponent picks
+    | one. `reminder_minutes` before it both get a reminder; the check-in
+    | opens `checkin_before_minutes` before and closes `checkin_after_minutes`
+    | after it. A side that did not check in by then forfeits (it counts for
+    | the lock like a no-show); neither checked in: void. Once both are in,
+    | the match runs as an instant one from the lobby on.
+    | challenges_per_day / challenges_per_recipient_per_day: challenges one
+    | player may send in 24 hours, in total and to the same player (as
+    | `chess.challenges_per_day`).
+    |
     */
 
     'casual' => [
@@ -280,6 +292,11 @@ return [
         'contest_minutes' => (int) env('ESPORTS_CASUAL_CONTEST_MINUTES', 5),
         'report_minutes' => (int) env('ESPORTS_CASUAL_REPORT_MINUTES', 60),
         'confirm_minutes' => (int) env('ESPORTS_CASUAL_CONFIRM_MINUTES', 30),
+        'reminder_minutes' => (int) env('ESPORTS_CASUAL_REMINDER_MINUTES', 15),
+        'checkin_before_minutes' => (int) env('ESPORTS_CASUAL_CHECKIN_BEFORE_MINUTES', 10),
+        'checkin_after_minutes' => (int) env('ESPORTS_CASUAL_CHECKIN_AFTER_MINUTES', 10),
+        'challenges_per_day' => (int) env('ESPORTS_CASUAL_CHALLENGES_PER_DAY', 10),
+        'challenges_per_recipient_per_day' => (int) env('ESPORTS_CASUAL_CHALLENGES_PER_RECIPIENT_PER_DAY', 3),
         'lock' => [
             'noshows' => (int) env('ESPORTS_CASUAL_LOCK_NOSHOWS', 2),
             'window_hours' => (int) env('ESPORTS_CASUAL_LOCK_WINDOW_HOURS', 24),

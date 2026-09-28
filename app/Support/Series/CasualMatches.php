@@ -121,7 +121,8 @@ final class CasualMatches
     /**
      * The casual 1v1 this player is in right now: in the ready check,
      * started, or waiting for the answer to a report. A disputed match waits
-     * for an admin and blocks nothing.
+     * for an admin and blocks nothing. A scheduled one (P23 S4) counts from
+     * the opening of its check-in window on; before, the player is free.
      */
     public function activeMatchOf(User $user): ?SeriesMatch
     {
@@ -133,10 +134,13 @@ final class CasualMatches
      * class as a dependency (it depends on ChessGameService): a player in a
      * running casual 1v1 starts no live chess game (`casual_playing`).
      */
-    public static function runningMatchOf(User $user): ?SeriesMatch
+    public static function runningMatchOf(User $user, ?int $except = null): ?SeriesMatch
     {
         return self::playedBy(SeriesMatch::query()->whereNotNull('origin'), $user)
             ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported])
+            ->where(fn (Builder $query) => $query->where('origin', '!=', SeriesMatch::ORIGIN_CHALLENGE)
+                ->orWhere('start_at', '<=', now()->addMinutes((int) config('esports.casual.checkin_before_minutes', 10))))
+            ->when($except !== null, fn (Builder $query) => $query->whereKeyNot($except))
             ->latest('id')
             ->first();
     }
@@ -192,12 +196,80 @@ final class CasualMatches
      */
     public function create(User $challenger, User $challenged, string $game, string $origin, array $choices, ?User $createdBy = null): SeriesMatch
     {
-        $mode = $this->games->mode($game, self::mode()) ?? throw self::refuse('unknown_game');
         $now = now();
         $config = (array) config('esports.casual');
 
         $match = SeriesMatch::query()->create([
-            'number' => MatchNumber::query()->create(['user_id' => $challenger->id, 'used_at' => $now])->id,
+            ...$this->attributes($challenger, $challenged, $game, $origin, $createdBy),
+            'status' => SeriesStatus::Accepted,
+            'proposals' => [$now->getTimestamp()],
+            'respond_by' => $now,
+            'start_at' => null,
+            'answered_at' => $now,
+            'ready_by' => $now->copy()->addSeconds((int) $config['ready_seconds']),
+            // Pinned now: a later config change reaches only later matches.
+            'casual' => [...self::pinned(), 'queue' => $choices],
+        ]);
+
+        // One intent at a time: a paired player stops searching blitz.
+        ChessQueueEntry::query()->whereIn('user_id', [$challenger->id, $challenged->id])->delete();
+
+        $this->notifications->matchFound($match);
+        $this->announce($match);
+
+        return $match;
+    }
+
+    /**
+     * An open scheduled challenge (P23 S4, CasualChallenges): the
+     * challenger's platform choice is stored now, the opponent's with the
+     * accept, when the deadlines are pinned too.
+     *
+     * @param  list<int>  $proposals  unix seconds, checked by SeriesService::schedule()
+     * @param  array{platform: string, crossplay: bool}  $choice
+     */
+    public function createChallenge(User $challenger, User $challenged, string $game, array $proposals, CarbonInterface $respondBy, string $message, array $choice): SeriesMatch
+    {
+        $match = SeriesMatch::query()->create([
+            ...$this->attributes($challenger, $challenged, $game, SeriesMatch::ORIGIN_CHALLENGE, $challenger),
+            'status' => SeriesStatus::Open,
+            'proposals' => $proposals,
+            'respond_by' => $respondBy,
+            'message' => $message === '' ? null : $message,
+            'casual' => ['queue' => ['challenger' => $choice]],
+        ]);
+
+        $this->announce($match);
+
+        return $match;
+    }
+
+    /**
+     * The casual deadlines as they are now, pinned on a match.
+     *
+     * @return array<string, int>
+     */
+    public static function pinned(): array
+    {
+        $config = (array) config('esports.casual');
+
+        return array_map(intval(...), array_intersect_key($config, array_flip([
+            'ready_seconds', 'lobby_minutes', 'join_minutes', 'contest_minutes', 'report_minutes', 'confirm_minutes', 'checkin_before_minutes', 'checkin_after_minutes',
+        ])));
+    }
+
+    /**
+     * What every casual 1v1 carries: two player sides, unrated, the
+     * shortest series of the mode, a host drawn at random.
+     *
+     * @return array<string, mixed>
+     */
+    private function attributes(User $challenger, User $challenged, string $game, string $origin, ?User $createdBy): array
+    {
+        $mode = $this->games->mode($game, self::mode()) ?? throw self::refuse('unknown_game');
+
+        return [
+            'number' => MatchNumber::query()->create(['user_id' => $challenger->id, 'used_at' => now()])->id,
             'game' => $game,
             'mode' => $mode->slug,
             // A casual 1v1 is the shortest series the mode allows (RL best of 3, FC best of 1).
@@ -212,32 +284,69 @@ final class CasualMatches
             'challenger_lineup_address' => '',
             'challenged_lineup_address' => '',
             'created_by_id' => $createdBy?->id,
-            'status' => SeriesStatus::Accepted,
-            'proposals' => [$now->getTimestamp()],
-            'respond_by' => $now,
-            'start_at' => null,
-            'answered_at' => $now,
             'sides' => ['challenger' => [$challenger->id], 'challenged' => [$challenged->id]],
             'origin' => $origin,
             'host_side' => SeriesMatch::SIDES[random_int(0, 1)],
-            'ready_by' => $now->copy()->addSeconds((int) $config['ready_seconds']),
-            // Pinned now: a later config change reaches only later matches.
-            'casual' => [
-                'ready_seconds' => (int) $config['ready_seconds'],
-                'lobby_minutes' => (int) $config['lobby_minutes'],
-                'join_minutes' => (int) $config['join_minutes'],
-                'contest_minutes' => (int) $config['contest_minutes'],
-                'report_minutes' => (int) $config['report_minutes'],
-                'confirm_minutes' => (int) $config['confirm_minutes'],
-                'queue' => $choices,
-            ],
-        ]);
+        ];
+    }
 
-        // One intent at a time: a paired player stops searching blitz.
-        ChessQueueEntry::query()->whereIn('user_id', [$challenger->id, $challenged->id])->delete();
+    /* ---------- Check-in (scheduled, P23 S4) ------------------------------------------------------------------ */
 
-        $this->notifications->matchFound($match);
-        $this->announce($match);
+    /**
+     * This player is here for the agreed start: from `checkin_before_minutes`
+     * before it until `checkin_after_minutes` after (`ready_by`). A player
+     * who plays something else at that moment finishes it first. Once both
+     * are in, the match starts (`start_at` now) and runs as an instant one.
+     * Checking in twice changes nothing.
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function checkIn(SeriesMatch $match, User $user): SeriesMatch
+    {
+        $match = $match->fresh() ?? $match;
+        $side = $this->sideOf($match, $user);
+
+        if (! $match->awaitsCheckIn()) {
+            throw self::refuse('not_in_checkin');
+        }
+
+        if ($match->readyAt($side) !== null) {
+            return $match;
+        }
+
+        if ($match->checkInOpensAt()?->isFuture() ?? true) {
+            throw self::refuse('checkin_not_open', ['time' => $match->checkInOpensAt()?->copy()->timezone($user->timezone ?? config('esports.preseason.display_timezone'))->format('H:i') ?? '']);
+        }
+
+        if ($this->chess->activeGameOf($user) !== null || self::runningMatchOf($user, except: $match->id) !== null) {
+            throw self::refuse('already_playing');
+        }
+
+        $done = DB::transaction(function () use ($match, $side): bool {
+            $marked = SeriesMatch::query()->whereKey($match->id)->where('status', SeriesStatus::Accepted)
+                ->whereNull('ready_at_'.$side)->where('ready_by', '>', now())
+                ->update(['ready_at_'.$side => now()]);
+
+            if ($marked !== 1) {
+                return false;
+            }
+
+            SeriesMatch::query()->whereKey($match->id)
+                ->whereNotNull('ready_at_challenger')->whereNotNull('ready_at_challenged')
+                ->update(['start_at' => now()]);
+
+            return true;
+        });
+
+        $match->refresh();
+
+        if (! $done && $match->readyAt($side) === null) {
+            throw self::refuse('checkin_closed');
+        }
+
+        if ($done) {
+            $this->announce($match);
+        }
 
         return $match;
     }
@@ -570,8 +679,8 @@ final class CasualMatches
      */
     private function assertStarted(SeriesMatch $match): void
     {
-        if ($match->status !== SeriesStatus::Accepted || $match->start_at === null) {
-            throw self::refuse('not_running');
+        if (! $match->casualUnderWay()) {
+            throw self::refuse($match->awaitsCheckIn() ? 'not_checked_in' : 'not_running');
         }
     }
 
@@ -610,6 +719,17 @@ final class CasualMatches
             'swapped_once' => __('The host was swapped once already in this match.'),
             'swap_late' => __('The time to share the lobby is over, so the host can no longer be swapped.'),
             'noshow_pending' => __('A no-show was claimed; answer it first.'),
+            'not_checked_in' => __('Both players check in first.'),
+            'not_in_checkin' => __('This match has no check-in open.'),
+            'checkin_not_open' => __('The check-in opens at :time.', $replace),
+            'checkin_closed' => __('The check-in has closed.'),
+            'challenge_limit' => __('You have sent enough challenges for today. Try again tomorrow.'),
+            'challenge_closed' => __('This challenge is no longer open.'),
+            'challenge_expired' => __('This challenge has expired.'),
+            'start_not_proposed' => __('Pick one of the suggested times.'),
+            'start_past' => __('This time has passed. Pick a later one.'),
+            'not_challenged' => __('Only the challenged player can answer.'),
+            'not_challenger' => __('Only the challenger can withdraw it.'),
             'noshow_once' => __('A no-show was claimed in this match already.'),
             'noshow_early' => __('A no-show can be claimed only after your opponent missed their deadline.'),
             'no_claim' => __('There is no no-show claim to contest.'),

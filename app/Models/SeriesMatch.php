@@ -87,7 +87,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $noshow_contested_at the accused side answered a casual no-show claim
  * @property Carbon|null $lobby_seen_at the guest's client opened a valid lobby or account card from the host (P23 S2; only the flag)
  * @property Carbon|null $host_swapped_at the host handed the host seat to the guest before sharing; the lobby deadline runs from then
- * @property array{ready_seconds?: int, lobby_minutes?: int, join_minutes?: int, contest_minutes?: int, report_minutes?: int, confirm_minutes?: int, queue?: array<string, array{platform: string, crossplay: bool}>}|null $casual the casual deadlines pinned at the pairing, and each side's queue choice
+ * @property Carbon|null $reminded_at a scheduled casual 1v1 (P23 S4): the start reminder went out
+ * @property Carbon|null $checkin_opened_at a scheduled casual 1v1: "check-in is open" went out
+ * @property array{ready_seconds?: int, lobby_minutes?: int, join_minutes?: int, contest_minutes?: int, report_minutes?: int, confirm_minutes?: int, checkin_before_minutes?: int, checkin_after_minutes?: int, scheduled_at?: int, queue?: array<string, array{platform: string, crossplay: bool}>}|null $casual the casual deadlines pinned at the pairing (a scheduled match: at the accept, with its agreed start), and each side's queue choice
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Lineup|null $challengerLineup
@@ -111,7 +113,7 @@ use Illuminate\Support\Carbon;
     'challenge_event_id', 'answer_event_id', 'tournament_match_id', 'tournament_attempt', 'sides',
     'deadlines', 'overdue_at',
     'origin', 'host_side', 'ready_by', 'ready_at_challenger', 'ready_at_challenged', 'lobby_shared_at', 'joined_at', 'noshow_contested_at', 'casual',
-    'lobby_seen_at', 'host_swapped_at',
+    'lobby_seen_at', 'host_swapped_at', 'reminded_at', 'checkin_opened_at',
 ])]
 #[Hidden(['lobby_name', 'lobby_password'])]
 class SeriesMatch extends Model
@@ -167,6 +169,8 @@ class SeriesMatch extends Model
             'casual' => 'array',
             'lobby_seen_at' => 'datetime',
             'host_swapped_at' => 'datetime',
+            'reminded_at' => 'datetime',
+            'checkin_opened_at' => 'datetime',
         ];
     }
 
@@ -401,7 +405,10 @@ class SeriesMatch extends Model
 
     public const ORIGIN_INVITE = 'invite';
 
-    /** A casual 1v1 without a clan, from the queue or a direct invite. */
+    /** A scheduled casual 1v1 (P23 S4, App\Support\Series\CasualChallenges). */
+    public const ORIGIN_CHALLENGE = 'challenge';
+
+    /** A casual 1v1 without a clan, from the queue, a direct invite or a scheduled challenge. */
     public function isCasualPairing(): bool
     {
         return $this->origin !== null;
@@ -425,6 +432,60 @@ class SeriesMatch extends Model
     public function awaitsReady(): bool
     {
         return $this->isCasualPairing() && $this->status === SeriesStatus::Accepted && $this->start_at === null;
+    }
+
+    /**
+     * A scheduled casual 1v1 (P23 S4): a challenge with 1 to 3 suggested
+     * times; accepted, it waits for both players to check in. Until then
+     * `start_at` is the agreed time; once both checked in it is the moment
+     * the second one did, and the casual deadlines run from there as after
+     * a ready check. `ready_by` is the close of the check-in window, so the
+     * chat's expiration anchor (casualChatExpiresFrom()) is fixed from the
+     * accept on.
+     */
+    public function isScheduledPairing(): bool
+    {
+        return $this->origin === self::ORIGIN_CHALLENGE;
+    }
+
+    /** The agreed start of a scheduled casual 1v1, pinned at the accept; null before. */
+    public function scheduledAt(): ?CarbonInterface
+    {
+        $at = $this->casual['scheduled_at'] ?? null;
+
+        return is_int($at) ? now()->setTimestamp($at) : null;
+    }
+
+    public function checkInOpensAt(): ?CarbonInterface
+    {
+        return $this->scheduledAt()?->copy()->subMinutes($this->casualSetting('checkin_before_minutes'));
+    }
+
+    /** The check-in window closes then (`ready_by`): a side not in by then forfeits. */
+    public function checkInClosesAt(): ?CarbonInterface
+    {
+        return $this->isScheduledPairing() ? $this->ready_by : null;
+    }
+
+    public function bothCheckedIn(): bool
+    {
+        return $this->ready_at_challenger !== null && $this->ready_at_challenged !== null;
+    }
+
+    /** Accepted and waiting for both players to check in. */
+    public function awaitsCheckIn(): bool
+    {
+        return $this->isScheduledPairing() && $this->status === SeriesStatus::Accepted && ! $this->bothCheckedIn();
+    }
+
+    /**
+     * The casual flow runs: past the ready check (or both checked in), not
+     * reported yet. Lobby, join, no-show and the score belong to this phase.
+     */
+    public function casualUnderWay(): bool
+    {
+        return $this->isCasualPairing() && $this->status === SeriesStatus::Accepted && $this->start_at !== null
+            && (! $this->isScheduledPairing() || $this->bothCheckedIn());
     }
 
     /**
@@ -471,9 +532,13 @@ class SeriesMatch extends Model
         return $this->noshow_reported_at?->copy()->addMinutes($this->casualSetting('contest_minutes'));
     }
 
-    /** Nobody reported by then: the match is void. */
+    /** Nobody reported by then: the match is void. Null for a scheduled match before both checked in. */
     public function casualReportDueAt(): ?CarbonInterface
     {
+        if ($this->isScheduledPairing() && ! $this->bothCheckedIn()) {
+            return null;
+        }
+
         return $this->start_at?->copy()->addMinutes($this->casualSetting('report_minutes'));
     }
 
@@ -492,13 +557,15 @@ class SeriesMatch extends Model
      * and the side it runs against (null: either or both):
      *
      * - `ready`: both press Ready, else the match is void;
+     * - `checkin`: a scheduled match (P23 S4); both check in by then, else
+     *   the missing side forfeits (both missing: void);
      * - `contest`: a no-show was claimed; the accused side contests or loses;
      * - `lobby`: the host shares the lobby, else the guest may claim a no-show;
      * - `join`: the guest joins, else the host may claim a no-show;
      * - `report`: someone reports the result, else the match is void;
      * - `confirm`: the other side answers the report, else the league confirms it.
      *
-     * @return array{kind: 'ready'|'contest'|'lobby'|'join'|'report'|'confirm', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
+     * @return array{kind: 'ready'|'checkin'|'contest'|'lobby'|'join'|'report'|'confirm', at: CarbonInterface, side: 'challenger'|'challenged'|null}|null
      */
     public function casualNextDeadline(): ?array
     {
@@ -519,6 +586,10 @@ class SeriesMatch extends Model
 
         if ($this->start_at === null) {
             return $this->ready_by === null ? null : ['kind' => 'ready', 'at' => $this->ready_by, 'side' => null];
+        }
+
+        if ($this->awaitsCheckIn()) {
+            return $this->ready_by === null ? null : ['kind' => 'checkin', 'at' => $this->ready_by, 'side' => null];
         }
 
         $host = $this->host_side === 'challenged' ? 'challenged' : 'challenger';

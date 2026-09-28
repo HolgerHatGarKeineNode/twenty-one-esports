@@ -34,6 +34,10 @@ enum NotificationKind: string
     case CasualReport = 'casual_report';
     case CasualResult = 'casual_result';
     case CasualOpponentJoined = 'casual_opponent_joined';
+    case CasualChallenge = 'casual_challenge';
+    case CasualChallengeAnswer = 'casual_challenge_answer';
+    case CasualReminder = 'casual_reminder';
+    case CasualCheckIn = 'casual_checkin';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -52,7 +56,7 @@ enum NotificationKind: string
      */
     public function dmByDefault(): bool
     {
-        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport], true);
+        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport, self::CasualChallenge, self::CasualReminder], true);
     }
 
     /**
@@ -63,8 +67,9 @@ enum NotificationKind: string
     {
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
-            self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport => 'challenge',
-            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined => 'confirmed',
+            self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport,
+            self::CasualChallenge, self::CasualReminder, self::CasualCheckIn => 'challenge',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -114,6 +119,10 @@ enum NotificationKind: string
             self::CasualReport => ['1v1 result to confirm', 'your opponent reported the result of your casual 1v1'],
             self::CasualResult => ['1v1 result', 'a casual 1v1 of yours ended'],
             self::CasualOpponentJoined => ['1v1 opponent joined', 'your opponent joined the lobby you shared'],
+            self::CasualChallenge => ['1v1 challenge received', 'a player challenges you to a scheduled casual 1v1'],
+            self::CasualChallengeAnswer => ['1v1 challenge answered', 'your 1v1 challenge was accepted, declined or expired'],
+            self::CasualReminder => ['1v1 start reminder', 'a scheduled 1v1 of yours starts soon'],
+            self::CasualCheckIn => ['1v1 check-in open', 'check in for your scheduled 1v1'],
         };
     }
 

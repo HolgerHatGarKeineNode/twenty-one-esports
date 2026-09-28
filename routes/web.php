@@ -126,6 +126,8 @@ Route::middleware('auth')->group(function () {
  */
 Route::middleware('auth')->group(function () {
     Route::livewire('challenges/create', 'pages::challenges.create')->name('challenges.create');
+    // A scheduled casual 1v1 without a clan (P23 S4).
+    Route::livewire('challenges/casual', 'pages::challenges.casual')->name('challenges.casual');
     Route::livewire('matches/{match}/room', 'pages::matches.room')->name('matches.room');
 });
 

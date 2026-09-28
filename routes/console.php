@@ -251,12 +251,14 @@ Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOn
  * The casual 1v1 clock (P23, CasualScheduler): a ready check that ran out
  * (void, the ready player back to the front of the queue), an uncontested
  * no-show claim (forfeit), a match nobody reported (void) and a report
- * nobody answered (confirmed), each once.
+ * nobody answered (confirmed), each once. Scheduled matches (S4): expired
+ * challenges, the start reminder, the check-in call and the missed
+ * check-in (forfeit, or void when neither side came).
  */
 Artisan::command('casual:tick', function (CasualScheduler $scheduler) {
     $done = $scheduler->tick();
 
-    $this->info("Voided {$done['unready']} unready and {$done['unreported']} unreported match(es), forfeited {$done['forfeited']} no-show(s), confirmed {$done['confirmed']} unanswered report(s).");
+    $this->info("Expired {$done['expired']} challenge(s), sent {$done['reminded']} reminder(s) and {$done['checkin_opened']} check-in call(s), closed {$done['checkin_missed']} missed check-in(s). Voided {$done['unready']} unready and {$done['unreported']} unreported match(es), forfeited {$done['forfeited']} no-show(s), confirmed {$done['confirmed']} unanswered report(s).");
 })->purpose('Apply the due deadlines of casual 1v1 matches');
 
 Schedule::command('casual:tick')->everyMinute()->withoutOverlapping()->onOneServer();

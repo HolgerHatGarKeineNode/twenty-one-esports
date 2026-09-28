@@ -2935,8 +2935,14 @@ ordinary notification DMs as above:
 - **Opponent found** (ready check), **1v1 invite**, **lobby shared**, **opponent joined** (to the
   host), **no-show claimed against you**, **result to confirm** and **result**, each its own opt-in
   type.
-- By default only **no-show claimed** and **result to confirm** go out as a DM: both run on a
-  deadline an offline player has to act on (five and thirty minutes by default).
+- **Scheduled 1v1**: a player challenges another to one of 1 to 3 suggested times,
+  without a clan; both check in from 10 minutes before the start until 10 minutes after, and a side
+  that did not check in loses by forfeit. Its notifications are **1v1 challenge received**, **1v1
+  challenge answered** (accepted, declined or expired), the **start reminder** 15 minutes before and
+  **check-in open**. Like the rest, they are league data only: the challenge and its answer are not
+  signed events.
+- By default only **no-show claimed**, **result to confirm**, **1v1 challenge received** and the
+  **start reminder** go out as a DM: each asks an offline player to act before a deadline.
 - **Never the lobby.** The DM says that the lobby was shared, never its name, password or an EA ID;
   the players exchange those end-to-end encrypted in the match chat, and the league refuses to store
   them for a casual 1v1: it keeps only the fact that the lobby was shared and that the guest joined.
