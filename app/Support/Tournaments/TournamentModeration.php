@@ -112,7 +112,7 @@ final class TournamentModeration
     /**
      * Append one line to the moderation log.
      *
-     * @param  'edited'|'removed'|'blocked'|'unblocked'|'result'|'disqualified'|'paused'|'resumed'|'round_restarted'|'aborted'|'messaged'  $action
+     * @param  'edited'|'removed'|'blocked'|'unblocked'|'result'|'disqualified'|'paused'|'resumed'|'round_restarted'|'aborted'|'messaged'|'reminded'  $action
      * @param  array<string, array{0: mixed, 1: mixed}>|null  $details
      */
     public function log(Tournament $tournament, User $actor, string $action, ?string $subject = null, ?string $reason = null, ?array $details = null, ?int $signupId = null): void

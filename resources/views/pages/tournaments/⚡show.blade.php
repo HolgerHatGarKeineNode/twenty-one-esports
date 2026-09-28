@@ -21,6 +21,7 @@ use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupSchedules;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
+use App\Support\Tournaments\MatchWait;
 use App\Support\Tournaments\Preview;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentLanding;
@@ -28,6 +29,7 @@ use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentView;
+use App\Support\Tournaments\TournamentWaits;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -286,6 +288,24 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         unset($this->cupMatch);
     }
 
+    /**
+     * The viewer's open matches of this running tournament with a countdown
+     * to the league's automatic decision (P18, slice 5, TournamentWaits).
+     *
+     * @return list<MatchWait>
+     */
+    #[Computed]
+    public function myWaits(): array
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User || $this->tournament->status !== TournamentStatus::Running) {
+            return [];
+        }
+
+        return array_values(array_filter(TournamentWaits::ofPlayer($this->tournament, $user), fn (MatchWait $wait): bool => $wait->decidesAt !== null));
+    }
+
     #[Computed]
     public function canManage(): bool
     {
@@ -466,6 +486,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {{-- A running casual cup: the viewer's own match first, above the hero (P25, the player it concerns). --}}
     @if ($this->cupMatch)
         @include('pages.tournaments.partials.cup-match', ['cup' => $this->cupMatch, 'error' => $cupError])
+    @endif
+
+    {{-- The viewer's own match with the countdown to the league's automatic decision (P18, slice 5). --}}
+    @if ($this->myWaits !== [])
+        @include('pages.tournaments.partials.my-waits', ['waits' => $this->myWaits, 'tournament' => $tournament])
     @endif
 
     {{--

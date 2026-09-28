@@ -397,7 +397,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         return [
             'white' => __('White'),
             'board' => __('Board, :side to move. Last move :move.'),
-            'firstMove' => __(':side: first move within :s s'),
+            // A tournament game ends at the first-move deadline by the league's decision (P18, slice 5): say what happens.
+            'firstMove' => $this->game->tournament_match_id !== null ? __('Auto-decision in :s s: :side loses by forfeit (if the other side never came, the game is aborted)') : __(':side: first move within :s s'),
             'offerDraw' => __('Offer draw'),
             'drawOffered' => __('Draw offered'),
             'black' => __('Black'),

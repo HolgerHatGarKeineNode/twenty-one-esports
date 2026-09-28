@@ -351,6 +351,14 @@ return [
     | messages_per_hour: how many messages an organizer or admin may send to
     | all players of one tournament per hour (P18, TournamentControl::message()).
     |
+    | reminders: minutes before the league decides a waiting match on its own
+    | (P18 slice 5, TournamentReminders, run by `tournaments:tick`) at which
+    | the players it waits on get a reminder, each point once per deadline
+    | (comma-separated `ESPORTS_TOURNAMENT_REMINDERS`). A point is skipped when
+    | the wait began inside it: a 5-minute first-move window gets no 5-minute
+    | reminder. remind_every_minutes: how often an organizer or admin may
+    | remind one player of one match by hand.
+    |
     */
 
     'tournaments' => [
@@ -362,6 +370,8 @@ return [
         'response_minutes' => 30,
         'round_clock' => ['noshow_minutes' => 15, 'grace_minutes' => 5, 'response_minutes' => 10],
         'messages_per_hour' => 5,
+        'reminders' => array_values(array_map(intval(...), array_filter(array_map('trim', explode(',', (string) env('ESPORTS_TOURNAMENT_REMINDERS', '30,5'))), is_numeric(...)))),
+        'remind_every_minutes' => 10,
     ],
 
     /*

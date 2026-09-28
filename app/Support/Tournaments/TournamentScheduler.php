@@ -28,7 +28,11 @@ use Throwable;
  * 3. A series nobody reported by its report deadline: the admin queue.
  * 4. A report the other side did not answer: confirmed by the league (unrated).
  *
- * Steps 2 to 4 skip a paused tournament (P18, TournamentControl).
+ * 5. The reminders to the players a match waits on, at the points of
+ *    `esports.tournaments.reminders` before the league decides it (slice 5,
+ *    TournamentReminders), each once.
+ *
+ * Steps 2 to 5 skip a paused tournament's series (P18, TournamentControl).
  *
  * The chess check-in (a missed first move) needs nothing here: the game's own
  * deadline ends it (CheckChessClock, and `chess:check-clocks` every ten
@@ -49,10 +53,10 @@ final class TournamentScheduler
 
     public const STALE_AFTER_SECONDS = 300;
 
-    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups) {}
+    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders) {}
 
     /**
-     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int}
+     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int, reminded: int}
      */
     public function tick(): array
     {
@@ -65,6 +69,7 @@ final class TournamentScheduler
             fn (SeriesMatch $match): bool => $this->series->markOverdue($match));
         $done['confirmed'] = $this->each($this->timed()->where('status', SeriesStatus::Reported),
             fn (SeriesMatch $match): bool => $this->series->autoConfirm($match));
+        $done['reminded'] = $this->reminders->tick();
 
         Cache::forever(self::HEARTBEAT, now()->getTimestamp());
 

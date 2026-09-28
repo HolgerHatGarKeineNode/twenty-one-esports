@@ -21,6 +21,7 @@ import './badgeShare.js';
 import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';
+import './autoDecision.js';
 import './leagueTime.js';
 import './tournamentTv.js';
 import { dropAnswersForDetachedComponents } from './livewireDetached.js';

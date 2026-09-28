@@ -347,9 +347,10 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
     }
 
     /**
-     * The control section (P18) changed the tournament: status and log follow.
+     * The control section (P18) changed the tournament, or reminded a player (slice 5): status and log follow.
      */
     #[On('tournament-controlled')]
+    #[On('tournament-reminded')]
     public function controlled(): void
     {
         $this->tournament->refresh();
@@ -402,6 +403,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'round_restarted' => __('restarted a round'),
         'aborted' => __('called the tournament off'),
         'messaged' => __('wrote to all players'),
+        'reminded' => __('reminded a player'),
     ];
     $shown = fn (mixed $value): string => match (true) {
         $value === null, $value === [] => '—',

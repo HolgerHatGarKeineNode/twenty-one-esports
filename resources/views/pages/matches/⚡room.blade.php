@@ -687,6 +687,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     // A casual 1v1 (P23): the steps and the chat come first, with the lobby as a card in the chat.
     $casual = $m->isCasualPairing();
     $casualFirst = $casual && ! $m->status->hasResult();
+    // A tournament series on the league's deadlines (P18, slice 5): the countdown to the automatic decision. A casual cup's series has it in its steps.
+    $wait = ! $casual && $m->deadlines !== null && ! $m->status->hasResult() ? \App\Support\Tournaments\TournamentWaits::ofPlay($m) : null;
     $steps = [
         [__('Challenge'), SeriesPresenter::time($m->created_at ?? now(), $viewer, 'D H:i'), __('sent by :clan', ['clan' => $m->challenger_name]), true],
         [__('Accepted'), $m->answered_at && $m->start_at ? SeriesPresenter::time($m->answered_at, $viewer, 'D H:i') : '', $m->answered_at && $m->start_at ? __('by :clan', ['clan' => $m->challenged_name]) : __('waiting'), $m->start_at !== null],
@@ -710,6 +712,15 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <span class="text-[13px] text-ink-2 max-lg:hidden">{{ __(':n of 2 checks', ['n' => $checks]) }}</span>
         <span class="w-full text-[13px] text-ink-2 lg:hidden">{{ __('Match :number, :game', ['number' => $m->label(), 'game' => \App\Support\GameNames::game($m->game)]) }}</span>
     </div>
+
+    @if ($wait?->decidesAt !== null)
+        <p class="m-0 flex flex-col gap-1 rounded-md bg-card px-4 py-3 text-[13px] shadow-[inset_0_0_0_1px_#F7931A]" role="status" data-test="room-auto-decision">
+            <x-tournaments.auto-decision :wait="$wait" class="text-ink" />
+            @if ($viewer !== null && $wait->waitsOn($viewer->id) && $wait->action !== null)
+                <span class="text-ink-2">{{ $wait->actionText() }}</span>
+            @endif
+        </p>
+    @endif
 
     {{-- Versus --}}
     <section aria-label="{{ __('Series') }}" @class(['grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg px-4 py-4 lg:grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)] lg:px-8 lg:py-5', '-order-2' => $casualFirst]) style="background: linear-gradient(90deg, #1E1A12, #121215 38%, #121215 62%, #17171B)">

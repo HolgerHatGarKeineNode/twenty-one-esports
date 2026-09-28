@@ -209,3 +209,132 @@ test('an admin corrects a result on the control section and the bracket follows,
 
     fwrite(STDERR, "\n[tournament-control] ".json_encode($measured)."\n");
 });
+
+/*
+| "Who blocks what" (P18, slice 5): the panel at 1440 and 375 px, its
+| countdown ticking, one click reminds; the player's countdown on the
+| tournament page counts to the server's moment on a device whose clock
+| runs ten minutes fast.
+*/
+
+const WAITS_STATE = <<<'JS'
+    () => {
+        const panel = document.querySelector('[data-test=waits]');
+        const box = panel?.getBoundingClientRect();
+        return {
+            panel: box ? { left: Math.round(box.left), right: Math.round(box.right), width: Math.round(box.width), height: Math.round(box.height) } : null,
+            states: [...document.querySelectorAll('[data-test=wait]')].map((row) => row.dataset.state),
+            clock: document.querySelector('[data-test=waits] [data-test=auto-decision-clock]')?.textContent.trim() ?? null,
+            notice: document.querySelector('[data-test=waits-notice]')?.textContent.trim() ?? null,
+            error: document.querySelector('[data-test=waits-error]')?.textContent.trim() ?? null,
+            log: document.querySelector('[data-test=moderation-log]')?.textContent.replace(/\s+/g, ' ').trim() ?? '',
+            viewport: document.documentElement.clientWidth,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            lang: document.documentElement.lang,
+            errors: window.__errors,
+        };
+    }
+    JS;
+
+/** mm:ss or h:mm:ss as seconds. */
+function waitsSeconds(?string $clock): int
+{
+    $parts = array_map(intval(...), explode(':', (string) $clock));
+
+    return array_reduce($parts, fn (int $carry, int $part): int => $carry * 60 + $part, 0);
+}
+
+test('who blocks what: the panel counts down and reminds at 1440 and 375 px, and the player counts on the server clock', function () {
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $tournament = Tournament::factory()->create([
+        'name' => 'Rocket Duel Night', 'game' => 'rocket-league', 'mode' => '1v1', 'format' => TournamentFormat::SingleElimination, 'capacity' => 4,
+        'options' => FormatOptions::fromArray(['thirdPlace' => false], GameProfile::for('rocket-league', '1v1'))->toArray(),
+        'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Running, 'slug' => 'rocket-duel-night',
+        'on_site' => true, 'stations' => 4, 'created_by_id' => organizer()->id,
+    ]);
+
+    foreach (['Alice Sats', 'Bob Blocks', 'Carol Coins', 'Dave Hodl'] as $index => $name) {
+        $player = User::factory()->create(['name' => $name]);
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $name, 'rating' => 1200 - $index, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+    app(TournamentRunner::class)->sync($tournament);
+    $series = SeriesMatch::query()->whereIn('tournament_match_id', TournamentMatch::query()->where('tournament_id', $tournament->id)->pluck('id'))->orderBy('id')->get();
+
+    // The first series is reported: its answer is due in 30 minutes, before the other's report (2 h).
+    $reporter = User::query()->findOrFail($series[0]->rosterSide('challenger')[0]);
+    $answerer = User::query()->findOrFail($series[0]->rosterSide('challenged')[0]);
+    $service = app(SeriesService::class);
+
+    foreach (range(0, intdiv($series[0]->best_of, 2)) as $index) {
+        $service->saveLiveGame($series[0], $reporter, $index, 3, 1, null);
+    }
+
+    $service->report($series[0]->refresh(), $reporter, []);
+    $waited = [$answerer, User::query()->findOrFail($series[1]->rosterSide('challenger')[0])];
+
+    $page = visit(BrowserLogin::url($admin))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $measured = [];
+
+    foreach ([[1440, 900, 0], [375, 812, 1]] as [$width, $height, $turn]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.tournaments.edit', $tournament)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=waits] [data-test=auto-decision-clock]") !== null', 10_000);
+        $before = $page->evaluate(WAITS_STATE);
+        usleep(2_100_000);
+        $later = $page->evaluate(WAITS_STATE);
+
+        expect($before['lang'])->toBe('en')
+            ->and($before['states'])->toBe(['response', 'report'])
+            ->and(waitsSeconds($before['clock']))->toBeGreaterThan(29 * 60)->toBeLessThanOrEqual(30 * 60)
+            ->and(waitsSeconds($later['clock']))->toBeLessThan(waitsSeconds($before['clock']))
+            ->and($before['panel']['left'])->toBeGreaterThanOrEqual(0)
+            ->and($before['panel']['right'])->toBeLessThanOrEqual($before['viewport'])
+            ->and($before['overflow'])->toBeLessThanOrEqual(0)
+            ->and($later['errors'])->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+        controlShot($page, "tournament-waits-{$width}");
+
+        // One click reminds the waited-on player; the log names it.
+        $page->locator("[data-test=wait-remind-{$waited[$turn]->id}]")->first()->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=waits-notice]") !== null || document.querySelector("[data-test=waits-error]") !== null', 10_000);
+        BrowserWait::until($page, '() => (document.querySelector("[data-test=moderation-log]")?.textContent.match(/reminded a player/g) ?? []).length === '.($turn + 1), 10_000);
+        $after = $page->evaluate(WAITS_STATE);
+        $measured[$width] = ['panel' => $before['panel'], 'overflow' => $after['overflow'], 'clock' => [$before['clock'], $later['clock']]];
+
+        expect($after['notice'])->toBe('Reminder sent.')
+            ->and($after['error'])->toBeNull()
+            ->and($after['log'])->toContain($waited[$turn]->name)
+            ->and($after['overflow'])->toBeLessThanOrEqual(0)
+            ->and($after['errors'])->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+
+    expect($answerer->notifications()->count())->toBeGreaterThanOrEqual(1);
+
+    // The waited-on player, on a device ten minutes fast: the countdown still shows the server's ~30 minutes.
+    $page->goto(ComputeUrl::from(BrowserLogin::url($answerer)));
+    $page->context()->addInitScript('(() => { const now = Date.now.bind(Date); Date.now = () => now() + 600000; })()');
+
+    foreach ([[1440, 900], [375, 812]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('tournaments.show', $tournament)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=my-wait] [data-test=auto-decision-clock]") !== null', 10_000);
+        usleep(1_200_000);
+        $player = $page->evaluate('() => ({ clock: document.querySelector("[data-test=my-wait] [data-test=auto-decision-clock]").textContent.trim(), skewed: Date.now() - new Date().getTime(), overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, errors: window.__errors })');
+        controlShot($page, "tournament-my-wait-{$width}");
+        $measured["player-{$width}"] = $player;
+
+        expect($player['skewed'])->toBeGreaterThan(590_000)
+            ->and(waitsSeconds($player['clock']))->toBeGreaterThan(25 * 60)->toBeLessThanOrEqual(30 * 60)
+            ->and($player['overflow'])->toBeLessThanOrEqual(0)
+            ->and($player['errors'])->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+
+    fwrite(STDERR, "\n[tournament-waits] ".json_encode($measured)."\n");
+});

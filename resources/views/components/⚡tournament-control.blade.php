@@ -21,7 +21,8 @@ use Livewire\Component;
  * (gate `manage-tournament`, checked on mount and again in
  * App\Support\Tournaments\TournamentControl for every action). Set or
  * correct a result, disqualify an entry, pause and resume, restart a round,
- * call the tournament off and write to all players. Every destructive step
+ * call the tournament off and write to all players; while it runs, "Who
+ * blocks what" (components/⚡tournament-waits, slice 5). Every destructive step
  * asks for a typed reason; every step lands in the moderation log, which
  * the page refreshes on `tournament-controlled`.
  */
@@ -282,6 +283,9 @@ new class extends Component {
                 <x-button variant="secondary" wire:click="pause" class="shrink-0" data-test="control-pause-button">{{ __('Pause') }}</x-button>
             @endif
         </div>
+
+        {{-- Who blocks what (slice 5): every open match, what it waits for, the countdown and a reminder per player. --}}
+        <livewire:tournament-waits :tournament="$tournament" :wire:key="'waits-'.$tournament->id" />
     @endif
 
     @if ($this->rounds->isNotEmpty())

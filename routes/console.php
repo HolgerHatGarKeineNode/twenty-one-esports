@@ -234,7 +234,7 @@ Artisan::command('tournaments:advance', function (TournamentDraws $draws) {
  * CasualCups: one open cup per enabled game, their sign-ups and round
  * deadlines), `tournaments:advance`,
  * then the deadlines that are due (no-show forfeit, report overdue to the
- * admin queue, auto-confirm), each once; ends with the heartbeat the admin
+ * admin queue, auto-confirm) and the reminders before them, each once; ends with the heartbeat the admin
  * pages check (TournamentScheduler::health()).
  */
 Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
@@ -242,7 +242,7 @@ Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
 
     $cups = $done['cups'];
     $this->info("Casual cups: opened {$cups['opened']}, grew {$cups['grown']}, extended {$cups['extended']}, switched {$cups['evenings']} to a live evening, called off {$cups['cancelled']}, opened {$cups['rounds']} round(s), decided {$cups['decided']} overdue match(es).");
-    $this->info("Closed {$done['closed']} sign-up(s), drew {$done['drawn']} tournament(s), forfeited {$done['forfeited']} no-show(s), moved {$done['overdue']} overdue series to the admin queue, confirmed {$done['confirmed']} unanswered report(s).");
+    $this->info("Closed {$done['closed']} sign-up(s), drew {$done['drawn']} tournament(s), forfeited {$done['forfeited']} no-show(s), moved {$done['overdue']} overdue series to the admin queue, confirmed {$done['confirmed']} unanswered report(s), sent {$done['reminded']} reminder(s).");
 })->purpose('Move tournaments on and apply their due deadlines');
 
 Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
