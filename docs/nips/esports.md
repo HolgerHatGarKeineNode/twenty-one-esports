@@ -33,14 +33,16 @@ game record when a rated game ends, and a player posts the game to their own pro
 **revision 9.5** (2026-09-28): share groups in the Season Genesis, parameter changes that add a game,
 the reserve goal and a reserve balance no longer required at Block 0; **revision 9.6** (2026-09-28): the
 season settlement as the league runs it, without fees; **revision 9.7** (2026-09-29): share posts of a
-won game or series and "I'm in", which mention the opponents and quote the league's record). Not
+won game or series and "I'm in", which mention the opponents and quote the league's record;
+**revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
+RSVPs to a tournament, each signed by the player on a click). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6 and 9.7 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7 and 9.9 (see [Open points](#open-points)).
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -71,7 +73,36 @@ The rules marked "rev. 9.4" concern chess game notes only; they apply to every c
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
 The rules marked "rev. 9.7" concern share posts only; no ladder depends on them, and they apply from
-the day a league adopts revision 9.7.
+the day a league adopts revision 9.7. The rules marked "rev. 9.9" concern comments, likes and RSVPs
+only; no ladder and no league state depends on them, and they apply from the day a league adopts
+revision 9.9.
+
+### Changelog of revision 9.9 (2026-09-29)
+
+Comments, likes and RSVPs ([Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99)). No new
+kind and no new tag: NIP-22 comments (`1111`), NIP-25 likes (`7`) and NIP-52 RSVPs (`31925`), each
+signed by the player's own signer only after the player saw the event and clicked.
+
+- **What a comment is on.** A tournament's calendar event (`31923`, by address), the league's record
+  of a rated chess game (`64`) and the challenge of a rated series (`2150`, the root of its match
+  chain, as [Reused NIPs](#reused-nips) already said for NIP-22). A casual game or series has no
+  league event and so no comments.
+- **Top-level only.** The app writes comments whose parent is the root itself; it shows replies that
+  other clients write, marked as replies, in one list, newest first.
+- **Likes** are `+` only, with `e` (for a tournament its current version, plus the address as `a`),
+  `p` and `k`. A reader counts the newest reaction per author.
+- **RSVPs** are offered as `accepted` once a player entered the tournament and as `declined` once a
+  player who said `accepted` through the league pulled out. `d` is the tournament's address, so the
+  later answer replaces the earlier one; no `e`, because a tournament gets new versions. An RSVP is
+  not a sign-up: the sign-up count stays the league's own, and the app shows the two apart.
+- **Through the league.** The signed event goes to the player's write relays, then to the league,
+  which checks it against the event it prepared (validation rules 38 to 40), keeps it and sends it to
+  its relays, like a share post. A league limits comments, likes and RSVPs per player and hour.
+- **Moderation.** The app hides comments, likes and RSVPs of a pubkey the league muted with a kind
+  `44` of its game channels, comments the league hid with a kind `43`, and those of accounts the viewer
+  muted. Other clients may ignore all of it.
+- **The tournament's event set grows.** `{"#a":["31923:<league>:<slug>"]}` now also returns comments,
+  likes and RSVPs; a reader tells them apart by kind.
 
 ### Changelog of revision 9.7 (2026-09-29)
 
@@ -617,6 +648,9 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `30009`, `8` | 58 | rev. 5: rank badge definition per player, game and mode; its single award | badge key |
 | `10008` | 58, 51 | rev. 5: the player's profile badges, with the rank badges the player chose to show | the player |
 | `1` | 01, 92 | rev. 8: share post, a note with a share card of the league (rank up, block, tournament win, season) | the player |
+| `1111` | 22 | rev. 9.9: comment on a tournament (`31923`), a rated game's record (`64`) or a rated series' challenge (`2150`) | the player |
+| `7` | 25 | rev. 9.9: like (`+`) of the same | the player |
+| `31925` | 52 | rev. 9.9: RSVP to a tournament, `accepted` or `declined`; never a sign-up | the player |
 
 ## Identifiers
 
@@ -1442,7 +1476,9 @@ cannot be checked from relays.
   every result of an unrated tournament.
 
 **Everything of a tournament** references its address: `{"#a":["31923:<league>:<slug>"]}` returns the
-challenges, answers, reports, responses, attestations, the draw and the zap receipts.
+challenges, answers, reports, responses, attestations, the draw and the zap receipts; rev. 9.9: also
+players' comments, likes and RSVPs ([Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99)), so a
+reader filters by kind.
 
 **Why the league key.** Draws and attestations are signed by the league key and reference the
 tournament, and a tournament signed by another key could be replaced by someone the attestations do
@@ -2437,6 +2473,97 @@ drawn from one version or one attestation, so a posted card keeps showing what h
   posts per player and hour, counting every attempt before it checks it.
 - **Not league state.** A share post changes nothing in the league: no rating, no block, no badge.
 
+## Comments, likes and RSVPs (rev. 9.9)
+
+Players talk about a tournament, a game or a series in public with the kinds every Nostr client
+knows, not with a kind of this NIP: comments ([NIP-22](https://github.com/nostr-protocol/nips/blob/master/22.md),
+`1111`), likes ([NIP-25](https://github.com/nostr-protocol/nips/blob/master/25.md), `7`) and, for a
+tournament, RSVPs ([NIP-52](https://github.com/nostr-protocol/nips/blob/master/52.md), `31925`). Each
+is signed by the player, and only after the app showed the exact event and the player clicked.
+
+**What a comment is on.** Always an event of the league, never a page:
+
+| page | root (NIP-22) | `K` |
+|---|---|---|
+| tournament | `A` the address `31923:<league>:<slug>` | `31923` |
+| rated chess game | `E` the league's record, with its author | `64` |
+| rated series | `E` the challenge, the root of the match chain, with its author | `2150` |
+
+A casual game or series has no league event, so it has no comments either.
+
+```json
+{
+  "kind": 1111,
+  "content": "Good luck everyone!",
+  "tags": [
+    ["A", "31923:<league>:<slug>", "<league relay>"],
+    ["K", "31923"],
+    ["P", "<league>", "<league relay>"],
+    ["a", "31923:<league>:<slug>", "<league relay>"],
+    ["e", "<id of the current 31923 version>", "<league relay>"],
+    ["k", "31923"],
+    ["p", "<league>", "<league relay>"],
+    ["alt", "Comment on a tournament in TWENTY ONE Esports"]
+  ]
+}
+```
+
+- **Top-level.** The app writes comments on the root only: the parent (`a`/`e`, `k`, `p`) is the root
+  itself, and for an address the current version's id rides along as `e`, as NIP-22 shows. On a game
+  record or a challenge, root and parent are `E`/`e` with the author as the fourth value. Replies that
+  other clients write to a comment keep the same root; the app shows them in the same list, marked as
+  replies.
+- **Plain text.** `content` is the player's text, line breaks as `\n`, control characters removed,
+  at most 1 000 characters; no `t` (the league posts no hashtags, and it adds none to a player's text).
+  Readers show it as text, never as HTML or Markdown (NIP-22: "plaintext").
+- **Likes.** `content` `+`, `e` the event (for a tournament its current version) with relay and author,
+  for a tournament also `a` the address, `p` the author, `k` the kind (NIP-25). A reader counts the
+  newest reaction per author: `+` or empty is a like, anything else is not; a tournament's likes are
+  read by its address, so a like of an older version still counts.
+- **RSVPs.** An `accepted` RSVP is offered once the player entered the tournament (solo or in a
+  lineup), a `declined` one once a player whose newest RSVP through the league says `accepted` pulled
+  out; none for a finished or called-off tournament. `d` and `a` are both the tournament's address,
+  so a later answer of the same player replaces the earlier one on every relay (NIP-01 addressable);
+  `status`, `p` the league; no `e`, because NIP-52 lets clients read an RSVP with `e` as an answer to
+  that version only, and a tournament gets new versions; no `fb`; `content` empty.
+
+```json
+{
+  "kind": 31925,
+  "content": "",
+  "tags": [
+    ["d", "31923:<league>:<slug>"],
+    ["a", "31923:<league>:<slug>", "<league relay>"],
+    ["status", "accepted"],
+    ["p", "<league>", "<league relay>"],
+    ["alt", "RSVP to a tournament in TWENTY ONE Esports: accepted"]
+  ]
+}
+```
+
+- **An RSVP is not a sign-up.** The sign-up is the league's record, signed as a consent that is never
+  published ([Tournament Consent](#tournament-consent-22150)); anybody can publish an RSVP, entered or
+  not. The tournament page shows how many said on Nostr that they go next to the sign-up count and
+  never adds one to the other. A reader counts the newest RSVP per author to the address, whatever its
+  `d` (other clients use a random `d`).
+- **Through the league.** The app sends the signed event to the player's NIP-65 write relays (or the
+  relays it read from when the player has none), then hands it to the league, which checks it against
+  the event it prepared (rules 38 to 40), keeps it and sends it to its relays, as for a share post. At
+  least one of the player's relays must take it first. A league limits comments, likes and RSVPs per
+  player and hour and counts every attempt.
+- **Reading.** The app reads comments, likes and RSVPs from the league relays in the browser:
+  comments by `#A` or `#E`, a page of the newest at a time, the next page with `until`; every event's
+  signature is checked, and a comment counts only if its root tag names the target (a relay may ignore
+  a tag filter). A comment another client sent only to relays the league does not read is not shown.
+  When no relay answers, the app says the comments are unknown, not that there are none.
+- **Moderation.** The league's kind `44` (mute a pubkey) and `43` (hide an event) of its
+  [game channels](#game-channels-rev-93), signed by the channel creator, apply here too: the app does
+  not show comments, likes or RSVPs of a muted pubkey, nor a hidden comment. The viewer's own mutes
+  apply as well. Other clients may ignore both; a relay keeps what it was sent.
+- **Not league state.** Comments, likes and RSVPs change nothing in the league: no sign-up, no rating,
+  no trust. The tournament's event set (`{"#a":["31923:<league>:<slug>"]}`, see
+  [Tournaments](#tournaments)) now returns them too; a reader tells them apart by kind.
+
 ## State machine
 
 ```
@@ -2727,6 +2854,18 @@ Per kind:
     still no `e` or `a`; at most five `p`, each a hex pubkey whose `nostr:npub1…` is in `content`; at most
     one `q`, an event id with a `nostr:nevent1…` in `content` or an address of an addressable kind with a
     `nostr:naddr1…` in `content`.
+38. **1111** (comment, rev. 9.9): signed by the player; top-level, so root and parent name the same item:
+    either `A` and `a` the same address of an addressable kind, with at most one `e` (an event id), or `E`
+    and `e` the same event id, never both and no `I`/`i`; `K` and `k` the same kind (for an address, its
+    kind); `P` and `p` the same hex pubkey (for an address, its author); no `t`; `content` not empty and at
+    most 1 000 characters. The item is a tournament's `31923`, the league's record (`64`) of a rated game or
+    the challenge (`2150`) of a rated series.
+39. **7** (like, rev. 9.9): signed by the player; `content` `+`; exactly one `e` (an event id), one `p` (a
+    hex pubkey) and one `k`; at most one `a`, an address of that kind by that pubkey.
+40. **31925** (RSVP, rev. 9.9): signed by the player; exactly one `a`, the address of a `31923`; exactly one
+    `d`, that same address; `status` `accepted` or `declined`; at most one `p` (a hex pubkey); no `e`, no
+    `fb`; `content` empty. `accepted` only from a player entered in the tournament, `declined` only from a
+    player whose newest RSVP the league took is `accepted` and who is no longer entered.
 
 ## Replay protection
 
@@ -2817,7 +2956,7 @@ The league runs one relay. It is the source of truth for clients, and the player
 - **Writes** are accepted in exactly three cases:
   1. any event on a connection **authenticated (NIP-42) as the league publisher**, whoever signed it.
      The league's server publishes every player event it accepted (`2150`-`2153`, `64`, `12150`,
-     `30000`, `1984`, and `10050` and `10008` written through the app) and its own events (`2154`,
+     `30000`, `1984`, and `10050` and `10008` written through the app; rev. 9.9 `1111`, `7`, `31925`) and its own events (`2154`,
      rev. 9.4 `64` (game records), `2155`, `32152`, `31923`, `31924`, `0`, `10002`, rev. 5 `2156`, `2157`, `2158`, `9041`, `1985` and the admin list, the
      admins' `1985` release confirmations, the trust key's `30382` and anchor list, the badge key's
      `30009` and `8`) over this connection;
@@ -3463,6 +3602,8 @@ Query: `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}` returns the 
 | the parameter changes of a season | `{"kinds":[2158],"authors":["<league>"],"#e":["<genesis id>"]}` |
 | a player's rank badges (rev. 5) | `{"kinds":[30009],"authors":["<badge key>"],"#p":["<player>"]}`; the awards: `{"kinds":[8],"authors":["<badge key>"],"#p":["<player>"]}` |
 | the bounties on a player (rev. 5) | `{"kinds":[31923],"authors":["<league>"],"#p":["<target>"]}`; the funding of one: `{"kinds":[9735],"#a":["31923:<league>:bounty/<slug>"]}` |
+| the comments on a tournament (rev. 9.9) | `{"kinds":[1111],"#A":["31923:<league>:<slug>"],"limit":20}`, the next page with `until`; its likes `{"kinds":[7],"#a":["31923:<league>:<slug>"]}`; its RSVPs `{"kinds":[31925],"#a":["31923:<league>:<slug>"]}` |
+| the comments on a rated game or series (rev. 9.9) | `{"kinds":[1111],"#E":["<record or challenge id>"],"limit":20}`; its likes `{"kinds":[7],"#e":["<record or challenge id>"]}` |
 
 ## Invite links
 
@@ -3546,7 +3687,8 @@ wanted protected player events would have to accept them from their authenticate
 | 18, 27 | the stream bot's tournament notes (kind `1`): the calendar event as `nostr:naddr1…` in `content` and a `q` tag on its address |
 | 04 | deliberately **not** used: `unrecommended`, deprecated in favor of NIP-17 |
 | 17, 44, 59 | private chat and notifications: kind `14` rumors, NIP-44 sealed (`13`), gift-wrapped (`1059`); DM relay list `10050`; not the ephemeral `21059` |
-| 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind |
+| 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind; rev. 9.9: also on a tournament (`31923` by address) and on the league's record of a rated game (`64`), top-level, see [Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99) |
+| 25 | rev. 9.9: likes (`7`, `+`) of a tournament, a game record or a challenge |
 | 24 | `bot` in the notification key's kind `0` |
 | 28 | rev. 9.3: one public channel per game (`40` with fixed fields, `41` metadata, `42` messages, the creator's `43`/`44` as moderation), see [Game channels](#game-channels-rev-93) |
 | 31 | `alt` on every event |
@@ -3556,7 +3698,7 @@ wanted protected player events would have to accept them from their authenticate
 | 47 | Nostr Wallet Connect, server side only: rev. 5 one wallet with a receive-only connection (LNURL invoices) and a paying connection with a budget (payouts); rev. 9.1: that wallet is the season chain's only, and every tournament pot is a wallet of its own (`get_balance`, `pay_invoice`, and `make_invoice`/`lookup_invoice` for top-ups) |
 | 51 | opponent list and anchor list as follow sets (`30000`); mute list (`10000`) read by the client |
 | 56 | reports (`1984`) that can lower a trust rank |
-| 52 | tournaments as time-based calendar events (`31923`) in the league calendar (`31924`); rev. 5 also bounties (`d` = `bounty/<slug>`) and season announcements (`d` = `season/<season>`); no calendar event per match (the answer's `start` already is the schedule) |
+| 52 | tournaments as time-based calendar events (`31923`) in the league calendar (`31924`); rev. 5 also bounties (`d` = `bounty/<slug>`) and season announcements (`d` = `season/<season>`); no calendar event per match (the answer's `start` already is the schedule); rev. 9.9: a player's RSVP (`31925`) to a tournament, `d` its address, never a sign-up |
 | 64 | chess game records (kind `64`, PGN): rev. 9.4 signed by the league, and a player's own post of a game; before, by a player, and correspondence moves |
 | 18 | rev. 9.4: a player's post of a game quotes the league's record with `q` |
 | 57 | zaps into the league's pots (receipts from the league's own LNURL endpoint); rev. 9.1: never into a tournament's pot, whose top-ups are plain invoices from its own wallet without receipts (see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
