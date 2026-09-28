@@ -190,20 +190,26 @@ final class MusicPlaylist
     }
 
     /**
-     * An ffconcat file for `-f concat -safe 0` with absolute paths.
+     * An ffconcat file for `-f concat -safe 0` with absolute paths; the first
+     * file starts `$inpoint` seconds in (MusicTimeline: a new encoder goes on
+     * where the music is).
      *
      * @param  list<string>  $files
      */
-    public static function ffconcat(array $files): string
+    public static function ffconcat(array $files, float $inpoint = 0.0): string
     {
         $lines = ['ffconcat version 1.0'];
 
-        foreach ($files as $file) {
+        foreach ($files as $index => $file) {
             if (! self::isSafePath($file)) {
                 throw new InvalidArgumentException('A music path with a control character cannot go into an ffconcat list.');
             }
 
             $lines[] = "file '".str_replace("'", "'\\''", $file)."'";
+
+            if ($index === 0 && $inpoint > 0) {
+                $lines[] = 'inpoint '.sprintf('%.3F', $inpoint);
+            }
         }
 
         return implode("\n", $lines)."\n";

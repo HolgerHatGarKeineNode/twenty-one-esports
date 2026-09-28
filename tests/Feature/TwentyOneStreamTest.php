@@ -51,6 +51,7 @@ beforeEach(function () {
         'twentyone.stream.viewers.dir' => sys_get_temp_dir().'/tos-'.bin2hex(random_bytes(6)),
         'twentyone.stream.viewers.nginx_user' => '',
         'twentyone.stream.session_file' => $this->dir.'/session.json',
+        'twentyone.stream.music.timeline_file' => $this->dir.'/music-timeline.json',
     ]);
 
     File::ensureDirectoryExists($this->dir.'/music');
@@ -940,6 +941,8 @@ test('a restart within the resume window continues the session with the same sta
         ->and(eventTag($second, 'starts'))->toBe(eventTag($first, 'starts'))
         ->and($second['created_at'])->toBeGreaterThan($first['created_at'])
         ->and($secondLog)->toContain('continuing the live session of '.$session['starts'])
+        // The music goes on where it was, instead of a new shuffle from its first track.
+        ->and($secondLog)->toContain('music: continuing ')->not->toContain('music: new timeline')
         ->and((int) eventTag($third, 'starts'))->not->toBe($session['starts'] - 5000)
         ->and((int) eventTag($third, 'starts'))->toBeGreaterThanOrEqual(time() - 10)
         ->and($thirdLog)->not->toContain('continuing the live session')

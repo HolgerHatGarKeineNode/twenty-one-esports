@@ -152,6 +152,8 @@ return [
             // How many instrumentals play between two vocal tracks.
             'instrumentals_per_vocal' => 3,
             'list_hours' => 12,
+            // Where the music is on the wall clock (MusicTimeline): a new encoder goes on from there.
+            'timeline_file' => env('TWENTYONE_STREAM_MUSIC_TIMELINE_FILE') ?: storage_path('app/stream/music-timeline.json'),
         ],
 
         /*

@@ -11,6 +11,7 @@ use App\Support\TwentyOne\Stream\EncoderRun;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
 use App\Support\TwentyOne\Stream\ModeMachine;
 use App\Support\TwentyOne\Stream\MusicPlaylist;
+use App\Support\TwentyOne\Stream\MusicTimeline;
 use App\Support\TwentyOne\Stream\PlaylistWriter;
 use App\Support\TwentyOne\Stream\PublicPlaylist;
 use App\Support\TwentyOne\Stream\PublishSchedule;
@@ -787,22 +788,44 @@ class TwentyOneStreamCommand extends Command
     }
 
     /**
-     * A new random music order (MusicPlaylist), written atomically; a running
-     * ffmpeg has read its list when it opened it.
+     * The music from where it is now (MusicTimeline: the same track at the
+     * same second after a mode switch or a restart; a new shuffle only when a
+     * whole set has played or the files changed), written atomically; a
+     * running ffmpeg has read its list when it opened it.
      */
     private function writeMusicList(): string
     {
-        $files = $this->musicFiles();
-        $instrumentals = $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir'));
-        // With instrumentals every vocal track is followed by one: a pass lasts twice as long.
-        $perVocal = max(1, (int) config('twentyone.stream.music.instrumentals_per_vocal', 3));
-        $seconds = max(1, count($files) * self::ASSUMED_TRACK_SECONDS * ($instrumentals === [] ? 1 : 1 + $perVocal));
-        $passes = (int) ceil(3600 * (int) config('twentyone.stream.music.list_hours', 12) / $seconds);
+        $ffprobe = (string) config('twentyone.stream.ffprobe');
+        $timeline = new MusicTimeline(
+            (string) config('twentyone.stream.music.timeline_file'),
+            fn (string $file): ?float => $this->probeSeconds($ffprobe, $file),
+            self::ASSUMED_TRACK_SECONDS,
+        );
+        $music = $timeline->from(
+            $this->musicFiles(),
+            $this->musicFiles((string) config('twentyone.stream.music.instrumental_dir')),
+            max(1, (int) config('twentyone.stream.music.instrumentals_per_vocal', 3)),
+            microtime(true),
+            (float) config('twentyone.stream.music.list_hours', 12),
+        );
         $path = rtrim((string) config('twentyone.stream.scene.work_dir'), '/').'/music.ffconcat';
         File::ensureDirectoryExists(dirname($path));
-        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat(MusicPlaylist::interleave(MusicPlaylist::order($files, max(1, $passes)), $instrumentals, perVocal: $perVocal)));
+        PlaylistWriter::writeAtomically($path, MusicPlaylist::ffconcat($music['files'], $music['inpoint']));
+        $this->log(sprintf('music: %s %s at %.0f s', $music['restarted'] ? 'new timeline,' : 'continuing', basename($music['files'][0]), $music['inpoint']));
 
         return $path;
+    }
+
+    /**
+     * A music file's length in seconds (ffprobe), null when it cannot be read.
+     */
+    private function probeSeconds(string $ffprobe, string $file): ?float
+    {
+        $result = Process::timeout(10)->env(ChildEnvironment::withoutSecrets())
+            ->run([$ffprobe, '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', $file]);
+        $seconds = trim($result->output());
+
+        return $result->successful() && is_numeric($seconds) && (float) $seconds > 0 ? (float) $seconds : null;
     }
 
     /**
