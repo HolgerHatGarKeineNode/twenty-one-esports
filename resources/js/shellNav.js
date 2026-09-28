@@ -26,6 +26,13 @@ export function shellHeader() {
         filter: '',
         kind: 'all',
         opener: null,
+        // Bumped by every deliberate focus move this component makes (the "/" shortcut, opening the hub,
+        // closing it). closeHub()'s own restore is deferred behind x-trap's teardown -- see there -- and by
+        // the time it runs, a later claim (e.g. "/" firing in between) may already have moved focus on
+        // purpose; comparing the ticket it captured against the current one is how it tells "nothing else
+        // touched focus since" from "something did", without guessing at document.activeElement, which a
+        // hidden, auto-blurred element does not update on a fixed schedule.
+        focusTicket: 0,
 
         init() {
             window.addEventListener('keydown', (event) => this.hotkey(event));
@@ -38,6 +45,7 @@ export function shellHeader() {
             const field = document.getElementById('site-search');
             if (!field || !field.checkVisibility()) return;
             event.preventDefault();
+            this.focusTicket++;
             field.focus();
         },
 
@@ -50,6 +58,7 @@ export function shellHeader() {
             this.search = false;
             this.hub = true;
             window.dispatchEvent(new CustomEvent('nav-sheet', { detail: 'hub' }));
+            this.focusTicket++;
             // The filter takes the focus on desktop only: on a phone it would open the keyboard over the grid.
             this.$nextTick(() => (window.matchMedia(DESKTOP).matches ? this.$refs.hubFilter : this.$root.querySelector('#game-hub'))?.focus({ preventScroll: true }));
         },
@@ -58,7 +67,14 @@ export function shellHeader() {
             if (!this.hub) return;
             this.hub = false;
             // After the panel is hidden and x-trap has let go: while the trap holds, focus cannot leave the panel.
-            if (returnFocus) this.$nextTick(() => this.opener?.focus({ preventScroll: true }));
+            // That release is not always inside the same tick this runs in -- it can land tens of ms later, long
+            // enough for something else (the "/" search shortcut, reopening the hub) to have deliberately
+            // claimed focus by then. Only reclaim it if no later claim has been made since -- never steal it
+            // back from whatever focused itself since.
+            if (returnFocus) {
+                const ticket = ++this.focusTicket;
+                this.$nextTick(() => { if (this.focusTicket === ticket) this.opener?.focus({ preventScroll: true }); });
+            }
         },
 
         shows(tile) {
@@ -85,6 +101,8 @@ export function shellSheet() {
     return {
         open: false,
         opener: null,
+        // Same arbitration as shellHeader.focusTicket above.
+        focusTicket: 0,
 
         init() {
             window.addEventListener('nav-sheet', (event) => event.detail !== 'more' && this.close(false));
@@ -99,6 +117,7 @@ export function shellSheet() {
             this.opener = button;
             this.open = true;
             window.dispatchEvent(new CustomEvent('nav-sheet', { detail: 'more' }));
+            this.focusTicket++;
             this.$nextTick(() => document.getElementById('more-sheet')?.focus({ preventScroll: true }));
         },
 
@@ -106,7 +125,12 @@ export function shellSheet() {
             if (!this.open) return;
             this.open = false;
             // After the panel is hidden and x-trap has let go: while the trap holds, focus cannot leave the panel.
-            if (returnFocus) this.$nextTick(() => this.opener?.focus({ preventScroll: true }));
+            // Same deferred-steal race as shellHeader.closeHub() above: only reclaim focus if no later claim
+            // (reopening the sheet, or anything else that bumps focusTicket) has been made since.
+            if (returnFocus) {
+                const ticket = ++this.focusTicket;
+                this.$nextTick(() => { if (this.focusTicket === ticket) this.opener?.focus({ preventScroll: true }); });
+            }
         },
     };
 }
