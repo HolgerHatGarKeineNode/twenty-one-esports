@@ -15,6 +15,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\PreSeason;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\SeasonChain\Candidate;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\LadderEvents;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\Resolution;
@@ -163,10 +164,14 @@ test('/mining and AdminSeason stay clean before Block 0, through the release, an
     // Block 0 through the real signing path: retype the supply, sign the label.
     $admin->setViewportSize(1440, 900);
     $admin->goto(ComputeUrl::from(route('admin.season')));
-    $admin->locator('#genesis-message')->fill('Pre-Season: every fair win is a block');
+    // The genesis message is part of the chain draft (P43): save it, then release.
+    $admin->locator('[data-test=draft-message]')->fill('Pre-Season: every fair win is a block');
+    $admin->locator('[data-test=save-draft]')->click();
+    BrowserWait::until($admin, '() => document.querySelector("[data-test=release-message]")?.innerText.includes("every fair win")', 10_000);
     $admin->locator('[data-test=retype-supply]')->fill('2100000');
     $admin->locator('[data-test=release-button]')->click();
-    BrowserWait::until($admin, '() => document.querySelector("[data-test=season-notice]") !== null', 10_000);
+    // The draft save showed a notice already: wait for the release's own.
+    BrowserWait::until($admin, '() => document.querySelector("[data-test=season-notice]")?.innerText.includes("Block 0 is released") || document.querySelector("[data-test=release-error]") !== null', 10_000);
 
     expect($admin->evaluate('() => document.querySelector("[data-test=admin-season]").dataset.state'))->toBe('live')
         ->and($admin->evaluate('() => window.__errors'))->toBe([]);
@@ -483,7 +488,9 @@ test('AdminSeason P38: the board plans the next season and releases it with the 
     // From the planned Block 0 on, one board member releases it through the real signing path.
     $this->travel(2)->hours();
     $page->goto(ComputeUrl::from(route('admin.season')));
-    $page->locator('#genesis-message')->fill('Winter Season: every fair win is a block');
+    $page->locator('[data-test=draft-message]')->fill('Winter Season: every fair win is a block');
+    $page->locator('[data-test=save-draft]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=release-message]")?.innerText.includes("Winter Season")', 10_000);
     $page->locator('[data-test=retype-supply]')->fill('2100000');
     $page->locator('[data-test=release-button]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=season-notice]")?.innerText.includes("Winter Season") || document.querySelector("[data-test=release-error]") !== null || [...document.querySelectorAll("[data-test=release-block0] [role=alert]")].some((alert) => alert.innerText.trim() !== "")', 15_000);
@@ -499,4 +506,69 @@ test('AdminSeason P38: the board plans the next season and releases it with the 
         // 1029: 29 × 0.5 = 14.5 rounds to 15; 971: −14.5 rounds to −15.
         ->and($seeds)->toBe([1015, 985])
         ->and(chainProblems($page, [route('admin.season'), route('mining')]))->toBe([]);
+});
+
+test('AdminSeason P43: the chain draft form and "What Block 0 signs" stay clean and inside 375 and 1440 px, and a save round-trips', function () {
+    $board = User::factory()->create(['name' => 'vorstand']);
+    config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
+
+    // Positive control: an injected throw and a 404 fetch must show up as problems on this page.
+    $control = chainPage($board, route('admin.season'), 'window.addEventListener("load", () => { setTimeout(() => { throw new Error("p43-positive-control"); }, 0); fetch("/p43-positive-control-missing"); });');
+    $controlProblems = implode("\n", chainProblems($control, [route('admin.season')]));
+    BrowserWait::until($control, '() => (window.__errors || []).some((entry) => entry.startsWith("404 "))', 10_000);
+
+    expect($controlProblems)->toContain('p43-positive-control')
+        ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('p43-positive-control-missing');
+
+    $page = chainPage($board, route('admin.season'));
+
+    expect(chainProblems($page, [route('admin.season')]))->toBe([]);
+
+    $sizes = [];
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.season')));
+        $sizes[$width] = $page->evaluate('() => ["season-chain-draft", "draft-table", "draft-supply", "draft-share-ea-sports-fc", "save-draft", "season-preview", "preview-wins", "preview-genesis"].map((name) => {'
+            .' const r = document.querySelector(`[data-test=${name}]`).getBoundingClientRect();'
+            .' return [name, Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height)]; })');
+    }
+
+    fwrite(STDERR, "\n[admin-season P43] name/left/right/width/height: ".json_encode($sizes)."\n");
+
+    foreach ([375, 1440] as $width) {
+        foreach ($sizes[$width] as [$name, $left, $right, $boxWidth, $boxHeight]) {
+            // The table and its inputs scroll inside their own box on a phone; everything else stays inside the viewport.
+            if (! in_array($name, ['draft-table', 'draft-share-ea-sports-fc', 'preview-wins'], true)) {
+                expect($right)->toBeLessThanOrEqual($width);
+            }
+
+            expect($left)->toBeGreaterThanOrEqual(0)->and($boxHeight)->toBeGreaterThan(0);
+        }
+    }
+
+    // A save through a Livewire round-trip at 375: the log names it, the preview signs the new share.
+    $page->setViewportSize(375, 800);
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('[data-test=draft-share-chess]')->fill('30');
+    $page->locator('[data-test=draft-message]')->fill('Block 0: every fair win is a block');
+    $page->locator('[data-test=save-draft]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settings-log]")?.innerText.includes("35 → 30")', 10_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate('() => document.querySelector("[data-test=preview-genesis]").innerText'))->toContain('["share","chess","30"]')
+        ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=draft-warning]")].map((el) => el.innerText).join(" | ")'))->toContain('The shares add up to 95 %')
+        ->and(ChainDraft::stored()['shares']['chess'] ?? null)->toBe(30)
+        ->and(chainProblems($page, [route('admin.season'), route('home'), route('rules')]))->toBe([]);
+
+    // A refused value shows its reason and saves nothing.
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('[data-test=draft-share-chess]')->fill('50');
+    $page->locator('[data-test=save-draft]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=draft-error]") !== null', 10_000);
+
+    expect($page->evaluate('() => document.querySelector("[data-test=draft-error]").innerText'))->toContain('The shares add up to 115 %')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and(ChainDraft::stored()['shares']['chess'] ?? null)->toBe(30);
 });

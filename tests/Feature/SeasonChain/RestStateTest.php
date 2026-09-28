@@ -33,7 +33,7 @@ use Tests\Support\TrustedFacts;
 
 beforeEach(function () {
     $this->freezeTime();
-    config(['esports.preseason.block0_at' => now()->addDays(2)->addHours(4)->toIso8601String()]);
+    planBlock0(now()->addDays(2)->addHours(4)->toIso8601String());
 });
 
 /** @return array{0: Lineup, 1: User} */

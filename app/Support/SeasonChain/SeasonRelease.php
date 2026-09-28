@@ -27,8 +27,15 @@ use Illuminate\Support\Facades\DB;
  * (`32152`, LadderEvents). Everything goes to the league relays after the
  * commit, and every player who asked to be told hears it (NotifyBlockZero).
  *
- * The draft is config/season.php (the Pre-Season defaults) plus the genesis
- * message the admin types. The first release is the Pre-Season; every later
+ * The draft is the chain draft of the board (ChainDraft, P43: supply,
+ * subsidy, weights, share groups, shares, daily limits, eras, claim window,
+ * trust minimum and the genesis message) and the rating draft
+ * (RatingSettings). The admin page carries the hash of both from the moment
+ * the admin reads them to the signed release: a draft that changed in
+ * between is refused, so Block 0 signs exactly what was on the screen. The
+ * supply is the most the season pays out after it ends, not money held now:
+ * nothing checks a balance (user decision 2026-09-28). The first release is
+ * the Pre-Season; every later
  * one follows the board's plan (SeasonPlans, P38): its slug, name and
  * length, from its planned Block 0 on and only once the season before it has
  * ended. Such a release is a season transition (NIP "Season transition"):
@@ -39,9 +46,10 @@ use Illuminate\Support\Facades\DB;
  * have no season and are not touched.
  *
  * Fail closed: without the league key or the trust key, for anyone not on the board, with a
- * wrong supply, while a season is live, without a plan, before the planned
- * Block 0, or with a label that is not exactly the prepared one, nothing is
- * signed and nothing is written.
+ * wrong supply, without a genesis message, with a draft that changed, while
+ * a season is live, without a plan, before the planned Block 0, or with a
+ * label that is not exactly the prepared one, nothing is signed and nothing
+ * is written.
  */
 final class SeasonRelease
 {
@@ -59,34 +67,36 @@ final class SeasonRelease
 
     public const CONSENSUS = 'season-chain-v1';
 
-    /** Genesis tags that the parameter digest covers, in this order. */
-    private const DIGEST_TAGS = ['season', 'supply', 'subsidy', 'weight', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'halving', 'ends', 'claim', 'consensus'];
+    /** Genesis tags that the parameter digest covers (`group` from NIP rev. 9.5 on). */
+    private const DIGEST_TAGS = ['season', 'supply', 'subsidy', 'weight', 'group', 'share', 'daily', 'pairlimit', 'subtree', 'moves', 'halving', 'ends', 'claim', 'consensus'];
 
     public const MESSAGE_MAX = 280;
 
     public function __construct(private SignedEventGate $gate) {}
 
     /**
-     * The draft of config/season.php, for the Pre-Season or, once a season
-     * exists, for the planned next season (its slug).
+     * The chain draft (ChainDraft) as the genesis signs it, for the
+     * Pre-Season or, once a season exists, for the planned next season (its
+     * slug).
      *
-     * @return array{slug: string, supply: int, subsidy: int, halving_seconds: int, eras: int, claim_seconds: int, minimum_trust: int, parameters: array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}}
+     * @return array{slug: string, supply: int, subsidy: int, halving_seconds: int, weeks: int, claim_seconds: int, minimum_trust: int, message: string|null, parameters: array{weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}}
      */
     public static function draft(): array
     {
-        /** @var array{supply: int, subsidy: int, weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, halving_seconds: int, eras: int, claim_seconds: int} $chain */
-        $chain = config('season.chain');
+        $chain = ChainDraft::current();
 
         return [
             'slug' => SeasonPlans::current()->slug ?? self::SLUG,
             'supply' => $chain['supply'],
             'subsidy' => $chain['subsidy'],
-            'halving_seconds' => $chain['halving_seconds'],
-            'eras' => $chain['eras'],
-            'claim_seconds' => $chain['claim_seconds'],
-            'minimum_trust' => (int) config('season.trust_minimum'),
+            'halving_seconds' => $chain['halving_days'] * 86400,
+            'weeks' => ChainDraft::weeks($chain),
+            'claim_seconds' => $chain['claim_days'] * 86400,
+            'minimum_trust' => $chain['trust_minimum'],
+            'message' => $chain['message'],
             'parameters' => [
                 'weights' => $chain['weights'],
+                'groups' => $chain['groups'],
                 'shares' => $chain['shares'],
                 'daily' => $chain['daily'],
                 'pairlimit' => $chain['pairlimit'],
@@ -96,21 +106,19 @@ final class SeasonRelease
         ];
     }
 
+    /** What the admin page carries from reading the draft to the release (ChainDraft::hash()). */
+    public static function draftHash(): string
+    {
+        return ChainDraft::hash(ChainDraft::current());
+    }
+
     /**
-     * The planned end of a season released now: the Pre-Season runs every
-     * era in full, a planned season its planned number of weeks.
+     * The planned end of a season released now: the Pre-Season runs the
+     * draft's weeks, a planned season its planned weeks.
      */
     public static function plannedEnd(CarbonImmutable $now): int
     {
-        $plan = SeasonPlans::current();
-
-        if ($plan !== null) {
-            return $now->getTimestamp() + $plan->lengthSeconds();
-        }
-
-        $draft = self::draft();
-
-        return $now->getTimestamp() + $draft['eras'] * $draft['halving_seconds'];
+        return $now->getTimestamp() + self::draft()['weeks'] * 604800;
     }
 
     /** "Pre-Season", or the planned season's name. */
@@ -171,11 +179,11 @@ final class SeasonRelease
      *
      * @throws SeasonReleaseRefused
      */
-    public function prepare(User $admin, string $retypedSupply, string $message, int $endsAt): array
+    public function prepare(User $admin, string $retypedSupply, int $endsAt, string $draftHash): array
     {
-        $league = $this->check($admin, $retypedSupply, $message, $endsAt);
+        $league = $this->check($admin, $retypedSupply, $endsAt, $draftHash);
 
-        return $this->labelTemplate($league, $message, $endsAt);
+        return $this->labelTemplate($league, $endsAt);
     }
 
     /**
@@ -183,17 +191,26 @@ final class SeasonRelease
      *
      * @throws SeasonReleaseRefused|RejectedEvent
      */
-    public function release(User $admin, string $retypedSupply, string $message, int $endsAt, mixed $signed): Season
+    public function release(User $admin, string $retypedSupply, int $endsAt, string $draftHash, mixed $signed): Season
     {
-        $league = $this->check($admin, $retypedSupply, $message, $endsAt);
-        $template = $this->labelTemplate($league, $message, $endsAt);
+        $league = $this->check($admin, $retypedSupply, $endsAt, $draftHash);
+        $template = $this->labelTemplate($league, $endsAt);
         $label = $this->gate->check(is_array($signed) && array_is_list($signed) ? ($signed[0] ?? null) : $signed, $template, $admin);
         $draft = self::draft();
+        $message = (string) $draft['message'];
+        $rating = RatingSettings::draft();
         $plan = SeasonPlans::current();
         $name = self::seasonName();
 
         try {
-            return DB::transaction(function () use ($league, $admin, $message, $endsAt, $label, $draft, $plan, $name): Season {
+            return DB::transaction(function () use ($league, $admin, $message, $endsAt, $draftHash, $label, $draft, $rating, $plan, $name): Season {
+                // The draft may not change between the admin's check and the genesis: read it again, not from the request memo.
+                RatingSettings::forget();
+
+                if (! hash_equals(self::draftHash(), $draftHash)) {
+                    throw new SeasonReleaseRefused(self::draftChanged());
+                }
+
                 // A planned season continues the one it was planned after; lock it, so two releases serialize.
                 $previous = $plan === null ? null : Season::query()->whereKey($plan->after_season_id)->lockForUpdate()->first();
 
@@ -217,7 +234,7 @@ final class SeasonRelease
                     : $this->announce($league, $plan->slug, $name, $genesisAt, $endsAt);
 
                 $tags = [
-                    ...$this->parameterTags($endsAt),
+                    ...self::parameterTags($draft, $endsAt),
                     ['a', $this->announcementAddress($league), ''],
                     ['e', $adminList->event_id, '', $adminList->pubkey],
                     ['e', $labelEvent->event_id, '', $labelEvent->pubkey],
@@ -243,7 +260,7 @@ final class SeasonRelease
                     'minimum_trust' => $draft['minimum_trust'],
                     'parameters' => $draft['parameters'],
                     // The admin's rating draft, frozen here as the ladders below freeze it in their tags.
-                    'rating_parameters' => RatingSettings::draft(),
+                    'rating_parameters' => $rating,
                     'genesis_message' => $message,
                     'digest' => (string) $label->tag('x'),
                     'genesis_at' => CarbonImmutable::createFromTimestamp($genesisAt),
@@ -346,7 +363,7 @@ final class SeasonRelease
     /**
      * @throws SeasonReleaseRefused
      */
-    private function check(User $admin, string $retypedSupply, string $message, int $endsAt): LeagueKey
+    private function check(User $admin, string $retypedSupply, int $endsAt, string $draftHash): LeagueKey
     {
         $refusal = self::refusal($admin);
 
@@ -354,16 +371,19 @@ final class SeasonRelease
             throw new SeasonReleaseRefused($refusal);
         }
 
-        $supply = self::draft()['supply'];
+        if (! hash_equals(self::draftHash(), $draftHash)) {
+            throw new SeasonReleaseRefused(self::draftChanged());
+        }
+
+        $draft = self::draft();
+        $supply = $draft['supply'];
 
         if (preg_replace('/[\s\x{00A0}\x{202F}.,_]/u', '', $retypedSupply) !== (string) $supply) {
             throw new SeasonReleaseRefused(__('Type the supply exactly as shown: :supply sats.', ['supply' => number_format($supply, 0, '', ' ')]));
         }
 
-        $message = trim($message);
-
-        if ($message === '' || mb_strlen($message) > self::MESSAGE_MAX) {
-            throw new SeasonReleaseRefused(__('Write the genesis message, up to :max characters.', ['max' => self::MESSAGE_MAX]));
+        if ($draft['message'] === null) {
+            throw new SeasonReleaseRefused(__('Write the genesis message in the chain draft first, up to :max characters.', ['max' => self::MESSAGE_MAX]));
         }
 
         // The end is fixed when the admin starts the release (a locked value of
@@ -374,15 +394,26 @@ final class SeasonRelease
             throw new SeasonReleaseRefused(__('This release has expired. Please start again.'));
         }
 
+        // A plan can shorten the season after the draft was saved.
+        if ($draft['halving_seconds'] > $draft['weeks'] * 604800) {
+            throw new SeasonReleaseRefused(__('An era of :days days is longer than the season of :weeks weeks.', ['days' => intdiv($draft['halving_seconds'], 86400), 'weeks' => $draft['weeks']]));
+        }
+
         return LeagueKey::required();
+    }
+
+    private static function draftChanged(): string
+    {
+        return __('The draft changed since you opened this page. Check the numbers again, then release.');
     }
 
     /**
      * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
      */
-    private function labelTemplate(LeagueKey $league, string $message, int $endsAt): array
+    private function labelTemplate(LeagueKey $league, int $endsAt): array
     {
-        $supply = self::draft()['supply'];
+        $draft = self::draft();
+        $supply = $draft['supply'];
 
         return [
             'kind' => self::LABEL,
@@ -390,7 +421,7 @@ final class SeasonRelease
                 ['L', self::NAMESPACE],
                 ['l', self::RELEASE_LABEL, self::NAMESPACE],
                 ['a', $this->announcementAddress($league), ''],
-                ['x', self::digest($message, $this->parameterTags($endsAt))],
+                ['x', self::digest((string) $draft['message'], self::parameterTags($draft, $endsAt))],
                 ['alt', 'Label: release of Block 0 of the TWENTY ONE Esports '.self::seasonName()],
             ],
             'content' => 'Release Block 0 of the '.self::seasonName().". Supply retyped: {$supply}.",
@@ -399,18 +430,26 @@ final class SeasonRelease
     }
 
     /**
-     * The genesis tags the digest covers, in NIP order.
+     * The genesis tags the digest covers, in NIP order, for a draft
+     * (self::draft()): what Block 0 signs, and what the admin page shows
+     * before the release ("What Block 0 signs"). A share group is a `group`
+     * row before the shares; a draft without one signs exactly the tags of
+     * NIP rev. 5.
      *
+     * @param  array{slug: string, supply: int, subsidy: int, halving_seconds: int, claim_seconds: int, parameters: array{weights: array<string, int>, groups?: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}}  $draft
      * @return list<list<string>>
      */
-    private function parameterTags(int $endsAt): array
+    public static function parameterTags(array $draft, int $endsAt): array
     {
-        $draft = self::draft();
         $p = $draft['parameters'];
         $tags = [['season', $draft['slug']], ['supply', (string) $draft['supply']], ['subsidy', (string) $draft['subsidy']]];
 
         foreach ($p['weights'] as $key => $milli) {
             $tags[] = ['weight', (string) $key, self::factor($milli)];
+        }
+
+        foreach ($p['groups'] ?? [] as $group => $games) {
+            $tags[] = ['group', (string) $group, ...$games];
         }
 
         foreach ($p['shares'] as $game => $percent) {

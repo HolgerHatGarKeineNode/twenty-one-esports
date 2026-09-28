@@ -16,6 +16,7 @@ use App\Support\Rating\GlobalRating;
 use App\Support\Rating\RankTiers;
 use App\Support\SeasonChain\BlockChain;
 use App\Support\SeasonChain\Candidate;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\ConsensusRules;
 use App\Support\SeasonChain\Estimator;
@@ -97,16 +98,16 @@ function seasonLedgerChain(): BlockChain
     return $chain;
 }
 
-test('config/season.php carries the Pre-Season defaults of the ledger', function () {
+test('config/season.php carries the Pre-Season defaults of the ledger, but the chain values the board decided on 2026-09-28', function () {
     $genesis = seasonLedger()['genesis'];
-    $season = SeasonParameters::fromConfig('pre-season', CarbonImmutable::parse($genesis['genesis_at']));
+    $season = SeasonParameters::fromDraft(ChainDraft::defaults(), 'pre-season', CarbonImmutable::parse($genesis['genesis_at']));
     $rating = seasonLedger()['rating'];
 
-    expect([$season->supply, $season->subsidy, $season->halvingSeconds, $season->claimSeconds, $season->endsAt->toIso8601ZuluString(), $season->eras()])
-        ->toBe([$genesis['supply'], $genesis['subsidy'], $genesis['halving_seconds'], $genesis['claim_seconds'], $genesis['ends_at'], $genesis['eras']])
-        ->and([$season->genesis->weights, $season->genesis->shares, $season->genesis->daily])->toEqual([$genesis['weights'], $genesis['shares'], $genesis['daily']])
+    expect([$season->supply, $season->halvingSeconds, $season->claimSeconds, $season->endsAt->toIso8601ZuluString(), $season->eras()])
+        ->toBe([$genesis['supply'], $genesis['halving_seconds'], $genesis['claim_seconds'], $genesis['ends_at'], $genesis['eras']])
         ->and([$season->genesis->pairLimitPerDay, $season->genesis->pairLimitPerSeason, $season->genesis->subtree, $season->genesis->moves])
         ->toBe([...$genesis['pairlimit'], $genesis['subtree'], $genesis['moves']])
+        ->and(ChainDraft::defaults()['trust_minimum'])->toBe($genesis['minimum_trust'])
         ->and(ConsensusRules::fromConfig()->minimumTrust)->toBe($genesis['minimum_trust'])
         ->and([EloRating::fromConfig()->k, EloRating::fromConfig()->provisionalK, EloRating::fromConfig()->provisional])
         ->toBe([$rating['k'], $rating['provisional_k'], $rating['provisional']])
@@ -114,6 +115,17 @@ test('config/season.php carries the Pre-Season defaults of the ledger', function
         ->and(ClanRating::fromConfig()->hashrate(1, 1, 1, 1))->toBe(array_sum($rating['hashrate']['points']))
         ->and(GlobalRating::fromConfig()->minimumWeight)->toBe(5)
         ->and(Estimator::fromConfig()->windowDays)->toBe(seasonLedger()['estimator']['window_days']);
+
+    // User decision 2026-09-28 (P43): subsidy 2 100 (about 500 rewarded wins in era 1), both EA Sports FC
+    // editions mine and share one share and one daily limit; chess 35 / Rocket League 40 / FC 25. The
+    // engine test below keeps the ledger's own genesis.
+    expect($season->subsidy)->toBe(2_100)
+        ->and(intdiv($season->eraBudget(1), $season->rewardPerPlayer(1000, 1)))->toBe(500)
+        ->and($season->genesis->shares)->toBe(['chess' => 35, 'rocket-league' => 40, 'ea-sports-fc' => 25])
+        ->and($season->genesis->daily)->toBe(['chess' => 5, 'rocket-league' => 5, 'ea-sports-fc' => 5])
+        ->and($season->genesis->groups)->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']])
+        ->and(array_intersect_key($season->genesis->weights, $genesis['weights']))->toEqual($genesis['weights'])
+        ->and(array_keys(array_diff_key($season->genesis->weights, $genesis['weights'])))->toBe(['ea-sports-fc-26/1v1', 'ea-sports-fc-26/2v2', 'ea-sports-fc-27/1v1', 'ea-sports-fc-27/2v2']);
 });
 
 test('the engine reproduces every verdict, block, era and reward of the ledger', function () {

@@ -105,7 +105,7 @@ final class LadderEvents
             fn (array $tag): bool => in_array($tag[0] ?? null, self::FROZEN, true),
         ));
 
-        $tags = [['d', $d], ...$frozen, ['trust', $trustKey, (string) $season->minimum_trust]];
+        $tags = [['d', $d], ...$frozen, self::trustTag($trustKey, $season->minimum_trust)];
         $tags[] = ['e', $season->genesisId(), ''];
 
         $last = $season->attestations()->where('ladder_address', Ladders::KIND.':'.$league->pubkey().':'.$d)->orderByDesc('id')->value('event_id');
@@ -175,8 +175,21 @@ final class LadderEvents
             $tags[] = ['variant', 'standard'];
         }
 
-        $settings = RatingSettings::forSeason($season);
-        $tags[] = ['rating', 'elo', (string) $settings['rating']['start'], (string) $settings['rating']['k'], (string) $settings['rating']['scale']];
+        return [...$tags, ...self::ratingTags(RatingSettings::forSeason($season)), ...$this->resetTags($season, $game, $mode)];
+    }
+
+    /**
+     * The rating values every ladder of a season signs (`rating`, `tier`,
+     * `provisional`, `hashrate`), from RatingSettings: what a first version
+     * carries, and what the admin page shows before Block 0 ("What Block 0
+     * signs").
+     *
+     * @param  array{rating: array{start: int, k: int, provisional_k: int, provisional: int, scale: int, daily_pair_limit: int|null}, tiers: array<string, int>, hashrate: array{win: int, draw: int, loss: int, team_win_bonus: int}}  $settings
+     * @return list<list<string>>
+     */
+    public static function ratingTags(array $settings): array
+    {
+        $tags = [['rating', 'elo', (string) $settings['rating']['start'], (string) $settings['rating']['k'], (string) $settings['rating']['scale']]];
 
         foreach ($settings['tiers'] as $tier => $minimum) {
             $tags[] = ['tier', (string) $tier, (string) $minimum];
@@ -185,7 +198,18 @@ final class LadderEvents
         $tags[] = ['provisional', (string) $settings['rating']['provisional'], (string) $settings['rating']['provisional_k']];
         $tags[] = ['hashrate', ...array_map(strval(...), [$settings['hashrate']['win'], $settings['hashrate']['draw'], $settings['hashrate']['loss'], $settings['hashrate']['team_win_bonus']])];
 
-        return [...$tags, ...$this->resetTags($season, $game, $mode)];
+        return $tags;
+    }
+
+    /**
+     * The ladder's trust gate: the trust key and the minimum rank (NIP
+     * "Trust gate").
+     *
+     * @return list<string>
+     */
+    public static function trustTag(string $trustKey, int $minimum): array
+    {
+        return ['trust', $trustKey, (string) $minimum];
     }
 
     /**

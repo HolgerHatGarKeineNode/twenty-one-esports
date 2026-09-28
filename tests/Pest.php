@@ -2,8 +2,13 @@
 
 use App\Models\NostrEvent;
 use App\Models\Season;
+use App\Models\SeasonSettingChange;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Rating\RatingSettings;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonChains;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Vite;
 use Tests\Integration\Support\Stack;
@@ -140,4 +145,26 @@ function openSeason(array $attributes = []): Season
     $season->save();
 
     return $season;
+}
+
+/**
+ * A chain draft (ChainDraft, P43) as the board saved it on the admin season
+ * page: the defaults with $chain over them. The admin form path is tested in
+ * tests/Feature/SeasonChain/ChainDraftTest.php.
+ *
+ * @param  array<string, mixed>  $chain
+ */
+function saveChainDraft(array $chain = []): SeasonSettingChange
+{
+    return SeasonSettingChange::query()->create([
+        'changed_by_pubkey' => str_repeat('b', 64),
+        'values' => [...RatingSettings::draft(), 'chain' => [...ChainDraft::defaults(), ...$chain]],
+        'changes' => [],
+    ]);
+}
+
+/** The Pre-Season's planned Block 0 in the saved chain draft; null = "date coming soon". */
+function planBlock0(CarbonInterface|string|null $at): void
+{
+    saveChainDraft([...(ChainDraft::stored() ?? []), 'block0_at' => $at === null ? null : CarbonImmutable::parse($at)->getTimestamp()]);
 }

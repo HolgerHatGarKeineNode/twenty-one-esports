@@ -35,6 +35,8 @@ beforeEach(function () {
     $this->board = User::factory()->withPubkey($this->boardSigner->pubkey)->create();
     config(['esports.board' => [NostrKeys::hexToNpub($this->board->pubkey)]]);
 
+    // The genesis message is part of the board's chain draft (P43).
+    saveChainDraft(['message' => RELEASE_MESSAGE]);
     $this->release = app(SeasonRelease::class);
     $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
 });
@@ -44,13 +46,13 @@ function releaseAs(User $admin, TestSigner $signer, string $supply = '2 100 000'
 {
     $release = app(SeasonRelease::class);
     $endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
-    $template = $release->prepare($admin, $supply, RELEASE_MESSAGE, $endsAt);
+    $template = $release->prepare($admin, $supply, $endsAt, SeasonRelease::draftHash());
 
     if ($tamper !== null) {
         $template = $tamper($template);
     }
 
-    return $release->release($admin, $supply, RELEASE_MESSAGE, $endsAt, $signer->signTemplates([$template]));
+    return $release->release($admin, $supply, $endsAt, SeasonRelease::draftHash(), $signer->signTemplates([$template]));
 }
 
 test('the parameter digest is the one of the NIP example genesis', function () {
@@ -153,9 +155,9 @@ test('a label that is not the prepared one (another digest) is refused and nothi
 
 test('a stale release (the planned end drifted by more than an hour) is refused', function () {
     $endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
-    $template = $this->release->prepare($this->board, '2100000', RELEASE_MESSAGE, $endsAt);
+    $template = $this->release->prepare($this->board, '2100000', $endsAt, SeasonRelease::draftHash());
     $this->travel(2)->hours();
 
-    expect(fn () => $this->release->release($this->board, '2100000', RELEASE_MESSAGE, $endsAt, $this->boardSigner->signTemplates([$template])))
+    expect(fn () => $this->release->release($this->board, '2100000', $endsAt, SeasonRelease::draftHash(), $this->boardSigner->signTemplates([$template])))
         ->toThrow(SeasonReleaseRefused::class, 'expired');
 });

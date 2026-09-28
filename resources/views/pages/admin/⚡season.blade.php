@@ -13,8 +13,11 @@ use App\Support\PreSeason;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\RatingSettings;
 use App\Support\Rating\SoftReset;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\ConsensusParameters;
+use App\Support\SeasonChain\LadderEvents;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonPlans;
 use App\Support\SeasonChain\SeasonRelease;
@@ -49,6 +52,13 @@ use Livewire\WithPagination;
  * season with the soft reset, and the soft-reset preview starts at the
  * planned f.
  *
+ * P43: the chain draft (ChainDraft): every value Block 0 signs, with the
+ * Pre-Season's planned Block 0 and length, the trust minimum and the
+ * genesis message, a table of every game and mode of the registry, the
+ * preview "What Block 0 signs" built by the functions that sign it, and the
+ * draft hash the page carries into the release (a changed draft is
+ * refused). During a season a rule change may add a game or mode.
+ *
  * Every admin sees the page; editing the rating draft, releasing Block 0,
  * planning a season and changing chain rules is for the board (the public
  * admin list) only (P39), shown read-only to the others and checked again
@@ -59,11 +69,27 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     public string $supply = '';
 
-    public string $message = '';
-
     /** The planned end of the release, fixed when the page opens. */
     #[Locked]
     public int $endsAt = 0;
+
+    /** The draft the page shows (SeasonRelease::draftHash()): the release is refused if it changed since. */
+    #[Locked]
+    public string $draftHash = '';
+
+    /** @var array<string, string> the chain draft form: `block0_at`, `weeks`, `supply`, … (ChainDraft::fromInput()) */
+    public array $draft = [];
+
+    /** @var array<string, string> `<game>/<mode>` => factor, empty = does not mine */
+    public array $draftWeights = [];
+
+    /** @var array<string, string> share key => percent */
+    public array $draftShares = [];
+
+    /** @var array<string, string> share key => blocks per player a day */
+    public array $draftDaily = [];
+
+    public string $draftError = '';
 
     public string $releaseError = '';
 
@@ -119,11 +145,81 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     {
         Gate::authorize('admin');
 
-        $this->message = (string) PreSeason::genesisMessage();
         $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
+        $this->draftHash = SeasonRelease::draftHash();
         $this->fillChangeForm();
         $this->fillSettingsForm();
         $this->fillPlanForm();
+        $this->fillDraftForm();
+    }
+
+    /**
+     * What Block 0 signs, from the saved draft: the genesis tags
+     * (SeasonRelease::parameterTags()), the rating values of every ladder
+     * (LadderEvents::ratingTags()) and the trust gate (LadderEvents::trustTag()),
+     * each built by the function that signs it, with the warnings.
+     *
+     * @return array{genesis: list<list<string>>, ladder: list<list<string>>, trust: list<string>, message: string|null, warnings: list<string>}
+     */
+    #[Computed]
+    public function preview(): array
+    {
+        $draft = SeasonRelease::draft();
+
+        return [
+            'genesis' => SeasonRelease::parameterTags($draft, $this->endsAt),
+            'ladder' => LadderEvents::ratingTags(RatingSettings::draft()),
+            'trust' => LadderEvents::trustTag(LeagueKey::trust()?->pubkey() ?? __('(trust key not set)'), $draft['minimum_trust']),
+            'message' => $draft['message'],
+            'warnings' => ChainDraft::warnings(ChainDraft::current(), $this->chain['estimate']['warnings']),
+        ];
+    }
+
+    /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
+    public function saveDraft(): void
+    {
+        Gate::authorize('admin');
+
+        $this->draftError = '';
+        $this->notice = '';
+        $block0 = null;
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', (string) ($this->draft['block0_at'] ?? '')) === 1) {
+            $block0 = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $this->draft['block0_at'], PreSeason::timezoneFor($this->admin()))?->utc()->startOfMinute();
+        }
+
+        $text = fn (string $key): string => trim((string) ($this->draft[$key] ?? ''));
+
+        try {
+            $chain = ChainDraft::fromInput([
+                'block0_at' => $block0 ?: null,
+                'weeks' => $text('weeks'),
+                'supply' => $text('supply'),
+                'subsidy' => $text('subsidy'),
+                'halving_days' => $text('halving_days'),
+                'claim_days' => $text('claim_days'),
+                'trust_minimum' => $text('trust_minimum'),
+                'message' => $text('message'),
+                'weights' => array_map(strval(...), $this->draftWeights),
+                'shares' => array_map(strval(...), $this->draftShares),
+                'daily' => array_map(strval(...), $this->draftDaily),
+                'pair_day' => $text('pair_day'),
+                'pair_season' => $text('pair_season'),
+                'subtree' => $text('subtree'),
+                'moves' => $text('moves'),
+            ]);
+            $change = ChainDraft::save($this->admin(), $chain);
+        } catch (SeasonReleaseRefused $refused) {
+            $this->draftError = $refused->getMessage();
+
+            return;
+        }
+
+        $this->notice = $change === null ? __('Nothing changed.') : __('Saved. Block 0 signs these values; check "What Block 0 signs" below.');
+        unset($this->chain, $this->preview, $this->settingsLog);
+        $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
+        $this->draftHash = SeasonRelease::draftHash();
+        $this->fillDraftForm();
     }
 
     /** The season the planner plans after: the newest one, live or ended. */
@@ -179,9 +275,11 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         $this->notice = $plan === null ? __('Nothing changed.') : __('Saved and announced. :season can be released from its Block 0 on.', ['season' => $plan->name]);
-        unset($this->plan, $this->planLog, $this->releaseRefusal);
+        unset($this->plan, $this->planLog, $this->releaseRefusal, $this->chain, $this->preview);
         $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
+        $this->draftHash = SeasonRelease::draftHash();
         $this->fillPlanForm();
+        $this->fillDraftForm();
     }
 
     /**
@@ -271,7 +369,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         $this->notice = $change === null ? __('Nothing changed.') : __('Saved. Block 0 releases the season with these values.');
-        unset($this->settingsLog);
+        unset($this->settingsLog, $this->preview);
+        $this->draftHash = SeasonRelease::draftHash();
         $this->fillSettingsForm();
     }
 
@@ -296,6 +395,34 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         ];
     }
 
+    /** The label of a logged dot path: rating, tier, hashrate and chain draft values. */
+    public function changeLabel(string $path): string
+    {
+        $labels = [
+            ...$this->settingLabels(),
+            'chain.block0_at' => __('Planned Block 0'),
+            'chain.weeks' => __('Length in weeks'),
+            'chain.supply' => __('Supply in sats'),
+            'chain.subsidy' => __('Base subsidy in sats'),
+            'chain.halving_days' => __('Days per era'),
+            'chain.claim_days' => __('Claim window in days'),
+            'chain.trust_minimum' => __('Trust rank for rated play'),
+            'chain.message' => __('Genesis message'),
+            'chain.pairlimit' => __('Blocks per pairing a day / a season'),
+            'chain.subtree' => __('Same trust circle from % (101 = off)'),
+            'chain.moves' => __('Minimum chess moves'),
+        ];
+        $parts = explode('.', $path, 3);
+
+        return $labels[$path] ?? match (true) {
+            $parts[0] === 'tiers' => RankTiers::label($parts[1] ?? ''),
+            $parts[0] === 'chain' && ($parts[1] ?? '') === 'weights' => __(':key weight', ['key' => ChainOverview::keyLabel($parts[2] ?? '')]),
+            $parts[0] === 'chain' && ($parts[1] ?? '') === 'shares' => __(':game share %', ['game' => ChainDraft::shareLabel($parts[2] ?? '')]),
+            $parts[0] === 'chain' && ($parts[1] ?? '') === 'daily' => __(':game a day', ['game' => ChainDraft::shareLabel($parts[2] ?? '')]),
+            default => $path,
+        };
+    }
+
     #[Computed]
     public function releaseRefusal(): ?string
     {
@@ -318,7 +445,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $this->releaseError = '';
 
         try {
-            return [app(SeasonRelease::class)->prepare($this->admin(), $this->supply, $this->message, $this->endsAt)];
+            return [app(SeasonRelease::class)->prepare($this->admin(), $this->supply, $this->endsAt, $this->draftHash)];
         } catch (SeasonReleaseRefused $refused) {
             $this->releaseError = $refused->getMessage();
 
@@ -333,7 +460,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $name = SeasonRelease::seasonName();
 
         try {
-            app(SeasonRelease::class)->release($this->admin(), $this->supply, $this->message, $this->endsAt, json_decode($signed, true));
+            app(SeasonRelease::class)->release($this->admin(), $this->supply, $this->endsAt, $this->draftHash, json_decode($signed, true));
         } catch (SeasonReleaseRefused $refused) {
             $this->releaseError = $refused->getMessage();
 
@@ -346,10 +473,12 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
         $this->notice = __('Block 0 is released. The :season chain runs.', ['season' => $name]);
         $this->reset('supply');
-        unset($this->chain, $this->releaseRefusal, $this->planAfter, $this->plan, $this->planLog, $this->planRefusal, $this->settingsLocked, $this->resetFrom);
+        unset($this->chain, $this->releaseRefusal, $this->planAfter, $this->plan, $this->planLog, $this->planRefusal, $this->settingsLocked, $this->resetFrom, $this->preview);
+        $this->draftHash = SeasonRelease::draftHash();
         $this->fillChangeForm();
         $this->fillSettingsForm();
         $this->fillPlanForm();
+        $this->fillDraftForm();
     }
 
     public function saveChange(): void
@@ -399,6 +528,11 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         foreach ($this->weights as $key => $factor) {
             $normalized = str_replace(',', '.', trim($factor));
 
+            // Empty: a game and mode that does not mine and stays so.
+            if ($normalized === '' && $current->weightFor($key) === 0) {
+                continue;
+            }
+
             if (preg_match('/^\d{1,2}(\.\d{1,3})?$/', $normalized) !== 1) {
                 throw new SeasonReleaseRefused(__('A value is out of range. Check the limits next to each field.'));
             }
@@ -412,7 +546,12 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
         foreach (['shares' => $this->shares, 'daily' => $this->daily] as $name => $values) {
             foreach ($values as $game => $value) {
-                $before = $name === 'shares' ? $current->shareFor($game) : $current->dailyLimitFor($game);
+                $before = $name === 'shares' ? $current->shares[$game] ?? null : $current->daily[$game] ?? null;
+
+                // Empty where nothing is set: a game that does not mine needs neither.
+                if (trim($value) === '' && $before === null) {
+                    continue;
+                }
 
                 if ($int($value) !== $before) {
                     $changes[$name][$game] = $int($value);
@@ -534,13 +673,57 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             return;
         }
 
-        $this->weights = array_map(fn (int $milli): string => SeasonRelease::factor($milli), $current->weights);
-        $this->shares = array_map(strval(...), $current->shares);
-        $this->daily = array_map(strval(...), $current->daily);
+        // Every game and mode of the registry, so a change can add one that does not mine yet.
+        $this->weights = [];
+        $this->shares = [];
+        $this->daily = [];
+
+        foreach (ChainDraft::table(['groups' => $current->groups]) as $shareKey => $keys) {
+            foreach ($keys as $key) {
+                $this->weights[$key] = isset($current->weights[$key]) ? SeasonRelease::factor($current->weights[$key]) : '';
+            }
+
+            $this->shares[$shareKey] = isset($current->shares[$shareKey]) ? (string) $current->shares[$shareKey] : '';
+            $this->daily[$shareKey] = isset($current->daily[$shareKey]) ? (string) $current->daily[$shareKey] : '';
+        }
         $this->pairDay = (string) $current->pairLimitPerDay;
         $this->pairSeason = (string) $current->pairLimitPerSeason;
         $this->subtree = (string) $current->subtree;
         $this->moves = (string) $current->moves;
+    }
+
+    /** The saved chain draft (or config), the planned Block 0 in the viewer's time zone. */
+    private function fillDraftForm(): void
+    {
+        $chain = ChainDraft::current();
+        $block0 = $chain['block0_at'] === null ? null : CarbonImmutable::createFromTimestamp($chain['block0_at']);
+
+        $this->draft = [
+            'block0_at' => $block0?->setTimezone(PreSeason::timezoneFor($this->admin()))->format('Y-m-d\TH:i') ?? '',
+            'weeks' => (string) $chain['weeks'],
+            'supply' => (string) $chain['supply'],
+            'subsidy' => (string) $chain['subsidy'],
+            'halving_days' => (string) $chain['halving_days'],
+            'claim_days' => (string) $chain['claim_days'],
+            'trust_minimum' => (string) $chain['trust_minimum'],
+            'message' => (string) $chain['message'],
+            'pair_day' => (string) $chain['pairlimit'][0],
+            'pair_season' => (string) $chain['pairlimit'][1],
+            'subtree' => (string) $chain['subtree'],
+            'moves' => (string) $chain['moves'],
+        ];
+        $this->draftWeights = [];
+        $this->draftShares = [];
+        $this->draftDaily = [];
+
+        foreach (ChainDraft::table($chain) as $shareKey => $keys) {
+            foreach ($keys as $key) {
+                $this->draftWeights[$key] = isset($chain['weights'][$key]) ? SeasonRelease::factor($chain['weights'][$key]) : '';
+            }
+
+            $this->draftShares[$shareKey] = isset($chain['shares'][$shareKey]) ? (string) $chain['shares'][$shareKey] : '';
+            $this->draftDaily[$shareKey] = isset($chain['daily'][$shareKey]) ? (string) $chain['daily'][$shareKey] : '';
+        }
     }
 
     private function admin(): User
@@ -565,12 +748,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     $milestoneDate = fn (float|int $weeks): CarbonImmutable => $genesisAt->addSeconds((int) round($weeks * 604800));
     $games = array_keys($chain['in_force']->shares + $chain['in_force']->daily);
     $input = 'h-11 w-full rounded-md border border-edge bg-ground px-3 text-[13px] text-ink';
-    $warnings = [
-        'season-shorter-than-min-weeks' => __('The season is shorter than :weeks weeks.', ['weeks' => (int) config('season.estimator.min_weeks')]),
-        'season-longer-than-max-weeks' => __('The season is longer than :weeks weeks.', ['weeks' => (int) config('season.estimator.max_weeks')]),
-        'supply-mined-before-min-weeks' => __('At this rate the pot is mined out in under :weeks weeks.', ['weeks' => (int) config('season.estimator.min_weeks')]),
-        'most-of-the-supply-stays-unmined' => __('At this rate most of the pot stays unmined.'),
-    ];
+    $draftChain = ChainDraft::current();
+    $plannedBlock0 = ChainDraft::block0At($draftChain);
 @endphp
 
 <x-admin.page active="seasons" :title="__('Seasons')" :lead="__('Every season is its own chain. Tournament prize pools stay separate and pay out when their tournament ends.')" :notice="$notice" notice-test="season-notice" data-test="admin-season" data-state="{{ Seasons::state() }}">
@@ -584,15 +763,15 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             @foreach ($live ? [
                 [__('Tip'), $chain['tip']['height'] === null ? __('Block 0') : __('Block :height', ['height' => $chain['tip']['height']]), $chain['last_block_at'] ? __('last block :when', ['when' => $date($chain['last_block_at'], 'D H:i')]) : __('no block yet')],
                 [__('Supply issued'), $sats($chain['mined']), __('of :supply sats', ['supply' => $sats($chain['supply'])])],
-                [__('Left in the pot'), $sats($chain['remaining']), __('sats')],
+                [__('Left to mine'), $sats($chain['remaining']), __('sats')],
                 [__('Era'), (string) ($chain['era'] ?? '–'), $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'], 'D j M, H:i')]) : __('last era')],
                 [__('Wins that did not mine'), (string) array_sum($chain['rejected']), trans_choice(':count block|:count blocks', $chain['blocks'])],
             ] : [
                 [__('Tip'), __('none'), __('waiting for Block 0')],
-                [__('Supply'), $sats($chain['supply']), __('fixed at Block 0')],
+                [__('Supply'), $sats($chain['supply']), __('the most it pays out, after the season')],
                 [__('Base subsidy'), $sats($chain['parameters']->subsidy), __('per winning player at weight 1')],
                 [__('Eras'), (string) $chain['parameters']->eras(), __(':days days each', ['days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
-                [__('Planned Block 0'), PreSeason::block0At() ? $date(PreSeason::block0At(), 'D j M, H:i') : __('not set'), __('the countdown on the home page')],
+                [__('Planned Block 0'), $plannedBlock0 ? $date($plannedBlock0, 'D j M, H:i') : __('not set'), __('the countdown on the home page')],
             ] as [$label, $value, $sub])
                 <div @class(['flex min-w-0 flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring', 'col-span-2 lg:col-span-1' => $loop->last])>
                     <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-lg leading-tight">{{ $value }}</b><span class="text-xs text-ink-3">{{ $sub }}</span>
@@ -609,6 +788,155 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             ]" />
         @endif
     </section>
+
+    @unless ($live)
+        {{-- Chain draft for Block 0 (P43, ChainDraft) --}}
+        @php($draftLocked = ! $this->isBoard)
+        @php($later = $this->planAfter !== null)
+        @php($range = fn (string $key): string => __(':min to :max', ['min' => ChainDraft::LIMITS[$key][0], 'max' => ChainDraft::LIMITS[$key][1]]))
+        <x-admin.panel :title="__('Chain draft for Block 0')" :meta="ChainDraft::stored() ? __('saved, shown on the home page') : __('not saved yet: the defaults of the server')" data-test="season-chain-draft">
+            <p class="m-0 text-xs text-ink-2">{{ __('Everything Block 0 signs into the Season Genesis. The board can change it until Block 0; each change is logged below under "Who changed what". The supply is the most the season pays out, after it ends, one payout per player by admin click: nothing is set aside before.') }}</p>
+            @if ($draftLocked)
+                <p class="m-0 text-xs text-ink-3" data-test="draft-board-only">{{ __('Only a board member on the public admin list can change these values.') }}</p>
+            @endif
+            <form wire:submit="saveDraft" class="flex flex-col gap-5">
+                <fieldset class="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2 lg:grid-cols-4" data-test="draft-fields-season" @disabled($draftLocked)>
+                    <legend class="mb-2 text-xs font-bold text-ink">{{ __('Season') }}</legend>
+                    @if ($later)
+                        <p class="m-0 text-xs text-ink-2 sm:col-span-2">{{ __('Block 0 and the length of :season come from its plan below ("Next season").', ['season' => SeasonPlans::nextSlug($this->planAfter)]) }}</p>
+                    @else
+                        <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Planned Block 0 (:zone)', ['zone' => $zone]) }}
+                            <input type="datetime-local" wire:model="draft.block0_at" class="{{ $input }}" data-test="draft-block0">
+                            <span class="text-ink-3">{{ __('the countdown on the home page; empty = date coming soon. The board still releases it by hand.') }}</span>
+                        </label>
+                        <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Length in weeks') }}
+                            <input type="text" inputmode="numeric" wire:model="draft.weeks" class="{{ $input }}" data-test="draft-weeks">
+                            <span class="text-ink-3">{{ __(':min to :max', ['min' => SeasonPlans::minWeeks(), 'max' => SeasonPlans::maxWeeks()]) }}</span>
+                        </label>
+                    @endif
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Supply in sats') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.supply" class="{{ $input }}" data-test="draft-supply">
+                        <span class="text-ink-3">{{ __(':range; the most the season pays out, after it ends', ['range' => $range('supply')]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Base subsidy in sats') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.subsidy" class="{{ $input }}" data-test="draft-subsidy">
+                        <span class="text-ink-3">{{ __(':range; per winning player at weight 1 in era 1, halved every era', ['range' => $range('subsidy')]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Days per era') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.halving_days" class="{{ $input }}" data-test="draft-halving">
+                        <span class="text-ink-3">{{ __(':range; the halving: rewards and era budget halve after each era, no longer than the season', ['range' => $range('halving_days')]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Claim window in days') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.claim_days" class="{{ $input }}" data-test="draft-claim">
+                        <span class="text-ink-3">{{ __(':range; how long a player without a Lightning address can still claim', ['range' => $range('claim_days')]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Trust rank for rated play') }}
+                        <input type="text" inputmode="numeric" wire:model="draft.trust_minimum" class="{{ $input }}" data-test="draft-trust">
+                        <span class="text-ink-3">{{ __(':range; every rated player needs at least this rank (rule 1)', ['range' => $range('trust_minimum')]) }}</span>
+                    </label>
+                </fieldset>
+                <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Genesis message, published with Block 0') }}
+                    <textarea wire:model="draft.message" rows="3" maxlength="{{ SeasonRelease::MESSAGE_MAX }}" class="w-full rounded-md border border-edge bg-ground px-3 py-2 text-[13px] text-ink" @disabled($draftLocked) data-test="draft-message"></textarea>
+                    <span class="text-ink-3">{{ __('Up to :max characters; shown on the home page before Block 0. The release needs one.', ['max' => SeasonRelease::MESSAGE_MAX]) }}</span>
+                </label>
+                <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" data-test="draft-fields-games" @disabled($draftLocked)>
+                    <legend class="mb-2 text-xs font-bold text-ink">{{ __('Games and modes') }}</legend>
+                    <p class="m-0 text-xs text-ink-2">{{ __('Weight per winning player, :min to 10 with at most three decimals; empty = does not mine. Share: the part of each era budget the game can mine, 1 to 100 %, together at most 100 %. A day: blocks per player a day, 1 to 100. A game that mines needs both. Both EA Sports FC editions share one share and one daily limit.', ['min' => '0.001']) }}</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[520px] border-collapse text-left text-xs" data-test="draft-table">
+                            <thead class="text-ink-2">
+                                <tr class="border-b border-hairline">
+                                    <th scope="col" class="py-2 pr-3 font-normal">{{ __('Game') }}</th>
+                                    <th scope="col" class="w-28 py-2 pr-3 font-normal">{{ __('Share %') }}</th>
+                                    <th scope="col" class="w-28 py-2 pr-3 font-normal">{{ __('A day') }}</th>
+                                    <th scope="col" class="py-2 pr-3 font-normal">{{ __('Weight per mode') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (ChainDraft::table($draftChain) as $shareKey => $keys)
+                                    <tr wire:key="draft-row-{{ $shareKey }}" class="border-b border-hairline align-top last:border-0" data-test="draft-row-{{ $shareKey }}">
+                                        <th scope="row" class="py-2 pr-3 text-[13px] font-bold text-ink">{{ ChainDraft::shareLabel($shareKey) }}</th>
+                                        <td class="py-2 pr-3"><input type="text" inputmode="numeric" wire:model="draftShares.{{ $shareKey }}" aria-label="{{ __(':game share %', ['game' => ChainDraft::shareLabel($shareKey)]) }}" class="{{ $input }}" data-test="draft-share-{{ $shareKey }}"></td>
+                                        <td class="py-2 pr-3"><input type="text" inputmode="numeric" wire:model="draftDaily.{{ $shareKey }}" aria-label="{{ __(':game a day', ['game' => ChainDraft::shareLabel($shareKey)]) }}" class="{{ $input }}" data-test="draft-daily-{{ $shareKey }}"></td>
+                                        <td class="py-2 pr-3">
+                                            <span class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                                @foreach ($keys as $key)
+                                                    <label class="flex min-w-0 flex-col gap-1 text-ink-2">{{ ChainOverview::keyLabel($key) }}<input type="text" inputmode="decimal" wire:model="draftWeights.{{ $key }}" class="{{ $input }}" data-test="draft-weight-{{ str_replace('/', '-', $key) }}"></label>
+                                                @endforeach
+                                            </span>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+                <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" data-test="draft-fields-rules" @disabled($draftLocked)>
+                    <legend class="mb-2 text-xs font-bold text-ink">{{ __('Consensus rules 4, 8, 7 and 2') }}</legend>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a day') }}<input type="text" inputmode="numeric" wire:model="draft.pair_day" class="{{ $input }}"><span class="text-ink-3">{{ $range('pairlimit.day') }}</span></label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a season') }}<input type="text" inputmode="numeric" wire:model="draft.pair_season" class="{{ $input }}"><span class="text-ink-3">{{ $range('pairlimit.season') }}</span></label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Same trust circle from % (101 = off)') }}<input type="text" inputmode="numeric" wire:model="draft.subtree" class="{{ $input }}"><span class="text-ink-3">{{ $range('subtree') }}</span></label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Minimum chess moves') }}<input type="text" inputmode="numeric" wire:model="draft.moves" class="{{ $input }}"><span class="text-ink-3">{{ $range('moves') }}</span></label>
+                </fieldset>
+                @unless ($draftLocked)
+                    <span class="flex flex-wrap items-center gap-3">
+                        <button type="submit" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc" data-test="save-draft">{{ __('Save the draft') }}</button>
+                    </span>
+                @endunless
+                @if ($draftError)
+                    <p class="m-0 text-[13px] text-loss" role="alert" data-test="draft-error">{{ $draftError }}</p>
+                @endif
+            </form>
+        </x-admin.panel>
+
+        {{-- What Block 0 signs (P43): the tags from the functions that sign them --}}
+        @php($preview = $this->preview)
+        <x-admin.panel :title="__('What Block 0 signs')" :meta="__('the saved draft, as the release signs it')" data-test="season-preview">
+            <h3 class="m-0 text-[13px] font-bold">{{ __('Rewarded wins per era') }} <span class="font-normal text-ink-3">{{ __('what the share cap of an era pays for each game and mode alone, over :weeks weeks; a team win pays every winner', ['weeks' => ChainDraft::weeks($draftChain)]) }}</span></h3>
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[480px] border-collapse text-left text-xs" data-test="preview-wins">
+                    <thead class="text-ink-2">
+                        <tr class="border-b border-hairline">
+                            <th scope="col" class="py-2 pr-3 font-normal">{{ __('Era') }}</th>
+                            @foreach (array_keys($chain['rewards_now']) as $key)
+                                <th scope="col" class="py-2 pr-3 text-right font-normal">{{ ChainOverview::keyLabel($key) }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach ($chain['rewarded_wins'] as $index => $wins)
+                            <tr class="border-b border-hairline last:border-0" data-test="preview-wins-era">
+                                <td class="py-2 pr-3 font-bold">{{ $index + 1 }}</td>
+                                @foreach (array_keys($chain['rewards_now']) as $key)
+                                    <td class="py-2 pr-3 text-right">{{ ($wins[$key] ?? 0) > 0 ? number_format($wins[$key], 0, '', "\u{00A0}") : '–' }}</td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+            @foreach ($preview['warnings'] as $warning)
+                <p class="m-0 rounded-md bg-btc-chip px-3.5 py-2.5 text-[13px] text-btc-hi" data-test="draft-warning">{{ $warning }}</p>
+            @endforeach
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div class="flex min-w-0 flex-col gap-1.5">
+                    <h3 class="m-0 text-[13px] font-bold">{{ __('Season Genesis (2156), the tags its digest covers') }}</h3>
+                    <pre class="m-0 max-h-96 overflow-auto rounded-md bg-ground p-3 font-mono text-[11px] leading-relaxed whitespace-pre text-ink-2 shadow-ring" data-test="preview-genesis">@foreach ($preview['genesis'] as $tag){{ json_encode($tag, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}
+@endforeach</pre>
+                    <span class="text-xs text-ink-3">{{ __('The ends tag is the planned end if Block 0 were released now.') }}</span>
+                </div>
+                <div class="flex min-w-0 flex-col gap-1.5">
+                    <h3 class="m-0 text-[13px] font-bold">{{ __('Every ladder (32152) of the season') }}</h3>
+                    <pre class="m-0 max-h-96 overflow-auto rounded-md bg-ground p-3 font-mono text-[11px] leading-relaxed whitespace-pre text-ink-2 shadow-ring" data-test="preview-ladder">@foreach ([...$preview['ladder'], $preview['trust']] as $tag){{ json_encode($tag, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}
+@endforeach</pre>
+                </div>
+            </div>
+            <figure class="m-0 flex flex-col gap-1.5">
+                <figcaption class="text-xs text-ink-3">{{ __('Genesis message') }}</figcaption>
+                <p class="m-0 text-sm break-words" data-test="preview-message">{{ $preview['message'] ?? __('not written yet: the release needs one') }}</p>
+            </figure>
+        </x-admin.panel>
+    @endunless
 
     {{-- Halving schedule --}}
     <section aria-labelledby="schedule-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="season-schedule">
@@ -653,7 +981,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     {{-- Estimator --}}
     <section aria-labelledby="estimator-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="season-estimator">
         <span class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h2 id="estimator-h" class="m-0 text-[15px] font-bold">{{ __('Estimator') }} <span class="font-normal text-ink-3">{{ __('milestones = share of the pot mined') }}</span></h2>
+            <h2 id="estimator-h" class="m-0 text-[15px] font-bold">{{ __('Estimator') }} <span class="font-normal text-ink-3">{{ __('milestones = share of the supply mined') }}</span></h2>
             <span class="text-xs text-ink-3">{{ $live ? __('forecast from the blocks of the last 4 weeks') : __('forecast from the finished wins of the last 4 weeks, casual included: nothing is rated before Block 0') }}</span>
         </span>
         <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
@@ -689,7 +1017,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             </table>
         </div>
         @foreach ($estimate['warnings'] as $warning)
-            <p class="m-0 rounded-md bg-btc-chip px-3.5 py-2.5 text-[13px] text-btc-hi" data-test="estimator-warning">{{ $warnings[$warning] ?? $warning }}</p>
+            <p class="m-0 rounded-md bg-btc-chip px-3.5 py-2.5 text-[13px] text-btc-hi" data-test="estimator-warning">{{ ChainDraft::estimatorWarning($warning) }}</p>
         @endforeach
     </section>
 
@@ -706,7 +1034,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     <b class="text-[13px]">{{ __('1. Check the numbers') }}</b>
                     <dl class="m-0 flex flex-col text-xs">
                         @foreach ([
-                            [__('Supply'), $sats($chain['supply']).' sats'],
+                            [__('Supply, the most it pays out'), $sats($chain['supply']).' sats'],
                             [__('Base subsidy'), $sats($chain['parameters']->subsidy).' sats'],
                             [__('Eras'), __(':eras × :days days', ['eras' => $chain['parameters']->eras(), 'days' => intdiv($chain['parameters']->halvingSeconds, 86400)])],
                             [__('Season end'), $date(CarbonImmutable::createFromTimestamp($this->endsAt))],
@@ -717,8 +1045,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     </dl>
                 </li>
                 <li class="flex flex-col gap-2 rounded-md bg-ground px-3.5 py-3 shadow-ring">
-                    <label for="genesis-message" class="text-[13px] font-bold">{{ __('2. Genesis message, published with Block 0') }}</label>
-                    <textarea id="genesis-message" wire:model="message" rows="4" maxlength="{{ SeasonRelease::MESSAGE_MAX }}" class="w-full rounded-md border border-edge bg-card px-3 py-2 text-[13px] text-ink"></textarea>
+                    <b class="text-[13px]">{{ __('2. Genesis message, published with Block 0') }}</b>
+                    <p class="m-0 text-[13px] break-words" data-test="release-message">{{ $this->preview['message'] ?? __('not written yet: write it in the chain draft above') }}</p>
                 </li>
                 <li class="flex flex-col gap-2 rounded-md bg-ground px-3.5 py-3 shadow-ring">
                     <label for="retype-supply" class="text-[13px] font-bold">{{ __('3. Type the supply to confirm') }}</label>
@@ -744,9 +1072,9 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             </span>
             <form wire:submit="saveChange" class="flex flex-col gap-4">
                 <fieldset class="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2 lg:grid-cols-5" @disabled(! $this->isBoard)>
-                    <legend class="mb-2 text-xs text-ink-2">{{ __('Weight per winning player (0 to 10; 0 stops a game from mining)') }}</legend>
+                    <legend class="mb-2 text-xs text-ink-2">{{ __('Weight per winning player (0 to 10; 0 stops a game from mining; empty = does not mine). A game that starts to mine needs its share and daily limit in the same change.') }}</legend>
                     @foreach ($weights as $key => $value)
-                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ ChainOverview::keyLabel($key) }}<input type="text" inputmode="decimal" wire:model="weights.{{ $key }}" class="{{ $input }}"></label>
+                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ ChainOverview::keyLabel($key) }}<input type="text" inputmode="decimal" wire:model="weights.{{ $key }}" class="{{ $input }}" data-test="change-weight-{{ str_replace('/', '-', $key) }}"></label>
                     @endforeach
                 </fieldset>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
@@ -900,7 +1228,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             @forelse ($this->settingsLog as $change)
                 <div wire:key="setting-change-{{ $change->id }}" class="flex flex-col gap-1 border-b border-hairline py-2.5 text-[13px] last:border-0">
                     <span class="flex flex-wrap gap-x-3"><b>{{ $date(CarbonImmutable::instance($change->created_at)) }}</b><span class="text-ink-2">{{ __('by :name', ['name' => $change->changedBy?->displayName() ?? substr($change->changed_by_pubkey, 0, 8)]) }}</span></span>
-                    <span class="text-xs break-words text-ink-3">{{ collect($change->changes)->map(fn (array $pair, string $path): string => ($labels[$path] ?? (str_starts_with($path, 'tiers.') ? RankTiers::label(substr($path, 6)) : $path)).': '.($pair[0] ?? '–').' → '.($pair[1] ?? '–'))->implode(' · ') }}</span>
+                    <span class="text-xs break-words text-ink-3">{{ $change->changes === [] ? __('saved the chain draft as it was') : collect($change->changes)->map(fn (array $pair, string $path): string => $this->changeLabel($path).': '.collect($pair)->map(fn ($value): string => $value === null ? '–' : ($path === 'chain.block0_at' ? $date(CarbonImmutable::createFromTimestamp((int) $value), 'D j M Y, H:i') : (string) $value))->implode(' → '))->implode(' · ') }}</span>
                 </div>
             @empty
                 <x-admin.empty :text="__('No change yet: config/season.php holds the values.')" />
@@ -988,7 +1316,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 @foreach ([
                     [__('Blocks'), (string) $review['blocks'], __('mined in the season')],
                     [__('Supply issued'), $sats($review['mined']), __('of :supply sats', ['supply' => $sats($review['supply'])])],
-                    [__('Left in the pot'), $sats($review['remaining']), __('sats')],
+                    [__('Left to mine'), $sats($review['remaining']), __('sats')],
                     [__('Wins that did not mine'), (string) $review['rejected'], __('rejected by a consensus rule')],
                 ] as [$label, $value, $sub])
                     <div class="flex min-w-0 flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring">

@@ -300,8 +300,8 @@ Artisan::command('esports:trust-run', function (TrustJob $job) {
 Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlapping();
 
 /*
- * "Notify me at Block 0": once a planned Block 0 date is set
- * (ESPORTS_BLOCK0_AT) and lies ahead, every player who asked hears the date
+ * "Notify me at Block 0": once a planned Block 0 date is set (the chain
+ * draft of the admin season page, ChainDraft) and lies ahead, every player who asked hears the date
  * once (BlockZeroNotifications::dated, queued). The release itself notifies
  * from SeasonRelease.
  */

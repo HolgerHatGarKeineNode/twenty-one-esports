@@ -5,6 +5,7 @@ namespace App\Support\SeasonChain;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\RatingChange;
 use App\Models\Season;
@@ -322,6 +323,8 @@ final class SeasonChains
      * force for every attestation from `effective` on, never before (NIP
      * "Parameter changes"; the core refuses an `effective` at or before the
      * latest attestation). Only the parameters given change; the rest stay.
+     * A change may add a game or mode that did not mine, with its weight,
+     * share and daily limit (validateChanges()).
      *
      * @param  array{weights?: array<string, int>, shares?: array<string, int>, daily?: array<string, int>, pairlimit?: array{0: int, 1: int}|null, subtree?: int|null, moves?: int|null}  $changes
      *
@@ -425,8 +428,13 @@ final class SeasonChains
     }
 
     /**
-     * The NIP ranges of each changeable parameter; weights only for a game
-     * and mode of the genesis.
+     * The NIP ranges of each changeable parameter (ChainDraft::LIMITS; a
+     * weight may be 0 to stop a game), for a game and mode or a share key
+     * of the registry. A change may add a game or mode (NIP rev. 9.5: a
+     * change "adds or replaces" a row): whatever mines after it needs a
+     * share and a daily limit for its share key, so a new game brings its
+     * weight, share and daily limit in the same change. The shares after it
+     * add up to at most 100 %.
      *
      * @param  array<string, mixed>  $changes
      *
@@ -434,31 +442,51 @@ final class SeasonChains
      */
     private function validateChanges(Season $season, array $changes): void
     {
-        $in = fn (mixed $value, int $min, int $max): bool => is_int($value) && $value >= $min && $value <= $max;
-        $games = array_keys($season->parameters['shares'] + $season->parameters['daily']);
+        $limits = ChainDraft::LIMITS;
+        $in = fn (mixed $value, string $limit, ?int $min = null): bool => is_int($value) && $value >= ($min ?? $limits[$limit][0]) && $value <= $limits[$limit][1];
+        $current = $season->chainParameters()->inForceAt(CarbonImmutable::now());
+        $registry = app(GameRegistry::class);
+        $isShareKey = fn (mixed $key): bool => is_string($key) && (isset($current->groups[$key]) || ($registry->find($key) !== null && $current->shareKey($key) === $key));
         $ok = true;
 
         foreach ((array) ($changes['weights'] ?? []) as $key => $milli) {
-            $ok = $ok && array_key_exists($key, $season->parameters['weights']) && $in($milli, 0, 10_000);
+            [$game, $mode] = array_pad(explode('/', (string) $key, 2), 2, '');
+            $ok = $ok && $registry->mode($game, $mode) !== null && $in($milli, 'weight', 0);
         }
 
-        foreach ((array) ($changes['shares'] ?? []) as $game => $percent) {
-            $ok = $ok && in_array($game, $games, true) && $in($percent, 1, 100);
+        foreach ((array) ($changes['shares'] ?? []) as $key => $percent) {
+            $ok = $ok && $isShareKey($key) && $in($percent, 'share');
         }
 
-        foreach ((array) ($changes['daily'] ?? []) as $game => $blocks) {
-            $ok = $ok && in_array($game, $games, true) && $in($blocks, 1, 100);
+        foreach ((array) ($changes['daily'] ?? []) as $key => $blocks) {
+            $ok = $ok && $isShareKey($key) && $in($blocks, 'daily');
         }
 
         if (isset($changes['pairlimit'])) {
             $pair = (array) $changes['pairlimit'];
-            $ok = $ok && count($pair) === 2 && $in($pair[0] ?? null, 1, 100) && $in($pair[1] ?? null, 1, 1000);
+            $ok = $ok && count($pair) === 2 && $in($pair[0] ?? null, 'pairlimit.day') && $in($pair[1] ?? null, 'pairlimit.season');
         }
 
-        $ok = $ok && (! isset($changes['subtree']) || $in($changes['subtree'], 1, 101)) && (! isset($changes['moves']) || $in($changes['moves'], 1, 200));
+        $ok = $ok && (! isset($changes['subtree']) || $in($changes['subtree'], 'subtree')) && (! isset($changes['moves']) || $in($changes['moves'], 'moves'));
 
         if (! $ok) {
             throw new SeasonReleaseRefused(__('A value is out of range. Check the limits next to each field.'));
+        }
+
+        $weights = array_replace($current->weights, (array) ($changes['weights'] ?? []));
+        $shares = array_replace($current->shares, (array) ($changes['shares'] ?? []));
+        $daily = array_replace($current->daily, (array) ($changes['daily'] ?? []));
+
+        foreach ($weights as $key => $milli) {
+            $shareKey = $current->shareKey(explode('/', (string) $key, 2)[0]);
+
+            if ($milli > 0 && (! isset($shares[$shareKey]) || ! isset($daily[$shareKey]))) {
+                throw new SeasonReleaseRefused(__(':game mines, so it needs a share and a daily limit in the same change.', ['game' => ChainDraft::shareLabel($shareKey)]));
+            }
+        }
+
+        if (array_sum($shares) > 100) {
+            throw new SeasonReleaseRefused(__('The shares add up to :sum %. Together they can be at most 100 %.', ['sum' => array_sum($shares)]));
         }
     }
 

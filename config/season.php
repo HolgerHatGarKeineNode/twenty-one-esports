@@ -94,7 +94,8 @@ return [
     | global_rating_min_weight: a player needs this many rated results in the
     | season for a Global Rating. hashrate: the ladder's `hashrate` tag
     | (win, draw, loss, team win bonus). trust_minimum: the trust gate's
-    | minimum rank (rule 1 of the season chain).
+    | minimum rank (rule 1 of the season chain), the default of the chain
+    | draft.
     |
     */
 
@@ -113,41 +114,55 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Season chain, Pre-Season genesis defaults (CEO default 2026-09-25)
+    | Season chain, the defaults of the chain draft (user decision 2026-09-28)
     |--------------------------------------------------------------------------
     |
-    | The tags of the Season Genesis (`2156`). Weights are per winning player
-    | in thousandths (`1000` = 1x), keyed `<game>/<mode>`; a game and mode
-    | without a weight does not mine. Shares are per game and era in percent,
-    | daily limits per winning player, game and UTC day. `pairlimit` is
-    | [per UTC day, per season]; `subtree` 101 switches rule 7 off.
+    | What the chain draft of the admin season page (ChainDraft, P43) starts
+    | from before the board saved one; the board edits every value there, and
+    | Block 0 signs the draft into the Season Genesis (`2156`). Weights are per
+    | winning player in thousandths (`1000` = 1x), keyed `<game>/<mode>`; a
+    | game and mode without a weight does not mine. Shares are per share key
+    | and era in percent, daily limits per winning player, share key and UTC
+    | day. A share group (`groups`, NIP `group`) counts its games as one for
+    | both: the two EA Sports FC editions share one share and one daily limit.
+    | `pairlimit` is [per UTC day, per season]; `subtree` 101 switches rule 7
+    | off. The length is in weeks, eras last `halving_days`.
     |
     */
 
     'chain' => [
         'supply' => 2_100_000,
-        'subsidy' => 20_000,
+        'subsidy' => 2_100,
         'weights' => [
             'chess/blitz' => 1000,
             'chess/correspondence' => 2000,
             'rocket-league/1v1' => 1000,
             'rocket-league/2v2' => 1000,
             'rocket-league/3v3' => 1000,
+            'ea-sports-fc-26/1v1' => 1000,
+            'ea-sports-fc-26/2v2' => 1000,
+            'ea-sports-fc-27/1v1' => 1000,
+            'ea-sports-fc-27/2v2' => 1000,
+        ],
+        'groups' => [
+            'ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'],
         ],
         'shares' => [
-            'chess' => 40,
-            'rocket-league' => 60,
+            'chess' => 35,
+            'rocket-league' => 40,
+            'ea-sports-fc' => 25,
         ],
         'daily' => [
             'chess' => 5,
             'rocket-league' => 5,
+            'ea-sports-fc' => 5,
         ],
         'pairlimit' => [1, 3],
         'subtree' => 90,
         'moves' => 20,
-        'halving_seconds' => 28 * 86400,
-        'eras' => 6,
-        'claim_seconds' => 90 * 86400,
+        'weeks' => 24,
+        'halving_days' => 28,
+        'claim_days' => 90,
     ],
 
     /*

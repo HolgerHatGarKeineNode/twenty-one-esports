@@ -59,7 +59,8 @@ function botFacts(): void
     Clan::factory()->create(['name' => 'Stacking Sats', 'clantag' => 'SATS']);
     botRating($alice, 1612, 9);
     botRankUp($alice, 'gold-2', 'silver-1');
-    config(['esports.preseason.block0_at' => now()->addDays(3)->addHours(4)->toIso8601String(), 'twentyone.profile.lud16' => 'bot@example.com']);
+    planBlock0(now()->addDays(3)->addHours(4)->toIso8601String());
+    config(['twentyone.profile.lud16' => 'bot@example.com']);
 }
 
 function botRating(User $user, int $rating, int $results): Rating
@@ -203,10 +204,10 @@ test('old news is no news: an old win, a rank down, an old clan', function () {
 });
 
 test('the season: the Block 0 countdown before launch, nothing without a date', function () {
-    config(['esports.preseason.block0_at' => null]);
+    planBlock0(null);
     expect(botBuild('season'))->toBe([]);
 
-    config(['esports.preseason.block0_at' => now()->addDays(3)->addHours(4)->toIso8601String()]);
+    planBlock0(now()->addDays(3)->addHours(4)->toIso8601String());
     expect(botBuild('season')[0]->content)->toStartWith('⛏️ Block 0 in 3 days 4 h')->toEndWith('/mining');
 });
 

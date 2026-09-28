@@ -29,14 +29,16 @@ top-ups as plain invoices, fixed prizes per place; **revision 9.2** (2026-09-27)
 cards in the match-room chat of casual 1v1 matches, a chat convention without a new kind;
 **revision 9.3** (2026-09-28): a public chat channel per game with polls, NIP-28 and NIP-88 without a
 new kind; **revision 9.4** (2026-09-28): chess moves are no events in either mode, the league signs one
-game record when a rated game ends, and a player posts the game to their own profile only by button). Not
+game record when a rated game ends, and a player posts the game to their own profile only by button;
+**revision 9.5** (2026-09-28): share groups in the Season Genesis, parameter changes that add a game,
+the reserve goal and a reserve balance no longer required at Block 0). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2 and 9.3 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3 and 9.5 (see [Open points](#open-points)).
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -66,6 +68,25 @@ revision 9.1 (a league pot of revision 9 becomes no pot; see [Prize pool funding
 The rules marked "rev. 9.4" concern chess game notes only; they apply to every chess game that ends
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
+
+### Changelog of revision 9.5 (2026-09-28)
+
+- **Share groups** ([Season Genesis](#season-genesis-2156), rules 5 and 9): a new genesis tag
+  `["group", "<share key>", "<game>", "<game>", ...]` lets several games count as one for the share
+  cap and the daily limit, e.g. `["group", "ea-sports-fc", "ea-sports-fc-26", "ea-sports-fc-27"]`:
+  a player who owns both editions mines at most one daily limit of EA Sports FC, and both editions
+  share one share cap. `share` and `daily` rows name the **share key**: the group a game belongs to,
+  otherwise the game. `group` joins the tags of the parameter digest. A genesis without `group` is
+  exactly a genesis of revision 5, tags and digest alike. Groups are fixed at Block 0: a parameter
+  change cannot move a game into or out of a group.
+- **Parameter changes may add a game or mode** ([Parameter changes](#parameter-changes-2158)): a
+  `weight`, `share` or `daily` row adds or replaces the row for its game (and mode) or share key. A
+  game or mode that starts to mine needs a `share` and a `daily` row for its share key in force, so a
+  new game brings all three in the same change.
+- **No reserve goal and no reserve balance at Block 0**: the genesis `e` to the reserve's zap goal
+  (`9041`) is optional, and the check that `supply` does not exceed the reserve balance is dropped.
+  The supply is the most the season pays out, settled after the season end; a league may run without
+  a zap goal. Validity rule 26 says so.
 
 ### Changelog of revision 9.4 (2026-09-28)
 
@@ -1933,11 +1954,12 @@ Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that bloc
 | tag | format | meaning |
 |---|---|---|
 | `season` | `<season slug>` | the season, as in the ladders |
-| `supply` | `<sats>` | the season's supply, drawn from the league reserve |
+| `supply` | `<sats>` | the season's supply: the most its blocks pay out, settled after the season end (rev. 9.5: no reserve balance is required at Block 0) |
 | `subsidy` | `<sats>` | the base reward per winning player in era 1 at weight 1 |
 | `weight` | `<game>/<mode>`, `<factor>` | one row per game and mode that mines: the factor **per winning player**, a decimal with at most three decimal places. A game and mode without a row does not mine |
-| `share` | `<game>`, `<percent>` | share cap of the game per era (rule 9), 1 to 100; absent means 100 |
-| `daily` | `<game>`, `<blocks>` | block weight limit: blocks per winning player, game and UTC day (rule 5); absent means no limit |
+| `group` | `<share key>`, `<game>`, `<game>`, ... | rev. 9.5, optional: the listed games count as one for rules 5 and 9, under the share key; a game is in at most one group, and a share key is never the slug of a game |
+| `share` | `<share key>`, `<percent>` | share cap of the game per era (rule 9), 1 to 100; absent means 100. The share key is the game's `group`, otherwise the game |
+| `daily` | `<share key>`, `<blocks>` | block weight limit: blocks per winning player, share key and UTC day (rule 5); absent means no limit |
 | `halving` | `<seconds>` | length of an era; era `n` starts at `T0 + (n - 1) * halving` |
 | `ends` | `<unix seconds>` | the fixed end of the season; every ladder of the season closes with this `ends` |
 | `claim` | `<seconds>` | claim window for players who cannot be paid at settlement |
@@ -1946,7 +1968,7 @@ Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that bloc
 | `pairlimit` | `<per UTC day>`, `<per season>` | blocks per pairing (rules 4 and 8); absent means `1`, `3` |
 | `subtree` | `<percent>` | rule 7: two players are in the same anchor subtree if both shares of the same anchor are at least this; absent means `51`; `101` switches rule 7 off |
 | `moves` | `<full moves>` | rule 2: the minimum length of a chess game; absent means `20` |
-| `e` | the reserve (`9041`); the release label (`1985`); the admin list version (`30000`) | which reference is which follows from the kind |
+| `e` | the release label (`1985`); the admin list version (`30000`); optionally the reserve (`9041`, rev. 9.5: optional) | which reference is which follows from the kind |
 | `p` | `<admin>`, `<relay>`, `release` | the admin who released Block 0 |
 | `alt` | NIP-31 text | |
 
@@ -1958,8 +1980,8 @@ in the ladders, where they were; the genesis holds only what spans all games: on
 reward schedule, one set of caps.
 
 **Parameter digest.** `P` is the list of the genesis tags whose name is one of `season`, `supply`,
-`subsidy`, `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves`, `halving`, `ends`, `claim`,
-`consensus`, in event order. The
+`subsidy`, `weight`, `group` (rev. 9.5), `share`, `daily`, `pairlimit`, `subtree`, `moves`, `halving`,
+`ends`, `claim`, `consensus`, in event order. The
 digest is `SHA-256` of the UTF-8 JSON serialization of `[<content>, P]`, without whitespace and with
 the escaping rules of NIP-01's event serialization.
 
@@ -2036,7 +2058,8 @@ the first rule it fails, in this order.
 3. **Not the same clan**: no winning and losing player share a `clan` row value.
 4. **Blocks per pairing and day.** Fewer earlier blocks of the same pairing on the same UTC day of
    `created_at` than the first value of `pairlimit` (default 1). The pairing is the two rated entities: two players, or two lineups in a series.
-5. **Block weight limit.** No winning player has `daily` blocks of this game on that UTC day already.
+5. **Block weight limit.** No winning player has `daily` blocks of this game's share key (its
+   `group`, otherwise the game) on that UTC day already.
 6. **Team wins.** A series or board is one block; each winning roster player earns the reward per
    winning player, so the block pays that reward times the winners.
 7. **Not the same anchor subtree.** The two players (a solo game; the two players of a board) or the
@@ -2047,8 +2070,8 @@ the first rule it fails, in this order.
    revision-5 examples and the sample ledger compute.
 8. **Blocks per pairing and season.** Fewer earlier blocks of the same pairing in the season than the
    second value of `pairlimit` (default 3).
-9. **Share cap per game and era.** The rewards of the game's blocks in this era, this one included,
-   stay within `floor(B_n * share / 100)`.
+9. **Share cap per game and era.** The rewards of the blocks of the game's share key (its `group`,
+   otherwise the game) in this era, this one included, stay within `floor(B_n * share / 100)`.
 
 Rules 4, 5, 8, 9 and the supply part of 0 depend on earlier blocks; that is why the tip is pinned.
 Blocks that the review voids later keep their place for all counters: a correction never changes a
@@ -2064,12 +2087,12 @@ re-forecasts from the live data. Every change is a regular event signed by the l
 | `e` | the genesis of the season; the version of the admin list |
 | `effective` | `<unix seconds>`: the change is in force for every attestation with a `created_at` from here on; not earlier than the change's own `created_at` |
 | `tip` | the newest block of the chain when the change was signed |
-| `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves` | the changed parameters, in the formats of the genesis. A `weight`, `share` or `daily` row replaces the row for its game (and mode); weight `0` stops a game from mining |
+| `weight`, `share`, `daily`, `pairlimit`, `subtree`, `moves` | the changed parameters, in the formats of the genesis. A `weight`, `share` or `daily` row adds or replaces the row for its game (and mode) or share key; weight `0` stops a game from mining. Rev. 9.5: a game or mode that starts to mine needs a `share` and a `daily` row for its share key in force, so a new game brings its weight, share and daily limit in the same change |
 | `p` | `<admin>`, `<relay>`, `change`: who made the change, a key of the admin list |
 | `alt` | NIP-31 text |
 
-`content` states why. Supply, subsidy, eras, `ends`, `claim` and the rule set cannot change during a
-season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
+`content` states why. Supply, subsidy, eras, `ends`, `claim`, the share groups and the rule set cannot
+change during a season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
 a parameter wins.
 
 **Never retroactive.** A change applies only to attestations signed at or after `effective`, and the
@@ -2562,12 +2585,15 @@ Per kind:
 26. **2156** (rev. 5): signed by the league key; `season`, `supply`, `subsidy`, at least one `weight`,
     `halving`, `ends`, `claim`, `consensus` `season-chain-v1` present; integers positive, weights
     positive decimals with at most three decimal places, `share` between 1 and 100, `ends` later than
-    `created_at`; one `a` to the season's `31923` announcement; one `e` to the league's reserve goal
-    (`9041`); one `e` to the release label, one `e` to a version of the admin list and one `p` with
-    role `release` as in [Release](#season-genesis-2156); `pairlimit` two positive integers, `subtree`
-    51 to 101, `moves` a positive integer; at most one genesis per season; the previous chain season has
-    ended (its `ends` is not later than this `created_at`); `supply` does not exceed the reserve
-    balance at `created_at` ([Pots and zap targets](#pots-and-zap-targets-rev-5)).
+    `created_at`; one `a` to the season's `31923` announcement; at most one `e` to the league's
+    reserve goal (`9041`; rev. 9.5: optional, before it required); one `e` to the release label, one
+    `e` to a version of the admin list and one `p` with role `release` as in
+    [Release](#season-genesis-2156); `pairlimit` two positive integers, `subtree` 51 to 101, `moves` a
+    positive integer; every `group` (rev. 9.5) names a share key that is no game slug and at least two
+    games, and no game is in two groups; at most one genesis per season; the previous chain season has
+    ended (its `ends` is not later than this `created_at`). Revision 5 also required that `supply` does
+    not exceed the reserve balance at `created_at`; revision 9.5 drops that: the supply is the most the
+    season pays out, settled after its end.
 27. **2154** (rev. 5, on a ladder that names a genesis): exactly one `block` tag on every rated result
     with a winner, none on others; a non-empty height is the previous block's height plus 1 (1 after
     the genesis), and no other block names the same previous block; an empty height names the newest
@@ -3222,7 +3248,7 @@ request.
 | pot | zap target | the zap request carries | counted receipts | paid out by | what is left goes to |
 |---|---|---|---|---|---|
 | **league reserve** | the league's zap goal (`9041`, NIP-75) | `e` = the goal, `k` = `9041` | `{"kinds":[9735],"#e":["<goal id>"]}` | a season's supply: the genesis names the goal by `e` and draws `supply` | stays |
-| **season supply** | none; funded from the reserve at Block 0 | | | block rewards: `2157` with `e` genesis and `e` blocks | reserve, at settlement |
+| **season supply** | none; rev. 9.5: nothing is set aside at Block 0, the rewards are paid after the season end | | | block rewards: `2157` with `e` genesis and `e` blocks | reserve, at settlement |
 | **tournament pool** | the tournament's `31923` | `a` = the tournament, `k` = `31923` | `#a` = the tournament, until `end` | prizes at the tournament's end, after an admin's check: `2157` with `a` the tournament | reserve |
 | **bounty** | the bounty's `31923` | `a` = the bounty, `k` = `31923` | `#a` = the bounty, until `end` | the claimer: `2157` with `a` the bounty | reserve |
 | **match fees** (not applicable in this league: players never pay fees) | the challenge (`2150`, with the league's `zap` tag) | `e` = the challenge, `k` = `2150` | `#e` = the challenge, from the accept to the last attestation | the winners of the match's blocks: `2157` with `e` the challenge | reserve |

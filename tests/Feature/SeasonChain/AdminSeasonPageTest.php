@@ -41,7 +41,10 @@ test('the page is for admins only, and only the board may release Block 0', func
 
 test('a board admin releases Block 0 from the page: retype the supply, sign the label', function () {
     $page = Livewire::actingAs($this->board)->test('pages::admin.season')
-        ->set('message', 'Pre-Season: every fair win is a block')
+        // The genesis message is written in the chain draft (P43), then retype the supply.
+        ->set('draft.message', 'Pre-Season: every fair win is a block')
+        ->call('saveDraft')
+        ->assertSet('draftError', '')
         ->set('supply', '2 100 001');
 
     expect($page->instance()->prepareRelease())->toBeNull()

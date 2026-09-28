@@ -22,7 +22,7 @@ use Throwable;
  *    (SeasonRelease), every player who asked hears it once
  *    (`block0_notified_at`).
  * 2. **Dated** ({@see dated()}): while the planned Block 0
- *    (`esports.preseason.block0_at`) lies ahead and no season was released,
+ *    (the chain draft, ChainDraft) lies ahead and no season was released,
  *    every player who asked hears the date once (`block0_heads_up_for`).
  *    A moved date is a new date and is told again; a player who asked while
  *    the date was already on the page is not told it again.

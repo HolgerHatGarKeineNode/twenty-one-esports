@@ -36,19 +36,21 @@ final class SeasonParameters
         }
     }
 
-    /** The Pre-Season defaults of config/season.php for a Block 0 at $genesisAt. */
-    public static function fromConfig(string $season, CarbonImmutable $genesisAt): self
+    /**
+     * The parameters of a chain draft (ChainDraft) for a Block 0 at
+     * $genesisAt, ending after the draft's length or at $endsAt.
+     *
+     * @param  array{supply: int, subsidy: int, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, weeks: int, halving_days: int, claim_days: int}  $chain
+     */
+    public static function fromDraft(array $chain, string $season, CarbonImmutable $genesisAt, ?CarbonImmutable $endsAt = null): self
     {
-        /** @var array{supply: int, subsidy: int, weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, halving_seconds: int, eras: int, claim_seconds: int} $chain */
-        $chain = config('season.chain');
-
         return new self(
             $season,
             $genesisAt,
-            $genesisAt->addSeconds($chain['eras'] * $chain['halving_seconds']),
+            $endsAt ?? $genesisAt->addSeconds($chain['weeks'] * 604800),
             $chain['supply'],
             $chain['subsidy'],
-            $chain['halving_seconds'],
+            $chain['halving_days'] * 86400,
             new ConsensusParameters(
                 $chain['weights'],
                 $chain['shares'],
@@ -57,8 +59,9 @@ final class SeasonParameters
                 $chain['pairlimit'][1],
                 $chain['subtree'],
                 $chain['moves'],
+                $chain['groups'],
             ),
-            $chain['claim_seconds'],
+            $chain['claim_days'] * 86400,
         );
     }
 

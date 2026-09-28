@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Share groups (P43, NIP rev. 9.4): both EA Sports FC editions mine, but
+ * Share groups (P43, NIP rev. 9.5): both EA Sports FC editions mine, but
  * count as one for the daily limit (rule 5) and the share cap (rule 9), so a
  * player who owns both editions does not mine twice as much.
  */

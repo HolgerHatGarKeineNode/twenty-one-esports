@@ -26,8 +26,9 @@ use Illuminate\Support\Facades\DB;
  *
  * The slug is not chosen: after the Pre-Season come `season-1`,
  * `season-2`, … (NIP "Season chain"). The chain parameters (supply,
- * subsidy, weights, …) stay config/season.php and the rating values the
- * rating draft (RatingSettings), as for the Pre-Season.
+ * subsidy, weights, …) are the chain draft (ChainDraft) and the rating
+ * values the rating draft (RatingSettings), as for the Pre-Season; the plan
+ * holds the Block 0 and the length of every season after it.
  *
  * Fail closed: for anyone not on the board, before any season, without the
  * league key or with a value out of range nothing is written or signed.
@@ -53,7 +54,7 @@ final class SeasonPlans
     /**
      * What the form shows before the first plan: the next slug's name, Block 0
      * at the end of the season before it (or the next full hour, if that has
-     * passed), the Pre-Season's length and f = 0.5.
+     * passed), the chain draft's length and f = 0.5.
      *
      * @return array{name: string, starts_at: CarbonImmutable, weeks: int, reset_factor_milli: int}
      */
@@ -61,13 +62,11 @@ final class SeasonPlans
     {
         $end = CarbonImmutable::instance($after->ends_at);
         $nextHour = CarbonImmutable::now()->addHour()->startOfHour();
-        /** @var array{eras: int, halving_seconds: int} $chain */
-        $chain = config('season.chain');
 
         return [
             'name' => __('Season :number', ['number' => substr(self::nextSlug($after), 7)]),
             'starts_at' => $end->isFuture() ? $end : $nextHour,
-            'weeks' => max(self::minWeeks(), min(self::maxWeeks(), intdiv($chain['eras'] * $chain['halving_seconds'], 604800))),
+            'weeks' => max(self::minWeeks(), min(self::maxWeeks(), ChainDraft::current()['weeks'])),
             'reset_factor_milli' => 500,
         ];
     }

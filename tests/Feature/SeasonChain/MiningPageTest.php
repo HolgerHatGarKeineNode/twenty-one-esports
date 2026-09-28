@@ -25,7 +25,7 @@ use Livewire\Livewire;
 
 test('before Block 0 /mining shows the rest state with the countdown and the Pre-Season draft', function () {
     $this->freezeTime();
-    config(['esports.preseason.block0_at' => now()->addDay()->toIso8601String()]);
+    planBlock0(now()->addDay()->toIso8601String());
 
     $this->get(route('mining'))
         ->assertOk()
@@ -155,7 +155,8 @@ test('before Block 0 the Season page shows the reserve, but no supply chart, pay
 });
 
 test('in a live season the supply chart plots the mined sats per day with the forecast, and a table holds the same numbers', function () {
-    $season = openSeason(['genesis_at' => now()->subDays(3)->startOfSecond(), 'ends_at' => now()->subDays(3)->startOfSecond()->addWeeks(24)]);
+    // Subsidy 20 000, the Pre-Season default before P43: the amounts below were computed with it.
+    $season = openSeason(['subsidy' => 20_000, 'genesis_at' => now()->subDays(3)->startOfSecond(), 'ends_at' => now()->subDays(3)->startOfSecond()->addWeeks(24)]);
     $miner = User::factory()->create(['name' => 'satsjaeger']);
     minedBlock($season, 1, $miner, CarbonImmutable::now()->subDays(2));
     minedBlock($season, 2, $miner, CarbonImmutable::now()->subDays(2)->addMinute());
@@ -213,7 +214,8 @@ test('the reserve card shows a QR code to zap the league reserve, never its addr
 })->with(['draft', 'live']);
 
 test('between seasons the page shows the ended season as it closed: no forecast, the unmined rest and the review', function () {
-    $season = openSeason(['genesis_at' => now()->subDays(30)->startOfSecond(), 'ends_at' => now()->subHour()->startOfSecond()]);
+    // Subsidy 20 000, the Pre-Season default before P43: the amounts below were computed with it.
+    $season = openSeason(['subsidy' => 20_000, 'genesis_at' => now()->subDays(30)->startOfSecond(), 'ends_at' => now()->subHour()->startOfSecond()]);
     minedBlock($season, 1, User::factory()->create(['name' => 'lena.k']), CarbonImmutable::now()->subDays(10));
 
     $this->get(route('mining'))

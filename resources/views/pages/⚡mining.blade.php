@@ -19,8 +19,8 @@ use Livewire\Component;
  * wins did not mine, the league reserve with its zaps, the payout rules, the
  * season review and the rules in force with their change log. Between
  * seasons: the ended season as it closed. Before Block 0: the rest state
- * with the countdown and the Pre-Season draft (config/season.php), which the
- * board releases.
+ * with the countdown and the chain draft of the board (ChainDraft), which it
+ * releases.
  *
  * Amounts are configured, mined, or received per zap; no pot ever shows a
  * wallet balance. The reserve is zapped through a QR code of the league's
@@ -121,7 +121,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 $live => [
                     [__('Era'), (string) $chain['era'], $chain['next_halving'] ? __('next halving :when', ['when' => $date($chain['next_halving'])]) : __('last era')],
                     [__('Mined'), $sats($chain['mined']), $minedOf],
-                    [__('Left in the pot'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
+                    [__('Left to mine'), $sats($chain['remaining']), __('mining stops at 0 or at the season end')],
                     [__('Blocks'), (string) $chain['blocks'], trans_choice(':count today|:count today', $chain['blocks_today'])],
                     [$firstKey ? __(':game win pays', ['game' => ChainOverview::keyLabel($firstKey)]) : __('A win pays'), $firstKey ? $sats($chain['rewards_now'][$firstKey]) : '0', __('sats per winning player, era :era', ['era' => $chain['era'] ?? 1])],
                 ],

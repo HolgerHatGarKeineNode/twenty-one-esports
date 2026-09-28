@@ -22,6 +22,7 @@ use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
 use App\Support\Rating\RatingSettings;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\LadderEvents;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\SeasonPlans;
@@ -88,11 +89,13 @@ function planNext(User $board, string $factor = '0.5', int $weeks = 12, string $
 /** Prepare, sign as the board member, release: the browser's three steps. */
 function releasePlanned(User $admin, TestSigner $signer): Season
 {
+    // The genesis message is part of the board's chain draft (P43).
+    saveChainDraft([...(ChainDraft::stored() ?? []), 'message' => PLAN_MESSAGE]);
     $release = app(SeasonRelease::class);
     $endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
-    $template = $release->prepare($admin, '2 100 000', PLAN_MESSAGE, $endsAt);
+    $template = $release->prepare($admin, '2 100 000', $endsAt, SeasonRelease::draftHash());
 
-    return $release->release($admin, '2 100 000', PLAN_MESSAGE, $endsAt, $signer->signTemplates([$template]));
+    return $release->release($admin, '2 100 000', $endsAt, SeasonRelease::draftHash(), $signer->signTemplates([$template]));
 }
 
 /** @return list<list<string>> the tags of the newest version of a ladder */

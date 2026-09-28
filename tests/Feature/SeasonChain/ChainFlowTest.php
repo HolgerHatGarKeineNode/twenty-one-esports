@@ -11,6 +11,7 @@
 use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
+use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonParameterChange;
 use App\Models\SeriesMatch;
@@ -78,7 +79,15 @@ function attestationTags(SeasonAttestation $attestation): array
 }
 
 beforeEach(function () {
-    $this->season = openSeason();
+    // The Pre-Season genesis these numbers were computed with before P43: subsidy 20 000, chess 40 %, Rocket League 60 %, no EA Sports FC.
+    $parameters = Season::factory()->make()->parameters;
+    $this->season = openSeason(['subsidy' => 20_000, 'parameters' => [
+        ...$parameters,
+        'weights' => array_filter($parameters['weights'], fn (string $key): bool => ! str_starts_with($key, 'ea-sports-fc'), ARRAY_FILTER_USE_KEY),
+        'groups' => [],
+        'shares' => ['chess' => 40, 'rocket-league' => 60],
+        'daily' => ['chess' => 5, 'rocket-league' => 5],
+    ]]);
 });
 
 test('a valid rated win is block 1: reward = subsidy x weight x winners, signed 2154 with the block tag', function () {

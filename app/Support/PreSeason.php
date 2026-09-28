@@ -3,31 +3,24 @@
 namespace App\Support;
 
 use App\Models\User;
+use App\Support\SeasonChain\ChainDraft;
 use Carbon\CarbonImmutable;
-use Throwable;
 
 /**
- * The Pre-Season as configured before Block 0 (config/esports.php,
- * `preseason`). Every value is optional; anything missing or malformed
- * reads as "not configured", so the home page never shows a made-up date,
- * pot or message.
+ * The Pre-Season as the board planned it before Block 0: the saved chain
+ * draft of the admin season page (ChainDraft, P43), the one source of the
+ * home page, the rules and the countdown. Until the board saved one, every
+ * value reads as "not configured", so the home page never shows a made-up
+ * date, supply or message.
  */
 class PreSeason
 {
     /** Planned Block 0; the board still releases it by hand. */
     public static function block0At(): ?CarbonImmutable
     {
-        $value = trim((string) config('esports.preseason.block0_at'));
+        $at = ChainDraft::stored()['block0_at'] ?? null;
 
-        if ($value === '') {
-            return null;
-        }
-
-        try {
-            return CarbonImmutable::parse($value);
-        } catch (Throwable) {
-            return null;
-        }
+        return $at === null ? null : CarbonImmutable::createFromTimestamp($at);
     }
 
     /**
@@ -54,19 +47,18 @@ class PreSeason
         return $block0At === null ? 0 : max(0, (int) ceil(now()->diffInSeconds($block0At, false)));
     }
 
-    /** The Pre-Season supply in sats, null = not announced. */
+    /**
+     * The Pre-Season supply in sats, null = not announced: the most the
+     * season pays out after it ends, not money held now.
+     */
     public static function potSats(): ?int
     {
-        $value = filter_var(config('esports.preseason.pot_sats'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-
-        return $value === false ? null : $value;
+        return ChainDraft::stored()['supply'] ?? null;
     }
 
     public static function genesisMessage(): ?string
     {
-        $value = trim((string) config('esports.preseason.genesis_message'));
-
-        return $value === '' ? null : $value;
+        return ChainDraft::stored()['message'] ?? null;
     }
 
     /** The player's own zone if valid, the league's display zone otherwise. */

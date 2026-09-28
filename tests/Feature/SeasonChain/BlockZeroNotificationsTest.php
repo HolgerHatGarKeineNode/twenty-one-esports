@@ -15,6 +15,7 @@ use App\Jobs\SendWebPush;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Notifications\BlockZeroNotifications;
+use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\SeasonRelease;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
@@ -23,7 +24,7 @@ use Tests\Support\TestSigner;
 beforeEach(function () {
     $this->freezeTime();
     Queue::fake([SendNostrDm::class, SendWebPush::class, PublishNostrEvent::class]);
-    config(['esports.notifications.nsec' => bin2hex(random_bytes(32)), 'esports.preseason.block0_at' => null]);
+    config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
 });
 
 /**
@@ -53,10 +54,11 @@ function releaseBlockZeroForTest(): void
     $board = User::factory()->withPubkey($boardSigner->pubkey)->create();
     config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)]]);
 
+    saveChainDraft([...(ChainDraft::stored() ?? []), 'message' => 'Block 0 of the test season']);
     $release = app(SeasonRelease::class);
     $endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
-    $template = $release->prepare($board, '2100000', 'Block 0 of the test season', $endsAt);
-    $release->release($board, '2100000', 'Block 0 of the test season', $endsAt, $boardSigner->signTemplates([$template]));
+    $template = $release->prepare($board, '2100000', $endsAt, SeasonRelease::draftHash());
+    $release->release($board, '2100000', $endsAt, SeasonRelease::draftHash(), $boardSigner->signTemplates([$template]));
 }
 
 test('releasing Block 0 tells every player who asked, once, on the bell and by DM, and nobody else', function () {
@@ -96,7 +98,7 @@ test('the release reaches every player across chunks, and nothing goes out befor
 
 test('a planned Block 0 date is told once to each player who asked, in their zone, and again only when it moves', function () {
     $at = CarbonImmutable::parse('2026-10-03 16:00:00', 'UTC');
-    config(['esports.preseason.block0_at' => $at->toIso8601String()]);
+    planBlock0($at->toIso8601String());
     $this->travelTo($at->subDays(4));
 
     $berlin = User::factory()->create(['locale' => 'en', 'timezone' => null, 'notify_block0_at' => now()]);
@@ -115,14 +117,14 @@ test('a planned Block 0 date is told once to each player who asked, in their zon
     expect(blockZeroBell($berlin))->toHaveCount(1);
 
     // The board moves the date: a new heads-up.
-    config(['esports.preseason.block0_at' => $at->addDay()->toIso8601String()]);
+    planBlock0($at->addDay()->toIso8601String());
     $this->artisan('esports:block0-heads-up')->assertSuccessful();
 
     expect(blockZeroBell($berlin))->toBe(['Block 0 is on Sat 3 Oct, 18:00 CEST', 'Block 0 is on Sun 4 Oct, 18:00 CEST']);
 });
 
 test('a player who asks while the date is on the page is not told that date again', function () {
-    config(['esports.preseason.block0_at' => now()->addDays(2)->toIso8601String()]);
+    planBlock0(now()->addDays(2)->toIso8601String());
     $player = User::factory()->create();
 
     $this->actingAs($player)->post(route('notify.block0'))->assertRedirect();
@@ -138,12 +140,12 @@ test('no date heads-up without a date, once the date has passed, or after the re
 
     expect($notifications->dated())->toBe(0);
 
-    config(['esports.preseason.block0_at' => now()->subMinute()->toIso8601String()]);
+    planBlock0(now()->subMinute()->toIso8601String());
     expect($notifications->datedPending())->toBeFalse()
         ->and($notifications->dated())->toBe(0);
 
     releaseBlockZeroForTest();
-    config(['esports.preseason.block0_at' => now()->addDay()->toIso8601String()]);
+    planBlock0(now()->addDay()->toIso8601String());
 
     expect($notifications->datedPending())->toBeFalse()
         ->and($notifications->dated())->toBe(0)

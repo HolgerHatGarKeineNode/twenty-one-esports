@@ -4,7 +4,7 @@ use App\Models\User;
 
 test('the home page counts down to Block 0 when a date is set', function () {
     $this->freezeTime();
-    config(['esports.preseason.block0_at' => now()->addDays(3)->addHours(4)->toIso8601String()]);
+    planBlock0(now()->addDays(3)->addHours(4)->toIso8601String());
 
     $this->get('/')
         ->assertOk()
@@ -15,7 +15,7 @@ test('the home page counts down to Block 0 when a date is set', function () {
 });
 
 test('the home page says the date is coming soon when none is set', function () {
-    config(['esports.preseason.block0_at' => null]);
+    planBlock0(null);
 
     $this->get('/')
         ->assertOk()

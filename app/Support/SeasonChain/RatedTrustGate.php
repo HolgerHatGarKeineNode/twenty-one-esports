@@ -55,7 +55,7 @@ final class RatedTrustGate
      */
     public static function minimum(): int
     {
-        return Seasons::live()->minimum_trust ?? (int) config('season.trust_minimum');
+        return Seasons::live()->minimum_trust ?? ChainDraft::current()['trust_minimum'];
     }
 
     /**

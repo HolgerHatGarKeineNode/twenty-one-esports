@@ -13,7 +13,6 @@ use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\RatedChess;
-use App\Support\GameNames;
 use Carbon\CarbonImmutable;
 
 /**
@@ -53,9 +52,10 @@ final class ChainOverview
         return ! str_starts_with($key, 'chess/') || RatedChess::offered();
     }
 
+    /** A game, or a share group ("EA Sports FC" for both editions). */
     public static function gameLabel(string $game): string
     {
-        return GameNames::game($game);
+        return ChainDraft::shareLabel($game);
     }
 
     /** Why a win did not mine, in plain words (the reason codes of ConsensusRules). */
@@ -64,7 +64,7 @@ final class ChainOverview
         return match ($reason) {
             'outside-season' => __('outside the season'),
             'game-does-not-mine' => __('this game and mode do not mine'),
-            'supply-exhausted' => __('the pot is mined out'),
+            'supply-exhausted' => __('the supply is mined out'),
             'not-trusted' => __('a player is not Trusted yet'),
             'not-connected' => __('the two sides have not added each other'),
             'forfeit' => __('a forfeit'),
@@ -225,15 +225,17 @@ final class ChainOverview
     }
 
     /**
-     * The Pre-Season draft of config/season.php as if Block 0 were now, with
-     * the forecast from the finished wins of the last window.
+     * The saved chain draft (ChainDraft) as if Block 0 were now, for the
+     * planned length, with the forecast from the finished wins of the last
+     * window.
      *
      * @return array<string, mixed>
      */
     public function draft(?CarbonImmutable $now = null): array
     {
         $now ??= CarbonImmutable::createFromTimestamp(now()->getTimestamp());
-        $parameters = SeasonParameters::fromConfig(SeasonRelease::SLUG, $now);
+        $chain = ChainDraft::current();
+        $parameters = SeasonParameters::fromDraft([...$chain, 'weeks' => ChainDraft::weeks($chain)], SeasonRelease::draft()['slug'], $now);
         $estimator = Estimator::fromConfig();
 
         return [
@@ -246,8 +248,38 @@ final class ChainOverview
             // Only games that can mine feed the forecast: casual chess wins say nothing about chess blocks while rated chess is off.
             'streams' => $streams = array_values(array_filter($this->recentWins($now->subDays($estimator->windowDays), $now, $estimator->windowDays / 7), fn (array $stream): bool => self::mines($stream['weight_key']))),
             'estimate' => $estimator->forecast($parameters, $now, $streams, 0, []),
+            'rewarded_wins' => $this->rewardedWins($parameters),
             'in_force' => $parameters->genesis,
         ];
+    }
+
+    /**
+     * How many wins of each game and mode the share cap of an era pays, if
+     * that game and mode alone mined it: floor(cap / block reward), the
+     * block reward for a full team of winners (the estimator's "wins the
+     * caps allow", for every game and mode that mines, not only those with
+     * recent wins). A share group's cap is shared by all its games.
+     *
+     * @return list<array<string, int>> one row per era, `<game>/<mode>` => wins
+     */
+    private function rewardedWins(SeasonParameters $season): array
+    {
+        $parameters = $season->genesis;
+        $rows = [];
+
+        for ($era = 1; $era <= $season->eras(); $era++) {
+            $row = [];
+
+            foreach ($parameters->weights as $key => $milli) {
+                [$game, $mode] = explode('/', $key, 2);
+                $reward = $season->rewardPerPlayer($milli, $era) * ($this->games->mode($game, $mode)->teamSize ?? 1);
+                $row[$key] = $reward > 0 ? intdiv($season->shareCap($parameters->shareFor($game), $era), $reward) : 0;
+            }
+
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     /**

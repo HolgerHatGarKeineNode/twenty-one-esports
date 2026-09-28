@@ -9,7 +9,7 @@ namespace App\Support\SeasonChain;
  * (`group`), which no change can alter.
  *
  * A share group lets several games count as one for rules 5 and 9 (NIP
- * rev. 9.4, "Share groups"): the two EA Sports FC editions share one share
+ * rev. 9.5, "Share groups"): the two EA Sports FC editions share one share
  * cap and one daily limit, so a player who owns both does not mine twice as
  * much. `share` and `daily` are keyed by the share key: the group a game
  * belongs to, otherwise the game itself.

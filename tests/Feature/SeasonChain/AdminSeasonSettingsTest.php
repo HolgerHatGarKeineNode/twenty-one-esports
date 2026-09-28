@@ -221,7 +221,9 @@ test('the release freezes the draft onto the season and into the ladder tags', f
         ->set('tiers.grand-champion-3', '1625')
         ->call('saveSettings')
         ->assertSet('settingsError', '')
-        ->set('message', 'Pre-Season: every fair win is a block')
+        ->set('draft.message', 'Pre-Season: every fair win is a block')
+        ->call('saveDraft')
+        ->assertSet('draftError', '')
         ->set('supply', '2 100 000');
 
     $page->call('release', json_encode($signer->signTemplates($page->instance()->prepareRelease())))
@@ -231,7 +233,8 @@ test('the release freezes the draft onto the season and into the ladder tags', f
     $season = Season::query()->sole();
     $tags = NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/pre-season'])->sole()->payload()['tags'];
 
-    expect($season->rating_parameters)->toBe(SeasonSettingChange::query()->sole()->values)
+    expect($season->rating_parameters)->toBe(RatingSettings::draft())
+        ->and(SeasonSettingChange::query()->latest('id')->first()->values['chain']['message'])->toBe('Pre-Season: every fair win is a block')
         ->and($season->rating_parameters['rating']['k'])->toBe(24)
         ->and($tags)->toContain(['rating', 'elo', '1200', '24', '400'], ['tier', 'silver-3', '1200'], ['tier', 'grand-champion-3', '1625'])
         ->and(EloRating::fromConfig('rating')->start)->toBe(1200);

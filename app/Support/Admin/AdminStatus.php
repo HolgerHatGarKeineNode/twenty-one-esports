@@ -117,7 +117,7 @@ final class AdminStatus
 
         return match (true) {
             $block0 === null => self::check('season', __('Season'), __('rated play and mining'), 'attention', __('No Block 0 date'),
-                __('Before Block 0, and no date is set (ESPORTS_BLOCK0_AT). Every game is casual.'), $href, __('Seasons')),
+                __('Before Block 0, and no date is set in the chain draft. Every game is casual.'), $href, __('Seasons')),
             $block0->isFuture() => self::check('season', __('Season'), __('rated play and mining'), 'ok', __('Before Block 0'),
                 __('Block 0 is planned for :when.', ['when' => self::date($block0)]), $href, __('Seasons')),
             default => self::check('season', __('Season'), __('rated play and mining'), 'attention', __('Block 0 due'),

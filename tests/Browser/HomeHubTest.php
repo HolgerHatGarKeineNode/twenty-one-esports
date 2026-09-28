@@ -244,7 +244,7 @@ test('measure the first viewport of home (before and after)', function () {
 
     // Undated (the test default) and with Block 0 set five days ahead.
     foreach ([null, now()->addDays(5)->setTime(21, 0)->toIso8601String()] as $block0) {
-        config(['esports.preseason.block0_at' => $block0]);
+        planBlock0($block0);
         $dated = $block0 === null ? 'undated' : 'dated';
 
         foreach ([[null, 'guest'], [$player, 'player']] as [$user, $who]) {
@@ -301,7 +301,7 @@ function homeHubTaps(Page $page, string $label): void
 
 test('the next tournament leads home at 375 and 1440 px, for a guest and a player', function () {
     ['tournament' => $tournament, 'player' => $player] = homeHubSeed();
-    config(['esports.preseason.block0_at' => now()->addDays(5)->setTime(21, 0)->toIso8601String()]);
+    planBlock0(now()->addDays(5)->setTime(21, 0)->toIso8601String());
 
     foreach ([[null, 'guest'], [$player, 'player']] as [$user, $who]) {
         foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
@@ -353,7 +353,7 @@ test('the next tournament leads home at 375 and 1440 px, for a guest and a playe
 
 test('the longer German copy fits the same first viewport and strip', function () {
     homeHubSeed();
-    config(['esports.preseason.block0_at' => now()->addDays(5)->setTime(21, 0)->toIso8601String()]);
+    planBlock0(now()->addDays(5)->setTime(21, 0)->toIso8601String());
 
     foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
         $label = "de {$width}x{$height}";
@@ -373,7 +373,7 @@ test('the longer German copy fits the same first viewport and strip', function (
 });
 
 test('without an open tournament the games lead home at 375 and 1440 px', function () {
-    config(['esports.preseason.block0_at' => null]);
+    planBlock0(null);
 
     foreach ([[375, 667, 96], [1440, 900, 120]] as [$width, $height, $strip]) {
         $label = "no tournament {$width}x{$height}";

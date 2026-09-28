@@ -8,9 +8,14 @@ use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
+use App\Support\PreSeason;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RatingSettings;
+use App\Support\SeasonChain\ChainDraft;
+use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\SeasonChain\SeasonRelease;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentDeadlines;
@@ -38,6 +43,7 @@ final class RulesPage
     {
         return [
             self::league(),
+            self::chain(),
             self::games(),
             self::casual(),
             self::chess(),
@@ -108,6 +114,56 @@ final class RulesPage
                 __('The same two opponents count for a rated ladder at most :count times a day.', ['count' => (int) $rating['daily_pair_limit']]),
             ],
             'links' => [[__('The season and mining'), route('mining')], [__('How results are verified'), route('protocol')]],
+        ];
+    }
+
+    /**
+     * The season chain as it stands: the live season's genesis and rules in
+     * force, else the board's draft for the next Block 0 (ChainDraft, P43).
+     * The supply is the most that is paid out after the season, never money
+     * held now (user decision 2026-09-28); before the board saved a draft it
+     * is not named.
+     *
+     * @return Section
+     */
+    private static function chain(): array
+    {
+        $live = Seasons::live();
+        $draft = ChainDraft::current();
+        $rules = ChainDraft::inForce();
+        $supply = $live->supply ?? PreSeason::potSats();
+        $subsidy = $live->subsidy ?? $draft['subsidy'];
+        $days = intdiv($live->halving_seconds ?? $draft['halving_days'] * 86400, 86400);
+        $facts = [];
+
+        if ($supply !== null) {
+            $facts[] = [__('Supply, the most paid out after the season'), __(':sats sats', ['sats' => PreSeason::formatSats($supply)])];
+        }
+
+        $facts[] = [__('Reward per win in era 1, at weight 1'), __(':sats sats', ['sats' => PreSeason::formatSats($subsidy)])];
+        $facts[] = [__('Era length'), trans_choice(':count day|:count days', $days)];
+        $facts[] = [__('Minimum chess moves'), (string) $rules->moves];
+        $rows = [];
+
+        foreach ($rules->weights as $key => $milli) {
+            [$game] = explode('/', $key, 2);
+            $rows[] = [ChainOverview::keyLabel($key), SeasonRelease::factor($milli), ($rules->shares[$rules->shareKey($game)] ?? 100).' %', (string) ($rules->daily[$rules->shareKey($game)] ?? '–')];
+        }
+
+        return [
+            'id' => 'season-chain',
+            'title' => __('Mining'),
+            'lead' => $live === null
+                ? __('Before Block 0 these are the values the board plans for the next season. Block 0 fixes them.')
+                : __('Every fair rated win of the live season mines a block. These are the values in force.'),
+            'facts' => $facts,
+            'table' => ['head' => [__('Game and mode'), __('Weight'), __('Share of an era'), __('Blocks per player a day')], 'rows' => $rows],
+            'items' => [
+                __('Rewards halve every era. The sats are paid once, after the season review, to the Lightning address of each player.'),
+                __('A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit.'),
+                __('The board can change weights, shares and limits during a season; a change only counts for blocks after it.'),
+            ],
+            'links' => [[__('The season and mining'), route('mining')]],
         ];
     }
 

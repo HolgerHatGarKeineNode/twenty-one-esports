@@ -1,7 +1,8 @@
 {{--
     Block 0 as a strip under the hero (before the first season): the
     genesis cube in miniature, when the Pre-Season starts (the date and a
-    running clock, or "date coming soon"), the pot when one is set, and
+    running clock, or "date coming soon"), the supply when the board saved
+    one (the most paid out after the season, not money held now), and
     "Notify me". At most 96 px high on phones and 120 px from lg; the long
     story is in the rules at the end of the page.
 
@@ -64,7 +65,7 @@
     @if ($pot)
         <p class="m-0 hidden shrink-0 flex-col items-end lg:flex" data-test="pot">
             <b class="font-display text-lg leading-tight tabular-nums">{{ PreSeason::formatSats($pot) }}</b>
-            <span class="text-xs text-ink-2">{{ __('sats in the Pre-Season pot') }}</span>
+            <span class="text-xs text-ink-2">{{ __('sats at most, paid after the season') }}</span>
         </p>
     @endif
 

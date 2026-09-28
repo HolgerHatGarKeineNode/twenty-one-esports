@@ -3,11 +3,12 @@
 namespace Database\Factories;
 
 use App\Models\Season;
+use App\Support\SeasonChain\ChainDraft;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
 /**
- * A released season with the Pre-Season defaults of config/season.php, live
+ * A released season with the chain draft defaults of config/season.php, live
  * from an hour ago. Only for tests: a real season is written by
  * App\Support\SeasonChain\SeasonChains::release() from a signed genesis.
  *
@@ -20,8 +21,7 @@ class SeasonFactory extends Factory
      */
     public function definition(): array
     {
-        /** @var array{supply: int, subsidy: int, weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, halving_seconds: int, eras: int, claim_seconds: int} $chain */
-        $chain = config('season.chain');
+        $chain = ChainDraft::defaults();
         $genesisAt = now()->subHour()->startOfSecond();
 
         return [
@@ -29,11 +29,12 @@ class SeasonFactory extends Factory
             'league_pubkey' => bin2hex(random_bytes(32)),
             'supply' => $chain['supply'],
             'subsidy' => $chain['subsidy'],
-            'halving_seconds' => $chain['halving_seconds'],
-            'claim_seconds' => $chain['claim_seconds'],
-            'minimum_trust' => (int) config('season.trust_minimum'),
+            'halving_seconds' => $chain['halving_days'] * 86400,
+            'claim_seconds' => $chain['claim_days'] * 86400,
+            'minimum_trust' => $chain['trust_minimum'],
             'parameters' => [
                 'weights' => $chain['weights'],
+                'groups' => $chain['groups'],
                 'shares' => $chain['shares'],
                 'daily' => $chain['daily'],
                 'pairlimit' => $chain['pairlimit'],
@@ -43,7 +44,7 @@ class SeasonFactory extends Factory
             'genesis_message' => 'Pre-Season: every fair win is a block',
             'digest' => hash('sha256', Str::random()),
             'genesis_at' => $genesisAt,
-            'ends_at' => $genesisAt->copy()->addSeconds($chain['eras'] * $chain['halving_seconds']),
+            'ends_at' => $genesisAt->copy()->addSeconds($chain['weeks'] * 604800),
             'released_by_pubkey' => bin2hex(random_bytes(32)),
         ];
     }
