@@ -239,21 +239,33 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
         @include('pages.live.chat', ['chat' => $this->chat, 'class' => 'max-lg:h-[min(34rem,calc(100svh-var(--live-chat-floor,5rem)-1rem))] max-lg:scroll-mb-[var(--live-chat-floor,5rem)] lg:sticky lg:top-4 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:h-[max(26rem,calc(100dvh-var(--live-chat-top,14rem)))]'])
 
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2">
-            {{-- Share: the page link, the system share sheet (else the clipboard), Telegram. --}}
-            <div class="flex flex-col gap-2" data-test="live-share"
-                 x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($pageUrl), text: @js($shareText),
-                           async copy(hint = '') { try { await navigator.clipboard.writeText(this.url); this.copied = true; this.hint = hint; setTimeout(() => { this.copied = false; this.hint = ''; }, 2500); } catch (e) { this.hint = @js(__('Copy did not work here. Select the link and copy it.')); } },
-                           async share(hint) { if (this.canShare) { try { await navigator.share({ title: document.title, text: this.text, url: this.url }); return; } catch (e) { if (e?.name === 'AbortError') return; } } await this.copy(hint); } }">
-                <span class="text-xs text-ink-2">{{ __('Bring your friends to the stream') }}</span>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" x-on:click="copy()" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink">
-                        <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy link'))">{{ __('Copy link') }}</span>
-                    </button>
-                    <button type="button" x-on:click="share(@js(__('Link copied. Paste it into a note in your Nostr app.')))" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink"><x-icon name="chat" :size="16" />Nostr</button>
-                    <a href="https://t.me/share/url?url={{ urlencode($pageUrl) }}&amp;text={{ urlencode($shareText) }}" target="_blank" rel="noopener noreferrer"
-                       class="btn-w inline-flex h-11 items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink hover:text-ink"><x-icon name="send" :size="16" />Telegram</a>
+            {{-- Zap and share right under the stage: the two ways to support it (user: the zap was buried at the bottom). --}}
+            <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
+                @if ($this->zapQr)
+                    <section aria-labelledby="live-zap-h" class="flex items-center gap-4 rounded-lg bg-card px-4 py-4 lg:px-5" data-test="live-zap">
+                        <img src="{{ $this->zapQr }}" width="112" height="112" alt="{{ __('QR code to zap the stream') }}" class="size-28 shrink-0 rounded-sm bg-white p-2 [image-rendering:pixelated]">
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
+                            <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
+                        </div>
+                    </section>
+                @endif
+                {{-- Share: the page link, the system share sheet (else the clipboard), Telegram. --}}
+                <div class="flex flex-col gap-2" data-test="live-share"
+                     x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($pageUrl), text: @js($shareText),
+                               async copy(hint = '') { try { await navigator.clipboard.writeText(this.url); this.copied = true; this.hint = hint; setTimeout(() => { this.copied = false; this.hint = ''; }, 2500); } catch (e) { this.hint = @js(__('Copy did not work here. Select the link and copy it.')); } },
+                               async share(hint) { if (this.canShare) { try { await navigator.share({ title: document.title, text: this.text, url: this.url }); return; } catch (e) { if (e?.name === 'AbortError') return; } } await this.copy(hint); } }">
+                    <span class="text-xs text-ink-2">{{ __('Bring your friends to the stream') }}</span>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" x-on:click="copy()" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink">
+                            <x-icon name="copy" :size="16" /><span x-text="copied ? @js(__('Copied')) : @js(__('Copy link'))">{{ __('Copy link') }}</span>
+                        </button>
+                        <button type="button" x-on:click="share(@js(__('Link copied. Paste it into a note in your Nostr app.')))" class="btn-w inline-flex h-11 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink"><x-icon name="chat" :size="16" />Nostr</button>
+                        <a href="https://t.me/share/url?url={{ urlencode($pageUrl) }}&amp;text={{ urlencode($shareText) }}" target="_blank" rel="noopener noreferrer"
+                           class="btn-w inline-flex h-11 items-center gap-2 rounded-md border border-line bg-well px-3.5 text-[13px] text-ink hover:text-ink"><x-icon name="send" :size="16" />Telegram</a>
+                    </div>
+                    <span class="text-xs text-win" role="status" x-show="hint" x-text="hint" x-cloak></span>
                 </div>
-                <span class="text-xs text-win" role="status" x-show="hint" x-text="hint" x-cloak></span>
             </div>
 
             {{-- The programme: what is on the stream. Under the stage from lg; the second view below lg. --}}
@@ -302,15 +314,6 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                     </section>
                 @endif
 
-                @if ($this->zapQr)
-                    <section aria-labelledby="live-zap-h" class="flex items-center gap-4 border-t border-hairline px-4 py-4 lg:px-5" data-test="live-zap">
-                        <img src="{{ $this->zapQr }}" width="112" height="112" alt="{{ __('QR code to zap the stream') }}" class="size-28 shrink-0 rounded-sm bg-white p-2 [image-rendering:pixelated]">
-                        <div class="flex min-w-0 flex-col gap-1">
-                            <h2 id="live-zap-h" class="m-0 text-[15px] font-bold">{{ __('Zap the stream') }}</h2>
-                            <p class="m-0 text-xs leading-5 text-ink-2">{{ __('Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.') }}</p>
-                        </div>
-                    </section>
-                @endif
             </aside>
         </div>
     </div>
