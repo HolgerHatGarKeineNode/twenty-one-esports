@@ -328,6 +328,29 @@ select:focus[data-flux-control] {
         }
     }
 
+    /*
+     * An earlier position of a running game (P55, x-chess.history-bar): the
+     * squares go dim and grey and the cube turns cold, so a glance at the board
+     * tells it is not the game as it stands. Orange stays the colour of now.
+     */
+    .cube-lg > .grid {
+        transition: filter 150ms ease-out;
+    }
+
+    .cube-lg.is-past {
+        background: var(--color-dash) !important;
+    }
+
+    .cube-lg.is-past > .grid {
+        filter: saturate(0.2) brightness(0.78);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .cube-lg > .grid {
+            transition: none;
+        }
+    }
+
     /* Searching-state progress sweep (ChessStates "Finding opponent"). */
     .sweep {
         animation: sweep 1.6s ease-in-out infinite;

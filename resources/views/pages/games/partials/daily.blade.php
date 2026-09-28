@@ -62,7 +62,7 @@
         {{-- Board column: the board, typing a move, draw and resign --}}
         <div class="max-lg:contents lg:col-start-1 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
             <div class="order-2 lg:order-none">
-                <x-chess.board :playable="$color !== null" class="lg:mt-4 lg:max-w-[544px]">
+                <x-chess.board :playable="$color !== null" class="lg:mt-4 lg:max-w-[544px]" x-bind:class="browsing && 'is-past'" data-test="daily-board">
                     {{-- Promotion picker --}}
                     <template x-if="promotion">
                         <div class="absolute inset-0">
@@ -96,17 +96,29 @@
                 </x-chess.board>
             </div>
 
-            @if ($color)
-                <form class="hidden w-full max-w-[544px] items-center gap-2.5 lg:flex" x-on:submit.prevent="submitSan()">
-                    <label for="mv" class="text-[13px] whitespace-nowrap text-ink-2">{{ __('Enter move') }}</label>
-                    <input id="mv" x-model="sanInput" :placeholder="@js(__('e.g. :move', ['move' => 'f6']))" autocomplete="off" data-test="daily-san-input" :disabled="! myTurn || pending"
-                           class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3 disabled:opacity-60">
-                    <button type="button" x-show="myTurn && pending" x-on:click="clear()" :disabled="busy" aria-label="{{ __('Clear selection') }}" title="{{ __('Clear selection') }}"
-                            class="btn-w inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink disabled:opacity-50"><x-icon name="close" :size="16" /></button>
-                    <button type="button" x-show="myTurn" x-on:click="makeMove()" :disabled="! pending || busy" data-test="make-move"
-                            class="btn-p inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc disabled:cursor-not-allowed disabled:opacity-50"><x-icon name="shield-check" :size="18" />{{ __('Make my move') }}</button>
-                </form>
+            {{--
+                Stepping through the moves (P55): an earlier position takes no move; a picked move waits for the way
+                back. Below lg under your card and the deadline, right above the move strip. From lg the move field
+                shares the row (as in blitz): a row of its own made the board column 60 px taller, and the chat, as
+                tall as that column, lost its input below the first viewport at 1440 x 900 (ChatAndDailyTest).
+                The field's label is for screen readers there; the placeholder says it, and with a picked move
+                only "clear" and "Make my move" are left.
+            --}}
+            <x-chess.history-bar class="order-5 mx-4 lg:order-none lg:mx-0 lg:w-full lg:max-w-[544px]">
+                @if ($color)
+                    <form class="flex min-w-0 grow items-center gap-2.5" x-on:submit.prevent="submitSan()">
+                        <label for="mv" class="sr-only">{{ __('Enter move') }}</label>
+                        <input id="mv" x-model="sanInput" x-show="! pending" :placeholder="@js(__('Move, e.g. :move', ['move' => 'f6']))" autocomplete="off" data-test="daily-san-input" :disabled="! myTurn"
+                               class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3 disabled:opacity-60">
+                        <button type="button" x-show="myTurn && pending" x-on:click="clear()" :disabled="busy" aria-label="{{ __('Clear selection') }}" title="{{ __('Clear selection') }}"
+                                class="btn-w ml-auto inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink disabled:opacity-50"><x-icon name="close" :size="16" /></button>
+                        <button type="button" x-show="myTurn" x-on:click="makeMove()" :disabled="! pending || busy" data-test="make-move"
+                                class="btn-p inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc disabled:cursor-not-allowed disabled:opacity-50"><x-icon name="shield-check" :size="18" />{{ __('Make my move') }}</button>
+                    </form>
+                @endif
+            </x-chess.history-bar>
 
+            @if ($color)
                 {{-- Draw offer received (below lg; from lg it takes over the row of draw and resign). order-7 keeps it right above that row, where it sat before. --}}
                 <template x-if="state.drawOffer && state.drawOffer !== color">
                     <div class="order-7 mx-4 flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring lg:hidden" data-test="daily-draw-offer">
@@ -160,7 +172,7 @@
                         <span class="relative flex min-w-0 items-center gap-2.5">
                             <x-chess.player-card :player="$p" :color="$sideColor" :you="$sideColor === $color"><x-rating :rating="$p['rating']" :label="__('Daily')" /></x-chess.player-card>
                         </span>
-                        <x-chess.captured fen="(pending?.fen ?? state.fen)" color="'{{ $sideColor }}'" data-test="captured-{{ $side }}" />
+                        <x-chess.captured fen="displayFen" color="'{{ $sideColor }}'" data-test="captured-{{ $side }}" />
                     </span>
                     <div role="timer" class="flex h-12 shrink-0 items-center gap-2 rounded-lg px-3 lg:hidden"
                          :class="state.turn === '{{ $sideColor }}' ? (low ? 'bg-loss text-on-btc' : 'bg-btc text-on-btc') : 'bg-card text-ink-2 shadow-ring'">
@@ -241,11 +253,11 @@
             </span>
 
             {{-- Moves strip (mobile) --}}
-            <div tabindex="0" aria-label="{{ __('Move list, newest move on the right') }}" class="order-5 mx-4 flex h-11 flex-row-reverse overflow-x-auto rounded-lg bg-card lg:hidden">
+            <div tabindex="0" aria-label="{{ __('Move list, newest move on the right') }}" class="order-5 mx-4 flex h-11 flex-row-reverse overflow-x-auto rounded-lg bg-card lg:hidden" data-newest="reverse" x-effect="shownIndex; state.moves.length; revealShown($el)" data-test="daily-move-strip">
                 <ol class="m-0 flex list-none items-center gap-1 px-2 py-0 text-[13px] whitespace-nowrap">
                     <template x-if="state.moves.length === 0"><li class="px-1 text-ink-3">{{ __('No moves yet') }}</li></template>
                     <template x-for="row in moveRows" :key="'s' + row.n">
-                        <li class="flex items-center gap-1"><span class="text-ink-3" x-text="row.n + '.'"></span><span class="rounded-sm px-1.5 py-1" :class="row.wCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.w"></span><span class="rounded-sm px-1.5 py-1" :class="row.bCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.b"></span></li>
+                        <li class="flex items-center gap-1"><span class="text-ink-3" x-text="row.n + '.'"></span><button type="button" x-on:click="go(row.wPly)" class="h-9 cursor-pointer rounded-sm border-0 px-1.5 text-[13px]" :aria-current="row.wCur ? 'step' : 'false'" :class="row.wCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink'" x-text="row.w"></button><template x-if="row.bPly"><button type="button" x-on:click="go(row.bPly)" class="h-9 cursor-pointer rounded-sm border-0 px-1.5 text-[13px]" :aria-current="row.bCur ? 'step' : 'false'" :class="row.bCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink'" x-text="row.b"></button></template></li>
                     </template>
                 </ol>
             </div>
@@ -253,14 +265,14 @@
             {{-- Moves with days (lg): as tall as its rows, scrolls inside once the column is full. With 32px rows, 30 plies at 1440x900 keep 10 rows in view on either turn, in English and German (measured 2026-09-26). --}}
             <section aria-labelledby="ev-h" class="mx-4 hidden min-h-0 flex-col rounded-lg bg-card lg:order-4 lg:mx-0 lg:flex lg:max-h-max lg:min-h-20 lg:grow lg:basis-20">
                 <span class="flex items-baseline justify-between border-b border-hairline px-4 pt-3 pb-2"><span id="ev-h" class="text-[15px] font-bold">{{ __('Moves') }}</span><span class="text-xs text-ink-3">{{ __('one per day, each one saved') }}</span></span>
-                <div tabindex="0" aria-label="{{ __('Move list with days') }}" class="flex min-h-0 grow flex-col-reverse overflow-y-auto">
+                <div tabindex="0" aria-label="{{ __('Move list with days') }}" class="flex min-h-0 grow flex-col-reverse overflow-y-auto" data-newest="reverse" x-effect="shownIndex; state.moves.length; revealShown($el)">
                     <ol class="m-0 list-none px-3 py-0" data-test="daily-moves">
                         <template x-if="state.moves.length === 0"><li class="px-2 py-4 text-[13px] text-ink-3">{{ __('No moves yet. White starts.') }}</li></template>
                         <template x-for="row in moveRows" :key="row.n">
                             <li class="grid min-h-8 grid-cols-[36px_minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 border-b border-hairline text-sm last:border-0">
                                 <span class="pl-2 text-ink-3" x-text="row.n + '.'"></span>
-                                <span class="flex min-w-0 items-baseline gap-2 rounded-sm px-2 py-1" :class="row.wCur ? 'bg-btc-press' : ''"><b :class="row.wCur ? 'text-btc-hi' : 'text-ink'" x-text="row.w"></b><span class="text-[11px] text-ink-3" x-text="row.wt"></span></span>
-                                <span class="flex min-w-0 items-baseline gap-2 rounded-sm px-2 py-1" :class="row.bCur ? 'bg-btc-press' : ''"><b :class="row.bCur ? 'text-btc-hi' : 'text-ink'" x-text="row.b"></b><span class="text-[11px] text-ink-3" x-text="row.bt"></span></span>
+                                <button type="button" x-on:click="go(row.wPly)" class="flex min-w-0 cursor-pointer items-baseline gap-2 rounded-sm border-0 px-2 py-1 text-left text-sm" :aria-current="row.wCur ? 'step' : 'false'" :class="row.wCur ? 'bg-btc-press' : 'bg-transparent hover:bg-raised'"><b :class="row.wCur ? 'text-btc-hi' : 'text-ink'" x-text="row.w"></b><span class="text-[11px] text-ink-3" x-text="row.wt"></span></button>
+                                <template x-if="row.bPly"><button type="button" x-on:click="go(row.bPly)" class="flex min-w-0 cursor-pointer items-baseline gap-2 rounded-sm border-0 px-2 py-1 text-left text-sm" :aria-current="row.bCur ? 'step' : 'false'" :class="row.bCur ? 'bg-btc-press' : 'bg-transparent hover:bg-raised'"><b :class="row.bCur ? 'text-btc-hi' : 'text-ink'" x-text="row.b"></b><span class="text-[11px] text-ink-3" x-text="row.bt"></span></button></template>
                             </li>
                         </template>
                     </ol>

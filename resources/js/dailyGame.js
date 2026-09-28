@@ -8,9 +8,14 @@
  * the server plays it. Like a blitz move it is not an event and needs no
  * signature (NIP rev. 9.4): the league signs one record when the game ends,
  * and each player may post the game to their profile by button after that.
+ *
+ * The moves can be browsed (P55, moveHistory.js): an earlier position takes no
+ * move, a picked move waits (it is shown again back at the current position),
+ * and the opponent's move does not pull the board back to now.
  */
 import { Chess } from 'chess.js';
 import { boardKey } from './hotkeys.js';
+import { positionsFrom, withHistory } from './moveHistory.js';
 import { moveSound, playSound } from './sounds.js';
 import { displaySan, inputSan } from './sanNotation.js';
 
@@ -18,7 +23,9 @@ const PIECES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 
 const DAY = 86_400_000;
 
 export function dailyGame(config, boardCells, kingInCheck) {
-    return {
+    const positions = positionsFrom(config.startFen);
+
+    return withHistory({
         state: config.state,
         color: config.color,
         t: config.labels,
@@ -87,6 +94,28 @@ export function dailyGame(config, boardCells, kingInCheck) {
             this.dots = [];
         },
 
+        /* ---- move history ---- */
+
+        get historyMoves() {
+            return this.state.moves;
+        },
+
+        historyFen(index) {
+            return index >= this.state.moves.length ? this.state.fen : (positions(this.state.moves)[index] ?? this.state.fen);
+        },
+
+        onBrowse() {
+            this.selected = '';
+            this.dots = [];
+            this.promotion = null;
+            this.confirmOpen = false;
+        },
+
+        /** The position the captured pieces count: the shown one, or the picked move's. */
+        get displayFen() {
+            return this.browsing ? this.shownFen : (this.pending?.fen ?? this.state.fen);
+        },
+
         /* ---- board ---- */
 
         get myTurn() {
@@ -100,6 +129,9 @@ export function dailyGame(config, boardCells, kingInCheck) {
         },
 
         get cells() {
+            if (this.browsing) {
+                return boardCells(this.shownFen, { flip: this.flipped, last: this.shownSquares, check: kingInCheck(this.shownFen), noCoords: !config.coordinates });
+            }
             if (this.pending) {
                 return boardCells(this.pending.fen, { flip: this.flipped, last: [this.pending.uci.slice(0, 2), this.pending.uci.slice(2, 4)], check: kingInCheck(this.pending.fen), noCoords: !config.coordinates });
             }
@@ -109,12 +141,13 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
         get boardLabel() {
             const last = this.state.moves[this.state.moves.length - 1];
+            const now = this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? displaySan(last.san) : '–');
 
-            return this.t.board.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':move', last ? displaySan(last.san) : '–');
+            return this.browsing ? (this.shownLabel ? this.t.pastBoard.replace(':move', this.shownLabel) : this.t.pastStart) + ' ' + now : now;
         },
 
         clickSquare(square) {
-            if (!this.myTurn || this.pending || this.busy) return;
+            if (!this.myTurn || this.pending || this.busy || this.browsing) return;
             const chess = new Chess(this.state.fen);
             const piece = chess.get(square);
 
@@ -167,6 +200,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
                 return;
             }
+            if (!this.confirmOpen && this.historyKey(key, event)) return;
             if (key === 'f') this.flipped = !this.flipped;
             else if (key === 'Escape' && !this.busy) {
                 if (this.confirmOpen) this.confirmOpen = false;
@@ -179,6 +213,11 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
         submitSan() {
             const san = inputSan(this.sanInput);
+            if (san && this.browsing) {
+                this.error = this.t.errors.browsing;
+
+                return;
+            }
             if (!san || !this.myTurn || this.pending) return;
             let move = null;
             try {
@@ -243,6 +282,12 @@ export function dailyGame(config, boardCells, kingInCheck) {
 
         makeMove() {
             if (!this.pending || this.busy) return;
+            // Never made from an earlier position: the first press shows the picked move on the current one.
+            if (this.browsing) {
+                this.toLive();
+
+                return;
+            }
             if (this.doubleCheck && !this.confirmOpen) {
                 this.confirmOpen = true;
 
@@ -260,7 +305,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
             const wire = this.$wire;
             void wire.$id;
             this.confirmOpen = false;
-            if (!this.pending) return;
+            if (!this.pending || this.browsing) return;
             this.busy = true;
             this.error = '';
             try {
@@ -348,6 +393,7 @@ export function dailyGame(config, boardCells, kingInCheck) {
         get moveRows() {
             const rows = [];
             const moves = this.state.moves;
+            const current = this.shownIndex - 1;
             for (let i = 0; i < moves.length; i += 2) {
                 rows.push({
                     n: i / 2 + 1,
@@ -355,8 +401,10 @@ export function dailyGame(config, boardCells, kingInCheck) {
                     b: displaySan(moves[i + 1]?.san ?? ''),
                     wt: moves[i].at ? this.t.day.replace(':n', this.day(moves[i].at)) : '',
                     bt: moves[i + 1]?.at ? this.t.day.replace(':n', this.day(moves[i + 1].at)) : '',
-                    wCur: moves.length - 1 === i,
-                    bCur: moves.length - 1 === i + 1,
+                    wCur: current === i,
+                    bCur: current === i + 1,
+                    wPly: i + 1,
+                    bPly: moves[i + 1] ? i + 2 : null,
                 });
             }
 
@@ -374,5 +422,5 @@ export function dailyGame(config, boardCells, kingInCheck) {
             this.remind = !this.remind;
             await this.$wire.setRemind(this.remind);
         },
-    };
+    });
 }

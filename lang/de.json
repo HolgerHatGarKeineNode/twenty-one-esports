@@ -4998,5 +4998,16 @@
     "Use the default": "Standard verwenden",
     "every change stays in the record": "jede Änderung bleibt im Protokoll",
     "default (:value)": "Standard (:value)",
-    "No change yet: the configuration holds every value.": "Noch keine Änderung: die Konfiguration hält jeden Wert."
+    "No change yet: the configuration holds every value.": "Noch keine Änderung: die Konfiguration hält jeden Wert.",
+    "Earlier position, after :move.": "Frühere Stellung, nach :move.",
+    "Earlier position: the start position.": "Frühere Stellung: die Grundstellung.",
+    "The board shows an earlier position. Go back to the current position to move.": "Das Brett zeigt eine frühere Stellung. Geh zurück zur aktuellen Stellung, um zu ziehen.",
+    "Current position": "Aktuelle Stellung",
+    "Viewing :move": "Du siehst :move",
+    "Viewing the start position": "Du siehst die Grundstellung",
+    "New move: :move": "Neuer Zug: :move",
+    "Back to the current position": "Zurück zur aktuellen Stellung",
+    "Home End": "Pos1 Ende",
+    "first move, back to the current position": "erster Zug, zurück zur aktuellen Stellung",
+    "Move, e.g. :move": "Zug, z. B. :move"
 }

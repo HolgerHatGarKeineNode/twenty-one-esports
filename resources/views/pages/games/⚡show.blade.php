@@ -437,6 +437,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         return [
             'white' => __('White'),
             'board' => __('Board, :side to move. Last move :move.'),
+            // P55: stepping back through the moves shows an earlier position; the game goes on meanwhile.
+            'pastBoard' => __('Earlier position, after :move.'),
+            'pastStart' => __('Earlier position: the start position.'),
             // A tournament game ends at the first-move deadline by the league's decision (P18, slice 5): say what happens.
             'firstMove' => $this->game->tournament_match_id !== null ? __('Auto-decision in :s s: :side loses by forfeit (if the other side never came, the game is aborted)') : __(':side: first move within :s s'),
             'offerDraw' => __('Offer draw'),
@@ -460,6 +463,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 'already_playing' => __('One of you is already in another live game.'), 'no_claim' => __('The win cannot be claimed: your opponent is back or not gone long enough.'),
                 'signature_rejected' => __('Your signature did not match the post. Nothing was posted.'), 'already_posted' => __('You already posted this game.'),
                 'not_finished' => __('Only a finished game can be posted.'), 'reload' => __('This page is out of date. Please reload it.'),
+                'browsing' => __('The board shows an earlier position. Go back to the current position to move.'),
                 'default' => __('That did not work. The board shows the server\'s state.')],
             'disconnected' => [
                 'title' => __(':name disconnected', ['name' => $this->game->opponentOf(auth()->user())?->displayName() ?? '']),
@@ -490,6 +494,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 
         return [
             'state' => app(ChessGameService::class)->snapshot($this->game),
+            'startFen' => $this->game->startFen(),
             'color' => $color,
             'startedAt' => $this->game->created_at?->getTimestampMs() ?? 0,
             'doubleCheck' => $settings->doubleCheck ?? true,
@@ -544,7 +549,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         @include('pages.games.partials.daily', ['game' => $game, 'players' => $players, 'color' => $color, 'opponent' => $opponent])
     @elseif ($live)
         <div wire:ignore
-             x-data="chessGame(@js(['state' => app(ChessGameService::class)->snapshot($game), 'color' => $color, 'labels' => $this->labels()]))"
+             x-data="chessGame(@js(['state' => app(ChessGameService::class)->snapshot($game), 'startFen' => $game->startFen(), 'color' => $color, 'labels' => $this->labels()]))"
              x-on:keydown.window="hotkey($event)"
              @class(['flex flex-col gap-4 px-4 pb-8 lg:gap-5 lg:px-12 lg:pb-10', 'max-lg:pb-28' => $color !== null])
              data-test="chess-game">
@@ -588,7 +593,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                             @endforeach
                         </div>
                         {{-- Captured pieces and material lead, on every screen size --}}
-                        <x-chess.captured fen="state.fen" :color="$sideColor" data-test="captured-{{ $side }}" @class(['col-span-2 lg:px-1', 'lg:order-3' => $side === 'bottom']) />
+                        <x-chess.captured fen="shownFen" :color="$sideColor" data-test="captured-{{ $side }}" @class(['col-span-2 lg:px-1', 'lg:order-3' => $side === 'bottom']) />
                         {{-- Clock (kit section 5) --}}
                         <div role="timer" aria-live="off" :aria-label="clock({{ $sideColor }}).aria" data-test="clock-{{ $side }}"
                              :style="`background: ${clock({{ $sideColor }}).bg}; box-shadow: ${clock({{ $sideColor }}).ring}; color: ${clock({{ $sideColor }}).fg}`"
@@ -605,186 +610,198 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     </div>
                 @endforeach
 
-                {{-- Board column --}}
-                <div class="order-2 -mx-4 flex flex-col gap-4 lg:order-none lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mx-0 lg:mt-4">
-                    <x-chess.board playable class="lg:max-w-[576px]" data-test="live-board">
-                        {{-- Promotion picker, on the target file (ChessOverlays 2) --}}
-                        <template x-if="promotion">
-                            <div class="absolute inset-0">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.6)]" x-on:click="promotion = null"></div>
-                                <div role="dialog" aria-label="{{ __('Promote to') }}" class="absolute top-0 flex w-[12.5%] flex-col overflow-hidden rounded-b-md bg-card shadow-[0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]" :style="`left: ${promotionLeft}`">
-                                    <template x-for="p in promotionPieces" :key="p.key">
-                                        <button type="button" :aria-label="p.name" x-on:click="pickPromotion(p.key)" class="relative block aspect-square w-full cursor-pointer border-0 bg-[#CFCFD4] p-0 hover:bg-btc-hi" :data-promote="p.key">
-                                            <svg viewBox="0 0 45 45" width="100%" height="100%" class="absolute top-0 left-0 block" aria-hidden="true"><g text-anchor="middle" style="font-family: 'DejaVu Sans', 'Noto Sans Symbols 2', 'Segoe UI Symbol', 'Apple Symbols', sans-serif; font-variant-emoji: text; font-size: 40px"><text x="22.5" y="38" :fill="p.fill" x-text="p.solid"></text><text x="22.5" y="38" fill="#0A0A0B" x-text="p.outline"></text></g></svg>
-                                        </button>
-                                    </template>
-                                    <button type="button" aria-label="{{ __('Cancel promotion') }}" x-on:click="promotion = null" class="flex h-11 cursor-pointer items-center justify-center border-0 bg-well text-ink-2"><x-icon name="close" :size="16" /></button>
-                                </div>
-                            </div>
-                        </template>
-
-                        {{-- Connection lost (ChessStates) --}}
-                        <template x-if="reconnecting">
-                            <div class="absolute inset-0" data-test="reconnecting">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="status" class="absolute top-4 right-4 left-4 flex flex-col gap-2 rounded-lg bg-[#241D10] px-3.5 py-3 shadow-[inset_0_0_0_1px_#5A4418]">
-                                    <span class="flex items-center gap-2.5 text-[13px]"><x-icon name="wifi" :size="18" class="text-btc-hi" /><b>{{ __('Reconnecting …') }}</b></span>
-                                    <span class="text-xs leading-normal text-ink-2">{{ __('Your clock keeps running on the server. Moves you make now are not sent.') }}</span>
-                                    <x-button variant="quiet" icon="retry" class="self-start" x-on:click="reconnectNow()">{{ __('Reconnect now') }}</x-button>
-                                </div>
-                                <span class="absolute bottom-4 left-4 flex h-[34px] items-center gap-2 rounded-md bg-[#241D10] px-3 text-[13px] text-btc-hi"><span class="size-2 animate-live rounded-full bg-btc-hi"></span><span x-text="connectionLabel"></span></span>
-                            </div>
-                        </template>
-
-                        {{-- Opponent disconnected (ChessOverlays): claim the win after the timeout --}}
-                        <template x-if="disconnect">
-                            <div class="absolute inset-0 flex items-center justify-center p-3" data-test="opponent-disconnected">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="alertdialog" aria-labelledby="dc-h" aria-describedby="dc-d" class="relative flex w-full max-w-[368px] flex-col gap-4 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                    <div class="flex items-center gap-4">
-                                        <span class="relative flex size-[62px] shrink-0 items-center justify-center" aria-hidden="true">
-                                            <svg viewBox="0 0 62 62" class="absolute inset-0 size-full -rotate-90"><circle cx="31" cy="31" r="28" fill="none" stroke="#2A2A30" stroke-width="4"></circle><circle cx="31" cy="31" r="28" fill="none" stroke="#F7931A" stroke-width="4" stroke-linecap="round" :stroke-dasharray="175.9" :stroke-dashoffset="175.9 * (1 - disconnect.left / t.claimSeconds)"></circle></svg>
-                                            <b class="font-display text-lg" x-text="disconnect.left"></b>
-                                        </span>
-                                        <span class="flex min-w-0 flex-col gap-1">
-                                            <h2 id="dc-h" class="m-0 text-base font-bold" x-text="t.disconnected.title"></h2>
-                                            <span id="dc-d" class="text-xs leading-normal text-ink-2" x-text="disconnect.text"></span>
-                                        </span>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <x-button variant="quiet" x-on:click="dismissDisconnect()">{{ __('Keep waiting') }}</x-button>
-                                        <button type="button" x-on:click="call('claimWin')" :disabled="disconnect.left > 0" data-test="claim-win"
-                                                class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent px-3 text-[13px] whitespace-nowrap text-ink disabled:cursor-not-allowed disabled:text-ink-3"
-                                                x-text="disconnect.left > 0 ? t.disconnected.claimIn.replace(':time', disconnect.clock) : t.disconnected.claim"></button>
+                {{--
+                    Board column. Below lg it dissolves (display: contents): the board with its notices stays edge to
+                    edge between the two players, the history bar goes under your own card and clock, next to the
+                    move strip (P55: under the board it pushed your clock 60 px further down on a phone).
+                --}}
+                <div class="max-lg:contents lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mt-4 lg:flex lg:flex-col lg:gap-4">
+                    <div class="order-2 -mx-4 flex flex-col gap-4 lg:contents">
+                        <x-chess.board playable class="lg:max-w-[576px]" x-bind:class="browsing && 'is-past'" data-test="live-board">
+                            {{-- Promotion picker, on the target file (ChessOverlays 2) --}}
+                            <template x-if="promotion">
+                                <div class="absolute inset-0">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.6)]" x-on:click="promotion = null"></div>
+                                    <div role="dialog" aria-label="{{ __('Promote to') }}" class="absolute top-0 flex w-[12.5%] flex-col overflow-hidden rounded-b-md bg-card shadow-[0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]" :style="`left: ${promotionLeft}`">
+                                        <template x-for="p in promotionPieces" :key="p.key">
+                                            <button type="button" :aria-label="p.name" x-on:click="pickPromotion(p.key)" class="relative block aspect-square w-full cursor-pointer border-0 bg-[#CFCFD4] p-0 hover:bg-btc-hi" :data-promote="p.key">
+                                                <svg viewBox="0 0 45 45" width="100%" height="100%" class="absolute top-0 left-0 block" aria-hidden="true"><g text-anchor="middle" style="font-family: 'DejaVu Sans', 'Noto Sans Symbols 2', 'Segoe UI Symbol', 'Apple Symbols', sans-serif; font-variant-emoji: text; font-size: 40px"><text x="22.5" y="38" :fill="p.fill" x-text="p.solid"></text><text x="22.5" y="38" fill="#0A0A0B" x-text="p.outline"></text></g></svg>
+                                            </button>
+                                        </template>
+                                        <button type="button" aria-label="{{ __('Cancel promotion') }}" x-on:click="promotion = null" class="flex h-11 cursor-pointer items-center justify-center border-0 bg-well text-ink-2"><x-icon name="close" :size="16" /></button>
                                     </div>
                                 </div>
-                            </div>
-                        </template>
+                            </template>
 
-                        {{-- Draw offer received (ChessOverlays 3) --}}
-                        <template x-if="color && state.status === 'active' && state.drawOffer && state.drawOffer !== color && !reconnecting">
-                            <div class="absolute inset-0 flex items-center justify-center p-3" data-test="draw-offer">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="dialog" aria-labelledby="dr-h" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                    <span class="flex items-center gap-2.5"><x-icon name="draw" :size="16" class="text-ink-2" /><h2 id="dr-h" class="m-0 text-base font-bold">{{ __(':name offers a draw', ['name' => $opponent['name'] ?? '']) }}</h2></span>
-                                    <span class="text-[13px] leading-normal text-ink-2">{{ __('A casual game: a draw moves only the casual Elo.') }}</span>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <x-button variant="quiet" x-on:click="call('declineDraw')">{{ __('Decline') }}</x-button>
-                                        <x-button icon="shield-check" x-on:click="call('acceptDraw')" data-test="accept-draw">{{ __('Accept draw') }}</x-button>
+                            {{-- Connection lost (ChessStates) --}}
+                            <template x-if="reconnecting">
+                                <div class="absolute inset-0" data-test="reconnecting">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="status" class="absolute top-4 right-4 left-4 flex flex-col gap-2 rounded-lg bg-[#241D10] px-3.5 py-3 shadow-[inset_0_0_0_1px_#5A4418]">
+                                        <span class="flex items-center gap-2.5 text-[13px]"><x-icon name="wifi" :size="18" class="text-btc-hi" /><b>{{ __('Reconnecting …') }}</b></span>
+                                        <span class="text-xs leading-normal text-ink-2">{{ __('Your clock keeps running on the server. Moves you make now are not sent.') }}</span>
+                                        <x-button variant="quiet" icon="retry" class="self-start" x-on:click="reconnectNow()">{{ __('Reconnect now') }}</x-button>
                                     </div>
-                                    <span class="text-xs text-ink-3">{{ __('Just keep playing and the offer counts as declined.') }}</span>
+                                    <span class="absolute bottom-4 left-4 flex h-[34px] items-center gap-2 rounded-md bg-[#241D10] px-3 text-[13px] text-btc-hi"><span class="size-2 animate-live rounded-full bg-btc-hi"></span><span x-text="connectionLabel"></span></span>
                                 </div>
-                            </div>
-                        </template>
+                            </template>
 
-                        {{-- Confirm resignation / abort (ChessOverlays 4 and 6) --}}
-                        <template x-if="confirm === 'resign' && state.status === 'active'">
-                            <div class="absolute inset-0 flex items-center justify-center p-3">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="alertdialog" aria-modal="true" aria-labelledby="rs-h" aria-describedby="rs-d" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                    <span class="flex items-center gap-2.5"><x-icon name="flag" :size="16" class="text-loss" /><h2 id="rs-h" class="m-0 text-base font-bold">{{ __('Resign this game?') }}</h2></span>
-                                    <span id="rs-d" class="text-[13px] leading-normal text-ink-2">{{ __(':name wins. A casual game: only the casual Elo changes.', ['name' => $opponent['name'] ?? '']) }}</span>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <x-button variant="quiet" x-init="$el.focus()" x-on:click="confirm = null">{{ __('Keep playing') }}</x-button>
-                                        <button type="button" x-on:click="confirmResign()" data-test="confirm-resign" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss"><x-icon name="flag" :size="16" />{{ __('Resign') }}</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </template>
-                        <template x-if="confirm === 'abort' && state.status === 'active'">
-                            <div class="absolute inset-0 flex items-center justify-center p-3">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="alertdialog" aria-modal="true" aria-labelledby="ab-h" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                    <h2 id="ab-h" class="m-0 text-base font-bold">{{ __('Abort game?') }}</h2>
-                                    <span class="text-[13px] leading-normal text-ink-2">{{ __('Not both sides have moved yet. The game disappears without a result and nothing is recorded.') }}</span>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <x-button variant="quiet" x-on:click="confirm = null">{{ __('Keep waiting') }}</x-button>
-                                        <button type="button" x-on:click="confirmAbort()" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Abort game') }}</button>
-                                    </div>
-                                    <span class="text-xs text-ink-3">{{ __('With no first move after 30 s the server aborts on its own.') }}</span>
-                                </div>
-                            </div>
-                        </template>
-
-                        {{-- Game over (ChessOverlays 1) and aborted (ChessStates) --}}
-                        <template x-if="outcome">
-                            <div class="absolute inset-0 flex items-center justify-center p-3" data-test="game-over">
-                                <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
-                                <div role="dialog" aria-modal="true" aria-labelledby="go-h" class="relative flex w-full max-w-[368px] flex-col gap-3 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
-                                    <template x-if="outcome.key !== 'aborted'">
-                                        <div class="flex flex-col gap-3">
-                                            <div class="flex items-center gap-3">
-                                                <span class="flex size-10 shrink-0 items-center justify-center rounded-lg"
-                                                      :class="{ 'bg-[#122016] text-win': outcome.tone === 'win', 'bg-loss-tint text-loss': outcome.tone === 'loss', 'bg-well text-ink-2': outcome.tone === 'draw' }">
-                                                    <x-icon name="trophy" :size="22" x-show="outcome.tone === 'win'" /><x-icon name="flag" :size="22" x-show="outcome.tone === 'loss'" /><x-icon name="draw" :size="22" x-show="outcome.tone === 'draw'" />
-                                                </span>
-                                                <span class="flex min-w-0 flex-col gap-0.5">
-                                                    <h2 id="go-h" class="m-0 font-display text-2xl font-bold" :class="{ 'text-win': outcome.tone === 'win', 'text-loss': outcome.tone === 'loss', 'text-ink': outcome.tone === 'draw' }" x-text="outcome.title" data-test="outcome"></h2>
-                                                    <span class="text-[13px] text-ink-2" x-text="outcome.reason"></span>
-                                                </span>
-                                                <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
-                                            </div>
-                                            <div class="flex flex-col border-t border-hairline">
-                                                <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
-                                                <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
-                                            </div>
-                                            <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
-                                            <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
-                                            {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
-                                            <template x-if="color && state.rating?.[color]?.pool === 'rated'">
-                                                <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
-                                            </template>
-                                            <template x-if="color">
-                                                <div class="grid grid-cols-2 gap-2">
-                                                    <template x-if="!state.rematchOffer">
-                                                        <x-button variant="quiet" icon="retry" x-on:click="call('offerRematch')" data-test="rematch">{{ __('Rematch') }}</x-button>
-                                                    </template>
-                                                    <template x-if="state.rematchOffer === color">
-                                                        <x-button variant="quiet" disabled class="opacity-70">{{ __('Rematch offered') }}</x-button>
-                                                    </template>
-                                                    <template x-if="state.rematchOffer && state.rematchOffer !== color">
-                                                        <x-button icon="retry" x-on:click="call('acceptRematch')" data-test="accept-rematch">{{ __('Accept rematch') }}</x-button>
-                                                    </template>
-                                                    <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
-                                                </div>
-                                            </template>
-                                            {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
-                                            <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
-                                                <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Post this game to my profile') }}</a>
-                                            </template>
-                                        </div>
-                                    </template>
-                                    <template x-if="outcome.key === 'aborted'">
-                                        <div class="flex flex-col gap-3.5" data-test="aborted">
-                                            <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
-                                            <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
-                                            <span class="grid grid-cols-2 gap-2">
-                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
-                                                <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
+                            {{-- Opponent disconnected (ChessOverlays): claim the win after the timeout --}}
+                            <template x-if="disconnect">
+                                <div class="absolute inset-0 flex items-center justify-center p-3" data-test="opponent-disconnected">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="alertdialog" aria-labelledby="dc-h" aria-describedby="dc-d" class="relative flex w-full max-w-[368px] flex-col gap-4 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                        <div class="flex items-center gap-4">
+                                            <span class="relative flex size-[62px] shrink-0 items-center justify-center" aria-hidden="true">
+                                                <svg viewBox="0 0 62 62" class="absolute inset-0 size-full -rotate-90"><circle cx="31" cy="31" r="28" fill="none" stroke="#2A2A30" stroke-width="4"></circle><circle cx="31" cy="31" r="28" fill="none" stroke="#F7931A" stroke-width="4" stroke-linecap="round" :stroke-dasharray="175.9" :stroke-dashoffset="175.9 * (1 - disconnect.left / t.claimSeconds)"></circle></svg>
+                                                <b class="font-display text-lg" x-text="disconnect.left"></b>
+                                            </span>
+                                            <span class="flex min-w-0 flex-col gap-1">
+                                                <h2 id="dc-h" class="m-0 text-base font-bold" x-text="t.disconnected.title"></h2>
+                                                <span id="dc-d" class="text-xs leading-normal text-ink-2" x-text="disconnect.text"></span>
                                             </span>
                                         </div>
-                                    </template>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <x-button variant="quiet" x-on:click="dismissDisconnect()">{{ __('Keep waiting') }}</x-button>
+                                            <button type="button" x-on:click="call('claimWin')" :disabled="disconnect.left > 0" data-test="claim-win"
+                                                    class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-line bg-transparent px-3 text-[13px] whitespace-nowrap text-ink disabled:cursor-not-allowed disabled:text-ink-3"
+                                                    x-text="disconnect.left > 0 ? t.disconnected.claimIn.replace(':time', disconnect.clock) : t.disconnected.claim"></button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </template>
+
+                            {{-- Draw offer received (ChessOverlays 3) --}}
+                            <template x-if="color && state.status === 'active' && state.drawOffer && state.drawOffer !== color && !reconnecting">
+                                <div class="absolute inset-0 flex items-center justify-center p-3" data-test="draw-offer">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="dialog" aria-labelledby="dr-h" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                        <span class="flex items-center gap-2.5"><x-icon name="draw" :size="16" class="text-ink-2" /><h2 id="dr-h" class="m-0 text-base font-bold">{{ __(':name offers a draw', ['name' => $opponent['name'] ?? '']) }}</h2></span>
+                                        <span class="text-[13px] leading-normal text-ink-2">{{ __('A casual game: a draw moves only the casual Elo.') }}</span>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <x-button variant="quiet" x-on:click="call('declineDraw')">{{ __('Decline') }}</x-button>
+                                            <x-button icon="shield-check" x-on:click="call('acceptDraw')" data-test="accept-draw">{{ __('Accept draw') }}</x-button>
+                                        </div>
+                                        <span class="text-xs text-ink-3">{{ __('Just keep playing and the offer counts as declined.') }}</span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            {{-- Confirm resignation / abort (ChessOverlays 4 and 6) --}}
+                            <template x-if="confirm === 'resign' && state.status === 'active'">
+                                <div class="absolute inset-0 flex items-center justify-center p-3">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="alertdialog" aria-modal="true" aria-labelledby="rs-h" aria-describedby="rs-d" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                        <span class="flex items-center gap-2.5"><x-icon name="flag" :size="16" class="text-loss" /><h2 id="rs-h" class="m-0 text-base font-bold">{{ __('Resign this game?') }}</h2></span>
+                                        <span id="rs-d" class="text-[13px] leading-normal text-ink-2">{{ __(':name wins. A casual game: only the casual Elo changes.', ['name' => $opponent['name'] ?? '']) }}</span>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <x-button variant="quiet" x-init="$el.focus()" x-on:click="confirm = null">{{ __('Keep playing') }}</x-button>
+                                            <button type="button" x-on:click="confirmResign()" data-test="confirm-resign" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss"><x-icon name="flag" :size="16" />{{ __('Resign') }}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="confirm === 'abort' && state.status === 'active'">
+                                <div class="absolute inset-0 flex items-center justify-center p-3">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="alertdialog" aria-modal="true" aria-labelledby="ab-h" class="relative flex w-full max-w-[368px] flex-col gap-3.5 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                        <h2 id="ab-h" class="m-0 text-base font-bold">{{ __('Abort game?') }}</h2>
+                                        <span class="text-[13px] leading-normal text-ink-2">{{ __('Not both sides have moved yet. The game disappears without a result and nothing is recorded.') }}</span>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <x-button variant="quiet" x-on:click="confirm = null">{{ __('Keep waiting') }}</x-button>
+                                            <button type="button" x-on:click="confirmAbort()" class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss">{{ __('Abort game') }}</button>
+                                        </div>
+                                        <span class="text-xs text-ink-3">{{ __('With no first move after 30 s the server aborts on its own.') }}</span>
+                                    </div>
+                                </div>
+                            </template>
+
+                            {{-- Game over (ChessOverlays 1) and aborted (ChessStates) --}}
+                            <template x-if="outcome">
+                                <div class="absolute inset-0 flex items-center justify-center p-3" data-test="game-over">
+                                    <div aria-hidden="true" class="absolute inset-0 bg-[rgba(10,10,11,.72)]"></div>
+                                    <div role="dialog" aria-modal="true" aria-labelledby="go-h" class="relative flex w-full max-w-[368px] flex-col gap-3 rounded-lg bg-card p-5 shadow-[inset_0_0_0_1px_#2A2A30,0_16px_48px_rgba(0,0,0,.6)]">
+                                        <template x-if="outcome.key !== 'aborted'">
+                                            <div class="flex flex-col gap-3">
+                                                <div class="flex items-center gap-3">
+                                                    <span class="flex size-10 shrink-0 items-center justify-center rounded-lg"
+                                                          :class="{ 'bg-[#122016] text-win': outcome.tone === 'win', 'bg-loss-tint text-loss': outcome.tone === 'loss', 'bg-well text-ink-2': outcome.tone === 'draw' }">
+                                                        <x-icon name="trophy" :size="22" x-show="outcome.tone === 'win'" /><x-icon name="flag" :size="22" x-show="outcome.tone === 'loss'" /><x-icon name="draw" :size="22" x-show="outcome.tone === 'draw'" />
+                                                    </span>
+                                                    <span class="flex min-w-0 flex-col gap-0.5">
+                                                        <h2 id="go-h" class="m-0 font-display text-2xl font-bold" :class="{ 'text-win': outcome.tone === 'win', 'text-loss': outcome.tone === 'loss', 'text-ink': outcome.tone === 'draw' }" x-text="outcome.title" data-test="outcome"></h2>
+                                                        <span class="text-[13px] text-ink-2" x-text="outcome.reason"></span>
+                                                    </span>
+                                                    <span class="grow"></span><b class="font-display text-lg whitespace-nowrap" x-text="outcome.result"></b>
+                                                </div>
+                                                <div class="flex flex-col border-t border-hairline">
+                                                    <div class="grid h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline text-[13px]"><span class="text-ink-2">{{ __('Rating') }}</span><span data-test="game-over-rating" x-text="color && state.rating?.[color] ? (state.rating[color].pool === 'casual' ? @js(__('Casual')) : @js(__('Elo'))) + ' ' + state.rating[color].after + ' ' + (state.rating[color].delta > 0 ? '+' + state.rating[color].delta : (state.rating[color].delta < 0 ? '−' + Math.abs(state.rating[color].delta) : '±0')) : @js(__('casual, no Elo change'))">{{ __('casual, no Elo change') }}</span></div>
+                                                    <div class="grid min-h-[38px] grid-cols-[120px_minmax(0,1fr)] items-center border-b border-hairline py-1.5 text-[13px]"><span class="text-ink-2">{{ __('Hashrate') }}</span><span data-test="game-over-mining" :class="state.mining?.status === 'block' ? 'text-win' : ''" x-text="state.mining ? state.mining.text : @js(__('casual games do not count'))">{{ __('casual games do not count') }}</span></div>
+                                                </div>
+                                                <span class="inline-flex h-7 items-center gap-1.5 self-start rounded-sm bg-[#122016] px-2.5 text-xs font-bold text-win"><x-icon name="shield-check" :size="14" />{{ __('Saved') }}</span>
+                                                <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" class="w-full" data-test="find-next">{{ __('Find next opponent') }}</x-button>
+                                                {{-- P11: a rated result can be a rank up or a mined block; the share cards live on one page. --}}
+                                                <template x-if="color && state.rating?.[color]?.pool === 'rated'">
+                                                    <a href="{{ route('settings.badges') }}#share" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-share"><x-icon name="send" :size="14" /><span x-text="state.mining?.status === 'block' && outcome.tone === 'win' ? @js(__('Share your block')) : @js(__('Badges and share cards'))"></span></a>
+                                                </template>
+                                                <template x-if="color">
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <template x-if="!state.rematchOffer">
+                                                            <x-button variant="quiet" icon="retry" x-on:click="call('offerRematch')" data-test="rematch">{{ __('Rematch') }}</x-button>
+                                                        </template>
+                                                        <template x-if="state.rematchOffer === color">
+                                                            <x-button variant="quiet" disabled class="opacity-70">{{ __('Rematch offered') }}</x-button>
+                                                        </template>
+                                                        <template x-if="state.rematchOffer && state.rematchOffer !== color">
+                                                            <x-button icon="retry" x-on:click="call('acceptRematch')" data-test="accept-rematch">{{ __('Accept rematch') }}</x-button>
+                                                        </template>
+                                                        <x-button variant="quiet" :href="route('games.show', $game)">{{ __('Replay game') }}</x-button>
+                                                    </div>
+                                                </template>
+                                                {{-- Rev. 9.4: optional, never on its own; the finished game's page shows the preview first. --}}
+                                                <template x-if="color && state.ply > 0 && state.status === 'finished' && !state.posted?.[color]">
+                                                    <a href="{{ route('games.show', ['game' => $game, 'post' => 1]) }}#post" class="inline-flex min-h-11 items-center justify-center gap-1.5 text-[13px]" data-test="game-over-post"><x-icon name="send" :size="14" />{{ __('Post this game to my profile') }}</a>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <template x-if="outcome.key === 'aborted'">
+                                            <div class="flex flex-col gap-3.5" data-test="aborted">
+                                                <b id="go-h" class="text-base">{{ __('Game aborted') }}</b>
+                                                <span class="text-[13px] leading-normal text-ink-2">{{ __('The game ended before both sides made their first move. It does not count.') }}</span>
+                                                <span class="grid grid-cols-2 gap-2">
+                                                    <x-button :href="route('chess.lobby', ['search' => 1, ...($game->rated ? ['rated' => 1] : [])])" data-test="search-again">{{ __('Search again') }}</x-button>
+                                                    <x-button variant="quiet" :href="route('chess.lobby')">{{ __('Back to lobby') }}</x-button>
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </x-chess.board>
+
+                        {{-- First-move notice --}}
+                        <template x-if="firstMoveLeft !== null">
+                            <p class="m-0 px-4 text-[13px] text-btc-hi lg:px-0" role="status" data-test="first-move">
+                                <span x-text="t.firstMove.replace(':side', state.turn === 'w' ? t.white : t.black).replace(':s', firstMoveLeft)"></span>
+                            </p>
                         </template>
-                    </x-chess.board>
 
-                    {{-- First-move notice --}}
-                    <template x-if="firstMoveLeft !== null">
-                        <p class="m-0 px-4 text-[13px] text-btc-hi lg:px-0" role="status" data-test="first-move">
-                            <span x-text="t.firstMove.replace(':side', state.turn === 'w' ? t.white : t.black).replace(':s', firstMoveLeft)"></span>
-                        </p>
-                    </template>
+                        @if ($color)
+                            <p class="m-0 px-4 text-[13px] text-loss lg:order-last lg:px-0" role="alert" x-show="error" x-text="error"></p>
+                        @endif
+                    </div>
 
-                    @if ($color)
-                        <form class="flex items-center gap-2.5 px-4 max-lg:hidden lg:w-full lg:max-w-[576px] lg:px-0" x-on:submit.prevent="submitSan()">
-                            <label for="mv" class="text-[13px] whitespace-nowrap text-ink-2">{{ __('Enter move') }}</label>
-                            <input id="mv" x-model="sanInput" placeholder="{{ __('e.g. Nf3') }}" autocomplete="off" data-test="san-input"
-                                   class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3">
-                            <x-button variant="quiet" type="submit">{{ __('Move') }}</x-button>
-                        </form>
-                        <p class="m-0 px-4 text-[13px] text-loss lg:px-0" role="alert" x-show="error" x-text="error"></p>
-                    @endif
+                    {{-- Stepping through the moves (P55): the board shows an earlier position, the game and the clocks go on. From lg the move field shares its row: on an earlier position it gives way to "Back to the current position". --}}
+                    <x-chess.history-bar class="order-4 lg:order-none lg:w-full lg:max-w-[576px]">
+                        @if ($color)
+                            <form class="flex min-w-0 grow items-center gap-2.5" x-on:submit.prevent="submitSan()">
+                                <label for="mv" class="text-[13px] whitespace-nowrap text-ink-2">{{ __('Enter move') }}</label>
+                                <input id="mv" x-model="sanInput" placeholder="{{ __('e.g. Nf3') }}" autocomplete="off" data-test="san-input"
+                                       class="h-11 min-w-0 grow rounded-lg border border-edge bg-ground px-3.5 text-sm text-ink placeholder:text-ink-3">
+                                <x-button variant="quiet" type="submit">{{ __('Move') }}</x-button>
+                            </form>
+                        @endif
+                    </x-chess.history-bar>
                 </div>
 
                 {{--
@@ -795,24 +812,24 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 --}}
                 <div class="order-4 lg:order-none lg:col-start-2 lg:row-start-2 lg:flex lg:min-h-[180px] lg:flex-col lg:rounded-lg lg:bg-card lg:[contain:size]" data-test="moves-card">
                     <span class="hidden items-baseline justify-between border-b border-hairline px-4 pt-3 pb-2 lg:flex"><span class="text-[15px] font-bold">{{ __('Moves') }}</span><span class="text-[11px] text-ink-3">{{ __('seconds per move') }}</span></span>
-                    <div tabindex="0" aria-label="{{ __('Move list, newest move at the bottom') }}" class="hidden min-h-0 grow flex-col-reverse overflow-y-auto lg:flex" data-test="move-list">
+                    <div tabindex="0" aria-label="{{ __('Move list, newest move at the bottom') }}" class="hidden min-h-0 grow flex-col-reverse overflow-y-auto lg:flex" data-newest="reverse" x-effect="shownIndex; state.moves.length; revealShown($el)" data-test="move-list">
                         <ol class="m-0 list-none px-2 py-0">
                             <template x-for="row in moveRows" :key="row.n">
                                 <li class="grid h-9 grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)] items-center border-b border-hairline px-2 text-sm">
                                     <span class="text-ink-3" x-text="row.n + '.'"></span>
-                                    <span class="flex h-7 items-center gap-2 rounded-sm px-1.5" :aria-current="row.wCur ? 'step' : 'false'" :class="row.wCur ? 'bg-btc-press text-btc-hi' : 'text-ink'"><span x-text="row.w"></span><span class="text-[11px] text-ink-3" x-text="row.wt"></span></span>
-                                    <span class="flex h-7 items-center gap-2 rounded-sm px-1.5" :aria-current="row.bCur ? 'step' : 'false'" :class="row.bCur ? 'bg-btc-press text-btc-hi' : 'text-ink'"><span x-text="row.b"></span><span class="text-[11px] text-ink-3" x-text="row.bt"></span></span>
+                                    <button type="button" x-on:click="go(row.wPly)" class="flex h-7 cursor-pointer items-center gap-2 rounded-sm border-0 px-1.5 text-left text-sm" :aria-current="row.wCur ? 'step' : 'false'" :class="row.wCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink hover:bg-raised'"><span x-text="row.w"></span><span class="text-[11px] text-ink-3" x-text="row.wt"></span></button>
+                                    <template x-if="row.bPly"><button type="button" x-on:click="go(row.bPly)" class="flex h-7 cursor-pointer items-center gap-2 rounded-sm border-0 px-1.5 text-left text-sm" :aria-current="row.bCur ? 'step' : 'false'" :class="row.bCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink hover:bg-raised'"><span x-text="row.b"></span><span class="text-[11px] text-ink-3" x-text="row.bt"></span></button></template>
                                 </li>
                             </template>
                         </ol>
                     </div>
-                    <div class="flex h-12 items-center overflow-x-auto rounded-lg bg-card px-2 text-sm whitespace-nowrap lg:hidden" x-effect="state.moves.length; $nextTick(() => $el.scrollLeft = $el.scrollWidth)" aria-label="{{ __('Moves') }}" data-test="move-strip">
+                    <div class="flex h-12 items-center overflow-x-auto rounded-lg bg-card px-2 text-sm whitespace-nowrap lg:hidden" data-newest="right" x-effect="shownIndex; state.moves.length; revealShown($el)" aria-label="{{ __('Moves') }}" data-test="move-strip">
                         <template x-if="state.moves.length === 0"><span class="px-2 text-ink-3">{{ __('No moves yet') }}</span></template>
                         <template x-for="row in moveRows" :key="'m' + row.n">
                             <span class="flex items-center gap-1 pr-2">
                                 <span class="pl-1 text-ink-3" x-text="row.n + '.'"></span>
-                                <span class="rounded-sm px-1.5 py-1" :class="row.wCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.w"></span>
-                                <span class="rounded-sm px-1.5 py-1" :class="row.bCur ? 'bg-btc-press text-btc-hi' : ''" x-text="row.b"></span>
+                                <button type="button" x-on:click="go(row.wPly)" class="h-9 cursor-pointer rounded-sm border-0 px-1.5 text-sm" :aria-current="row.wCur ? 'step' : 'false'" :class="row.wCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink'" x-text="row.w"></button>
+                                <template x-if="row.bPly"><button type="button" x-on:click="go(row.bPly)" class="h-9 cursor-pointer rounded-sm border-0 px-1.5 text-sm" :aria-current="row.bCur ? 'step' : 'false'" :class="row.bCur ? 'bg-btc-press text-btc-hi' : 'bg-transparent text-ink'" x-text="row.b"></button></template>
                             </span>
                         </template>
                     </div>

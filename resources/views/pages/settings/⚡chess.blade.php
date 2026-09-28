@@ -109,7 +109,7 @@ new #[Title('Chess settings')] #[Layout('layouts::app', ['scripts' => ['resource
 
             <section aria-labelledby="kb-h" class="flex flex-col gap-2 rounded-lg bg-card px-6 py-5">
                 <h2 id="kb-h" class="m-0 text-[15px] font-bold">{{ __('Keyboard') }}</h2>
-                @foreach ([['Enter', __('play the typed move, e.g. Rh4')], ['Esc', __('clear selection or the promotion picker')], ['F', __('flip board')], ['← →', __('step through moves')], ['Q R B N', __('piece to promote to')]] as [$key, $text])
+                @foreach ([['Enter', __('play the typed move, e.g. Rh4')], ['Esc', __('clear selection or the promotion picker')], ['F', __('flip board')], ['← →', __('step through moves')], [__('Home End'), __('first move, back to the current position')],['Q R B N', __('piece to promote to')]] as [$key, $text])
                     <div class="grid min-h-10 grid-cols-[100px_minmax(0,1fr)] items-center gap-3 border-b border-hairline text-[13px]"><kbd class="justify-self-start rounded-sm border border-edge px-2 py-0.5 font-mono text-xs">{{ $key }}</kbd><span class="text-ink-2">{{ $text }}</span></div>
                 @endforeach
             </section>

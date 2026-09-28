@@ -122,6 +122,122 @@ function quietMove(Page $page, string $from, string $to, bool $phone): void
     $page->locator('[data-test=confirm-daily-move]')->click();
 }
 
+/**
+ * P55: a daily game steps back through its moves too. Anna (White, phone)
+ * looks at the start while Bert moves and stays there with "New move"; the
+ * board takes no move on an earlier position. Bert (Black, desktop) picks a
+ * move, steps back with the keyboard, and "Make my move" first brings him
+ * back to the current position with the picked move still there.
+ */
+test('a daily game steps back through its moves at 375 and 1440: no move from an earlier position, a new move does not pull the viewer back, a picked move waits', function () {
+    [$anna, $bert] = User::factory()->count(2)->create();
+    TestSigner::forBrowser($anna);
+    TestSigner::forBrowser($bert);
+    $games = app(ChessGameService::class);
+    $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+    foreach (['e2e4', 'e7e5', 'g1f3'] as $i => $uci) {
+        $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+    }
+    $path = route('games.show', $game, false);
+
+    $phone = quietPage($anna, 375, 812, $path);
+    $desk = quietPage($bert, 1440, 900, $path);
+    foreach ([$phone, $desk] as $page) {
+        BrowserWait::until($page, '() => window.Alpine && '.quietDaily().'?.state.ply === 3', 10_000);
+    }
+    $sizes = ['375 live' => historyOf($phone, fenAt($game, 3)), '1440 live' => historyOf($desk, fenAt($game, 3))];
+    expect($sizes['375 live'])->toMatchArray(['browsing' => false, 'boardMatches' => true, 'live' => true])
+        ->and($sizes['375 live']['barText'])->toContain('2. Nf3');
+
+    // Anna goes to the start; Bert plays 2… Nc6 from his desktop.
+    $phone->locator('[data-test=history-first]')->click();
+    quietMove($desk, 'b8', 'c6', false);
+    BrowserWait::until($desk, '() => '.quietDaily().'.state.ply === 4', 10_000);
+    $phone->evaluate('() => '.quietDaily().'.resync()');
+    BrowserWait::until($phone, '() => '.quietDaily().'.state.ply === 4', 10_000);
+
+    $fresh = historyOf($phone, $game->startFen());
+    expect($fresh)->toMatchArray(['ply' => 4, 'shown' => 0, 'browsing' => true, 'newMoves' => 1, 'boardMatches' => true, 'past' => true, 'fresh' => true])
+        ->and($fresh['barText'])->toContain('New move: 2… Nc6')
+        ->and($phone->evaluate('() => '.quietDaily().'.myTurn'))->toBeTrue();
+    // Her turn, but on the start position the board takes nothing.
+    $phone->locator('[data-square="d2"]')->click();
+    expect($phone->evaluate('() => ['.quietDaily().'.selected, '.quietDaily().'.pending]'))->toBe(['', null]);
+    $phone->evaluate('() => document.querySelector("[data-test=history-bar]").scrollIntoView({ block: "center" })');
+    shellShot($phone, 'p55-375-daily-new-move');
+    $sizes['375 new move'] = historyOf($phone);
+
+    // Back with one tap, and her move goes through.
+    $phone->locator('[data-test=history-back]')->click();
+    $sizes['375 back'] = historyOf($phone, fenAt($game, 4));
+    expect($sizes['375 back'])->toMatchArray(['shown' => 4, 'browsing' => false, 'boardMatches' => true]);
+    // She picks 3. d4, steps back once: the move bar's "Make" first brings her back, with the pick; the second press makes it.
+    $phone->locator('[data-square="d2"]')->click();
+    $phone->locator('[data-square="d4"]')->click();
+    BrowserWait::until($phone, '() => '.quietDaily().'.pending !== null', 5_000);
+    $phone->locator('[data-test=history-prev]')->click();
+    expect($phone->evaluate('() => ['.quietDaily().'.browsing, '.quietDaily().'.pending?.san]'))->toBe([true, 'd4']);
+    $phone->locator('[data-test=make-move-mobile]')->click();
+    expect($phone->evaluate('() => ['.quietDaily().'.browsing, '.quietDaily().'.confirmOpen, '.quietDaily().'.pending?.san]'))->toBe([false, false, 'd4'])
+        ->and($game->refresh()->ply)->toBe(4);
+    $phone->locator('[data-test=make-move-mobile]')->click();
+    $phone->locator('[data-test=confirm-daily-move]')->click();
+    BrowserWait::until($phone, '() => '.quietDaily().'.state.ply === 5', 10_000);
+    $desk->evaluate('() => '.quietDaily().'.resync()');
+    BrowserWait::until($desk, '() => '.quietDaily().'.state.ply === 5', 10_000);
+
+    // Bert picks 3… exd4, then steps back with the arrow key: the pick waits, the board shows 2… Nc6, and the way back takes the move field's place.
+    $desk->locator('[data-square="e5"]')->click();
+    $desk->locator('[data-square="d4"]')->click();
+    BrowserWait::until($desk, '() => '.quietDaily().'.pending !== null', 5_000);
+    pressKey($desk, 'ArrowLeft');
+    $past = historyOf($desk, fenAt($game, 4));
+    expect($past)->toMatchArray(['shown' => 4, 'browsing' => true, 'boardMatches' => true, 'past' => true, 'back' => true])
+        ->and($past['barText'])->toContain('Viewing 2… Nc6')
+        ->and($desk->evaluate('() => '.quietDaily().'.pending?.san'))->toBe('exd4')
+        ->and($desk->locator('[data-test=make-move]')->isVisible())->toBeFalse();
+    shellShot($desk, 'p55-1440-daily-past-with-pick');
+    $sizes['1440 past'] = $past;
+
+    // Back: his pick is on the board again (the position after it), and he makes it.
+    $desk->locator('[data-test=history-back]')->click();
+    expect($desk->evaluate('() => ['.quietDaily().'.browsing, '.quietDaily().'.pending?.san]'))->toBe([false, 'exd4'])
+        ->and($desk->evaluate(HISTORY_PROBE, $desk->evaluate('() => '.quietDaily().'.pending.fen'))['boardMatches'])->toBeTrue()
+        ->and($game->refresh()->ply)->toBe(5);
+    $desk->locator('[data-test=make-move]')->click();
+    $desk->locator('[data-test=confirm-daily-move]')->click();
+    BrowserWait::until($desk, '() => '.quietDaily().'.state.ply === 6', 10_000);
+    pressKey($desk, 'Home');
+    pressKey($desk, 'End');
+    expect(historyOf($desk, fenAt($game, 6))['browsing'])->toBeFalse()
+        ->and($game->refresh()->moves()->pluck('san')->all())->toBe(['e4', 'e5', 'Nf3', 'Nc6', 'd4', 'exd4']);
+
+    fwrite(STDERR, "\n[p55-daily] ".json_encode($sizes));
+
+    // Nothing around the bar moves between following and browsing; 44 px steps; nothing cut off; no sideways scroll.
+    // Compared in the same turn: a phone's page changes around the board when it becomes your move.
+    foreach (['375' => ['375 back', '375 new move'], '1440' => ['1440 live', '1440 past']] as $width => $keys) {
+        $first = $sizes[$keys[0]];
+        foreach ($keys as $key) {
+            expect($sizes[$key]['board'])->toBe($first['board'], "{$key} board")
+                ->and($sizes[$key]['bar'])->toBe($first['bar'], "{$key} bar")
+                ->and($sizes[$key]['cut'])->toBe([], "{$key} text cut off")
+                ->and($sizes[$key]['doc'][0])->toBeLessThanOrEqual($sizes[$key]['doc'][1], "{$key} sideways");
+            foreach ($sizes[$key]['steps'] as [$w, $h]) {
+                expect($w)->toBeGreaterThanOrEqual(44, "{$key} step width")->and($h)->toBeGreaterThanOrEqual(44, "{$key} step height");
+            }
+        }
+    }
+
+    quietClean($phone, '375 daily history');
+    quietClean($desk, '1440 daily history');
+
+    // Positive control: the collectors see a thrown error, a 404 fetch and a broken image.
+    $desk->evaluate('() => { setTimeout(() => { throw new Error("control-throw"); }); fetch("/control-missing-page"); document.body.append(Object.assign(new Image(), { src: "/control-missing.png" })); }');
+    BrowserWait::until($desk, '() => window.__errors.some((e) => e.includes("control-throw")) && window.__errors.some((e) => e.startsWith("404"))', 5_000);
+    BrowserWait::until($desk, '() => ('.BrowserConsole::BAD_RESPONSES.')().some((e) => e.includes("control-missing.png"))', 5_000);
+});
+
 test('a casual daily game at 375 and 1440: every move over the server with no signature, no note at the end, and the profile post only by button', function () {
     $league = new TestSigner;
     config(['esports.league.nsec' => $league->secret]);
