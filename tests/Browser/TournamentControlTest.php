@@ -4,15 +4,20 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\Admin;
+use App\Models\ChessGame;
+use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\SeasonChain\TrustFacts;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -22,6 +27,7 @@ use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\TrustedFacts;
 
 pest()->group('browser');
 
@@ -208,6 +214,62 @@ test('an admin corrects a result on the control section and the bracket follows,
         ->and(implode("\n", $control['errors']))->toContain('__missing-positive-control.png');
 
     fwrite(STDERR, "\n[tournament-control] ".json_encode($measured)."\n");
+});
+
+/*
+| The Elo of a corrected rated result: the form states what saving does to
+| the Elo before the save, at 1440 and 375 px; the log keeps it. At 1440 the
+| rated game's loser is made the winner, at 375 it goes back.
+*/
+
+test('correcting a rated chess result states its Elo effect before the save and logs it, at 1440 and 375 px', function () {
+    openSeason();
+    app()->bind(TrustFacts::class, TrustedFacts::class);
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $tournament = runningChess(TournamentFormat::SingleElimination, 2, TournamentResultsMode::Players, clans: true);
+    $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')->with('slots.participant')->sole();
+    $game = ChessGame::query()->where('tournament_match_id', $match->id)->sole();
+    app(ChessGameService::class)->resign($game, $game->black);
+    $whiteSlot = in_array($game->white_id, $match->slots[0]->participant->memberIds(), true) ? 0 : 1;
+    $page = visit(BrowserLogin::url($admin))->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $measured = [];
+
+    expect($game->refresh()->rated)->toBeTrue();
+
+    // 1440: Black made the winner; 375: White again. Each time the form names the effect first.
+    foreach ([[1440, 900, $whiteSlot === 0 ? '0-1' : '1-0', 1], [375, 812, $whiteSlot === 0 ? '1-0' : '0-1', 2]] as [$width, $height, $result, $logged]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.tournaments.edit', $tournament)));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=control]") !== null', 10_000);
+        $page->locator("[data-test=control-edit-{$match->key}]")->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=control-result-form]") !== null', 10_000);
+        $page->locator('[data-test=control-chess-result]')->selectOption($result);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=control-elo-effect]") !== null', 10_000);
+        $effect = $page->evaluate('() => { const el = document.querySelector("[data-test=control-elo-effect]"); const box = el.getBoundingClientRect(); const form = el.closest("form").getBoundingClientRect(); return { text: el.textContent.trim(), inside: box.left >= form.left && box.right <= form.right, width: Math.round(box.width), height: Math.round(box.height) }; }');
+        $page->locator('[data-test=control-result-reason]')->fill('The scoresheet was signed the other way round');
+        controlShot($page, "tournament-control-elo-{$width}");
+        $expected = TournamentControl::describeElo(app(TournamentControl::class)->eloPreview($tournament, $match->id, ['result' => $result]));
+        $page->locator('[data-test=control-result-confirm]')->click();
+        BrowserWait::until($page, '() => (document.querySelector("[data-test=moderation-log]")?.textContent.match(/Elo:/g) ?? []).length === '.$logged, 10_000);
+        $after = controlState($page);
+        $measured[$width] = ['effect' => $effect, 'overflow' => $after['overflow']];
+
+        expect($effect['text'])->toBe('Elo: '.$expected)
+            ->and($effect['text'])->toMatch('/^Elo: reverts [+−]\d+\/[+−]\d+, applies [+−]\d+\/[+−]\d+$/u')
+            ->and($effect['inside'])->toBeTrue()
+            ->and($effect['height'])->toBeGreaterThan(0)
+            ->and($after['error'])->toBeNull()
+            ->and($after['overflow'])->toBeLessThanOrEqual(0)
+            ->and($after['errors'])->toBe([])
+            ->and($after['bad'])->toBe([]);
+    }
+
+    // Back where it started: the Elo is White's win again.
+    expect(RatingChange::query()->where('source', RatingChange::CHESS)->where('source_id', $game->id)->orderBy('id')->get()->map(fn (RatingChange $change): float => $change->score)->all())->toBe([1.0, 0.0]);
+
+    fwrite(STDERR, "\n[tournament-control-elo] ".json_encode($measured, JSON_UNESCAPED_UNICODE)."\n");
 });
 
 /*

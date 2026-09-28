@@ -249,7 +249,12 @@ final class TournamentView
                 ? __('Corrected by :name at :time, was :old.', ['name' => (string) ($who['name'] ?? '?'), 'time' => $at($who['at'] ?? null), 'old' => (string) ($result['was'] ?? '')])
                 : __('Set by :name at :time.', ['name' => (string) ($who['name'] ?? '?'), 'time' => $at($who['at'] ?? null)]);
 
-            return ['corrected' => isset($result['corrected']), 'control' => true, 'lines' => [$line, __('Decided by the organizer or an admin; unrated.')]];
+            $effect = TournamentControl::storedElo($result['elo'] ?? null);
+            $elo = $effect === null ? null : TournamentControl::describeElo($effect);
+
+            return ['corrected' => isset($result['corrected']), 'control' => true, 'lines' => [$line, $elo === null
+                ? __('Decided by the organizer or an admin; unrated.')
+                : __('Decided by the organizer or an admin; the Elo of the played result was corrected: :elo.', ['elo' => $elo])]];
         }
 
         $lines = [__('Entered by :name at :time.', ['name' => (string) ($result['name'] ?? '?'), 'time' => $at($result['at'] ?? null)])];

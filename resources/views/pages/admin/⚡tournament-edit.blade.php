@@ -418,7 +418,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'stations' => __('Stations'), 'times' => __('Planning times'), 'ladder' => __('Ladder'),
         'checkin_minutes' => __('Chess: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
         'report_hours' => __('Series: result due (hours after the start)'), 'response_minutes' => __('Series: answer within (minutes)'),
-        'result' => __('Result'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
+        'result' => __('Result'), 'elo' => __('Elo'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
     ];
 @endphp
 

@@ -12,10 +12,12 @@ use App\Models\RatingChange;
 use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\Engagement\Placements;
 use App\Support\Engagement\ResultEngagement;
 use App\Support\SeasonChain\GatePin;
 use App\Support\Series\Ladders;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 /**
  * Applies a finished result to the ratings (P7b), inside the transaction that
@@ -42,9 +44,12 @@ use Illuminate\Support\Facades\DB;
  *   (`season.rating.daily_pair_limit`, `season.casual.daily_pair_limit`).
  *   Casual never touches a rated row.
  *
- * Idempotent: a result that already has rating changes is skipped, and the
- * unique (rating, source, source id) index refuses a second write even if
- * two requests race past that check.
+ * Idempotent: a result that already has rating changes (reverted ones
+ * included) is skipped, and the unique (rating, source, source id, revision)
+ * index refuses a second write even if two requests race past that check.
+ *
+ * A correction of a rated result ({@see correct()}, {@see revert()}) takes
+ * its changes back and rates the corrected outcome, delta only.
  */
 final class RatingService
 {
@@ -116,6 +121,204 @@ final class RatingService
             self::entity($subjects['challenged'], $match->challenged_lineup_id),
             $match->winner === 'challenger' ? 1.0 : 0.0, RatingChange::SERIES, $match->id, $match->number,
         );
+    }
+
+    /**
+     * What a correction of this rated result to `$score` (the challenger's,
+     * White's in chess; null for a forfeit or void) would do to the Elo,
+     * without writing anything; see {@see correct()}. Deltas challenger (or
+     * White) first. Null when the correction moves no Elo: the result moved
+     * no rated Elo that still counts, or its outcome stays the same.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public function correction(SeriesMatch|ChessGame $result, ?float $score): ?array
+    {
+        $changes = $this->correctable($result);
+
+        return $changes === null ? null : $this->effect($changes[0], $changes[1], $score);
+    }
+
+    /**
+     * Correct a rated result that already moved the Elo (P18, the tournament
+     * control): take its rating changes back and, unless `$score` is null (a
+     * forfeit or void, which moves no Elo), rate the corrected outcome.
+     *
+     * The rule is **delta only**, not a replay: the old deltas are
+     * subtracted from the ratings as they stand now, and the corrected
+     * deltas, computed from the ratings and result counts the result was
+     * first rated with, are added now. Later results of the same entities
+     * keep the deltas they were rated and attested with; without later
+     * results the outcome is exactly the one a correct first rating would
+     * have given. The old rows stay as the audit trail (`reverted_at`), the
+     * corrected ones are the next `revision` and keep the result's time.
+     *
+     * Only the season ladder that is still open is corrected: casual Elo, a
+     * result of a closed season and one whose changes no longer count are
+     * left as they are (null). Idempotent: a second call with the same
+     * outcome finds nothing to change (null). Rank badges and an unshown
+     * placement reveal follow the corrected ratings.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null the effect, as {@see correction()}
+     */
+    public function correct(SeriesMatch|ChessGame $result, ?float $score): ?array
+    {
+        $done = DB::transaction(function () use ($result, $score): ?array {
+            $changes = $this->correctable($result);
+
+            if ($changes === null) {
+                return null;
+            }
+
+            // The rating rows in id order (as apply() locks them), then the changes again under the lock.
+            $locked = Rating::query()->whereKey([$changes[0]->rating_id, $changes[1]->rating_id])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            $changes = $this->correctable($result, lock: true);
+            $effect = $changes === null ? null : $this->effect($changes[0], $changes[1], $score);
+
+            if ($changes === null || $effect === null) {
+                return null;
+            }
+
+            [$c, $d] = [$locked[$changes[0]->rating_id], $locked[$changes[1]->rating_id]];
+            $revision = 1 + (int) RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)
+                ->where('source', $changes[0]->source)->where('source_id', $changes[0]->source_id)->max('revision');
+
+            foreach ([[$changes[0], $c], [$changes[1], $d]] as [$change, $rating]) {
+                $change->forceFill(['reverted_at' => now()])->save();
+                $this->count($rating, $rating->rating - $change->delta, $change->score, -1);
+            }
+
+            $applied = [];
+
+            if ($effect['applied'] !== null) {
+                $applied[] = $this->rerecord($changes[0], $c, $d, $score ?? 0.0, $effect['applied'][0], $revision);
+                $applied[] = $this->rerecord($changes[1], $d, $c, 1.0 - ($score ?? 0.0), $effect['applied'][1], $revision);
+            }
+
+            foreach ([[$changes[0], $c], [$changes[1], $d]] as [$change, $rating]) {
+                app(Placements::class)->corrected($change, $rating);
+            }
+
+            if ($applied !== []) {
+                DB::afterCommit(fn () => app(ResultEngagement::class)->handle($applied[0], $applied[1]));
+            }
+
+            return ['effect' => $effect, 'game' => $c->game, 'mode' => $c->mode, 'subjects' => [$c->subject, $d->subject]];
+        });
+
+        if ($done === null) {
+            return null;
+        }
+
+        SyncRankBadges::dispatch($done['game'], $done['mode'], $done['subjects']);
+
+        return $done['effect'];
+    }
+
+    /**
+     * Take a rated result's Elo back without rating it anew (a void): the
+     * same as {@see correct()} with no score.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public function revert(SeriesMatch|ChessGame $result): ?array
+    {
+        return $this->correct($result, null);
+    }
+
+    /**
+     * The two live changes of a rated result, challenger (White) first, if a
+     * correction may move them: both on the rated ladder of the season that
+     * is open now. Null otherwise (fail closed: nothing is corrected).
+     *
+     * @return array{0: RatingChange, 1: RatingChange}|null
+     */
+    private function correctable(SeriesMatch|ChessGame $result, bool $lock = false): ?array
+    {
+        $query = RatingChange::query()->with('rating')
+            ->where('source', $result instanceof ChessGame ? RatingChange::CHESS : RatingChange::SERIES)
+            ->where('source_id', $result->id)->orderBy('id');
+        $changes = ($lock ? $query->lockForUpdate() : $query)->get();
+
+        if ($changes->count() !== 2) {
+            return null;
+        }
+
+        foreach ($changes as $change) {
+            $rating = $change->rating;
+
+            if ($rating->pool !== Rating::RATED || $rating->season !== Ladders::season() || ! Ladders::isOpen($rating->game, $rating->mode)) {
+                return null;
+            }
+        }
+
+        return [$changes[0], $changes[1]];
+    }
+
+    /**
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    private function effect(RatingChange $challenger, RatingChange $challenged, ?float $score): ?array
+    {
+        if ($score !== null && ! in_array($score, [0.0, 0.5, 1.0], true)) {
+            throw new InvalidArgumentException('The score is 1, 0.5 or 0.');
+        }
+
+        if ($score === $challenger->score) {
+            return null;
+        }
+
+        $applied = null;
+
+        if ($score !== null) {
+            // As the result would have been rated first: the ratings and counts before it.
+            $rated = EloRating::fromConfig('rating')->rate($challenger->before, $challenged->before, $score, $challenger->results_before, $challenged->results_before);
+            $applied = [$rated['challenger_delta'], $rated['challenged_delta']];
+        }
+
+        return ['reverted' => [$challenger->delta, $challenged->delta], 'applied' => $applied];
+    }
+
+    /**
+     * The corrected change of one side, on the rating as it stands after the
+     * revert; the result's own time and number stay.
+     */
+    private function rerecord(RatingChange $reverted, Rating $rating, Rating $opponent, float $score, int $delta, int $revision): RatingChange
+    {
+        $change = new RatingChange;
+        $change->forceFill([
+            'rating_id' => $rating->id,
+            'opponent_rating_id' => $opponent->id,
+            'source' => $reverted->source,
+            'source_id' => $reverted->source_id,
+            'match_number' => $reverted->match_number,
+            'score' => $score,
+            'before' => $rating->rating,
+            'after' => $rating->rating + $delta,
+            'delta' => $delta,
+            'results_before' => $rating->results,
+            'revision' => $revision,
+            'created_at' => $reverted->created_at,
+        ])->save();
+
+        $this->count($rating, $rating->rating + $delta, $score, 1);
+
+        return $change;
+    }
+
+    /**
+     * Set a rating and add (+1) or take back (-1) one result with this
+     * score in its counters.
+     */
+    private function count(Rating $rating, int $value, float $score, int $step): void
+    {
+        $rating->forceFill([
+            'rating' => $value,
+            'results' => max(0, $rating->results + $step),
+            'wins' => max(0, $rating->wins + ($score === 1.0 ? $step : 0)),
+            'draws' => max(0, $rating->draws + ($score === 0.5 ? $step : 0)),
+            'losses' => max(0, $rating->losses + ($score === 0.0 ? $step : 0)),
+        ])->save();
     }
 
     /**
@@ -268,7 +471,8 @@ final class RatingService
         $engine = EloRating::fromConfig($rated ? 'rating' : 'casual');
 
         $moved = DB::transaction(function () use ($pool, $season, $game, $mode, $challenger, $challenged, $score, $source, $sourceId, $number, $engine): bool {
-            if (RatingChange::query()->where('source', $source)->where('source_id', $sourceId)->exists()) {
+            // Reverted rows count too: a corrected result is never rated again from here, only by correct().
+            if (RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->where('source', $source)->where('source_id', $sourceId)->exists()) {
                 return false;
             }
 

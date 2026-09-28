@@ -86,8 +86,17 @@ final class ClanHashrate
             ->where('ratings.pool', Rating::RATED)
             ->where('ratings.season', $season)
             ->groupBy('rating_changes.source', 'rating_changes.source_id')
-            ->selectRaw('rating_changes.source as source, rating_changes.source_id as source_id, max(rating_changes.created_at) as recorded_at')
+            ->selectRaw('rating_changes.source as source, rating_changes.source_id as source_id, max(rating_changes.created_at) as recorded_at, min(rating_changes.id) as first_id')
             ->get();
+        // The outcome as the ratings count it: the challenger's (White's) score, its change recorded first. A
+        // corrected result (RatingService::correct()) counts with its corrected outcome, not the one on the row.
+        $scores = [];
+
+        foreach ($sources->pluck('first_id')->chunk(self::CHUNK) as $ids) {
+            foreach (DB::table('rating_changes')->whereIn('id', $ids->all())->get(['source', 'source_id', 'score']) as $row) {
+                $scores[$row->source.':'.$row->source_id] = (float) $row->score;
+            }
+        }
         $recent = $sources->filter(fn (object $row): bool => $row->recorded_at !== null && CarbonImmutable::parse($row->recorded_at)->gte($since))
             ->map(fn (object $row): string => $row->source.':'.$row->source_id)->flip();
 
@@ -119,14 +128,14 @@ final class ClanHashrate
         };
 
         foreach ($sources->where('source', RatingChange::CHESS)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
-            $games = DB::table('chess_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'result', 'clans_at_accept']);
+            $games = DB::table('chess_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept']);
             $pubkeys = DB::table('users')->whereIn('id', $games->pluck('white_id')->merge($games->pluck('black_id'))->filter()->unique()->values()->all())->pluck('pubkey', 'id');
 
             foreach ($games as $game) {
                 $atAccept = self::json($game->clans_at_accept);
-                [$white, $black] = match ($game->result) {
-                    '1-0' => [0, 2],
-                    '0-1' => [2, 0],
+                [$white, $black] = match ($scores['chess:'.$game->id] ?? null) {
+                    1.0 => [0, 2],
+                    0.0 => [2, 0],
                     default => [1, 1],
                 };
 
@@ -153,6 +162,11 @@ final class ClanHashrate
                 ->mapWithKeys(fn (object $row): array => [$row->id => Clan::KIND.':'.$row->owner_pubkey.':'.$row->slug]);
 
             foreach ($matches as $match) {
+                $match->winner = match ($scores['series:'.$match->id] ?? null) {
+                    1.0 => 'challenger',
+                    0.0 => 'challenged',
+                    default => $match->winner,
+                };
                 $atAccept = self::json($match->clans_at_accept);
                 $isRecent = isset($recent['series:'.$match->id]);
                 $roster = $match->resolved_roster !== null ? self::json($match->resolved_roster) : self::json($reports[$match->id] ?? null);

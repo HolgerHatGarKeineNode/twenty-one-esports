@@ -50,6 +50,31 @@ final class Placements
     }
 
     /**
+     * A correction took back the change that placed this rating
+     * (RatingService::correct()): a reveal not shown yet follows the rating
+     * as it stands now, or goes away while the entity is provisional again.
+     * A reveal already shown stays: that moment has passed.
+     */
+    public function corrected(RatingChange $reverted, Rating $rating): void
+    {
+        $tiers = RankTiers::fromConfig();
+
+        if ($rating->pool !== Rating::RATED || $reverted->results_before + 1 !== $tiers->provisional) {
+            return;
+        }
+
+        $unshown = PlacementReveal::query()->where('rating_id', $rating->id)->whereNull('shown_at');
+
+        if ($rating->results < $tiers->provisional) {
+            $unshown->delete();
+
+            return;
+        }
+
+        $unshown->update(['rating' => $rating->rating, 'tier' => $tiers->tierFor($rating->rating, $rating->results)]);
+    }
+
+    /**
      * The oldest reveal this player has not seen, now marked as seen; null
      * when there is none or another request claimed it first.
      */

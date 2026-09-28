@@ -93,6 +93,24 @@ new class extends Component {
         return $this->tournament->participants()->orderBy('seed')->orderBy('id')->get();
     }
 
+    /**
+     * What saving the result form now would do to the Elo (the form states
+     * it before the save); null when it moves none.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    #[Computed]
+    public function eloPreview(): ?array
+    {
+        if ($this->editing === null) {
+            return null;
+        }
+
+        $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->with('seriesMatch')->find($this->editing);
+
+        return $match === null ? null : app(TournamentControl::class)->eloPreview($this->tournament, $match->id, $this->resultInput($match));
+    }
+
     public function edit(int $matchId): void
     {
         $this->editing = $matchId;
@@ -232,7 +250,7 @@ new class extends Component {
         }
 
         $this->tournament->refresh();
-        unset($this->rounds, $this->participants);
+        unset($this->rounds, $this->participants, $this->eloPreview);
         $this->dispatch('tournament-controlled');
     }
 
@@ -261,7 +279,7 @@ new class extends Component {
             <span class="inline-flex h-6 items-center rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi" data-test="control-paused">{{ __('Paused') }}</span>
         @endif
     </span>
-    <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision and moves no Elo; a rated decision on a disputed series stays on the disputes page.') }}</p>
+    <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision; correcting a played result that moved Elo reverts that Elo and applies the corrected one. A rated decision on a disputed series stays on the disputes page.') }}</p>
 
     @if ($notice !== '')
         <p class="m-0 rounded-md bg-win-tint px-4 py-3 text-[13px] text-win shadow-[inset_0_0_0_1px_#1F5A34]" role="status" data-test="control-notice">{{ $notice }}</p>
@@ -345,7 +363,7 @@ new class extends Component {
                                         @if ($chess)
                                             <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                                                 {{ __('Result') }}
-                                                <select wire:model="chessResult" class="{{ $field }}" data-test="control-chess-result">
+                                                <select wire:model.live="chessResult" class="{{ $field }}" data-test="control-chess-result">
                                                     <option value="">{{ __('Pick a result') }}</option>
                                                     <option value="1-0">{{ __(':name wins', ['name' => $name($match, 0)]) }}</option>
                                                     <option value="1/2-1/2">{{ __('Draw') }}</option>
@@ -358,7 +376,7 @@ new class extends Component {
                                             <span class="grid gap-2 lg:grid-cols-2">
                                                 <label class="flex flex-col gap-1.5 text-xs text-ink-2">
                                                     {{ __('Winner') }}
-                                                    <select wire:model="seriesWinner" class="{{ $field }}" data-test="control-series-winner">
+                                                    <select wire:model.live="seriesWinner" class="{{ $field }}" data-test="control-series-winner">
                                                         <option value="">{{ __('Pick the winner') }}</option>
                                                         <option value="0">{{ $name($match, 0) }}</option>
                                                         <option value="1">{{ $name($match, 1) }}</option>
@@ -377,6 +395,9 @@ new class extends Component {
                                             <input wire:model="resultReason" maxlength="500" class="{{ $field }}" data-test="control-result-reason">
                                         </label>
                                         <span class="text-xs leading-normal text-ink-3">{{ __('Later matches whose sides change are paired again; one already played is put on hold until you decide it.') }}</span>
+                                        @if ($this->eloPreview !== null)
+                                            <span class="text-xs font-bold leading-normal text-btc-hi" data-test="control-elo-effect">{{ __('Elo: :effect', ['effect' => TournamentControl::describeElo($this->eloPreview)]) }}</span>
+                                        @endif
                                         <span class="flex flex-wrap gap-2">
                                             <x-button type="submit" data-test="control-result-confirm">{{ __('Save result') }}</x-button>
                                             <x-button variant="quiet" wire:click="$set('editing', null)">{{ __('Cancel') }}</x-button>

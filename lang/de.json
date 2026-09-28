@@ -3523,7 +3523,7 @@
     "This message went out a moment ago.": "Diese Nachricht ging gerade eben schon raus.",
     "Sent to :count player.|Sent to :count players.": "An :count Spieler gesendet.|An :count Spieler gesendet.",
     "Tournament control": "Turniersteuerung",
-    "Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision and moves no Elo; a rated decision on a disputed series stays on the disputes page.": "Für Admins und den Veranstalter dieses Turniers. Jeder Schritt wird mit deinem Namen protokolliert, und die Spieler lesen die Gründe. Ein hier gesetztes Ergebnis ist eine Entscheidung der Liga und bewegt keine Elo; eine gewertete Entscheidung über eine strittige Serie bleibt auf der Streitfall-Seite.",
+    "Admins and the organizer of this tournament. Every step is logged with your name, and the players read the reasons. A result set here is the league’s decision; correcting a played result that moved Elo reverts that Elo and applies the corrected one. A rated decision on a disputed series stays on the disputes page.": "Für Admins und den Veranstalter dieses Turniers. Jeder Schritt wird mit deinem Namen protokolliert, und die Spieler lesen die Gründe. Ein hier gesetztes Ergebnis ist eine Entscheidung der Liga; wird ein gespieltes Ergebnis korrigiert, das Elo bewegt hat, wird diese Elo zurückgenommen und die korrigierte angewendet. Eine gewertete Entscheidung über eine strittige Serie bleibt auf der Streitfall-Seite.",
     "No match starts and no deadline runs. Resuming moves every running deadline by the length of the pause.": "Kein Match startet und keine Frist läuft. Beim Fortsetzen verschiebt sich jede laufende Frist um die Dauer der Pause.",
     "Pause: reason (optional, the players read it)": "Pause: Grund (optional, die Spieler lesen ihn)",
     "Restart round": "Runde neu starten",
@@ -4217,5 +4217,9 @@
     "Your match": "Dein Match",
     "Your match :label: :a vs :b": "Dein Match :label: :a gegen :b",
     "Waiting on :names.": "Wartet auf :names.",
-    "Auto-decision in :s s: :side loses by forfeit (if the other side never came, the game is aborted)": "Automatische Entscheidung in :s s: :side verliert kampflos (war die andere Seite nie da, wird die Partie abgebrochen)"
+    "Auto-decision in :s s: :side loses by forfeit (if the other side never came, the game is aborted)": "Automatische Entscheidung in :s s: :side verliert kampflos (war die andere Seite nie da, wird die Partie abgebrochen)",
+    "reverts :reverted, applies :applied": "nimmt :reverted zurück, wendet :applied an",
+    "reverts :reverted, applies nothing": "nimmt :reverted zurück, wendet nichts an",
+    "Elo: :effect": "Elo: :effect",
+    "Decided by the organizer or an admin; the Elo of the played result was corrected: :elo.": "Vom Veranstalter oder einem Admin entschieden; die Elo des gespielten Ergebnisses wurde korrigiert: :elo."
 }

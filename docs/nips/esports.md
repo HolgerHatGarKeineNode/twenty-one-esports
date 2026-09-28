@@ -1409,6 +1409,31 @@ away from zero as required. A client that verifies ratings in JavaScript needs
 [Season transition](#season-transition) with a factor of `0.5`; the example below hits both
 directions.
 
+### Elo of a corrected result (league server)
+
+Not a protocol rule; how the league server handles a result the organizer or an admin corrects on
+the tournament control after it was rated. Only the rated ladder of the season that is still open is
+corrected; casual Elo, a result of a closed season and a result that moved no Elo stay as they are.
+
+1. **Revert.** The result's two changes are taken back: each rating loses the delta the result gave
+   it, and one result (win, draw or loss) leaves its counters. The rows stay in the league's records,
+   marked reverted.
+2. **Re-apply**, unless the correction is a forfeit or void (they move no Elo): the corrected deltas
+   are computed with steps 1-3 above from the ratings and result counts the result was first rated
+   with, and added to the ratings as they stand now.
+3. **Delta only, no replay.** Later results of the same entities keep the deltas they were rated
+   and attested with. Without later results the outcome equals a correct first rating; with them it
+   differs by what the wrong rating changed in their expected scores, up to about
+   `k * error * ln(10) / (4 * scale)` per later result (k 32, scale 400, an error of 24: about one
+   point each). A replay
+   would rewrite the `elo` of every later attestation of both entities and, through their opponents,
+   of results that had nothing to do with the correction, all of them already signed.
+4. **On relays.** The old attestation stays as it was ([Season chain](#season-chain-rev-5) rules
+   unchanged: a published result is a published label). The next attestation of a corrected entity
+   carries its corrected rating as `before`, so it no longer equals the `after` of that entity's
+   previous attestation; the difference is the correction. Before Block 0 nothing is rated, so no
+   correction touches Elo.
+
 ### Rank tiers (rev. 5)
 
 The `tier` tag carries any number of tiers; the league uses Rocket League's scheme, seven ranks with
@@ -5744,7 +5769,8 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   ladders, or counting the previous season until five results exist, are options; neither is specified.
 - Corrections after an attestation are not defined in V1 for ratings. Revision 5 corrects only
   rewards (a `void-block` label); a later version may add a `correction` resolution that references the
-  corrected attestation.
+  corrected attestation. Until then the league server corrects Elo off Nostr, see
+  [Elo of a corrected result](#elo-of-a-corrected-result-league-server).
 - **Rule 7 in a small league** (rev. 5). With few anchors most pairs fall into one anchor subtree: in
   the test bed 6 of 15 pairs at a threshold of 51, two of them not clan mates. The threshold is a
   parameter (`subtree`) and can change during a season; its value should be measured on the real

@@ -23,6 +23,7 @@ use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use App\Support\Rating\RatingService;
 use App\Support\Series\SeriesService;
 use App\Support\Tournaments\Engine\Advancement;
 use Illuminate\Support\Facades\DB;
@@ -40,14 +41,16 @@ use Illuminate\Support\Facades\RateLimiter;
  *    payouts are approved (P9): the places are read from the bracket, so
  *    they follow the correction; after the approval it is refused. In director mode a match of the open round
  *    goes through the director desk's own path (rated when the round
- *    closes). Everywhere else the result is the league's decision and
- *    **unrated**: the rating code has no revert (RatingService only
- *    applies, once per result; the NIP defines no rating correction in V1),
- *    so a correction leaves the old rating change and the old attestation
- *    as they are and moves no Elo itself. A series or chess game still
- *    being played is closed with the result (resolution `admin`, `forfeit`
- *    for a no-show), attested without `elo` like the league's other
- *    decisions. The bracket then re-flows ({@see propagate()}): a later
+ *    closes). Everywhere else the result is the league's decision. A series
+ *    or chess game still being played is closed with the result
+ *    (resolution `admin`, `forfeit` for a no-show), unrated and attested
+ *    without `elo` like the league's other decisions. A correction of a
+ *    played result that moved rated Elo reverts that Elo and rates the
+ *    corrected outcome ({@see RatingService::correct()}, delta only); a
+ *    corrected forfeit reverts it and rates nothing. Casual Elo, a closed
+ *    season and a result that moved no Elo stay as they are. The old
+ *    attestation stays as it was (the NIP defines no rating correction in
+ *    V1); the log records the Elo effect. The bracket then re-flows ({@see propagate()}): a later
  *    match whose sides change is re-paired if unplayed (its series or game
  *    under way is voided and a new one starts), and **held** if already
  *    played: its result is set aside and it waits until someone sets its
@@ -89,6 +92,7 @@ final class TournamentControl
         private SeriesService $series,
         private ChessGameService $chess,
         private Notifier $notifier,
+        private RatingService $ratings,
     ) {}
 
     /* ---------- 1. Results ------------------------------------------------------------------------------------ */
@@ -147,7 +151,13 @@ final class TournamentControl
             $series = $this->current($match, $match->seriesMatch);
             $game = $this->current($match, $match->chessGame);
             $number = $series->number ?? $game->number ?? ($previous['number'] ?? null);
-            $stored = $result + ['by' => 'control', 'unrated' => true, 'reason' => $reason] + ($previous === null
+            // A played result that moved rated Elo: revert it, rate the correction (inside this transaction).
+            [$played, $score, $swap] = $this->eloSubject($match, $series, $game, $result);
+            $elo = self::inSlotOrder($played === null ? null : $this->ratings->correct($played, $score), $swap);
+            // A correction of a correction with the same outcome moves nothing new; the Elo stays corrected.
+            $standing = $elo ?? ($played !== null && ($previous['winner'] ?? false) === $result['winner'] && (bool) ($previous['forfeit'] ?? false) === (bool) $result['forfeit'] ? ($previous['elo'] ?? null) : null);
+            $stored = $result + ['by' => 'control', 'unrated' => $standing === null, 'reason' => $reason]
+                + ($standing === null ? [] : ['elo' => $standing]) + ($previous === null
                 ? $who
                 : ['user_id' => $previous['user_id'] ?? null, 'name' => $previous['name'] ?? __('the players'), 'at' => $previous['at'] ?? null, 'corrected' => $who, 'was' => (string) ($previous['label'] ?? '')])
                 + ($number === null ? [] : ['number' => $number]);
@@ -176,6 +186,7 @@ final class TournamentControl
 
             $this->moderation->log($locked, $actor, 'result', subject: $this->label($match), reason: $reason, details: array_filter([
                 'result' => [$previous['label'] ?? null, $stored['label']],
+                'elo' => $elo === null ? null : [self::deltas($elo['reverted']), $elo['applied'] === null ? null : self::deltas($elo['applied'])],
                 'voided' => $voided === [] ? null : [null, $voided],
                 'held' => $held === [] ? null : [null, $held],
             ]));
@@ -188,6 +199,136 @@ final class TournamentControl
         }
 
         return $changed;
+    }
+
+    /**
+     * What saving this result would do to the Elo, for the confirmation of
+     * the result form: null when it moves none (nothing rated to correct,
+     * the same outcome, or an input that does not parse yet).
+     *
+     * @param  array<string, mixed>  $input
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public function eloPreview(Tournament $tournament, int $matchId, array $input): ?array
+    {
+        $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->with(['slots.participant', 'seriesMatch', 'chessGame'])->find($matchId);
+
+        if ($match === null || count($match->slots) !== 2) {
+            return null;
+        }
+
+        try {
+            $result = $this->runner->parseResult($tournament, $match, $input);
+        } catch (TournamentRuleViolation) {
+            return null;
+        }
+
+        [$played, $score, $swap] = $this->eloSubject($match, $this->current($match, $match->seriesMatch), $this->current($match, $match->chessGame), $result);
+
+        return self::inSlotOrder($played === null ? null : $this->ratings->correction($played, $score), $swap);
+    }
+
+    /**
+     * An Elo effect (challenger or White first) in the order of the match's
+     * slots, as the form and the bracket list the sides.
+     *
+     * @param  array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null  $effect
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    private static function inSlotOrder(?array $effect, bool $swap): ?array
+    {
+        if ($effect === null || ! $swap) {
+            return $effect;
+        }
+
+        return [
+            'reverted' => [$effect['reverted'][1], $effect['reverted'][0]],
+            'applied' => $effect['applied'] === null ? null : [$effect['applied'][1], $effect['applied'][0]],
+        ];
+    }
+
+    /**
+     * The played series or chess game whose Elo a result set here corrects,
+     * and the corrected score (the challenger's, White's; null for a
+     * forfeit), and whether its challenger (White) sits in the second slot:
+     * only one that is over, never one still being played (that one is
+     * closed unrated, closeWithResult()). No subject when there is none, or
+     * White's side cannot be told (fail closed: no Elo moves).
+     *
+     * @param  array<string, mixed>  $result
+     * @return array{0: SeriesMatch|ChessGame|null, 1: float|null, 2: bool}
+     */
+    private function eloSubject(TournamentMatch $match, ?SeriesMatch $series, ?ChessGame $game, array $result): array
+    {
+        $winner = $result['winner'];
+        $forfeit = (bool) ($result['forfeit'] ?? false);
+
+        if ($series !== null && $series->status->hasResult()) {
+            return [$series, $forfeit ? null : ($winner === 0 ? 1.0 : 0.0), false];
+        }
+
+        if ($game === null || $game->status !== ChessGameStatus::Finished) {
+            return [null, null, false];
+        }
+
+        $first = $match->slots[0]->participant?->memberIds() ?? [];
+        $second = $match->slots[1]->participant?->memberIds() ?? [];
+        $whiteSlot = match (true) {
+            in_array((int) $game->white_id, $first, true), in_array((int) $game->black_id, $second, true) => 0,
+            in_array((int) $game->white_id, $second, true), in_array((int) $game->black_id, $first, true) => 1,
+            default => null,
+        };
+
+        if ($whiteSlot === null) {
+            return [null, null, false];
+        }
+
+        return [$game, match (true) {
+            $forfeit => null,
+            $winner === null => 0.5,
+            $winner === $whiteSlot => 1.0,
+            default => 0.0,
+        }, $whiteSlot === 1];
+    }
+
+    /**
+     * The Elo effect as the log and the form state it: `reverts +12/−12,
+     * applies +9/−9`, or `reverts +12/−12, applies nothing` for a forfeit.
+     *
+     * @param  array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}  $effect
+     */
+    public static function describeElo(array $effect): string
+    {
+        return $effect['applied'] === null
+            ? __('reverts :reverted, applies nothing', ['reverted' => self::deltas($effect['reverted'])])
+            : __('reverts :reverted, applies :applied', ['reverted' => self::deltas($effect['reverted']), 'applied' => self::deltas($effect['applied'])]);
+    }
+
+    /**
+     * The Elo effect a stored result carries (`elo`), or null when it has
+     * none or it is not of that shape.
+     *
+     * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
+     */
+    public static function storedElo(mixed $stored): ?array
+    {
+        $pair = fn (mixed $value): ?array => is_array($value) && array_is_list($value) && count($value) === 2 && is_int($value[0]) && is_int($value[1]) ? [$value[0], $value[1]] : null;
+
+        if (! is_array($stored) || ($reverted = $pair($stored['reverted'] ?? null)) === null) {
+            return null;
+        }
+
+        $applied = $pair($stored['applied'] ?? null);
+
+        return ($stored['applied'] ?? null) !== null && $applied === null ? null : ['reverted' => $reverted, 'applied' => $applied];
+    }
+
+    /**
+     * @param  array{0: int, 1: int}  $deltas
+     */
+    private static function deltas(array $deltas): string
+    {
+        return implode('/', array_map(fn (int $delta): string => ($delta >= 0 ? '+' : '−').abs($delta), $deltas));
     }
 
     /**
