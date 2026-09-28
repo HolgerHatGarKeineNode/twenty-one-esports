@@ -25,6 +25,7 @@ use App\Support\Chess\RatedChess;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\RatedTrustGate;
+use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesEvents;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -195,6 +196,16 @@ final class TournamentMatchMaker
             return true;
         }
 
+        // A casual cup's series match (P25 S3) is played once: a void is decided by the cup's rule
+        // (TournamentRunner::seriesFinished()), never replayed.
+        if ($tournament->isCasualCup()) {
+            if ($match->seriesMatch === null) {
+                $this->createCupSeries($tournament, $match, $a, $b);
+            }
+
+            return true;
+        }
+
         // No series yet, or the last one was voided by an admin or the league, or superseded by a
         // correction: it is played again (P18). The attempt follows from the series seen here, so a
         // concurrent run hits the unique index.
@@ -322,6 +333,57 @@ final class TournamentMatchMaker
     /**
      * @param  int  $attempt  1, or the replay after an admin voided attempt `$attempt - 1` (P18)
      */
+    /**
+     * A casual cup's series match (P25 S3): a scheduled casual 1v1 (origin
+     * `cup`) for the agreed time, the cup's auto slot or a live evening's
+     * round start, never rated. The casual clock runs it: check-in from
+     * `checkin_before_minutes` before until `checkin_after_minutes` after
+     * (a side not in forfeits, neither: void), then lobby, join, report and
+     * confirm with the casual deadlines pinned now (CasualScheduler). Slot 0
+     * is the challenger; the host is drawn at random.
+     */
+    public function createCupSeries(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b): SeriesMatch
+    {
+        $mode = $this->games->mode($tournament->game, $tournament->mode);
+        $numberOwner = User::query()->whereIn('id', [...$a->memberIds(), ...$b->memberIds()])->orderBy('id')->value('id')
+            ?? throw new TournamentRuleViolation('no_players', "Tournament match {$match->id} has no player with an account left.");
+        $start = CasualCups::seriesStartsAt($match);
+        $pinned = CasualMatches::pinned();
+        $now = now();
+
+        $series = SeriesMatch::query()->create([
+            'number' => MatchNumber::query()->create(['user_id' => $numberOwner, 'used_at' => $now])->id,
+            'game' => $tournament->game,
+            'mode' => $tournament->mode,
+            'best_of' => $this->bestOf($tournament, $match, $mode === null ? [1, 3] : $mode->bestOf),
+            'rated' => false,
+            'challenger_lineup_id' => null,
+            'challenged_lineup_id' => null,
+            'challenger_name' => mb_substr($a->name, 0, 255),
+            'challenged_name' => mb_substr($b->name, 0, 255),
+            'challenger_tag' => self::tag($a),
+            'challenged_tag' => self::tag($b),
+            'challenger_lineup_address' => '',
+            'challenged_lineup_address' => '',
+            'status' => SeriesStatus::Accepted,
+            'proposals' => [$start->getTimestamp()],
+            'respond_by' => $now,
+            'start_at' => $start,
+            'answered_at' => $now,
+            'ready_by' => $start->addMinutes($pinned['checkin_after_minutes'] ?? 10),
+            'casual' => [...$pinned, 'scheduled_at' => $start->getTimestamp()],
+            'origin' => SeriesMatch::ORIGIN_CUP,
+            'host_side' => SeriesMatch::SIDES[random_int(0, 1)],
+            'sides' => ['challenger' => $a->memberIds(), 'challenged' => $b->memberIds()],
+            'tournament_match_id' => $match->id,
+            'tournament_attempt' => 1,
+        ]);
+
+        app(CasualMatches::class)->announce($series);
+
+        return $series;
+    }
+
     public function createSeries(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, int $attempt = 1): SeriesMatch
     {
         $lineups = [$this->lineup($a), $this->lineup($b)];

@@ -1321,6 +1321,9 @@ cannot be checked from relays.
   close is switched to a small format (2 players one match, 3 to 5 a round robin) and played as
   **one live evening**; the switch is one new version whose `start` and `end` are the evening's
   planned start and end, and no further version follows for its start;
+- a Rocket League or EA Sports FC cup match is played at a time its players agree on in the league
+  (or the cup's auto slot) as an ordinary unrated series with the casual check-in and deadlines
+  (see "Casual 1v1 queue"); like every result of an unrated tournament it produces no match-flow event;
 - a match not played by its round's deadline is decided by the league without a game: the one side
   that tried to play advances, otherwise a random draw of lots ("advanced by draw"). The lot is
   drawn by the league at the deadline and is not reproducible from relays; it is league data, like

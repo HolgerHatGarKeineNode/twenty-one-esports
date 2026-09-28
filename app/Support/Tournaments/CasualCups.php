@@ -10,6 +10,7 @@ use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentRound;
@@ -747,7 +748,29 @@ final class CasualCups
             return true;
         }
 
+        // A series match (S3) is started when the check-in for its agreed time (or the auto slot) opens.
+        if (! $match->tournament->profile()->isChess()) {
+            return ! self::seriesStartsAt($match)->subMinutes(max(0, (int) config('esports.casual.checkin_before_minutes', 10)))->isFuture();
+        }
+
         return ! self::autoSlot($endsAt)->isFuture();
+    }
+
+    /**
+     * When a cup's series match starts (S3): the agreed time (CupSchedules),
+     * at a live evening its round's start (now), else the auto slot.
+     */
+    public static function seriesStartsAt(TournamentMatch $match): CarbonImmutable
+    {
+        $agreed = CupSchedules::agreedAt($match);
+
+        if ($agreed !== null) {
+            return $agreed;
+        }
+
+        return self::isEvening($match->tournament) || $match->round->window_ends_at === null
+            ? CarbonImmutable::now()
+            : self::autoSlot($match->round->window_ends_at);
     }
 
     /* ---------- The league's decision ------------------------------------------------------------------------- */
@@ -820,6 +843,19 @@ final class CasualCups
             }
         }
 
+        // A series match (S3): proposing or accepting a time, and checking in, is trying to play.
+        $acted[] = $match->schedule['by'] ?? null;
+        $acted[] = $match->schedule['accepted_by'] ?? null;
+
+        foreach (SeriesMatch::query()->where('tournament_match_id', $match->id)->get() as $series) {
+            foreach (SeriesMatch::SIDES as $side) {
+                if ($series->readyAt($side) !== null) {
+                    array_push($acted, ...$series->rosterSide($side));
+                }
+            }
+        }
+
+        $acted = array_values(array_filter($acted, fn (mixed $id): bool => is_int($id)));
         $slots = [];
 
         foreach ($match->slots as $slot) {

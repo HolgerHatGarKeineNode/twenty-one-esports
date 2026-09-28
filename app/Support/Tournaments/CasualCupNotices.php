@@ -12,6 +12,7 @@ use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
@@ -90,6 +91,50 @@ final class CasualCupNotices
                 $this->send($player, $cup, __(':tournament: your match is open', ['tournament' => $cup->name], $locale), $body, $locale);
             }
         }
+    }
+
+    /**
+     * A series match (S3): the opponent of the proposer hears the suggested times.
+     */
+    public function timesProposed(TournamentMatch $match, User $proposer): void
+    {
+        $opponent = $this->opponentOf($match, $proposer);
+
+        if ($opponent === null) {
+            return;
+        }
+
+        $locale = $this->locale($opponent);
+        $times = implode(', ', array_map(fn (int $at): string => $this->time(CarbonImmutable::createFromTimestamp($at), $opponent), $match->schedule['proposals'] ?? []));
+
+        $this->send($opponent, $match->tournament, __(':name suggests times for your cup match', ['name' => $proposer->displayName()], $locale),
+            __(':times · accept one on the cup page.', ['times' => $times], $locale), $locale);
+    }
+
+    /**
+     * A series match (S3): the proposer hears the time the opponent accepted.
+     */
+    public function timeAgreed(TournamentMatch $match, User $acceptor): void
+    {
+        $proposer = $this->opponentOf($match, $acceptor);
+        $agreed = CupSchedules::agreedAt($match);
+
+        if ($proposer === null || $agreed === null) {
+            return;
+        }
+
+        $locale = $this->locale($proposer);
+
+        $this->send($proposer, $match->tournament, __(':name accepted :time for your cup match', ['name' => $acceptor->displayName(), 'time' => $this->time($agreed, $proposer)], $locale),
+            __('Check in in the match room from :minutes minutes before.', ['minutes' => (int) config('esports.casual.checkin_before_minutes', 10)], $locale), $locale);
+    }
+
+    private function opponentOf(TournamentMatch $match, User $user): ?User
+    {
+        $match->loadMissing('slots.participant');
+        $ids = $match->slots->map(fn ($slot): ?int => $slot->participant?->memberIds()[0] ?? null)->filter()->all();
+
+        return User::query()->whereKey(array_values(array_diff($ids, [$user->id])))->first();
     }
 
     /**

@@ -408,6 +408,16 @@ class SeriesMatch extends Model
     /** A scheduled casual 1v1 (P23 S4, App\Support\Series\CasualChallenges). */
     public const ORIGIN_CHALLENGE = 'challenge';
 
+    /**
+     * A casual cup's series match (P25 S3): started by the league for its
+     * agreed time (or the cup's auto slot), then the scheduled casual flow:
+     * check-in, lobby, report. Its no-shows never lock the casual queue.
+     */
+    public const ORIGIN_CUP = 'cup';
+
+    /** The origins that wait for an agreed start and a check-in. */
+    public const SCHEDULED_ORIGINS = [self::ORIGIN_CHALLENGE, self::ORIGIN_CUP];
+
     /** A casual 1v1 without a clan, from the queue, a direct invite or a scheduled challenge. */
     public function isCasualPairing(): bool
     {
@@ -445,7 +455,7 @@ class SeriesMatch extends Model
      */
     public function isScheduledPairing(): bool
     {
-        return $this->origin === self::ORIGIN_CHALLENGE;
+        return in_array($this->origin, self::SCHEDULED_ORIGINS, true);
     }
 
     /** The agreed start of a scheduled casual 1v1, pinned at the accept; null before. */

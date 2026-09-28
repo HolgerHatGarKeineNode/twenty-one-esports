@@ -332,6 +332,16 @@ final class TournamentRunner
             return;
         }
 
+        // A casual cup's voided series (nobody checked in, nobody reported, P25 S3) is not replayed:
+        // the cup's rule decides it (who tried to play, else the draw of lots or the double loss).
+        if ($series->resolution === SeriesResolution::Void && $match->tournament->isCasualCup()) {
+            $match->load(['slots.participant', 'round.stage']);
+            $this->store($match, CasualCups::decision($match->tournament, $match) + ['number' => $series->number]);
+            $this->sync($match->tournament);
+
+            return;
+        }
+
         // A voided series is played again (P18): the next sync starts a new attempt.
         if ($series->resolution === SeriesResolution::Void && $series->id === $match->seriesMatch?->id) {
             $this->sync($match->tournament);

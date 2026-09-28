@@ -138,7 +138,7 @@ final class CasualMatches
     {
         return self::playedBy(SeriesMatch::query()->whereNotNull('origin'), $user)
             ->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported])
-            ->where(fn (Builder $query) => $query->where('origin', '!=', SeriesMatch::ORIGIN_CHALLENGE)
+            ->where(fn (Builder $query) => $query->whereNotIn('origin', SeriesMatch::SCHEDULED_ORIGINS)
                 ->orWhere('start_at', '<=', now()->addMinutes((int) config('esports.casual.checkin_before_minutes', 10))))
             ->when($except !== null, fn (Builder $query) => $query->whereKeyNot($except))
             ->latest('id')
@@ -155,7 +155,8 @@ final class CasualMatches
         $config = (array) config('esports.casual.lock');
         $noshows = max(1, (int) ($config['noshows'] ?? 2));
 
-        $forfeits = SeriesMatch::query()->whereNotNull('origin')
+        // A casual cup's no-shows are the cup's business (P25 S3): they never lock the queue.
+        $forfeits = SeriesMatch::query()->whereNotNull('origin')->where('origin', '!=', SeriesMatch::ORIGIN_CUP)
             ->where('resolution', SeriesResolution::Forfeit)
             ->where('finished_at', '>=', now()->subHours((int) ($config['window_hours'] ?? 24)))
             ->where(fn (Builder $query) => $query

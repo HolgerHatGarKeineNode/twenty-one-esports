@@ -371,8 +371,8 @@ return [
     |
     | enabled: the games whose cup series runs (comma-separated
     | `ESPORTS_CASUAL_CUP_GAMES`); per game at most one cup is open at a
-    | time. Chess runs from deploy; Rocket League and EA Sports FC switch on
-    | once their casual match flow (P23 S2-S4) is live. games: the mode each
+    | time. All four games run by default (Rocket League and EA Sports FC
+    | since P25 S3, on the casual scheduled flow). games: the mode each
     | series plays, its name, and the series lengths (finals = grand final).
     |
     | sizes (P27): a cup opens with the first size of places; whenever only
@@ -391,7 +391,11 @@ return [
     | done; max_days after the start every open match is decided at once.
     | auto_slot: a chess match nobody started is started by the league at
     | this time (timezone) on the window's last evening. invite_minutes: how
-    | long a "Play your cup match" invite stays open.
+    | long a "Play your cup match" invite stays open. Rocket League and EA
+    | Sports FC (S3): either player proposes one to three times inside the
+    | window, the other accepts one within answer_hours (at the latest by the
+    | first); the league starts the series for the agreed time (or the auto
+    | slot) with the casual check-in and deadlines (`esports.casual`).
     |
     | evening (P25 S2): a cup with fewer than min_players after its extension
     | still runs, as one live evening instead of round windows: 2 players
@@ -407,7 +411,7 @@ return [
     */
 
     'casual_cups' => [
-        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess'))))),
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27'))))),
         'games' => [
             'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
             'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3],
@@ -426,6 +430,7 @@ return [
         'auto_slot' => '20:00',
         'timezone' => 'Europe/Berlin',
         'invite_minutes' => 10,
+        'answer_hours' => 12,
         'evening' => [
             'start' => '20:00',
             'days_after_close' => 1,

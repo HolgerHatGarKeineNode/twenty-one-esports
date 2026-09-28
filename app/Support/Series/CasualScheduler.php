@@ -50,7 +50,8 @@ final class CasualScheduler
      */
     public function tick(): array
     {
-        $scheduled = $this->casual()->where('origin', SeriesMatch::ORIGIN_CHALLENGE)->where('status', SeriesStatus::Accepted);
+        // A casual cup's series (P25 S3) waits for its start and check-in like a scheduled challenge.
+        $scheduled = $this->casual()->whereIn('origin', SeriesMatch::SCHEDULED_ORIGINS)->where('status', SeriesStatus::Accepted);
 
         return [
             'expired' => $this->challenges->expireDue(),

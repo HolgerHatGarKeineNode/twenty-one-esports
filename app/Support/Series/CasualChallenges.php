@@ -180,7 +180,7 @@ final class CasualChallenges
     {
         $match = $match->fresh() ?? $match;
 
-        if (! $match->isScheduledPairing() || ! $match->isRosterSideMember($side, $user)) {
+        if ($match->origin !== SeriesMatch::ORIGIN_CHALLENGE || ! $match->isRosterSideMember($side, $user)) {
             throw CasualMatches::refuse($side === 'challenged' ? 'not_challenged' : 'not_challenger');
         }
 

@@ -16,7 +16,9 @@ use App\Support\LeagueTime;
 use App\Support\PageMeta;
 use App\Support\Seo\LocalizedUrls;
 use App\Support\Seo\StructuredData;
+use App\Support\Series\SeriesRuleViolation;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\CupSchedules;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
 use App\Support\Tournaments\Preview;
@@ -65,6 +67,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public string $error = '';
 
     public string $cupError = '';
+
+    /** @var list<string> the times a player proposes for a cup series match (P25 S3), league time */
+    public array $cupTimes = ['', '', ''];
 
     public function mount(Tournament $tournament): void
     {
@@ -141,21 +146,21 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     /**
      * The viewer's open chess match in this casual cup, with its invites.
      *
-     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null}|null
+     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null, series: bool, agreed: \Carbon\CarbonImmutable|null, seriesMatch: \App\Models\SeriesMatch|null, mine: bool}|null
      */
     #[Computed]
     public function cupMatch(): ?array
     {
         $user = auth()->user();
 
-        if (! $user instanceof User || ! $this->tournament->isCasualCup() || $this->tournament->status !== TournamentStatus::Running || ! $this->tournament->profile()->isChess()) {
+        if (! $user instanceof User || ! $this->tournament->isCasualCup() || $this->tournament->status !== TournamentStatus::Running) {
             return null;
         }
 
         $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->where('status', 'ready')->whereNull('result')
             ->where('bracket', '!=', 'bye')->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))
             ->whereHas('slots.participant', fn ($query) => $query->where('user_id', $user->id))
-            ->with(['round', 'slots.participant', 'chessGame'])->first();
+            ->with(['round', 'slots.participant', 'chessGame', 'seriesMatch'])->first();
 
         if ($match === null || $match->round->window_ends_at === null) {
             return null;
@@ -173,7 +178,60 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             'game' => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
             'incoming' => $open()->where('invitee_id', $user->id)->first(),
             'outgoing' => $open()->where('inviter_id', $user->id)->first(),
+            // Rocket League and EA Sports FC (S3): the proposed and agreed time, and the series once the league started it.
+            'series' => ! $this->tournament->profile()->isChess(),
+            'agreed' => CupSchedules::agreedAt($match),
+            'seriesMatch' => $match->seriesMatch,
+            'mine' => ($match->schedule['by'] ?? null) === $user->id,
         ];
+    }
+
+    public function proposeCupTimes(): void
+    {
+        $this->cupSchedule(function (User $user, TournamentMatch $match): void {
+            $times = [];
+
+            foreach (array_filter($this->cupTimes, fn (mixed $time): bool => is_string($time) && $time !== '') as $time) {
+                try {
+                    $times[] = LeagueTime::parse($time)->getTimestamp();
+                } catch (\InvalidArgumentException $invalid) {
+                    throw new SeriesRuleViolation('proposal_time', $invalid->getMessage());
+                }
+            }
+
+            app(CupSchedules::class)->propose($match, $user, $times);
+            $this->cupTimes = ['', '', ''];
+        });
+    }
+
+    public function acceptCupTime(int $at): void
+    {
+        $this->cupSchedule(fn (User $user, TournamentMatch $match) => app(CupSchedules::class)->accept($match, $user, $at));
+    }
+
+    /**
+     * @param  \Closure(User, TournamentMatch): mixed  $action
+     */
+    private function cupSchedule(\Closure $action): void
+    {
+        $user = auth()->user();
+        $match = $this->cupMatch['match'] ?? null;
+
+        if (! $user instanceof User || $match === null) {
+            $this->redirectRoute('login');
+
+            return;
+        }
+
+        $this->cupError = '';
+
+        try {
+            $action($user, $match);
+        } catch (SeriesRuleViolation $violation) {
+            $this->cupError = $violation->getMessage();
+        }
+
+        unset($this->cupMatch);
     }
 
     public function playCupMatch(): void
