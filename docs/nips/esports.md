@@ -32,14 +32,15 @@ new kind; **revision 9.4** (2026-09-28): chess moves are no events in either mod
 game record when a rated game ends, and a player posts the game to their own profile only by button;
 **revision 9.5** (2026-09-28): share groups in the Season Genesis, parameter changes that add a game,
 the reserve goal and a reserve balance no longer required at Block 0; **revision 9.6** (2026-09-28): the
-season settlement as the league runs it, without fees). Not
+season settlement as the league runs it, without fees; **revision 9.7** (2026-09-29): share posts of a
+won game or series and "I'm in", which mention the opponents and quote the league's record). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5 and 9.6 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6 and 9.7 (see [Open points](#open-points)).
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -69,6 +70,24 @@ revision 9.1 (a league pot of revision 9 becomes no pot; see [Prize pool funding
 The rules marked "rev. 9.4" concern chess game notes only; they apply to every chess game that ends
 after the league adopts revision 9.4, whatever revision its ladder follows. A correspondence game
 begun earlier keeps its move notes as history and goes on from its last move without new ones.
+The rules marked "rev. 9.7" concern share posts only; no ladder depends on them, and they apply from
+the day a league adopts revision 9.7.
+
+### Changelog of revision 9.7 (2026-09-29)
+
+The player's own posts ([Share posts](#share-posts-rev-8)). No new kind and no new tag; share posts
+stay ordinary kind `1` notes, signed by the player, only after the player saw the note and clicked.
+
+- **Three new moments.** A won chess game (the game page's card), a won series (the series page's
+  card), and "I'm in" for a tournament the player entered (the tournament's invite card).
+- **Mentions** (NIP-27). A post about a won game or series names the players of the other side as
+  `nostr:npub…` in its `content`, each with a `p`, at most five; clients show the mention and may notify
+  them. The sentence names the opponent in plain words too, so the card's `alt` reads without the codes.
+- **One quote** (NIP-18). A post may quote one event with a `q` and a `nostr:nevent…` or `nostr:naddr…`
+  in its `content`: the league's record (`64`) of a won rated game, the result report (`2152`) of a won
+  rated series, the `31923` of a won tournament or of the tournament an "I'm in" post is about. A
+  casual win quotes nothing: there is no league record to quote.
+- **Still never a reply.** No `e` and no `a`; rule 37 allows the `p` and the `q` above and nothing else.
 
 ### Changelog of revision 9.6 (2026-09-28)
 
@@ -2361,6 +2380,9 @@ stories) and prepares the note; the player signs it in the app.
 | block mined | `block/<attestation>/<npub>-<format>.png` | a `2154` whose `block` tag has a height and names the player among its winners |
 | tournament win | `tournament/<tournament>-<format>.png` | a finished tournament; its winner is read from the bracket |
 | season wrapped | `wrapped/<season>/<npub>-<format>.png` | the player's blocks, sats, rated wins, tournament wins and best tier of the season; only for a player with rated results in that season (their own or their lineup's) |
+| won game (rev. 9.7) | `page/game/<game>.png` (`wide` only) | a finished chess game with at least one move whose result the player won; the game page's card: board, faces, result |
+| won series (rev. 9.7) | `page/series/<match number>.png` (`wide` only) | a series whose result stands (confirmed or decided by an admin) and whose winning side the player played for |
+| I'm in (rev. 9.7) | `tournament-invite/<tournament>-<format>.png` | a published tournament the player entered (solo or in a lineup), while sign-up is open or the draw waits |
 
 `<format>` is `wide` or `story`. A card URL carries `?v=<fingerprint>`, a hash of everything the card
 shows: a new name or picture is a new URL, so clients that cache by URL show the new card. A card is
@@ -2378,9 +2400,38 @@ drawn from one version or one attestation, so a posted card keeps showing what h
 }
 ```
 
-- **No references.** A share post has no `e`, `p`, `q` or `a` tag: it is not a reply, mentions no one
+- **No references** (rev. 8). A share post has no `e`, `p`, `q` or `a` tag: it is not a reply, mentions no one
   and quotes nothing. What it claims can be checked on the card's page and against the league's own
-  events (the badge, the attestation, the tournament).
+  events (the badge, the attestation, the tournament). Rev. 9.7 relaxes this for `p` and `q` only, below.
+- **Mentions and one quote** (rev. 9.7). A post about a won game or series names the players of the
+  other side in a line `GG nostr:npub1… nostr:npub1…` after the sentence, with one `p` per player
+  ([NIP-27](https://github.com/nostr-protocol/nips/blob/master/27.md)), at most five. A post may quote
+  one event with a `q` and its `nostr:nevent1…` or `nostr:naddr1…` at the end of `content`
+  ([NIP-18](https://github.com/nostr-protocol/nips/blob/master/18.md)): the league's record (`64`) of a
+  rated game, the accepted result report (`2152`) of a rated series, the tournament's `31923` for a
+  tournament win and for "I'm in". The `q` carries a league relay as its hint, and for an event also its
+  author. A casual game or series has no league record and quotes nothing. Still no `e` and no `a`:
+  a share post is never a reply.
+- **"I'm in"** (rev. 9.7). The tournament's page follows the sentence as the invite (it is also the
+  `r`), then the card, then the quoted `31923`; anyone who opens the link can sign up there. The league
+  has no personal invite link for tournaments; the page link is the same for every entrant.
+- **Preview first** (rev. 9.7). The app shows the exact note (text, card, whom it mentions, what it
+  quotes) before the signer is asked, and signs only after a click. If the note changes between the
+  preview and the click (a new card version, a renamed player), the app shows it again instead of signing.
+
+```json
+{
+  "kind": 1,
+  "content": "Won a blitz game against pillpusher on TWENTY ONE Esports.\nGG nostr:npub1…\n\n<site>/cards/en/page/game/412.png?v=9c1e…\n<site>/games/412\n\nnostr:nevent1…",
+  "tags": [
+    ["imeta", "url <site>/cards/en/page/game/412.png?v=9c1e…", "m image/png", "dim 1200x630", "alt Won a blitz game against pillpusher on TWENTY ONE Esports."],
+    ["r", "<site>/games/412"],
+    ["p", "<opponent pubkey>"],
+    ["q", "<id of the league's 64>", "<league relay>", "<league pubkey>"],
+    ["alt", "Share post: game in TWENTY ONE Esports"]
+  ]
+}
+```
 - **Relays.** The app sends the note to the player's NIP-65 write relays (or the relays it read from
   when the player has none); the league archives it and sends it to its relays. A league limits share
   posts per player and hour, counting every attempt before it checks it.
@@ -2672,7 +2723,10 @@ Per kind:
     league knew is kept, in order, and its `content` is unchanged; written only after every write relay of
     the player delivered `EOSE` (see [Rank badges](#rank-badges-rev-5), Profile).
 37. **1** (share post, rev. 8): signed by the player; exactly one `imeta` whose `url` is a share card on
-    the league's site (`<site>/cards/…`) and appears in `content`; no `e`, `p`, `q` or `a`.
+    the league's site (`<site>/cards/…`) and appears in `content`; no `e`, `p`, `q` or `a`. Rev. 9.7:
+    still no `e` or `a`; at most five `p`, each a hex pubkey whose `nostr:npub1…` is in `content`; at most
+    one `q`, an event id with a `nostr:nevent1…` in `content` or an address of an addressable kind with a
+    `nostr:naddr1…` in `content`.
 
 ## Replay protection
 
@@ -5952,6 +6006,11 @@ record, and its post no `q`.
   address that supports NIP-57 should be a zap; how long an open payout (no Lightning address) waits,
   and what happens to its prize, which stays in the tournament's wallet meanwhile. A tournament's pot
   has no receipts at all (rev. 9.1): its balance and its top-ups are the league's claim.
+
+- **Revision 9.7 has no signed example yet.** Its posts are checked in the app's feature tests and read
+  back from a local `nak serve` relay in its browser test, not on rnostr, strfry and khatru. How clients
+  show a `GG nostr:npub…` line and a quoted `31923` is not measured; a personal invite link for
+  tournaments does not exist (the post links the tournament's page).
 
 - **Revision 8 has no signed example yet.** The badge definitions, awards, profile lists and share
   posts of revision 8 are tested against a local `nak serve` relay in the app's browser test, not yet
