@@ -136,7 +136,7 @@ new class extends Component {
 @endphp
 
 <section aria-labelledby="rb-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="rank-badges"
-         @if ($mine) x-data="profileBadge({ pubkey: @js($viewer->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js([...SignerMessages::labels(), 'notPublished' => __('None of your relays took the new list. Nothing was changed.')]) })" @endif>
+         @if ($mine) x-data="profileBadge({ pubkey: @js($viewer->pubkey), relays: @js(ProfileBadges::browserRelays()), messages: @js([...SignerMessages::labels(), 'notPublished' => __('None of your relays took the new list. Nothing was changed.'), 'noRelayList' => __('No relay list of yours (NIP-65, kind 10002) was found, so it is unknown where your badge list lives. Nothing was changed. Publish a relay list in your Nostr app first.')]) })" @endif>
     <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 id="rb-h" class="m-0 text-[15px] font-bold">{{ __('Rank badges') }}</h2>
         <span class="text-xs text-ink-2">{{ __('NIP-58 badges, signed by the league on every rank change') }}</span>

@@ -177,3 +177,59 @@ test('audit F2 (B): no configured relay holds a relay list; not read, although e
     assert.equal(result.relayList, 'none');
     assert.deepEqual(result.found, []);
 });
+
+/* The softer F2 rule for the badge list: a new identity may start one; anything less stays refused. */
+test('new identity: every configured relay answered, no relay list, no badge list; read, the configured relays stand in', async () => {
+    const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [], eose: true }, 'ws://config-b': { events: [], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, true);
+    assert.equal(result.relayList, 'new');
+    assert.deepEqual(result.found, []);
+    assert.deepEqual(result.writeRelays, ['ws://config-a', 'ws://config-b']);
+});
+
+test('new identity, but one configured relay did not answer: not read', async () => {
+    const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'not_read');
+});
+
+test('no relay list, but a legacy 30008 badge list on a configured relay: not read', async () => {
+    const legacy = sign(30008, [['d', 'profile_badges'], ['a', '30009:' + 'a'.repeat(64) + ':x'], ['e', '1'.repeat(64)]], 1_600_000_000);
+    const WebSocketImpl = fakeSockets({ 'ws://config-a': { events: [], eose: true }, 'ws://config-b': { events: [legacy], eose: true } });
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'none');
+    assert.deepEqual(result.found, []);
+});
+
+test('new identity, but a relay goes silent on the badge read after answering the relay list: not read', async () => {
+    const connections = {};
+    class FlakySocket {
+        constructor(url) {
+            connections[url] = (connections[url] ?? 0) + 1;
+            this.down = url === 'ws://config-b' && connections[url] > 1;
+            queueMicrotask(() => (this.down ? this.onerror?.({}) : this.onopen?.()));
+        }
+
+        send(text) {
+            const frame = JSON.parse(text);
+            queueMicrotask(() => this.onmessage?.({ data: JSON.stringify(['EOSE', frame[1]]) }));
+        }
+
+        close() {}
+    }
+
+    const result = await readProfileBadges(pubkey, ['ws://config-a', 'ws://config-b'], { WebSocketImpl: FlakySocket, timeoutMs: 200 });
+
+    assert.equal(result.read, false);
+    assert.equal(result.relayList, 'not_read');
+    assert.equal(connections['ws://config-b'], 2);
+});

@@ -2453,9 +2453,12 @@ comes back from an older `30008`.
 
 - **Read before writing** (rev. 8). A relay counts as read only after its `EOSE`; a relay that is
   down, closes the subscription or times out is not read, whatever it sent before. Every one of
-  the player's NIP-65 write relays (the relays the app reads from, when the player has no relay
-  list) MUST have been read, or the app MUST NOT write (a relay that is down may hold the newest
-  list); it never falls back to a copy it archived
+  the player's NIP-65 write relays MUST have been read, or the app MUST NOT write (a relay that is
+  down may hold the newest list). Rev. 9.8: without a relay list the app writes only for a new
+  identity (every configured relay answered, none holds a `10002`, a `10008` or a `30008` of the
+  player); then the configured relays stand in for the write relays. Otherwise it does not write:
+  a list on the configured relays may be a stale copy of one kept elsewhere. It never falls back to a
+  copy it archived
   earlier. When the read returns no list although the app knows one, it MUST NOT write either.
 - **Verify before choosing.** Every event is signature-checked before it counts, and ids are not
   deduplicated before that check: a relay that serves a forged copy of the right id first must not
@@ -3159,7 +3162,9 @@ player's signer on click. A kind `3` replaces the whole list, so the app fails c
 1. It reads the player's NIP-65 list (`10002`) from the configured relays. Without a `10002` that
    names write relays the follow is refused: if not every configured relay answered, the silent one
    may hold the list; if none has one, the configured relays prove nothing about where the player's
-   follow list lives (a stale copy there was signed over 380 follows in the audit).
+   follow list lives (a stale copy there was signed over 380 follows in the audit). One exception: a
+   new identity. Every configured relay answered, none holds a `10002` and none holds a kind `3` of
+   the player: there is nothing to shorten, and the new list starts on the configured relays.
 2. It reads kind `3` from the player's write relays and the configured relays. Every write relay must
    deliver EOSE, else the follow is refused. Of the
    valid lists the newest wins (NIP-01), signatures checked.

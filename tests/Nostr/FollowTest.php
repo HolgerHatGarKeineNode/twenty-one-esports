@@ -13,5 +13,5 @@ test('following refuses a list it could not read, keeps every follow, and checks
         ->run(['node', '--test', 'tests/js/follow.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 12')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 16')->toContain('ℹ skipped 0');
 });

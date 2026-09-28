@@ -257,3 +257,74 @@ test('audit F2 (A, transient): a relay that misses only some reads never leads t
     }
     assert.ok(sent.every((event) => event.tags.length === 381));
 });
+
+/*
+ * The softer F2 rule (decided 2026-09-29): a player without a relay list may follow when nothing can be
+ * shortened: every configured relay answered, none holds a relay list, none holds a kind 3. The new list
+ * goes to the configured relays. Anything less stays refused.
+ */
+test('new identity: every configured relay answered, no relay list, no kind 3 anywhere; the follow goes to the configured relays', async () => {
+    const sent = [];
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [], eose: true },
+        'ws://config-b': { events: [], eose: true },
+    })[url] ?? { down: true }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
+    assert.equal(read.read, true);
+    assert.equal(read.newIdentity, true);
+    assert.deepEqual(followPreview(read, target), { before: 0, after: 1, already: false, fresh: true });
+
+    const result = await follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, expectBefore: 0, options });
+    assert.deepEqual(result.event.tags, [['p', target]]);
+    assert.deepEqual([...new Set(sent.map((event) => event.id))].length, 1);
+    assert.equal(result.published, 2);
+});
+
+test('new identity, but one configured relay did not answer: refused, nothing signed or sent', async () => {
+    const sent = [];
+    let signed = 0;
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [], eose: true },
+        'ws://config-b': { down: true },
+    })[url] ?? { down: true }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
+    assert.equal(read.read, false);
+    assert.equal(read.reason, 'not_read');
+    await assert.rejects(
+        follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer: { signEvent: async (d) => { signed++; return finalizeEvent(d, secret); } }, options }),
+        (error) => error.code === 'not_read',
+    );
+    assert.equal(signed, 0);
+    assert.deepEqual(sent, []);
+});
+
+test('no relay list, but a kind 3 on a configured relay: refused, nothing signed or sent', async () => {
+    const sent = [];
+    const WebSocketImpl = auditRelays((url) => ({
+        'ws://config-a': { events: [], eose: true },
+        'ws://config-b': { events: [bigList], eose: true },
+    })[url] ?? { down: true }, sent);
+    const options = { WebSocketImpl, timeoutMs: 200 };
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], options);
+    assert.equal(read.read, false);
+    assert.equal(read.reason, 'no_relay_list');
+    await assert.rejects(follow({ me, target, relays: ['ws://config-a', 'ws://config-b'], signer, options }), (error) => error.code === 'no_relay_list');
+    assert.deepEqual(sent, []);
+});
+
+test('no relay list, the kind 3 read incomplete (one relay silent on it): refused', async () => {
+    const WebSocketImpl = auditRelays((url, n) => {
+        // config-b answers the relay-list read (its first connection), then goes silent.
+        if (url === 'ws://config-b') return n === 1 ? { events: [], eose: true } : { down: true };
+        return ({ 'ws://config-a': { events: [], eose: true } })[url] ?? { down: true };
+    }, []);
+
+    const read = await readFollowList(me, ['ws://config-a', 'ws://config-b'], { WebSocketImpl, timeoutMs: 200 });
+    assert.equal(read.read, false);
+    assert.equal(read.reason, 'not_read');
+});

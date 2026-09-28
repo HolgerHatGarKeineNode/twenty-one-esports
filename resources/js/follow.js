@@ -9,9 +9,11 @@
  *
  * - The list counts as read only when every relay that must hold it, the
  *   player's NIP-65 write relays, delivered EOSE (relayRead.js). Without a
- *   relay list, or when the relay that may hold it did not answer, nobody
- *   knows where the list lives: refused (P45 audit F2; the configured
- *   relays are no proof). Anything less: refused, nothing is signed or sent.
+ *   relay list nobody knows where the list lives: refused (P45 audit F2;
+ *   the configured relays are no proof), with one exception, a new
+ *   identity: every configured relay answered, none has a relay list and
+ *   none has a kind 3, so there is nothing to shorten; the list starts on
+ *   the configured relays. Anything less: refused, nothing signed or sent.
  * - Of the valid lists the newest wins (NIP-01), never the longest or the
  *   first to arrive; a forged copy does not count (signature checked).
  * - The new list is the old one unchanged (every tag, the content) plus one
@@ -48,24 +50,34 @@ export async function readFollowList(pubkey, configured, options = {}) {
     const relays = relayUrls(configured);
     const own = await readOwnWriteRelays(pubkey, relays, options);
 
-    // Where the list lives is unknown: refuse, never fall back to the configured relays (audit F2).
-    if (own.writeRelays.length === 0) {
-        return { read: false, reason: own.complete ? 'no_relay_list' : 'not_read', list: null, writeRelays: [], answered: own.answered, asked: own.asked };
+    // Where the list lives is unknown and not every relay answered: refuse (audit F2).
+    if (own.writeRelays.length === 0 && !own.complete) {
+        return { read: false, reason: 'not_read', list: null, writeRelays: [], answered: own.answered, asked: own.asked };
     }
 
-    const mustAnswer = own.writeRelays;
-    const results = await readRelays([...mustAnswer, ...relays], [{ kinds: [3], authors: [pubkey] }], options);
+    // No relay list anywhere: only a new identity may go on (see newIdentity below).
+    const newIdentity = own.writeRelays.length === 0;
+    const mustAnswer = newIdentity ? relays : own.writeRelays;
+    const results = await readRelays([...new Set([...mustAnswer, ...relays])], [{ kinds: [3], authors: [pubkey] }], options);
     const answered = results.filter((result) => result.eose && mustAnswer.includes(result.url)).length;
+    const read = mustAnswer.length > 0 && answered === mustAnswer.length;
+    const list = newest(results.flatMap((result) => result.events), pubkey, 3);
 
-    const read = answered === mustAnswer.length;
+    // A new identity: every configured relay answered, none has a relay list, none has a kind 3.
+    // A kind 3 found without own write relays is refused: it could be a stale copy of a longer list
+    // kept elsewhere. (A relay silent on this read already makes `read` false below.)
+    if (newIdentity && read && list !== null) {
+        return { read: false, reason: 'no_relay_list', list: null, writeRelays: [], answered, asked: mustAnswer.length };
+    }
 
     return {
         read,
         reason: read ? null : 'not_read',
-        list: newest(results.flatMap((result) => result.events), pubkey, 3),
+        list,
         writeRelays: mustAnswer,
         answered,
         asked: mustAnswer.length,
+        newIdentity,
     };
 }
 

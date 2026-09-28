@@ -5293,5 +5293,6 @@
     "Every relay asked answered, and :name has no DM relay list, so NIP-17 cannot reach them. Send it as an older NIP-04 DM? Relays then see who wrote to whom and when, not what.": "Alle gefragten Relays haben geantwortet, und :name hat keine DM-Relay-Liste, daher erreicht NIP-17 :name nicht. Als ältere NIP-04-DM senden? Relays sehen dann, wer wem wann geschrieben hat, aber nicht was.",
     "Your signer cannot do NIP-44, so this can only go as an older NIP-04 DM. Send it that way? Relays then see who wrote to whom and when, not what.": "Dein Signer kann kein NIP-44, daher geht das nur als ältere NIP-04-DM. So senden? Relays sehen dann, wer wem wann geschrieben hat, aber nicht was.",
     "Send as NIP-04": "Als NIP-04 senden",
-    "Sent as an older NIP-04 DM. Relays can see who wrote to whom and when, not what.": "Als ältere NIP-04-DM gesendet. Relays sehen, wer wem wann geschrieben hat, aber nicht was."
+    "Sent as an older NIP-04 DM. Relays can see who wrote to whom and when, not what.": "Als ältere NIP-04-DM gesendet. Relays sehen, wer wem wann geschrieben hat, aber nicht was.",
+    "No relay list of yours (NIP-65, kind 10002) was found, so it is unknown where your badge list lives. Nothing was changed. Publish a relay list in your Nostr app first.": "Es wurde keine Relay-Liste von dir gefunden (NIP-65, Kind 10002), daher ist unklar, wo deine Badge-Liste liegt. Nichts wurde geändert. Veröffentliche zuerst in deiner Nostr-App eine Relay-Liste."
 }

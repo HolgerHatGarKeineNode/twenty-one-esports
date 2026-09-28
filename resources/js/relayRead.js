@@ -161,8 +161,12 @@ export async function readOwnWriteRelays(pubkey, configured, options = {}) {
 /**
  * The player's profile badge lists as the league needs them:
  *
- * 1. the player's own write relays (readOwnWriteRelays); unknown, and
- *    nothing is read (P45 audit F2);
+ * 1. the player's own write relays (readOwnWriteRelays); when they are
+ *    unknown, nothing counts as read (P45 audit F2), with one exception: a
+ *    new identity. Every configured relay answered, none has a relay list
+ *    and none has a badge list (10008 or 30008): nothing can be dropped, so
+ *    the configured relays stand in for the write relays (`relayList`
+ *    'new'). Any partial answer or any list found: refused;
  * 2. the newest valid 10008 and 30008 `profile_badges` from the write relays
  *    and the configured relays; the write relays are the ones that must answer.
  *
@@ -176,24 +180,34 @@ export async function readProfileBadges(pubkey, configured, options = {}) {
     const relays = relayUrls(configured);
     const own = await readOwnWriteRelays(pubkey, relays, options);
 
-    if (own.writeRelays.length === 0) {
-        return { read: false, found: [], answered: 0, asked: 0, writeRelays: [], relayList: own.complete ? 'none' : 'not_read' };
+    if (own.writeRelays.length === 0 && ! own.complete) {
+        return { read: false, found: [], answered: 0, asked: 0, writeRelays: [], relayList: 'not_read' };
     }
 
-    const mustAnswer = own.writeRelays;
-    const results = await readRelays([...mustAnswer, ...relays], [
+    // No relay list anywhere (every configured relay answered): only a new identity may go on, below.
+    const newIdentity = own.writeRelays.length === 0;
+    const mustAnswer = newIdentity ? relays : own.writeRelays;
+    const results = await readRelays([...new Set([...mustAnswer, ...relays])], [
         { kinds: [10008], authors: [pubkey] },
         { kinds: [30008], authors: [pubkey], '#d': ['profile_badges'] },
     ], options);
     const answered = results.filter((result) => result.eose && mustAnswer.includes(result.url)).length;
     const events = results.flatMap((result) => result.events);
+    const found = [newest(events, pubkey, 10008), newest(events, pubkey, 30008, 'profile_badges')].filter(Boolean);
+    const complete = mustAnswer.length > 0 && answered === mustAnswer.length;
+
+    if (newIdentity && (! complete || found.length > 0)) {
+        // A list exists, or may exist on a silent relay, and nobody knows where the player keeps it.
+        return { read: false, found: [], answered, asked: mustAnswer.length, writeRelays: [], relayList: complete ? 'none' : 'not_read' };
+    }
 
     return {
-        read: mustAnswer.length > 0 && answered === mustAnswer.length,
-        found: [newest(events, pubkey, 10008), newest(events, pubkey, 30008, 'profile_badges')].filter(Boolean),
+        read: complete,
+        found,
         answered,
         asked: mustAnswer.length,
         writeRelays: mustAnswer,
+        relayList: newIdentity ? 'new' : 'own',
     };
 }
 

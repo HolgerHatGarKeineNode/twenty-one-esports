@@ -53,6 +53,15 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
 
             try {
                 const result = await readProfileBadges(pubkey, relays);
+
+                // P45 audit F2: no relay list, but a badge list somewhere; where the newest lives is unknown.
+                if (! result.read && result.relayList === 'none') {
+                    this.error = messages.noRelayList ?? messages.failed ?? 'That did not work. Please try again.';
+                    this.step = 'idle';
+
+                    return;
+                }
+
                 this.found = result.found;
                 this.read = result.read;
                 this.answered = result.answered;
