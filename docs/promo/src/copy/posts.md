@@ -163,6 +163,70 @@ You nagged us, kindly: why was the code only on GitHub, a closed platform? As of
 
 ---
 
+## Sats pot
+
+**Nostr (DE):**
+21.000 Sats, Zero Ball Control. El Presidento Ben hat sich das ausgedacht: Rocket League
+1v1, imaginäre Ballkontrolle, aber die Sats sind real. Platz 1 bis 3 teilen sich den Pot —
+50 % / 30 % / 20 % — und jeder kann den Pot auf der Turnierseite größer zappen. Noch 11 von
+12 Plätzen frei. Start: So., 4. Oktober, 18:00 Uhr, Anmeldeschluss eine Stunde vorher.
+Meld dich an, zapp den Pot. https://esports.einundzwanzig.space/tournaments/2
+
+**Nostr (EN):**
+21,000 Sats, Zero Ball Control. Set up by El Presidento Ben: Rocket League 1v1, where the
+ball control is imaginary but the sats are real. Top 3 split the pot — 50% / 30% / 20% —
+and anyone can zap the pot bigger on the tournament page. 11 of 12 spots still open.
+Starts Sun, Oct 4, 18:00 CEST, sign-up closes an hour before. Sign up, zap the pot.
+https://esports.einundzwanzig.space/tournaments/2
+
+**X (DE):** 21.000 Sats, Zero Ball Control. Rocket League 1v1, Platz 1-3 teilen sich den Pot (50/30/20). Zapp ihn größer. Noch 11 Plätze frei. esports.einundzwanzig.space/tournaments/2
+
+**X (EN):** 21,000 sats, Zero Ball Control. Rocket League 1v1, top 3 split the pot (50/30/20). Zap it bigger. 11 spots still open. esports.einundzwanzig.space/tournaments/2
+
+---
+
+## Fifa 2026
+
+**Nostr (DE):**
+EINUNDZWANZIG Fifa 2026 ist eröffnet: EA Sports FC 26, 1v1, erst Gruppenphase, dann
+K.-o.-Runde. markusturm hat das Turnier aufgesetzt, 16 Plätze, erst 2 vergeben. Start:
+Sa., 3. Oktober, 18:00 Uhr, Anmeldeschluss eine Stunde vorher. Meld dich mit deinem
+Nostr-Schlüssel an und sicher dir deinen Platz. https://esports.einundzwanzig.space/tournaments/1
+
+**Nostr (EN):**
+EINUNDZWANZIG Fifa 2026 is open: EA Sports FC 26, 1v1, group stage first, then knockout.
+Set up by markusturm, 16 spots, only 2 taken so far. Starts Sat, Oct 3, 18:00 CEST,
+sign-up closes an hour before. Sign up with your Nostr key and lock in your spot.
+https://esports.einundzwanzig.space/tournaments/1
+
+**X (DE):** EINUNDZWANZIG Fifa 2026: EA Sports FC 26, 1v1, Gruppen dann K.o. 16 Plätze, erst 2 vergeben. Jetzt anmelden. esports.einundzwanzig.space/tournaments/1
+
+**X (EN):** EINUNDZWANZIG Fifa 2026: EA Sports FC 26, 1v1, groups then knockout. 16 spots, only 2 taken. Sign up now. esports.einundzwanzig.space/tournaments/1
+
+---
+
+## Casual cups
+
+**Nostr (DE):**
+Casual Cups für jeden: Blitzschach, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
+FC 27 1v1, automatisch angelegt. Jedes Spiel hat einen EU-Cup (Sa., 3. Oktober, 20:00
+Uhr) und einen US-Cup (So., 4. Oktober, 02:00 Uhr). Nur 4 Plätze pro Cup, Double
+Elimination — zwei Niederlagen und du bist raus. Kein Rating, keine Preise, nur Spaß.
+Meld dich für deinen Cup an. https://esports.einundzwanzig.space/tournaments
+
+**Nostr (EN):**
+Casual cups for everyone: Blitz chess, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
+FC 27 1v1, set up automatically. Every game has an EU cup (Sat, Oct 3, 20:00 CEST)
+and a US cup (Sun, Oct 4, 02:00 CEST). Only 4 spots per cup, double elimination — two
+losses and you're out. No rating, no prizes, just for fun. Sign up for your cup.
+https://esports.einundzwanzig.space/tournaments
+
+**X (DE):** Casual Cups: Schach, Rocket League, FC 26, FC 27 — je ein EU- und ein US-Cup. Nur 4 Plätze, Double Elimination. Jetzt anmelden. esports.einundzwanzig.space/tournaments
+
+**X (EN):** Casual cups: Chess, Rocket League, FC 26, FC 27 — one EU and one US cup each. Only 4 spots, double elimination. Sign up now. esports.einundzwanzig.space/tournaments
+
+---
+
 ## Hype-week plan
 
 Reihenfolge nach Ansprache-Priorität (casual, sofort spielbar zuerst; Aufbauendes

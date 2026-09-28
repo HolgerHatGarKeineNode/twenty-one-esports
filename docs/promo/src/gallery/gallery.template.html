@@ -103,6 +103,9 @@ dialog textarea{min-height:170px}
 }
 .tag{display:inline-block;font-size:11px;color:var(--cyan);border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin-left:8px;vertical-align:middle}
 footer{color:var(--dim);font-size:11px;text-align:center;padding:26px}
+/* the sats pot section stands out: the strongest hook of the set */
+section[data-motif="satspot"]{border:2px solid var(--btc,#F7931A);box-shadow:0 0 0 6px rgba(247,147,26,.18),0 0 48px rgba(247,147,26,.25);padding:18px;margin-bottom:28px}
+section[data-motif="satspot"] h2::before{content:"⚡ ";color:var(--btc,#F7931A)}
 </style>
 </head>
 <body>
@@ -161,6 +164,8 @@ const THEMES = [
   { id: 'community', label: 'Community & competition', motifs: ['clans', 'tournaments'], why: 'play together, play for a result' },
   { id: 'watch', label: 'Watch', motifs: ['watch'], why: 'lean back: live games and the 24/7 stream' },
   { id: 'trust', label: 'Trust', motifs: ['opensource', 'grasp', 'login'], why: 'Nostr login and open code: verify, do not trust' },
+  { id: 'upcoming', label: 'Upcoming tournaments', motifs: ['satspot', 'fifa', 'cups'], why: 'tournaments open for sign-up now (live data): the ones people set up first, then the casual cups' },
+  { id: 'satspot', label: '⚡ Sats pot', motifs: ['satspot'], why: 'a prize pool in sats: the strongest hook, post it first and often' },
 ];
 // After the plan: these one-liners rotate (posting plan, row "∞").
 const ROTATE = ['blitz', 'watch', 'invite'];
@@ -600,6 +605,7 @@ function render() {
     const items = any.filter((i) => i.motif === m.id);
     if (!items.length) continue;
     const sec = document.createElement('section');
+    sec.dataset.motif = m.id;
     sec.innerHTML = `<h2>${m.title}${themesOf(m.id).map((t) => `<span class="tag">${t.label}</span>`).join('')}</h2><div class="day">${m.day}</div>`;
     for (const [type, label] of [['poster', 'Posters'], ['reel', 'Reel'], ['message', 'Post texts (src/copy/posts.md)']]) {
       const list = items.filter((i) => i.type === type);

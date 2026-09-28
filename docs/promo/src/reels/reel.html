@@ -685,6 +685,152 @@ S.grasp = [
   { html: endCard, update: endUpdate },
 ];
 
+/* ===== upcoming tournaments (reels 10-12) =====
+   Every value below is read from the live system on 2026-09-28 (tournaments 1 and 2, the
+   casual cups 3-10: name, game, mode, format, start in Europe/Berlin, places, taken, the
+   pot as the tournament sets it and its split). Covers are the app's own game covers. */
+const COV = '../../../../public/images/games/';
+const UP = {
+  pot: { name: '21,000 Sats, Zero Ball Control', game: 'Rocket League', mode: '1v1', cover: 'rocket-league-382.jpg', start: { de: 'So 4. Okt · 18:00 CEST', en: 'Sun 4 Oct · 18:00 CEST' }, places: 12, taken: 1, sats: 21000, split: [50, 30, 20] },
+  fifa: { name: 'EINUNDZWANZIG Fifa 2026', game: 'EA Sports FC 26', mode: '1v1', cover: 'ea-sports-fc-26-480.jpg', start: { de: 'Sa 3. Okt · 18:00 CEST', en: 'Sat 3 Oct · 18:00 CEST' }, places: 16, taken: 2 },
+  cups: [['Chess', 'Blitz 5+3', 'chess-1280.jpg'], ['Rocket League', '1v1', 'rocket-league-382.jpg'], ['EA Sports FC 26', '1v1', 'ea-sports-fc-26-480.jpg'], ['EA Sports FC 27', '1v1', 'ea-sports-fc-27-1280.jpg']],
+  cupTimes: [['EU', { de: 'Sa 3. Okt · 20:00 CEST', en: 'Sat 3 Oct · 20:00 CEST' }], ['US', { de: 'So 4. Okt · 02:00 CEST', en: 'Sun 4 Oct · 02:00 CEST' }]],
+  cupPlaces: 4,
+};
+const satsFmt = (n, l) => n.toLocaleString(l === 'de' ? 'de-DE' : 'en-US');
+const BOLT = (w, c = 'var(--btc)') => `<svg viewBox="0 0 12 20" width="${w}" height="${Math.round(w * 20 / 12)}" shape-rendering="crispEdges" aria-hidden="true" style="display:block;flex:none"><path fill="${c}" d="M7 0H3L0 11h4l-2 9 10-13H7l3-7z"/></svg>`;
+const PERSON = (w) => `<svg viewBox="0 0 10 10" width="${w}" height="${w}" shape-rendering="crispEdges" aria-hidden="true" style="display:block"><path fill="var(--ink-2)" d="M3 0h4v1h1v3H7v1H3V4H2V1h1zM1 6h8v1h1v3H0V7h1z"/></svg>`;
+const coverBox = (file, h) => `<div style="height:${h}px;background:#000 url('${COV}${file}') center/cover no-repeat;position:relative"><div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 45%,var(--card))"></div></div>`;
+function spotGrid(n, taken, cols, cellH, l) {
+  return `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:12px">${Array.from({ length: n }, (_, i) => i < taken
+    ? `<div data-sp="${i}" style="height:${cellH}px;background:var(--raised);display:grid;place-items:center">${PERSON(Math.round(cellH * 0.5))}</div>`
+    : `<div data-sp="${i}" ${i === taken ? 'data-you' : ''} style="height:${cellH}px;border:3px dashed var(--dash);display:grid;place-items:center">${i === taken ? `<span data-o style="font:700 16px/1.2 var(--mono);color:var(--btc)">${E(UI('yourSpot', l))}</span>` : ''}</div>`).join('')}</div>`;
+}
+function spotUpdate(root, t) {
+  root.querySelectorAll('[data-sp]').forEach((c, i) => { const p = eo(seg(t, 0.2 + i * 0.06, 0.5 + i * 0.06)); c.style.opacity = p; c.style.transform = `scale(${0.7 + 0.3 * p})`; });
+  const y = root.querySelector('[data-you]');
+  if (y) { const on = t > 1.4; y.style.borderColor = on ? 'var(--btc)' : ''; y.style.borderStyle = on ? 'solid' : 'dashed'; y.style.boxShadow = on ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(247,147,26,.25)` : 'none'; }
+}
+const tourneyCard = (x, l, coverH, extra = '') => `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;display:grid;--d:28px;overflow:hidden">
+    ${coverBox(x.cover, coverH)}
+    <div style="padding:8px 44px 44px;display:grid;row-gap:20px">
+      <b style="font:800 58px/1.08 var(--disp)">${E(x.name)}</b>
+      <span class="muted" style="font:700 28px/1.2 var(--mono)">${E(x.game)} · ${E(x.mode)} · ${E(UI('twoStage', l))}</span>
+      <span style="font:700 30px/1.2 var(--mono);color:var(--btc)">${E(x.start[l])}</span>${extra}
+    </div></div></div>`;
+const cardIn = (root, t) => { const c = root.querySelector('[data-card]'), p = back(seg(t, 0.05, 0.55)); c.style.opacity = clamp(p * 1.5); c.style.transform = `translateY(${(1 - p) * 140}px)`; };
+const signUpScene = () => S.tournaments[1];
+
+S.satspot = [
+  { html: (l) => `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:56px 40px;display:grid;justify-items:center;row-gap:20px;--d:28px">
+      <span style="font:700 32px/1.2 var(--mono);color:var(--btc)">${E(UI('prizePool', l))}</span>
+      <b data-n style="font:800 150px/1 var(--disp);color:var(--btc);font-variant-numeric:tabular-nums;white-space:nowrap">0</b>
+      <b style="font:800 76px/1 var(--disp)">sats</b>
+      <div class="row" style="gap:28px;margin-top:12px">${[0, 1, 2, 3, 4].map((i) => `<span data-b="${i}">${BOLT(44)}</span>`).join('')}</div>
+    </div></div>`,
+    update(root, t, len, l) {
+      cardIn(root, t);
+      const v = Math.round(UP.pot.sats * eo(seg(t, 0.3, 1.6)));
+      const n = root.querySelector('[data-n]'); n.textContent = satsFmt(v, l);
+      n.style.transform = `scale(${t > 1.6 ? 1 + 0.08 * (1 - eo(seg(t, 1.6, 2.0))) : 1})`;
+      n.style.textShadow = t > 1.6 ? `0 0 ${Math.round(40 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(247,147,26,.6)` : 'none';
+      root.querySelectorAll('[data-b]').forEach((b, i) => { const q = back(seg(t, 1.6 + i * 0.12, 1.9 + i * 0.12)); b.style.opacity = q > 0 ? 1 : 0; b.style.transform = `scale(${q}) rotate(${Math.sin(t * 8 + i) * 8}deg)`; });
+    } },
+  { html: (l) => tourneyCard(UP.pot, l, 300, `<span class="chipx" style="justify-self:start;font-size:40px;padding:14px 18px">${E(satsFmt(UP.pot.sats, l))} sats</span>${spotGrid(UP.pot.places, UP.pot.taken, 6, 96, l)}`),
+    update(root, t) { cardIn(root, t); spotUpdate(root, t); } },
+  { html: (l) => {
+      const order = [[2, 1, '#C9CDD6'], [1, 0, 'var(--btc)'], [3, 2, '#CD7F32']];
+      return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:28px;--d:28px">
+        <div class="row" style="justify-content:space-between"><b style="font:800 56px/1.1 var(--disp)">Top 3</b><span style="font:700 30px/1.2 var(--mono);color:var(--btc)">${E(satsFmt(UP.pot.sats, l))} sats</span></div>
+        <div style="height:560px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px;align-items:end">${order.map(([rank, k, col]) => `<div data-col="${k}" style="display:grid;row-gap:14px;align-content:end;height:100%">
+          <b style="font:800 64px/1 var(--disp);color:${col};text-align:center">${rank}.</b>
+          <div data-bar style="height:${Math.round(460 * UP.pot.split[k] / 50)}px;background:${col};display:grid;place-items:start center;padding-top:22px;transform-origin:bottom"><b style="font:800 52px/1 var(--disp);color:var(--on-btc)">${UP.pot.split[k]}%</b></div></div>`).join('')}</div>
+      </div></div>`;
+    },
+    update(root, t) {
+      cardIn(root, t);
+      root.querySelectorAll('[data-col]').forEach((c) => { const k = +c.dataset.col, at = 0.5 + (2 - k) * 0.35, p = back(seg(t, at, at + 0.5)); c.querySelector('[data-bar]').style.transform = `scaleY(${Math.max(0.02, p)})`; c.firstElementChild.style.opacity = eo(seg(t, at + 0.3, at + 0.6)); });
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:880px;padding:48px;display:grid;row-gap:28px;--d:28px">
+      <span style="font:700 30px/1.2 var(--mono);color:var(--ink-2)">${E(UP.pot.name)}</span>
+      <div style="display:grid;row-gap:10px"><span class="lbl">${E(UI('prizePool', l))}</span><b data-pot style="font:800 96px/1 var(--disp);color:var(--btc);white-space:nowrap">${E(satsFmt(UP.pot.sats, l))} sats</b></div>
+      <div data-jar style="height:120px;border:4px solid var(--btc);position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:repeating-linear-gradient(90deg,var(--btc) 0 18px,var(--btc-deep) 18px 36px);opacity:.85"></div></div>
+      <div class="btnx" data-btn style="width:100%;gap:18px">${BOLT(36, 'var(--on-btc)')}<span>${E(UI('zapPool', l))}</span></div>
+      <div data-fly style="position:absolute;inset:0;pointer-events:none">${[0, 1, 2, 3, 4, 5, 6].map((i) => `<span data-z="${i}" style="position:absolute;left:0;top:0">${BOLT(56)}</span>`).join('')}</div>
+    </div></div>`,
+    update(root, t) {
+      cardIn(root, t);
+      const btn = root.querySelector('[data-btn]'), b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.3, 0.9, [860, 1040], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.4], 1.0));
+      const card = root.querySelector('[data-card]').getBoundingClientRect(), jar = root.querySelector('[data-jar]').getBoundingClientRect();
+      root.querySelectorAll('[data-z]').forEach((z, i) => {
+        const p = eo(seg(t, 1.1 + i * 0.18, 1.6 + i * 0.18));
+        const x0 = b.left - card.left + b.width * (0.2 + 0.1 * i), y0 = b.top - card.top, x1 = jar.left - card.left + 60 + i * 100, y1 = jar.top - card.top + 30;
+        z.style.opacity = p > 0 && p < 1 ? 1 : 0; z.style.transform = `translate(${x0 + (x1 - x0) * p}px, ${y0 + (y1 - y0) * p}px) rotate(${(1 - p) * 30}deg)`;
+      });
+      const hit = t > 1.6 ? 0.5 + 0.5 * Math.sin(t * 9) : 0;
+      root.querySelector('[data-jar]').style.boxShadow = `0 0 ${Math.round(48 * hit)}px rgba(247,147,26,.8)`;
+      root.querySelector('[data-pot]').style.textShadow = `0 0 ${Math.round(30 * hit)}px rgba(247,147,26,.6)`;
+    } },
+  { html: endCard, update: endUpdate },
+];
+
+S.fifa = [
+  { html: (l) => tourneyCard(UP.fifa, l, 440),
+    update(root, t) { cardIn(root, t); } },
+  { html: (l) => `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:30px;--d:28px">
+      <div style="display:grid;row-gap:10px"><b style="font:800 52px/1.1 var(--disp)">${E(UI('twoStage', l))}</b><span class="muted" style="font:700 26px/1.3 var(--mono)">${E(UI('groupsThenKo', l))}</span></div>
+      <span class="lbl">${E(UI('groupStage', l))}</span>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">${['A', 'B', 'C', 'D'].map((g, gi) => `<div data-g="${gi}" style="background:var(--well);padding:16px;display:grid;row-gap:10px"><b style="font:800 34px/1 var(--disp);color:var(--btc)">${g}</b>${[0, 1, 2, 3].map(() => '<i style="height:26px;border:2px dashed var(--dash)"></i>').join('')}</div>`).join('')}</div>
+      <div data-ko style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:center">${[4, 2, 1].map((n, c) => `<div style="display:grid;row-gap:12px">${Array.from({ length: n }, () => `<i style="height:40px;border-left:6px solid var(--btc);background:var(--well)"></i>`).join('')}</div>`).join('')}</div>
+    </div></div>`,
+    update(root, t) {
+      cardIn(root, t);
+      root.querySelectorAll('[data-g]').forEach((g, i) => { const p = back(seg(t, 0.4 + i * 0.2, 0.8 + i * 0.2)); g.style.opacity = clamp(p); g.style.transform = `translateY(${(1 - p) * 40}px)`; });
+      const k = root.querySelector('[data-ko]'), q = eo(seg(t, 1.4, 2.0)); k.style.opacity = q; k.style.transform = `translateX(${(1 - q) * 60}px)`;
+    } },
+  { html: (l) => `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:28px;--d:28px">
+      <div class="row" style="justify-content:space-between"><b style="font:800 52px/1.1 var(--disp)">${E(UI('whoPlays', l))}</b><span class="row" style="gap:12px;font:700 26px/1.2 var(--mono);color:var(--win)"><i class="dotlive" data-pulse></i>${E(UI('signupOpen', l))}</span></div>
+      <b style="font:800 120px/1 var(--disp);color:var(--btc)">${UP.fifa.taken} / ${UP.fifa.places}</b>
+      ${spotGrid(UP.fifa.places, UP.fifa.taken, 4, 110, l)}
+    </div></div>`,
+    update(root, t) {
+      cardIn(root, t); spotUpdate(root, t);
+      root.querySelector('[data-pulse]').style.boxShadow = `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 7)))}px rgba(74,222,128,.25)`;
+    } },
+  { html: (l) => signUpScene().html(l), update: (root, t, len, l) => signUpScene().update(root, t, len, l) },
+  { html: endCard, update: endUpdate },
+];
+
+S.cups = [
+  { html: () => `<div class="center" style="position:absolute"><div style="width:920px;display:grid;grid-template-columns:1fr 1fr;gap:28px">${UP.cups.map(([g, m, c], i) => `<div data-t="${i}" class="card cube" style="display:grid;--d:20px;overflow:hidden">${coverBox(c, 250)}<div style="padding:4px 24px 24px;display:grid;row-gap:8px"><b style="font:800 34px/1.1 var(--disp)">${E(g)}</b><span class="muted" style="font:700 24px/1.2 var(--mono)">${E(m)}</span></div></div>`).join('')}</div></div>`,
+    update(root, t) { root.querySelectorAll('[data-t]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.25, 0.5 + i * 0.25)); e.style.opacity = clamp(p * 1.5); e.style.transform = `scale(${0.6 + 0.4 * p})`; }); } },
+  { html: (l) => `<div class="center" style="position:absolute"><div style="display:grid;row-gap:36px;width:900px">${UP.cupTimes.map(([r, when], i) => `<div data-r="${i}" class="card cube" style="padding:40px 44px;display:grid;row-gap:18px;--d:24px">
+      <div class="row" style="justify-content:space-between"><b style="font:800 110px/1 var(--disp);color:var(--btc)">${r}</b><span class="muted" style="font:700 26px/1.2 var(--mono)">4 × Cup</span></div>
+      <span style="font:700 40px/1.2 var(--mono)">${E(when[l])}</span>
+      <span class="dim" style="font:500 26px/1.2 var(--mono)">Chess · RL · FC 26 · FC 27</span></div>`).join('')}</div></div>`,
+    update(root, t) { root.querySelectorAll('[data-r]').forEach((e, i) => { const p = back(seg(t, 0.15 + i * 0.5, 0.6 + i * 0.5)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * (i ? 160 : -160)}px)`; }); } },
+  { html: (l) => {
+      const slot = (n) => `<div style="height:72px;border:3px dashed var(--dash);display:grid;place-items:center"><b style="font:800 32px/1 var(--disp);color:var(--ink-2)">${n}</b></div>`;
+      return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:26px;--d:28px">
+        <div class="row" style="justify-content:space-between"><b style="font:800 50px/1.1 var(--disp)">${E(UI('doubleElim', l))}</b><b style="font:800 50px/1 var(--disp);color:var(--btc)">${UP.cupPlaces}</b></div>
+        <span class="lbl">${E(UI('upperBracket', l))}</span>
+        <div data-up style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">${[1, 2, 3, 4].map(slot).join('')}</div>
+        <span class="lbl">${E(UI('lowerBracket', l))}</span>
+        <div data-lo style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">${[0, 1, 2, 3].map(() => '<div style="height:72px;border:3px dashed var(--line)"></div>').join('')}</div>
+        <div data-drop style="position:absolute;width:0;height:0"></div>
+      </div></div>`;
+    },
+    update(root, t) {
+      cardIn(root, t);
+      const up = [...root.querySelectorAll('[data-up] > div')], lo = [...root.querySelectorAll('[data-lo] > div')];
+      up.forEach((e, i) => { const lost = t > 1.0 && (i === 1 || i === 3); e.style.opacity = lost ? 0.35 : 1; e.style.borderStyle = t > 0.6 ? 'solid' : 'dashed'; e.style.borderColor = t > 0.6 ? (lost ? 'var(--line)' : 'var(--win)') : ''; });
+      lo.forEach((e, i) => { const on = (i === 1 || i === 3) && t > 1.3; e.style.borderStyle = on ? 'solid' : 'dashed'; e.style.borderColor = on ? 'var(--btc)' : ''; e.style.background = on ? 'rgba(247,147,26,.12)' : 'transparent'; if (i === 3 && t > 2.1) { e.style.opacity = 0.3; e.style.borderColor = 'var(--loss)'; } else e.style.opacity = 1; });
+    } },
+  { html: (l) => signUpScene().html(l), update: (root, t, len, l) => signUpScene().update(root, t, len, l) },
+  { html: endCard, update: endUpdate },
+];
+
 /* ---------- timeline ---------- */
 let BEATS = [], DUR = 0;
 function fitCaption(el) {

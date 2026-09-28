@@ -93,6 +93,16 @@
     confirm: { en: 'Confirm', de: 'Bestätigen' },
     winner: { en: 'Winner', de: 'Sieger' },
     playersReport: { en: 'Players report results', de: 'Spieler melden Ergebnisse' },
+    // upcoming tournaments (pages/tournaments/⚡show, prize pool, formats), reels 10-12
+    prizePool: { en: 'Prize pool', de: 'Preispool' },
+    zapPool: { en: 'Zap the pool', de: 'Pool zappen' },
+    sponsors: { en: 'Sponsors', de: 'Sponsoren' },
+    groupStage: { en: 'Group stage', de: 'Gruppenphase' },
+    groupsThenKo: { en: 'Groups first, then a knockout final', de: 'Erst Gruppen, dann K.-o.-Finale' },
+    upperBracket: { en: 'Upper bracket', de: 'Oberes Bracket' },
+    lowerBracket: { en: 'Lower bracket', de: 'Unteres Bracket' },
+    doubleElim: { en: 'Double Elimination', de: 'Double Elimination' },
+    twoStage: { en: 'Two Stage', de: 'Two Stage' },
     // ladder (casual only, pre-season)
     blitzLadder: { en: 'Blitz ladder', de: 'Blitz-Ladder' },
     casualUntil: { en: 'casual until Block 0', de: 'casual bis Block 0' },

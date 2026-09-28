@@ -43,10 +43,17 @@ Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `dai
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 9 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp), DE and
+**Reels**: 12 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
 poster; the gallery shows it as its own section.
+
+**Upcoming-tournament reels** (`satspot`, `fifa`, `cups`, reel-only): built from the live
+system's data of 2026-09-28 (the `UP` block in `src/reels/reel.html`: names, starts, places
+taken, the pot as the tournament sets it and its split). They go stale with every sign-up:
+read the tournaments again (`TournamentSlides::upcoming()`, `PrizePool::shownPotSats()`),
+update `UP` and the copy, and re-render before posting them later. The tournaments people set
+up come first, then the casual cups; the sats pot reel is the headline.
 
 **How it is built:** one real object from the product per motif (a board, the clock, the
 login card, the invite card, the bracket, the clan card, the code), drawn from the app's own
@@ -71,7 +78,7 @@ motif in posting-plan order: the posters, the reel and the post texts from
 bigger board"). IDs: `P-<MOTIF>-<MOB|X|SQ|WIDE|STREAM>-<LANG>` for posters,
 `R-<MOTIF>-<LANG>` for reels, `T-<MOTIF>-<NOSTR|X>-<LANG>` for post texts.
 
-- **Filters:** type, language, ratio. **Lightbox:** click an image (Esc closes).
+- **Filters:** type, language, ratio, theme ("Upcoming tournaments" and "⚡ Sats pot" hold the tournament reels; the sats pot section is highlighted). **Lightbox:** click an image (Esc closes).
 - **Blossom upload** and **Post image/video**: the composer offers the Nostr and X texts of
   the motif as caption, adds the feature URL only if the text does not already carry the
   site, uploads to Blossom and publishes kind 1. Posted state stays in localStorage.

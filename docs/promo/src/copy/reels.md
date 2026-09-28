@@ -192,3 +192,76 @@ Sources: gitworkshop.dev repo card "TWENTY ONE Esports", branch master, 4/4 serv
 3. (3s) Now live on Nostr git — *gitworkshop.dev repo card, "4/4" green*
 4. (3s) Thanks for nagging. We mean it. — *nodebert's note, our reply, orange heart, `git clone nostr://…`*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 10 — Sats pot
+
+Sources: live system 2026-09-28, tournament page https://esports.einundzwanzig.space/tournaments/2
+("21,000 Sats, Zero Ball Control", Rocket League, 1v1, Two Stage, unrated, 12 places / 1 taken,
+prize pool as the tournament sets it: 21,000 sats, split 50 % / 30 % / 20 % among the top 3,
+anyone can zap the pool on the tournament page ("Zap the pool"), starts Sun 4 Oct 2026 18:00 CEST,
+sign-up closes 17:00 CEST, created by "El Presidento Ben"). The pool is the organizer's set
+figure (the wallet balance is not shown), so the copy says "prize pool", never "paid in".
+Written by the kommunikator; "Echter Pot"/"Real pot" in beat 1 changed to "Preispool"/"prize pool".
+
+**DE**
+1. (3s) 21.000 Sats Preispool — *Zahl knallt ins Bild*
+2. (3s) Rocket League 1v1, 12 Plätze, 11 frei — *Turnierkarte, ein Feld: „Dein Platz?"*
+3. (3s) Platz 1 bis 3 teilen sich den Pot — *Podium 50 % / 30 % / 20 %*
+4. (3s) Zapp den Pot größer — *Blitze fliegen in den Pot, „Pool zappen"*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) 21,000 sats prize pool — *number slams onto screen*
+2. (3s) Rocket League 1v1, 12 spots, 11 open — *tournament card, one slot says "Your spot?"*
+3. (3s) Top 3 split the pot — *podium 50% / 30% / 20%*
+4. (3s) Zap the pot bigger — *bolts flying into the pot, "Zap the pool"*
+5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 11 — Fifa 2026
+
+Sources: live system 2026-09-28, tournament page https://esports.einundzwanzig.space/tournaments/1
+("EINUNDZWANZIG Fifa 2026", EA Sports FC 26, 1v1, Two Stage: groups first, then a knockout,
+unrated, no prize pool, 16 places / 2 taken, starts Sat 3 Oct 2026 18:00 CEST, sign-up closes
+17:00 CEST, created by "markusturm"). Written by the kommunikator.
+
+**DE**
+1. (3s) EA Sports FC 26 wartet — *Turnierkarte mit Cover*
+2. (3s) Erst Gruppen, dann K.-o.-Runde — *Format-Übersicht, Two Stage*
+3. (3s) 16 Plätze, 14 noch frei — *Wer spielt: 2 / 16*
+4. (3s) Anmelden mit deinem Nostr-Schlüssel — *Anmeldung, Bestätigung, „ist dabei"*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) EA Sports FC 26 is here — *tournament card with cover*
+2. (3s) Groups first, then knockout — *format overview, Two Stage*
+3. (3s) 16 spots, 14 still open — *who plays: 2 / 16*
+4. (3s) Sign up with your Nostr key — *sign-up, confirm, "is in"*
+5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 12 — Casual cups
+
+Sources: live system 2026-09-28, https://esports.einundzwanzig.space/tournaments (automatic casual
+cups: Chess Blitz 5+3, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports FC 27 1v1; per game one
+EU cup, start Sat 3 Oct 2026 20:00 CEST, and one US cup, start Sun 4 Oct 2026 02:00 CEST; 4 places
+per cup, Double Elimination: out after the second loss; unrated, no prizes). Written by the
+kommunikator.
+
+**DE**
+1. (3s) Vier Spiele, vier Cups — *Cover: Schach, Rocket League, FC 26, FC 27*
+2. (3s) EU- und US-Start, du wählst — *zwei Startzeiten nebeneinander*
+3. (3s) Vier Spieler, zwei Niederlagen raus — *Bracket, Double Elimination*
+4. (3s) Nur vier Plätze pro Cup — *Anmeldung, Bestätigung, „ist dabei"*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) Four games, four cups — *covers: Chess, Rocket League, FC 26, FC 27*
+2. (3s) EU or US start, you choose — *two start times side by side*
+3. (3s) Four players, two losses and out — *bracket, double elimination*
+4. (3s) Only four spots per cup — *sign-up, confirm, "is in"*
+5. (3s) esports.einundzwanzig.space — *logo + URL*

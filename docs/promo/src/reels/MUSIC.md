@@ -22,3 +22,6 @@ normalises to -14 LUFS integrated, true peak -1.5 dBTP (single-pass `loudnorm`).
 | tournaments | `instrumental/01.mp3` |
 | opensource | `instrumental/20.mp3` |
 | grasp | `instrumental/09.mp3` |
+| satspot | `instrumental/05.mp3` |
+| fifa | `instrumental/12.mp3` |
+| cups | `instrumental/03.mp3` |
