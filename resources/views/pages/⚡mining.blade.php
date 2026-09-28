@@ -182,17 +182,39 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         @endforeach
                     </tr>
                 </thead>
+                @php
+                    // The halving as a bar beside each era (P53: the table read as text only): what a win pays
+                    // relative to era 1, read from the first reward that mines. Supplementary; the sats stay in the cells.
+                    $payKey = collect(array_keys($chain['rewards_now']))->first(fn (string $key): bool => ChainOverview::mines($key));
+                    $firstPay = $payKey === null ? 0 : (int) ($chain['schedule'][0]['rewards'][$payKey] ?? 0);
+                @endphp
                 <tbody>
                     @foreach ($chain['schedule'] as $row)
                         <tr @class(['border-b border-hairline last:border-0', 'text-btc-hi' => $row['current']])>
-                            <td class="py-2 pr-3 font-bold">{{ $row['era'] }}</td>
+                            <td class="py-2 pr-3 font-bold">
+                                <span class="flex items-center gap-2">
+                                    <span class="w-3">{{ $row['era'] }}</span>
+                                    @if ($firstPay > 0)
+                                        <span class="block h-1 w-14 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true" data-test="era-pay-bar">
+                                            <span class="block h-full rounded-[2px] bg-btc" style="width: {{ round(100 * (int) ($row['rewards'][$payKey] ?? 0) / $firstPay, 2) }}%"></span>
+                                        </span>
+                                    @endif
+                                </span>
+                            </td>
                             <td class="py-2 pr-3 whitespace-nowrap">{{ $date($row['from'], 'D j M') }}</td>
                             @foreach ($row['rewards'] as $key => $reward)
                                 <td class="py-2 pr-3 text-right">{{ ChainOverview::mines((string) $key) ? $sats($reward) : '–' }}</td>
                             @endforeach
                             @foreach ($games as $game)
                                 @php($minedHere = (int) ($hasChain ? ($chain['mined_by_game_and_era'][$game][$row['era']] ?? 0) : 0))
-                                <td class="py-2 pr-3 text-right whitespace-nowrap">{{ $sats($minedHere) }} <span class="text-ink-3">/ {{ $sats($row['caps'][$game] ?? 0) }}</span></td>
+                                @php($capHere = (int) ($row['caps'][$game] ?? 0))
+                                <td class="py-2 pr-3 text-right whitespace-nowrap">
+                                    {{ $sats($minedHere) }} <span class="text-ink-3">/ {{ $sats($capHere) }}</span>
+                                    {{-- How much of the game's era cap is mined, as a bar under the numbers (P53). --}}
+                                    <span class="mt-1 ml-auto block h-1 w-full max-w-24 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true" data-test="era-cap-bar">
+                                        <span class="block h-full rounded-[2px] bg-btc" style="width: {{ $capHere > 0 ? min(100, round(100 * $minedHere / $capHere, 2)) : 0 }}%"></span>
+                                    </span>
+                                </td>
                             @endforeach
                         </tr>
                     @endforeach

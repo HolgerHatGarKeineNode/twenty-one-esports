@@ -172,7 +172,7 @@ npm run build
 
 SHARD_FILES=(
     "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/LiveCountTest.php"
-    "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php tests/Browser/StrongestListTest.php"
+    "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php tests/Browser/StrongestListTest.php tests/Browser/VisualPassTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php tests/Browser/GamePageTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php tests/Browser/RulesProtocolTest.php"
     "tests/Browser/NavigationCrawlTest.php tests/Browser/LivePlayerTest.php tests/Browser/CasualPlayTest.php"

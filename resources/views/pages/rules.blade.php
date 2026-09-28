@@ -46,10 +46,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach ($section['table']['rows'] as $row)
+                                    @foreach ($section['table']['rows'] as $rowIndex => $row)
                                         <tr>
                                             @foreach ($row as $index => $cell)
-                                                @if ($index === 0)<th scope="row" class="border-b border-hairline py-2.5 pr-4 font-bold">{{ $cell }}</th>@else<td class="border-b border-hairline py-2.5 pr-4 text-ink-2">{{ $cell }}</td>@endif
+                                                @if ($index === 0)<th scope="row" class="border-b border-hairline py-2.5 pr-4 font-bold">@if (isset($section['table']['covers'][$rowIndex]))<span class="flex items-center gap-2.5"><x-game-cover :game="$section['table']['covers'][$rowIndex]" size="thumb" class="w-12 rounded-xs" data-test="rules-table-cover" />{{ $cell }}</span>@else{{ $cell }}@endif</th>@else<td class="border-b border-hairline py-2.5 pr-4 text-ink-2">{{ $cell }}</td>@endif
                                             @endforeach
                                         </tr>
                                     @endforeach

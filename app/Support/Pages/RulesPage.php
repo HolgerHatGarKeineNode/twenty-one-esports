@@ -32,7 +32,7 @@ use App\Support\Tournaments\TournamentDeadlines;
  * as short sentences), `table` (head and rows) and `links` (label and URL
  * into the pages where the rule applies).
  *
- * @phpstan-type Section array{id: string, title: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>}, links?: list<array{0: string, 1: string}>}
+ * @phpstan-type Section array{id: string, title: string, lead: string, facts?: list<array{0: string, 1: string}>, items?: list<string>, table?: array{head: list<string>, rows: list<list<string>>, covers?: list<string>}, links?: list<array{0: string, 1: string}>}
  */
 final class RulesPage
 {
@@ -173,10 +173,13 @@ final class RulesPage
     private static function games(): array
     {
         $rows = [];
+        // Each row's game, for its cover in the first cell (P53: the table read as text only).
+        $covers = [];
 
         foreach (app(GameRegistry::class)->all() as $game) {
             foreach ($game->modes() as $mode) {
                 /** @var GameMode $mode */
+                $covers[] = $game->slug();
                 $rows[] = [
                     GameNames::game($game->slug()),
                     __($mode->name),
@@ -190,7 +193,7 @@ final class RulesPage
             'id' => 'games',
             'title' => __('Games and modes'),
             'lead' => __('Each game and mode has its own ladder.'),
-            'table' => ['head' => [__('Game'), __('Mode'), __('Series'), __('Ladder of')], 'rows' => $rows],
+            'table' => ['head' => [__('Game'), __('Mode'), __('Series'), __('Ladder of')], 'rows' => $rows, 'covers' => $covers],
             'items' => [
                 __('Clan lineups play the team modes. The captain picks who plays each series.'),
                 __('A series ends as soon as one side has won the majority of its games.'),

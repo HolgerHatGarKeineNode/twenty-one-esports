@@ -24,10 +24,17 @@
 <a href="{{ route('games.show', $chessGame) }}" wire:key="c-{{ $chessGame->id }}" data-test="chess-row"
    class="tr grid min-h-11 grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-sm px-2 py-2 text-[13px] text-ink hover:text-ink lg:h-11 lg:grid-cols-[96px_minmax(0,1fr)_88px_120px_150px_200px_120px] lg:gap-4 lg:py-0">
     <span class="font-bold text-btc">{{ $chessGame->number() }}</span>
-    <span class="flex min-w-0 items-center gap-2 whitespace-nowrap">
-        <span @class(['truncate', 'font-bold' => $winner === 'w', 'text-ink-2' => $winner === 'b'])>{{ $chessGame->white?->displayName() }}</span>
-        <span class="text-ink-3">vs</span>
-        <span @class(['truncate', 'font-bold' => $winner === 'b', 'text-ink-2' => $winner === 'w'])>{{ $chessGame->black?->displayName() }}</span>
+    {{-- Each side with its face (P53: the rows read as text; a series row carries the clan tags). Below lg one side per line, from lg one line. --}}
+    <span class="flex min-w-0 flex-col gap-1 whitespace-nowrap lg:flex-row lg:items-center lg:gap-2">
+        <span class="flex min-w-0 items-center gap-2">
+            @if ($chessGame->white?->exists)<x-avatar :user="$chessGame->white" :size="20" class="rounded-xs" data-test="chess-row-face" />@endif
+            <span @class(['truncate', 'font-bold' => $winner === 'w', 'text-ink-2' => $winner === 'b'])>{{ $chessGame->white?->displayName() }}</span>
+        </span>
+        <span class="flex min-w-0 items-center gap-2">
+            <span class="text-ink-3">vs</span>
+            @if ($chessGame->black?->exists)<x-avatar :user="$chessGame->black" :size="20" class="rounded-xs" data-test="chess-row-face" />@endif
+            <span @class(['truncate', 'font-bold' => $winner === 'b', 'text-ink-2' => $winner === 'w'])>{{ $chessGame->black?->displayName() }}</span>
+        </span>
     </span>
     <span class="flex flex-col leading-tight"><b>{{ $chessGame->result ? str_replace(['1/2', '-'], ['½', '–'], $chessGame->result) : '–' }}</b></span>
     <span class="col-span-2 flex items-center gap-1.5 text-ink-2 max-lg:col-start-2 max-lg:text-xs lg:col-span-1"><x-game-cover game="chess" size="thumb" class="w-8 rounded-xs" :title="__('Chess')" data-test="match-row-cover" /><span class="sr-only">{{ __('Chess') }}</span>{{ $format }}</span>

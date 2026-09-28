@@ -299,7 +299,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                                 <li class="grid min-h-9 grid-cols-[minmax(0,1fr)_64px_80px] lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_88px] items-center gap-3 border-b border-hairline text-[13px] last:border-b-0" data-test="ladder-share"
                                     title="{{ __(':name: :wins of :total wins', ['name' => $shareName, 'wins' => $share['wins'], 'total' => $totals['wins']]) }}">
                                     <span class="flex min-w-0 items-center gap-2">
-                                        @if ($players && $entry->user)<x-avatar :name="$entry->user->displayName()" :src="$entry->user->avatarUrl()" :size="20" />@endif
+                                        @if ($players && $entry->user)<x-avatar :user="$entry->user" :size="20" />@endif
                                         @unless ($players)<x-clan-tag :clan="$entry->lineup?->clan" compact />@endunless
                                         <span class="truncate">{{ $shareName }}</span>
                                     </span>
@@ -413,7 +413,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                         <span class="text-ink-3">{{ $entry['rank'] }}</span>
                         <span class="flex min-w-0 flex-col gap-1">
                             <span class="flex min-w-0 items-center gap-2">
-                                @if ($players && $row->user)<x-avatar :name="$row->user->displayName()" :src="$row->user->avatarUrl()" :size="22" />@endif
+                                @if ($players && $row->user)<x-avatar :user="$row->user" :size="22" />@endif
                                 <x-clan-tag :clan="$clan" compact />
                                 <span class="truncate font-bold" data-test="ladder-name">{{ $name }}</span>
                             </span>
