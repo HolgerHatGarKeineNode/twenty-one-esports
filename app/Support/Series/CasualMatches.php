@@ -734,6 +734,7 @@ final class CasualMatches
             'noshow_early' => __('A no-show can be claimed only after your opponent missed their deadline.'),
             'no_claim' => __('There is no no-show claim to contest.'),
             'contest_late' => __('The time to contest has run out.'),
+            'rematch_closed' => __('A rematch can be sent only right after a match with a result.'),
             'casual_match' => __('Casual 1v1 matches share the lobby in the match chat, and no-shows go by their own deadlines.'),
             default => __('This match changed in between. Please look again.'),
         });

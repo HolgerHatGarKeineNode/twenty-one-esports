@@ -63,10 +63,16 @@
                     @endif
                 </div>
                 @unless ($isMe)
-                    <div class="flex min-w-0 items-center gap-3 max-lg:order-last lg:max-w-[360px] lg:pb-1">
+                    <div class="flex min-w-0 flex-wrap items-center gap-3 max-lg:order-last lg:max-w-[520px] lg:flex-nowrap lg:pb-1">
                         <a href="{{ route('chess.challenge', ['to' => $user->npub]) }}" data-test="challenge"
                            class="flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc hover:bg-btc-hi hover:text-on-btc lg:grow-0">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg><span class="truncate">{{ __('Challenge :name', ['name' => $name]) }}</span>
+                        </a>
+                        {{-- A scheduled casual 1v1 in Rocket League or EA FC (P23 S4), with this player filled in; the game they look for first. --}}
+                        @php($casualGame = explode('/', (string) $user->looking_to_play)[0])
+                        <a href="{{ route('challenges.casual', array_filter(['to' => $user->id, 'game' => \App\Support\Series\CasualLobby::offers($casualGame) ? $casualGame : null])) }}" data-test="schedule-1v1"
+                           class="btn-s flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-edge px-4 text-sm whitespace-nowrap text-ink hover:text-ink max-lg:grow">
+                            <x-icon name="calendar" :size="16" class="shrink-0" />{{ __('Schedule a 1v1') }}
                         </a>
                     </div>
                 @endunless

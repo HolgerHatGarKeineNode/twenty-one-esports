@@ -182,7 +182,8 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
             const chat = box("[data-test=room-chat]");
             const steps = box("[data-test=casual-steps]");
             const joined = box("[data-test=casual-joined]");
-            const tiles = [...document.querySelectorAll("[data-test=casual-steps] ol li")].map((li) => li.scrollWidth <= li.clientWidth);
+            // The five stops of the timeline (P23 S3): what shows of each fits it; the rail between them overhangs on purpose.
+            const tiles = [...document.querySelectorAll("[data-test=casual-steps] ol li")].map((li) => [...li.children].filter((el) => el.checkVisibility() && getComputedStyle(el).position !== "absolute").every((el) => el.scrollWidth <= el.clientWidth + 1));
             return {
                 overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                 cardInside: card.left >= chat.left && card.right <= chat.right,
@@ -195,7 +196,7 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
         cardRoomShot($guestPage, 'card-guest-steps-375', '[data-test=casual-steps]');
         cardRoomShot($guestPage, 'card-guest-chat-375', '[data-test=room-chat]');
 
-        expect($narrow)->toBe(['overflow' => 0, 'cardInside' => true, 'joinedInside' => true, 'tilesFit' => [true, true, true], 'stepsFirst' => true])
+        expect($narrow)->toBe(['overflow' => 0, 'cardInside' => true, 'joinedInside' => true, 'tilesFit' => [true, true, true, true, true], 'stepsFirst' => true])
             ->and($hostPage->evaluate('() => window.__errors'))->toBe([])
             ->and($guestPage->evaluate('() => window.__errors'))->toBe([])
             ->and($hostPage->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([])

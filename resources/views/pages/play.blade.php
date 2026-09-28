@@ -33,6 +33,11 @@
             </p>
         </div>
 
+        {{-- Casual 1v1 (P23 S3): the quickest way into a Rocket League or EA FC match, the game picked here. --}}
+        @if (\App\Support\Series\CasualLobby::games() !== [])
+            <livewire:casual-play />
+        @endif
+
         <ul class="m-0 flex list-none flex-col gap-4 p-0">
             @foreach ($games as $game)
                 @php

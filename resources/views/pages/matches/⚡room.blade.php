@@ -5,11 +5,14 @@ use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Models\ChatMute;
 use App\Models\LineupSeat;
+use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Rating\Ratings;
 use App\Support\Series\CasualChallenges;
+use App\Support\Series\CasualInvites;
+use App\Support\Series\CasualLobby;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
@@ -305,6 +308,68 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     }
 
     /**
+     * "Rematch" after a result (P23 S3): a direct invite to the opponent,
+     * open for `esports.casual.rematch_seconds` (CasualInvites::rematch()).
+     * Accepted, both get the ready prompt of the new match.
+     */
+    public function casualRematch(): void
+    {
+        $this->attempt(fn () => app(CasualInvites::class)->rematch($this->fresh(), $this->user()));
+    }
+
+    public function casualWithdrawRematch(): void
+    {
+        $this->attempt(fn () => app(CasualInvites::class)->withdrawOutgoing($this->user()));
+    }
+
+    public function casualAcceptRematch(int $inviteId): void
+    {
+        $this->attempt(function (): void {
+            $invite = $this->rematchInvites()['incoming'] ?? throw CasualMatches::refuse('invite_closed');
+            $side = $this->fresh()->participantSideOf($this->user()) ?? 'challenged';
+            $choice = (array) ($this->fresh()->casual['queue'][$side] ?? []);
+            $settings = app(CasualLobby::class)->settings($this->user(), $invite->game);
+            app(CasualInvites::class)->accept($invite, $this->user(),
+                Platform::tryFrom((string) ($choice['platform'] ?? '')) ?? $settings['platform'], (bool) ($choice['crossplay'] ?? $settings['crossplay']));
+        });
+
+        // The ready prompt of every page shows the new match at once.
+        $this->dispatch('casual-changed');
+    }
+
+    public function casualDeclineRematch(): void
+    {
+        $this->attempt(function (): void {
+            $invite = $this->rematchInvites()['incoming'];
+
+            if ($invite !== null) {
+                app(CasualInvites::class)->close($invite, $this->user());
+            }
+        });
+    }
+
+    /**
+     * The open rematch invites between the two players of this finished
+     * casual match: the one this player sent, the one they received.
+     *
+     * @return array{outgoing: SeriesInvite|null, incoming: SeriesInvite|null}
+     */
+    public function rematchInvites(): array
+    {
+        $match = $this->fresh();
+        $side = $match->participantSideOf($this->user());
+        $opponent = $side === null ? null : User::query()->find($match->rosterSide(SeriesMatch::otherSide($side))[0] ?? 0);
+
+        if (! $match->isCasualPairing() || ! $match->status->hasResult() || $opponent === null) {
+            return ['outgoing' => null, 'incoming' => null];
+        }
+
+        $lobby = app(CasualLobby::class);
+
+        return ['outgoing' => $lobby->openInvite($this->user(), $opponent, $match->game), 'incoming' => $lobby->openInvite($opponent, $this->user(), $match->game)];
+    }
+
+    /**
      * The host's chat got `OK true` for the card's wrap to the opponent
      * (resources/js/roomChat.js). No arguments: the league learns that a
      * card went out, nothing about it (NIP "Telling the league").
@@ -549,7 +614,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         $match = $this->fresh();
         $noshowFrom = $match->start_at?->copy()->addMinutes($match->noshowMinutes());
 
-        return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error]));
+        // A casual match: the open rematch invites and which deadline runs (a claim opens when one passes).
+        $casual = $match->isCasualPairing()
+            ? [array_map(fn (?SeriesInvite $invite) => $invite?->only(['id', 'status']), $this->rematchInvites()), $match->casualNextDeadline()['kind'] ?? null, $match->casualLobbyDueAt()?->isPast(), $match->casualJoinDueAt()?->isPast()]
+            : null;
+
+        return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error, $casual]));
     }
 
     /**
@@ -713,6 +783,35 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             </span>
         </section>
 
+        {{-- A casual 1v1 (P23 S3): the same opponent again, as a direct invite. --}}
+        @if ($casual && $mySide !== null && $m->resolution !== \App\Enums\SeriesResolution::Void)
+            @php(['outgoing' => $rematchOut, 'incoming' => $rematchIn] = $this->rematchInvites())
+            @php($rematchOpen = $m->finished_at !== null && $m->finished_at->gte(now()->subMinutes((int) config('esports.casual.rematch_minutes'))))
+            @if ($rematchIn || $rematchOut || $rematchOpen)
+                <section aria-labelledby="rematch-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 shadow-ring-btc sm:flex-row sm:items-center sm:gap-6 lg:px-6" data-test="casual-rematch-card"
+                         x-data="{ now: Date.now(), skew: {{ (int) now()->getTimestampMs() }} - Date.now() }" x-init="setInterval(() => now = Date.now(), 1000)">
+                    <span class="flex min-w-0 grow flex-col gap-1">
+                        <h2 id="rematch-h" class="m-0 font-display text-base leading-[1.25] font-bold">{{ $rematchIn ? __(':name wants a rematch', ['name' => $m->sideName($other)]) : __('Rematch') }}</h2>
+                        <span class="text-[13px] leading-normal text-ink-2">{{ $rematchOut ? __('Sent. Waiting for :name.', ['name' => $m->sideName($other)]) : __('Same opponent, same platforms, a new ready check.') }}</span>
+                    </span>
+                    @if ($rematchIn || $rematchOut)
+                        @php($ends = ($rematchIn ?? $rematchOut)->expires_at->getTimestampMs())
+                        <b class="font-display text-xl tabular-nums" role="timer" x-text="(() => { const s = Math.max(0, Math.ceil(({{ $ends }} - now - skew) / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); })()"></b>
+                    @endif
+                    @if ($rematchIn)
+                        <span class="grid grid-cols-2 gap-2 sm:flex">
+                            <x-button variant="quiet" wire:click="casualDeclineRematch" data-test="casual-rematch-decline">{{ __('Decline') }}</x-button>
+                            <x-button icon="check" wire:click="casualAcceptRematch({{ $rematchIn->id }})" data-test="casual-rematch-incoming">{{ __('Accept rematch') }}</x-button>
+                        </span>
+                    @elseif ($rematchOut)
+                        <button type="button" wire:click="casualWithdrawRematch" class="inline-flex h-11 cursor-pointer items-center justify-center rounded-md border border-[#5A2A2E] bg-transparent px-4 text-[13px] text-loss" data-test="casual-rematch-waiting">{{ __('Withdraw') }}</button>
+                    @else
+                        <x-button icon="retry" wire:click="casualRematch" class="min-h-12 shrink-0 px-6 font-display text-base font-bold" data-test="casual-rematch">{{ __('Rematch') }}</x-button>
+                    @endif
+                </section>
+            @endif
+        @endif
+
         {{-- The next series: a captain challenges the same lineup again (the challenge form, prefilled) --}}
         @php($ownLineup = $captainSide !== null ? $m->lineup($captainSide) : null)
         @php($theirLineup = $captainSide !== null ? $m->lineup(SeriesMatch::otherSide($captainSide)) : null)
@@ -789,7 +888,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         </p>
     @endif
 
-    {{-- Timeline + Proof --}}
+    {{-- Timeline + Proof (a casual 1v1 has its own, in the steps) --}}
+    @unless ($casual)
     <section aria-labelledby="tl-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6">
         <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="tl-h" class="m-0 text-[15px] font-bold">{{ __('Timeline') }}</h2><span class="text-xs text-ink-2">{{ __('your result and their OK make 2 of 2') }}</span></span>
         <ol class="m-0 grid list-none grid-cols-2 gap-y-4 p-0 lg:grid-cols-4">
@@ -805,6 +905,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <p class="m-0 flex items-start gap-2 text-xs leading-normal text-ink-2"><x-icon name="retry" :size="14" class="mt-0.5 shrink-0" />{{ __('If a result is disputed, either side can submit again. The new one replaces the old; the timeline keeps both.') }}</p>
         <x-proof :rows="SeriesPresenter::proofRows($m)" />
     </section>
+    @endunless
 
     {{-- Games + Who played --}}
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -936,7 +1037,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         </section>
         @endif
 
-        <section aria-labelledby="chat-h" class="flex min-h-[420px] flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" data-test="room-chat" wire:ignore>
+        <section aria-labelledby="chat-h" class="flex min-h-[420px] flex-col rounded-lg bg-card" x-data="roomChat(@js($this->chatConfig()))" x-on:casual-room.window="casualUpdate($event.detail.state)" x-on:casual-compose.window="cardKinds.includes($event.detail) && openComposer($event.detail)" data-test="room-chat" wire:ignore>
             <span class="flex items-center justify-between gap-2 border-b border-hairline px-4 py-3 lg:px-6"><h2 id="chat-h" class="m-0 text-[15px] font-bold">{{ __('Chat') }}</h2><span class="inline-flex items-center gap-1.5 text-xs text-ink-2"><x-icon name="lock" :size="14" />{{ $casual ? __('private to both players') : __('private to both lineups') }}</span></span>
             <p x-show="status === 'live'" class="m-0 border-b border-hairline px-4 py-2 text-xs leading-normal text-ink-2 lg:px-6" data-test="chat-hint">{{ __('End-to-end encrypted over Nostr: the league server never receives or stores these messages.') }}</p>
             <ol aria-live="polite" class="m-0 flex min-h-0 grow list-none flex-col justify-end gap-3 overflow-y-auto px-4 py-3 text-[13px] leading-normal lg:px-6" data-test="chat-messages">
@@ -1026,8 +1127,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         </p>
     @endif
 
-    {{-- Sticky score bar (MobileMatchRoom) --}}
-    @if ($editable)
+    {{-- Sticky score bar (MobileMatchRoom); a casual 1v1 only once both are in, before that its steps carry the action. --}}
+    @if ($editable && (! $casual || $m->joined_at !== null))
         <div class="fixed inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-bar px-4 py-3 shadow-[0_-1px_0_#2A2A30] lg:hidden" data-page-bar>
             <span class="flex flex-col"><b class="font-display text-[22px]">{{ $wins['challenger'] }}:{{ $wins['challenged'] }}</b><span class="text-[11px] text-ink-2">{{ $wins['challenger'] === $wins['challenged'] ? __('level') : __(':clan lead the series', ['clan' => $m->sideName($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged')]) }}</span></span>
             <span class="grow"></span>

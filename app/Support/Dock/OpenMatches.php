@@ -541,6 +541,18 @@ final class OpenMatches
                 $endsAt, $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => $total, 'redUnder' => self::BLITZ_RED_MS], $face);
         }
 
+        // A scheduled 1v1 (P23 S4) waiting for its check-in: on this player while the window is open and they are not in.
+        if ($match->awaitsCheckIn()) {
+            $opens = $match->checkInOpensAt();
+            $open = $opens === null || ! $opens->isFuture();
+            $mine = $open && $match->readyAt($side) === null;
+
+            return $this->seriesDockItem($match, $other, 'need', 'ready', $mine, $open ? self::text('Check in') : self::text('Starts'),
+                $open && $endsAt !== null ? self::format($endsAt - $nowMs, 'clock') : SeriesPresenter::time($match->scheduledAt() ?? now(), $user, 'H:i'),
+                self::text('Casual :number, check-in', ['number' => $match->label()]), $mine ? self::text('Check in') : null,
+                $endsAt, $open && $endsAt !== null ? ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, (int) $match->casualSetting('checkin_before_minutes') * 60_000 + (int) $match->casualSetting('checkin_after_minutes') * 60_000), 'redUnder' => 60_000] : null, $face);
+        }
+
         $onMe = $next !== null && ($next['side'] === $side || ($next['side'] === null && $next['kind'] === 'report'));
         $state = match ($next['kind'] ?? null) {
             'lobby' => $next['side'] === $side ? self::text('Share the lobby') : self::text('Lobby coming'),

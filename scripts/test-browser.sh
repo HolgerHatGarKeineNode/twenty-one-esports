@@ -35,7 +35,7 @@
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest (~26s + clan logos)
 #   3: ChatAndDailyTest, SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest (~27s + P8b + ladder + covers)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest
-#   5: NavigationCrawlTest (the P16 walk for guest, player and captain), LivePlayerTest (P20, the floating player and /live against a local ffmpeg-made HLS stream)
+#   5: NavigationCrawlTest (the P16 walk for guest, player and captain), LivePlayerTest (P20, the floating player and /live against a local ffmpeg-made HLS stream), CasualPlayTest (P23 S3, queue and invite to the ready prompt and the room)
 #   6: NavigationMenusTest, NavigationCrawlStaffTest, InvitePlacementTest (P16 menus and context actions; the walk for organizer and admin)
 #   7: TournamentLandingTest, PlayerPickerTest, ShellNavigationWidthsTest (the shell at six widths per role, German at the desktop widths), CasualLobbyCardTest (P23 S2, a lobby card host to guest)
 #   8: ShellNavigationTest, TournamentTimeTest, BunkerSessionTest, TournamentControlTest (header concept B: hub, context bar, phone sheets, /play; the when block; NIP-46; the P18 control), NavigateRaceTest (a late Livewire answer after wire:navigate is not morphed into the old page)
@@ -175,7 +175,7 @@ SHARD_FILES=(
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php"
-    "tests/Browser/NavigationCrawlTest.php tests/Browser/LivePlayerTest.php"
+    "tests/Browser/NavigationCrawlTest.php tests/Browser/LivePlayerTest.php tests/Browser/CasualPlayTest.php"
     "tests/Browser/NavigationMenusTest.php tests/Browser/NavigationCrawlStaffTest.php tests/Browser/InvitePlacementTest.php tests/Browser/ChessLobbyTest.php"
     "tests/Browser/TournamentLandingTest.php tests/Browser/PlayerPickerTest.php tests/Browser/ShellNavigationWidthsTest.php tests/Browser/CasualLobbyCardTest.php"
     "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentTimeTest.php tests/Browser/BunkerSessionTest.php tests/Browser/TournamentControlTest.php tests/Browser/NavigateRaceTest.php"

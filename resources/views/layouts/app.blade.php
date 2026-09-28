@@ -39,6 +39,9 @@
         @auth
             <livewire:match-dock />
 
+            {{-- Casual 1v1 (P23 S3): the ready check of a pairing, on whatever page the player is. --}}
+            <livewire:casual-ready />
+
             {{-- Placement reveal (P10): once, after the fifth rated result in a ladder. --}}
             <x-placement-reveal />
         @endauth

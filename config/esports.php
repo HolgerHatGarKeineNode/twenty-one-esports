@@ -248,7 +248,9 @@ return [
     |
     | ready_seconds: both players press Ready this long after the pairing;
     | a miss voids the match (not a no-show). invite_seconds: how long a
-    | direct invite stays open.
+    | direct invite stays open. rematch_seconds: how long a rematch invite
+    | from the room of a finished match stays open; rematch_minutes: how long
+    | after the result the room offers one.
     |
     | The deadlines below are pinned on the match at the pairing, so a later
     | change reaches only later matches. `casual:tick` applies them every
@@ -287,6 +289,8 @@ return [
         'crossplay_excluded' => ['ea-sports-fc-26' => ['switch'], 'ea-sports-fc-27' => ['switch']],
         'ready_seconds' => (int) env('ESPORTS_CASUAL_READY_SECONDS', 60),
         'invite_seconds' => (int) env('ESPORTS_CASUAL_INVITE_SECONDS', 120),
+        'rematch_seconds' => (int) env('ESPORTS_CASUAL_REMATCH_SECONDS', 60),
+        'rematch_minutes' => (int) env('ESPORTS_CASUAL_REMATCH_MINUTES', 15),
         'lobby_minutes' => (int) env('ESPORTS_CASUAL_LOBBY_MINUTES', 5),
         'join_minutes' => (int) env('ESPORTS_CASUAL_JOIN_MINUTES', 10),
         'contest_minutes' => (int) env('ESPORTS_CASUAL_CONTEST_MINUTES', 5),

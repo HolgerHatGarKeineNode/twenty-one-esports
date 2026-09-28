@@ -3,8 +3,7 @@
  * two lineups, and for a casual 1v1 (P23) the steps' countdown and the Ready
  * button. Loaded only on that page (layout `scripts`).
  */
-import { canEncrypt } from './nostrChat.js';
-import { ensureSigner } from './nostrSign.js';
+import { signerGate } from './casualPlay.js';
 import { roomChat } from './roomChat.js';
 
 /** mm:ss left until a casual deadline (unix seconds), counted down in the browser. */
@@ -48,19 +47,10 @@ export function casualReady(messages) {
             this.error = '';
 
             try {
-                if (!(await ensureSigner())) {
-                    this.error = messages.noSigner;
-
-                    return;
+                this.error = await signerGate(messages);
+                if (this.error === '') {
+                    await this.$wire.casualReady();
                 }
-
-                if (!canEncrypt(window.nostr)) {
-                    this.error = messages.noNip44;
-
-                    return;
-                }
-
-                await this.$wire.casualReady();
             } catch (error) {
                 console.warn('[room] ready failed', error);
                 this.error = messages.failed;

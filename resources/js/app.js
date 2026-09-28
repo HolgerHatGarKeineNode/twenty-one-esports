@@ -16,6 +16,7 @@ import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
 import { livePlayer, liveStage } from './livePlayer.js';
 import { liveStore, readSeed, startLiveFeed } from './liveFeed.js';
 import './nostrSign.js';
+import './casualPlay.js';
 import './badgeShare.js';
 import './captured.js';
 import './sanNotation.js';

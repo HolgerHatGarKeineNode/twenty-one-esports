@@ -161,6 +161,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {{-- Invite a friend: the join link of the player's clan (series are played by clan lineups) --}}
     <div class="px-4 pb-4 lg:px-12 lg:pb-5"><livewire:invite-link :game="$slug" place="game" /></div>
 
+    {{-- Casual 1v1 without a clan (P23 S3): find an opponent, invite someone looking, answer invites. --}}
+    @if (\App\Support\Series\CasualLobby::offers($slug))
+        <div class="px-4 pb-4 lg:px-12 lg:pb-5"><livewire:casual-play :game="$slug" /></div>
+    @endif
+
     {{--
         The game's next tournament open for sign-up as a poster (user, 2026-09-28: every game page lacked a
         view of the next tournament; it sat as the eighth card of the grid, under the fold, and read as text).

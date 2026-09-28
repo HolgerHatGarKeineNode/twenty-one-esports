@@ -11,6 +11,7 @@
         <p class="m-0" data-test="casual-checkin-later">{{ __('The match starts :time. The check-in opens at :open.', ['time' => $at($m->scheduledAt()), 'open' => $at($m->checkInOpensAt())]) }}</p>
     @else
         <p class="m-0">{{ __('Check in by :time, or you lose by forfeit.', ['time' => $at($m->ready_by)]) }}</p>
-        <div><x-button icon="check" wire:click="casualCheckIn" data-test="casual-checkin">{{ __('Check in') }}</x-button></div>
+        {{-- The primary action of the step, as big as Ready (partials/casual-steps $big). --}}
+        <div><x-button icon="check" wire:click="casualCheckIn" class="{{ $big ?? '' }}" data-test="casual-checkin">{{ __('Check in') }}</x-button></div>
     @endif
 @endif

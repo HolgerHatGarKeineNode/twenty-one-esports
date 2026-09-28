@@ -4,6 +4,7 @@ namespace App\Support\Series;
 
 use App\Enums\ChessInviteStatus;
 use App\Enums\Platform;
+use App\Enums\SeriesResolution;
 use App\Events\SeriesInviteChanged;
 use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
@@ -44,6 +45,46 @@ final class CasualInvites
      */
     public function invite(User $inviter, User $invitee, string $game, Platform $platform, bool $crossplay): SeriesInvite
     {
+        return $this->send($inviter, $invitee, $game, $platform, $crossplay, (int) config('esports.casual.invite_seconds'), lookingOnly: true);
+    }
+
+    /**
+     * "Rematch" in the room of a finished casual 1v1 (P23 S3): a direct
+     * invite to the opponent of that match, open for
+     * `esports.casual.rematch_seconds`, with the platforms both played on.
+     * It needs no "Looking to play": the two just played each other.
+     * Only within `esports.casual.rematch_minutes` of the result, and only
+     * for a match with a result (a void one has none).
+     *
+     * @throws SeriesRuleViolation
+     */
+    public function rematch(SeriesMatch $match, User $inviter): SeriesInvite
+    {
+        $side = collect(SeriesMatch::SIDES)->first(fn (string $side): bool => $match->isRosterSideMember($side, $inviter));
+        $opponentId = $side === null ? null : ($match->rosterSide(SeriesMatch::otherSide($side))[0] ?? null);
+        $finished = $match->finished_at;
+
+        if (! $match->isCasualPairing() || $side === null || $opponentId === null) {
+            throw CasualMatches::refuse('not_player');
+        }
+
+        if (! $match->status->hasResult() || $match->resolution === SeriesResolution::Void || $finished === null
+            || $finished->lt(now()->subMinutes((int) config('esports.casual.rematch_minutes')))) {
+            throw CasualMatches::refuse('rematch_closed');
+        }
+
+        $choice = (array) ($match->casual['queue'][$side] ?? []);
+        $platform = Platform::tryFrom((string) ($choice['platform'] ?? '')) ?? $inviter->platform ?? Platform::Pc;
+
+        return $this->send($inviter, User::query()->findOrFail($opponentId), $match->game, $platform, (bool) ($choice['crossplay'] ?? true),
+            (int) config('esports.casual.rematch_seconds'), lookingOnly: false);
+    }
+
+    /**
+     * @throws SeriesRuleViolation
+     */
+    private function send(User $inviter, User $invitee, string $game, Platform $platform, bool $crossplay, int $seconds, bool $lookingOnly): SeriesInvite
+    {
         if ($inviter->is($invitee)) {
             throw CasualMatches::refuse('invite_self');
         }
@@ -54,10 +95,10 @@ final class CasualInvites
         $previous = $this->outgoing($inviter);
         $mode = CasualMatches::mode();
 
-        $invite = DB::transaction(function () use ($inviter, $invitee, $game, $mode, $platform, $crossplay, $previous): SeriesInvite|string {
+        $invite = DB::transaction(function () use ($inviter, $invitee, $game, $mode, $platform, $crossplay, $previous, $seconds, $lookingOnly): SeriesInvite|string {
             $looking = User::query()->whereKey($invitee->id)->lockForUpdate()->value('looking_to_play');
 
-            if ($looking !== $game.'/'.$mode) {
+            if ($lookingOnly && $looking !== $game.'/'.$mode) {
                 return 'not_looking';
             }
 
@@ -75,7 +116,7 @@ final class CasualInvites
                 'platform' => $platform,
                 'crossplay' => $crossplay,
                 'status' => ChessInviteStatus::Pending,
-                'expires_at' => now()->addSeconds((int) config('esports.casual.invite_seconds')),
+                'expires_at' => now()->addSeconds($seconds),
             ]);
         });
 

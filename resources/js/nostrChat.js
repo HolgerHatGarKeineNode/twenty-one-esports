@@ -29,9 +29,8 @@ export function chatSince(gameStart, now = Math.floor(Date.now() / 1000)) {
     return Math.min(now, gameStart ?? now) - SINCE_MARGIN;
 }
 
-export function canEncrypt(signer) {
-    return typeof signer?.signEvent === 'function' && typeof signer?.nip44?.encrypt === 'function' && typeof signer?.nip44?.decrypt === 'function';
-}
+// In its own module, so the casual 1v1 gate on every page (casualPlay.js) needs no nostr-tools.
+export { canEncrypt } from './signerCapabilities.js';
 
 function randomPast(now) {
     return now - Math.floor(Math.random() * TWO_DAYS);

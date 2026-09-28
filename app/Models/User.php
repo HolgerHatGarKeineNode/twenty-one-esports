@@ -46,6 +46,7 @@ use Illuminate\Support\Str;
  * @property string|null $looking_to_play `<game>/<mode>` the player is up for, null = not looking
  * @property Carbon|null $notify_block0_at when the player asked to be told about Block 0, null = not asked
  * @property array<string, mixed>|null $chess_settings see {@see ChessSettings}; null = all defaults
+ * @property array<string, array{platform: string, crossplay: bool}>|null $casual_settings last casual 1v1 choice per game (App\Support\Series\CasualLobby)
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
@@ -82,6 +83,7 @@ class User extends Authenticatable
             'gamer_tags' => 'array',
             'notify_block0_at' => 'datetime',
             'chess_settings' => 'array',
+            'casual_settings' => 'array',
         ];
     }
 
