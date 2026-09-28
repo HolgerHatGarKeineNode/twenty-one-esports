@@ -5,12 +5,15 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Series\CasualMatches;
 use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupSchedules;
+use App\Support\Tournaments\TournamentWaits;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -211,4 +214,74 @@ test('the cup card lets one player propose times and the other accept one', func
         ->assertSeeHtml('data-test="cup-schedule-agreed"');
 
     expect(CupSchedules::agreedAt($match->refresh())?->getTimestamp())->toBe($proposed);
+});
+
+/** The wait of a cup match as "Who blocks what" and the reminders read it, with the user ids it waits on. */
+function cupWait(TournamentMatch $match): array
+{
+    $match = TournamentMatch::query()->with(['tournament', 'round', 'slots.participant', 'seriesMatch.latestReport', 'chessGame'])->findOrFail($match->id);
+    $wait = TournamentWaits::forMatch($match->tournament, $match);
+
+    return [$wait, array_column($wait->waitingOn, 'user_id')];
+}
+
+test('a cup match without an agreed time waits on both players for a time, then on the one who has to answer, until the auto slot', function () {
+    [$cup, $match, $a, $b] = rlCupMatch();
+    $slot = CasualCups::autoSlot($match->round->window_ends_at);
+
+    [$wait, $on] = cupWait($match);
+    expect($wait->state)->toBe('cup_time')
+        ->and($on)->toEqualCanonicalizing([$a->id, $b->id])
+        ->and($wait->decidesAt?->equalTo($slot))->toBeTrue()
+        ->and($wait->consequenceText())->toBe('The league starts it at '.LeagueTime::stamp($slot))
+        ->and($wait->remindable)->toBeTrue();
+
+    // $a proposed: only $b has to answer.
+    $proposed = now()->addHours(3)->getTimestamp();
+    app(CupSchedules::class)->propose($match, $a, [$proposed]);
+    [$wait, $on] = cupWait($match);
+    expect($wait->state)->toBe('cup_time')->and($on)->toBe([$b->id]);
+
+    // The proposal ran out unanswered (answer by the first proposed time at the latest): both again.
+    $this->travelTo(CarbonImmutable::createFromTimestamp($proposed)->addMinute());
+    [$wait, $on] = cupWait($match);
+    expect($wait->state)->toBe('cup_time')->and($on)->toEqualCanonicalizing([$a->id, $b->id]);
+});
+
+test('a started cup series waits on the host to share the lobby, then on the guest to join it', function () {
+    [$cup, $match, $a, $b] = rlCupMatch();
+    $schedules = app(CupSchedules::class);
+    $at = now()->addHours(2)->getTimestamp();
+    $schedules->propose($match, $a, [$at]);
+    $schedules->accept($match, $b, $at);
+
+    $this->travelTo(CarbonImmutable::createFromTimestamp($at));
+    cupTick();
+    $series = cupSeriesOf($match);
+    app(CasualMatches::class)->checkIn($series, $a);
+    app(CasualMatches::class)->checkIn($series, $b);
+    $series->refresh();
+    [$host, $guest] = $series->host_side === 'challenger' ? [$a, $b] : [$b, $a];
+    $entry = fn (User $player): string => (string) TournamentParticipant::query()->where('tournament_id', $cup->id)->where('user_id', $player->id)->value('name');
+
+    [$wait, $on] = cupWait($match);
+    expect($wait->state)->toBe('lobby')
+        ->and($on)->toBe([$host->id])
+        ->and($wait->decidesAt?->equalTo($series->casualLobbyDueAt()))->toBeTrue()
+        ->and($wait->consequenceText())->toBe($entry($guest).' may claim a no-show')
+        ->and($wait->url)->toBe(route('matches.room', $series));
+
+    $this->travel(2)->minutes();
+    app(CasualMatches::class)->shareLobby($series, $host);
+    $series->refresh();
+
+    [$wait, $on] = cupWait($match);
+    expect($wait->state)->toBe('join')
+        ->and($on)->toBe([$guest->id])
+        ->and($wait->decidesAt?->equalTo($series->casualJoinDueAt()))->toBeTrue()
+        ->and($wait->since?->equalTo($series->lobby_shared_at))->toBeTrue()
+        ->and($wait->consequenceText())->toBe($entry($host).' may claim a no-show');
+
+    app(CasualMatches::class)->markJoined($series, $guest);
+    expect(cupWait($match)[0]->state)->not->toBeIn(['lobby', 'join']);
 });
