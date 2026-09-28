@@ -112,6 +112,8 @@ final class Sitemap
             }
         }
 
+        $urls[] = route('ladder.strongest');
+
         return array_map(fn (string $url): array => ['url' => $url, 'lastmod' => null], $urls);
     }
 

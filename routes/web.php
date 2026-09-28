@@ -129,6 +129,8 @@ Route::middleware('auth')->group(function () {
 });
 
 // Ladders (P7b): the rated season ladder and the casual ladder of a game and mode.
+// The strongest players across every game (P40): the Global Rating of the live season.
+Route::view('ladder/strongest', 'pages.ladder.strongest')->name('ladder.strongest');
 Route::livewire('ladder/{game}/{mode}', 'pages::ladder.show')->name('ladder.show');
 
 // The season chain (P7c): tip, supply, eras, blocks and rules; the rest state before Block 0.

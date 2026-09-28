@@ -4,7 +4,9 @@
     Collapsible "Proof" block from the clan screens: Nostr ids only live in
     here, in violet (screens-v1.md: Nostr IDs only inside "Proof" details).
 
-    rows:   list of [key, value]
+    rows:   list of [key, value] or [key, value, href]: with an href the value
+            links out (njump.me, P40) in a new tab, underlined so the link
+            does not rest on the colour alone
     toggle: `show` = the violet "show" text of ClanShow.dc.html ("hide" while
             open); `chevron` = the chevron of ClanCreate, ClanManage and
             InviteAccept. The designs differ here, each page follows its own.
@@ -24,10 +26,16 @@
         @endif
     </summary>
     <div class="flex flex-col px-3.5 pb-3 text-xs">
-        @foreach ($rows as [$key, $value])
+        @foreach ($rows as $proofRow)
+            @php [$key, $value] = $proofRow; $href = $proofRow[2] ?? null; @endphp
             <div class="grid min-h-[30px] grid-cols-[110px_minmax(0,1fr)] items-center gap-2.5 border-t border-hairline lg:grid-cols-[140px_minmax(0,1fr)]">
                 <span class="text-ink-3">{{ $key }}</span>
-                <span class="truncate text-proof" title="{{ $value }}">{{ $value }}</span>
+                @if ($href)
+                    <a href="{{ $href }}" rel="noopener noreferrer" target="_blank" title="{{ $href }}" data-test="proof-link"
+                       class="flex min-h-6 min-w-0 items-center text-proof underline decoration-proof/50 underline-offset-2 hover:text-ink hover:decoration-ink"><span class="truncate">{{ $value }}</span><span class="sr-only"> {{ __('(opens njump.me in a new tab)') }}</span></a>
+                @else
+                    <span class="truncate text-proof" title="{{ $value }}">{{ $value }}</span>
+                @endif
             </div>
         @endforeach
         @if ($slot->isNotEmpty())

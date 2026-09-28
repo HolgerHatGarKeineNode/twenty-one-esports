@@ -461,6 +461,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                         @if ($rated)
                             {{ __('Rank from Elo alone, provisional until :n rated results.', ['n' => \App\Support\Rating\RatingSettings::inForce()['rating']['provisional']]) }}
                             @if ($showScore) {{ __('Global Rating shows from :n rated results in the season.', ['n' => (int) config('season.global_rating_min_weight')]) }} @endif
+                            {{-- The cross-game list (P40): every rated ladder feeds it, lineup ladders through their rosters. --}}
+                            <a href="{{ route('ladder.strongest') }}" class="inline-flex min-h-11 items-center" data-test="ladder-strongest-link">{{ __('Strongest players across all games') }}</a>
                         @elseif (config('season.casual.daily_pair_limit') !== null)
                             {{ __('Casual Elo is just for fun: it never counts for ranks, badges, Block Height, mining or rewards. At most :n games of the same pairing per day move it.', ['n' => (int) config('season.casual.daily_pair_limit')]) }}
                         @else

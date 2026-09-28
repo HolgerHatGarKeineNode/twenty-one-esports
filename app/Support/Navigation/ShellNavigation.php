@@ -263,6 +263,19 @@ final class ShellNavigation
         ]));
     }
 
+    /**
+     * The strongest players across every game (P40), beside each game's
+     * ladder in the context bar. It is one page for all games, so the game
+     * hub leaves it out of the cards (it would repeat on each) and the phone
+     * lists it once under Everywhere.
+     *
+     * @return NavLink
+     */
+    public static function strongest(): array
+    {
+        return self::link('strongest', route('ladder.strongest'), __('Strongest players'), 'award', null, 'mobile-strongest', __('Strongest'));
+    }
+
     /** @return NavLink */
     public static function link(string $key, string $href, string $label, string $icon, ?string $test = null, ?string $mobileTest = null, ?string $short = null, ?string $tab = null): array
     {
@@ -316,6 +329,7 @@ final class ShellNavigation
                 self::link('watch', route('games.index'), __('Watch live'), 'eye', 'games-menu-live', 'mobile-live-games', __('Watch')),
                 self::link('matches', $matches, __('Matches'), 'matches', null, null, null, 'matches'),
                 self::link('ladder', route('ladder.show', ['chess', 'blitz']), __('Ladder'), 'ladder', null, null, null, 'ladder'),
+                self::strongest(),
                 $user ? self::link('settings', route('settings.chess'), __('Chess settings'), 'settings', null, null, __('Settings')) : null,
             ]));
         }
@@ -327,6 +341,7 @@ final class ShellNavigation
                 $user ? self::link('challenge', route('challenges.create', $firstSeries ? [] : ['game' => $slug]), __('Challenge a clan'), 'send',
                     $firstSeries ? 'games-menu-challenge-clan' : 'games-menu-challenge-clan-'.$slug, $firstSeries ? 'mobile-challenge-clan' : 'mobile-challenge-clan-'.$slug, __('Challenge')) : null,
                 self::link('ladder', route('ladder.show', [$slug, array_key_first($game->modes())]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
+                self::strongest(),
             ]));
         }
 

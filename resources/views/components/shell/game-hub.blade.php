@@ -18,7 +18,8 @@
     $kinds = ['all' => __('All'), 'solo' => __('1v1'), 'clan' => __('Clan vs clan')];
     // The card's links: the page's own "Overview" is the cover link already; the primary action leads.
     $links = function (array $game): array {
-        $links = array_values(array_filter($game['actions'], fn (array $link): bool => ! ($link['key'] === 'play' && $link['href'] === $game['page'] && $link['label'] === __('Overview'))));
+        // The strongest list is one page for every game: the phone's More sheet lists it once, not on each card.
+        $links = array_values(array_filter($game['actions'], fn (array $link): bool => $link['key'] !== 'strongest' && ! ($link['key'] === 'play' && $link['href'] === $game['page'] && $link['label'] === __('Overview'))));
         $primary = array_key_first(array_filter($links, fn (array $link): bool => $link['key'] === 'play')) ?? array_key_first(array_filter($links, fn (array $link): bool => $link['key'] === 'challenge'));
 
         return $primary === null ? $links : [[...$links[$primary], 'primary' => true], ...array_values(array_diff_key($links, [$primary => true]))];

@@ -10,8 +10,8 @@
     themselves; under it the Block 0 strip (before the first season) or the
     live season's strip. Then play now (every game with its main action and
     the invite), happening now (live boards, running tournaments, results,
-    who joined), the top of every ladder, weekly events and quests, and how
-    the season works.
+    who joined), the top of every ladder, the strongest players across all
+    games (P40), weekly events and quests, and how the season works.
 
     Everything shown is real (App\Support\Engagement\HomeHub, config/esports.php
     `preseason`); a block with nothing to show says so and offers the action.
@@ -90,6 +90,9 @@
         @include('pages.home.happening', ['live' => $live, 'running' => $hub->running(), 'results' => $hub->results(), 'newcomers' => $hub->newcomers()])
 
         @include('pages.home.ladders', ['ladders' => $hub->ladders()])
+
+        {{-- P40: the five strongest across every game, from the live season's Global Rating. --}}
+        @include('pages.home.strongest', ['strongest' => (new App\Support\Rating\StrongestList($liveSeason?->slug))->top(App\Support\Rating\StrongestList::HOME), 'live' => $liveSeason !== null])
 
         @if ($weekly->isNotEmpty() || $quests !== null)
             <div class="grid grid-cols-1 gap-4 px-4 lg:grid-cols-2 lg:gap-5 lg:px-12">

@@ -53,6 +53,9 @@ final class LadderBoard
     /** Clans the clan view lists at most. */
     public const CLANS = 100;
 
+    /** A web view of any Nostr event or key, for readers without a client. */
+    public const NJUMP = 'https://njump.me/';
+
     public function __construct(
         public readonly string $game,
         public readonly string $mode,
@@ -154,16 +157,26 @@ final class LadderBoard
             return ['heights' => [], 'global' => []];
         }
 
-        $stamp = RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->toBase()
-            ->selectRaw('max(id) as id, max(updated_at) as at, count(reverted_at) as reverted')->first();
-        $key = 'ladder-score:'.$this->season.':'.$this->game.':'.$this->mode.':'.md5(implode(',', $userIds)).':'
-            .($stamp->id ?? 0).':'.($stamp->at ?? '').':'.($stamp->reverted ?? 0);
+        $key = 'ladder-score:'.$this->season.':'.$this->game.':'.$this->mode.':'.md5(implode(',', $userIds)).':'.self::ratingStamp();
 
         /** @var array{heights: array<int, int>, global: array<int, int>} */
         return Cache::remember($key, now()->addMinutes(10), fn (): array => [
             'heights' => ClanStats::blockHeights($userIds),
             'global' => array_intersect_key(self::globalRatings($this->season), array_flip($userIds)),
         ]);
+    }
+
+    /**
+     * What a cache of rating-derived values keys on: the newest change, its
+     * last update and the number of reverted changes, so any new, edited or
+     * reverted rating change anywhere gives a new stamp. One query.
+     */
+    public static function ratingStamp(): string
+    {
+        $stamp = RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->toBase()
+            ->selectRaw('max(id) as id, max(updated_at) as at, count(reverted_at) as reverted')->first();
+
+        return ($stamp->id ?? 0).':'.($stamp->at ?? '').':'.($stamp->reverted ?? 0);
     }
 
     /**
@@ -177,6 +190,29 @@ final class LadderBoard
      */
     public static function globalRatings(string $season): array
     {
+        $out = [];
+
+        foreach (self::globalBreakdown($season) as $userId => $player) {
+            if ($player['rating'] !== null) {
+                $out[$userId] = $player['rating'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Every player with a weight in the season: the Global Rating (null
+     * below the minimum weight), the total weight W and the weight per game
+     * (the sum over that game's modes), in the order of GlobalRating's
+     * entries. A fixed number of queries whatever the season's size: the
+     * ratings, and for lineup ladders their series changes, the series and
+     * their reports.
+     *
+     * @return array<int, array{rating: int|null, weight: int, games: array<string, int>}> user id => breakdown
+     */
+    public static function globalBreakdown(string $season): array
+    {
         $rows = Rating::query()->where(['pool' => Rating::RATED, 'season' => $season])->where('results', '>', 0)
             ->get(['id', 'game', 'mode', 'user_id', 'lineup_id', 'rating', 'wins', 'draws', 'losses']);
 
@@ -187,11 +223,11 @@ final class LadderBoard
         $ladders = $rows->groupBy(fn (Rating $row): string => $row->game.'/'.$row->mode)
             ->map(fn (Collection $group): array => array_values($group->pluck('rating')->map(fn ($rating): int => (int) $rating)->all()));
 
-        /** @var array<int, list<array{weight: int, rating: int, ladder: list<int>}>> $entries */
+        /** @var array<int, list<array{weight: int, rating: int, ladder: list<int>, game: string}>> $entries */
         $entries = [];
 
         foreach ($rows->whereNotNull('user_id') as $row) {
-            $entries[(int) $row->user_id][] = ['weight' => $row->wins + $row->draws + $row->losses, 'rating' => $row->rating, 'ladder' => $ladders[$row->game.'/'.$row->mode]];
+            $entries[(int) $row->user_id][] = ['weight' => $row->wins + $row->draws + $row->losses, 'rating' => $row->rating, 'ladder' => $ladders[$row->game.'/'.$row->mode], 'game' => $row->game];
         }
 
         $lineupRows = $rows->whereNotNull('lineup_id')->keyBy('id');
@@ -221,7 +257,7 @@ final class LadderBoard
                     $row = $lineupRows->get($ratingId);
 
                     if ($row instanceof Rating) {
-                        $entries[$userId][] = ['weight' => $weight, 'rating' => $row->rating, 'ladder' => $ladders[$row->game.'/'.$row->mode]];
+                        $entries[$userId][] = ['weight' => $weight, 'rating' => $row->rating, 'ladder' => $ladders[$row->game.'/'.$row->mode], 'game' => $row->game];
                     }
                 }
             }
@@ -231,11 +267,17 @@ final class LadderBoard
         $out = [];
 
         foreach ($entries as $userId => $list) {
-            $value = $engine->compute($list);
+            $games = [];
 
-            if ($value !== null) {
-                $out[$userId] = $value;
+            foreach ($list as $entry) {
+                $games[$entry['game']] = ($games[$entry['game']] ?? 0) + $entry['weight'];
             }
+
+            $out[$userId] = [
+                'rating' => $engine->compute(array_map(fn (array $entry): array => ['weight' => $entry['weight'], 'rating' => $entry['rating'], 'ladder' => $entry['ladder']], $list)),
+                'weight' => array_sum($games),
+                'games' => $games,
+            ];
         }
 
         return $out;
@@ -372,9 +414,12 @@ final class LadderBoard
 
     /**
      * Where to check this ladder: the rated ladder's event, its signer, the
-     * newest attestation and the relays; a casual ladder has no events.
+     * newest attestation and the relays; a casual ladder has no events. The
+     * ladder's address and its signer link to njump.me (P40), where anyone
+     * reads the event and the key without an account; the third element is
+     * that link.
      *
-     * @return list<array{0: string, 1: string}>
+     * @return list<array{0: string, 1: string, 2?: string}>
      */
     public function proof(): array
     {
@@ -393,11 +438,13 @@ final class LadderBoard
         $last = SeasonAttestation::query()->where('ladder_address', $address)->orderByDesc('id')->first(['event_id', 'match_number']);
         $relays = array_values((array) config('esports.relays', []));
         $short = fn (string $bech): string => substr($bech, 0, 12).'…'.substr($bech, -4);
+        $naddr = NostrKeys::naddr(Ladders::KIND, $pubkey, $d);
+        $npub = NostrKeys::hexToNpub($pubkey);
 
         return [
-            [__('Ladder record'), $short(NostrKeys::naddr(Ladders::KIND, $pubkey, $d)).' · kind 32152'],
+            [__('Ladder record'), $short($naddr).' · kind 32152', self::NJUMP.$naddr],
             [__('Published'), $event === null ? __('not published yet') : Carbon::createFromTimestamp($event->signed_at)->diffForHumans()],
-            [__('Signed by'), __('league key :npub', ['npub' => $short(NostrKeys::hexToNpub($pubkey))])],
+            [__('Signed by'), __('league key :npub', ['npub' => $short($npub)]), self::NJUMP.$npub],
             [__('Last league record'), $last === null ? __('none yet') : NostrKeys::shortNevent($last->event_id, $pubkey, 2154).' · kind 2154'.($last->match_number === null ? '' : ' · #'.$last->match_number)],
             [__('Relay'), $relays === [] ? __('No relay is set up on this server.') : implode(', ', $relays)],
         ];

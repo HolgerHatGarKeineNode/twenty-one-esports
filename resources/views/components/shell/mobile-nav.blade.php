@@ -30,6 +30,8 @@
     $everywhere = [
         [...$community[0], 'icon' => 'clans', 'test' => 'mobile-clans'],
         [...$community[1], 'icon' => 'mining', 'test' => 'mobile-season'],
+        // The strongest players across every game (P40): one page for all games, so here and not in the tab bar.
+        ['key' => 'strongest', 'href' => route('ladder.strongest'), 'label' => __('Strongest players'), 'icon' => 'award', 'test' => 'mobile-strongest'],
         ['key' => 'watch', 'href' => route('games.index'), 'label' => __('Watch live'), 'icon' => 'eye', 'test' => 'mobile-live-games'],
         ['key' => 'rules', 'href' => route('rules'), 'label' => __('Rules'), 'icon' => 'list', 'test' => 'mobile-rules'],
         // The 24/7 stream (P20): on phones the header has no room for its badge, so its tally dot shows here.

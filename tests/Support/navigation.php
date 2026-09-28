@@ -55,6 +55,8 @@ const NAV_PAGES = [
     'games.rocket-league' => ['roles' => NAV_ROLES, 'max' => 1],
     'games.series' => ['roles' => NAV_ROLES, 'max' => 1],
     'ladder.show' => ['roles' => NAV_ROLES, 'max' => 1],
+    // P40: beside each game's ladder in the context bar, under Everywhere on phones.
+    'ladder.strongest' => ['roles' => NAV_ROLES, 'max' => 1],
     'players.show' => ['roles' => NAV_ROLES, 'max' => 2],
     'mining' => ['roles' => NAV_ROLES, 'max' => 1],
     'matches.index' => ['roles' => NAV_ROLES, 'max' => 1],
