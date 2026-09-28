@@ -40,16 +40,16 @@ function coverData(): Closure
         : ['tournament' => ['id' => $tournamentId, 'name' => 'Zero Ball Control', 'countdown' => '23:59:59', 'countdownLabel' => 'Sign-up closes in'], 'stats' => [], 'backdrop' => null, 'viewers' => null];
 }
 
-test('the cover slides are every open tournament\'s hero, then the join and ladder teasers', function () {
-    expect(StreamCover::slides([7, 3]))->toBe([
-        ['scene' => 'ta1', 'tournamentId' => 7],
-        ['scene' => 'ta1', 'tournamentId' => 3],
+test('the cover slides are every open tournament\'s hero, then the pot, cup, join and ladder teasers', function () {
+    $teasers = [
+        ['scene' => 'd1', 'tournamentId' => null],
+        ['scene' => 'd2', 'tournamentId' => null],
         ['scene' => 'a4', 'tournamentId' => null],
         ['scene' => 'a3', 'tournamentId' => null],
-    ])->and(StreamCover::slides([]))->toBe([
-        ['scene' => 'a4', 'tournamentId' => null],
-        ['scene' => 'a3', 'tournamentId' => null],
-    ]);
+    ];
+
+    expect(StreamCover::slides([7, 3]))->toBe([['scene' => 'ta1', 'tournamentId' => 7], ['scene' => 'ta1', 'tournamentId' => 3], ...$teasers])
+        ->and(StreamCover::slides([]))->toBe($teasers);
 });
 
 test('each slot renders the next slide into the one cover file, with its hash in the URL', function () {
@@ -68,10 +68,12 @@ test('each slot renders the next slide into the one cover file, with its hash in
         ->and($cover->due(1000 + 899))->toBeFalse()
         ->and($cover->due(1000 + 900))->toBeTrue();
 
-    expect($cover->advance(1900, [7], coverData()))->toBe('a4')
+    expect($cover->advance(1900, [7], coverData()))->toBe('d1')
         ->and($cover->image())->not->toBe($firstImage)
-        ->and($cover->advance(2800, [7], coverData()))->toBe('a3')
-        ->and($cover->advance(3700, [7], coverData()))->toBe('ta1 tournament 7')
+        ->and($cover->advance(2800, [7], coverData()))->toBe('d2')
+        ->and($cover->advance(3700, [7], coverData()))->toBe('a4')
+        ->and($cover->advance(4600, [7], coverData()))->toBe('a3')
+        ->and($cover->advance(5500, [7], coverData()))->toBe('ta1 tournament 7')
         // One file, overwritten in place: nothing piles up.
         ->and(File::glob($this->dir.'/*.png'))->toBe([$this->dir.'/cover.png']);
 });

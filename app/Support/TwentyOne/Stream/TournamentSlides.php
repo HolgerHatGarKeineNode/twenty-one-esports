@@ -5,6 +5,7 @@ namespace App\Support\TwentyOne\Stream;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
+use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\TournamentLanding;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -218,6 +219,9 @@ class TournamentSlides
             'closesMs' => $tournament->signup_closes_at?->getTimestampMs(),
             'gameSlug' => $tournament->game,
             'pictures' => $pictures,
+            // The feature slides (d1 prize pots, d2 casual cups) read these.
+            'pot' => app(PrizePool::class)->shownPotSats($tournament),
+            'cup' => $tournament->isCasualCup(),
         ];
     }
 

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\File;
  * StreamCoverController serves.
  *
  * The slides take turns: the hero of every tournament open for sign-up, then
- * the join and ladder teasers. One file is overwritten, nothing piles up; the
+ * the prize pot, casual cup, join and ladder teasers. One file is overwritten, nothing piles up; the
  * URL carries the picture's hash (`?v=`), so a changed picture is a new URL
  * for every client cache, and an unchanged one republishes nothing. The live
  * countdown would freeze on a still, so a cover's hero says "Open now".
@@ -22,8 +22,8 @@ use Illuminate\Support\Facades\File;
  */
 final class StreamCover
 {
-    /** Teasers after the tournament heroes: join (a4), the ladders (a3). */
-    public const TEASERS = ['a4', 'a3'];
+    /** Teasers after the tournament heroes: prize pots (d1), casual cups (d2), join (a4), the ladders (a3). */
+    public const TEASERS = ['d1', 'd2', 'a4', 'a3'];
 
     /** A render that failed is tried again after this long, not at the next slot. */
     public const RETRY_SECONDS = 60;

@@ -62,7 +62,7 @@ test('without games: the loop every third round, the first one included, teasers
 
     expect($log)->toBe([
         '0 loop -', '30 teaser a3', '42 teaser a4', '54 teaser a5', '66 teaser b3', '78 teaser b4', '90 teaser b5',
-        '102 loop -', '132 teaser c3', '144 teaser c4', '156 teaser c5', '168 teaser a3',
+        '102 loop -', '132 teaser c3', '144 teaser c4', '156 teaser c5', '168 teaser d1',
     ]);
 });
 

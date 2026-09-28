@@ -973,7 +973,7 @@ test('the live 30311 carries the rendered cover, the configured picture while no
 
     expect(eventTag($plain, 'image'))->toBe(config('twentyone.stream.event.image'))
         ->and($failedLog)->toContain('cover not rendered, keeping the configured image')
-        ->and($log)->toContain('cover: a4 '.route('stream.cover').'?v=')
+        ->and($log)->toContain('cover: d1 '.route('stream.cover').'?v=')
         ->and(eventTag($event, 'image'))->toBe(route('stream.cover').'?v='.substr(hash('sha256', (string) file_get_contents($this->dir.'/cover.png')), 0, 16));
 });
 

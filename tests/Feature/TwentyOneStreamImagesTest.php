@@ -431,6 +431,7 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'b1' => $chessBackdrop, 'b2' => $chessBackdrop, 'b3' => $chessBackdrop, 'b4' => $brandBackdrop, 'b5' => $brandBackdrop,
             'c1' => $chessBackdrop, 'c2' => $chessBackdrop, 'c3' => $brandBackdrop, 'c4' => $brandBackdrop, 'c5' => $brandBackdrop,
             'ta1' => $chessBackdrop, 'ta2' => $chessBackdrop, 'tb1' => $chessBackdrop, 'tb2' => $chessBackdrop, 'tc1' => $chessBackdrop, 'tc2' => $chessBackdrop,
+            'd1' => $brandBackdrop, 'd2' => $brandBackdrop, 'd3' => $brandBackdrop, 'd4' => $brandBackdrop,
         ])
         // The fallback scene (gallery or single game) too.
         ->and($source->gallery($games, $more, $now)['backdrop'])->toBe($chessBackdrop)

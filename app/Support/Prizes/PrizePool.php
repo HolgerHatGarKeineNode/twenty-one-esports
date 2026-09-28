@@ -97,6 +97,25 @@ final class PrizePool
         return $tournament->prize_target_sats ?? $tournament->pot_balance_sats;
     }
 
+    /**
+     * The pot a public screen may show (the stream's slides): as potSats(),
+     * but null for none, zero, or a wallet balance older than
+     * BALANCE_STALE_AFTER when the tournament sets neither prizes nor a
+     * target (the stream bot applies the same rule).
+     */
+    public function shownPotSats(Tournament $tournament): ?int
+    {
+        $configured = $tournament->prizeMode() === Tournament::PRIZES_FIXED || $tournament->prize_target_sats !== null;
+
+        if ($tournament->hasOwnWallet() && ! $configured && self::isBalanceStale($tournament)) {
+            return null;
+        }
+
+        $pot = $this->potSats($tournament);
+
+        return $pot !== null && $pot > 0 ? $pot : null;
+    }
+
     /** The prizes paid out so far. */
     public static function paidSats(Tournament $tournament): int
     {

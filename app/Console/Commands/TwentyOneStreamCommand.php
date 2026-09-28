@@ -579,7 +579,7 @@ class TwentyOneStreamCommand extends Command
         try {
             return [
                 'view' => RotationPlanner::VIEWS[$scene],
-                'data' => [...$source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats, $tournament), 'viewers' => $viewers],
+                'data' => [...$source->rotation($scene, $slot['gameId'], $games, $more, $nowMs, $stats, $tournament, $tournaments), 'viewers' => $viewers],
                 'fallback' => $games === [] ? null : [...$source->gallery($games, $more, $nowMs), 'viewers' => $viewers],
                 'label' => $scene.' '.$slot['kind'].($slot['gameId'] !== null ? ' game '.$slot['gameId'] : '').($slot['tournamentId'] !== null ? ' '.$slot['tournamentId'] : ''),
                 'announce' => $previous['announce'] ?? false,
@@ -603,7 +603,7 @@ class TwentyOneStreamCommand extends Command
     {
         try {
             $label = $cover->advance($now, array_column($tournaments, 'id'), fn (string $scene, ?int $tournamentId): array => [
-                ...$source->rotation($scene, null, $games, $more, (int) ($now * 1000), $stats, collect($tournaments)->firstWhere('id', $tournamentId)),
+                ...$source->rotation($scene, null, $games, $more, (int) ($now * 1000), $stats, collect($tournaments)->firstWhere('id', $tournamentId), $tournaments),
                 'viewers' => null,
             ]);
             $this->log('cover: '.$label.' '.$cover->image());

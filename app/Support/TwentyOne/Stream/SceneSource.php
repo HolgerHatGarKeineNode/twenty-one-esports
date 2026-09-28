@@ -117,15 +117,27 @@ class SceneSource
      * a match (x1) gets its game with the last moves, a gallery (x2) the
      * cards, the teasers the counts, the zap and scan scenes their QR code,
      * B3 the daily game on show (if any), a tournament slide (t*) its
-     * tournament as TournamentSlides builds it.
+     * tournament as TournamentSlides builds it, the feature slides (d*)
+     * every upcoming tournament (d1 their pots, d2 the casual cups) or the
+     * site's QR code.
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
      * @param  array<string, mixed>|null  $tournament  TournamentSlides::data() of the slide's tournament
+     * @param  list<array<string, mixed>>  $upcoming  TournamentSlides::frames() of every upcoming tournament
      * @return array<string, mixed>
      */
-    public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats, ?array $tournament = null): array
+    public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats, ?array $tournament = null, array $upcoming = []): array
     {
+        if (in_array($scene, RotationPlanner::FEATURE_SCENES, true)) {
+            $brand = $this->images->backdrop(StreamImages::BRAND);
+
+            return match ($scene) {
+                'd1', 'd2' => ['upcoming' => $upcoming, 'stats' => $stats, 'backdrop' => $brand],
+                default => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
+            };
+        }
+
         if (in_array($scene, RotationPlanner::TOURNAMENT_SCENES, true)) {
             if ($tournament === null) {
                 throw new LogicException('A tournament slide needs a tournament.');

@@ -1132,4 +1132,69 @@ final class RotationKit
 
         return ['d' => $d, 'h' => ceil($spots['places'] / $cols) * ($d + $gap) - $gap, 'seats' => $seats];
     }
+    // Feature slides (d1 prize pots, d2 casual cups): stream views define no closures, so their data work is here.
+
+    /** Sats as the slides print them: "21,000". */
+    public static function sats(int $sats): string
+    {
+        return number_format($sats, 0, '.', ',');
+    }
+
+    /**
+     * The upcoming tournaments that carry a pot (TournamentSlides' `pot`), biggest first, and their sum.
+     *
+     * @param  list<array<string, mixed>>  $upcoming
+     * @return array{total: int, count: int, rows: list<array{name: string, line: string, sats: int, starts: string}>}
+     */
+    public static function pots(array $upcoming, int $limit): array
+    {
+        $rows = [];
+        $total = 0;
+
+        foreach ($upcoming as $t) {
+            if (! is_array($t) || ! is_int($t['pot'] ?? null) || $t['pot'] <= 0) {
+                continue;
+            }
+
+            $total += $t['pot'];
+            $rows[] = ['name' => self::text($t, 'name'), 'line' => self::text($t, 'game'), 'sats' => $t['pot'], 'starts' => self::text($t, 'startsAt')];
+        }
+
+        usort($rows, static fn (array $a, array $b): int => $b['sats'] <=> $a['sats']);
+
+        return ['total' => $total, 'count' => count($rows), 'rows' => array_slice($rows, 0, $limit)];
+    }
+
+    /**
+     * The open casual cups (TournamentSlides' `cup`), one per game, in the order given (soonest close first).
+     *
+     * @param  list<array<string, mixed>>  $upcoming
+     * @return list<array{game: string, cover: string|null, taken: int, places: int, closes: string}>
+     */
+    public static function cups(array $upcoming, int $limit): array
+    {
+        $cups = [];
+
+        foreach ($upcoming as $t) {
+            if (! is_array($t) || ($t['cup'] ?? false) !== true) {
+                continue;
+            }
+
+            $game = self::text($t, 'game');
+
+            if ($game === '' || isset($cups[$game])) {
+                continue;
+            }
+
+            $cups[$game] = [
+                'game' => $game,
+                'cover' => self::coverUri($t['cover'] ?? null),
+                'taken' => is_int($t['taken'] ?? null) ? $t['taken'] : 0,
+                'places' => is_int($t['places'] ?? null) ? $t['places'] : 0,
+                'closes' => self::text($t, 'signupClosesAt'),
+            ];
+        }
+
+        return array_slice(array_values($cups), 0, $limit);
+    }
 }

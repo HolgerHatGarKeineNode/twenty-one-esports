@@ -10,7 +10,7 @@ namespace App\Support\TwentyOne\Stream;
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
  * the same look when two or more games run, then TEASERS from the pool of
- * nine, continuing where the last round stopped. Without games a round is
+ * thirteen, continuing where the last round stopped. Without games a round is
  * the teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
  *
@@ -40,7 +40,10 @@ final class RotationPlanner
 
     public const LOOKS = ['a', 'b', 'c'];
 
-    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5'];
+    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd1', 'd2', 'd3', 'd4'];
+
+    /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4). */
+    public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4'];
 
     /** Scene id => its view (resources/views/stream/rotation). */
     public const VIEWS = [
@@ -50,6 +53,7 @@ final class RotationPlanner
         'ta1' => 'stream.rotation.ta1-hero', 'ta2' => 'stream.rotation.ta2-bracket',
         'tb1' => 'stream.rotation.tb1-hero', 'tb2' => 'stream.rotation.tb2-bracket',
         'tc1' => 'stream.rotation.tc1-hero', 'tc2' => 'stream.rotation.tc2-bracket',
+        'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
     ];
 
     /** The tournament slides' scene ids, one pair per look: hero (1), bracket preview (2). */
