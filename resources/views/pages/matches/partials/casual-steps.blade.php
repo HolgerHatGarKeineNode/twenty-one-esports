@@ -107,7 +107,7 @@
         {{-- The clock of the running step. --}}
         <div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 rounded-md bg-well px-4 py-3" data-test="casual-deadline" data-kind="{{ $deadline['kind'] }}">
             <span class="flex min-w-0 items-center gap-2 text-[13px] leading-normal"><x-icon name="clock" :size="16" class="shrink-0 text-btc-hi" /><span>{{ $deadlineText }}</span></span>
-            <b class="font-display text-[32px] leading-none font-bold text-btc-hi tabular-nums" role="timer" x-data="casualClock({{ ($deadline['kind'] === 'checkin' && $checkInOpens?->isFuture() ? $checkInOpens : $deadline['at'])->getTimestamp() }})" x-text="left" data-test="casual-clock"></b>
+            <b class="font-display text-[32px] leading-none font-bold text-btc-hi tabular-nums" role="timer" x-data="casualClock({{ ($deadline['kind'] === 'checkin' && $checkInOpens?->isFuture() ? $checkInOpens : $deadline['at'])->getTimestamp() }}, {{ now()->getTimestampMs() }})" x-text="left" data-test="casual-clock"></b>
         </div>
     @endif
 

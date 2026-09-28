@@ -421,7 +421,7 @@ test('a scheduled match: step 1 is "Checked in", the clock counts to the opening
         ->assertSee('Checked in')->assertSee('0 of 2 checked in')
         ->assertSee('data-kind="checkin"', false)
         ->assertSee('The check-in opens at')
-        ->assertSee('casualClock('.$match->checkInOpensAt()->getTimestamp().')', false)
+        ->assertSee('casualClock('.$match->checkInOpensAt()->getTimestamp().', '.now()->getTimestampMs().')', false)
         ->assertDontSee('data-test="casual-checkin"', false)
         ->assertDontSee('data-test="casual-share"', false);
 
@@ -429,7 +429,7 @@ test('a scheduled match: step 1 is "Checked in", the clock counts to the opening
 
     $room = Livewire::actingAs($anna)->test('pages::matches.room', ['match' => $match])
         ->assertSee('Both check in by')
-        ->assertSee('casualClock('.$match->ready_by->getTimestamp().')', false);
+        ->assertSee('casualClock('.$match->ready_by->getTimestamp().', '.now()->getTimestampMs().')', false);
 
     // The big primary button of the step, as Ready.
     expect(preg_match('/<button[^>]*class="[^"]*min-h-14[^"]*"[^>]*data-test="casual-checkin"/', $room->html()))->toBe(1);

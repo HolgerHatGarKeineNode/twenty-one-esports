@@ -3,32 +3,9 @@
  * two lineups, and for a casual 1v1 (P23) the steps' countdown and the Ready
  * button. Loaded only on that page (layout `scripts`).
  */
+import { casualClock } from './casualClock.js';
 import { signerGate } from './casualPlay.js';
 import { roomChat } from './roomChat.js';
-
-/** mm:ss left until a casual deadline (unix seconds), counted down in the browser. */
-export function casualClock(at) {
-    return {
-        left: '',
-        timer: null,
-
-        init() {
-            this.tick();
-            this.timer = setInterval(() => this.tick(), 1000);
-        },
-
-        destroy() {
-            clearInterval(this.timer);
-        },
-
-        tick() {
-            const seconds = Math.max(0, at - Math.floor(Date.now() / 1000));
-            const hours = Math.floor(seconds / 3600);
-            const rest = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
-            this.left = hours > 0 ? `${hours}:${rest}` : rest;
-        },
-    };
-}
 
 /**
  * The Ready button of a casual 1v1: a player without a signer that can
