@@ -9,6 +9,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\Stream\Backoff;
+use App\Support\TwentyOne\Stream\PrideSlides;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamImages;
@@ -263,7 +264,7 @@ test('a daemon restart publishes new names and never lowers MEDIA-SEQUENCE', fun
  */
 function scriptedSource(array $answers): void
 {
-    $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class), app(StreamImages::class)])->makePartial();
+    $source = Mockery::mock(SceneSource::class, [app(ChessGameService::class), app(GameRegistry::class), app(StreamImages::class), app(PrideSlides::class)])->makePartial();
     $source->shouldReceive('sceneGames')->andReturnUsing(function () use (&$answers) {
         $answer = count($answers) > 1 ? array_shift($answers) : $answers[0];
 
@@ -444,7 +445,7 @@ test('with two games the rotation shows match, gallery and teasers', function ()
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5.5]);
     $output = Artisan::output();
 
-    expect($output)->toContain('rotation: a1 match game '.$blitz->id.', rendered in', 'rotation: a2 gallery, rendered in', 'rotation: a3 teaser, rendered in', 'rotation: a4 teaser')
+    expect($output)->toContain('rotation: a1 match game '.$blitz->id.', rendered in', 'rotation: a2 gallery, rendered in', 'rotation: d1 teaser, rendered in', 'rotation: d2 teaser')
         ->and($output)->not->toContain('rotation: promo loop')
         ->and($output)->not->toContain('ffmpeg started mode=loop');
 });
@@ -458,8 +459,8 @@ test('without games the stream starts on the promo loop and goes on with the tea
     Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 4]);
     $output = Artisan::output();
 
-    expect($output)->toContain('promo length not readable, the loop slot lasts 1 s', 'rotation: promo loop', 'ffmpeg started mode=loop', 'rotation: a3 teaser', 'ffmpeg started mode=scene')
-        ->and(strpos($output, 'rotation: promo loop'))->toBeLessThan(strpos($output, 'rotation: a3 teaser'));
+    expect($output)->toContain('promo length not readable, the loop slot lasts 1 s', 'rotation: promo loop', 'ffmpeg started mode=loop', 'rotation: d1 teaser', 'ffmpeg started mode=scene')
+        ->and(strpos($output, 'rotation: promo loop'))->toBeLessThan(strpos($output, 'rotation: d1 teaser'));
 });
 
 test('a rotation scene that fails to render gives way to the game scene, not to the loop', function () {
@@ -729,7 +730,7 @@ test('a socket that cannot be bound leaves the count off and the stream running'
     expect(strlen($socket))->toBe(ViewerSocket::MAX_PATH_BYTES + 1)
         ->and($exitCode)->toBe(0)
         ->and(substr_count($output, 'viewer count off: RuntimeException: socket path is empty or longer than 107 bytes (108)'))->toBe(1)
-        ->and($output)->toContain('rotation: a3 teaser, rendered in', 'status=live')
+        ->and($output)->toContain('rotation: d1 teaser, rendered in', 'status=live')
         ->and($seen->count())->toBeGreaterThan(0)
         ->and(collect($seen->getArrayCopy())->pluck(1)->unique()->all())->toBe([null])
         ->and(collect($event['tags'])->where(0, 'current_participants')->all())->toBe([])
@@ -1016,7 +1017,7 @@ test('a teaser whose numbers change mid-slide is rendered again with the new dat
     shortRotation();
     config(['twentyone.stream.rotation.teaser_seconds' => 4, 'twentyone.stream.stats.cache_seconds' => 1]);
     // Another process adds a result while the ladder teaser is on: after its first render. It comes
-    // after the loop (1 s) and the pots and cups teasers of every round (4 s each).
+    // after the loop (1 s) and the three teasers of every round (pots, cups, a pride moment: 4 s each).
     $added = false;
     View::composer('stream.rotation.a3-ladders', function () use (&$added): void {
         if (! $added) {
@@ -1026,7 +1027,7 @@ test('a teaser whose numbers change mid-slide is rendered again with the new dat
         }
     });
 
-    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 13.5]);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 17.5]);
     $output = Artisan::output();
     // The ladder teaser's frames, in the order they were sent.
     $ladders = array_values(array_filter(explode('<!--end-->', (string) @file_get_contents($this->dir.'/renders')), fn (string $svg): bool => str_contains($svg, '>Blitz 5+3<') && str_contains($svg, '>Daily<')));

@@ -10,7 +10,7 @@ namespace App\Support\TwentyOne\Stream;
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
  * the same look when two or more games run, then the EVERY_ROUND teasers
- * (prize pots, casual cups), then TEASERS from the pool of eleven,
+ * (sats to win, casual cups, a player's pride moment), then TEASERS from the pool of eleven,
  * continuing where the last round stopped. Without games a round is the
  * teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
@@ -44,8 +44,16 @@ final class RotationPlanner
 
     public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4'];
 
-    /** Teasers in every round, before the pool's: prize pots (d1), casual cups (d2). */
-    public const EVERY_ROUND = ['d1', 'd2'];
+    /**
+     * Teasers in every round, before the pool's: one of each group, the groups
+     * taking turns from round to round: the sats to win (all pots d1, the
+     * biggest pot's prizes e4), the casual cups (d2), a player named for what
+     * they did (latest win e1, climbers e2, new sign-ups e3).
+     */
+    public const EVERY_ROUND = [['d1', 'e4'], ['d2'], ['e1', 'e2', 'e3']];
+
+    /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes. */
+    public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4'];
 
     /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4). */
     public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4'];
@@ -59,6 +67,7 @@ final class RotationPlanner
         'tb1' => 'stream.rotation.tb1-hero', 'tb2' => 'stream.rotation.tb2-bracket',
         'tc1' => 'stream.rotation.tc1-hero', 'tc2' => 'stream.rotation.tc2-bracket',
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
+        'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
     ];
 
     /** The tournament slides' scene ids, one pair per look: hero (1), bracket preview (2). */
@@ -82,6 +91,9 @@ final class RotationPlanner
     private int $matchTurn = 0;
 
     private int $tournamentTurn = 0;
+
+    /** Rounds that took their EVERY_ROUND teasers (each group takes turns by it). */
+    private int $everyRoundTurn = 0;
 
     public function __construct(
         private float $matchSeconds = 45,
@@ -183,11 +195,6 @@ final class RotationPlanner
     private function plan(array $games, array $tournaments): void
     {
         $teasers = array_fill(0, max(1, $this->teasersPerRound), ['kind' => self::TEASER]);
-        $everyRound = [];
-
-        foreach (self::EVERY_ROUND as $scene) {
-            $everyRound[] = ['kind' => self::TEASER, 'scene' => $scene];
-        }
 
         if ($games === []) {
             $this->roundWithGames = false;
@@ -195,9 +202,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->tournamentSlides($this->nextLook(), $tournaments), ...$everyRound, ['kind' => self::TEASER]];
+                $this->queue = [...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ['kind' => self::TEASER]];
             } else {
-                $this->queue = [...$everyRound, ...$teasers];
+                $this->queue = [...$this->everyRound(), ...$teasers];
             }
 
             return;
@@ -211,9 +218,27 @@ final class RotationPlanner
             // Skipped when fewer than two games are on show by then (slotFor()).
             ['kind' => self::GALLERY, 'look' => $look],
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
-            ...$everyRound,
+            ...$this->everyRound(),
             ...$teasers,
         ];
+    }
+
+    /**
+     * This round's EVERY_ROUND teasers: one of each group, in turn.
+     *
+     * @return list<array{kind: string, scene: string}>
+     */
+    private function everyRound(): array
+    {
+        $entries = [];
+
+        foreach (self::EVERY_ROUND as $group) {
+            $entries[] = ['kind' => self::TEASER, 'scene' => $group[$this->everyRoundTurn % count($group)]];
+        }
+
+        $this->everyRoundTurn++;
+
+        return $entries;
     }
 
     private function nextLook(): string

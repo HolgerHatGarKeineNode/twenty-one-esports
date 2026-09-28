@@ -46,6 +46,7 @@ class SceneSource
         private ChessGameService $chess,
         private GameRegistry $games,
         private StreamImages $images,
+        private PrideSlides $pride,
     ) {}
 
     /**
@@ -129,6 +130,10 @@ class SceneSource
      */
     public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats, ?array $tournament = null, array $upcoming = []): array
     {
+        if (in_array($scene, RotationPlanner::PRIDE_SCENES, true)) {
+            return ['pride' => $this->pride->all(), 'stats' => $stats, 'backdrop' => $this->images->backdrop(StreamImages::BRAND)];
+        }
+
         if (in_array($scene, RotationPlanner::FEATURE_SCENES, true)) {
             $brand = $this->images->backdrop(StreamImages::BRAND);
 

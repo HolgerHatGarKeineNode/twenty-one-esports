@@ -1,0 +1,221 @@
+<?php
+
+namespace App\Support\TwentyOne\Stream;
+
+use App\Enums\ChessGameStatus;
+use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
+use App\Models\ChessGame;
+use App\Models\Rating;
+use App\Models\RatingChange;
+use App\Models\Tournament;
+use App\Models\TournamentSignup;
+use App\Models\User;
+use App\Support\Prizes\PrizePool;
+use Illuminate\Support\Facades\Cache;
+use Throwable;
+
+/**
+ * The data of the pride and prize slides (e1-e4): single players named for
+ * what they did, and the sats a tournament pays. Everything is read as the
+ * site shows it, nothing is estimated; a slide without data says so.
+ *
+ * - `win`: the latest decided chess game of the last week (else the latest
+ *   ever): winner, loser, blitz or daily, the winner's casual Elo change.
+ * - `climbers`: the three biggest casual chess Elo gains of the last seven
+ *   days (sum of the live rating changes, gains only).
+ * - `signups`: the six newest sign-ups of tournaments open for sign-up
+ *   (withdrawn and removed ones left out), with the tournament and its pot.
+ * - `prizes`: the open tournament with the biggest pot, and what each place
+ *   wins (PrizePool::projection(), after the fee reserve) and its sponsors.
+ *
+ * Cached like StreamStats (plain arrays with picture refs); frame() turns the
+ * refs into data URIs from the daemon's memory.
+ */
+class PrideSlides
+{
+    public const CACHE_KEY = 'twentyone.stream.pride';
+
+    /** Days a win or a climb counts as recent. */
+    public const DAYS = 7;
+
+    public function __construct(private StreamImages $images, private GameRegistry $games, private PrizePool $pools) {}
+
+    /**
+     * @return array{win: array<string, mixed>|null, climbers: list<array<string, mixed>>, signups: list<array<string, mixed>>, prizes: array<string, mixed>|null}
+     */
+    public function all(): array
+    {
+        $seconds = max(1, (int) config('twentyone.stream.stats.cache_seconds', 15));
+
+        try {
+            $data = Cache::remember(self::CACHE_KEY, $seconds, fn (): array => $this->read());
+        } catch (Throwable $e) {
+            report($e);
+
+            $data = $this->read();
+        }
+
+        return $this->frame($data);
+    }
+
+    /**
+     * @return array{win: array<string, mixed>|null, climbers: list<array<string, mixed>>, signups: list<array<string, mixed>>, prizes: array<string, mixed>|null}
+     */
+    public function read(): array
+    {
+        return ['win' => $this->win(), 'climbers' => $this->climbers(), 'signups' => $this->signups(), 'prizes' => $this->prizes()];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function win(): ?array
+    {
+        $decided = fn () => ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])
+            ->whereNotNull('white_id')->whereNotNull('black_id')->with(['white', 'black'])->latest('ended_at')->latest('id');
+        $game = $decided()->where('ended_at', '>=', now()->subDays(self::DAYS))->first() ?? $decided()->first();
+
+        if ($game === null) {
+            return null;
+        }
+
+        [$winner, $loser] = $game->result === '1-0' ? [$game->white, $game->black] : [$game->black, $game->white];
+        $delta = RatingChange::query()->where(['source' => 'chess', 'source_id' => $game->id])
+            ->whereHas('rating', fn ($rating) => $rating->where(['user_id' => $winner->id, 'pool' => Rating::CASUAL]))
+            ->value('delta');
+
+        return [
+            'winner' => PublicName::clean($winner->displayName()),
+            'winnerRef' => StreamImages::avatarRef($winner),
+            'loser' => PublicName::clean($loser->displayName()),
+            'loserRef' => StreamImages::avatarRef($loser),
+            'mode' => $game->isCorrespondence() ? 'Daily chess' : 'Blitz chess',
+            'delta' => is_numeric($delta) ? (int) $delta : null,
+            'ago' => $game->ended_at?->diffForHumans(),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function climbers(): array
+    {
+        $rows = RatingChange::query()->where('rating_changes.source', 'chess')->where('rating_changes.created_at', '>=', now()->subDays(self::DAYS))
+            ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
+            ->where('ratings.pool', Rating::CASUAL)->whereNotNull('ratings.user_id')
+            ->groupBy('ratings.user_id')
+            ->selectRaw('ratings.user_id as user_id, sum(rating_changes.delta) as gain, count(*) as games')
+            ->havingRaw('sum(rating_changes.delta) > 0')
+            ->orderByDesc('gain')->orderByDesc('games')->orderBy('ratings.user_id')
+            ->limit(3)->get();
+        $users = User::query()->whereIn('id', $rows->pluck('user_id'))->get()->keyBy('id');
+        $climbers = [];
+
+        foreach ($rows as $row) {
+            $user = $users->get((int) $row->getAttribute('user_id'));
+
+            if ($user !== null) {
+                $climbers[] = ['name' => PublicName::clean($user->displayName()), 'ref' => StreamImages::avatarRef($user), 'gain' => (int) $row->getAttribute('gain'), 'games' => (int) $row->getAttribute('games')];
+            }
+        }
+
+        return $climbers;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function signups(): array
+    {
+        $signups = TournamentSignup::query()->whereNull('withdrawn_at')->whereNull('removed_at')->whereNotNull('user_id')
+            ->whereHas('tournament', fn ($tournament) => $tournament->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now()))
+            ->with(['user', 'tournament'])->latest('created_at')->latest('id')->limit(6)->get();
+        $rows = [];
+
+        foreach ($signups as $signup) {
+            if ($signup->user === null) {
+                continue;
+            }
+
+            $rows[] = [
+                'name' => PublicName::clean($signup->user->displayName()),
+                'ref' => StreamImages::avatarRef($signup->user),
+                'tournament' => PublicName::clean($signup->tournament->name),
+                'pot' => $this->pools->shownPotSats($signup->tournament),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function prizes(): ?array
+    {
+        $best = null;
+
+        foreach (Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())->get() as $tournament) {
+            $pot = $this->pools->shownPotSats($tournament);
+
+            if ($pot !== null && ($best === null || $pot > $best[1])) {
+                $best = [$tournament, $pot];
+            }
+        }
+
+        if ($best === null) {
+            return null;
+        }
+
+        [$tournament, $pot] = $best;
+        $timezone = (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
+
+        return [
+            'name' => PublicName::clean($tournament->name),
+            'game' => $this->games->name($tournament->game),
+            'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
+            'pot' => $pot,
+            'places' => array_map(fn (array $place): array => ['place' => $place['place'], 'sats' => $place['sats']], $this->pools->projection($tournament)),
+            'sponsors' => $tournament->sponsors()->orderBy('id')->limit(3)->pluck('name')->map(fn ($name): string => PublicName::clean((string) $name))->all(),
+            'startsAt' => $tournament->starts_at->copy()->timezone($timezone)->format('D j M, H:i T'),
+            'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
+        ];
+    }
+
+    /**
+     * The cached data with its picture refs turned into data URIs.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{win: array<string, mixed>|null, climbers: list<array<string, mixed>>, signups: list<array<string, mixed>>, prizes: array<string, mixed>|null}
+     */
+    private function frame(array $data): array
+    {
+        $win = is_array($data['win'] ?? null) ? $data['win'] : null;
+
+        if ($win !== null) {
+            $win['winnerAvatar'] = $this->images->avatar($win['winnerRef'] ?? null);
+            $win['loserAvatar'] = $this->images->avatar($win['loserRef'] ?? null);
+            unset($win['winnerRef'], $win['loserRef']);
+        }
+
+        $pictured = function (array $rows): array {
+            $out = [];
+
+            foreach ($rows as $row) {
+                $row['avatar'] = $this->images->avatar($row['ref'] ?? null);
+                unset($row['ref']);
+                $out[] = $row;
+            }
+
+            return $out;
+        };
+
+        return [
+            'win' => $win,
+            'climbers' => $pictured(is_array($data['climbers'] ?? null) ? $data['climbers'] : []),
+            'signups' => $pictured(is_array($data['signups'] ?? null) ? $data['signups'] : []),
+            'prizes' => is_array($data['prizes'] ?? null) ? $data['prizes'] : null,
+        ];
+    }
+}
