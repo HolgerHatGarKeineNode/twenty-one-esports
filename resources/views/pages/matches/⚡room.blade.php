@@ -868,9 +868,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endforeach
         </div>
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
-            @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
-                <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
-            @endforeach
+            {{-- A casual 1v1 is never rated (CasualMatches): no Elo to show, only the status. --}}
+            @unless ($casual)
+                @foreach ([[__('Elo before'), $elo['before'].($elo['casual'] ? ' · '.__('casual') : '')], [__('Expected'), $elo['expected']], [__('At stake'), $elo['stake']]] as [$key, $value])
+                    <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm lg:grid-cols-[150px_minmax(0,1fr)]" data-test="elo-fact"><span class="text-ink-2">{{ $key }}</span><span class="text-ink-2">{{ $value }}</span></div>
+                @endforeach
+            @endunless
             <div class="flex min-h-14 flex-wrap items-center gap-3 py-2 text-sm">
                 <span class="w-[110px] text-ink-2 lg:w-[150px]">{{ __('Status') }}</span>
                 <span class="text-btc-hi">{{ $wins['challenger'] }} : {{ $wins['challenged'] }} {{ $m->status->hasResult() ? '' : __('so far') }}</span>

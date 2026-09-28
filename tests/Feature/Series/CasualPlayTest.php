@@ -379,3 +379,16 @@ test('a casual invite received is on the dock, leading to the module of its game
 
     Livewire::actingAs($bert)->test('match-dock')->assertSee(e($anna->displayName()), false)->call('$refresh')->assertOk();
 });
+
+test('a casual 1v1 room shows no Elo facts, since it is never rated; a clan series room keeps them', function () {
+    [$match, $host] = casualStarted('rocket-league');
+
+    $this->actingAs($host)->get(route('matches.room', $match))->assertOk()
+        ->assertDontSee('data-test="elo-fact"', false)->assertDontSee('At stake')->assertDontSee('Elo before');
+
+    $series = SeriesMatch::factory()->create(['status' => SeriesStatus::Accepted, 'start_at' => now()->subMinutes(5)]);
+    $captain = $series->challengerLineup->clan->owner;
+
+    $this->actingAs($captain)->get(route('matches.room', $series))->assertOk()
+        ->assertSee('data-test="elo-fact"', false)->assertSee('At stake')->assertSee('Elo before');
+});
