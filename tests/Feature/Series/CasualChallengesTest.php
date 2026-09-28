@@ -142,8 +142,11 @@ test('both players get the reminder 15 minutes before and the check-in call 10 m
     expect($scheduler->tick()['reminded'])->toBe(0);
 
     $this->travel(1)->minutes();
+    $stale = SeriesMatch::query()->findOrFail($match->id);
     expect($scheduler->tick()['reminded'])->toBe(1)
         ->and($scheduler->tick()['reminded'])->toBe(0)
+        // A concurrent run that read the match before the first one sent nothing more.
+        ->and($scheduler->remind($stale))->toBeFalse()
         ->and(casualAlerts())->toContain([$anna->id, 'casual_reminder'], [$bert->id, 'casual_reminder'])
         // The reminder goes out as a DM by default: it is for a player who is away.
         ->and(Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($anna))->count())->toBeGreaterThanOrEqual(1);
