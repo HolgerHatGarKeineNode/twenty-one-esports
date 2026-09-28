@@ -205,3 +205,49 @@ test('the host shares a Rocket League lobby card, the guest sees it drawn from t
         $relay->stop(1);
     }
 });
+
+test('the EA ID card says when it was filled in from the gamer tags, and not when it was not (P51)', function () {
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port]);
+
+    try {
+        WaitForPort::open('127.0.0.1', $port);
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port]]);
+
+        [$match, $host, $guest] = casualStarted('ea-sports-fc-27');
+        $host->forceFill(['gamer_tags' => ['ea' => 'Host_EA']])->save();
+        TestSigner::forBrowser($host);
+        TestSigner::forBrowser($guest);
+
+        $hostPage = cardRoomPage($host, $match, 375, 812);
+        $guestPage = cardRoomPage($guest, $match, 375, 812);
+        $prefilled = '() => { const el = document.querySelector("[data-test=card-account-prefilled]"); return el.checkVisibility() ? el.innerText.trim() : null; }';
+
+        $hostPage->locator('[data-test=share-account]')->click();
+        BrowserWait::until($hostPage, '() => document.querySelector("[data-test=account-form]").checkVisibility()', 5_000);
+        expect($hostPage->evaluate('() => document.querySelector("[data-test=card-account-id]").value'))->toBe('Host_EA')
+            ->and($hostPage->evaluate($prefilled))->toBe('Filled in from your gamer tags. It is sent only when you press Send card.');
+
+        $line = $hostPage->evaluate('() => { const r = document.querySelector("[data-test=card-account-prefilled]").getBoundingClientRect(); const f = document.querySelector("[data-test=account-form]").getBoundingClientRect(); return { overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, inside: r.left >= f.left && r.right <= f.right }; }');
+        expect($line)->toBe(['overflow' => 0, 'inside' => true]);
+        cardRoomShot($hostPage, 'card-account-prefilled-375', '[data-test=card-composer]');
+
+        // A changed value is no prefill any more, and nothing went out on its own.
+        $hostPage->locator('[data-test=card-account-id]')->fill('Other_EA');
+        expect($hostPage->evaluate($prefilled))->toBeNull()
+            ->and($match->refresh()->lobby_shared_at)->toBeNull();
+
+        // No saved EA ID: an empty field and no such line.
+        $guestPage->locator('[data-test=share-account]')->click();
+        BrowserWait::until($guestPage, '() => document.querySelector("[data-test=account-form]").checkVisibility()', 5_000);
+        expect($guestPage->evaluate('() => document.querySelector("[data-test=card-account-id]").value'))->toBe('')
+            ->and($guestPage->evaluate($prefilled))->toBeNull();
+
+        foreach ([$hostPage, $guestPage] as $page) {
+            expect($page->evaluate('() => window.__errors'))->toBe([])
+                ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+        }
+    } finally {
+        $relay->stop(1);
+    }
+});

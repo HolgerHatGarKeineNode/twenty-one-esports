@@ -1,8 +1,8 @@
 {{--
-    The four first steps into the league (/me): a real sequence, so numbered.
+    The three first steps into the league (/me): a real sequence, so numbered.
     A step that is done carries a tick and stays readable; the next open
     step is the one orange button. A brand-new player sees this first
-    ($lead), everyone else under "Needs you now" until all four are done.
+    ($lead), everyone else under "Needs you now" until all three are done.
 
     $steps: PlayerHub::steps(), $done: how many are done, $lead: bool.
 --}}
@@ -15,7 +15,7 @@
         <h2 id="me-steps-h" @class(['m-0 font-display font-bold', 'text-xl lg:text-2xl' => $lead, 'text-lg lg:text-xl' => ! $lead])>{{ $lead ? __('Your first steps') : __('First steps') }}</h2>
         <span class="text-xs text-ink-2" data-test="me-steps-done">{{ __(':done of :total done', ['done' => $done, 'total' => count($steps)]) }}</span>
     </div>
-    <ol class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-4">
+    <ol class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
         @foreach ($steps as $index => $step)
             @php($isNext = $next !== null && $next['key'] === $step['key'])
             <li class="min-w-0">

@@ -17,9 +17,9 @@ use Livewire\Component;
  * faces), and last who they play with and how the league reaches them
  * (clan and lineups, Looking to play, settings, the invite link).
  *
- * A brand-new player sees the four first steps at the top instead of an
+ * A brand-new player sees the three first steps at the top instead of an
  * empty page; each step ticks off once it is done, and the list goes once
- * all four are.
+ * all three are.
  *
  * Private: no PageMeta::describe(), so it stays noindex like the settings.
  *

@@ -368,7 +368,9 @@ final class PlayerHub
     }
 
     /**
-     * The four first steps into the league, each done once the player did it.
+     * The three first steps into the league, each done once the player did it.
+     * Gamer tags are no step (P51): they are optional, and keeping them private
+     * is a choice, not an open task.
      *
      * @return list<Step>
      */
@@ -381,8 +383,6 @@ final class PlayerHub
         return [
             ['key' => 'blitz', 'label' => __('Play a blitz game'), 'href' => route('chess.lobby'),
                 'done' => ChessGame::query()->where('status', ChessGameStatus::Finished)->where(fn ($query) => $query->where('white_id', $me)->orWhere('black_id', $me))->exists()],
-            ['key' => 'tags', 'label' => __('Add your gamer tags'), 'href' => route('gaming.edit'),
-                'done' => array_filter($this->user->gamer_tags ?? []) !== []],
             ['key' => 'clan', 'label' => __('Join a clan'), 'href' => route('clans.index'),
                 'done' => $this->user->clanMember !== null],
             ['key' => 'tournament', 'label' => __('Sign up for a tournament'), 'href' => $next !== null ? route('tournaments.show', $next) : route('tournaments.index'),

@@ -43,6 +43,8 @@
         <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('EA ID') }}
             <input x-model="accountId" maxlength="64" autocomplete="off" spellcheck="false" data-test="card-account-id" class="h-11 rounded-md border border-edge bg-ground px-3 text-sm text-ink">
         </label>
+        {{-- The prefill comes from the player's own gamer tags (settings, P51); say so, and that nothing went out yet. --}}
+        <span x-show="casual?.eaId && accountId === casual.eaId" x-cloak class="flex items-center gap-1.5 text-xs text-ink-2" data-test="card-account-prefilled"><x-icon name="lock" :size="14" class="shrink-0" />{{ __('Filled in from your gamer tags. It is sent only when you press Send card.') }}</span>
         <span class="text-xs text-ink-3">{{ __('Your EA ID goes to your opponent only. The friendship stays after the match; remove it in the game if you like.') }}</span>
         <span class="flex flex-wrap gap-2">
             <x-button type="submit" icon="send" ::disabled="sending" data-test="send-account-card">{{ __('Send card') }}</x-button>
