@@ -42,6 +42,8 @@ use Illuminate\Support\Carbon;
  * @property string $released_by_pubkey
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property Carbon|null $settlement_approved_at the admin approved who gets how much (P37); the review's voids end here
+ * @property int|null $settlement_approved_by_id
  * @property-read NostrEvent|null $genesisEvent
  * @property-read User|null $releasedBy
  * @property-read Season|null $previousSeason
@@ -75,6 +77,7 @@ class Season extends Model
             'rating_parameters' => 'array',
             'genesis_at' => 'datetime',
             'ends_at' => 'datetime',
+            'settlement_approved_at' => 'datetime',
         ];
     }
 
@@ -116,6 +119,22 @@ class Season extends Model
     public function attestations(): HasMany
     {
         return $this->hasMany(SeasonAttestation::class);
+    }
+
+    /**
+     * @return HasMany<SeasonBlockVoid, $this>
+     */
+    public function blockVoids(): HasMany
+    {
+        return $this->hasMany(SeasonBlockVoid::class);
+    }
+
+    /**
+     * @return HasMany<SeasonPayout, $this>
+     */
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(SeasonPayout::class);
     }
 
     /** Block 0 <= $at < ends. */

@@ -30,7 +30,8 @@ use Illuminate\Support\Str;
  * @property string|null $about
  * @property string|null $banner https only
  * @property string|null $website https only
- * @property string|null $lud16 Lightning address, shown, never paid
+ * @property string|null $lud16 Lightning address of the cached profile; payouts pay the copy an admin approved, never this field directly
+ * @property Carbon|null $lud16_changed_at when $lud16 last changed after the first cached profile (season payout freeze, P37)
  * @property string|null $nip05 as the profile names it, lowercased
  * @property Carbon|null $nip05_verified_at set when the domain's nostr.json named this key
  * @property Carbon|null $nip05_checked_at last NIP-05 check, successful or not
@@ -76,6 +77,7 @@ class User extends Authenticatable
     {
         return [
             'profile_event_at' => 'datetime',
+            'lud16_changed_at' => 'datetime',
             'profile_checked_at' => 'datetime',
             'nip05_verified_at' => 'datetime',
             'nip05_checked_at' => 'datetime',

@@ -301,7 +301,7 @@ test('the preview of a lineup ladder names the clan', function () {
         ->assertSeeHtml('data-test="reset-seed">1020<');
 });
 
-test('the review of an ended season shows each ladder\'s champion, the chain and no payouts', function () {
+test('the review of an ended season shows each ladder\'s champion, the chain and its settlement', function () {
     $season = openSeason(['genesis_at' => now()->subDays(30), 'ends_at' => now()->subHour()]);
     $champion = User::factory()->create(['name' => 'Hodl Queen']);
     ratedRow($season->slug, $champion, 1180, 12);
@@ -317,7 +317,7 @@ test('the review of an ended season shows each ladder\'s champion, the chain and
         ->assertSee('Hodl Queen')
         ->assertSee('1180 Elo · Diamond I · 12 rated results')
         ->assertDontSee('Few Games')
-        ->assertSee('No season payouts have been made.');
+        ->assertSeeHtml('wire:name="season-settlement"');
 
     $review = app(SeasonReview::class)->of($season);
 

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Enums\PayoutStatus;
+use App\Models\SeasonPayout;
 use App\Models\TournamentPayout;
 use App\Support\Payouts\PayoutRunner;
 use App\Support\Prizes\IncomingPayments;
@@ -27,19 +28,25 @@ class WalletSyncCommand extends Command
     {
         // Payouts first, then the league reserve, then the tournaments' own wallets: a slow tournament
         // wallet's top-up lookups never hold up a payout or the reserve (gate F-B).
-        $unfinished = TournamentPayout::query()->where('status', PayoutStatus::Paying)
-            ->where(fn ($query) => $query->whereNull('lease_until')->orWhere('lease_until', '<', now()))
-            ->where(fn ($query) => $query->whereNull('last_attempt_at')->orWhere('last_attempt_at', '<', now()->subMinute()))
-            ->orderBy('id')->get();
+        // Tournament payouts, then season payouts (P37): the same runner, each from its own wallet.
+        $unfinished = 0;
 
-        foreach ($unfinished as $payout) {
-            $runner->run($payout, false);
+        foreach ([TournamentPayout::query(), SeasonPayout::query()] as $query) {
+            $payouts = $query->where('status', PayoutStatus::Paying)
+                ->where(fn ($query) => $query->whereNull('lease_until')->orWhere('lease_until', '<', now()))
+                ->where(fn ($query) => $query->whereNull('last_attempt_at')->orWhere('last_attempt_at', '<', now()->subMinute()))
+                ->orderBy('id')->get();
+
+            foreach ($payouts as $payout) {
+                $runner->run($payout, false);
+                $unfinished++;
+            }
         }
 
         $settled = $payments->checkAll();
         $settled += $topUps->checkAll();
 
-        $this->info("{$settled} invoice(s) settled, {$unfinished->count()} unfinished payout(s) checked.");
+        $this->info("{$settled} invoice(s) settled, {$unfinished} unfinished payout(s) checked.");
 
         return self::SUCCESS;
     }

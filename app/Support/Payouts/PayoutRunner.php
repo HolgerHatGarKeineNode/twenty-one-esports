@@ -3,6 +3,7 @@
 namespace App\Support\Payouts;
 
 use App\Enums\PayoutStatus;
+use App\Models\SeasonPayout;
 use App\Models\TournamentPayout;
 use App\Models\User;
 use App\Support\FairPlay\AccountLinks;
@@ -11,6 +12,8 @@ use App\Support\Lightning\Bolt11;
 use App\Support\Lightning\LightningAddress;
 use App\Support\Lightning\LightningAddressFailure;
 use App\Support\SeasonChain\LeagueKey;
+use App\Support\SeasonChain\SeasonSettlement;
+use App\Support\Wallet\Ledger;
 use App\Support\Wallet\NwcError;
 use App\Support\Wallet\PayingWallet;
 use Illuminate\Support\Facades\DB;
@@ -18,10 +21,14 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Pays one tournament payout, exactly once (P9), from the tournament pot's
- * own NWC wallet to the player's Lightning address; never from the league
- * wallet, and nothing is booked in the league ledger. The only holder of a
- * {@see PayingWallet}.
+ * Pays one payout, exactly once, to the player's Lightning address: a
+ * tournament payout (P9) from the tournament pot's own NWC wallet, never
+ * from the league wallet, and nothing is booked in the league ledger; a
+ * season payout (P37) from the league wallet's paying connection
+ * (`esports.wallet.nwc_uri`), booked out of the reserve once it is paid.
+ * The only holder of a {@see PayingWallet}. There is no balance check
+ * before a payment (user, 2026-09-28): a wallet that cannot pay fails the
+ * payout with its reason, and an admin retries after a top-up.
  *
  * Three guards, each enough against a double click or a retried job:
  *
@@ -47,7 +54,10 @@ use Illuminate\Support\Str;
  * one the profile shows now (security gate F3). If the profile's address
  * changed since, nothing is fetched: the payout goes back to `open` with
  * reason `lud16_changed` until an admin approves the new address
- * ({@see PayoutApproval::approveAddress()}). An `open` payout is never paid.
+ * ({@see PayoutApproval::approveAddress()},
+ * {@see SeasonSettlement::approveAddress()}). An `open` payout is never
+ * paid. A season payout also waits while the profile's address changed less
+ * than 72 h ago (`lud16_frozen`).
  */
 final class PayoutRunner
 {
@@ -61,9 +71,9 @@ final class PayoutRunner
      * `failed` payout is claimed), without it only an unfinished `paying`
      * one is continued (the reconciliation).
      */
-    public function run(TournamentPayout $payout, bool $start): void
+    public function run(TournamentPayout|SeasonPayout $payout, bool $start): void
     {
-        $wallet = PayingWallet::forTournament($payout->tournament);
+        $wallet = self::wallet($payout);
 
         if ($wallet === null || LeagueKey::fromConfig() === null) {
             return;
@@ -82,7 +92,7 @@ final class PayoutRunner
 
             // A linked second account wins nothing (P41): withheld, never started, never re-routed.
             if ($start && $payout->status->isPayable() && FairPlay::isLinked($payout->pubkey)) {
-                TournamentPayout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])
+                $payout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])
                     ->update(['status' => PayoutStatus::Open, 'reason' => AccountLinks::WITHHELD]);
 
                 return;
@@ -91,7 +101,7 @@ final class PayoutRunner
             if ($start && $payout->status->isPayable()) {
                 // The wallet refused the last attempt outright: an expired invoice may be replaced.
                 $refused = $payout->status === PayoutStatus::Failed && in_array($payout->reason, self::REFUSALS, true);
-                $claimed = TournamentPayout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])
+                $claimed = $payout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Pending, PayoutStatus::Failed])
                     ->update(['status' => PayoutStatus::Paying, 'attempts' => $payout->attempts + 1, 'last_attempt_at' => now(), 'reason' => null]);
 
                 if ($claimed !== 1) {
@@ -105,7 +115,7 @@ final class PayoutRunner
                 $this->proceed($payout, $wallet, $refused);
             }
         } finally {
-            TournamentPayout::query()->whereKey($payout->id)->where('lease_owner', $owner)->update(['lease_until' => null, 'lease_owner' => null]);
+            $payout::query()->whereKey($payout->id)->where('lease_owner', $owner)->update(['lease_until' => null, 'lease_owner' => null]);
         }
     }
 
@@ -115,9 +125,9 @@ final class PayoutRunner
      * payout is paid instead. Else the invoice is dropped and the payout is
      * `failed` (retryable with a new invoice).
      */
-    public function release(TournamentPayout $payout): void
+    public function release(TournamentPayout|SeasonPayout $payout): void
     {
-        $wallet = PayingWallet::forTournament($payout->tournament);
+        $wallet = self::wallet($payout);
         $owner = Str::random(24);
 
         if ($wallet === null || ! $this->lease($payout, $owner)) {
@@ -149,22 +159,38 @@ final class PayoutRunner
                 }
             }
 
-            TournamentPayout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Paying, PayoutStatus::Failed])->update([
+            $payout::query()->whereKey($payout->id)->whereIn('status', [PayoutStatus::Paying, PayoutStatus::Failed])->update([
                 'status' => PayoutStatus::Failed, 'reason' => 'released', 'bolt11' => null, 'payment_hash' => null, 'invoice_expires_at' => null,
             ]);
         } finally {
-            TournamentPayout::query()->whereKey($payout->id)->where('lease_owner', $owner)->update(['lease_until' => null, 'lease_owner' => null]);
+            $payout::query()->whereKey($payout->id)->where('lease_owner', $owner)->update(['lease_until' => null, 'lease_owner' => null]);
         }
     }
 
-    private function lease(TournamentPayout $payout, string $owner): bool
+    /**
+     * The wallet a payout is paid from: a tournament's from its pot's own
+     * wallet (never the league's), a season's from the league wallet's
+     * paying connection (never a pot's). Null without one (fail closed).
+     */
+    private static function wallet(TournamentPayout|SeasonPayout $payout): ?PayingWallet
     {
-        return TournamentPayout::query()->whereKey($payout->id)
+        return $payout instanceof SeasonPayout ? PayingWallet::fromConfig() : PayingWallet::forTournament($payout->tournament);
+    }
+
+    /** `Tournament` or `Season`, for the log. */
+    private static function kind(TournamentPayout|SeasonPayout $payout): string
+    {
+        return $payout instanceof SeasonPayout ? 'Season' : 'Tournament';
+    }
+
+    private function lease(TournamentPayout|SeasonPayout $payout, string $owner): bool
+    {
+        return $payout::query()->whereKey($payout->id)
             ->where(fn ($query) => $query->whereNull('lease_until')->orWhere('lease_until', '<', now()))
             ->update(['lease_until' => now()->addSeconds((int) config('esports.wallet.payout_lease_seconds', 180)), 'lease_owner' => $owner]) === 1;
     }
 
-    private function proceed(TournamentPayout $payout, PayingWallet $wallet, bool $refused): void
+    private function proceed(TournamentPayout|SeasonPayout $payout, PayingWallet $wallet, bool $refused): void
     {
         if ($payout->bolt11 !== null && $payout->payment_hash !== null) {
             try {
@@ -198,7 +224,7 @@ final class PayoutRunner
             // Expired and not paid as far as the wallet knows. A new invoice only after the
             // wallet refused the last attempt outright (the payout was `failed` before this claim).
             if ($refused) {
-                TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+                $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
                     ->update(['bolt11' => null, 'payment_hash' => null, 'invoice_expires_at' => null]);
                 $payout->refresh();
                 $this->newInvoiceAndPay($payout, $wallet);
@@ -214,21 +240,29 @@ final class PayoutRunner
         $this->newInvoiceAndPay($payout, $wallet);
     }
 
-    private function newInvoiceAndPay(TournamentPayout $payout, PayingWallet $wallet): void
+    private function newInvoiceAndPay(TournamentPayout|SeasonPayout $payout, PayingWallet $wallet): void
     {
         // The approved address, never the profile's current one (F3).
         $lud16 = $payout->lud16;
 
         if ($lud16 === null || LightningAddress::target($lud16) === null) {
-            TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
                 ->update(['status' => PayoutStatus::Open, 'reason' => $payout->user_id === null ? 'account_deleted' : 'no_lud16', 'bolt11' => null, 'payment_hash' => null]);
 
             return;
         }
 
         if (self::addressChanged($payout)) {
-            TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
                 ->update(['status' => PayoutStatus::Open, 'reason' => 'lud16_changed', 'bolt11' => null, 'payment_hash' => null]);
+
+            return;
+        }
+
+        // A season payout never goes out while the profile's address changed within the freeze (P37: 72 h).
+        if ($payout instanceof SeasonPayout && SeasonSettlement::addressFrozen($payout->user)) {
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+                ->update(['status' => PayoutStatus::Open, 'reason' => 'lud16_frozen', 'bolt11' => null, 'payment_hash' => null]);
 
             return;
         }
@@ -236,14 +270,14 @@ final class PayoutRunner
         try {
             $invoice = $this->addresses->invoice($lud16, $payout->amount_sats);
         } catch (LightningAddressFailure $failure) {
-            TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
                 ->update(['status' => PayoutStatus::Failed, 'reason' => $failure->reason]);
 
             return;
         }
 
         // Stored before it is paid: from here on every attempt pays or looks up this invoice.
-        TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update([
+        $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update([
             'bolt11' => $invoice->invoice, 'payment_hash' => $invoice->paymentHash, 'invoice_expires_at' => now()->setTimestamp($invoice->expiresAt()),
         ]);
         $payout->refresh();
@@ -251,7 +285,7 @@ final class PayoutRunner
         $this->pay($payout, $wallet, $invoice->invoice);
     }
 
-    private function pay(TournamentPayout $payout, PayingWallet $wallet, string $bolt11): void
+    private function pay(TournamentPayout|SeasonPayout $payout, PayingWallet $wallet, string $bolt11): void
     {
         $invoice = Bolt11::decode($bolt11);
 
@@ -270,8 +304,8 @@ final class PayoutRunner
                 return;
             }
 
-            Log::warning('Tournament payout refused by the wallet', ['payout' => $payout->id, 'code' => $error->errorCode]);
-            TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update([
+            Log::warning(self::kind($payout).' payout refused by the wallet', ['payout' => $payout->id, 'code' => $error->errorCode]);
+            $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update([
                 'status' => PayoutStatus::Failed,
                 'reason' => match ($error->errorCode) {
                     'INSUFFICIENT_BALANCE' => 'insufficient_balance',
@@ -290,19 +324,19 @@ final class PayoutRunner
      * Paid, once: the preimage must hash to the invoice's payment hash. Then
      * the league signs the Payout (2157).
      */
-    private function markPaid(TournamentPayout $payout, string $preimage, ?int $feesMsats): void
+    private function markPaid(TournamentPayout|SeasonPayout $payout, string $preimage, ?int $feesMsats): void
     {
         $preimage = strtolower($preimage);
 
         if (preg_match('/^[0-9a-f]{64}$/', $preimage) !== 1 || hash('sha256', (string) hex2bin($preimage)) !== $payout->payment_hash) {
-            Log::warning('Tournament payout: the wallet reported a payment without a matching preimage', ['payout' => $payout->id]);
+            Log::warning(self::kind($payout).' payout: the wallet reported a payment without a matching preimage', ['payout' => $payout->id]);
             $this->note($payout, 'unconfirmed');
 
             return;
         }
 
         DB::transaction(function () use ($payout, $preimage, $feesMsats): void {
-            $claimed = TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
+            $claimed = $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)
                 ->update(['status' => PayoutStatus::Paid, 'reason' => null, 'preimage' => $preimage, 'fees_msats' => $feesMsats, 'paid_at' => now()]);
 
             if ($claimed !== 1) {
@@ -310,32 +344,30 @@ final class PayoutRunner
             }
 
             $payout->refresh();
-            $tournament = $payout->tournament;
 
             $league = LeagueKey::required();
             $relay = (string) (config('esports.relays')[0] ?? '');
-            $event = $league->publish(2157, [
-                ['a', (string) $tournament->address(), $relay],
-                ['p', $payout->pubkey],
-                ['bolt11', (string) $payout->bolt11],
-                ['preimage', $preimage],
-                ['alt', 'Esports payout: '.$tournament->name.', place '.$payout->place.', '.$payout->amount_sats.' sats'],
-            ], '', now()->getTimestamp());
+            $event = $league->publish(2157, $payout->payoutTags($preimage, $relay), '', now()->getTimestamp());
+
+            // A season payout leaves the league wallet: booked once (tournament pots are never booked).
+            if ($payout instanceof SeasonPayout) {
+                app(Ledger::class)->seasonPayout($payout);
+            }
 
             $payout->forceFill(['event_id' => $event->id])->save();
         });
     }
 
-    private function note(TournamentPayout $payout, string $reason): void
+    private function note(TournamentPayout|SeasonPayout $payout, string $reason): void
     {
-        TournamentPayout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update(['reason' => $reason]);
+        $payout::query()->whereKey($payout->id)->where('status', PayoutStatus::Paying)->update(['reason' => $reason]);
     }
 
     /**
      * The Lightning address the player's profile shows now, normalized; null
      * without a valid one (or without an account).
      */
-    public static function currentAddress(TournamentPayout $payout): ?string
+    public static function currentAddress(TournamentPayout|SeasonPayout $payout): ?string
     {
         $lud16 = $payout->user_id === null ? null : User::query()->whereKey($payout->user_id)->value('lud16');
 
@@ -346,7 +378,7 @@ final class PayoutRunner
      * Whether the profile's address is no longer the approved one. A deleted
      * account changes nothing: its approved address is still the one paid.
      */
-    public static function addressChanged(TournamentPayout $payout): bool
+    public static function addressChanged(TournamentPayout|SeasonPayout $payout): bool
     {
         return $payout->user_id !== null && User::query()->whereKey($payout->user_id)->exists()
             && self::currentAddress($payout) !== ($payout->lud16 === null ? null : strtolower($payout->lud16));

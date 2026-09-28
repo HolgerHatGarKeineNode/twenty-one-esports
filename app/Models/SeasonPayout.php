@@ -9,26 +9,25 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * One player's prize from one tournament (P9, NIP "Payout", rule 28: at most
- * one per player and tournament). Written when an admin approves the
- * payouts, then only moved by App\Support\Payouts\PayoutRunner.
+ * One player's season settlement (P37, NIP "Payout": one payout per player
+ * and season): the rewards of their blocks the review did not void, paid
+ * from the league wallet's paying connection. Written when an admin
+ * approves the settlement list (App\Support\SeasonChain\SeasonSettlement),
+ * then only moved by App\Support\Payouts\PayoutRunner, the same state
+ * machine and guards as a tournament payout ({@see TournamentPayout}).
  *
- * `idempotency_key` is fixed per (tournament, recipient, place) and unique:
- * approving twice cannot create a second row. `lud16` is the Lightning
- * address the admin approved (at the check, or later for an open payout),
- * and the only one ever paid: a profile change after that sets the payout
- * back to `open` (`lud16_changed`) until an admin approves the new address. `bolt11` and
- * `payment_hash` are kept from the first invoice on: a retry pays the same
- * invoice or looks it up, never a second invoice while the first may be
- * paid. `reason` explains `open`, `failed` and an unconfirmed `paying`.
+ * `idempotency_key` is fixed per (season, player) and unique. `heights`
+ * are the blocks it pays (an `e` each in the 2157). `lud16` is the address
+ * an admin approved and the only one ever paid; the profile's address
+ * never shows as text on a page.
  *
  * @property int $id
- * @property int $tournament_id
+ * @property int $season_id
  * @property int|null $user_id
- * @property int|null $participant_id
  * @property string $pubkey
  * @property string $name
- * @property int $place
+ * @property int $blocks
+ * @property list<int> $heights
  * @property int $amount_sats
  * @property string $idempotency_key
  * @property string|null $lud16
@@ -47,18 +46,18 @@ use Illuminate\Support\Carbon;
  * @property int|null $event_id the league's 2157
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
- * @property-read Tournament $tournament
+ * @property-read Season $season
  * @property-read User|null $user
- * @property-read TournamentParticipant|null $participant
  * @property-read NostrEvent|null $event
  */
-#[Fillable(['tournament_id', 'user_id', 'participant_id', 'pubkey', 'name', 'place', 'amount_sats', 'idempotency_key', 'lud16', 'status', 'reason'])]
-class TournamentPayout extends Model
+#[Fillable(['season_id', 'user_id', 'pubkey', 'name', 'blocks', 'heights', 'amount_sats', 'idempotency_key', 'lud16', 'status', 'reason'])]
+class SeasonPayout extends Model
 {
     protected function casts(): array
     {
         return [
-            'place' => 'integer',
+            'blocks' => 'integer',
+            'heights' => 'array',
             'amount_sats' => 'integer',
             'status' => PayoutStatus::class,
             'invoice_expires_at' => 'datetime',
@@ -71,30 +70,33 @@ class TournamentPayout extends Model
     }
 
     /**
-     * The fixed key of a payout: one per tournament, recipient and place.
+     * The fixed key of a season payout: one per season and player.
      */
-    public static function keyFor(int $tournamentId, string $pubkey, int $place): string
+    public static function keyFor(int $seasonId, string $pubkey): string
     {
-        return hash('sha256', 'esports-payout-v1|'.$tournamentId.'|'.$pubkey.'|'.$place);
+        return hash('sha256', 'esports-season-payout-v1|'.$seasonId.'|'.$pubkey);
     }
 
     /**
-     * The Payout (2157) of a tournament settlement (NIP "Payout"): the
-     * tournament, the player, the invoice and its preimage.
+     * The Payout (2157) of a season settlement (NIP "Payout"): the genesis,
+     * the player, one `e` per block paid, the invoice and its preimage.
      *
      * @return list<list<string>>
      */
     public function payoutTags(string $preimage, string $relay): array
     {
-        $tournament = $this->tournament;
+        $season = $this->season;
+        $tags = [['e', $season->genesisId(), $relay], ['p', $this->pubkey]];
 
-        return [
-            ['a', (string) $tournament->address(), $relay],
-            ['p', $this->pubkey],
-            ['bolt11', (string) $this->bolt11],
-            ['preimage', $preimage],
-            ['alt', 'Esports payout: '.$tournament->name.', place '.$this->place.', '.$this->amount_sats.' sats'],
-        ];
+        foreach (SeasonAttestation::query()->where('season_id', $season->id)->whereIn('height', $this->heights)->orderBy('height')->pluck('event_id') as $id) {
+            $tags[] = ['e', (string) $id, $relay];
+        }
+
+        $tags[] = ['bolt11', (string) $this->bolt11];
+        $tags[] = ['preimage', $preimage];
+        $tags[] = ['alt', 'Esports payout: '.$season->slug.' settlement for '.$this->name.', '.$this->amount_sats.' sats'];
+
+        return $tags;
     }
 
     /**
@@ -107,18 +109,19 @@ class TournamentPayout extends Model
         }
 
         return match ($this->reason) {
-            'no_lud16' => __('No Lightning address in the player’s Nostr profile yet. The prize waits until they add one.'),
+            'no_lud16' => __('No Lightning address in the player’s Nostr profile yet. The sats wait for the claim window.'),
             'lud16_changed' => __('Lightning address changed since approval. An admin approves the new one before it is paid.'),
-            'account_deleted' => __('The account was deleted. The prize stays in the pool.'),
+            'lud16_frozen' => __('Lightning address changed less than 72 hours ago. An admin can approve it once the 72 hours have passed.'),
+            'account_deleted' => __('The account was deleted. The sats go back to the league reserve.'),
             'linked_account' => __('Withheld: an admin linked this account to another account of the same player. Only the main account wins prizes; an admin reviews it.'),
             'lnurl_unreachable' => __('The Lightning address did not answer.'),
             'lnurl_invalid' => __('The Lightning address is not a valid LNURL-pay endpoint.'),
             'amount_out_of_range' => __('The Lightning address does not accept this amount.'),
             'invoice_mismatch' => __('The Lightning address returned an invoice that does not match (amount, description or network).'),
             'invoice_expired' => __('The invoice expired before it was paid.'),
-            'wallet_error' => __('The league wallet refused the payment.'),
-            'insufficient_balance' => __('The league wallet does not hold enough sats.'),
-            'budget_exceeded' => __('The league wallet’s budget for payouts is used up.'),
+            'insufficient_balance' => __('The payout wallet does not hold enough sats. Top up the payout wallet, then retry.'),
+            'budget_exceeded' => __('The payout wallet’s budget for payouts is used up. Raise it or top up the payout wallet, then retry.'),
+            'wallet_error' => __('The payout wallet refused the payment. Top up the payout wallet if it is low, then retry.'),
             'unconfirmed' => __('The wallet has not confirmed the payment yet. It is checked again before anything else happens.'),
             'needs_check' => __('The outcome is unknown and the invoice has expired. Check the wallet, then release the payout if it was not paid.'),
             'released' => __('Released after a manual check of the wallet: not paid.'),
@@ -127,11 +130,11 @@ class TournamentPayout extends Model
     }
 
     /**
-     * @return BelongsTo<Tournament, $this>
+     * @return BelongsTo<Season, $this>
      */
-    public function tournament(): BelongsTo
+    public function season(): BelongsTo
     {
-        return $this->belongsTo(Tournament::class);
+        return $this->belongsTo(Season::class);
     }
 
     /**
@@ -140,14 +143,6 @@ class TournamentPayout extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    /**
-     * @return BelongsTo<TournamentParticipant, $this>
-     */
-    public function participant(): BelongsTo
-    {
-        return $this->belongsTo(TournamentParticipant::class);
     }
 
     /**

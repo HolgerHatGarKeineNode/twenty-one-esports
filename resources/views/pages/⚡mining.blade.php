@@ -1,13 +1,20 @@
 <?php
 
+use App\Models\Season;
+use App\Models\SeasonBlockVoid;
+use App\Models\SeasonPayout;
 use App\Models\User;
+use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
 use App\Support\PreSeason;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\QrCode;
+use App\Support\Rating\LadderBoard;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonRelease;
+use App\Support\SeasonChain\SeasonSettlement;
 use App\Support\SeasonChain\Seasons;
+use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -25,6 +32,10 @@ use Livewire\Component;
  * Amounts are configured, mined, or received per zap; no pot ever shows a
  * wallet balance. The reserve is zapped through a QR code of the league's
  * LNURL, never its Lightning address as text (P39).
+ *
+ * P37: between seasons the review's corrections (block and public reason)
+ * and the season payouts that were paid, each with its Payout (2157); paid
+ * amounts only, never what is still owed or what a wallet holds.
  */
 new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
 {
@@ -52,6 +63,24 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
         $ended = Seasons::latest();
 
         return $ended === null ? app(ChainOverview::class)->draft() : app(ChainOverview::class)->ended($ended);
+    }
+
+    /**
+     * The ended season's corrections and paid payouts (P37), null while a
+     * season is live or before Block 0.
+     *
+     * @return array{paid: Collection<int, SeasonPayout>, voids: Collection<int, SeasonBlockVoid>}|null
+     */
+    #[Computed]
+    public function settlement(): ?array
+    {
+        $season = $this->chain['season'];
+
+        if (! $season instanceof Season || Seasons::state() !== 'between') {
+            return null;
+        }
+
+        return ['paid' => SeasonSettlement::paid($season), 'voids' => $season->blockVoids()->orderBy('height')->get()];
     }
 
     /**
@@ -88,6 +117,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     $inForce = $chain['in_force'];
     $games = array_keys($inForce->shares + $inForce->daily);
     $zaps = $this->zaps;
+    $settlement = $this->settlement;
     $unmined = $hasChain ? max(0, $chain['supply'] - ($live ? $chain['estimate']['end_mined'] : $chain['mined'])) : null;
 @endphp
 
@@ -329,6 +359,35 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                 <span class="text-xs text-ink-3">{{ $live ? __('opens :when', ['when' => $date($chain['season']->ends_at)]) : __('mining stopped :when', ['when' => $date($chain['season']->ends_at)]) }}</span>
             </span>
             <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('At the season end every game is checked for farming. Each correction is published with its block and reason; voided sats go to the reserve. Then each player is paid once.') }}</p>
+            @if ($settlement !== null && $settlement['voids']->isNotEmpty())
+                <ol class="m-0 flex list-none flex-col p-0" data-test="mining-voids">
+                    @foreach ($settlement['voids'] as $void)
+                        <li class="flex flex-col gap-0.5 border-b border-hairline py-2 text-[13px] last:border-0">
+                            <b>{{ __('Block :height void', ['height' => $void->height]) }}</b>
+                            <span class="text-ink-2 [overflow-wrap:anywhere]">{{ $void->reason }}</span>
+                        </li>
+                    @endforeach
+                </ol>
+            @endif
+        </section>
+    @endif
+
+    @if ($settlement !== null)
+        <section id="season-payouts" aria-labelledby="season-payouts-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="mining-season-payouts">
+            <h2 id="season-payouts-h" class="m-0 text-[15px] font-bold">{{ __('Season payouts') }}</h2>
+            <p class="m-0 max-w-[80ch] text-xs leading-normal text-ink-2">{{ __('What each player was paid for their blocks, once, to the Lightning address in their Nostr profile. Each payment is a signed Payout event with the invoice and its preimage. No Lightning address in your profile? Add one so your sats can be paid.') }}</p>
+            @forelse ($settlement['paid'] as $payout)
+                <div class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 border-b border-hairline py-2 text-[13px] last:border-0" data-test="mining-season-payout">
+                    <span class="truncate">@if ($payout->user)<x-player-link :user="$payout->user" />@else{{ $payout->name }}@endif</span>
+                    <b class="whitespace-nowrap">{{ $sats($payout->amount_sats) }} {{ __('sats') }}</b>
+                    <span class="text-xs text-ink-3">{{ trans_choice(':count block|:count blocks', $payout->blocks) }} · {{ $payout->paid_at ? $date($payout->paid_at, 'j M Y') : '' }}</span>
+                    @if ($payout->event)
+                        <a href="{{ LadderBoard::NJUMP.NostrKeys::nevent($payout->event->event_id, $payout->event->pubkey, 2157) }}" rel="noopener noreferrer" target="_blank" class="text-xs whitespace-nowrap text-proof underline decoration-proof/50 underline-offset-2" data-test="mining-season-payout-proof">{{ __('Payout event') }}<span class="sr-only"> {{ __('(opens njump.me in a new tab)') }}</span></a>
+                    @endif
+                </div>
+            @empty
+                <p class="m-0 text-[13px] text-ink-2">{{ __('No season payout has been paid yet.') }}</p>
+            @endforelse
         </section>
     @endif
 

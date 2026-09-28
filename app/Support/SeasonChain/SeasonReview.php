@@ -10,14 +10,12 @@ use App\Support\Rating\RatingSettings;
 
 /**
  * The review of an ended season on AdminSeason (P35): the champion of every
- * ladder, what the chain mined, and the season payouts made.
+ * ladder and what the chain mined. The settlement (voids, who gets how
+ * much, the payouts) is SeasonSettlement (P37).
  *
  * A champion is the first standing of the ladder's final version (as
  * LadderEvents orders it: rating, then the older row), with at least one
- * rated result. Season payouts would be the paid ones only, never a wallet
- * balance; the season-chain payout (`2157`) and the settlement action are
- * not built (Settlement only computes what is owed), so the page states
- * that none were made.
+ * rated result.
  */
 final class SeasonReview
 {

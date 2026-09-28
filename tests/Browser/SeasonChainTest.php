@@ -5,6 +5,7 @@ use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\SeasonPayout;
 use App\Models\SeasonSettingChange;
 use App\Models\SeriesMatch;
 use App\Models\TrustExclusion;
@@ -24,6 +25,7 @@ use App\Support\SeasonChain\SeasonPlans;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -415,7 +417,7 @@ test('AdminSeason P35: rating settings, soft-reset preview and season review sta
 
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate('() => document.querySelector("[data-test=season-review]").innerText'))->toContain('Player 00')
-        ->and($page->evaluate('() => document.querySelector("[data-test=review-payouts]").innerText'))->toContain('No season payouts have been made.');
+        ->and($page->evaluate('() => document.querySelector("[data-test=season-settlement]").innerText'))->toContain('No block was mined in this season');
 });
 
 test('AdminSeason P38: the board plans the next season and releases it with the soft reset, clean and inside 375 and 1440 px', function () {
@@ -571,4 +573,110 @@ test('AdminSeason P43: the chain draft form and "What Block 0 signs" stay clean 
     expect($page->evaluate('() => document.querySelector("[data-test=draft-error]").innerText'))->toContain('The shares add up to 115 %')
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and(ChainDraft::stored()['shares']['chess'] ?? null)->toBe(30);
+});
+
+test('AdminSeason P37: an admin voids a block, approves the settlement and pays per click, clean and inside 375 and 1440 px', function () {
+    // The LNURL fake of the players' addresses answers instead of the blanket fake of beforeEach.
+    Http::swap(new HttpFactory);
+    $wallet = fakeWallet();
+    fakeLightningAddresses($wallet);
+    $admin = anAdmin();
+    $admin->forceFill(['name' => 'satsjaeger', 'locale' => 'en'])->save();
+    $alice = settlementPlayer('Alice');
+    $bob = settlementPlayer('Bob');
+    $bob->forceFill(['lud16' => null])->save();
+    $carol = settlementPlayer('Carol');
+    $season = settledSeason([[$alice, 1], [$alice, 2], [$bob, 3], [$carol, 4]]);
+
+    // Positive control: an injected throw and a 404 fetch must show up as problems on this page.
+    $control = chainPage($admin, route('admin.season'), 'window.addEventListener("load", () => { setTimeout(() => { throw new Error("p37-positive-control"); }, 0); fetch("/p37-positive-control-missing"); });');
+    $controlProblems = implode("\n", chainProblems($control, [route('admin.season')]));
+    BrowserWait::until($control, '() => (window.__errors || []).some((entry) => entry.startsWith("404 "))', 10_000);
+
+    expect($controlProblems)->toContain('p37-positive-control')
+        ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('p37-positive-control-missing');
+
+    // wire:confirm asks window.confirm; the admin says yes.
+    $page = chainPage($admin, route('admin.season'), 'window.confirm = () => true;');
+    $measure = '() => ["season-settlement", "settlement-list", "settlement-payouts", "void-form"].map((name) => { const el = document.querySelector(`[data-test=${name}]`);'
+        .' if (!el) return [name, null]; const r = el.getBoundingClientRect(); const box = el.closest(".overflow-x-auto") ?? el;'
+        .' return [name, Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height), Math.round(box.getBoundingClientRect().right)]; })';
+    $sizes = [];
+
+    expect(chainProblems($page, [route('admin.season'), route('mining')]))->toBe([]);
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.season')));
+        $sizes['review'][$width] = $page->evaluate($measure);
+    }
+
+    // At 375: void Alice's second block with a public reason, through Livewire.
+    $page->setViewportSize(375, 800);
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('[data-test=void-height]')->fill('2');
+    $page->locator('[data-test=void-reason]')->fill('Second win of the same pairing within minutes.');
+    $page->locator('[data-test=void-block]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settlement-voids]")?.innerText.includes("Block 2 void")', 10_000);
+
+    expect($season->blockVoids()->sole()->height)->toBe(2)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+
+    // At 1440: approve the list, pay Alice, fail Carol on an empty wallet, then retry after the top-up.
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('[data-test=approve-settlement]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settlement-payouts]") !== null', 10_000);
+
+    $row = fn (User $user): string => '[data-test=settlement-payout-row]:has-text("'.$user->name.'")';
+    $page->locator($row($alice).' [data-test=pay-one]')->click();
+    BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=settlement-payout-row]")].some((tr) => tr.dataset.status === "paid" && tr.innerText.includes("Alice"))', 15_000);
+
+    $wallet->balanceMsats = 1_000;
+    $page->locator($row($carol).' [data-test=pay-one]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settlement-top-up]") !== null', 15_000);
+    $failedText = $page->evaluate('() => document.querySelector("[data-test=settlement-payouts]").innerText');
+
+    $wallet->balanceMsats = 50_000_000_000;
+    $page->locator($row($carol).' [data-test=pay-one]')->click();
+    BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=settlement-payout-row]")].some((tr) => tr.dataset.status === "paid" && tr.innerText.includes("Carol"))', 15_000);
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.season')));
+        $sizes['paid'][$width] = $page->evaluate($measure);
+    }
+
+    fwrite(STDERR, "\n[admin-season P37] name/left/right/width/height/scroll-box right: ".json_encode($sizes)."\n");
+
+    foreach ($sizes as $state => $byWidth) {
+        foreach ($byWidth as $width => $boxes) {
+            foreach ($boxes as $box) {
+                if ($box[1] === null) {
+                    continue;
+                }
+
+                // A table may be wider than a phone; it scrolls inside its own box, which stays inside the viewport.
+                expect($box[1])->toBeGreaterThanOrEqual(0, "{$state} {$box[0]} at {$width}")
+                    ->and($box[5])->toBeLessThanOrEqual($width, "{$state} {$box[0]} at {$width}")
+                    ->and($box[4])->toBeGreaterThan(0);
+            }
+        }
+    }
+
+    $bodyText = $page->evaluate('() => document.body.innerText');
+
+    expect($failedText)->toContain('Top up the payout wallet')
+        ->and($bodyText)->not->toContain('@wallet.example')
+        ->and($bodyText)->toContain('has address')
+        ->and(SeasonPayout::query()->where('status', 'paid')->count())->toBe(2)
+        ->and(SeasonPayout::query()->where('pubkey', $bob->pubkey)->sole()->reason)->toBe('no_lud16')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and(chainProblems($page, [route('admin.season'), route('mining')]))->toBe([]);
+
+    // /mining lists the two paid payouts, never an address.
+    $page->goto(ComputeUrl::from(route('mining')));
+    expect($page->evaluate('() => document.querySelectorAll("[data-test=mining-season-payout]").length'))->toBe(2)
+        ->and($page->evaluate('() => document.body.innerText'))->not->toContain('@wallet.example')
+        ->and($page->evaluate('() => document.querySelector("[data-test=mining-voids]").innerText'))->toContain('Second win of the same pairing within minutes.');
 });

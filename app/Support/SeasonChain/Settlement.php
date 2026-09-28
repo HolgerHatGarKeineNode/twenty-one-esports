@@ -10,6 +10,11 @@ namespace App\Support\SeasonChain;
  * parts per block and within a block per winning player, rounded down; a
  * challenge without such a block, the remainders and voided blocks' rewards
  * and fees go to the league reserve.
+ *
+ * Players never pay fees in this league (user, 2026-09-28): the season
+ * settlement (SeasonSettlement, P37) passes no fee receipt at all. The fee
+ * rules stay here as the protocol describes them, checked by the ledger's
+ * golden test.
  */
 final class Settlement
 {

@@ -44,8 +44,9 @@ use Livewire\WithPagination;
  * P35: the rating, rank and hashrate values for Block 0 (RatingSettings,
  * which documents per value why it is editable and when it locks) with the
  * log of who changed what, the read-only soft-reset preview (SoftReset) and
- * the review of the last ended season (SeasonReview). There is no settle
- * action: the season-chain payout is not built.
+ * the review of the last ended season (SeasonReview). P37: its settlement
+ * (the season-settlement component, SeasonSettlement): voids, the list,
+ * its approval and the payouts.
  *
  * P38: the season planner (SeasonPlans) for the season after the newest
  * one, with its log; the release of Block 0 then releases the planned
@@ -1333,8 +1334,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             @empty
                 <x-admin.empty :text="__('No ladder had a rated result in this season.')" />
             @endforelse
-            <h3 class="m-0 text-[13px] font-bold">{{ __('Season payouts') }}</h3>
-            <p class="m-0 text-[13px] text-ink-2" data-test="review-payouts">{{ __('No season payouts have been made. The settlement of the chain rewards is not built, so there is nothing to settle here.') }}</p>
+            <livewire:season-settlement :season="$ended" :wire:key="'settlement-'.$ended->id" />
         @endif
     </x-admin.panel>
 </x-admin.page>

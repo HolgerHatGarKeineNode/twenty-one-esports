@@ -4,6 +4,7 @@ namespace App\Support\Wallet;
 
 use App\Models\IncomingPayment;
 use App\Models\LedgerTransfer;
+use App\Models\SeasonPayout;
 use Illuminate\Database\UniqueConstraintViolationException;
 use InvalidArgumentException;
 
@@ -14,7 +15,9 @@ use InvalidArgumentException;
  * construction and the sum over all accounts is always zero.
  *
  * Accounts: `outside` (the world beyond the wallet) and `reserve`. What the
- * wallet should hold is minus the balance of `outside`. Tournament pots are
+ * wallet should hold is minus the balance of `outside`. Paid season payouts
+ * leave the reserve (P37); with no pre-funding the reserve may go below
+ * zero on the book, and the wallet then simply cannot pay. Tournament pots are
  * never booked here: each is its tournament's own wallet (user, 2026-09-27).
  *
  * Each booking is tied to its cause by a unique key, so booking the same
@@ -34,6 +37,21 @@ final class Ledger
         }
 
         $this->book(self::OUTSIDE, $pot, $payment->amount_sats, 'contribution', ['incoming_payment_id' => $payment->id]);
+    }
+
+    /**
+     * A paid season payout (P37): the amount, and the routing fee the wallet
+     * reported (rounded up to whole sats), leave the reserve for the outside.
+     */
+    public function seasonPayout(SeasonPayout $payout): void
+    {
+        $this->book(self::RESERVE, self::OUTSIDE, $payout->amount_sats, 'season_payout', ['season_payout_id' => $payout->id]);
+
+        $fee = (int) ceil(((int) $payout->fees_msats) / 1000);
+
+        if ($fee > 0) {
+            $this->book(self::RESERVE, self::OUTSIDE, $fee, 'season_payout_fee', ['season_payout_id' => $payout->id]);
+        }
     }
 
     /**

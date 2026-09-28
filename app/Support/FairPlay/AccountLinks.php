@@ -10,6 +10,7 @@ use App\Enums\SeriesStatus;
 use App\Models\AccountLink;
 use App\Models\ChessGame;
 use App\Models\FairPlayVoid;
+use App\Models\SeasonPayout;
 use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\TournamentPayout;
@@ -28,8 +29,9 @@ use Illuminate\Support\Facades\Gate;
  * Linking an account to a main account:
  * - bars it from rated play ({@see FairPlay}, read by the trust gate) and
  *   from prizes: payout planning skips it (PayoutPlan), and its unpaid
- *   payouts (`open`, `pending`, `failed`) are withheld for an admin's
- *   review: `open` with reason {@see self::WITHHELD}, never paid and never
+ *   tournament and season payouts (`open`, `pending`, `failed`) are
+ *   withheld for an admin's review: `open` with reason
+ *   {@see self::WITHHELD}, never paid and never
  *   moved to another player. A payout being paid at that moment is left to
  *   the payout runner, which refuses to start a withheld one;
  * - voids every finished result between it and the other accounts of the
@@ -114,9 +116,14 @@ final class AccountLinks
             $others = array_values(array_filter(array_map(fn (User $user): int => $user->id, [$main, ...$this->group($main)]), fn (int $id): bool => $id !== $linked->id));
             $voided = $this->voidSeries($link, $admin, $linked->id, $others) + $this->voidChess($link, $linked->id, $others);
 
-            $withheld = TournamentPayout::query()->where('pubkey', $linked->pubkey)
-                ->whereIn('status', [PayoutStatus::Open, PayoutStatus::Pending, PayoutStatus::Failed])
-                ->update(['status' => PayoutStatus::Open, 'reason' => self::WITHHELD]);
+            $withheld = 0;
+
+            // Tournament prizes and season payouts (P37) alike.
+            foreach ([TournamentPayout::query(), SeasonPayout::query()] as $payouts) {
+                $withheld += $payouts->where('pubkey', $linked->pubkey)
+                    ->whereIn('status', [PayoutStatus::Open, PayoutStatus::Pending, PayoutStatus::Failed])
+                    ->update(['status' => PayoutStatus::Open, 'reason' => self::WITHHELD]);
+            }
 
             return ['link' => $link, 'voided' => $voided, 'withheld' => $withheld];
         }, 3);
@@ -149,10 +156,15 @@ final class AccountLinks
             }
 
             // Back to where a payout can go on: an approved address is paid (the runner re-checks it), none waits for one.
-            $withheld = fn () => TournamentPayout::query()->where('pubkey', $link->linked_pubkey)->where('status', PayoutStatus::Open)->where('reason', self::WITHHELD);
+            $released = 0;
 
-            return $withheld()->whereNull('lud16')->update(['reason' => 'no_lud16'])
-                + $withheld()->whereNotNull('lud16')->update(['status' => PayoutStatus::Pending, 'reason' => null]);
+            foreach ([TournamentPayout::class, SeasonPayout::class] as $model) {
+                $withheld = fn () => $model::query()->where('pubkey', $link->linked_pubkey)->where('status', PayoutStatus::Open)->where('reason', self::WITHHELD);
+                $released += $withheld()->whereNull('lud16')->update(['reason' => 'no_lud16'])
+                    + $withheld()->whereNotNull('lud16')->update(['status' => PayoutStatus::Pending, 'reason' => null]);
+            }
+
+            return $released;
         }, 3);
     }
 

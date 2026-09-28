@@ -128,6 +128,9 @@ final class ProfileCache
 
         $nip05 = self::nip05($metadata['nip05'] ?? null);
         $nip05Changed = $nip05 !== $user->nip05;
+        $lud16 = self::lud16($metadata['lud16'] ?? null);
+        // A changed address after the first cached profile starts the payout freeze (P37: 72 h, SeasonSettlement).
+        $lud16Changed = $cachedAt !== null && $lud16 !== $user->lud16;
 
         $user->forceFill([
             'name' => self::name($metadata),
@@ -135,7 +138,8 @@ final class ProfileCache
             'about' => self::text($metadata['about'] ?? null, 1000),
             'banner' => self::httpsUrl($metadata['banner'] ?? null),
             'website' => self::httpsUrl($metadata['website'] ?? null),
-            'lud16' => self::lud16($metadata['lud16'] ?? null),
+            'lud16' => $lud16,
+            'lud16_changed_at' => $lud16Changed ? now() : $user->lud16_changed_at,
             'nip05' => $nip05,
             'nip05_verified_at' => $nip05Changed ? null : $user->nip05_verified_at,
             'nip05_checked_at' => $nip05Changed ? null : $user->nip05_checked_at,

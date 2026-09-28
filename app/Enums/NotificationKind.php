@@ -40,6 +40,7 @@ enum NotificationKind: string
     case CasualCheckIn = 'casual_checkin';
     case TournamentReminder = 'tournament_reminder';
     case BlockZero = 'block0';
+    case SeasonPayout = 'season_payout';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -58,7 +59,7 @@ enum NotificationKind: string
      */
     public function dmByDefault(): bool
     {
-        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport, self::CasualChallenge, self::CasualReminder, self::TournamentReminder, self::BlockZero], true);
+        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport, self::CasualChallenge, self::CasualReminder, self::TournamentReminder, self::BlockZero, self::SeasonPayout], true);
     }
 
     /**
@@ -71,7 +72,7 @@ enum NotificationKind: string
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
             self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport,
             self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder => 'challenge',
-            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero => 'confirmed',
+            self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero, self::SeasonPayout => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
         };
@@ -127,6 +128,7 @@ enum NotificationKind: string
             self::CasualCheckIn => ['1v1 check-in open', 'check in for your scheduled 1v1'],
             self::TournamentReminder => ['Tournament match reminder', 'your tournament match waits for you, and the league decides it on its own soon'],
             self::BlockZero => ['Block 0', 'you asked to be told: the date of Block 0, and when the board releases it'],
+            self::SeasonPayout => ['Season payout', 'your season sats wait for a Lightning address in your Nostr profile'],
         };
     }
 

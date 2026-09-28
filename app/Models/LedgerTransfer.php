@@ -20,13 +20,14 @@ use Illuminate\Support\Carbon;
  * @property string $from_account
  * @property string $to_account
  * @property int $sats
- * @property string $reason contribution | payout | fee | remainder
+ * @property string $reason contribution | payout | fee | remainder | season_payout | season_payout_fee
  * @property int|null $incoming_payment_id
  * @property int|null $tournament_payout_id
  * @property int|null $tournament_id
+ * @property int|null $season_payout_id
  * @property Carbon $created_at
  */
-#[Fillable(['from_account', 'to_account', 'sats', 'reason', 'incoming_payment_id', 'tournament_payout_id', 'tournament_id', 'created_at'])]
+#[Fillable(['from_account', 'to_account', 'sats', 'reason', 'incoming_payment_id', 'tournament_payout_id', 'tournament_id', 'season_payout_id', 'created_at'])]
 class LedgerTransfer extends Model
 {
     public const UPDATED_AT = null;
