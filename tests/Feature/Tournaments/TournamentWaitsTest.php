@@ -308,3 +308,26 @@ test('a player sees the countdown to the automatic decision on the tournament pa
     $this->actingAs(User::factory()->create())->get(route('tournaments.show', $tournament))->assertOk()
         ->assertDontSee('data-test="my-wait"', false);
 });
+
+test('the room tick shows a pause and a resume on the next tick, not up to a minute later', function () {
+    $tournament = waitsKnockout();
+    [$series] = waitsSeries($tournament);
+    [$a, $b] = waitsPlayers($series);
+    waitsReport($series, $a);
+
+    $room = Livewire::actingAs($b)->test('pages::matches.room', ['match' => $series]);
+    $room->call('sync')->assertOk();
+    $room->call('sync')->assertOk();
+    expect($room->effects)->not->toHaveKey('html');
+
+    app(TournamentControl::class)->pause($tournament, $tournament->creator, 'Server trouble');
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->html())->toContain('Paused: no deadline runs.');
+
+    app(TournamentControl::class)->resume($tournament->refresh(), $tournament->creator);
+    $room->call('sync')->assertOk();
+    expect($room->effects)->toHaveKey('html')
+        ->and($room->html())->not->toContain('Paused: no deadline runs.')
+        ->and($room->html())->toContain('data-test="auto-decision-clock"');
+});

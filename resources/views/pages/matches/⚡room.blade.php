@@ -17,6 +17,7 @@ use App\Support\Series\CasualMatches;
 use App\Support\Series\SeriesPresenter;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -606,7 +607,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      * as the Elo block reads them (Ratings::forSeries: rating rows and the
      * series' rating changes, which live outside the match row), the two
      * clock edges the view compares against now (kick-off, no-show window),
-     * and the error line. Whatever this misses, sync() still renders once
+     * a tournament's pause and status, and the error line. Whatever this misses, sync() still renders once
      * every RENDER_AT_LEAST seconds.
      */
     private function fingerprint(): string
@@ -619,7 +620,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             ? [array_map(fn (?SeriesInvite $invite) => $invite?->only(['id', 'status']), $this->rematchInvites()), $match->casualNextDeadline()['kind'] ?? null, $match->casualLobbyDueAt()?->isPast(), $match->casualJoinDueAt()?->isPast()]
             : null;
 
-        return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error, $casual]));
+        // A tournament series: the tournament's pause and status (the auto-decision line) live outside the match row.
+        $tournament = $match->tournament_match_id === null ? null
+            : DB::table('tournament_matches')->join('tournaments', 'tournaments.id', '=', 'tournament_matches.tournament_id')
+                ->where('tournament_matches.id', $match->tournament_match_id)->first(['tournaments.paused_at', 'tournaments.status']);
+
+        return hash('xxh128', (string) json_encode([$match->toArray(), Ratings::forSeries($match), $match->start_at?->isFuture(), $noshowFrom?->isFuture(), $this->error, $casual, $tournament]));
     }
 
     /**
