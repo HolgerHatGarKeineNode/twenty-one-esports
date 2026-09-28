@@ -54,6 +54,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     ];
     $next = $this->next;
     $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
+    // The cups open for sign-up or running stand on the cup board above, grouped by game (P53): the list leaves them out.
+    $listed = $this->tournaments->reject(fn (Tournament $t): bool => $t->isCasualCup() && in_array($t->status, [TournamentStatus::Signup, TournamentStatus::Running], true));
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-8 pb-10 lg:px-12" data-test="tournaments-index">
@@ -84,15 +86,15 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     @if ($next !== null)
         <x-tournaments.next-card :tournament="$next" />
     @endif
-    <x-tournaments.cup-mentions />
+    <x-tournaments.cup-mentions heading filters />
 
     <section aria-labelledby="all-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
         <h2 id="all-h" class="m-0 text-[15px] font-bold">{{ __('All tournaments') }}</h2>
-        @if ($this->tournaments->isEmpty())
-            <p class="m-0 text-[13px] text-ink-2">{{ __('No tournament is published yet.') }}</p>
+        @if ($listed->isEmpty())
+            <p class="m-0 text-[13px] text-ink-2">{{ $this->tournaments->isEmpty() ? __('No tournament is published yet.') : __('No other tournament is published yet: the casual cups above are all that is on.') }}</p>
         @else
             <ul class="m-0 flex list-none flex-col p-0">
-                @foreach ($this->tournaments as $tournament)
+                @foreach ($listed as $tournament)
                     <li class="flex flex-col gap-1 border-t border-hairline py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-4" wire:key="t-{{ $tournament->id }}" data-test="tournament-item">
                         <span class="flex min-w-0 flex-col gap-1.5 sm:w-[30%]">
                             <a href="{{ route('tournaments.show', $tournament) }}" class="flex min-w-0 items-center gap-2.5 font-bold"><x-game-cover :game="$tournament->game" size="thumb" class="w-12 rounded-xs" data-test="tournament-item-cover" /><span class="min-w-0 break-words sm:truncate">{{ $tournament->name }}</span></a>

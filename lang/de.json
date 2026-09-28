@@ -4839,5 +4839,18 @@
     "The two players do not both get :percent % or more of their trust from the same person": "Die beiden Spieler beziehen nicht beide :percent % oder mehr ihres Vertrauens von derselben Person",
     "At most :count blocks per pairing until the season ends": "Höchstens :count Blöcke pro Paarung bis zum Ende der Season",
     "sats at most, paid after the season": "Sats höchstens, ausgezahlt nach der Season",
-    "not announced yet": "noch nicht angekündigt"
+    "not announced yet": "noch nicht angekündigt",
+    "fixed at Block 0": "fest ab Block 0",
+    "Filter the casual cups": "Casual Cups filtern",
+    "Order": "Reihenfolge",
+    "By game": "Nach Spiel",
+    "By start": "Nach Start",
+    "Free places only": "Nur mit freien Plätzen",
+    "1 cup": "1 Cup",
+    ":count cups": ":count Cups",
+    "casual cup": "Casual Cup",
+    "No casual cup matches these filters.": "Kein Casual Cup passt zu diesen Filtern.",
+    "Show every cup": "Alle Cups zeigen",
+    "Filter and sort the cups": "Cups filtern und sortieren",
+    "No other tournament is published yet: the casual cups above are all that is on.": "Noch kein anderes Turnier veröffentlicht: die Casual Cups oben sind alles, was gerade läuft."
 }

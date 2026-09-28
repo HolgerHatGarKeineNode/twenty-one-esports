@@ -105,10 +105,145 @@ export function startsIn({ at, labels }) {
 }
 
 /**
+ * Zones a browser reports instead of the real one when it resists
+ * fingerprinting: Firefox (and LibreWolf, Tor and Mullvad Browser) with
+ * privacy.resistFingerprinting says UTC or Atlantic/Reykjavik
+ * (support.mozilla.org/kb/resist-fingerprinting). A German player then read
+ * "18:00 GMT+0" for a cup at 20:00 in Berlin (user, 2026-09-28). Such a zone
+ * is no answer: the page keeps the time it named with a city.
+ */
+export const SPOOFED_ZONES = ['UTC', 'Etc/UTC', 'Etc/GMT', 'GMT', 'Etc/Universal', 'Etc/Zulu', 'Universal', 'Zulu', 'Atlantic/Reykjavik'];
+
+/** The browser's own zone, or '' when it has none or reports a spoofed one. */
+export function browserZone() {
+    const own = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+    return SPOOFED_ZONES.includes(own) ? '' : own;
+}
+
+/** Minutes east of UTC of `timeZone` at `at` (ms since the epoch). */
+export function offsetAt(timeZone, at) {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+        .formatToParts(new Date(at)).map(({ type, value }) => [type, value]));
+
+    return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute)) - Math.floor(at / 60000) * 60000;
+}
+
+/**
+ * The cup board's start: { day, clock, city } of `at` in `timeZone`, in the
+ * shape App\Support\Tournaments\CupBoard::start() writes on the server
+ * ("Sat, Oct 10", "8:00 PM", "New York"; German "Sa, 10. Okt", "20:00").
+ */
+export function boardStart(at, timeZone, lang = 'en') {
+    const german = String(lang).toLowerCase().startsWith('de');
+    const part = (options) => Object.fromEntries(new Intl.DateTimeFormat(german ? 'de' : 'en', { timeZone, ...options })
+        .formatToParts(new Date(at)).map(({ type, value }) => [type, value.replace(/\.$/, '')]));
+    const date = part({ weekday: 'short', day: 'numeric', month: 'short' });
+    const time = part(german ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } : { hour: 'numeric', minute: '2-digit', hour12: true });
+    const city = timeZone.slice(timeZone.lastIndexOf('/') + 1).replaceAll('_', ' ');
+
+    return {
+        day: german ? `${date.weekday}, ${date.day}. ${date.month}` : `${date.weekday}, ${date.month} ${date.day}`,
+        clock: german ? `${time.hour}:${time.minute}` : `${time.hour}:${time.minute} ${String(time.dayPeriod || '').toUpperCase()}`,
+        city,
+    };
+}
+
+/**
+ * cupStart({ at, zone }) — one row of the cup board: the server wrote the
+ * start in `zone` (the cup's region); a browser with a real zone on another
+ * offset rewrites day, clock and city to its own. Empty strings keep the
+ * server's words.
+ */
+export function cupStart({ at, zone }) {
+    return {
+        day: '',
+        clock: '',
+        city: '',
+
+        init() {
+            const own = browserZone();
+
+            if (!own || own === zone || offsetAt(own, at) === offsetAt(zone, at)) {
+                return;
+            }
+
+            Object.assign(this, boardStart(at, own, document.documentElement.lang));
+        },
+    };
+}
+
+/**
+ * cupBoard() — the cup board's filter bar on the tournaments page: game,
+ * region, "free places only" and the order (by game or by start), all without
+ * a reload. The server renders every cup; this only hides rows and reorders
+ * rows and game groups in the DOM (so the focus order follows what is seen).
+ * A group without a visible row hides; `shown` counts the visible cups.
+ * Rows carry data-game, data-region, data-start (ms), data-free ("1"/"0")
+ * and data-order (region order); groups data-order (game order).
+ */
+export function cupBoard() {
+    return {
+        game: 'all',
+        region: 'all',
+        freeOnly: false,
+        sort: 'game',
+        shown: 0,
+
+        apply() {
+            const { game, region, freeOnly, sort } = this;
+            const list = this.$refs.groups;
+
+            if (!list) {
+                return;
+            }
+
+            let shown = 0;
+            const groups = [...list.querySelectorAll(':scope > [data-cup-group]')];
+            const byOrder = (a, b) => Number(a.dataset.order) - Number(b.dataset.order);
+
+            for (const group of groups) {
+                const rows = [...group.querySelectorAll('[data-cup-row]')];
+                let visible = 0;
+                let first = Infinity;
+
+                for (const row of rows) {
+                    const match = (game === 'all' || row.dataset.game === game)
+                        && (region === 'all' || row.dataset.region === region)
+                        && (!freeOnly || row.dataset.free === '1');
+                    row.hidden = !match;
+
+                    if (match) {
+                        visible += 1;
+                        first = Math.min(first, Number(row.dataset.start));
+                    }
+                }
+
+                const byStart = (a, b) => Number(a.dataset.start) - Number(b.dataset.start) || byOrder(a, b);
+                const rowList = rows[0]?.parentElement;
+                rows.sort(sort === 'start' ? byStart : byOrder).forEach((row) => rowList.append(row));
+
+                group.hidden = visible === 0;
+                group.dataset.first = String(first);
+                shown += visible;
+            }
+
+            groups.sort(sort === 'start' ? (a, b) => Number(a.dataset.first) - Number(b.dataset.first) || byOrder(a, b) : byOrder)
+                .forEach((group) => list.append(group));
+            this.shown = shown;
+        },
+
+        reset() {
+            Object.assign(this, { game: 'all', region: 'all', freeOnly: false });
+        },
+    };
+}
+
+/**
  * localTime({ at, zone, label }) — the start in the viewer's own zone, only
  * when that zone runs on another UTC offset than the league's at that moment
- * (Vienna needs no second line, New York does). Empty otherwise; always
- * one line, the zone's name in the title.
+ * (Vienna needs no second line, New York does), and never for a spoofed zone
+ * (SPOOFED_ZONES). Empty otherwise; always one line, the zone's name in the title.
  */
 export function localTime({ at, zone, label }) {
     return {
@@ -116,15 +251,9 @@ export function localTime({ at, zone, label }) {
         zone: '',
 
         init() {
-            const own = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            const offset = (timeZone) => {
-                const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
-                    .formatToParts(new Date(at)).map(({ type, value }) => [type, value]));
+            const own = browserZone();
 
-                return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour) % 24, Number(parts.minute)) - Math.floor(at / 60000) * 60000;
-            };
-
-            if (!own || own === zone || offset(own) === offset(zone)) {
+            if (!own || own === zone || offsetAt(own, at) === offsetAt(zone, at)) {
                 return;
             }
 
@@ -143,5 +272,7 @@ if (typeof document !== 'undefined') {
         window.Alpine.data('countUp', countUp);
         window.Alpine.data('startsIn', startsIn);
         window.Alpine.data('localTime', localTime);
+        window.Alpine.data('cupStart', cupStart);
+        window.Alpine.data('cupBoard', cupBoard);
     });
 }

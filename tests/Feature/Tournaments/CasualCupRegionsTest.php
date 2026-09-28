@@ -307,11 +307,11 @@ test('the game page, home, the index and a cup\'s own page show both regions\' c
     $eu = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
     $us = Tournament::query()->where('cup_open_series', 'chess-us')->sole();
 
-    // A guest: the league's zone on the server (the browser rewrites it to its own).
+    // A guest: each cup in its region's zone, named by the city (the browser rewrites it to its own, P53).
     foreach (['/chess', route('home'), route('tournaments.index')] as $url) {
         $this->get($url)->assertOk()
-            ->assertSeeInOrder(['Chess Casual Cup EU #1', 'Sat, 10 Oct 2026, 8:00 PM CEST', 'Chess Casual Cup US #1', 'Sun, 11 Oct 2026, 2:00 AM CEST'])
-            ->assertSee('x-data="localTime({ at: '.$us->starts_at->getTimestampMs(), false);
+            ->assertSeeInOrder(['Chess Casual Cup EU #1', '8:00 PM', 'Sat, Oct 10', 'Berlin', 'Chess Casual Cup US #1', '8:00 PM', 'Sat, Oct 10', 'New York'])
+            ->assertSee('x-data="cupStart({ at: '.$us->starts_at->getTimestampMs().", zone: 'America\\/New_York' })\"", false);
     }
 
     $this->get('/games/rocket-league')->assertOk()->assertSeeInOrder(['Rocket League Casual Cup EU #1', 'Rocket League Casual Cup US #1'])->assertDontSee('Chess Casual Cup');
@@ -319,8 +319,8 @@ test('the game page, home, the index and a cup\'s own page show both regions\' c
     // Signed in with a zone: that zone, and no browser rewrite.
     $this->actingAs(User::factory()->create(['timezone' => 'America/New_York']));
     $this->get('/chess')->assertOk()
-        ->assertSeeInOrder(['Chess Casual Cup EU #1', 'Sat, 10 Oct 2026, 2:00 PM EDT', 'Chess Casual Cup US #1', 'Sat, 10 Oct 2026, 8:00 PM EDT'])
-        ->assertDontSee('localTime({ at: '.$us->starts_at->getTimestampMs(), false);
+        ->assertSeeInOrder(['Chess Casual Cup EU #1', '2:00 PM', 'Sat, Oct 10', 'New York', 'Chess Casual Cup US #1', '8:00 PM', 'Sat, Oct 10', 'New York'])
+        ->assertDontSee('cupStart({ at: '.$us->starts_at->getTimestampMs(), false);
 
     // The EU cup's page names the US cup, not itself.
     $html = $this->get(route('tournaments.show', $eu))->assertOk()->getContent();

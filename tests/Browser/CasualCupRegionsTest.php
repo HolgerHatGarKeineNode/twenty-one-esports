@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Support\Tournaments\CasualCups;
 use Carbon\CarbonImmutable;
@@ -73,7 +74,7 @@ function cupRegionsRows(Page $page): array
         width: window.innerWidth,
         rows: [...document.querySelectorAll("[data-test=cup-mention]")].filter((el) => el.checkVisibility()).map((el) => {
             const r = el.getBoundingClientRect();
-            const name = [...el.querySelectorAll("span")].map((s) => s.innerText).find((t) => t.includes("Casual Cup")) || "";
+            const name = [...el.querySelectorAll("span")].map((s) => s.textContent).find((t) => t.includes("Casual Cup")) || "";
             const start = (el.querySelector("[data-test=cup-mention-start]")?.innerText || "").replace(/\s+/g, " ").trim();
             return { name, start, left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) };
         }),
@@ -101,7 +102,7 @@ test('the game page lists the EU and the US cup, each start on the viewer\'s clo
         expect($measured['overflow'])->toBe(0)
             ->and(array_column($measured['rows'], 'name'))->toBe(['Rocket League Casual Cup EU #1', 'Rocket League Casual Cup US #1'])
             // The browser's own zone (New York), not the league's: 20:00 Berlin is 14:00 there.
-            ->and(array_column($measured['rows'], 'start'))->toBe(['Sat, Oct 10, 2:00 PM EDT', 'Sat, Oct 10, 8:00 PM EDT'])
+            ->and(array_column($measured['rows'], 'start'))->toBe(['2:00 PM Sat, Oct 10, New York', '8:00 PM Sat, Oct 10, New York'])
             ->and(collect($measured['rows'])->every(fn (array $row): bool => $row['left'] >= 0 && $row['right'] <= $measured['width'] && $row['height'] >= 44))->toBeTrue();
     }
 
@@ -137,7 +138,7 @@ test('the EU cup\'s page names the US cup with its start on the viewer\'s clock,
         expect($measured['overflow'])->toBe(0)
             ->and($measured['rows'])->toHaveCount(1)
             ->and($measured['rows'][0]['name'])->toBe('Rocket League Casual Cup US #1')
-            ->and($measured['rows'][0]['start'])->toBe('Sat, Oct 10, 8:00 PM EDT')
+            ->and($measured['rows'][0]['start'])->toBe('8:00 PM Sat, Oct 10, New York')
             ->and($measured['rows'][0]['right'])->toBeLessThanOrEqual($measured['width'])
             ->and($measured['rows'][0]['height'])->toBeGreaterThanOrEqual(44);
     }
@@ -146,4 +147,110 @@ test('the EU cup\'s page names the US cup with its start on the viewer\'s clock,
         expect($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     }
+});
+
+/*
+| The cup board on the tournaments page (P53): grouped by game with the
+| cover, each game's EU and US as a pair, and a filter bar that works without
+| a reload. Measured at 1440 and 375 in English and at 375 in German: no
+| overflow, every control a 44 px target, the cover in each group; the
+| filters hide and reorder in place (no navigation), and the console and the
+| answers stay clean, with a positive control.
+*/
+
+/**
+ * The board as the browser shows it: visible groups in page order with their
+ * visible rows, the count line, the controls under 44 px and the overflow.
+ *
+ * @return array{groups: list<array{game: string, rows: list<string>, cover: bool}>, count: string, small: list<string>, overflow: int, url: string}
+ */
+function cupBoardState(Page $page): array
+{
+    return $page->evaluate('() => ({
+        groups: [...document.querySelectorAll("[data-cup-group]")].filter((g) => g.checkVisibility()).map((g) => ({
+            game: g.dataset.game,
+            rows: [...g.querySelectorAll("[data-cup-row]")].filter((r) => r.checkVisibility()).map((r) => r.dataset.region),
+            cover: (g.querySelector("[data-test=cup-group-cover]")?.getBoundingClientRect().width || 0) >= 90,
+        })),
+        count: document.querySelector("[data-test=cup-filter-count]").innerText.trim(),
+        small: [...document.querySelectorAll("[data-test=cup-filters] button, [data-test=cup-filters] select, [data-test=cup-filters] label:has(input), [data-test=cup-mention]")]
+            .filter((el) => el.checkVisibility()).filter((el) => el.getBoundingClientRect().height < 44).map((el) => el.dataset.test || el.tagName),
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        url: location.href,
+    })');
+}
+
+test('the tournaments page groups the cups by game with covers and filters them in place, at 1440 and 375, German at 375', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
+    app(CasualCups::class)->tick();
+    // The Rocket League US cup is running: no free places, so "free places only" hides it.
+    Tournament::query()->where('cup_open_series', 'rocket-league-us')->sole()->forceFill(['status' => TournamentStatus::Running])->save();
+    $all = ['chess' => ['eu', 'us'], 'rocket-league' => ['eu', 'us'], 'ea-sports-fc-26' => ['eu', 'us']];
+
+    foreach ([[1440, 900, 'en'], [375, 812, 'en'], [375, 812, 'de']] as [$width, $height, $lang]) {
+        $page = cupRegionsPage('/tournaments', $width, $height, '[data-test=cup-filters]');
+
+        if ($lang === 'de') {
+            $page->goto(ComputeUrl::from('/locale/de'));
+            $page->goto(ComputeUrl::from('/tournaments'));
+            BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=cup-filters]") !== null && document.fonts.status === "loaded"', 10_000);
+        }
+
+        if ($width === 1440) {
+            cupRegionsControl($page);
+        }
+
+        $start = cupBoardState($page);
+        cupRegionsShot($page, "cup-board-{$width}-{$lang}");
+
+        expect(collect($start['groups'])->mapWithKeys(fn (array $g): array => [$g['game'] => $g['rows']])->all())->toBe($all)
+            ->and(collect($start['groups'])->every(fn (array $g): bool => $g['cover']))->toBeTrue()
+            ->and($start['count'])->toBe($lang === 'de' ? '6 Cups' : '6 cups')
+            ->and([$width, $lang, $start['small'], $start['overflow']])->toBe([$width, $lang, [], 0]);
+
+        // Region US: one row per game, no reload.
+        $page->locator('[data-test=cup-filter-region-us]')->click();
+        $us = cupBoardState($page);
+        expect(collect($us['groups'])->every(fn (array $g): bool => $g['rows'] === ['us']))->toBeTrue()
+            ->and($us['count'])->toBe($lang === 'de' ? '3 Cups' : '3 cups')
+            ->and($us['url'])->toBe($start['url']);
+
+        // Plus free places only: the running Rocket League US cup goes, and its group with it.
+        $page->locator('[data-test=cup-filter-free]')->click();
+        expect(array_column(cupBoardState($page)['groups'], 'game'))->toBe(['chess', 'ea-sports-fc-26']);
+
+        // One game: the select below sm, the covered buttons from sm.
+        $width < 640
+            ? $page->evaluate('() => { const s = document.querySelector("[data-test=cup-filter-game-select]"); s.value = "rocket-league"; s.dispatchEvent(new Event("change")); }')
+            : $page->locator('[data-test=cup-filter-game-rocket-league]')->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=cup-filter-empty]").checkVisibility()', 3_000);
+        expect(cupBoardState($page)['groups'])->toBe([])
+            ->and($page->evaluate('() => document.querySelector("[data-test=cup-filter-count]").innerText.trim()'))->toBe($lang === 'de' ? '0 Cups' : '0 cups');
+
+        // "Show every cup" resets game, region and free places.
+        $page->locator('[data-test=cup-filter-empty] button')->click();
+        expect(collect(cupBoardState($page)['groups'])->mapWithKeys(fn (array $g): array => [$g['game'] => $g['rows']])->all())->toBe($all);
+
+        expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});
+
+test('by start orders the game groups by their earliest cup and the rows by start', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league']]);
+    app(CasualCups::class)->tick();
+    // The chess EU cup moves two days later: chess's earliest cup is then its US one (Sun 02:00 Berlin), after Rocket League's EU cup (Sat 20:00).
+    $chessEu = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
+    $chessEu->forceFill(['starts_at' => $chessEu->starts_at->addDays(2)])->save();
+
+    $page = cupRegionsPage('/tournaments', 1440, 900, '[data-test=cup-filters]');
+    expect(array_column(cupBoardState($page)['groups'], 'game'))->toBe(['chess', 'rocket-league']);
+
+    $page->locator('[data-test=cup-sort-start]')->click();
+    $state = cupBoardState($page);
+
+    expect(array_column($state['groups'], 'game'))->toBe(['rocket-league', 'chess'])
+        ->and($state['groups'][1]['rows'])->toBe(['us', 'eu'])
+        ->and($page->evaluate('() => document.querySelector("[data-test=cup-sort-start]").getAttribute("aria-pressed")'))->toBe('true')
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });

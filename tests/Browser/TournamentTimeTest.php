@@ -170,14 +170,14 @@ test('the when block sits above the fold at 375 and 1440 px in both languages, h
                 ->and($state['startsIn'])->toMatch($locale === 'de' ? '/^startet in [45] T \d+ Std$/' : '/^starts in [45] d \d+ h$/')
                 ->and([$locale, $width, $state['overflow'], $state['shifts'], $state['errors'], $state['bad']])->toBe([$locale, $width, 0, [], [], []]);
 
-            // The viewer's-time line appears exactly when the browser's zone runs on another offset at the start.
-            $differs = $page->evaluate('(at) => { const o = (z) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }).formatToParts(new Date(at)).map((x) => [x.type, x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute) - at; }; return o(Intl.DateTimeFormat().resolvedOptions().timeZone) !== o("Europe/Berlin"); }', $tournament->starts_at->getTimestampMs());
+            // The viewer's-time line appears exactly when the browser's zone runs on another offset at the start and is not one a privacy browser reports instead of the real one (P53, SPOOFED_ZONES).
+            $differs = $page->evaluate('(at) => { const o = (z) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: z, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" }).formatToParts(new Date(at)).map((x) => [x.type, x.value])); return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute) - at; }; const own = Intl.DateTimeFormat().resolvedOptions().timeZone; return !["UTC", "Etc/UTC", "Etc/GMT", "GMT", "Etc/Universal", "Etc/Zulu", "Universal", "Zulu", "Atlantic/Reykjavik"].includes(own) && o(own) !== o("Europe/Berlin"); }', $tournament->starts_at->getTimestampMs());
             expect($state['localText'] !== '')->toBe($differs);
         }
     }
 
-    // Positive control of that line: the same component with a league zone on another offset than any browser here fills it.
-    $forced = $page->evaluate('(at) => { const el = document.createElement("div"); el.setAttribute("x-data", `localTime({ at: ${at}, zone: "Pacific/Kiritimati", label: "In your time: :time" })`); el.innerHTML = \'<span x-text="text"></span>\'; document.body.append(el); window.Alpine.initTree(el); const text = el.innerText.trim(); el.remove(); return text; }', $tournament->starts_at->getTimestampMs());
+    // Positive control of that line: the same component with a league zone on another offset than the (stubbed, real) browser zone fills it.
+    $forced = $page->evaluate('(at) => { const Original = Intl.DateTimeFormat; Intl.DateTimeFormat = function (...args) { const f = new Original(...args); return args.length === 0 ? { resolvedOptions: () => ({ ...f.resolvedOptions(), timeZone: "Asia/Tokyo" }) } : f; }; const el = document.createElement("div"); el.setAttribute("x-data", `localTime({ at: ${at}, zone: "Pacific/Kiritimati", label: "In your time: :time" })`); el.innerHTML = \'<span x-text="text"></span>\'; document.body.append(el); window.Alpine.initTree(el); const text = el.innerText.trim(); el.remove(); Intl.DateTimeFormat = Original; return text; }', $tournament->starts_at->getTimestampMs());
     expect($forced)->toStartWith('In your time: ')->toContain(':');
 
     // The calendar link answers 200 with the start in UTC.
