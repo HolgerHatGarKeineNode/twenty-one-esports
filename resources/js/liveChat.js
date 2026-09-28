@@ -3,11 +3,19 @@
  * read and written straight from the browser; the league server never sees a
  * message. Loaded only on that page (layout `scripts`).
  *
- * - liveChat: one subscription (kind 1311 and zap receipts 9735 with the
- *   stream's `a`) on the chat relays, newest at the bottom. It follows new
- *   messages while the reader is at the bottom; scrolled up, it counts them
- *   in an "N new" button instead. Names and pictures come from kind 0 on the
- *   profile relays, cached on this device. Posting signs a kind 1311 with the
+ * - liveChat: one subscription per chat relay (kind 1311 and zap receipts
+ *   9735 with the stream's `a`, `limit` = the page size), newest at the
+ *   bottom. The first answers are held back until every relay sent its EOSE
+ *   (or a short wait ran out, so one slow relay does not hold the list), then
+ *   the newest page of all of them is drawn once, already scrolled to the
+ *   bottom: before this, messages were drawn one by one at the top and the
+ *   list jumped down seconds later. Scrolled near the top, the next older
+ *   page is read (`until` = the oldest shown) and put above without moving
+ *   what the reader sees. Every later arrival goes to its place by
+ *   created_at, not to the end. The list follows new messages while the
+ *   reader is at the bottom; scrolled up, it counts them in an "N new"
+ *   button instead. Names and pictures come from kind 0 on the profile
+ *   relays, cached on this device. Posting signs a kind 1311 with the
  *   viewer's signer (signing.js) and publishes it; guests only read.
  *   Mutes are the viewer's own, as in the game chat: localStorage plus the
  *   account (Livewire `setMuted`); a run of muted messages folds into one line.
@@ -23,13 +31,23 @@ import { emojiPicker, emojiPopover } from './emojiPicker.js';
 import { ensureSigner } from './nostrSign.js';
 import { newest, readRelays } from './relayRead.js';
 import { signerMessage, signTemplate } from './signing.js';
-import { botMark, boundProfiles, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, parseZap, profileOf, sendBlocker, tokenize } from './streamChat.js';
+import { botMark, boundProfiles, compareItems, displayRows, formatSats, insertSorted, isHttps, isStreamMessage, length, messageTemplate, newestPage, olderPage, parseZap, profileOf, sendBlocker, tokenize } from './streamChat.js';
 
 const MUTES_KEY = 'esports.chat.mutes';
 const PROFILES_KEY = 'esports.livechat.profiles';
 const PROFILE_TTL_MS = 6 * 60 * 60 * 1000;
-const KEEP = 200;
-const BOTTOM_SLACK = 48;
+/** Messages kept while the reader follows the bottom; scrolled up, nothing is dropped under her. */
+const KEEP = 400;
+/** Pixels from the bottom that still count as "at the bottom". */
+const BOTTOM_SLACK = 8;
+/** Pixels from the top at which the next older page is read. */
+const OLDER_MARGIN = 160;
+/** After the first relay's EOSE, the others get this long before the list is drawn. */
+const FIRST_GRACE_MS = 500;
+/** No EOSE at all: the list is drawn with what came by then. */
+const FIRST_WAIT_MS = 3000;
+/** How long a page of older messages waits for a relay. */
+const OLDER_WAIT_MS = 4000;
 const AVATAR_PLACEHOLDER = '0'.repeat(64);
 
 function readJson(key, fallback) {
@@ -73,6 +91,7 @@ export function liveChat(config) {
         lastSentAt: null,
         atBottom: true,
         unseen: 0,
+        older: 'idle',
         muted: [],
         revealed: [],
         menuFor: null,
@@ -98,18 +117,35 @@ export function liveChat(config) {
 
             if (this.status === 'off') return;
 
+            // Not reactive: the first answers wait here and are drawn once.
+            this.buffer = new Map();
+            this.page = config.history ?? 50;
+            // A list that changes height (the column fits itself, the dock comes) stays at the bottom when it was there.
+            this.listObserver = new ResizeObserver(() => this.pinBottom());
+            if (this.$refs.list) this.listObserver.observe(this.$refs.list);
+
+            // One subscription per relay, so each relay's EOSE is seen; ids are deduplicated here.
+            const relays = [...new Set(config.relays)];
+            const waiting = new Set(relays);
             this.pool = new SimplePool();
-            this.sub = this.pool.subscribe(
-                config.relays,
-                { kinds: [1311, 9735], '#a': [config.address], limit: config.history ?? 80 },
+            this.subs = relays.map((url) => this.pool.subscribe(
+                [url],
+                { kinds: [1311, 9735], '#a': [config.address], limit: this.page },
                 {
                     onevent: (event) => this.receive(event),
-                    oneose: () => this.caughtUp(),
-                    maxWait: 6000,
+                    oneose: () => {
+                        waiting.delete(url);
+                        if (waiting.size === 0) {
+                            this.caughtUp();
+                        } else {
+                            this.graceTimer ??= setTimeout(() => this.caughtUp(), FIRST_GRACE_MS);
+                        }
+                    },
+                    maxWait: FIRST_WAIT_MS,
                 },
-            );
+            ));
             // A relay that never answers must not leave the list saying "connecting".
-            this.eoseTimer = setTimeout(() => this.caughtUp(), 6500);
+            this.eoseTimer = setTimeout(() => this.caughtUp(), FIRST_WAIT_MS);
 
             if (this.me && this.pointerFine) {
                 // Warm the viewer's own emoji so the picker's tab is there when it opens.
@@ -118,49 +154,174 @@ export function liveChat(config) {
         },
 
         destroy() {
+            this.destroyed = true;
             this.fitObserver?.disconnect();
+            this.listObserver?.disconnect();
             window.removeEventListener('resize', this.fit);
             clearTimeout(this.eoseTimer);
+            clearTimeout(this.graceTimer);
             clearTimeout(this.profileTimer);
-            this.sub?.close();
+            this.subs?.forEach((sub) => sub.close());
             this.pool?.destroy();
         },
 
+        /**
+         * Every relay sent its EOSE, or the wait ran out: the newest page of
+         * what came is drawn in one go, and the list stands at its bottom
+         * before the browser paints it (afterRender; $nextTick waits for a
+         * timer, which lets a frame show the top first).
+         */
         caughtUp() {
             clearTimeout(this.eoseTimer);
+            clearTimeout(this.graceTimer);
             if (this.status !== 'connecting') return;
+
+            this.items = newestPage([...this.buffer.values()], this.page);
+            this.buffer = null;
             this.status = 'live';
-            this.$nextTick(() => this.scrollToBottom());
+            this.afterRender(() => {
+                this.toBottom();
+                // A short list has no scrollbar to pull: read on until it fills or the chat's start is reached.
+                this.readOnIfNearTop();
+            });
         },
 
-        receive(event) {
-            let item = null;
+        /** A relay event as a list item (a message or a zap of this stream), null when it is neither. */
+        itemOf(event) {
             if (isStreamMessage(event, config.address)) {
-                if (event.content.trim() === '') return;
-                item = {
+                if (event.content.trim() === '') return null;
+
+                return {
                     type: 'message',
                     id: event.id,
                     pubkey: event.pubkey,
                     created_at: event.created_at,
                     tokens: tokenize(event.content, event.tags),
                 };
-            } else {
-                const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [], recipient: config.zapRecipient ?? null, lnurl: config.zapLnurl ?? null });
-                if (zap) item = { type: 'zap', ...zap, tokens: tokenize(zap.comment, []) };
             }
+
+            const zap = parseZap(event, { address: config.address, signers: config.zapSigners ?? [], recipient: config.zapRecipient ?? null, lnurl: config.zapLnurl ?? null });
+
+            return zap ? { type: 'zap', ...zap, tokens: tokenize(zap.comment, []) } : null;
+        },
+
+        receive(event) {
+            const item = this.itemOf(event);
             if (!item) return;
 
-            const list = this.$refs.list;
-            const follow = this.atBottom;
-            if (!insertSorted(this.items, item, KEEP)) return;
+            if (this.status === 'connecting') {
+                if (!this.buffer.has(item.id)) this.buffer.set(item.id, item);
+                this.wantProfile(item.pubkey);
+
+                return;
+            }
+
+            // Older than the oldest shown (a slow relay's first answer): its page brings it. Put in now, it
+            // would stand above a gap, and the next page, asked `until` it, would never fill that gap.
+            if (this.items.length > 0 && this.older !== 'end' && compareItems(item, this.items[0]) < 0) return;
+
+            const own = item.pubkey === this.me;
+            const last = this.items[this.items.length - 1];
+            const atEnd = !last || compareItems(item, last) > 0;
+            const before = this.items.length;
+            let added = false;
+            // Late or out of order, it goes to its place; the reader's view stays where it is.
+            const pinned = this.keepView(() => {
+                // Only a reader at the bottom loses the oldest: above it, nothing is taken from under her.
+                added = insertSorted(this.items, item, this.atBottom || own ? KEEP : Infinity);
+            }, own);
+            if (!added) return;
+            // The oldest went: the chat's start is no longer in the list.
+            if (this.items.length <= before && this.older === 'end') this.older = 'idle';
             this.wantProfile(item.pubkey);
 
-            if (this.status !== 'live') return;
-            if (item.pubkey === this.me || (follow && list?.checkVisibility())) {
-                this.$nextTick(() => this.scrollToBottom());
-            } else if (!this.muted.includes(item.pubkey)) {
+            if (!pinned && atEnd && !this.muted.includes(item.pubkey)) {
                 this.unseen += 1;
             }
+        },
+
+        /**
+         * Runs `fn` once Alpine has drawn the change just made, before the
+         * browser paints: Alpine flushes its effects in a microtask queued at
+         * the first reactive write, so a microtask queued after that write
+         * runs after the flush.
+         */
+        afterRender(fn) {
+            queueMicrotask(() => {
+                if (!this.destroyed) fn();
+            });
+        },
+
+        /**
+         * Applies `change` to the list and keeps the reader's view: at the
+         * bottom (or with `toEnd`) the list stays at the bottom; otherwise the
+         * first row she sees stays at the same height, whatever came above
+         * it. Returns whether the list was held at the bottom.
+         */
+        keepView(change, toEnd = false) {
+            const list = this.$refs.list;
+            const pinned = toEnd || this.atBottom;
+            let anchor = null;
+            let top = 0;
+            if (list && !pinned) {
+                const edge = list.getBoundingClientRect().top;
+                anchor = [...list.querySelectorAll(':scope > li[data-key]')].find((row) => row.getBoundingClientRect().bottom > edge + 1) ?? null;
+                top = anchor?.getBoundingClientRect().top ?? 0;
+            }
+
+            change();
+            this.afterRender(() => {
+                if (pinned) {
+                    this.toBottom();
+                } else if (anchor?.isConnected) {
+                    list.scrollTop += anchor.getBoundingClientRect().top - top;
+                }
+            });
+
+            return pinned;
+        },
+
+        /** Near the top with more to read: the next older page. */
+        readOnIfNearTop() {
+            const list = this.$refs.list;
+            if (list?.checkVisibility() && list.scrollTop < OLDER_MARGIN) this.loadOlder();
+        },
+
+        /**
+         * The page before the oldest message shown (`until` its created_at,
+         * that second included, known ids dropped), put above it. A full page
+         * of known events only (one busy second) steps a second back once.
+         * The chat's start is reached when the relays that answered have
+         * nothing more (olderPage).
+         */
+        async loadOlder() {
+            if (this.older !== 'idle' || this.status !== 'live' || this.items.length === 0) return;
+            this.older = 'loading';
+
+            let until = this.items[0].created_at;
+            let results = [];
+            let fresh = [];
+            try {
+                for (let attempt = 0; attempt < 2; attempt += 1) {
+                    results = await readRelays(config.relays, [{ kinds: [1311, 9735], '#a': [config.address], until, limit: this.page }], { timeoutMs: OLDER_WAIT_MS });
+                    const known = new Set(this.items.map((item) => item.id));
+                    fresh = results.flatMap((result) => result.events).map((event) => this.itemOf(event)).filter((item) => item && !known.has(item.id));
+                    if (fresh.length > 0 || !results.some((result) => result.events.length >= this.page)) break;
+                    until -= 1;
+                }
+            } catch (error) {
+                console.warn('[live chat] reading older messages failed', error);
+            }
+            if (this.destroyed) return;
+
+            const { items, end } = olderPage(results, fresh, this.page);
+            this.keepView(() => {
+                if (items.length > 0) this.items = newestPage([...items, ...this.items], Infinity);
+                this.older = end ? 'end' : 'idle';
+            });
+            items.forEach((item) => this.wantProfile(item.pubkey));
+            // Still near the top (a short page): read on, but only while pages bring something.
+            if (items.length > 0 && !end) this.afterRender(() => this.readOnIfNearTop());
         },
 
         /** The list's rows; `cont` marks a message that continues its author's previous one (within 2 min): no name line again. */
@@ -218,8 +379,23 @@ export function liveChat(config) {
         onScroll() {
             const list = this.$refs.list;
             if (!list) return;
-            this.atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < BOTTOM_SLACK;
+            this.atBottom = list.scrollHeight - list.scrollTop - list.clientHeight <= BOTTOM_SLACK;
             if (this.atBottom) this.unseen = 0;
+            if (this.status === 'live') this.readOnIfNearTop();
+        },
+
+        /** Straight to the bottom without animation: the list's own bookkeeping, not a reader's click. */
+        toBottom() {
+            const list = this.$refs.list;
+            if (!list) return;
+            list.scrollTop = list.scrollHeight;
+            this.atBottom = true;
+            this.unseen = 0;
+        },
+
+        /** Something in the list changed height (an image loaded, the column was fitted): a reader at the bottom stays there. */
+        pinBottom() {
+            if (this.atBottom && this.status === 'live') this.toBottom();
         },
 
         scrollToBottom(smooth = false) {

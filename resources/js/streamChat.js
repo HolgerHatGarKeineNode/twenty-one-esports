@@ -20,7 +20,9 @@
  *   from a list of what the picker inserted);
  * - the send rules: not empty, at most `maxLength` characters, one message
  *   per `cooldownMs`;
- * - how muted messages collapse into one line per run.
+ * - how muted messages collapse into one line per run;
+ * - the list's order (created_at, then id) and its pages: the newest page of
+ *   several relays' answers, and what a page of older messages brings.
  */
 import { verifyEvent } from 'nostr-tools/pure';
 
@@ -308,6 +310,14 @@ export function messageTemplate(content, { address, relayHint, custom = [], now 
     };
 }
 
+/** The list's order: oldest first by created_at, a tie by id. */
+export function compareItems(a, b) {
+    if (a.created_at !== b.created_at) return a.created_at - b.created_at;
+    if (a.id === b.id) return 0;
+
+    return a.id < b.id ? -1 : 1;
+}
+
 /**
  * Insert an item into a list kept oldest first (created_at, then id), each id
  * once, at most `max` long (the oldest go). Returns whether it was new.
@@ -316,13 +326,48 @@ export function insertSorted(list, item, max = 200) {
     if (list.some((known) => known.id === item.id)) return false;
 
     let index = list.length;
-    while (index > 0 && (list[index - 1].created_at > item.created_at || (list[index - 1].created_at === item.created_at && list[index - 1].id > item.id))) {
+    while (index > 0 && compareItems(list[index - 1], item) > 0) {
         index -= 1;
     }
     list.splice(index, 0, item);
     if (list.length > max) list.splice(0, list.length - max);
 
     return true;
+}
+
+/**
+ * The newest `max` items, each id once, oldest first: what one page of the
+ * chat shows. Several relays each answer a `limit` of their own, so their
+ * union is only complete down to its `max` newest items: below that, a relay
+ * may hold events it did not send because its own page was full.
+ */
+export function newestPage(items, max) {
+    const byId = new Map();
+    for (const item of items) {
+        if (!byId.has(item.id)) byId.set(item.id, item);
+    }
+    const sorted = [...byId.values()].sort(compareItems);
+
+    return Number.isFinite(max) && sorted.length > max ? sorted.slice(sorted.length - max) : sorted;
+}
+
+/**
+ * What a page of older messages means (the relays asked with `until` and
+ * `limit: page`): `items` the newest `page` unknown ones, and whether the
+ * start of the chat is reached (`end`): at least one relay answered with its
+ * EOSE, every relay that answered sent less than a full page, and nothing
+ * was cut. Relays that did not answer are not waited for.
+ *
+ * @param {Array<{ eose: boolean, events: object[] }>} results
+ * @param {object[]} fresh the answered items not in the list yet
+ * @returns {{ items: object[], end: boolean }}
+ */
+export function olderPage(results, fresh, page) {
+    const answered = results.filter((result) => result.eose);
+    const items = newestPage(fresh, page);
+    const end = answered.length > 0 && answered.every((result) => result.events.length < page) && items.length === newestPage(fresh, Infinity).length;
+
+    return { items, end };
 }
 
 /**

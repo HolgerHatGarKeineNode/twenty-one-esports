@@ -22,12 +22,14 @@
         <p class="m-0 px-4 py-4 text-[13px] leading-5 text-ink-2">{{ __('The chat needs the stream to be announced on Nostr, and it is not yet.') }}</p>
     @else
         <div class="relative flex min-h-0 grow flex-col">
-            <ol x-ref="list" x-on:scroll.passive="onScroll()" role="log" aria-label="{{ __('Chat messages') }}" data-test="live-chat-list"
+            {{-- load.capture: an emoji image that loads late changes a row's height; a reader at the bottom stays there. --}}
+            <ol x-ref="list" x-on:scroll.passive="onScroll()" x-on:load.capture="pinBottom()" role="log" aria-label="{{ __('Chat messages') }}" data-test="live-chat-list"
                 class="m-0 flex min-h-0 grow list-none flex-col overflow-y-auto overscroll-contain px-2 py-2">
                 {{-- Pushes a short list to the bottom, where the newest message is. --}}
                 <li aria-hidden="true" class="grow"></li>
+                <li x-show="older === 'end' && items.length > 0" x-cloak class="px-2 pt-1 pb-2 text-center text-xs text-ink-3" data-test="live-chat-start">{{ __('The start of the chat.') }}</li>
                 <template x-for="row in rows" :key="row.key">
-                    <li class="flex flex-col" :data-type="row.type" :data-muted="row.type === 'muted' ? 'true' : null"
+                    <li class="flex flex-col" :data-key="row.key" :data-type="row.type" :data-muted="row.type === 'muted' ? 'true' : null"
                         :class="row.cont ? 'pt-0.5' : 'pt-2'">
                         {{-- A run of muted messages: one line, opened on request. --}}
                         <template x-if="row.type === 'muted'">
@@ -94,6 +96,12 @@
                 <li x-show="status === 'live' && items.length === 0" x-cloak class="px-2 py-2 text-[13px] leading-5 text-ink-3" data-test="live-chat-empty">{{ __('No messages yet. Say hello to the stream.') }}</li>
                 <li x-show="status === 'off'" x-cloak class="px-2 py-2 text-[13px] leading-5 text-ink-2">{{ __('The chat has no relay here, so it is off.') }}</li>
             </ol>
+
+            {{-- Older messages on their way: over the list, not in it, so nothing below moves. --}}
+            <p x-show="older === 'loading'" x-cloak role="status" data-test="live-chat-loading-older"
+               class="pointer-events-none absolute top-2 left-1/2 m-0 inline-flex -translate-x-1/2 items-center gap-2 rounded-control bg-bar px-3 py-1.5 text-xs whitespace-nowrap text-ink-2 shadow-[0_0_0_1px_var(--color-line),0_8px_24px_rgba(10,10,11,.7)]">
+                <span aria-hidden="true" class="block size-3.5 shrink-0 animate-spin rounded-full border-2 border-line border-t-btc"></span>{{ __('Loading older messages …') }}
+            </p>
 
             {{-- Scrolled up: new messages are counted here instead of pulling the reader down. --}}
             <button type="button" x-show="unseen > 0 && ! atBottom" x-cloak x-transition.opacity.duration.150ms x-on:click="scrollToBottom(true)" data-test="live-chat-new"

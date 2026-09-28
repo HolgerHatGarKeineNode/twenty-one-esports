@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import {
-    MAX_EMOJI, MAX_TOKENS, bolt11Msats, botMark, boundProfiles, clip, displayRows, emojiTagsForContent, insertSorted, isHttps, isStreamMessage, messageTemplate, parseZap, profileOf, sendBlocker, tokenize,
+    MAX_EMOJI, MAX_TOKENS, bolt11Msats, botMark, boundProfiles, clip, compareItems, displayRows, emojiTagsForContent, insertSorted, isHttps, isStreamMessage, messageTemplate, newestPage, olderPage, parseZap, profileOf, sendBlocker, tokenize,
 } from '../../resources/js/streamChat.js';
 import { emojisFromTags, groupEmojis, searchEmojis, setAddresses } from '../../resources/js/emoji.js';
 
@@ -139,6 +139,32 @@ test('the list stays in time order, each id once, capped at the oldest end', () 
     assert.deepEqual(list.map((item) => item.id), ['a', 'b', 'c']);
     insertSorted(list, { id: 'd', created_at: 30 }, 3);
     assert.deepEqual(list.map((item) => item.id), ['b', 'c', 'd']);
+    // A late event older than the newest goes to its place, not to the end.
+    insertSorted(list, { id: 'a2', created_at: 25 }, Infinity);
+    assert.deepEqual(list.map((item) => item.id), ['b', 'c', 'a2', 'd']);
+});
+
+test('the first page is the newest of all relays\' answers, each id once, in time order', () => {
+    const relayA = [{ id: 'e', created_at: 50 }, { id: 'c', created_at: 30 }, { id: 'a', created_at: 10 }];
+    const relayB = [{ id: 'd', created_at: 40 }, { id: 'c', created_at: 30 }, { id: 'b', created_at: 30 }];
+    assert.deepEqual(newestPage([...relayB, ...relayA], 3).map((item) => item.id), ['c', 'd', 'e']);
+    assert.deepEqual(newestPage([...relayA, ...relayB], Infinity).map((item) => item.id), ['a', 'b', 'c', 'd', 'e']);
+    assert.equal(compareItems({ id: 'b', created_at: 30 }, { id: 'c', created_at: 30 }) < 0, true);
+    assert.equal(compareItems({ id: 'z', created_at: 29 }, { id: 'a', created_at: 30 }) < 0, true);
+});
+
+test('an older page ends the chat only when the relays that answered had less than a page and nothing was cut', () => {
+    const fresh = [{ id: 'x', created_at: 5 }, { id: 'y', created_at: 6 }, { id: 'z', created_at: 7 }];
+    const short = { eose: true, events: [{}, {}] };
+    const full = { eose: true, events: [{}, {}, {}] };
+    const silent = { eose: false, events: [] };
+    assert.deepEqual(olderPage([short, silent], fresh.slice(0, 2), 3), { items: fresh.slice(0, 2), end: true });
+    assert.deepEqual(olderPage([full, short], fresh, 3), { items: fresh, end: false });
+    // Two short answers that together exceed a page: the oldest is cut, so the start is not reached yet.
+    assert.deepEqual(olderPage([short, short], [...fresh, { id: 'w', created_at: 4 }], 3), { items: fresh, end: false });
+    // Nobody answered: not the start, only unknown.
+    assert.deepEqual(olderPage([silent], [], 3), { items: [], end: false });
+    assert.deepEqual(olderPage([short], [], 3), { items: [], end: true });
 });
 
 test('a run of muted messages folds into one row, and opens on request', () => {

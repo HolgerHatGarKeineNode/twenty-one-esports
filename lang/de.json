@@ -3861,6 +3861,8 @@
     "The chat needs the stream to be announced on Nostr, and it is not yet.": "Der Chat braucht die Ankündigung des Streams auf Nostr, und die gibt es noch nicht.",
     "Chat messages": "Chat-Nachrichten",
     "No messages yet. Say hello to the stream.": "Noch keine Nachrichten. Sag dem Stream Hallo.",
+    "The start of the chat.": "Der Anfang des Chats.",
+    "Loading older messages …": "Ältere Nachrichten laden …",
     "Log in to chat": "Zum Chatten anmelden",
     "Reading is open to everyone.": "Mitlesen kann jeder.",
     "Message to the stream chat": "Nachricht an den Stream-Chat",

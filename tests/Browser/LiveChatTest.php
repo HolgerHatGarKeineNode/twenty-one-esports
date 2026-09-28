@@ -79,15 +79,28 @@ function p24FreePort(): int
  */
 function p24Relay(array $events): array
 {
-    $seed = (string) tempnam(sys_get_temp_dir(), 'p24-seed');
-    file_put_contents($seed, json_encode($events));
-    $port = p24FreePort();
-    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
-    WaitForPort::open('127.0.0.1', $port);
-    $url = 'ws://127.0.0.1:'.$port;
+    [$relay, $url, $seed] = p24StartRelay($events);
     config(['esports.stream_chat.relays' => [$url], 'esports.profile_relays' => [$url]]);
 
     return [$relay, $url, $seed];
+}
+
+/**
+ * One relay with the given events and MiniRelay limits (e.g. `shuffle`, `eose_delay_ms`), not yet configured.
+ *
+ * @param  list<array<string, mixed>>  $events
+ * @param  array<string, mixed>  $limits
+ * @return array{0: InvokedProcess, 1: string, 2: string}
+ */
+function p24StartRelay(array $events, array $limits = []): array
+{
+    $seed = (string) tempnam(sys_get_temp_dir(), 'p24-seed');
+    file_put_contents($seed, json_encode($events));
+    $port = p24FreePort();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed, (string) json_encode((object) $limits)]);
+    WaitForPort::open('127.0.0.1', $port);
+
+    return [$relay, 'ws://127.0.0.1:'.$port, $seed];
 }
 
 /** The https emoji host; returns the process and the image base URL. */
@@ -106,7 +119,7 @@ function p24Images(): array
     return [$server, 'https://127.0.0.1:'.$port];
 }
 
-function p24Page(?User $user, int $width, int $height, bool $touch = false): Page
+function p24Page(?User $user, int $width, int $height, bool $touch = false, ?string $initScript = null): Page
 {
     $start = $user ? BrowserLogin::url($user) : BrowserLogin::LANDING;
     // The emoji host's certificate is self-signed; the plugin's launch option does not reach the context, this does.
@@ -116,6 +129,10 @@ function p24Page(?User $user, int $width, int $height, bool $touch = false): Pag
 
     if ($user) {
         $page->context()->addInitScript(TestSigner::browserStub($user));
+    }
+
+    if ($initScript !== null) {
+        $page->context()->addInitScript($initScript);
     }
 
     $page->setViewportSize($width, $height);
@@ -265,11 +282,14 @@ test('a player posts a picked custom emoji through her signer, another player an
         // Bert reads back up. Anna's next message (after the pause) is counted, not scrolled to.
         $pageB->evaluate('() => { const list = document.querySelector("[data-test=live-chat-list]"); list.scrollTop = 0; list.dispatchEvent(new Event("scroll")); }');
         BrowserWait::until($pageB, '() => Alpine.$data(document.querySelector("[data-test=live-chat]")).atBottom === false', 2_000);
+        // At the top the older page is asked for: there is none, so the chat's start shows above the first message.
+        BrowserWait::until($pageB, '() => document.querySelector("[data-test=live-chat-start]")?.checkVisibility()', 5_000);
+        $readingAt = $pageB->evaluate('() => document.querySelector("[data-test=live-chat-list]").scrollTop');
         Execution::instance()->wait(2.1);
         $pageA->locator('[data-test=live-chat-send]')->click();
         BrowserWait::until($pageA, '() => document.querySelector("#live-chat-input").value === ""', 5_000);
         BrowserWait::until($pageB, '() => document.querySelector("[data-test=live-chat-new]")?.checkVisibility() && document.querySelector("[data-test=live-chat-new]").innerText.trim() === "1 new"', 5_000);
-        expect($pageB->evaluate('() => document.querySelector("[data-test=live-chat-list]").scrollTop'))->toBe(0);
+        expect($pageB->evaluate('() => document.querySelector("[data-test=live-chat-list]").scrollTop'))->toBe($readingAt);
         Execution::instance()->wait(0.3);
         p24Shot($pageB, 'p24-chat-new-pill-1440');
         $pageB->locator('[data-test=live-chat-new]')->click();
@@ -519,6 +539,174 @@ test('the stage stays whole, the chat fills the column and ends above the dock, 
     '1440 guest' => [1440, 900, false],
     '1440 player' => [1440, 900, true],
     '1920x1080 player' => [1920, 1080, true],
+]);
+
+/**
+ * Records the chat list in every animation frame, before the browser paints
+ * it: from the first frame with a message, the time (ms since navigation),
+ * the row count, scrollTop and the distance from the bottom; the first such
+ * frame also keeps the texts it shows. A frame that showed the list away from
+ * its bottom is a frame the reader saw jump.
+ */
+const P24_FRAMES = <<<'JS'
+    (() => {
+        window.__frames = [];
+        const texts = (list) => [...list.querySelectorAll('[data-test=live-chat-message]')].map((el) => el.querySelector('[data-test=live-chat-text]').innerText.trim());
+        const tick = () => {
+            const list = document.querySelector('[data-test=live-chat-list]');
+            const rows = list ? list.querySelectorAll('[data-test=live-chat-message]').length : 0;
+            if (rows > 0) {
+                window.__firstRender ??= { t: Math.round(performance.now()), texts: texts(list) };
+                window.__frames.push({ t: Math.round(performance.now()), rows, top: Math.round(list.scrollTop), gap: Math.round(list.scrollHeight - list.scrollTop - list.clientHeight) });
+            }
+            if (performance.now() < 20000) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    })();
+    JS;
+
+test('the newest page of three shuffled relays is drawn once at the bottom, older pages come above without moving the view, late and new messages find their place', function (int $width, int $height) {
+    $people = [new TestSigner, new TestSigner, new TestSigner, new TestSigner];
+    $now = now()->getTimestamp();
+    $root = ['a', $this->address, 'ws://127.0.0.1', 'root'];
+    $at = fn (int $i): int => $now - 7200 + $i * 50;
+    $message = fn (int $i, string $text, int $createdAt): array => $people[$i % 4]->sign(1311, [$root], $text, $createdAt);
+
+    // 120 messages; m101 shares its second with m100, so the id decides between them.
+    $all = [];
+    foreach (range(0, 119) as $i) {
+        $all[$i] = $message($i, sprintf('m%03d', $i), $i === 101 ? $at(100) : $at($i));
+    }
+    // Only on the slow relay: one inside the first page, two newer than everything.
+    $slowOnly = [$message(1, 'm105b', $at(105) + 25), $message(2, 'm120', $at(120)), $message(3, 'm121', $at(121))];
+
+    $fast = array_values(array_filter($all, fn (array $e, int $i): bool => $i % 2 === 0 || $i >= 110, ARRAY_FILTER_USE_BOTH));
+    $second = array_values(array_filter($all, fn (array $e, int $i): bool => $i % 2 === 1 || ($i >= 60 && $i <= 70), ARRAY_FILTER_USE_BOTH));
+    $slow = [...array_values(array_filter($all, fn (array $e, int $i): bool => $i % 3 === 0, ARRAY_FILTER_USE_BOTH)), ...$slowOnly];
+
+    // What the chat must show: the relays' `limit` 50 each (newest first), the union's newest 50, in time order (then id).
+    $order = fn (array $a, array $b): int => [$a['created_at'], $a['id']] <=> [$b['created_at'], $b['id']];
+    $newest = function (array $events, int $max) use ($order): array {
+        $byId = [];
+        foreach ($events as $event) {
+            $byId[$event['id']] ??= $event;
+        }
+        $sorted = array_values($byId);
+        usort($sorted, $order);
+
+        return array_slice($sorted, -$max);
+    };
+    $answer = function (array $events): array {
+        usort($events, fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
+
+        return array_slice($events, 0, 50);
+    };
+    $firstPage = $newest([...$answer($fast), ...$answer($second)], 50);
+    $oldestShown = $firstPage[0];
+    // The slow relay arrives after the first draw: what is newer than the oldest shown goes in, the rest waits for its page.
+    $afterSlow = $newest([...$firstPage, ...array_filter($answer($slow), fn (array $e): bool => $order($e, $oldestShown) > 0)], PHP_INT_MAX);
+    $everything = $newest([...$all, ...$slowOnly], PHP_INT_MAX);
+    $texts = fn (array $events): array => array_column($events, 'content');
+
+    [$relayA, $urlA, $seedA] = p24StartRelay($fast, ['shuffle' => true]);
+    [$relayB, $urlB, $seedB] = p24StartRelay($second, ['shuffle' => true, 'eose_delay_ms' => 150]);
+    [$relayC, $urlC, $seedC] = p24StartRelay($slow, ['shuffle' => true, 'eose_delay_ms' => 1500]);
+    config(['esports.stream_chat.relays' => [$urlA, $urlB, $urlC], 'esports.profile_relays' => [$urlA]]);
+    $publish = fn (Page $page, string $url, array $event) => $page->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $event]);
+    $state = '() => Alpine.$data(document.querySelector("[data-test=live-chat]"))';
+    $label = "{$width}x{$height}";
+
+    try {
+        $page = p24Page(null, $width, $height, touch: $width < 1024, initScript: P24_FRAMES);
+        p24Live($page);
+        // On a phone the chat sits below the stage: in view for the screenshots (its list scrolls on its own).
+        $page->evaluate('() => document.querySelector("[data-test=live-chat]").scrollIntoView({ block: "end" })');
+        BrowserWait::until($page, '() => '.substr(P24_TEXTS, 6).'.includes("m121")', 10_000);
+        BrowserWait::until($page, '() => window.__frames.length > 0 && performance.now() - window.__firstRender.t > 2000', 10_000);
+
+        // (1) One draw: the first frame with messages already holds the whole newest page, in order, at the bottom.
+        $first = $page->evaluate('() => window.__firstRender');
+        $frames = $page->evaluate('() => window.__frames.filter((f) => f.t <= window.__firstRender.t + 2000)');
+        $moved = array_values(array_filter($frames, fn (array $f): bool => $f['gap'] > 1));
+        fwrite(STDERR, "\n[p24 first page {$label}] ".json_encode([
+            'firstRenderMs' => $first['t'],
+            'framesIn2s' => count($frames),
+            'framesAwayFromBottom' => count($moved),
+            'rowCounts' => array_values(array_unique(array_column($frames, 'rows'))),
+            'scrollTops' => array_values(array_unique(array_column($frames, 'top'))),
+            'maxGap' => max(array_column($frames, 'gap')),
+        ])."\n");
+        expect($first['texts'])->toBe($texts($firstPage))
+            ->and($first['t'])->toBeLessThan(3000)
+            ->and(count($frames))->toBeGreaterThan(20)
+            ->and($moved)->toBe([])
+            // The slow relay's messages came inside the measured two seconds: the list grew and stayed at its bottom.
+            ->and(count(array_unique(array_column($frames, 'rows'))))->toBeGreaterThan(1)
+            ->and($page->evaluate(P24_TEXTS))->toBe($texts($afterSlow));
+
+        // (4) A relay delivers an old message late: it goes to its place, not to the end; the reader stays at the bottom.
+        $late = $message(0, 'late100', $at(100) + 10);
+        $publish($page, $urlA, $late);
+        BrowserWait::until($page, '() => '.substr(P24_TEXTS, 6).'.includes("late100")', 5_000);
+        $afterLate = $newest([...$afterSlow, $late], PHP_INT_MAX);
+        expect($page->evaluate(P24_TEXTS))->toBe($texts($afterLate))
+            ->and($page->evaluate('() => { const l = document.querySelector("[data-test=live-chat-list]"); return Math.round(l.scrollHeight - l.scrollTop - l.clientHeight); }'))->toBeLessThanOrEqual(1)
+            ->and($page->evaluate('() => document.querySelector("[data-test=live-chat-new]").checkVisibility()'))->toBeFalse();
+
+        // (2) Older pages: scrolled to the top, the next page comes above; the row seen first stays where it was.
+        $shifts = [];
+        $sawLoading = false;
+        for ($pageNo = 0; $pageNo < 6 && $page->evaluate($state.'.older') !== 'end'; $pageNo++) {
+            $before = $page->evaluate('() => { const list = document.querySelector("[data-test=live-chat-list]"); list.scrollTop = 0; const edge = list.getBoundingClientRect().top; const row = [...list.querySelectorAll(":scope > li[data-key]")].find((li) => li.getBoundingClientRect().bottom > edge + 1); return { key: row.dataset.key, y: row.getBoundingClientRect().top, count: Alpine.$data(document.querySelector("[data-test=live-chat]")).items.length }; }');
+            // The slow relay holds every page back 1.5 s: the indicator shows meanwhile.
+            BrowserWait::until($page, $state.'.older === "loading"', 3_000);
+            if (! $sawLoading && $page->evaluate('() => document.querySelector("[data-test=live-chat-loading-older]").checkVisibility()')) {
+                $sawLoading = true;
+                p24Shot($page, 'p50-chat-loading-older-'.$label);
+            }
+            BrowserWait::until($page, $state.'.older !== "loading"', 8_000);
+            Execution::instance()->wait(0.1);
+            $after = $page->evaluate('(key) => ({ y: document.querySelector(`[data-test=live-chat-list] > li[data-key="${key}"]`).getBoundingClientRect().top, count: Alpine.$data(document.querySelector("[data-test=live-chat]")).items.length, older: Alpine.$data(document.querySelector("[data-test=live-chat]")).older })', $before['key']);
+            $shifts[] = ['added' => $after['count'] - $before['count'], 'dy' => round($after['y'] - $before['y'], 2), 'state' => $after['older']];
+        }
+        fwrite(STDERR, "[p24 older pages {$label}] ".json_encode($shifts)."\n");
+        expect($sawLoading)->toBeTrue()
+            ->and($page->evaluate($state.'.older'))->toBe('end')
+            ->and(array_sum(array_column($shifts, 'added')))->toBeGreaterThan(0)
+            ->and(max(array_map(fn (array $s): float => abs($s['dy']), $shifts)))->toBeLessThanOrEqual(2)
+            ->and($page->evaluate('() => document.querySelector("[data-test=live-chat-start]").checkVisibility()'))->toBeTrue()
+            ->and($page->evaluate(P24_TEXTS))->toBe($texts($newest([...$everything, $late], PHP_INT_MAX)));
+
+        $page->evaluate('() => { document.querySelector("[data-test=live-chat-list]").scrollTop = 0; }');
+        Execution::instance()->wait(0.2);
+        p24Shot($page, 'p50-chat-start-'.$label);
+
+        // (3) Scrolled up, a new message is counted in the pill and does not move the view; the pill goes to the bottom.
+        $readingAt = $page->evaluate('() => document.querySelector("[data-test=live-chat-list]").scrollTop');
+        $publish($page, $urlB, $message(1, 'fresh1', $now + 5));
+        BrowserWait::until($page, '() => document.querySelector("[data-test=live-chat-new]")?.checkVisibility() && document.querySelector("[data-test=live-chat-new]").innerText.trim() === "1 new"', 5_000);
+        expect($page->evaluate('() => document.querySelector("[data-test=live-chat-list]").scrollTop'))->toBe($readingAt);
+        Execution::instance()->wait(0.3);
+        p24Shot($page, 'p50-chat-pill-'.$label);
+        $page->locator('[data-test=live-chat-new]')->click();
+        BrowserWait::until($page, '() => { const l = document.querySelector("[data-test=live-chat-list]"); return l.scrollHeight - l.scrollTop - l.clientHeight < 2 && ! document.querySelector("[data-test=live-chat-new]").checkVisibility(); }', 3_000);
+
+        // At the bottom, the next one is followed: no pill, still at the bottom, and it is last.
+        $publish($page, $urlC, $message(2, 'fresh2', $now + 6));
+        BrowserWait::until($page, '() => '.substr(P24_TEXTS, 6).'.at(-1) === "fresh2"', 5_000);
+        Execution::instance()->wait(0.2);
+        expect($page->evaluate('() => { const l = document.querySelector("[data-test=live-chat-list]"); return Math.round(l.scrollHeight - l.scrollTop - l.clientHeight); }'))->toBeLessThanOrEqual(1)
+            ->and($page->evaluate('() => document.querySelector("[data-test=live-chat-new]").checkVisibility()'))->toBeFalse()
+            ->and(p24Errors($page))->toBe([]);
+    } finally {
+        foreach ([[$relayA, $seedA], [$relayB, $seedB], [$relayC, $seedC]] as [$relay, $seed]) {
+            $relay->stop(1);
+            @unlink($seed);
+        }
+    }
+})->with([
+    'phone' => [375, 667],
+    'desktop' => [1440, 900],
 ]);
 
 test('the collector catches a thrown error and a broken image (positive control)', function () {

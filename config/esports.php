@@ -938,8 +938,8 @@ return [
         // Characters one message may have, and the pause between two posts of one browser.
         'max_length' => 280,
         'cooldown_ms' => 2000,
-        // Messages read back when the page opens.
-        'history' => 80,
+        // Messages per page: the newest ones when the page opens, then each older page scrolled up to.
+        'history' => 50,
     ],
 
     /*

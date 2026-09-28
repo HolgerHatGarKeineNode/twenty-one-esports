@@ -47,15 +47,19 @@ final class MiniRelay
     /** Delay before answering a REQ, like a slow relay. */
     private int $eoseDelayMs = 0;
 
+    /** Send a REQ's stored events in random order instead of newest first, like a relay merging several stores. */
+    private bool $shuffle = false;
+
     /** A file that gets one line per websocket connection (`connect`) and per REQ (`req`). */
     private ?string $log = null;
 
     /**
      * Relay limits for the trust job's tests (RelayReader): max_filters
      * enforced and advertised in the NIP-11 document, whether `limit` is
-     * ignored, a delay per REQ answer, and a log of connections and REQs.
+     * ignored, a delay per REQ answer, a shuffled answer order (the stream
+     * chat's tests), and a log of connections and REQs.
      *
-     * @param  array{max_filters?: int, advertised_max_filters?: int, ignore_limits?: bool, eose_delay_ms?: int, log?: string}  $options
+     * @param  array{max_filters?: int, advertised_max_filters?: int, ignore_limits?: bool, eose_delay_ms?: int, shuffle?: bool, log?: string}  $options
      */
     public function limits(array $options): self
     {
@@ -63,6 +67,7 @@ final class MiniRelay
         $this->advertisedMaxFilters = $options['advertised_max_filters'] ?? $this->maxFilters;
         $this->ignoreLimits = $options['ignore_limits'] ?? false;
         $this->eoseDelayMs = $options['eose_delay_ms'] ?? 0;
+        $this->shuffle = $options['shuffle'] ?? false;
         $this->log = $options['log'] ?? null;
 
         return $this;
@@ -240,6 +245,10 @@ final class MiniRelay
 
         $matching = array_values($matching);
         usort($matching, fn (array $a, array $b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
+
+        if ($this->shuffle) {
+            shuffle($matching);
+        }
 
         foreach ($matching as $event) {
             $this->send($key, ['EVENT', $subscription, $event]);

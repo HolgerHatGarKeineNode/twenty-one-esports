@@ -130,7 +130,7 @@ final readonly class StreamChat
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
             'maxLength' => (int) config('esports.stream_chat.max_length', 280),
             'cooldownMs' => (int) config('esports.stream_chat.cooldown_ms', 2000),
-            'history' => (int) config('esports.stream_chat.history', 80),
+            'history' => max(1, (int) config('esports.stream_chat.history', 50)),
             // The Blockpile avatar of a pubkey without a picture: the browser swaps this placeholder key for it.
             'avatarUrl' => route('avatars.generated', ['pubkey' => self::AVATAR_PLACEHOLDER, 'v' => 1], false),
             'locale' => app()->getLocale(),
