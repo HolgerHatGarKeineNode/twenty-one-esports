@@ -471,4 +471,10 @@ test('"Schedule a 1v1" leads to the challenge form from the module, each looking
     $this->actingAs($anna)->get(route('challenges.casual', ['to' => $bert->id, 'game' => 'ea-sports-fc-26']))->assertOk()->assertSee(e($bert->displayName()), false);
     // Not on one's own page.
     $this->actingAs($bert)->get(route('players.show', $bert->npub))->assertOk()->assertDontSee('data-test="schedule-1v1"', false);
+
+    // A guest never learns what a player looks for: the public profile's link carries no game.
+    auth()->logout();
+    $this->get(route('players.show', $bert->npub))->assertOk()
+        ->assertSee(e(route('challenges.casual', ['to' => $bert->id])), false)
+        ->assertDontSee(e(route('challenges.casual', ['to' => $bert->id, 'game' => 'ea-sports-fc-26'])), false);
 });

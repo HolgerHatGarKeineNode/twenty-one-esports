@@ -68,8 +68,9 @@
                            class="flex h-11 min-w-0 grow items-center justify-center gap-2 rounded-md bg-btc px-5 text-sm font-bold whitespace-nowrap text-on-btc hover:bg-btc-hi hover:text-on-btc lg:grow-0">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="shrink-0"><path d="M8 5v14l11-7z"></path></svg><span class="truncate">{{ __('Challenge :name', ['name' => $name]) }}</span>
                         </a>
-                        {{-- A scheduled casual 1v1 in Rocket League or EA FC (P23 S4), with this player filled in; the game they look for first. --}}
-                        @php($casualGame = explode('/', (string) $user->looking_to_play)[0])
+                        {{-- A scheduled casual 1v1 in Rocket League or EA FC (P23 S4), with this player filled in; the game they look for first,
+                             for logged-in visitors only: "Looking to play" is shown to fellow players, never to guests (public profile). --}}
+                        @php($casualGame = auth()->check() ? explode('/', (string) $user->looking_to_play)[0] : '')
                         <a href="{{ route('challenges.casual', array_filter(['to' => $user->id, 'game' => \App\Support\Series\CasualLobby::offers($casualGame) ? $casualGame : null])) }}" data-test="schedule-1v1"
                            class="btn-s flex h-11 shrink-0 items-center justify-center gap-2 rounded-md border border-edge px-4 text-sm whitespace-nowrap text-ink hover:text-ink max-lg:grow">
                             <x-icon name="calendar" :size="16" class="shrink-0" />{{ __('Schedule a 1v1') }}
