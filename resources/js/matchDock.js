@@ -221,7 +221,9 @@ export default function matchDock(config) {
                 .listen('.chess.game-started', refresh)
                 .listen('.chess.invite', refresh)
                 // Rocket League series: challenge, answer, live score, result (App\Events\SeriesMatchChanged).
-                .listen('.series.changed', refresh);
+                .listen('.series.changed', refresh)
+                // Casual 1v1 invites (P23, App\Events\SeriesInviteChanged).
+                .listen('.series.invite', refresh);
             this.watchGames();
             this.schedulePoll();
         },

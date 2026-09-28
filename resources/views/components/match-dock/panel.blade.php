@@ -21,6 +21,7 @@
         $isSeries => match ($item->phase) {
             'accept' => __('Review the result'),
             'answer' => __('Answer the challenge'),
+            'ready' => __('Press Ready'),
             default => __('Open match room'),
         },
         default => __('Answer'),
@@ -84,7 +85,8 @@
                 @foreach ([$side, 'score', $other] as $column)
                     @if ($column === 'score')
                         <span class="flex flex-col items-center gap-1">
-                            <span class="font-display text-[32px] leading-9 font-extrabold whitespace-nowrap">{{ in_array($item->phase, ['starts', 'answer'], true) ? '– : –' : $item->trailing }}</span>
+                            {{-- A casual 1v1 before its report counts down its running step instead of a score. --}}
+                            <span class="font-display text-[32px] leading-9 font-extrabold whitespace-nowrap" @if ($model->isCasualPairing() && $item->tick) data-tick='@json($item->tick)' @endif>{{ in_array($item->phase, ['starts', 'answer'], true) ? '– : –' : $item->trailing }}</span>
                             <span class="flex items-center gap-1.5 text-xs text-btc">@if ($item->isLive())<span class="dk-live size-2 rounded-full bg-btc" aria-hidden="true"></span>@endif{{ $item->state }}</span>
                         </span>
                     @else

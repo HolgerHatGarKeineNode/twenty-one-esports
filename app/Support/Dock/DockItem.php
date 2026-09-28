@@ -8,6 +8,7 @@ use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\Clan;
 use App\Models\ClanInvite;
+use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
 
@@ -26,9 +27,9 @@ use App\Models\User;
 final readonly class DockItem
 {
     /**
-     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'  $kind
+     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'  $kind
      * @param  'live'|'need'|'wait'  $group
-     * @param  'your_move'|'their_move'|'answer'|'invite'|'starts'|'live'|'accept'|'waiting'|'dispute'  $phase
+     * @param  'your_move'|'their_move'|'answer'|'invite'|'starts'|'live'|'accept'|'waiting'|'dispute'|'ready'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
      */
     public function __construct(
@@ -50,7 +51,7 @@ final readonly class DockItem
         public ?string $action,
         public ?int $deadlineMs,
         public ?array $tick,
-        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite $model,
+        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite $model,
         public ?Clan $clan = null,
     ) {}
 
@@ -62,7 +63,8 @@ final readonly class DockItem
     /** The two-letter game mark of a non-chess item: RL, FC. */
     public function gameMark(): string
     {
-        $short = $this->model instanceof SeriesMatch ? app(GameRegistry::class)->find($this->model->game)?->assets()->shortLabel : null;
+        $game = $this->model instanceof SeriesMatch || $this->model instanceof SeriesInvite ? $this->model->game : null;
+        $short = $game === null ? null : app(GameRegistry::class)->find($game)?->assets()->shortLabel;
 
         return mb_substr($short ?? 'RL', 0, 2);
     }

@@ -14,8 +14,11 @@ use App\Models\Clan;
 use App\Models\ClanInvite;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
+use App\Models\SeriesInvite;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\GameNames;
+use App\Support\Series\CasualInvites;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -28,11 +31,14 @@ use Illuminate\Support\Collection;
  * summary() instead of counting on its own.
  *
  * What gets a tab: live blitz games, daily games in both directions, blitz
- * invites and daily challenges received, clan invites received, Rocket League
- * series that are live, that start within the next hour, that wait for this
- * player's answer or acceptance, or whose result waits for the other side or
- * an admin. Not on the dock: invites and challenges this player sent, and
- * scheduled series more than an hour away.
+ * invites and daily challenges received, clan invites received, casual 1v1
+ * invites received (P23), Rocket League and EA FC series that are live, that
+ * start within the next hour, that wait for this player's answer or
+ * acceptance, or whose result waits for the other side or an admin. A
+ * series counts for a player seated in one of its lineups and for a player
+ * of a roster side (a tournament's 1v1 or mix team, a casual 1v1), whose
+ * ready check is a tab of its own. Not on the dock: invites and challenges
+ * this player sent, and scheduled series more than an hour away.
  *
  * Order: live first, then everything on this player by deadline, then what
  * waits for the other side by deadline. One query per kind, each capped at
@@ -66,6 +72,7 @@ final class OpenMatches
             ->concat($this->blitzInvites($user))
             ->concat($this->dailyChallenges($user))
             ->concat($this->clanInvites($user))
+            ->concat($this->casualInvites($user))
             ->concat($this->series($user, $excludeSeries, $nowMs));
 
         return $items
@@ -142,10 +149,10 @@ final class OpenMatches
 
     /**
      * @param  'live'|'need'|'wait'  $group
-     * @param  'accept'|'answer'|'dispute'|'invite'|'live'|'starts'|'their_move'|'waiting'|'your_move'  $phase
+     * @param  'accept'|'answer'|'dispute'|'invite'|'live'|'ready'|'starts'|'their_move'|'waiting'|'your_move'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
      */
-    private function seriesDockItem(SeriesMatch $match, string $other, string $group, string $phase, bool $needsYou, string $state, string $trailing, string $line, ?string $action, ?int $deadline, ?array $tick = null): DockItem
+    private function seriesDockItem(SeriesMatch $match, string $other, string $group, string $phase, bool $needsYou, string $state, string $trailing, string $line, ?string $action, ?int $deadline, ?array $tick = null, ?User $face = null): DockItem
     {
         return new DockItem(
             key: 'series-'.$match->number,
@@ -154,11 +161,15 @@ final class OpenMatches
             phase: $phase,
             needsYou: $needsYou,
             name: $match->sideName($other),
-            face: null,
+            face: $face,
             tag: $match->sideTag($other),
             number: $match->label(),
             href: route('matches.room', $match),
-            title: $match->ladder_address !== null ? self::text('Ladder series') : self::text('Series'),
+            title: match (true) {
+                $match->isCasualPairing() => self::text('Casual 1v1'),
+                $match->ladder_address !== null => self::text('Ladder series'),
+                default => self::text('Series'),
+            },
             state: $state,
             trailing: $trailing,
             line: $line,
@@ -433,15 +444,13 @@ final class OpenMatches
             ->unique()
             ->values();
 
-        if ($lineups->isEmpty()) {
-            return [];
-        }
-
         $user->loadMissing('clanMember');
 
         $matches = SeriesMatch::query()
             ->whereIn('status', [SeriesStatus::Open, SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
-            ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups))
+            // A lineup seat, or a roster side (a tournament's 1v1 or mix team, a casual 1v1): the sides list the players.
+            ->where(fn ($query) => $query->whereIn('challenger_lineup_id', $lineups)->orWhereIn('challenged_lineup_id', $lineups)
+                ->orWhereJsonContains('sides->challenger', $user->id)->orWhereJsonContains('sides->challenged', $user->id))
             ->when($exclude !== null, fn ($query) => $query->where('number', '!=', $exclude))
             // Scheduled series join an hour before their start.
             ->where(fn ($query) => $query->where('status', '!=', SeriesStatus::Accepted)->orWhereNull('start_at')->orWhere('start_at', '<=', now()->addMilliseconds(self::STARTS_SOON_MS)))
@@ -469,6 +478,10 @@ final class OpenMatches
 
         if ($side === null) {
             return null;
+        }
+
+        if ($match->isCasualPairing() && $match->status === SeriesStatus::Accepted) {
+            return $this->casualItem($match, $side, $user, $nowMs);
         }
 
         $captainSide = $match->captainSideOf($user);
@@ -504,5 +517,85 @@ final class OpenMatches
                 (int) ($match->updated_at ?? now())->getTimestampMs()),
             default => null,
         };
+    }
+
+    /**
+     * A casual 1v1 before its report (P23): the ready check on this player,
+     * then the running match with the step that is due and its clock
+     * (SeriesMatch::casualNextDeadline()). The face is the opponent's.
+     */
+    private function casualItem(SeriesMatch $match, string $side, User $user, int $nowMs): DockItem
+    {
+        $other = SeriesMatch::otherSide($side);
+        $face = User::query()->find($match->rosterSide($other)[0] ?? 0);
+        $next = $match->casualNextDeadline();
+        $endsAt = $next === null ? null : (int) $next['at']->getTimestampMs();
+
+        if ($match->awaitsReady()) {
+            $mine = $match->readyAt($side) === null;
+            $total = max(1, $match->casualSetting('ready_seconds') * 1000);
+
+            return $this->seriesDockItem($match, $other, 'need', 'ready', $mine, $mine ? self::text('Press Ready') : self::text('Ready'),
+                self::format(($endsAt ?? $nowMs) - $nowMs, 'clock'),
+                self::text('Casual :number, ready check', ['number' => $match->label()]), $mine ? self::text('Ready') : null,
+                $endsAt, $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => $total, 'redUnder' => self::BLITZ_RED_MS], $face);
+        }
+
+        $onMe = $next !== null && ($next['side'] === $side || ($next['side'] === null && $next['kind'] === 'report'));
+        $state = match ($next['kind'] ?? null) {
+            'lobby' => $next['side'] === $side ? self::text('Share the lobby') : self::text('Lobby coming'),
+            'join' => $next['side'] === $side ? self::text('Join the lobby') : self::text('Opponent joins'),
+            'contest' => $next['side'] === $side ? self::text('Answer the claim') : self::text('No-show claimed'),
+            default => self::text('Live'),
+        };
+        $minutes = match ($next['kind'] ?? null) {
+            'lobby' => $match->casualSetting('lobby_minutes'),
+            'join' => $match->casualSetting('join_minutes'),
+            'contest' => $match->casualSetting('contest_minutes'),
+            default => $match->casualSetting('report_minutes'),
+        };
+
+        return $this->seriesDockItem($match, $other, 'live', 'live', $onMe, $state,
+            $endsAt === null ? '' : self::format($endsAt - $nowMs, 'clock'),
+            self::text('Casual :number, :state', ['number' => $match->label(), 'state' => mb_strtolower($state)]), self::text('View'),
+            (int) ($match->start_at ?? $match->created_at ?? now())->getTimestampMs(),
+            $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $minutes * 60_000), 'redUnder' => 60_000], $face);
+    }
+
+    /**
+     * Casual 1v1 invites received (P23): answered in the module of the
+     * game's page.
+     *
+     * @return list<DockItem>
+     */
+    private function casualInvites(User $user): array
+    {
+        return array_values(app(CasualInvites::class)->incoming($user)->take(self::KIND_LIMIT)->map(function (SeriesInvite $invite) {
+            $endsAt = (int) $invite->expires_at->getTimestampMs();
+            $name = $invite->inviter->displayName();
+            $game = GameNames::game($invite->game);
+
+            return new DockItem(
+                key: 'casual-invite-'.$invite->id,
+                kind: 'casual_invite',
+                group: 'need',
+                phase: 'answer',
+                needsYou: true,
+                name: $name,
+                face: $invite->inviter,
+                tag: null,
+                number: '',
+                href: route('games.series', ['slug' => $invite->game]).'#casual',
+                title: self::text('Casual invite'),
+                state: self::text('Answer'),
+                trailing: self::format($endsAt - (int) now()->getTimestampMs(), 'clock'),
+                line: self::text(':game 1v1, answer now', ['game' => $game]),
+                sentence: self::text(':name invites you to a :game 1v1', ['name' => $name, 'game' => $game]),
+                action: self::text('Answer'),
+                deadlineMs: $endsAt,
+                tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, max(1, $invite->expires_at->getTimestampMs() - ($invite->created_at?->getTimestampMs() ?? $endsAt - 1))), 'redUnder' => self::BLITZ_RED_MS],
+                model: $invite,
+            );
+        })->all());
     }
 }
