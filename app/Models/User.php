@@ -45,6 +45,8 @@ use Illuminate\Support\Str;
  * @property string|null $timezone
  * @property string|null $looking_to_play `<game>/<mode>` the player is up for, null = not looking
  * @property Carbon|null $notify_block0_at when the player asked to be told about Block 0, null = not asked
+ * @property Carbon|null $block0_notified_at when the player was told that Block 0 is released
+ * @property Carbon|null $block0_heads_up_for the planned Block 0 date the player was last told about
  * @property array<string, mixed>|null $chess_settings see {@see ChessSettings}; null = all defaults
  * @property array<string, array{platform: string, crossplay: bool}>|null $casual_settings last casual 1v1 choice per game (App\Support\Series\CasualLobby)
  * @property Carbon|null $created_at
@@ -82,6 +84,8 @@ class User extends Authenticatable
             'platform' => Platform::class,
             'gamer_tags' => 'array',
             'notify_block0_at' => 'datetime',
+            'block0_notified_at' => 'datetime',
+            'block0_heads_up_for' => 'datetime',
             'chess_settings' => 'array',
             'casual_settings' => 'array',
         ];

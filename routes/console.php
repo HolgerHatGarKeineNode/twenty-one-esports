@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ChessGameStatus;
+use App\Jobs\NotifyBlockZero;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Support\Chess\ChessGameService;
@@ -9,6 +10,7 @@ use App\Support\Engagement\WeeklySlots;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Notifications\BlockZeroNotifications;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
@@ -296,6 +298,25 @@ Artisan::command('esports:trust-run', function (TrustJob $job) {
 })->purpose('Compute and publish the trust ranks (anchored-trust-v1)');
 
 Schedule::command('esports:trust-run')->everyFifteenMinutes()->withoutOverlapping();
+
+/*
+ * "Notify me at Block 0": once a planned Block 0 date is set
+ * (ESPORTS_BLOCK0_AT) and lies ahead, every player who asked hears the date
+ * once (BlockZeroNotifications::dated, queued). The release itself notifies
+ * from SeasonRelease.
+ */
+Artisan::command('esports:block0-heads-up', function (BlockZeroNotifications $notifications) {
+    if (! $notifications->datedPending()) {
+        $this->info('Nobody waits for a Block 0 date.');
+
+        return;
+    }
+
+    NotifyBlockZero::dispatch(NotifyBlockZero::DATED);
+    $this->info('Queued the Block 0 date heads-up.');
+})->purpose('Tell the players who asked about the planned Block 0 date');
+
+Schedule::command('esports:block0-heads-up')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 
 /*
  * The stream's pictures (App\Console\Commands\TwentyOneStreamImagesCommand):

@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Jobs\NotifyBlockZero;
 use App\Jobs\PublishNostrEvent;
 use App\Models\NostrEvent;
 use App\Models\Season;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  * Season Genesis (`2156`) with the label, the admin list and the admin as
  * `p` with role `release`, writes the season row and opens the ladders
  * (`32152`, LadderEvents). Everything goes to the league relays after the
- * commit.
+ * commit, and every player who asked to be told hears it (NotifyBlockZero).
  *
  * The draft is config/season.php (the Pre-Season defaults) plus the genesis
  * message the admin types. Only the Pre-Season can be released here: later
@@ -196,6 +197,9 @@ final class SeasonRelease
 
                 // The first version of every ladder, right after the genesis (NIP "Season transition").
                 app(LadderEvents::class)->publish($season, $league, $this->trustKey());
+
+                // "Notify me at Block 0": everyone who asked, after the commit.
+                NotifyBlockZero::dispatch(NotifyBlockZero::RELEASED);
 
                 return $season;
             });

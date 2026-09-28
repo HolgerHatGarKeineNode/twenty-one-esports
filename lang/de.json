@@ -4406,5 +4406,10 @@
     "Get nak": "nak holen",
     "The NIP describes every event, tag and rule, and how a client checks them. It lives in the league’s open source repository, with its full history.": "Der NIP beschreibt jedes Event, jedes Tag und jede Regel und wie ein Client sie prüft. Er liegt im Open-Source-Repository der Liga, mit seiner ganzen Geschichte.",
     "Read the NIP": "Den NIP lesen",
-    "The league on Nostr": "Die Liga auf Nostr"
+    "The league on Nostr": "Die Liga auf Nostr",
+    "you asked to be told: the date of Block 0, and when the board releases it": "du wolltest es wissen: das Datum von Block 0 und wann der Vorstand ihn freigibt",
+    "Block 0 is released": "Block 0 ist freigegeben",
+    "The Pre-Season has started: rated play and mining are open.": "Die Pre-Season hat begonnen: gewertete Spiele und Mining sind offen.",
+    "Block 0 is on :date": "Block 0 ist am :date",
+    "Rated play and mining start when the board releases it. You hear from us again then.": "Gewertete Spiele und Mining starten, sobald der Vorstand ihn freigibt. Dann hörst du wieder von uns."
 }
