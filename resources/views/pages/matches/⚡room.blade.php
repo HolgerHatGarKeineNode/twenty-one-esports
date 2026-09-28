@@ -886,7 +886,10 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {{-- Lobby + Chat --}}
     <div @class(['grid grid-cols-1 gap-5 lg:grid-cols-2', '-order-1' => $casualFirst])>
         @if ($casual)
-            @include('pages.matches.partials.casual-steps')
+            {{-- An open scheduled challenge has no steps yet: its answer card says what happens. --}}
+            @if ($m->status !== \App\Enums\SeriesStatus::Open)
+                @include('pages.matches.partials.casual-steps')
+            @endif
         @else
         <section aria-labelledby="lobby-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="lobby">
             <span class="flex items-baseline justify-between"><h2 id="lobby-h" class="m-0 text-[15px] font-bold">{{ __('Private lobby') }}</h2><span class="text-xs text-ink-2">{{ __('host :clan', ['clan' => $m->challenger_name]) }}</span></span>
