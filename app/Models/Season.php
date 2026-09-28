@@ -20,6 +20,8 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property string $slug
+ * @property int|null $previous_season_id the season this one continues (P38, NIP "Season transition"); null for the Pre-Season
+ * @property int|null $reset_factor_milli the carry-over factor f the release applied, in thousandths; null without a previous season
  * @property string $league_pubkey
  * @property int $supply
  * @property int $subsidy
@@ -42,9 +44,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read NostrEvent|null $genesisEvent
  * @property-read User|null $releasedBy
+ * @property-read Season|null $previousSeason
  */
 #[Fillable([
-    'slug', 'league_pubkey', 'supply', 'subsidy', 'halving_seconds', 'claim_seconds', 'minimum_trust', 'parameters', 'rating_parameters',
+    'slug', 'previous_season_id', 'reset_factor_milli', 'league_pubkey', 'supply', 'subsidy', 'halving_seconds', 'claim_seconds', 'minimum_trust', 'parameters', 'rating_parameters',
     'genesis_message', 'digest', 'genesis_at', 'ends_at', 'genesis_event_id', 'release_event_id', 'admin_list_event_id',
     'announcement_event_id', 'released_by_id', 'released_by_pubkey',
 ])]
@@ -62,6 +65,7 @@ class Season extends Model
     protected function casts(): array
     {
         return [
+            'reset_factor_milli' => 'integer',
             'supply' => 'integer',
             'subsidy' => 'integer',
             'halving_seconds' => 'integer',
@@ -80,6 +84,14 @@ class Season extends Model
     public function genesisEvent(): BelongsTo
     {
         return $this->belongsTo(NostrEvent::class, 'genesis_event_id');
+    }
+
+    /**
+     * @return BelongsTo<Season, $this>
+     */
+    public function previousSeason(): BelongsTo
+    {
+        return $this->belongsTo(Season::class, 'previous_season_id');
     }
 
     /**

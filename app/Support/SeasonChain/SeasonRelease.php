@@ -11,6 +11,7 @@ use App\Support\Board;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Rating\RatingSettings;
+use App\Support\Rating\SoftReset;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -27,12 +28,20 @@ use Illuminate\Support\Facades\DB;
  * commit, and every player who asked to be told hears it (NotifyBlockZero).
  *
  * The draft is config/season.php (the Pre-Season defaults) plus the genesis
- * message the admin types. Only the Pre-Season can be released here: later
- * seasons need a season planner that does not exist yet.
+ * message the admin types. The first release is the Pre-Season; every later
+ * one follows the board's plan (SeasonPlans, P38): its slug, name and
+ * length, from its planned Block 0 on and only once the season before it has
+ * ended. Such a release is a season transition (NIP "Season transition"):
+ * the league closes the ladders of the season before (a last version with
+ * `ends`), seeds the new rated ratings with the soft reset (SoftReset) and
+ * opens the new ladders with `reset` and `seed`. The ratings, attestations
+ * and signed events of the season before are never changed; casual ratings
+ * have no season and are not touched.
  *
  * Fail closed: without the league key or the trust key, for anyone not on the board, with a
- * wrong supply, while a season exists, or with a label that is not exactly
- * the prepared one, nothing is signed and nothing is written.
+ * wrong supply, while a season is live, without a plan, before the planned
+ * Block 0, or with a label that is not exactly the prepared one, nothing is
+ * signed and nothing is written.
  */
 final class SeasonRelease
 {
@@ -58,7 +67,8 @@ final class SeasonRelease
     public function __construct(private SignedEventGate $gate) {}
 
     /**
-     * The Pre-Season draft of config/season.php.
+     * The draft of config/season.php, for the Pre-Season or, once a season
+     * exists, for the planned next season (its slug).
      *
      * @return array{slug: string, supply: int, subsidy: int, halving_seconds: int, eras: int, claim_seconds: int, minimum_trust: int, parameters: array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int}}
      */
@@ -68,7 +78,7 @@ final class SeasonRelease
         $chain = config('season.chain');
 
         return [
-            'slug' => self::SLUG,
+            'slug' => SeasonPlans::current()->slug ?? self::SLUG,
             'supply' => $chain['supply'],
             'subsidy' => $chain['subsidy'],
             'halving_seconds' => $chain['halving_seconds'],
@@ -86,12 +96,27 @@ final class SeasonRelease
         ];
     }
 
-    /** The planned end of a season released now: every era in full. */
+    /**
+     * The planned end of a season released now: the Pre-Season runs every
+     * era in full, a planned season its planned number of weeks.
+     */
     public static function plannedEnd(CarbonImmutable $now): int
     {
+        $plan = SeasonPlans::current();
+
+        if ($plan !== null) {
+            return $now->getTimestamp() + $plan->lengthSeconds();
+        }
+
         $draft = self::draft();
 
         return $now->getTimestamp() + $draft['eras'] * $draft['halving_seconds'];
+    }
+
+    /** "Pre-Season", or the planned season's name. */
+    public static function seasonName(): string
+    {
+        return SeasonPlans::current()->name ?? 'Pre-Season';
     }
 
     /**
@@ -103,8 +128,22 @@ final class SeasonRelease
             return __('Only a board member on the public admin list can release Block 0.');
         }
 
-        if (Season::query()->exists()) {
-            return __('The Pre-Season has been released. Only one chain runs at a time, and later seasons are not planned here.');
+        $latest = Seasons::latest();
+
+        if ($latest !== null) {
+            if ($latest->ends_at->isFuture()) {
+                return __('A season is live. Only one chain runs at a time: the next season can be released once :season has ended.', ['season' => $latest->slug]);
+            }
+
+            $plan = SeasonPlans::current();
+
+            if ($plan === null) {
+                return __('Plan the next season first: its name, Block 0, length and carry-over factor.');
+            }
+
+            if ($plan->starts_at->isFuture()) {
+                return __(':season is planned for Block 0 on :when (UTC). It can be released from then on.', ['season' => $plan->name, 'when' => $plan->starts_at->utc()->format('Y-m-d H:i')]);
+            }
         }
 
         if (LeagueKey::fromConfig() === null) {
@@ -150,15 +189,32 @@ final class SeasonRelease
         $template = $this->labelTemplate($league, $message, $endsAt);
         $label = $this->gate->check(is_array($signed) && array_is_list($signed) ? ($signed[0] ?? null) : $signed, $template, $admin);
         $draft = self::draft();
+        $plan = SeasonPlans::current();
+        $name = self::seasonName();
 
         try {
-            return DB::transaction(function () use ($league, $admin, $message, $endsAt, $label, $draft): Season {
+            return DB::transaction(function () use ($league, $admin, $message, $endsAt, $label, $draft, $plan, $name): Season {
+                // A planned season continues the one it was planned after; lock it, so two releases serialize.
+                $previous = $plan === null ? null : Season::query()->whereKey($plan->after_season_id)->lockForUpdate()->first();
+
+                if ($plan !== null && ($previous === null || $previous->ends_at->isFuture() || Season::query()->where('previous_season_id', $previous->id)->exists())) {
+                    throw new SeasonReleaseRefused(__('This season has been released already. Only one chain runs at a time.'));
+                }
+
                 $labelEvent = NostrEvent::fromSigned($label);
                 PublishNostrEvent::dispatch($labelEvent);
 
                 $adminList = $this->adminList($league);
                 $genesisAt = max(now()->getTimestamp(), $label->createdAt);
-                $announcement = $league->publish(self::ANNOUNCEMENT, $this->announcementTags($genesisAt, $endsAt), 'Pre-Season: build your clan, find opponents, mine the first blocks.', $genesisAt);
+
+                // NIP "Season transition", step 2: the ladders of the season before close with `ends` first.
+                if ($previous !== null) {
+                    app(LadderEvents::class)->close($previous, $league, $this->trustKey(), 'Season closed for '.$draft['slug'].'.');
+                }
+
+                $announcement = $plan === null
+                    ? $league->publish(self::ANNOUNCEMENT, $this->announcementTags(self::SLUG, 'Pre-Season', $genesisAt, $endsAt), 'Pre-Season: build your clan, find opponents, mine the first blocks.', $genesisAt)
+                    : $this->announce($league, $plan->slug, $name, $genesisAt, $endsAt);
 
                 $tags = [
                     ...$this->parameterTags($endsAt),
@@ -166,7 +222,7 @@ final class SeasonRelease
                     ['e', $adminList->event_id, '', $adminList->pubkey],
                     ['e', $labelEvent->event_id, '', $labelEvent->pubkey],
                     ['p', $admin->pubkey, '', 'release'],
-                    ['alt', 'Season genesis: TWENTY ONE Esports Pre-Season, Block 0'],
+                    ['alt', 'Season genesis: TWENTY ONE Esports '.$name.', Block 0'],
                 ];
 
                 if (self::digest($message, $tags) !== $label->tag('x')) {
@@ -177,6 +233,8 @@ final class SeasonRelease
 
                 $season = Season::query()->create([
                     'slug' => $draft['slug'],
+                    'previous_season_id' => $previous?->id,
+                    'reset_factor_milli' => $plan?->reset_factor_milli,
                     'league_pubkey' => $league->pubkey(),
                     'supply' => $draft['supply'],
                     'subsidy' => $draft['subsidy'],
@@ -198,17 +256,38 @@ final class SeasonRelease
                     'released_by_pubkey' => $admin->pubkey,
                 ]);
 
-                // The first version of every ladder, right after the genesis (NIP "Season transition").
+                // The soft reset: every entity with a rated result in the season before starts at its seed.
+                if ($previous !== null) {
+                    SoftReset::apply($previous, $season);
+                }
+
+                // The first version of every ladder, right after the genesis (NIP "Season transition"),
+                // with `reset` and `seed` when it continues a season.
                 app(LadderEvents::class)->publish($season, $league, $this->trustKey());
 
-                // "Notify me at Block 0": everyone who asked, after the commit.
-                NotifyBlockZero::dispatch(NotifyBlockZero::RELEASED);
+                // "Notify me at Block 0" is the Pre-Season's: everyone who asked, after the commit.
+                if ($previous === null) {
+                    NotifyBlockZero::dispatch(NotifyBlockZero::RELEASED);
+                }
 
                 return $season;
             });
         } catch (UniqueConstraintViolationException) {
-            throw new SeasonReleaseRefused(__('The Pre-Season has been released. Only one chain runs at a time, and later seasons are not planned here.'));
+            throw new SeasonReleaseRefused(__('This season has been released already. Only one chain runs at a time.'));
         }
+    }
+
+    /**
+     * Publish a version of a season's announcement (`31923`, NIP-52): the
+     * countdown to its planned Block 0 while it is planned, the real times
+     * once it is released. A new version is always newer than the stored one.
+     */
+    public function announce(LeagueKey $league, string $slug, string $name, int $start, int $end): NostrEvent
+    {
+        $latest = NostrEvent::query()->where(['kind' => self::ANNOUNCEMENT, 'pubkey' => $league->pubkey(), 'd' => 'season/'.$slug])->max('signed_at');
+        $createdAt = max(now()->getTimestamp(), is_numeric($latest) ? (int) $latest + 1 : 0);
+
+        return $league->publish(self::ANNOUNCEMENT, $this->announcementTags($slug, $name, $start, $end), $name.': the next season of TWENTY ONE Esports. Rated play and mining start at Block 0.', $createdAt);
     }
 
     /**
@@ -312,9 +391,9 @@ final class SeasonRelease
                 ['l', self::RELEASE_LABEL, self::NAMESPACE],
                 ['a', $this->announcementAddress($league), ''],
                 ['x', self::digest($message, $this->parameterTags($endsAt))],
-                ['alt', 'Label: release of Block 0 of the TWENTY ONE Esports Pre-Season'],
+                ['alt', 'Label: release of Block 0 of the TWENTY ONE Esports '.self::seasonName()],
             ],
-            'content' => "Release Block 0 of the Pre-Season. Supply retyped: {$supply}.",
+            'content' => 'Release Block 0 of the '.self::seasonName().". Supply retyped: {$supply}.",
             'created_at' => now()->getTimestamp(),
         ];
     }
@@ -356,23 +435,23 @@ final class SeasonRelease
 
     private function announcementAddress(LeagueKey $league): string
     {
-        return self::ANNOUNCEMENT.':'.$league->pubkey().':season/'.self::SLUG;
+        return self::ANNOUNCEMENT.':'.$league->pubkey().':season/'.self::draft()['slug'];
     }
 
     /**
      * @return list<list<string>>
      */
-    private function announcementTags(int $start, int $end): array
+    private function announcementTags(string $slug, string $name, int $start, int $end): array
     {
         return [
-            ['d', 'season/'.self::SLUG],
-            ['title', 'TWENTY ONE Esports Pre-Season: Block 0'],
-            ['summary', 'Pre-Season starts at Block 0. Rated play and mining run until the end of the season.'],
+            ['d', 'season/'.$slug],
+            ['title', 'TWENTY ONE Esports '.$name.': Block 0'],
+            ['summary', $name.' starts at Block 0. Rated play and mining run until the end of the season.'],
             ['start', (string) $start],
             ['end', (string) $end],
             ['start_tzid', (string) config('esports.preseason.display_timezone', 'UTC')],
             ['location', (string) config('app.url')],
-            ['alt', 'Calendar event: TWENTY ONE Esports Pre-Season, Block 0 at '.gmdate('Y-m-d H:i', $start).' UTC'],
+            ['alt', 'Calendar event: TWENTY ONE Esports '.$name.', Block 0 at '.gmdate('Y-m-d H:i', $start).' UTC'],
         ];
     }
 }

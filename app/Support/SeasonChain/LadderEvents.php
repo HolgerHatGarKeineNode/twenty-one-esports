@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\RatingSettings;
+use App\Support\Rating\SoftReset;
 use App\Support\Series\Ladders;
 
 /**
@@ -29,6 +30,14 @@ use App\Support\Series\Ladders;
  * reset, seed), so a config edit during the season cannot change them.
  * `trust` is present from the first version on (its presence is frozen) and
  * names the trust key and the season's minimum.
+ *
+ * A season that continues another (P38, NIP "Season transition") carries
+ * `reset` (the ladder of the season before, its last attestation, the
+ * factor) and one `seed` per carried-over entity (SoftReset) in the first
+ * version of each ladder that had a rated result; every seeded entity is
+ * also a plain `a` (lineup) or `p` (player) tag in every version. Before
+ * that, the release closes the ladders of the season before with a last
+ * version that carries `ends` (close()).
  */
 final class LadderEvents
 {
@@ -56,7 +65,35 @@ final class LadderEvents
         return $events;
     }
 
-    private function publishOne(Season $season, LeagueKey $league, string $trustKey, string $game, string $mode, string $content): NostrEvent
+    /**
+     * The last version of every ladder of an ended season, with `ends` (NIP
+     * "Season transition", step 2): the ladder a `reset` names must carry it.
+     * A ladder that never opened, or that carries `ends` already, is left as
+     * it is.
+     *
+     * @return list<NostrEvent>
+     */
+    public function close(Season $season, LeagueKey $league, string $trustKey, string $content = ''): array
+    {
+        $events = [];
+
+        foreach ($this->games->all() as $game) {
+            foreach ($game->modes() as $mode) {
+                $latest = NostrEvent::query()->where(['kind' => Ladders::KIND, 'pubkey' => $league->pubkey(), 'd' => $game->slug().'/'.$mode->slug.'/'.$season->slug])
+                    ->orderByDesc('signed_at')->orderByDesc('id')->first();
+
+                if ($latest === null || SignedEvent::fromInput($latest->payload())?->tag('ends') !== null) {
+                    continue;
+                }
+
+                $events[] = $this->publishOne($season, $league, $trustKey, $game->slug(), $mode->slug, $content, $season->ends_at->getTimestamp());
+            }
+        }
+
+        return $events;
+    }
+
+    private function publishOne(Season $season, LeagueKey $league, string $trustKey, string $game, string $mode, string $content, ?int $ends = null): NostrEvent
     {
         $d = $game.'/'.$mode.'/'.$season->slug;
         $first = NostrEvent::query()->where(['kind' => Ladders::KIND, 'pubkey' => $league->pubkey(), 'd' => $d])->orderBy('signed_at')->orderBy('id')->first();
@@ -78,9 +115,17 @@ final class LadderEvents
         }
 
         $standings = $this->standings($season, $game, $mode);
+        $rates = $this->games->mode($game, $mode)->rates ?? 'lineup';
+        $listed = [];
 
-        foreach ($standings as $row) {
-            $tags[] = $row['rates'] === 'player' ? ['p', $row['entity']] : ['a', $row['entity'], ''];
+        // Every entity with a standing or a seed, once, as a plain tag (NIP "Ladder").
+        foreach ([...array_column($standings, 'entity'), ...array_map(fn (array $tag): string => (string) ($tag[1] ?? ''), array_values(array_filter($frozen, fn (array $tag): bool => ($tag[0] ?? null) === 'seed')))] as $entity) {
+            if ($entity === '' || isset($listed[$entity])) {
+                continue;
+            }
+
+            $listed[$entity] = true;
+            $tags[] = $rates === 'player' ? ['p', $entity] : ['a', $entity, ''];
         }
 
         foreach ($standings as $index => $row) {
@@ -93,7 +138,11 @@ final class LadderEvents
             $tags[] = $standing;
         }
 
-        $tags[] = ['alt', "Esports ladder: {$game} {$mode}, {$season->slug}"];
+        if ($ends !== null) {
+            $tags[] = ['ends', (string) $ends];
+        }
+
+        $tags[] = ['alt', "Esports ladder: {$game} {$mode}, {$season->slug}".($ends !== null ? ', closed' : '')];
 
         // A new version must be newer than the one relays keep (NIP-01, rule "monotonic").
         $createdAt = max(now()->getTimestamp(), ($latest->signed_at ?? 0) + 1);
@@ -135,6 +184,47 @@ final class LadderEvents
 
         $tags[] = ['provisional', (string) $settings['rating']['provisional'], (string) $settings['rating']['provisional_k']];
         $tags[] = ['hashrate', ...array_map(strval(...), [$settings['hashrate']['win'], $settings['hashrate']['draw'], $settings['hashrate']['loss'], $settings['hashrate']['team_win_bonus']])];
+
+        return [...$tags, ...$this->resetTags($season, $game, $mode)];
+    }
+
+    /**
+     * `reset` and the `seed` rows of a season that continues another, for
+     * one ladder; none without a previous season or when this ladder had no
+     * rated result there (NIP "Season transition": `reset` and `seed` appear
+     * together or not at all).
+     *
+     * @return list<list<string>>
+     *
+     * @throws SeasonReleaseRefused when a seeded ladder has no attestation to pin
+     */
+    private function resetTags(Season $season, string $game, string $mode): array
+    {
+        $previous = $season->previousSeason;
+
+        if ($previous === null || $season->reset_factor_milli === null) {
+            return [];
+        }
+
+        $seeds = SoftReset::seeds($previous, $season)[$game.'/'.$mode] ?? [];
+
+        if ($seeds === []) {
+            return [];
+        }
+
+        $address = Ladders::KIND.':'.$previous->league_pubkey.':'.$game.'/'.$mode.'/'.$previous->slug;
+        $last = $previous->attestations()->where('ladder_address', $address)->orderByDesc('id')->value('event_id');
+
+        // A rated result without its attestation is a league error; never sign a `reset` that pins nothing.
+        if (! is_string($last) || $last === '') {
+            throw new SeasonReleaseRefused(__('The ladder :ladder of :season has rated results but no attestation to carry them over from. Nothing was released.', ['ladder' => $game.'/'.$mode, 'season' => $previous->slug]));
+        }
+
+        $tags = [['reset', $address, $last, SeasonRelease::factor($season->reset_factor_milli)]];
+
+        foreach ($seeds as $seed) {
+            $tags[] = ['seed', $seed['entity'], (string) $seed['seed']];
+        }
 
         return $tags;
     }

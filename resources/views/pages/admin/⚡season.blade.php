@@ -2,6 +2,7 @@
 
 use App\Models\Rating;
 use App\Models\Season;
+use App\Models\SeasonPlan;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Board;
@@ -15,6 +16,7 @@ use App\Support\Rating\SoftReset;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\SeasonPlans;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
 use App\Support\SeasonChain\SeasonReview;
@@ -42,10 +44,15 @@ use Livewire\WithPagination;
  * the review of the last ended season (SeasonReview). There is no settle
  * action: the season-chain payout is not built.
  *
- * Every admin sees the page; editing the rating draft, releasing Block 0
- * and changing chain rules is for the board (the public admin list) only
- * (P39), shown read-only to the others and checked again in RatingSettings,
- * SeasonRelease and SeasonChains.
+ * P38: the season planner (SeasonPlans) for the season after the newest
+ * one, with its log; the release of Block 0 then releases the planned
+ * season with the soft reset, and the soft-reset preview starts at the
+ * planned f.
+ *
+ * Every admin sees the page; editing the rating draft, releasing Block 0,
+ * planning a season and changing chain rules is for the board (the public
+ * admin list) only (P39), shown read-only to the others and checked again
+ * in RatingSettings, SeasonRelease, SeasonPlans and SeasonChains.
  */
 new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     use WithPagination;
@@ -94,8 +101,19 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     public string $settingsError = '';
 
-    /** The soft-reset preview's carry-over factor f; 0.5 as in the NIP examples. */
+    /** The soft-reset preview's carry-over factor f: the planned one, else 0.5 as in the NIP examples. */
     public string $resetFactor = '0.5';
+
+    public string $planName = '';
+
+    /** The planned Block 0 as `Y-m-d\TH:i` in the viewer's time zone (a datetime-local input). */
+    public string $planStartsAt = '';
+
+    public string $planWeeks = '';
+
+    public string $planFactor = '';
+
+    public string $planError = '';
 
     public function mount(): void
     {
@@ -105,6 +123,65 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
         $this->fillChangeForm();
         $this->fillSettingsForm();
+        $this->fillPlanForm();
+    }
+
+    /** The season the planner plans after: the newest one, live or ended. */
+    #[Computed]
+    public function planAfter(): ?Season
+    {
+        return Seasons::latest();
+    }
+
+    #[Computed]
+    public function plan(): ?SeasonPlan
+    {
+        return SeasonPlans::current();
+    }
+
+    #[Computed]
+    public function planRefusal(): ?string
+    {
+        return SeasonPlans::refusal($this->admin());
+    }
+
+    /**
+     * @return Collection<int, SeasonPlan>
+     */
+    #[Computed]
+    public function planLog(): Collection
+    {
+        $after = $this->planAfter;
+
+        return $after === null ? new Collection : SeasonPlan::query()->with('changedBy')->where('after_season_id', $after->id)->latest('id')->limit(20)->get();
+    }
+
+    /** Save the plan of the next season (board only, checked again in SeasonPlans), with its log row. */
+    public function savePlan(): void
+    {
+        Gate::authorize('admin');
+
+        $this->planError = '';
+        $this->notice = '';
+        $zone = PreSeason::timezoneFor($this->admin());
+        $startsAt = null;
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $this->planStartsAt) === 1) {
+            $startsAt = CarbonImmutable::createFromFormat('Y-m-d\TH:i', $this->planStartsAt, $zone) ?: null;
+        }
+
+        try {
+            $plan = app(SeasonPlans::class)->save($this->admin(), $this->planName, $startsAt, $this->planWeeks, $this->planFactor);
+        } catch (SeasonReleaseRefused $refused) {
+            $this->planError = $refused->getMessage();
+
+            return;
+        }
+
+        $this->notice = $plan === null ? __('Nothing changed.') : __('Saved and announced. :season can be released from its Block 0 on.', ['season' => $plan->name]);
+        unset($this->plan, $this->planLog, $this->releaseRefusal);
+        $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
+        $this->fillPlanForm();
     }
 
     /**
@@ -253,6 +330,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     public function release(string $signed): void
     {
         $this->releaseError = '';
+        $name = SeasonRelease::seasonName();
 
         try {
             app(SeasonRelease::class)->release($this->admin(), $this->supply, $this->message, $this->endsAt, json_decode($signed, true));
@@ -266,10 +344,12 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             return;
         }
 
-        $this->notice = __('Block 0 is released. The Pre-Season chain runs.');
+        $this->notice = __('Block 0 is released. The :season chain runs.', ['season' => $name]);
         $this->reset('supply');
-        unset($this->chain, $this->releaseRefusal);
+        unset($this->chain, $this->releaseRefusal, $this->planAfter, $this->plan, $this->planLog, $this->planRefusal, $this->settingsLocked, $this->resetFrom);
         $this->fillChangeForm();
+        $this->fillSettingsForm();
+        $this->fillPlanForm();
     }
 
     public function saveChange(): void
@@ -422,6 +502,28 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $this->rating = array_map($text, $values['rating']);
         $this->tiers = array_map($text, $values['tiers']);
         $this->hashrate = array_map($text, $values['hashrate']);
+    }
+
+    /** The plan in force, else the defaults for the season after the newest one. */
+    private function fillPlanForm(): void
+    {
+        $after = Seasons::latest();
+
+        if ($after === null) {
+            return;
+        }
+
+        $plan = SeasonPlans::current();
+        $values = $plan === null ? SeasonPlans::defaults($after) : ['name' => $plan->name, 'starts_at' => CarbonImmutable::instance($plan->starts_at), 'weeks' => $plan->weeks, 'reset_factor_milli' => $plan->reset_factor_milli];
+
+        $this->planName = $values['name'];
+        $this->planStartsAt = $values['starts_at']->setTimezone(PreSeason::timezoneFor($this->admin()))->format('Y-m-d\TH:i');
+        $this->planWeeks = (string) $values['weeks'];
+        $this->planFactor = SeasonRelease::factor($values['reset_factor_milli']);
+
+        if ($plan !== null) {
+            $this->resetFactor = $this->planFactor;
+        }
     }
 
     private function fillChangeForm(): void
@@ -690,6 +792,64 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         </section>
     @endunless
 
+    {{-- Season planner (P38, SeasonPlans) --}}
+    @php($after = $this->planAfter)
+    @php($plan = $this->plan)
+    <x-admin.panel :title="__('Next season')" :meta="$plan ? __(':slug, announced for Block 0 :when', ['slug' => $plan->slug, 'when' => $date(CarbonImmutable::instance($plan->starts_at))]) : __('not planned')" data-test="season-planner">
+        @if ($after === null)
+            <x-admin.empty :text="__('The planner is for the seasons after the Pre-Season. Release the Pre-Season first.')" />
+        @else
+            <p class="m-0 text-xs text-ink-2">{{ __('Plan the season after :season. Saving announces it with its planned Block 0; any one board member releases it above from then on, once :season has ended. The release carries every rating over with the soft reset: next start = start rating + (final rating − start rating) × f, rounded.', ['season' => $after->slug]) }}</p>
+            <form wire:submit="savePlan" class="flex flex-col gap-4">
+                <fieldset class="m-0 grid grid-cols-1 gap-3 border-0 p-0 sm:grid-cols-2 lg:grid-cols-4" @disabled($this->planRefusal !== null)>
+                    <legend class="mb-2 text-xs text-ink-2">{{ __(':slug, rating values from the section below', ['slug' => SeasonPlans::nextSlug($after)]) }}</legend>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Name') }}
+                        <input type="text" wire:model="planName" maxlength="{{ SeasonPlans::NAME_MAX }}" class="{{ $input }}" data-test="plan-name">
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Block 0 (:zone)', ['zone' => $zone]) }}
+                        <input type="datetime-local" wire:model="planStartsAt" class="{{ $input }}" data-test="plan-starts-at">
+                        <span class="text-ink-3">{{ __('after :season ends, :when', ['season' => $after->slug, 'when' => $date(CarbonImmutable::instance($after->ends_at), 'D j M, H:i')]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Length in weeks') }}
+                        <input type="text" inputmode="numeric" wire:model="planWeeks" class="{{ $input }}" data-test="plan-weeks">
+                        <span class="text-ink-3">{{ __(':min to :max', ['min' => SeasonPlans::minWeeks(), 'max' => SeasonPlans::maxWeeks()]) }}</span>
+                    </label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Carry-over factor f (0 to 1)') }}
+                        <input type="text" inputmode="decimal" wire:model="planFactor" class="{{ $input }}" data-test="plan-factor">
+                        <span class="text-ink-3">{{ __('0 resets everyone, 1 keeps every rating') }}</span>
+                    </label>
+                </fieldset>
+                <span class="flex flex-wrap items-center gap-3">
+                    <button type="submit" @disabled($this->planRefusal !== null) class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc disabled:cursor-not-allowed disabled:opacity-50" data-test="save-plan">{{ __('Save and announce') }}</button>
+                    @if ($this->planRefusal)<span class="text-xs text-ink-3" data-test="plan-refusal">{{ $this->planRefusal }}</span>@endif
+                </span>
+                @if ($planError)
+                    <p class="m-0 text-[13px] text-loss" role="alert" data-test="plan-error">{{ $planError }}</p>
+                @endif
+            </form>
+            <div class="flex flex-col" data-test="plan-log">
+                <h3 class="m-0 pb-1 text-[13px] font-bold">{{ __('Who planned what') }}</h3>
+                @forelse ($this->planLog as $change)
+                    <div wire:key="plan-change-{{ $change->id }}" class="flex flex-col gap-1 border-b border-hairline py-2.5 text-[13px] last:border-0">
+                        <span class="flex flex-wrap gap-x-3"><b>{{ $date(CarbonImmutable::instance($change->created_at)) }}</b><span class="text-ink-2">{{ __('by :name', ['name' => $change->changedBy?->displayName() ?? substr($change->changed_by_pubkey, 0, 8)]) }}</span></span>
+                        <span class="text-xs break-words text-ink-3">{{ collect($change->changes)->map(fn (array $pair, string $field): string => match ($field) {
+                            'starts_at' => __('Block 0'),
+                            'weeks' => __('Length in weeks'),
+                            'reset_factor_milli' => __('f'),
+                            default => __('Name'),
+                        }.': '.collect($pair)->map(fn ($value): string => $value === null ? '–' : match ($field) {
+                            'starts_at' => $date(CarbonImmutable::createFromTimestamp((int) $value), 'D j M Y, H:i'),
+                            'reset_factor_milli' => SeasonRelease::factor((int) $value),
+                            default => (string) $value,
+                        })->implode(' → '))->implode(' · ') }}</span>
+                    </div>
+                @empty
+                    <x-admin.empty :text="__('Not planned yet.')" />
+                @endforelse
+            </div>
+        @endif
+    </x-admin.panel>
+
     {{-- Rating, rank and hashrate values for Block 0 (P35, RatingSettings) --}}
     @php($locked = $this->settingsLocked)
     @php($readOnly = $locked || ! $this->isBoard)
@@ -750,8 +910,8 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     {{-- Soft-reset preview (P35, SoftReset) --}}
     @php($from = $this->resetFrom)
-    <x-admin.panel :title="__('Soft-reset preview')" :meta="__('read-only, nothing is applied')" data-test="season-soft-reset">
-        <p class="m-0 text-xs text-ink-2">{{ __('The NIP soft reset: next start = start rating + (rating now − start rating of the season) × f, rounded. f = 0 resets everyone, f = 1 keeps every rating. No release applies it yet: only the Pre-Season can be released here.') }}</p>
+    <x-admin.panel :title="__('Soft-reset preview')" :meta="__('read-only, the release of the planned season applies it')" data-test="season-soft-reset">
+        <p class="m-0 text-xs text-ink-2">{{ __('The NIP soft reset: next start = start rating + (rating now − start rating of the season) × f, rounded. f = 0 resets everyone, f = 1 keeps every rating. The field starts at the planned f; trying another value here changes nothing.') }}</p>
         @if ($from === null)
             <x-admin.empty :text="__('No season has been released, so there are no rated ratings to carry over.')" />
         @else

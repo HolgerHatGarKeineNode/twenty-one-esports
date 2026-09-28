@@ -7,6 +7,7 @@ use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\SeasonChain\SeasonReleaseRefused;
+use App\Support\SeasonChain\Seasons;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -37,9 +38,11 @@ use Illuminate\Support\Facades\DB;
  * - `chain.*`: the draft stays config/season.php; during a season the board
  *   changes the allowed chain rules through Parameter Changes (`2158`).
  *
- * Only the Pre-Season can be released (SeasonRelease): the draft is locked
- * as soon as any season row exists, and a later season needs a season
- * planner that does not exist yet.
+ * The draft is for the next Block 0: the Pre-Season, then each season the
+ * board plans (SeasonPlans, P38). It is locked while a season is live, so
+ * the page shows the live season's values, and open again once that season
+ * has ended, for the next one; a season's own values never change after its
+ * release.
  *
  * Which values are in force: the newest released season's frozen values
  * (live or ended, so an ended ladder keeps its own tiers); before any
@@ -147,10 +150,10 @@ final class RatingSettings
         request()->attributes->remove(self::MEMO);
     }
 
-    /** Once a season has been released the draft cannot change. */
+    /** While a season is live the draft cannot change; before the first and between seasons it can. */
     public static function locked(): bool
     {
-        return Season::query()->exists();
+        return Seasons::live() !== null;
     }
 
     /**

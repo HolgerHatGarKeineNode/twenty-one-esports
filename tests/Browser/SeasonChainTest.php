@@ -12,10 +12,14 @@ use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
+use App\Support\PreSeason;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\SeasonChain\Candidate;
+use App\Support\SeasonChain\LadderEvents;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\Resolution;
 use App\Support\SeasonChain\SeasonChains;
+use App\Support\SeasonChain\SeasonPlans;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonImmutable;
@@ -407,4 +411,90 @@ test('AdminSeason P35: rating settings, soft-reset preview and season review sta
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate('() => document.querySelector("[data-test=season-review]").innerText'))->toContain('Player 00')
         ->and($page->evaluate('() => document.querySelector("[data-test=review-payouts]").innerText'))->toContain('No season payouts have been made.');
+});
+
+test('AdminSeason P38: the board plans the next season and releases it with the soft reset, clean and inside 375 and 1440 px', function () {
+    $board = User::factory()->create(['name' => 'vorstand']);
+    TestSigner::forBrowser($board);
+    $board->refresh();
+
+    // The Pre-Season ended an hour ago, with its ladders and two rated players on chess blitz.
+    $preSeason = openSeason(['genesis_at' => now()->subDays(30), 'ends_at' => now()->subHour()]);
+    config(['esports.board' => [NostrKeys::hexToNpub($board->pubkey)], 'esports.trust.nsec' => (new TestSigner)->secret]);
+    app(LadderEvents::class)->publish($preSeason, LeagueKey::required(), (string) LeagueKey::trust()?->pubkey());
+    [$alice, $bob] = [User::factory()->create(['name' => 'alice']), User::factory()->create(['name' => 'bob'])];
+    foreach ([[$alice, 1029], [$bob, 971]] as [$player, $rating]) {
+        Rating::query()->create(['pool' => Rating::RATED, 'season' => 'pre-season', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id,
+            'user_id' => $player->id, 'rating' => $rating, 'results' => 4, 'wins' => 2, 'losses' => 2]);
+    }
+    SeasonAttestation::query()->create([
+        'season_id' => $preSeason->id, 'source' => 'chess', 'source_id' => 1, 'label' => '#1', 'game' => 'chess', 'mode' => 'blitz',
+        'ladder_address' => '32152:'.$preSeason->league_pubkey.':chess/blitz/pre-season', 'attested_at' => now()->subDays(2), 'event_id' => str_repeat('c', 64),
+    ]);
+
+    // Positive control: an injected throw and a 404 fetch must show up as problems.
+    $control = chainPage($board, route('admin.season'), 'window.addEventListener("load", () => { setTimeout(() => { throw new Error("p38-positive-control"); }, 0); fetch("/p38-positive-control-missing"); });');
+    $controlProblems = implode("\n", chainProblems($control, [route('admin.season')]));
+    BrowserWait::until($control, '() => (window.__errors || []).some((entry) => entry.startsWith("404 "))', 10_000);
+
+    expect($controlProblems)->toContain('p38-positive-control')
+        ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('p38-positive-control-missing');
+
+    $page = chainPage($board, route('admin.season'), TestSigner::browserStub($board));
+
+    expect(chainProblems($page, [route('admin.season')]))->toBe([]);
+
+    $sizes = [];
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.season')));
+        $sizes[$width] = $page->evaluate('() => ["season-planner", "plan-starts-at", "save-plan"].map((name) => {'
+            .' const r = document.querySelector(`[data-test=${name}]`).getBoundingClientRect();'
+            .' return [name, Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height)]; })');
+    }
+
+    fwrite(STDERR, "\n[admin-season P38] name/left/right/width/height: ".json_encode($sizes)."\n");
+
+    foreach ([375, 1440] as $width) {
+        foreach ($sizes[$width] as [$name, $left, $right, $boxWidth, $boxHeight]) {
+            expect($left)->toBeGreaterThanOrEqual(0)
+                ->and($right)->toBeLessThanOrEqual($width)
+                ->and($boxHeight)->toBeGreaterThan(0);
+        }
+    }
+
+    // Plan through a Livewire round-trip: Block 0 at the default, the next full hour.
+    $page->locator('[data-test=plan-name]')->fill('Winter Season');
+    $page->locator('[data-test=plan-weeks]')->fill('10');
+    $page->locator('[data-test=plan-factor]')->fill('0.5');
+    $page->locator('[data-test=save-plan]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=plan-log]")?.innerText.includes("Winter Season")', 10_000);
+
+    $plan = SeasonPlans::current();
+    $zone = PreSeason::timezoneFor($board);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($plan?->weeks)->toBe(10)
+        ->and($plan?->starts_at->getTimestamp())->toBe(CarbonImmutable::now()->addHour()->startOfHour()->getTimestamp())
+        ->and($page->evaluate('() => document.querySelector("[data-test=plan-starts-at]").value'))->toBe($plan?->starts_at->setTimezone($zone)->format('Y-m-d\TH:i'))
+        ->and($page->evaluate('() => document.querySelector("[data-test=release-refusal]")?.innerText ?? ""'))->toContain('Winter Season is planned for Block 0');
+
+    // From the planned Block 0 on, one board member releases it through the real signing path.
+    $this->travel(2)->hours();
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('#genesis-message')->fill('Winter Season: every fair win is a block');
+    $page->locator('[data-test=retype-supply]')->fill('2100000');
+    $page->locator('[data-test=release-button]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=season-notice]")?.innerText.includes("Winter Season")', 10_000);
+
+    $season = Season::query()->where('slug', 'season-1')->sole();
+    $seeds = Rating::query()->where(['pool' => Rating::RATED, 'season' => 'season-1'])->orderByDesc('rating')->pluck('rating')->all();
+
+    expect($page->evaluate('() => document.querySelector("[data-test=admin-season]").dataset.state'))->toBe('live')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($season->previous_season_id)->toBe($preSeason->id)
+        // 1029: 29 × 0.5 = 14.5 rounds to 15; 971: −14.5 rounds to −15.
+        ->and($seeds)->toBe([1015, 985])
+        ->and(chainProblems($page, [route('admin.season'), route('mining')]))->toBe([]);
 });
