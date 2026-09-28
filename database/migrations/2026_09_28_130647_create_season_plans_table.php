@@ -50,6 +50,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('seasons', function (Blueprint $table) {
+            $table->dropUnique(['previous_season_id']);
             $table->dropConstrainedForeignId('previous_season_id');
             $table->dropColumn('reset_factor_milli');
         });
