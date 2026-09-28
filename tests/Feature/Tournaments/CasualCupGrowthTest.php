@@ -151,3 +151,28 @@ test('the cup page always shows the places of the current size', function () {
         ->assertSeeHtml('aria-valuemax="8"')
         ->assertSee('of 8 spots taken');
 });
+
+test('a cup opened with every place before P27 is fitted to the growing sign-up once, with one new version', function () {
+    cupTick();
+    $cup = openCup();
+    $cup->update(['capacity' => 16]);
+    growthSignups($cup, 2);
+    $versions = growthVersions($cup);
+    $cups = app(CasualCups::class);
+
+    expect($cups->fitCapacity($cup->refresh()))->toBeTrue()
+        ->and($cup->refresh()->capacity)->toBe(4)
+        ->and(growthVersions($cup))->toBe($versions + 1)
+        ->and($cups->fitCapacity($cup->refresh()))->toBeFalse()
+        ->and(growthVersions($cup))->toBe($versions + 1);
+
+    $cup->update(['capacity' => 16]);
+    growthSignups($cup, 3);
+    $cups->fitCapacity($cup->refresh());
+    expect($cup->refresh()->capacity)->toBe(8);
+
+    $this->travelTo($cup->signup_closes_at->subMinutes(30));
+    $cup->update(['capacity' => 16]);
+    expect($cups->fitCapacity($cup->refresh()))->toBeFalse()
+        ->and($cup->refresh()->capacity)->toBe(16);
+});

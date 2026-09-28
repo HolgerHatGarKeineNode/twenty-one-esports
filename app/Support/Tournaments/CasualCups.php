@@ -462,6 +462,38 @@ final class CasualCups
     }
 
     /**
+     * Fit a cup opened before P27 to the growing sign-up: the smallest size
+     * that holds its players, while growth is still open; the calendar event
+     * gets a new version. Idempotent: a cup that fits already is left alone.
+     */
+    public function fitCapacity(Tournament $cup): bool
+    {
+        if (! $cup->isCasualCup() || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || self::growthFrozen($cup)) {
+            return false;
+        }
+
+        $signedUp = $this->signedUp($cup);
+        $fitting = collect(self::sizes())->first(fn (int $size): bool => $size >= $signedUp) ?? self::capacity();
+
+        if ($fitting >= $cup->capacity) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($cup, $fitting): bool {
+            $fitted = Tournament::query()->whereKey($cup->id)->where('status', TournamentStatus::Signup)->where('capacity', $cup->capacity)
+                ->update(['capacity' => $fitting]);
+
+            if ($fitted !== 1) {
+                return false;
+            }
+
+            $this->publisher->republish(Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id));
+
+            return true;
+        });
+    }
+
+    /**
      * Switch a cup with 2 to 5 players to its small format and its live
      * evening: one new version of the 31923 with the evening's start and
      * end, and a notice to every player.
