@@ -5,14 +5,16 @@
  * server never sees a message. Loaded by /chess and /games/{slug} (layout
  * `scripts`); the markup is components/⚡game-channel.
  *
- * - One subscription for the channel's messages and polls (`#e` the channel)
- *   and the creator's hides and mutes; one for the votes of the polls on
- *   screen, opened again when that set changes.
+ * - One subscription for the channel's messages, its polls (a filter and a
+ *   limit each) and the creator's hides and mutes; one for the votes of the
+ *   shown polls, opened again when that set or the known counting players
+ *   change.
  * - Names and avatars come from the league (`$wire.players`): a league
- *   player shows with the name the league knows, anybody else with a short
- *   npub and a generated avatar, marked "not in the league". Polls are
- *   shown from league players only, and only their votes count; how many
- *   other votes arrived is said, not added.
+ *   account shows with the name the league knows, anybody else with a short
+ *   npub and a generated avatar, marked "not in the league". A poll is shown
+ *   and a vote counted only when the league says the pubkey `counts` (a
+ *   member, or a result in the league: NIP "Game channels"); how many other
+ *   votes arrived is said, not added.
  * - Message text renders through the P24 stream chat's bounded tokenizer
  *   (streamChat.js) and its token partial, never as HTML.
  * - Mutes are the viewer's own (localStorage and the account, ChatMute);
@@ -31,12 +33,30 @@ import { botMark, displayRows, insertSorted, length, sendBlocker, tokenize } fro
 const MUTES_KEY = 'esports.chat.mutes';
 const KEEP = 200;
 const BOTTOM_SLACK = 48;
-/** Polls whose votes are read (the newest). */
+/** Polls whose votes are read (the newest shown ones). */
 const POLLS_WATCHED = 30;
-/** Pubkeys asked about in one lookup, and in one page's life. */
+/** Polls read back when the page opens, in their own filter so messages never crowd them out, or they the messages. */
+const POLLS_HISTORY = 50;
+/** Polls waiting for the league to say whether their author counts (the newest are kept). */
+const POLLS_PENDING = 100;
+/** Votes read by the open subscription for anybody; the league players' votes have their own filter. */
+const VOTES_LIMIT = 500;
+/** Counting players named in the votes filter's `authors`. */
+const VOTE_AUTHORS = 300;
+/**
+ * Pubkeys asked about in one lookup. Authors (of polls first, then of
+ * messages) and voters each draw from a bucket of their own that refills
+ * over time, so a flood of keys slows the lookups down but never uses them
+ * up for the page's life, and voters never hold up an author. Queues are
+ * bounded; what does not fit waits for the next event that names it.
+ */
 const LOOKUP_BATCH = 100;
-const LOOKUP_LIMIT = 2000;
+const BUCKET_SIZE = 300;
+const BUCKET_REFILL_PER_S = 30;
+const QUEUE_MAX = 2000;
 const LOOKUP_TRIES = 3;
+/** How long a change nobody counts (a vote from outside the league) may wait before the cards show it. */
+const UNCOUNTED_DELAY_MS = 1000;
 
 function readJson(key, fallback) {
     try {
@@ -54,11 +74,39 @@ function writeJson(key, value) {
     }
 }
 
+const nextFrame = (callback) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : setTimeout(callback, 16));
+const cancelFrame = (handle) => (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame(handle) : clearTimeout(handle));
+
 export function gameChannel(config) {
     const t = config.labels;
     const nowSeconds = () => Math.floor(Date.now() / 1000);
-    // Outside Alpine's reactivity (a vote book can hold thousands of entries): a render reads them through `version`.
-    const state = { polls: new Map(), book: new Map(), moderationEvents: [], mod: { hidden: new Set(), muted: new Set() }, asked: new Set(), pending: new Set(), tries: new Map() };
+    /*
+     * Outside Alpine's reactivity: the vote book can hold thousands of entries,
+     * and a vote must cost next to nothing until it changes what a reader sees
+     * (security review of P21: 300 votes nobody counts rebuilt every row and
+     * poll card 300 times, 25.8 s of main thread). The cards read `tallies`,
+     * which flush() writes, at most once a frame for a counted change and once
+     * a second for anything else.
+     */
+    const state = {
+        polls: new Map(),
+        pendingPolls: new Map(),
+        rejectedPolls: new Set(),
+        book: new Map(),
+        moderationEvents: [],
+        mod: { hidden: new Set(), muted: new Set() },
+        asked: new Set(),
+        queues: { poll: new Set(), author: new Set(), voter: new Set() },
+        buckets: { author: { tokens: BUCKET_SIZE, at: Date.now() }, voter: { tokens: BUCKET_SIZE, at: Date.now() } },
+        tries: new Map(),
+        dirty: new Set(),
+        frame: null,
+        slow: null,
+        voteAuthors: '',
+        incoming: [],
+        itemsFrame: null,
+        rowCache: new Map(),
+    };
 
     return {
         t,
@@ -76,11 +124,14 @@ export function gameChannel(config) {
         me: config.me ?? null,
         maxLength: config.maxLength ?? 280,
         pointerFine: typeof window.matchMedia === 'function' && window.matchMedia('(hover: hover) and (pointer: fine)').matches,
-        // name/avatar per league player; `false` for a pubkey the league does not know
+        // per league account: { name, avatar, counts }; `false` for a pubkey the league does not know
         people: {},
-        // tick for "closes in", once a minute
+        // per shown poll: the tally the card draws (flush())
+        tallies: {},
+        // bumped when the creator's moderation changes
+        modVersion: 0,
+        // tick for "closes in", twice a minute
         clock: nowSeconds(),
-        version: 0,
 
         // The poll form
         composing: false,
@@ -92,6 +143,11 @@ export function gameChannel(config) {
         init() {
             // The component's own $wire, bound to its root, for calls made later from any element.
             state.wire = this.$wire;
+            // The league already said who the viewer is: no lookup, and their own poll shows at once when it counts.
+            if (this.me) {
+                this.people = { [this.me]: { name: config.meName ?? '', avatar: config.meAvatar ?? '', counts: config.meCounts === true } };
+                state.asked.add(this.me);
+            }
             const local = readJson(MUTES_KEY, []);
             this.muted = [...new Set(this.me ? (config.muted ?? []) : (Array.isArray(local) ? local : []))];
             if (this.me) writeJson(MUTES_KEY, this.muted);
@@ -104,7 +160,8 @@ export function gameChannel(config) {
             this.sub = this.pool.subscribe(
                 config.relays,
                 [
-                    { kinds: [KIND_MESSAGE, KIND_POLL], '#e': [config.channel], limit: config.history ?? 120 },
+                    { kinds: [KIND_MESSAGE], '#e': [config.channel], limit: config.history ?? 120 },
+                    { kinds: [KIND_POLL], '#e': [config.channel], limit: POLLS_HISTORY },
                     { kinds: [KIND_HIDE, KIND_MUTE], authors: [config.creator], limit: 500 },
                 ],
                 { onevent: (event) => this.receive(event), oneose: () => this.caughtUp(), maxWait: 6000 },
@@ -120,6 +177,10 @@ export function gameChannel(config) {
             clearTimeout(this.eoseTimer);
             clearTimeout(this.voteTimer);
             clearTimeout(this.lookupTimer);
+            this.lookupTimer = null;
+            clearTimeout(state.slow);
+            cancelFrame(state.frame);
+            cancelFrame(state.itemsFrame);
             clearInterval(this.clockTimer);
             this.sub?.close();
             this.votes?.close();
@@ -138,71 +199,198 @@ export function gameChannel(config) {
                 if (event.pubkey !== config.creator || state.moderationEvents.length >= 1000) return;
                 state.moderationEvents.push(event);
                 state.mod = moderation(state.moderationEvents, config.creator);
-                this.version += 1;
+                this.modVersion += 1;
 
                 return;
             }
 
             if (event?.kind === KIND_VOTE) {
-                const vote = parseVote(event);
-                if (vote && addVote(state.book, vote, state.polls) !== 'ignored') {
-                    this.wantPerson(vote.pubkey);
-                    this.version += 1;
-                }
+                this.takeVote(parseVote(event));
 
                 return;
             }
 
-            let item = null;
-            if (isChannelMessage(event, config.channel)) {
-                item = { type: 'message', id: event.id, pubkey: event.pubkey, created_at: event.created_at, tokens: tokenize(event.content, event.tags) };
-            } else if (event?.kind === KIND_POLL) {
-                const poll = parsePoll(event, config.channel);
-                if (!poll) return;
-                state.polls.set(poll.id, poll);
-                item = { type: 'poll', id: poll.id, pubkey: poll.pubkey, created_at: poll.created_at, poll };
+            if (event?.kind === KIND_POLL) {
+                this.takePoll(parsePoll(event, config.channel));
+
+                return;
             }
-            if (!item) return;
 
+            if (!isChannelMessage(event, config.channel)) return;
+            this.show({ type: 'message', id: event.id, pubkey: event.pubkey, created_at: event.created_at, tokens: tokenize(event.content, event.tags) });
+        },
+
+        /**
+         * Put an item into the list at the next frame, with everything else
+         * that arrived until then: one list change per frame, not one per
+         * event (measured with the auditor's harness: 300 messages one by one
+         * rebuilt the list 300 times, 34 s of main thread).
+         */
+        show(item) {
+            state.incoming.push(item);
+            if (state.itemsFrame === null) state.itemsFrame = nextFrame(() => this.flushItems());
+        },
+
+        flushItems() {
+            state.itemsFrame = null;
+            const incoming = state.incoming.splice(0);
             const follow = this.atBottom;
-            if (!insertSorted(this.items, item, KEEP)) return;
-            this.wantPerson(item.pubkey);
-            if (item.type === 'poll') this.watchVotes();
+            const list = [...this.items];
+            const added = incoming.filter((item) => insertSorted(list, item, Infinity));
+            if (added.length === 0) return;
+            // KEEP messages at most, the oldest go; polls are never pushed out by messages (their number is bounded upstream).
+            let messages = list.filter((item) => item.type === 'message').length;
+            this.items = messages <= KEEP ? list : list.filter((item) => item.type !== 'message' || messages-- <= KEEP);
 
+            for (const item of added) this.wantPerson(item.pubkey, 'author');
             if (this.status !== 'live') return;
-            if (item.pubkey === this.me || follow) {
+            if (follow || added.some((item) => item.pubkey === this.me)) {
                 this.$nextTick(() => this.scrollToBottom());
-            } else if (!this.muted.includes(item.pubkey)) {
-                this.unseen += 1;
+            } else {
+                this.unseen += added.filter((item) => !this.muted.includes(item.pubkey)).length;
             }
         },
 
-        /** Read the votes of the newest polls; again (debounced) whenever a poll arrives. */
+        /**
+         * A poll is shown once the league says its author counts. Until then it
+         * waits outside the list and the watched polls, so polls of fresh keys
+         * can neither crowd the list nor take the vote slots of a real one. At
+         * most POLLS_PENDING wait; one that finds the waiting room full is
+         * dropped rather than one already waiting (its author is being asked).
+         */
+        takePoll(poll) {
+            if (!poll || state.polls.has(poll.id) || state.pendingPolls.has(poll.id) || state.rejectedPolls.has(poll.id)) return;
+
+            const author = this.people[poll.pubkey];
+            if (author?.counts === true) {
+                this.confirmPoll(poll);
+            } else if (author === undefined) {
+                if (state.pendingPolls.size >= POLLS_PENDING) return;
+                state.pendingPolls.set(poll.id, poll);
+                this.wantPerson(poll.pubkey, 'poll');
+            } else if (state.rejectedPolls.size < 1000) {
+                state.rejectedPolls.add(poll.id);
+            }
+        },
+
+        confirmPoll(poll) {
+            state.pendingPolls.delete(poll.id);
+            state.polls.set(poll.id, poll);
+            this.markDirty(poll.id, true);
+            this.show({ type: 'poll', id: poll.id, pubkey: poll.pubkey, created_at: poll.created_at, poll });
+            this.watchVotes();
+        },
+
+        /**
+         * A vote goes into the book. It asks for a redraw only when it changes
+         * what a card shows: a counted vote (or the viewer's own) at the next
+         * frame, a vote nobody counts within a second; a vote the book ignores,
+         * or one past MAX_VOTERS, never. An unknown voter is looked up first.
+         */
+        takeVote(vote) {
+            if (!vote) return;
+            const outcome = addVote(state.book, vote, state.polls);
+            if (outcome !== 'added' && outcome !== 'replaced') return;
+
+            const voter = this.people[vote.pubkey];
+            if (vote.pubkey === this.me || voter?.counts === true) {
+                this.markDirty(vote.poll, true);
+            } else if (voter === undefined) {
+                this.wantPerson(vote.pubkey, 'voter');
+            } else {
+                this.markDirty(vote.poll, false);
+            }
+        },
+
+        markDirty(pollId, soon) {
+            state.dirty.add(pollId);
+            if (soon && state.frame === null) {
+                state.frame = nextFrame(() => this.flush());
+            } else if (!soon && state.frame === null && state.slow === null) {
+                state.slow = setTimeout(() => this.flush(), UNCOUNTED_DELAY_MS);
+            }
+        },
+
+        markAllDirty(soon) {
+            for (const id of state.polls.keys()) this.markDirty(id, soon);
+        },
+
+        /** Recompute the tallies of the changed polls and hand the cards only what differs. */
+        flush() {
+            cancelFrame(state.frame);
+            clearTimeout(state.slow);
+            state.frame = null;
+            state.slow = null;
+            const dirty = [...state.dirty];
+            state.dirty.clear();
+
+            for (const id of dirty) {
+                const poll = state.polls.get(id);
+                if (!poll) continue;
+                const outcome = tally(poll, state.book, { counts: (pubkey) => this.people[pubkey]?.counts === true, me: this.me });
+                const held = this.tallies[id];
+                if (!held || held.total !== outcome.total || held.uncounted !== outcome.uncounted || held.mine !== outcome.mine || poll.options.some((option) => held.counts[option.id] !== outcome.counts[option.id])) {
+                    this.tallies[id] = outcome;
+                }
+            }
+        },
+
+        /** Read the votes of the newest shown polls: anybody's up to VOTES_LIMIT, and the known counting players' all. */
         watchVotes() {
             clearTimeout(this.voteTimer);
             this.voteTimer = setTimeout(() => {
                 const ids = this.items.filter((item) => item.type === 'poll').slice(-POLLS_WATCHED).map((item) => item.id);
                 if (ids.length === 0 || !this.pool) return;
+                const authors = Object.keys(this.people).filter((pubkey) => this.people[pubkey]?.counts === true).slice(0, VOTE_AUTHORS);
+                const key = ids.join() + '|' + authors.join();
+                if (key === state.voteAuthors) return;
+                state.voteAuthors = key;
+                const filters = [{ kinds: [KIND_VOTE], '#e': ids, limit: VOTES_LIMIT }];
+                if (authors.length > 0) filters.push({ kinds: [KIND_VOTE], '#e': ids, authors });
                 this.votes?.close();
-                this.votes = this.pool.subscribe(config.relays, { kinds: [KIND_VOTE], '#e': ids }, { onevent: (event) => this.receive(event) });
+                this.votes = this.pool.subscribe(config.relays, filters, { onevent: (event) => this.receive(event) });
             }, 250);
         },
 
         /* ---------- People ------------------------------------------------------------------- */
 
-        wantPerson(pubkey) {
-            if (state.asked.has(pubkey) || state.asked.size >= LOOKUP_LIMIT) return;
+        /**
+         * Queue a pubkey for the league lookup. Authors of what is shown come
+         * first and have their own budget; voters are asked about after them,
+         * within theirs, so a flood of voter keys cannot keep a message's or a
+         * poll's author unknown.
+         */
+        wantPerson(pubkey, role) {
+            if (state.asked.has(pubkey)) {
+                // Asked as a voter or message author, and now it wrote a poll: move it to the front.
+                if (role === 'poll' && (state.queues.author.delete(pubkey) || state.queues.voter.delete(pubkey))) state.queues.poll.add(pubkey);
+
+                return;
+            }
+            const queue = state.queues[role];
+            if (queue.size >= QUEUE_MAX) return;
+            queue.add(pubkey);
             state.asked.add(pubkey);
-            state.pending.add(pubkey);
-            clearTimeout(this.lookupTimer);
-            this.lookupTimer = setTimeout(() => this.lookup(), 200);
+            if (!this.lookupTimer) this.lookupTimer = setTimeout(() => this.lookup(), 200);
+        },
+
+        /** Take up to `want` tokens from a bucket, refilled since it was last used. */
+        take(name, want) {
+            const bucket = state.buckets[name];
+            const now = Date.now();
+            bucket.tokens = Math.min(BUCKET_SIZE, bucket.tokens + ((now - bucket.at) / 1000) * BUCKET_REFILL_PER_S);
+            bucket.at = now;
+            const granted = Math.min(want, Math.floor(bucket.tokens));
+            bucket.tokens -= granted;
+
+            return granted;
         },
 
         /**
-         * Ask the league which of the pending pubkeys are players. Only an
-         * answer says "not a player": a lookup that got none (a failed
-         * request) leaves them unknown and asks again, up to LOOKUP_TRIES
-         * times.
+         * Ask the league which of the queued pubkeys are league accounts and
+         * whose votes count. Only an answer says "no": a lookup that got none
+         * (a failed request) leaves them unknown and asks again, up to
+         * LOOKUP_TRIES times.
          *
          * Through the `$wire` taken in init(), never `this.$wire` here: a
          * lookup can be started by a click on a poll answer, and `this` then
@@ -212,9 +400,21 @@ export function gameChannel(config) {
          * marked "not in the league".
          */
         async lookup() {
-            const batch = [...state.pending].slice(0, LOOKUP_BATCH);
-            batch.forEach((pubkey) => state.pending.delete(pubkey));
-            if (state.pending.size > 0) this.lookupTimer = setTimeout(() => this.lookup(), 200);
+            this.lookupTimer = null;
+            const authors = [...state.queues.poll, ...state.queues.author];
+            const authorBatch = authors.slice(0, this.take('author', Math.min(LOOKUP_BATCH, authors.length)));
+            const voterBatch = [...state.queues.voter].slice(0, this.take('voter', Math.min(LOOKUP_BATCH - authorBatch.length, state.queues.voter.size)));
+            const batch = [...authorBatch, ...voterBatch];
+            const roles = new Map();
+            for (const pubkey of batch) {
+                roles.set(pubkey, state.queues.poll.has(pubkey) ? 'poll' : (state.queues.author.has(pubkey) ? 'author' : 'voter'));
+                state.queues.poll.delete(pubkey);
+                state.queues.author.delete(pubkey);
+                state.queues.voter.delete(pubkey);
+            }
+            const waiting = state.queues.poll.size + state.queues.author.size + state.queues.voter.size;
+            // More to ask: next batch soon, or in a second when the buckets are empty.
+            if (waiting > 0) this.lookupTimer = setTimeout(() => this.lookup(), batch.length > 0 ? 200 : 1000);
             if (batch.length === 0) return;
 
             let answer;
@@ -225,22 +425,43 @@ export function gameChannel(config) {
             }
 
             if (answer === null || typeof answer !== 'object') {
-                const again = batch.filter((pubkey) => (state.tries.get(pubkey) ?? 0) < LOOKUP_TRIES);
-                again.forEach((pubkey) => {
+                for (const pubkey of batch) {
+                    if ((state.tries.get(pubkey) ?? 0) >= LOOKUP_TRIES) continue;
                     state.tries.set(pubkey, (state.tries.get(pubkey) ?? 0) + 1);
-                    state.pending.add(pubkey);
-                });
+                    state.queues[roles.get(pubkey)].add(pubkey);
+                }
                 clearTimeout(this.lookupTimer);
-                if (state.pending.size > 0) this.lookupTimer = setTimeout(() => this.lookup(), 1000);
+                this.lookupTimer = setTimeout(() => this.lookup(), 1000);
 
                 return;
             }
 
             const next = { ...this.people };
-            for (const pubkey of batch) next[pubkey] = answer[pubkey] ?? false;
+            let counting = false;
+            for (const pubkey of batch) {
+                const found = answer[pubkey];
+                next[pubkey] = found && typeof found === 'object' ? { name: String(found.name ?? ''), avatar: String(found.avatar ?? ''), counts: found.counts === true } : false;
+                counting ||= next[pubkey] !== false && next[pubkey].counts;
+            }
             this.people = next;
+
+            for (const poll of [...state.pendingPolls.values()]) {
+                const author = this.people[poll.pubkey];
+                if (author === undefined) continue;
+                state.pendingPolls.delete(poll.id);
+                if (author !== false && author.counts) {
+                    this.confirmPoll(poll);
+                } else if (state.rejectedPolls.size < 1000) {
+                    state.rejectedPolls.add(poll.id);
+                }
+            }
+
+            // Voters that turned out to count change a tally now; the rest may wait.
+            this.markAllDirty(counting);
+            if (counting) this.watchVotes();
         },
 
+        /** A league account (shown by its league name). */
         isPlayer(pubkey) {
             return !!this.people[pubkey];
         },
@@ -256,7 +477,7 @@ export function gameChannel(config) {
         },
 
         avatarOf(pubkey) {
-            return this.people[pubkey]?.avatar ?? this.generatedAvatar(pubkey);
+            return this.people[pubkey]?.avatar || this.generatedAvatar(pubkey);
         },
 
         generatedAvatar(pubkey) {
@@ -273,37 +494,44 @@ export function gameChannel(config) {
         /* ---------- The list ----------------------------------------------------------------- */
 
         /**
-         * The rows: the creator's hidden messages and muted people left out; a
-         * poll only from a league player (none while the league has not
-         * answered yet); runs of the viewer's own mutes folded.
+         * The rows: the creator's hidden messages and muted people left out
+         * (polls are in the list only once their author counts); runs of the
+         * viewer's own mutes folded. Votes never touch this.
          */
         get rows() {
-            this.version;
-            const shown = this.items.filter((item) => !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey) && (item.type !== 'poll' || this.isPlayer(item.pubkey)));
+            this.modVersion;
+            const shown = this.items.filter((item) => !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey));
             const rows = displayRows(shown, { muted: this.muted, revealed: this.revealed });
-            rows.forEach((row, index) => {
+            const cache = new Map();
+            const stable = rows.map((row, index) => {
                 const previous = rows[index - 1];
                 row.cont = row.type === 'message' && previous?.type === 'message' && previous.item.pubkey === row.item.pubkey && row.item.created_at - previous.item.created_at < 120;
-            });
+                // The same row object as last time when nothing about it changed: the list then renders only what is new.
+                const held = state.rowCache.get(row.key);
+                const same = held && held.type === row.type && held.item === row.item && held.cont === row.cont && held.revealed === row.revealed && (row.type !== 'muted' || held.ids.join() === row.ids.join());
+                cache.set(row.key, same ? held : row);
 
-            return rows;
+                return same ? held : row;
+            });
+            state.rowCache = cache;
+
+            return stable;
         },
 
-        /** Open polls of league players, newest first: the side column from lg. */
+        /** Open polls, newest first: the side column from lg. */
         get openPolls() {
-            this.version;
-            return this.items.filter((item) => item.type === 'poll' && this.isPlayer(item.pubkey) && !isClosed(item.poll, this.clock) && !state.mod.hidden.has(item.id)).reverse().slice(0, 3).map((item) => item.poll);
+            this.modVersion;
+            return this.items.filter((item) => item.type === 'poll' && !isClosed(item.poll, this.clock) && !state.mod.hidden.has(item.id) && !state.mod.muted.has(item.pubkey)).reverse().slice(0, 3).map((item) => item.poll);
         },
 
         get hasItems() {
             return this.rows.length > 0;
         },
 
-        /** A poll's result as the card draws it: per answer the count, the share and whether it is mine or leading. */
+        /** A poll's result as the card draws it, from `tallies`: per answer the count, the share and whether it is mine or leading. */
         result(poll) {
-            this.version;
-            const outcome = tally(poll, state.book, { counts: (pubkey) => this.isPlayer(pubkey), me: this.me });
-            const top = Math.max(0, ...Object.values(outcome.counts));
+            const outcome = this.tallies[poll.id] ?? { counts: {}, total: 0, uncounted: 0, mine: null };
+            const top = Math.max(0, ...poll.options.map((option) => outcome.counts[option.id] ?? 0));
             const closed = isClosed(poll, this.clock);
 
             return {
@@ -313,13 +541,17 @@ export function gameChannel(config) {
                 mine: outcome.mine,
                 totalLabel: outcome.total === 1 ? t.vote : t.votes.replace(':count', outcome.total),
                 when: closed ? t.closed : t.closesIn.replace(':time', timeLeft(poll.endsAt, { now: this.clock, locale: config.locale ?? 'en' })),
-                options: poll.options.map((option) => ({
-                    ...option,
-                    count: outcome.counts[option.id],
-                    share: outcome.total === 0 ? 0 : Math.round((outcome.counts[option.id] / outcome.total) * 100),
-                    mine: outcome.mine === option.id,
-                    leading: closed && top > 0 && outcome.counts[option.id] === top,
-                })),
+                options: poll.options.map((option) => {
+                    const count = outcome.counts[option.id] ?? 0;
+
+                    return {
+                        ...option,
+                        count,
+                        share: outcome.total === 0 ? 0 : Math.round((count / outcome.total) * 100),
+                        mine: outcome.mine === option.id,
+                        leading: closed && top > 0 && count === top,
+                    };
+                }),
             };
         },
 
@@ -488,7 +720,13 @@ export function gameChannel(config) {
 
         /* ---------- Polls -------------------------------------------------------------------- */
 
+        /** Polls are for accounts whose votes count: the page offers the form to them only. */
+        get mayPoll() {
+            return !!this.me && config.meCounts === true;
+        },
+
         openPollForm() {
+            if (!this.mayPoll) return;
             this.composing = true;
             this.error = '';
             this.$nextTick(() => this.$refs.question?.focus());

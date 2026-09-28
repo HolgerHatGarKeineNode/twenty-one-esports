@@ -34,10 +34,10 @@ new class extends Component
     }
 
     /**
-     * Name and avatar of the league players among these pubkeys (at most 100).
+     * Name, avatar and vote weight (`counts`) of the league accounts among these pubkeys (at most 100).
      *
      * @param  array<mixed>  $pubkeys
-     * @return array<string, array{name: string, avatar: string}>
+     * @return array<string, array{name: string, avatar: string, counts: bool}>
      */
     #[Json]
     public function players(array $pubkeys): array
@@ -202,12 +202,12 @@ new class extends Component
                             <span class="grow"></span>
                             <x-button type="submit" icon="vote" ::disabled="sending || pollProblem !== null" class="disabled:cursor-not-allowed disabled:opacity-50" data-test="game-chat-poll-send">{{ __('Start poll') }}</x-button>
                         </span>
-                        <span class="text-[11px] leading-4 text-ink-3">{{ __('Public on Nostr. Only votes of league players count; each counts once, the latest one.') }}</span>
+                        <span class="text-[11px] leading-4 text-ink-3">{{ __('Public on Nostr. Votes count from members and players with a result in the league, once each: the latest.') }}</span>
                     </form>
 
                     <form x-show="status !== 'off'" x-on:submit.prevent="send()" class="flex flex-col gap-1.5 border-t border-hairline px-3 pt-3 pb-3" data-test="game-chat-form">
                         <div class="flex items-center gap-2">
-                            <button type="button" x-show="! composing" x-on:click="openPollForm()" :disabled="status !== 'live'" aria-label="{{ __('New poll') }}" title="{{ __('New poll') }}" data-test="game-chat-poll-open"
+                            <button type="button" x-show="! composing && mayPoll" x-on:click="openPollForm()" :disabled="status !== 'live'" aria-label="{{ __('New poll') }}" title="{{ __('New poll') }}" data-test="game-chat-poll-open"
                                     class="btn-w inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-line bg-well text-ink-2 hover:text-ink disabled:opacity-50"><x-icon name="vote" :size="18" /></button>
                             <label for="game-chat-input" class="sr-only">{{ __('Message to the :game chat', ['game' => $gameName]) }}</label>
                             <div class="relative flex min-w-0 grow items-center">
@@ -251,11 +251,14 @@ new class extends Component
                 <span class="flex items-center justify-between gap-2">
                     <h3 id="game-polls-h" class="m-0 text-[13px] font-bold">{{ __('Open polls') }}</h3>
                     @unless ($guest)
-                        <button type="button" x-on:click="openPollForm()" :disabled="status !== 'live'" class="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-control px-1 text-xs text-btc hover:text-btc-hi disabled:opacity-50" data-test="game-chat-poll-open-side">+ {{ __('New poll') }}</button>
+                        <button type="button" x-show="mayPoll" x-on:click="openPollForm()" :disabled="status !== 'live'" class="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-control px-1 text-xs text-btc hover:text-btc-hi disabled:opacity-50" data-test="game-chat-poll-open-side">+ {{ __('New poll') }}</button>
                     @endunless
                 </span>
                 <template x-for="poll in openPolls" :key="poll.id">@include('components.game-channel-poll')</template>
                 <p x-show="openPolls.length === 0" class="m-0 text-xs leading-5 text-ink-3" data-test="game-chat-polls-empty">{{ __('No open poll. Ask the community what to play next, which format, which time.') }}</p>
+                @unless ($guest)
+                    <p x-show="! mayPoll" x-cloak class="m-0 text-xs leading-5 text-ink-3" data-test="game-chat-polls-locked">{{ __('Polls and counted votes are for members and players with a result in the league.') }}</p>
+                @endunless
             </aside>
         </div>
     @endif

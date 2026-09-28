@@ -333,3 +333,12 @@ Schedule::command('twentyone:stream-bot')->everyMinute()->withoutOverlapping()->
  * (the backlog too), a few per run, each exactly once. Same flag and key.
  */
 Schedule::command('twentyone:stream-bot:tournaments')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+
+/*
+ * The game channels (P21, NIP "Game channels"): the fixed kind 40 of every
+ * game and its kind 41 with the chat relays, republished daily so a relay
+ * that lost them or a new chat relay gets them without a manual step. The
+ * same ids every run (GameChannelsCommand::metadataTime()); without the
+ * league key the run fails and publishes nothing.
+ */
+Schedule::command('esports:game-channels')->dailyAt('03:21')->withoutOverlapping()->onOneServer();

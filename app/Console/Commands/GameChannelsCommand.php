@@ -9,6 +9,7 @@ use App\Support\TwentyOne\RelayPublisher;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Signs and publishes the game channels (P21, NIP "Game channels") with the
@@ -17,6 +18,11 @@ use Illuminate\Console\Command;
  * creator's moderation instead (NIP-28 kind 44 for a pubkey, kind 43 for a
  * message), which the app honours for every reader. Nothing is stored:
  * the events live on the chat relays.
+ *
+ * Runs daily (routes/console.php) and is safe to: the kind 40 are fixed
+ * events, and a kind 41 keeps its `created_at` while it does not change, so
+ * a repeat run republishes the same ids. Without the league key it refuses
+ * and publishes nothing (fail closed).
  */
 #[Signature('esports:game-channels
     {--mute= : npub or hex of a pubkey the channels hide for everyone (kind 44)}
@@ -77,7 +83,7 @@ class GameChannelsCommand extends Command
 
                 $meta = GameChannels::metadataTemplate($game);
                 $events[] = $signed;
-                $events[] = $league->sign(41, $meta['tags'] ?? [], $meta['content'] ?? '', $now)->toArray();
+                $events[] = $league->sign(41, $meta['tags'] ?? [], $meta['content'] ?? '', $this->metadataTime($game, $meta, $now))->toArray();
                 $this->line("{$game}: channel {$create['id']}");
             }
         }
@@ -105,12 +111,36 @@ class GameChannelsCommand extends Command
 
             foreach ($publisher->publish($event, $relays, (float) config('esports.relay_timeout_seconds', 5)) as $result) {
                 $taken = $taken || $result->accepted;
-                $this->line(sprintf('kind %d %s %s', $event['kind'], $result->relay, $result->accepted ? 'ok' : 'failed: '.$result->message));
+                $this->line(sprintf('kind %d %s %s', $event['kind'], $result->relay, $result->accepted ? 'ok'.($result->message !== '' ? ' ('.$result->message.')' : '') : 'failed: '.$result->message));
             }
 
             $everyEventTaken = $everyEventTaken && $taken;
         }
 
         return $everyEventTaken ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * The `created_at` of a game's kind 41: the one it was first signed with
+     * while its tags and content stay the same, so the daily run republishes
+     * the same event (the same id; relays answer `duplicate:`) instead of a
+     * new one each day; now once they change. Kept in the cache: a lost entry
+     * costs one more kind 41, nothing else.
+     *
+     * @param  array{kind: int, tags: list<list<string>>, content: string}|null  $meta
+     */
+    private function metadataTime(string $game, ?array $meta, int $now): int
+    {
+        $key = 'game-channels:meta:'.$game;
+        $hash = hash('sha256', (string) json_encode($meta));
+        $held = Cache::get($key);
+
+        if (is_array($held) && ($held['hash'] ?? null) === $hash && is_int($held['created_at'] ?? null)) {
+            return $held['created_at'];
+        }
+
+        Cache::forever($key, ['hash' => $hash, 'created_at' => $now]);
+
+        return $now;
     }
 }

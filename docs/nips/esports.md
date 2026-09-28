@@ -2967,6 +2967,9 @@ the signature. So every client that knows the creator's pubkey computes the four
 the secret and without a relay, and the chat works before the kind `40` is on any relay. The content
 of a kind `40` never changes: a changed name would be another channel. Name, about and relays change
 with a kind `41` of the creator (`e` root to the channel), whose content adds `relays`: the chat relays.
+The league republishes both daily (`esports:game-channels`, scheduled): the kind `40` are the same
+events every time, and a kind `41` keeps its `created_at` while its content and tags stay the same, so
+a repeat run sends the same ids (relays answer `duplicate:`); a changed relay list is one new kind `41`.
 
 **Messages.** A kind `42` with `["e", <channel id>, <relay>, "root"]` and the text, plus NIP-30 `emoji`
 tags for custom emoji in the text; no `t` tags. The app shows a kind `42` whose root `e` names the
@@ -2979,8 +2982,11 @@ scope to the channel; NIP-88 itself has none), two to four `option` tags with ra
 one `relay` tag per chat relay, `["polltype", "singlechoice"]` and `endsAt`. A vote is a kind `1018`
 with the poll's `e` and one `response`. How the app counts:
 
-- only polls from league players are shown, and only votes from league players are counted; how many
-  other votes arrived is said next to the result, not added to it;
+- a poll is shown, and a vote counted, only when its pubkey **counts**: the account is a paying member
+  of the association (`is_member`), or it has a result in the league, on its own rating or on a
+  lineup it holds an accepted seat in (a `ratings` row with `results` of at least 1, casual or
+  rated). An account alone does not count: one Nostr login makes one. How many other valid votes
+  arrived is said next to the result, not added to it;
 - one vote per pubkey: the newest `1018` with `created_at` between the poll's `created_at` and
   `endsAt`, the lowest id on equal `created_at` (as NIP-01 decides for replaceable events); only its
   first `response` counts, and a vote for an option the poll does not have is ignored, so an earlier
@@ -2988,17 +2994,26 @@ with the poll's `e` and one `response`. How the app counts:
 - a poll whose `polltype` is `multiplechoice`, without an integer `endsAt` after its creation, or with
   fewer than two or more than ten valid options is not shown.
 
-Who is a league player is the league's answer to a lookup of pubkeys (name and avatar of those it
-knows); pubkeys are public, and the lookup tells nothing about any message.
+Who counts is the league's answer to a lookup of pubkeys (name, avatar and `counts` of the accounts
+it knows); pubkeys are public, and the lookup tells nothing about any message. The viewer's own answer
+comes with the page. A poll waits outside the list until its author's answer is in, so polls of fresh
+keys never take a place in the list or among the watched polls. Lookups go authors of polls first,
+then authors of messages, then voters, each from a budget that refills over time (300, then 30 a
+second), so a flood of keys slows lookups down but cannot use them up for good or hold up an author.
+Votes are read with two filters: the known counting players' (`authors`), and anybody's with a
+`limit`; a vote nobody counts is shown on the result within a second and never redraws the list.
 
 **Moderation.** Each reader mutes for themself (the app's mutes, as in the other chats). The creator
 hides a message for every reader of the app with a kind `43` (`e` the message) and a pubkey with a
 kind `44` (`p`), as NIP-28 allows ("Clients MAY hide event 42s for other users"); other clients may
 ignore them. There is no deletion: a relay keeps what it was sent.
 
-**What this does not protect against.** Spam from fresh keys reaches every client; the app shows such
-messages marked "not in the league" and drops their polls and votes from the result, but it shows the
-messages. Poll results are only as good as the relays: a relay may drop votes or accept backdated
+**What this does not protect against.** Messages from fresh keys reach every client, and the app shows
+them, marked "not in the league". Their polls are not shown and their votes are not counted, but
+"counts" is only as strong as its cheapest path: two new accounts that play one quick casual game
+against each other (a resignation is a result) each count from then on. That costs a finished game
+per key, not nothing, and it is visible in the league's records. A poll that arrives while 100 others
+wait for their authors' answer is dropped for that page view. Poll results are only as good as the relays: a relay may drop votes or accept backdated
 ones (NIP-88 advises relays that refuse both; the chat relays were not checked for that). The creator
 signs kind `40`, `41`, `43` and `44`, which widens the league key's allowlist; a separate channel key
 would keep it narrower.
@@ -5793,7 +5808,7 @@ Keys of round 4 (heidi, grace, ivan). All times 2026-09-25, UTC.
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
 - **Game channels (rev. 9.3)** are built (P21) and have no example yet: the four kind `40` are
-  published by `esports:game-channels` once the league key signs them. Open: whether the chat relays
+  published daily by `esports:game-channels` once `ESPORTS_LEAGUE_NSEC` is set. Open: whether the chat relays
   accept kind `40`-`44`, `1068` and `1018` from the production host, and whether they refuse backdated
   votes (NIP-88's advice); whether the league key or a separate channel key should be the creator.
 - **Lobby and account cards (rev. 9.2)** are built (P23 S2) and have no example: they live

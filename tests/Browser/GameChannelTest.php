@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
 use Illuminate\Contracts\Process\InvokedProcess;
@@ -105,9 +106,15 @@ const P21_TEXTS = '() => [...document.querySelectorAll("[data-test=game-chat-mes
 const P21_POLL = '() => { const card = document.querySelector("[data-test=game-chat-list] [data-test=game-chat-poll]"); if (!card) return null; return { question: card.querySelector("[data-test=game-chat-poll-question-text]").innerText, shares: [...card.querySelectorAll("[data-test=game-chat-poll-share]")].map((s) => s.innerText), mine: [...card.querySelectorAll("[data-test=game-chat-poll-option]")].map((b) => b.getAttribute("aria-pressed")), total: card.querySelector("[data-test=game-chat-poll-total]").innerText, uncounted: card.querySelector("[data-test=game-chat-poll-uncounted]")?.checkVisibility() ? card.querySelector("[data-test=game-chat-poll-uncounted]").innerText : null }; }';
 
 test('two players talk in the Rocket League channel, one starts a poll, both vote, the latest vote counts and outsiders do not', function () {
-    [$anna, $bert] = User::factory()->count(2)->create();
+    [$anna, $bert, $carl] = User::factory()->count(3)->create();
     TestSigner::forBrowser($anna);
     TestSigner::forBrowser($bert);
+    $carlKey = TestSigner::forBrowser($carl);
+    // Who counts (NIP "Game channels"): Anna and Bert have a result in the league; Carl only has an account.
+    // (Not is_member: the login refreshes membership from the association's API, faked empty here.)
+    foreach ([$anna, $bert] as $player) {
+        Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => 'rocket-league', 'mode' => '1v1', 'subject' => 'user:'.$player->id, 'user_id' => $player->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'draws' => 0, 'losses' => 0]);
+    }
     $outsider = new TestSigner;
     $spammer = new TestSigner;
     $now = now()->getTimestamp();
@@ -117,8 +124,9 @@ test('two players talk in the Rocket League channel, one starts a poll, both vot
         $outsider->sign(42, [$root], 'hi from another client', $now - 300),
         // Another game's channel never shows here.
         $outsider->sign(42, [['e', (string) GameChannels::channelId('chess'), '', 'root']], 'wrong channel', $now - 290),
-        // An outsider's poll is not shown: polls are the league players'.
+        // An outsider's poll is not shown, and neither is the poll of an account without a result.
         $outsider->sign(1068, [$root, ['option', 'a', 'Yes'], ['option', 'b', 'No'], ['polltype', 'singlechoice'], ['endsAt', (string) ($now + 3600)]], 'Free sats?', $now - 280),
+        $carlKey->sign(1068, [$root, ['option', 'a', 'Yes'], ['option', 'b', 'No'], ['polltype', 'singlechoice'], ['endsAt', (string) ($now + 3600)]], 'Fresh account poll?', $now - 275),
         // The league muted this pubkey (kind 44 by the channel's creator): gone for everyone.
         $spammer->sign(42, [$root], 'buy my coin', $now - 270),
         $this->creator->sign(44, [['p', $spammer->pubkey]], '', $now - 260),
@@ -182,7 +190,7 @@ test('two players talk in the Rocket League channel, one starts a poll, both vot
         $pageA->evaluate('async ([url, event]) => await new Promise((resolve) => { const ws = new WebSocket(url); ws.onopen = () => ws.send(JSON.stringify(["EVENT", event])); ws.onmessage = () => { ws.close(); resolve(); }; })', [$url, $outsiderVote]);
         BrowserWait::until($guest, '() => ('.P21_POLL.')()?.uncounted !== null', 10_000);
 
-        expect($guest->evaluate(P21_POLL))->toBe(['question' => 'Which mode for Friday?', 'shares' => ['100%', '0%', '0%'], 'mine' => ['false', 'false', 'false'], 'total' => '2 votes', 'uncounted' => '1 vote from outside the league, not counted'])
+        expect($guest->evaluate(P21_POLL))->toBe(['question' => 'Which mode for Friday?', 'shares' => ['100%', '0%', '0%'], 'mine' => ['false', 'false', 'false'], 'total' => '2 votes', 'uncounted' => '1 vote not counted: no result in the league'])
             ->and($pageB->evaluate(P21_POLL)['mine'])->toBe(['true', 'false', 'false'])
             ->and($guest->evaluate(P21_TEXTS))->toBe(['hi from another client', 'gg everyone, rematch at 21:00?']);
         p21Shot($pageB, 'p21-channel-1440', '[data-test=game-chat]');
@@ -242,6 +250,9 @@ test('the chess channel sits under the lobby, and the invite keeps its place in 
 
         expect($layout)->toBe(['chatBelowPlay' => true, 'weeklyBelowChat' => true, 'overflow' => 0])
             ->and($page->evaluate('() => document.querySelector("[data-test=game-chat-polls-empty]").checkVisibility()'))->toBeTrue()
+            // A player without a result yet: told why, and no poll form offered.
+            ->and($page->evaluate('() => document.querySelector("[data-test=game-chat-polls-locked]").checkVisibility()'))->toBeTrue()
+            ->and($page->evaluate('() => document.querySelector("[data-test=game-chat-poll-open]").checkVisibility()'))->toBeFalse()
             ->and(p21Errors($page))->toBe([]);
     } finally {
         $relay->stop(1);

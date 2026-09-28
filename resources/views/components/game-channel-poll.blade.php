@@ -6,7 +6,8 @@
     Texts are x-text only.
 --}}
 <div class="flex flex-col gap-2 rounded-card bg-well px-3 py-3 shadow-ring" data-test="game-chat-poll" :data-poll="poll.id">
-    <template x-for="r in [result(poll)]" :key="poll.id + ':' + version">
+    {{-- Keyed by the poll only: a vote updates the card in place (tallies), it never builds it anew. --}}
+    <template x-for="r in [result(poll)]" :key="poll.id">
         <div class="flex flex-col gap-2">
             <p class="m-0 text-sm leading-snug font-bold break-words text-ink" x-text="poll.question" data-test="game-chat-poll-question-text"></p>
             <ul role="list" class="m-0 flex list-none flex-col gap-1.5 p-0">
@@ -28,6 +29,7 @@
                 <span x-text="r.totalLabel" data-test="game-chat-poll-total"></span>
                 <span aria-hidden="true">·</span>
                 <span x-text="r.when"></span>
+                <span x-show="me && r.mine !== null && ! mayPoll" class="basis-full" x-text="t.notCountedYet" data-test="game-chat-poll-not-counted"></span>
                 <span x-show="r.uncounted > 0" class="basis-full" x-text="r.uncounted === 1 ? t.uncountedOne : t.uncounted.replace(':count', r.uncounted)" data-test="game-chat-poll-uncounted"></span>
             </span>
         </div>

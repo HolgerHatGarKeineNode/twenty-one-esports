@@ -1,12 +1,17 @@
 <?php
 
+use App\Enums\LineupRole;
 use App\Models\ChatMute;
+use App\Models\Lineup;
+use App\Models\LineupSeat;
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\GameChat\GameChannels;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\LeagueKey;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -25,6 +30,13 @@ test('the chat rules hold in the client: messages, polls, one vote per pubkey, c
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
         ->and($run->output())->toContain('ℹ pass 10')->toContain('ℹ skipped 0');
+});
+
+test('the component stays cheap under a flood: no redraw for votes nobody counts, polls shown only once their author counts, lookups by priority and pace', function () {
+    $run = Process::path(base_path())->timeout(90)->run(['node', '--test', 'tests/js/gameChannel.test.mjs']);
+
+    expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
+        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
 });
 
 test('each game has its own channel, fixed by the creator, and the league key signs exactly that id', function () {
@@ -99,6 +111,41 @@ test('the lookup names league players only, at most 100 at a time, hex keys only
         ->and(GameChannels::players([...array_fill(0, 100, $stranger), $players[0]->pubkey]))->toBe([]);
 });
 
+test('an account counts for polls and votes only as a member or with a result in the league, never for merely existing', function () {
+    [$fresh, $member, $player, $seated, $emptyRating, $invited] = User::factory()->count(6)->create();
+    $member->forceFill(['is_member' => true])->save();
+    Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id, 'user_id' => $player->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'draws' => 0, 'losses' => 0]);
+    Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$emptyRating->id, 'user_id' => $emptyRating->id, 'rating' => 1000, 'results' => 0, 'wins' => 0, 'draws' => 0, 'losses' => 0]);
+    $lineup = Lineup::factory()->ready()->create();
+    LineupSeat::query()->create(['lineup_id' => $lineup->id, 'user_id' => $seated->id, 'role' => LineupRole::Player, 'accepted_at' => now()]);
+    // Invited, not accepted: the lineup's results are not theirs.
+    LineupSeat::query()->create(['lineup_id' => $lineup->id, 'user_id' => $invited->id, 'role' => LineupRole::Player, 'accepted_at' => null]);
+    Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => 'rocket-league', 'mode' => '2v2', 'subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1016, 'results' => 2, 'wins' => 2, 'draws' => 0, 'losses' => 0]);
+
+    $found = GameChannels::players([$fresh->pubkey, $member->pubkey, $player->pubkey, $seated->pubkey, $emptyRating->pubkey, $invited->pubkey]);
+
+    $counts = array_map(fn (array $row): bool => $row['counts'], $found);
+    $expected = [
+        $fresh->pubkey => false,
+        $member->pubkey => true,
+        $player->pubkey => true,
+        $seated->pubkey => true,
+        $emptyRating->pubkey => false,
+        $invited->pubkey => false,
+    ];
+    ksort($counts);
+    ksort($expected);
+
+    expect($counts)->toBe($expected)
+        // The viewer's own weight comes with the page: no lookup, and no poll form when it does not count.
+        ->and(GameChannels::config('chess', $player)['meCounts'] ?? null)->toBeNull()
+        ->and((function () use ($player, $fresh) {
+            config(['esports.game_chat.creator' => (new TestSigner)->pubkey]);
+
+            return [GameChannels::config('chess', $player)['meCounts'], GameChannels::config('chess', $fresh)['meCounts'], GameChannels::config('chess', null)['meCounts']];
+        })())->toBe([true, false, false]);
+});
+
 test('the component mutes for the viewer only, never oneself, and a guest mutes nothing on the server', function () {
     config(['esports.game_chat.creator' => (new TestSigner)->pubkey]);
     $viewer = User::factory()->create();
@@ -108,7 +155,7 @@ test('the component mutes for the viewer only, never oneself, and a guest mutes 
     $component->call('setMuted', $other, true)->assertReturned(true);
     $component->call('setMuted', $viewer->pubkey, true)->assertReturned(false);
     $component->call('setMuted', 'not-a-key', true)->assertReturned(false);
-    $component->call('players', [$viewer->pubkey, $other])->assertReturned([$viewer->pubkey => ['name' => $viewer->displayName(), 'avatar' => $viewer->avatarUrl() ?? route('avatars.generated', ['pubkey' => $viewer->pubkey, 'v' => 1])]]);
+    $component->call('players', [$viewer->pubkey, $other])->assertReturned([$viewer->pubkey => ['name' => $viewer->displayName(), 'avatar' => $viewer->avatarUrl() ?? route('avatars.generated', ['pubkey' => $viewer->pubkey, 'v' => 1]), 'counts' => false]]);
 
     expect(ChatMute::query()->where('user_id', $viewer->id)->pluck('muted_pubkey')->all())->toBe([$other]);
 
@@ -169,6 +216,17 @@ test('the command signs the four channels and their metadata with the league key
             ->and($meta->tags[0][0])->toBe('e')
             ->and($meta->tags[0][3])->toBe('root');
 
+        // The daily run again: the same ids, nothing new on the relay (kind 41 keeps its created_at while it is unchanged).
+        $this->artisan('esports:game-channels')->assertSuccessful()->expectsOutputToContain('duplicate');
+        $again = app(RelayReader::class)->fetch([['kinds' => [40, 41], 'authors' => [$league->pubkey]]], ['ws://127.0.0.1:'.$port], perAuthor: 20);
+        expect(collect($again)->pluck('id')->sort()->values()->all())->toBe(collect($stored)->pluck('id')->sort()->values()->all());
+
+        // A new relay list is a new kind 41, once.
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port, 'wss://relay.example']]);
+        $this->artisan('esports:game-channels', ['--relays' => 'ws://127.0.0.1:'.$port]);
+        $changed = collect(app(RelayReader::class)->fetch([['kinds' => [41], 'authors' => [$league->pubkey]]], ['ws://127.0.0.1:'.$port], perAuthor: 20));
+        expect($changed)->toHaveCount(8);
+
         // The league's moderation: a mute by npub, a hide by id.
         $spammer = new TestSigner;
         $this->artisan('esports:game-channels', ['--mute' => NostrKeys::hexToNpub($spammer->pubkey), '--hide' => str_repeat('a', 64)])->assertSuccessful();
@@ -178,6 +236,15 @@ test('the command signs the four channels and their metadata with the league key
     } finally {
         $relay->stop(1);
     }
+});
+
+test('the command runs daily, once, never twice at a time', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($event) => str_contains((string) $event->command, 'esports:game-channels'));
+
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('21 3 * * *')
+        ->and($event->withoutOverlapping)->toBeTrue()
+        ->and($event->onOneServer)->toBeTrue();
 });
 
 test('the command refuses without the league key, for another creator, and for a malformed target', function () {

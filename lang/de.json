@@ -4240,7 +4240,6 @@
     "Remove answer": "Antwort entfernen",
     "Add an answer": "Antwort hinzufügen",
     "Start poll": "Umfrage starten",
-    "Public on Nostr. Only votes of league players count; each counts once, the latest one.": "Öffentlich auf Nostr. Nur Stimmen von Spielern der Liga zählen, jede einmal, die letzte.",
     "Message to the :game chat": "Nachricht an den :game-Chat",
     "Open polls": "Offene Umfragen",
     "No open poll. Ask the community what to play next, which format, which time.": "Keine offene Umfrage. Frag die Community, was als Nächstes gespielt wird, in welchem Format, zu welcher Zeit.",
@@ -4250,8 +4249,11 @@
     "1 vote": "1 Stimme",
     "closes :time": "endet :time",
     "your vote": "deine Stimme",
-    ":count votes from outside the league, not counted": ":count Stimmen von außerhalb der Liga, nicht gezählt",
-    "1 vote from outside the league, not counted": "1 Stimme von außerhalb der Liga, nicht gezählt",
     "A poll needs a question and 2 to 4 different answers.": "Eine Umfrage braucht eine Frage und 2 bis 4 verschiedene Antworten.",
-    "Your vote did not reach any relay. Please try again.": "Deine Stimme hat kein Relay erreicht. Bitte versuch es noch einmal."
+    "Your vote did not reach any relay. Please try again.": "Deine Stimme hat kein Relay erreicht. Bitte versuch es noch einmal.",
+    ":count votes not counted: no result in the league": ":count Stimmen nicht gezählt: kein Ergebnis in der Liga",
+    "1 vote not counted: no result in the league": "1 Stimme nicht gezählt: kein Ergebnis in der Liga",
+    "Your vote is shown to you but counts once you have a result in the league.": "Deine Stimme siehst du, sie zählt aber erst, wenn du ein Ergebnis in der Liga hast.",
+    "Polls and counted votes are for members and players with a result in the league.": "Umfragen und gezählte Stimmen gibt es für Mitglieder und Spieler mit einem Ergebnis in der Liga.",
+    "Public on Nostr. Votes count from members and players with a result in the league, once each: the latest.": "Öffentlich auf Nostr. Es zählen Stimmen von Mitgliedern und Spielern mit einem Ergebnis in der Liga, jede einmal: die letzte."
 }

@@ -910,7 +910,9 @@ return [
     |
     | Polls: a question of at most `question_max` characters, 2 to
     | `max_options` answers of at most `option_max`, closing after one of
-    | `durations` (seconds). Only votes from league players count.
+    | `durations` (seconds). Only polls and votes of accounts that count are
+    | shown and counted: members, and players with a result in the league
+    | (GameChannels::players()).
     |
     */
 

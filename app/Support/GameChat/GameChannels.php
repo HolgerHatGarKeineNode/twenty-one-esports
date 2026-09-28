@@ -2,6 +2,8 @@
 
 namespace App\Support\GameChat;
 
+use App\Models\LineupSeat;
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\PlayerProfile;
@@ -154,6 +156,7 @@ final class GameChannels
         }
 
         $relays = self::relays();
+        $self = $viewer instanceof User ? (self::players([$viewer->pubkey])[$viewer->pubkey] ?? null) : null;
 
         return [
             'game' => $game,
@@ -164,6 +167,9 @@ final class GameChannels
             'bot' => StreamChat::botPubkey(),
             'me' => $viewer?->pubkey,
             'meName' => $viewer?->displayName(),
+            // Whether the viewer's own polls are shown and votes counted (players()); the page says so before they try.
+            'meCounts' => $self['counts'] ?? false,
+            'meAvatar' => $self['avatar'] ?? null,
             'muted' => $viewer instanceof User ? $viewer->mutedPubkeys() : [],
             'maxLength' => (int) config('esports.game_chat.max_length', 280),
             'cooldownMs' => (int) config('esports.game_chat.cooldown_ms', 2000),
@@ -202,21 +208,27 @@ final class GameChannels
                 'closesIn' => __('closes :time'),
                 'closed' => __('closed'),
                 'yourVote' => __('your vote'),
-                'uncounted' => __(':count votes from outside the league, not counted'),
-                'uncountedOne' => __('1 vote from outside the league, not counted'),
+                'uncounted' => __(':count votes not counted: no result in the league'),
+                'uncountedOne' => __('1 vote not counted: no result in the league'),
                 'pollInvalid' => __('A poll needs a question and 2 to 4 different answers.'),
                 'voteNotSent' => __('Your vote did not reach any relay. Please try again.'),
+                'notCountedYet' => __('Your vote is shown to you but counts once you have a result in the league.'),
             ],
         ];
     }
 
     /**
-     * Name and avatar of the league players among `pubkeys` (at most 100, hex
-     * only): the chat shows them by their league name and counts only their
-     * poll votes. Pubkeys are public; this says only who plays here.
+     * Name, avatar and vote weight of the league accounts among `pubkeys` (at
+     * most 100, hex only). The chat shows an account by its league name; its
+     * polls are shown and its votes counted only when `counts` is true: the
+     * account is a paying member (`is_member`), or it has a result in the
+     * league, on its own rating or on a lineup it holds an accepted seat in
+     * (`ratings.results` of at least 1, casual or rated). An account alone is
+     * one Nostr login away; a result takes an opponent and a finished game.
+     * Pubkeys are public; this says only who plays here.
      *
      * @param  array<mixed>  $pubkeys
-     * @return array<string, array{name: string, avatar: string}>
+     * @return array<string, array{name: string, avatar: string, counts: bool}>
      */
     public static function players(array $pubkeys): array
     {
@@ -226,12 +238,20 @@ final class GameChannels
             return [];
         }
 
+        $users = User::query()->whereIn('pubkey', $hex)->get();
+        $ids = $users->modelKeys();
+        $played = Rating::query()->whereIn('user_id', $ids)->where('results', '>', 0)->distinct()->pluck('user_id')->all();
+        $seated = LineupSeat::query()->whereIn('user_id', $ids)->whereNotNull('accepted_at')
+            ->whereIn('lineup_id', Rating::query()->whereNotNull('lineup_id')->where('results', '>', 0)->select('lineup_id'))
+            ->distinct()->pluck('user_id')->all();
+        $counting = array_flip([...$played, ...$seated]);
         $players = [];
 
-        foreach (User::query()->whereIn('pubkey', $hex)->get() as $user) {
+        foreach ($users as $user) {
             $players[$user->pubkey] = [
                 'name' => $user->displayName(),
                 'avatar' => $user->avatarUrl() ?? PlayerProfile::generatedAvatarUrl($user->pubkey),
+                'counts' => $user->is_member || isset($counting[$user->id]),
             ];
         }
 
