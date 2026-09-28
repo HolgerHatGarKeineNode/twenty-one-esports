@@ -4,10 +4,11 @@ Pre-season recruitment material for esports.einundzwanzig.space, rebuilt 2026-09
 Everything exists in **German and English**. The German cut is German all the way
 through, including every UI mock-up and the chess notation (K D T L S).
 
-**Content rules (user-set):** advertise features that are live today, before Block 0.
-No mining, blocks, halving, pot or sats figures, no rated ranking or ladder, no rank
-badges, no season chain or countdown, no Rocket League, no invented numbers. The
-claim-by-claim source list is `src/copy/facts.md`.
+**Content rule (user-set, 2026-09-28):** nothing about the season yet (no season
+chain, Block 0 or countdown). Everything else that is live may be shown, prize pots
+in sats and Rocket League included. The earlier, wider list (no pot or sats figures,
+no Rocket League, no ranks) was never the intent. Independent of that: every claim
+and every number is real, the claim-by-claim source list is `src/copy/facts.md`.
 
 ## Layout
 

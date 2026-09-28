@@ -1,7 +1,8 @@
 # Reel scripts — 9 reels, DE + EN (round 2; reels 6–8 added 2026-09-27, reel 9 later that day)
 
-Format: 1080×1920, ≥3s per beat, ≤8 words on screen per beat. No mining/season/rank
-content, no Rocket League, no pot figures. Corrected in round 2: no clan lineup or
+Format: 1080×1920, ≥3s per beat, ≤8 words on screen per beat. Reels 1–9 were written
+under the round-2 rules (no mining/season/rank content, no Rocket League, no pot
+figures); since 2026-09-28 only the season is off limits (README). Corrected in round 2: no clan lineup or
 board-count visual (Rocket League only), no clan logo shown at the founding step,
 opponents are "andere Spieler"/"other players", not "Mitglieder"/"members".
 

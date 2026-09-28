@@ -1,8 +1,9 @@
 # Poster copy — 8 motifs, casual recruitment (round 2)
 
 CTA on every poster: **esports.einundzwanzig.space**
-Every claim here is checked against `facts.md`. No mining, no season, no ranks, no
-pot figures, no Rocket League — and, corrected in round 2: no clan "lineup"/board
+Every claim here is checked against `facts.md`. Written under the round-2 rules (no
+mining, season, ranks, pot figures or Rocket League; since 2026-09-28 only the season
+is off limits, see README) — and, corrected in round 2: no clan "lineup"/board
 count (that mechanic is Rocket League only), no clan logo at founding (it comes
 after, on the manage page), no "against other members" (membership is not a play
 requirement).

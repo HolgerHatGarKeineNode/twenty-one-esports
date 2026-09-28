@@ -1,6 +1,7 @@
 # Posting texts — Nostr (long) + X (short), DE + EN (round 2)
 
-No mining/season/rank content, no pot figures, no Rocket League. Corrected in
+Written under the round-2 rules (no mining/season/rank content, no pot figures, no
+Rocket League); since 2026-09-28 only the season is off limits (README). Corrected in
 round 2: clan logo comes after founding (manage page), no clan lineup/board-count
 claim (Rocket League only), opponents are "andere Spieler"/"other players" not
 "Mitglieder"/"members", "Fernschach" not "Daily-Schach", "Einladungslink" not
