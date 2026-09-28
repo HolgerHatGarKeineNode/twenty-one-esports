@@ -88,3 +88,11 @@ test('the protocol page shows the league key and commands with it, and says so w
         ->assertSee('nak req -k 31923 -a '.$npub.' wss://league.example')
         ->assertSee('wss://league.example');
 });
+
+test('no player-facing page mentions a fee a player would pay, only the routing fee reserve of a payout', function (string $route, string $lang) {
+    $text = strip_tags((string) $this->get(route($route, ['lang' => $lang]))->assertOk()->getContent());
+    // The fee reserve of a payout is the wallet's routing cost, not a fee a player pays.
+    $text = (string) preg_replace('/fee reserve|routing fees?|Gebührenreserve|Routing-Gebühren/iu', '', $text);
+
+    expect(preg_match_all('/\b(match|entry|start)[- ]?fees?\b|\bfee zaps?\b|\bfees? for\b|Gebühr|Startgeld/iu', $text, $found))->toBe(0, implode(', ', $found[0]));
+})->with(['rules', 'protocol', 'mining'])->with(['en', 'de']);

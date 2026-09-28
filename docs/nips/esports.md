@@ -120,7 +120,7 @@ and khatru, and without printed examples (see [Open points](#open-points)).
   [Reused NIPs](#reused-nips): who played is not on Nostr for every format.
 - **Attribution of contributions**: the league's LNURL endpoint takes a zap request that names a
   tournament with an open pool by `a` (the tournament's pot) or no pot at all (the reserve). It refuses
-  an `e` for now (the reserve's zap goal and match fees are not run yet: refusing is better than
+  an `e` for now (the reserve's zap goal is not run yet, and match fees are not applicable in this league: players never pay fees; refusing is better than
   counting a payment in the wrong pot), a request that names two pots, one whose `amount` differs
   from the payment, and amounts that are not whole sats. The invoice's description hash is SHA-256 of
   the request exactly as the client sent it, and the receipt carries that text as `description`.
@@ -321,7 +321,7 @@ and khatru, and without printed examples (see [Open points](#open-points)).
   `tip`, signed by the league key for a listed admin; never retroactive.
 - **Fees** on a live match target its challenge; the app adds the league's `zap` tag to every
   challenge of a chain season. Fees go to the winners of the match's valid blocks, otherwise to the
-  reserve.
+  reserve. **Not applicable in this league: players never pay fees.**
 - **Review and payout**: corrections at season end as league-signed NIP-32 labels (`void-block`)
   before settlement; new regular kind `2157` **Payout**, one per player and season, with `bolt11` and
   `preimage` and `e`/`a` references to what it pays. No season payouts during a season; **tournament
@@ -510,7 +510,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `30000` | 51 | anchor list, `d` = `esports/<league key>/anchors` | trust key |
 | `14` in `13` in `1059` | 17, 59 | private chat between players; notifications | a player; the notification key |
 | `10050` | 17 | a player's DM relays | the player |
-| `9734`, `9735` | 57 | zaps to a pot: bounty, match fees, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)); rev. 9.1: never a tournament's pot, which takes plain invoices from its own wallet | the zapper; the league's LNURL server key |
+| `9734`, `9735` | 57 | zaps to a pot: bounty, reserve (rev. 5, see [Pots and zap targets](#pots-and-zap-targets-rev-5)); rev. 9.1: never a tournament's pot, which takes plain invoices from its own wallet | the zapper; the league's LNURL server key |
 | `9041` | 75 | rev. 5: the league reserve as a zap goal | league key |
 | `30000` | 51 | rev. 5: the admin list, `d` = `esports/<league key>/admins` | league key |
 | `1985` | 32 | rev. 5: release of Block 0 (`release-block-0`); correction of the season review (`void-block`) | a listed admin; the league key |
@@ -2051,6 +2051,9 @@ anchors most pairings fall into one subtree; see [Open points](#open-points).
 
 ### Fees
 
+> **Not applicable in this league: players never pay fees.** No match fee, entry fee or fee zap
+> is run; the app adds no fee `zap` tag to a challenge. The rules below describe the protocol only.
+
 Zaps on a live match are **fees** for its winner. The target is the challenge (`2150`): the app adds
 `["zap", "<pool key>", "<relay>", "1"]` to every challenge of a chain season except a tournament's
 (rev. 7: a tournament match mines no block, so its fees could only go to the reserve; zaps for a
@@ -3171,7 +3174,7 @@ request.
 | **season supply** | none; funded from the reserve at Block 0 | | | block rewards: `2157` with `e` genesis and `e` blocks | reserve, at settlement |
 | **tournament pool** | the tournament's `31923` | `a` = the tournament, `k` = `31923` | `#a` = the tournament, until `end` | prizes at the tournament's end, after an admin's check: `2157` with `a` the tournament | reserve |
 | **bounty** | the bounty's `31923` | `a` = the bounty, `k` = `31923` | `#a` = the bounty, until `end` | the claimer: `2157` with `a` the bounty | reserve |
-| **match fees** | the challenge (`2150`, with the league's `zap` tag) | `e` = the challenge, `k` = `2150` | `#e` = the challenge, from the accept to the last attestation | the winners of the match's blocks: `2157` with `e` the challenge | reserve |
+| **match fees** (not applicable in this league: players never pay fees) | the challenge (`2150`, with the league's `zap` tag) | `e` = the challenge, `k` = `2150` | `#e` = the challenge, from the accept to the last attestation | the winners of the match's blocks: `2157` with `e` the challenge | reserve |
 
 In every request `p` is the pool key (named by the target's `zap` tag), whose `lud16` is the league's
 LNURL endpoint. **Everything else is the reserve's**: zaps to the profile of the pool key or of the
