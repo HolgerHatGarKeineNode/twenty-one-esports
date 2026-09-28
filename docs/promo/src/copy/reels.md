@@ -1,4 +1,4 @@
-# Reel scripts — 8 reels, DE + EN (round 2; reels 6–8 added 2026-09-27)
+# Reel scripts — 9 reels, DE + EN (round 2; reels 6–8 added 2026-09-27, reel 9 later that day)
 
 Format: 1080×1920, ≥3s per beat, ≤8 words on screen per beat. No mining/season/rank
 content, no Rocket League, no pot figures. Corrected in round 2: no clan lineup or
@@ -170,4 +170,24 @@ the poster's own line (`posters.md`, motif 8).
 2. (3s) The source code is public on GitHub — *repo, the app's folders*
 3. (3s) Check for yourself how the draw works — *DrawOrder.php, line by line*
 4. (3s) Found a bug? Open an issue. — *issues, new issue, empty field*
+5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 9 — GRASP
+
+Sources: gitworkshop.dev repo card "TWENTY ONE Esports", branch master, 4/4 servers in sync (read 2026-09-27); one `git push origin master` reached relay.ngit.dev, gitnostr.com, ngit.danconwaydev.com (GRASP servers) and github.com (mirror), checked with `git ls-remote` on all four; `git clone nostr://…` tested; GRASP = relay + git server in one (ngit.dev/how-it-works). Scene texts (in `reels/reel.html`, `GRASP_TXT`): complaint DE "Wieso ist der Code nur auf GitHub? Ihr seid doch auf Nostr, oder?", EN "Why is your code only on GitHub? Thought you were all about Nostr?"; reply DE "Ihr hattet recht. Jetzt läuft's auch über Nostr.", EN "You were right. It's on Nostr too now."
+
+**DE**
+1. (3s) Ihr habt uns genervt. Liebevoll. — *Nostr-Notiz von nodebert, Reaktionen poppen auf*
+2. (3s) Ein Push. Vier Server. — *Terminal, `git push origin master`, vier Zeilen erscheinen*
+3. (3s) Jetzt offen auf Nostr-Git — *gitworkshop.dev Repo-Karte, „4/4" grün*
+4. (3s) Danke fürs Nerven, ehrlich gemeint. — *nodeberts Notiz, unsere Antwort, oranges Herz, `git clone nostr://…`*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) You nagged us. Lovingly. — *Nostr note from nodebert, reactions pop up*
+2. (3s) One push. Four servers. — *terminal, `git push origin master`, four lines appear*
+3. (3s) Now live on Nostr git — *gitworkshop.dev repo card, "4/4" green*
+4. (3s) Thanks for nagging. We mean it. — *nodebert's note, our reply, orange heart, `git clone nostr://…`*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

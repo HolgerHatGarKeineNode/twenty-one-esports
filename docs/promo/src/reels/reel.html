@@ -609,6 +609,82 @@ S.opensource = [
   { html: endCard, update: endUpdate },
 ];
 
+/* ===== grasp: the repo on Nostr git servers =====
+ * Push output and servers are the real ones from 2026-09-27 (`git push origin master`, verified with git ls-remote on all four).
+ * The note texts inside the scenes come from src/copy/reels.md (Reel 9, scene text). */
+const GRASP_TXT = {
+  complaint: { de: 'Wieso ist der Code nur auf GitHub? Ihr seid doch auf Nostr, oder?', en: 'Why is your code only on GitHub? Thought you were all about Nostr?' },
+  reply: { de: "Ihr hattet recht. Jetzt läuft's auch über Nostr.", en: "You were right. It's on Nostr too now." },
+};
+const GRASP_SERVERS = [['relay.ngit.dev', 'grasp'], ['gitnostr.com', 'grasp'], ['ngit.danconwaydev.com', 'grasp'], ['github.com', 'mirror']];
+const NPUB_SHORT = 'npub1pt0k…gpjyc6';
+const HEART = (w) => `<svg viewBox="0 0 7 6" width="${w}" height="${Math.round(w * 6 / 7)}" shape-rendering="crispEdges" aria-hidden="true" style="display:block;flex:none"><path fill="var(--btc)" d="M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z"/></svg>`;
+const OK_DOT = '<i style="width:22px;height:22px;flex:none;background:var(--win)"></i>';
+const noteCard = (l, who, text, extra = '') => `<div class="card" style="width:880px;padding:36px 40px;display:grid;row-gap:24px">
+    <div class="row" style="gap:20px">${av(who, 80)}<div style="display:grid;row-gap:6px"><b style="font:700 32px/1.2 var(--mono)">${who}</b><span class="dim" style="font:500 22px/1.2 var(--mono)">${l === 'de' ? 'Notiz auf Nostr' : 'note on Nostr'}</span></div></div>
+    <div style="font:700 40px/1.35 var(--mono)">${E(text)}</div>${extra}</div>`;
+S.grasp = [
+  { html: (l) => `<div class="center" style="position:absolute"><div data-note style="display:grid;row-gap:28px">
+      ${noteCard(l, 'nodebert', GRASP_TXT.complaint[l])}
+      <div class="row" style="gap:16px;flex-wrap:wrap;width:880px">${['+1', '?!', '+1', '+1', '+1', '?!'].map((r, i) => `<span data-re="${i}" style="font:800 34px/1 var(--mono);padding:16px 22px;background:var(--card);border:2px solid ${r === '?!' ? 'var(--btc)' : 'var(--line)'}">${r}</span>`).join('')}</div>
+    </div></div>`,
+    update(root, t) {
+      const n = root.querySelector('[data-note]'), p = back(seg(t, 0.1, 0.6));
+      const shake = t > 1.2 && t < 2.6 ? Math.sin(t * 40) * 3 * (1 - seg(t, 1.2, 2.6)) : 0;
+      n.style.transform = `translateY(${(1 - p) * 120}px) rotate(${shake * 0.3}deg)`; n.style.opacity = clamp(p * 1.5);
+      root.querySelectorAll('[data-re]').forEach((e, i) => { const q = back(seg(t, 0.9 + i * 0.28, 1.2 + i * 0.28)); e.style.opacity = q > 0 ? 1 : 0; e.style.transform = `scale(${q})`; });
+    } },
+  { html: () => `<div class="center" style="position:absolute"><div class="card cube" style="width:940px;background:#0F0F12;display:grid;--d:28px;--cube-face:var(--chess-deep)">
+      <div style="font:700 24px/1.2 var(--mono);color:var(--ink-3);padding:22px 28px;border-bottom:2px solid var(--line)">~/twenty-one-esports</div>
+      <div style="padding:28px;display:grid;row-gap:22px;font:500 28px/1.4 var(--mono)">
+        <div><span style="color:var(--btc)">$</span> <span data-cmd></span><i class="caret" data-caret style="display:inline-block;width:.5em;height:1em;background:var(--btc);vertical-align:-0.12em;margin-left:2px"></i></div>
+        <div data-sign class="dim" style="font-size:24px">signing event (git state) with remote signer…</div>
+        ${GRASP_SERVERS.map(([h, k], i) => `<div data-push="${i}" style="display:grid;row-gap:6px;padding:16px 18px;background:var(--well);border-left:6px solid ${k === 'mirror' ? 'var(--dash)' : 'var(--btc)'}">
+          <div class="row" style="gap:14px;justify-content:space-between"><b style="font:700 28px/1.2 var(--mono)">${h}</b><span class="dim" style="font:500 22px/1 var(--mono)">${k}</span></div>
+          <div class="row" style="gap:14px;font:500 24px/1.2 var(--mono)">${OK_DOT}<span style="color:var(--win)">674be0b..561e320</span><span class="muted">-&gt; master</span></div></div>`).join('')}
+      </div></div></div>`,
+    update(root, t) {
+      const cmd = 'git push origin master';
+      root.querySelector('[data-cmd]').textContent = cmd.slice(0, Math.round(cmd.length * seg(t, 0.1, 0.8)));
+      root.querySelector('[data-caret]').style.opacity = t > 0.9 ? 0 : (Math.floor(t * 5) % 2 ? 0.2 : 1);
+      root.querySelector('[data-sign]').style.opacity = t > 0.95 ? 1 : 0;
+      root.querySelectorAll('[data-push]').forEach((e, i) => { const p = eo(seg(t, 1.05 + i * 0.28, 1.35 + i * 0.28)); e.style.opacity = p; e.style.transform = `translateX(${(1 - p) * 80}px)`; });
+    } },
+  { html: () => `<div class="center" style="position:absolute"><div class="card cube" style="width:900px;display:grid;--d:28px;--cube-face:var(--chess-deep)">
+      <div style="padding:32px 36px;display:grid;row-gap:12px;border-bottom:2px solid var(--line)">
+        <span class="muted" style="font:500 26px/1.2 var(--mono)">gitworkshop.dev / ${NPUB_SHORT}</span>
+        <b style="font:800 52px/1.1 var(--disp)">TWENTY ONE Esports</b>
+      </div>
+      <div class="row" style="padding:26px 36px;gap:18px;justify-content:space-between;border-bottom:2px solid var(--line)">
+        <span style="font:700 28px/1 var(--mono);border:2px solid var(--line);padding:14px 18px">master</span>
+        <span data-count style="font:800 36px/1 var(--mono);padding:14px 20px;border:3px solid var(--line)">0/4</span>
+      </div>
+      ${GRASP_SERVERS.map(([h, k], i) => `<div data-srv="${i}" class="row" style="padding:22px 36px;gap:20px;border-bottom:2px solid var(--hairline);font:500 30px/1.2 var(--mono)"><i data-dot style="width:24px;height:24px;flex:none;background:var(--line)"></i><span style="flex:1">${h}</span><span class="dim" style="font-size:22px">${k}</span></div>`).join('')}
+    </div></div>`,
+    update(root, t) {
+      let n = 0;
+      root.querySelectorAll('[data-srv]').forEach((e, i) => { const on = t > 0.5 + i * 0.35; if (on) n++; e.querySelector('[data-dot]').style.background = on ? 'var(--win)' : 'var(--line)'; e.style.color = on ? 'var(--ink)' : 'var(--ink-3)'; });
+      const c = root.querySelector('[data-count]'); c.textContent = `${n}/4`;
+      const full = n === 4, p = back(seg(t, 1.55, 1.95));
+      c.style.color = full ? 'var(--win)' : 'var(--ink-2)'; c.style.borderColor = full ? 'var(--win)' : 'var(--line)';
+      c.style.transform = full ? `scale(${1 + 0.25 * (1 - p)})` : 'none';
+    } },
+  { html: (l) => `<div style="position:absolute;inset:0;display:grid;justify-items:center;align-content:center;row-gap:28px">
+      <div data-old style="opacity:.45;transform:scale(.92)">${noteCard(l, 'nodebert', GRASP_TXT.complaint[l])}</div>
+      <div data-reply class="card cube" style="width:880px;padding:36px 40px;display:grid;row-gap:24px;--d:28px;background:var(--ground)">
+        <div class="row" style="gap:20px"><div class="logo" style="--logo:40px"><span class="mark">21</span>TWENTY ONE<small>esports</small></div><span data-heart style="margin-left:auto">${HEART(84)}</span></div>
+        <div style="font:700 40px/1.35 var(--mono)">${E(GRASP_TXT.reply[l])}</div>
+        <div style="background:#0F0F12;padding:18px 20px;font:500 24px/1.4 var(--mono)"><span style="color:var(--btc)">$</span> <span data-clone></span></div>
+      </div></div>`,
+    update(root, t) {
+      const r = root.querySelector('[data-reply]'), p = back(seg(t, 0.2, 0.7)); r.style.opacity = t < 0.2 ? 0 : 1; r.style.transform = `translateY(${(1 - p) * 160}px)`;
+      const h = root.querySelector('[data-heart]'), q = back(seg(t, 0.9, 1.3)); h.style.transform = `scale(${q * (1 + 0.08 * Math.sin(t * 9) * seg(t, 1.3, 1.6))})`;
+      const cmd = `git clone nostr://${NPUB_SHORT}/twenty-one-esports`;
+      root.querySelector('[data-clone]').textContent = cmd.slice(0, Math.round(cmd.length * seg(t, 1.3, 2.4)));
+    } },
+  { html: endCard, update: endUpdate },
+];
+
 /* ---------- timeline ---------- */
 let BEATS = [], DUR = 0;
 function fitCaption(el) {

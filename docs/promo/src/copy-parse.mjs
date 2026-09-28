@@ -9,6 +9,8 @@ const COPY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'copy');
 
 /* Heading keyword -> motif id. An unknown heading fails loudly instead of being guessed. */
 const MOTIF_KEYS = [
+  // before login: the GRASP copy mentions Nostr, the heading must not fall into /nostr/
+  [/grasp/i, 'grasp'],
   [/nostr|login|anmeld/i, 'login'],
   [/blitz/i, 'blitz'],
   [/daily|fernschach|correspond/i, 'daily'],

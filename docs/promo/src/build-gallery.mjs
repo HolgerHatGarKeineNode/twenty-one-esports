@@ -12,7 +12,7 @@ const ROOT = path.resolve(SRC, '..');
 const SITE = 'https://esports.einundzwanzig.space';
 
 /* Page each motif points to (routes/web.php). */
-const FEATURE = { login: `${SITE}/login`, blitz: `${SITE}/chess`, daily: `${SITE}/chess`, clans: `${SITE}/clans`, tournaments: `${SITE}/tournaments`, watch: `${SITE}/games`, invite: `${SITE}/`, opensource: 'https://github.com/HolgerHatGarKeineNode/twenty-one-esports' };
+const FEATURE = { login: `${SITE}/login`, blitz: `${SITE}/chess`, daily: `${SITE}/chess`, clans: `${SITE}/clans`, tournaments: `${SITE}/tournaments`, watch: `${SITE}/games`, invite: `${SITE}/`, opensource: 'https://github.com/HolgerHatGarKeineNode/twenty-one-esports', grasp: 'https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports' };
 const FMT = { 'mobile-9x16': ['MOB', 'mobile'], 'x-16x9': ['X', 'x'], 'nostr-square': ['SQ', 'nostr'], 'nostr-wide': ['WIDE', 'nostr'], 'stream-banner': ['STREAM', 'stream'] };
 
 const posters = parsePosters();
@@ -27,7 +27,8 @@ for (const p of plan) {
   if (!(id in planDay)) planDay[id] = p.day;
 }
 const dayNum = (id) => { const n = parseFloat(planDay[id]); return Number.isFinite(n) ? n : 1000; };
-const motifs = posters.map((m) => ({ id: m.id, title: m.title, day: m.id in planDay ? `Posting plan: day ${planDay[m.id]}` : 'Not in the posting plan' }))
+/* a motif can be reel-only (no poster), e.g. grasp */
+const motifs = [...posters, ...reels.filter((r) => !posters.some((m) => m.id === r.id))].map((m) => ({ id: m.id, title: m.title, day: m.id in planDay ? `Posting plan: day ${planDay[m.id]}` : 'Not in the posting plan' }))
   .sort((a, b) => dayNum(a.id) - dayNum(b.id));
 
 const items = [];
@@ -35,8 +36,8 @@ const captionsFor = (id, lang) => {
   const p = posts[id] || {};
   return [[`nostr_${lang}`, `Nostr (${lang.toUpperCase()})`], [`x_${lang}`, `X (${lang.toUpperCase()})`]].filter(([k]) => p[k]).map(([k, label]) => ({ label, text: p[k] }));
 };
-for (const m of posters) {
-  for (const [fmt, [code, dir]] of Object.entries(FMT)) {
+for (const m of [...posters, ...reels.filter((r) => !posters.some((x) => x.id === r.id))]) {
+  if (posters.includes(m)) for (const [fmt, [code, dir]] of Object.entries(FMT)) {
     for (const lang of ['de', 'en']) {
       const rel = `posters/${dir}/${m.id}-${fmt}-${lang}.png`;
       if (!fs.existsSync(path.join(ROOT, rel))) continue;

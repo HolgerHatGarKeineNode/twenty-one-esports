@@ -148,6 +148,20 @@ esports.einundzwanzig.space
 
 ---
 
+## GRASP
+
+**Nostr (DE):**
+Ihr habt uns lange freundlich genervt: der Code nur auf GitHub, einer geschlossenen Plattform? Ab heute liegt TWENTY ONE Esports auch offen auf Nostr, per NIP-34 auf gleich drei GRASP-Servern — GitHub bekommt weiterhin jeden Push als Spiegel. Klonen geht jetzt auch mit `git clone nostr://…`, Pull Requests laufen direkt über Nostr. Danke fürs Nerven, es hat sich gelohnt: https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports
+
+**Nostr (EN):**
+You nagged us, kindly: why was the code only on GitHub, a closed platform? As of today, TWENTY ONE Esports also lives on Nostr, published via NIP-34 across three GRASP servers — GitHub still gets every push as a mirror. You can clone it with `git clone nostr://…`, and pull requests now run over Nostr too. Thanks for the nagging, it paid off: https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports
+
+**X (DE):** Ihr habt genervt, wir haben gehört: der Code läuft jetzt auch auf Nostr, via GRASP. https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports
+
+**X (EN):** You nagged, we listened: the code now runs on Nostr too, via GRASP. https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports
+
+---
+
 ## Hype-week plan
 
 Reihenfolge nach Ansprache-Priorität (casual, sofort spielbar zuerst; Aufbauendes

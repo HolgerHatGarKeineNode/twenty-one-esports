@@ -42,9 +42,10 @@ Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `dai
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 8 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource), DE and
+**Reels**: 9 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
-`src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`.
+`src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
+poster; the gallery shows it as its own section.
 
 **How it is built:** one real object from the product per motif (a board, the clock, the
 login card, the invite card, the bracket, the clan card, the code), drawn from the app's own
@@ -115,7 +116,7 @@ From the repo root. The render scripts run the position and string checks first.
 ```bash
 node docs/promo/src/render-posters.mjs                 # all posters (70), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (16), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (18), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png
