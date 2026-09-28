@@ -3,6 +3,7 @@
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
+use App\Models\Admin;
 use App\Models\SeriesMatch;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
@@ -13,6 +14,7 @@ use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesRuleViolation;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupSchedules;
+use App\Support\Tournaments\TournamentReminders;
 use App\Support\Tournaments\TournamentWaits;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
@@ -284,4 +286,23 @@ test('a started cup series waits on the host to share the lobby, then on the gue
 
     app(CasualMatches::class)->markJoined($series, $guest);
     expect(cupWait($match)[0]->state)->not->toBeIn(['lobby', 'join']);
+});
+
+test('a cup reminder names the auto slot in the recipient\'s time zone and language', function () {
+    [$cup, $match, $a, $b] = rlCupMatch();
+    $b->forceFill(['locale' => 'de', 'timezone' => 'America/New_York'])->save();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $slot = CasualCups::autoSlot($match->round->window_ends_at)->setTimezone('America/New_York')->locale('de');
+
+    app(TournamentReminders::class)->remind($cup, $admin, $match->id, $b->id);
+    app(TournamentReminders::class)->remind($cup, $admin, $match->id, $a->id);
+
+    $reminder = fn (User $player): string => (string) $player->notifications()->get()->firstWhere('data.kind', 'tournament_reminder')?->data['body'];
+
+    expect($reminder($b))
+        ->toContain('das Match am '.$slot->isoFormat('dd, D. MMM YYYY').', '.$slot->isoFormat('HH:mm').' '.$slot->format('T').'.')
+        // The panel and an English player without a zone keep the league's time.
+        ->and($reminder($a))->toContain(LeagueTime::stamp($slot))
+        ->and(cupWait($match)[0]->actionText())->toContain(LeagueTime::stamp($slot));
 });

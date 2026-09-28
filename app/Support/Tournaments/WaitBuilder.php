@@ -91,7 +91,7 @@ final class WaitBuilder
      * @param  array<string, string>  $params
      */
     public function make(string $state, ?CarbonImmutable $since = null, ?CarbonImmutable $decidesAt = null, ?string $consequence = null, ?string $action = null,
-        array $params = [], bool $needsAdmin = false, bool $remindable = true): MatchWait
+        array $params = [], bool $needsAdmin = false, bool $remindable = true, ?CarbonImmutable $timeAt = null): MatchWait
     {
         $names = User::query()->whereKey($this->users)->get()->mapWithKeys(fn (User $user): array => [$user->id => $user->displayName()]);
         $key = strtoupper($this->match->key);
@@ -114,6 +114,7 @@ final class WaitBuilder
             $remindable && $action !== null && $this->users !== [],
             $this->subject,
             $this->url,
+            $timeAt,
         );
     }
 }

@@ -178,12 +178,17 @@ final class LeagueTime
         return self::localized($at->toImmutable()->setTimezone(self::zone()), 'hour');
     }
 
-    /** "Sa, 3. Okt 2026, 20:00 MESZ" / "Sat, 3 Oct 2026, 8:00 PM CEST": a card's one-line start. */
-    public static function stamp(CarbonInterface $at): string
+    /**
+     * "Sa, 3. Okt 2026, 20:00 MESZ" / "Sat, 3 Oct 2026, 8:00 PM CEST": a card's one-line start.
+     * In the league's zone and the app's language, or in a recipient's own
+     * zone and language (a reminder: TournamentReminders).
+     */
+    public static function stamp(CarbonInterface $at, ?string $zone = null, ?string $locale = null): string
     {
-        $local = $at->toImmutable()->setTimezone(self::zone());
+        $local = $at->toImmutable()->setTimezone($zone ?? self::zone());
+        $locale = $locale === null ? self::locale() : (array_key_exists($locale, self::PATTERNS) ? $locale : 'en');
 
-        return self::localized($local, 'short').', '.self::clockOf($local).' '.self::abbreviation($local);
+        return self::iso($local, $locale, self::PATTERNS[$locale]['short']).', '.self::iso($local, $locale, self::PATTERNS[$locale]['clock']).' '.__($local->format('T'), [], $locale);
     }
 
     /** "18:00 UTC" / "6:00 PM UTC". */

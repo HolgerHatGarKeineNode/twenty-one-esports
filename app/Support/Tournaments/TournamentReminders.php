@@ -161,7 +161,7 @@ final class TournamentReminders
     private function send(Tournament $tournament, User $player, MatchWait $wait, ?User $sender = null): void
     {
         $locale = $player->locale ?? (string) config('app.locale');
-        $action = (string) $wait->actionText($locale);
+        $action = (string) $wait->actionText($locale, $player);
         $body = $wait->counts() && $wait->decidesAt !== null
             ? __('The league decides in :minutes min. :action', ['minutes' => max(1, (int) ceil(($wait->decidesAt->getTimestamp() - now()->getTimestamp()) / 60)), 'action' => $action], $locale)
             : $action;

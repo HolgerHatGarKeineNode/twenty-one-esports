@@ -2,6 +2,9 @@
 
 namespace App\Support\Tournaments;
 
+use App\Models\User;
+use App\Support\LeagueTime;
+use App\Support\PreSeason;
 use Carbon\CarbonImmutable;
 
 /**
@@ -32,6 +35,7 @@ final readonly class MatchWait
      * @param  list<array{user_id: int, name: string}>  $waitingOn  the players the match waits on
      * @param  array<string, string>  $params  the parameters of `$consequence` and `$action`
      * @param  string|null  $subject  what the reminders are stored against (`series:<id>`, `chess:<id>`, `match:<id>`)
+     * @param  CarbonImmutable|null  $timeAt  the moment `:time` names (in `$params` in the league's time), for a recipient's own zone
      */
     public function __construct(
         public int $matchId,
@@ -50,6 +54,7 @@ final readonly class MatchWait
         public bool $remindable,
         public ?string $subject,
         public string $url,
+        public ?CarbonImmutable $timeAt = null,
     ) {}
 
     /** The state's short label, translated. */
@@ -76,15 +81,30 @@ final readonly class MatchWait
     }
 
     /** What happens at `$decidesAt` (or who decides without one), translated; null for nothing. */
-    public function consequenceText(?string $locale = null): ?string
+    public function consequenceText(?string $locale = null, ?User $recipient = null): ?string
     {
-        return $this->consequence === null ? null : (string) __($this->consequence, $this->params, $locale);
+        return $this->consequence === null ? null : (string) __($this->consequence, $this->paramsFor($recipient, $locale), $locale);
     }
 
     /** What a waited-on player has to do, translated; null for nothing. */
-    public function actionText(?string $locale = null): ?string
+    public function actionText(?string $locale = null, ?User $recipient = null): ?string
     {
-        return $this->action === null ? null : (string) __($this->action, $this->params, $locale);
+        return $this->action === null ? null : (string) __($this->action, $this->paramsFor($recipient, $locale), $locale);
+    }
+
+    /**
+     * The parameters, with `:time` in the recipient's zone and language when
+     * there is one; the league's time otherwise (the panel, the pages).
+     *
+     * @return array<string, string>
+     */
+    private function paramsFor(?User $recipient, ?string $locale): array
+    {
+        if ($recipient === null || $this->timeAt === null || ! array_key_exists('time', $this->params)) {
+            return $this->params;
+        }
+
+        return [...$this->params, 'time' => LeagueTime::stamp($this->timeAt, PreSeason::timezoneFor($recipient), $locale ?? $recipient->locale ?? (string) config('app.locale'))];
     }
 
     /** A countdown to an automatic decision runs: a deadline, and the tournament's pause does not hold it. */

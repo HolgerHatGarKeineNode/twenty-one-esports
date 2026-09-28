@@ -261,7 +261,7 @@ final class TournamentWaits
 
         if ($tournament->profile()->isChess()) {
             return $base->waitOnSlot(0)->waitOnSlot(1)->make('not_started', decidesAt: $slot,
-                consequence: 'The league starts the game at :time', action: 'Start your cup game with your opponent, or the league starts it at :time.', params: $params);
+                consequence: 'The league starts the game at :time', action: 'Start your cup game with your opponent, or the league starts it at :time.', params: $params, timeAt: $slot);
         }
 
         $agreed = CupSchedules::agreedAt($match);
@@ -279,7 +279,7 @@ final class TournamentWaits
             $base->waitOnSlot(0)->waitOnSlot(1);
         }
 
-        return $base->make('cup_time', decidesAt: $slot, consequence: 'The league starts it at :time', action: 'Agree on a time with your opponent, or the league starts it at :time.', params: $params);
+        return $base->make('cup_time', decidesAt: $slot, consequence: 'The league starts it at :time', action: 'Agree on a time with your opponent, or the league starts it at :time.', params: $params, timeAt: $slot);
     }
 
     /**
