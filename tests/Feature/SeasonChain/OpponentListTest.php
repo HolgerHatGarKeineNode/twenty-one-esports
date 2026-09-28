@@ -109,7 +109,7 @@ test('you list each other once both have added the other: the page, the card and
     opponentAction($this->alice, $this->aliceSigner, $this->bob, 'add');
 
     expect($state($this->alice, $this->bob))->toContain('data-state="listed"')->toContain('On your opponent list')
-        ->and($state($this->bob, $this->alice))->toContain('data-state="lists-you"')->toContain('Add alice back')
+        ->and($state($this->bob, $this->alice))->toContain('data-state="lists-you"')->toContain('Accept alice&#039;s request')
         ->and(app(Opponents::class)->listEachOther($this->alice, $this->bob))->toBeFalse();
 
     opponentAction($this->bob, $this->bobSigner, $this->alice, 'add');
@@ -178,7 +178,7 @@ test('NIP rule 18: a list of another league, with content, naming its author or 
     ['twice', 'opponent_list_entry'],
 ]);
 
-test('the settings list shows the entries, who lists you back, who waits for you, and removes and adds back with a signature', function () {
+test('the settings list shows the entries, who lists you back, the open requests, and removes and accepts with a signature', function () {
     $carol = User::factory()->create(['name' => 'carol']);
     $daveSigner = new TestSigner;
     $dave = User::factory()->withPubkey($daveSigner->pubkey)->create(['name' => 'dave']);
@@ -192,7 +192,7 @@ test('the settings list shows the entries, who lists you back, who waits for you
     $page = Livewire::actingAs($this->alice)->test('pages::settings.opponents')
         ->assertOk()
         ->assertSee('2 listed, 1 list you back')
-        ->assertSeeInOrder(['bob', 'lists you back', 'carol', 'not listing you yet', 'They list you', 'dave', 'Add back']);
+        ->assertSeeInOrder(['Opponent requests', 'dave', 'Accept', 'Your opponent list', 'bob', 'lists you back', 'carol', 'not listing you yet']);
 
     $page->call('remove', $carol->pubkey, json_encode($this->aliceSigner->signTemplates($page->instance()->prepareRemove($carol->pubkey, $opponents))))->assertHasNoErrors();
     $this->travel(1)->seconds();
@@ -201,7 +201,7 @@ test('the settings list shows the entries, who lists you back, who waits for you
     expect($opponents->entries($this->alice))->toBe([$this->bob->pubkey, $dave->pubkey])
         ->and($opponents->mutual($this->alice))->toBe([$this->bob->pubkey, $dave->pubkey]);
 
-    $this->actingAs($this->alice)->get(route('settings.opponents'))->assertOk()->assertSee('2 listed, 2 list you back')->assertSee('Nobody is waiting for you to add them back.');
+    $this->actingAs($this->alice)->get(route('settings.opponents'))->assertOk()->assertSee('2 listed, 2 list you back')->assertSee('No open requests.');
 });
 
 test('P7e gate, Low: list changes are rate limited per player, with a friendly message, and the limit is per player', function () {

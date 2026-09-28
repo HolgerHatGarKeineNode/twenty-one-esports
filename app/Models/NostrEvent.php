@@ -4,10 +4,12 @@ namespace App\Models;
 
 use App\Support\Nostr\SignedEvent;
 use App\Support\SeasonChain\OpponentLists;
+use App\Support\SeasonChain\OpponentRequests;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 /**
  * A signed event the league accepted, stored exactly as signed (`raw`), so
@@ -27,10 +29,26 @@ use Illuminate\Support\Carbon;
 #[Fillable(['event_id', 'pubkey', 'kind', 'd', 'signed_at', 'raw', 'queued_at'])]
 class NostrEvent extends Model
 {
-    /** An archived opponent list version keeps the per-player current row up to date (P7e gate, Low). */
+    /**
+     * An archived opponent list version keeps the per-player current row up
+     * to date (P7e gate, Low), and tells the players it newly adds (P57).
+     */
     protected static function booted(): void
     {
-        static::created(fn (self $event) => OpponentLists::track($event));
+        static::created(function (self $event): void {
+            $before = OpponentLists::track($event);
+
+            if ($before === null) {
+                return;
+            }
+
+            // Fail open: a notification that cannot go out never refuses the list version.
+            try {
+                app(OpponentRequests::class)->listChanged($event, $before);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        });
     }
 
     protected function casts(): array

@@ -12,6 +12,7 @@ use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\PreSeason;
+use App\Support\SeasonChain\Opponents;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\Series\ChallengeDraft;
 use App\Support\Series\Ladders;
@@ -22,6 +23,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -102,6 +104,13 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     public function pickOpponent(int $id): void
     {
         $this->opponentId = $id;
+        $this->error = '';
+    }
+
+    /** P57: an add from the "you do not list each other" notice; the refusal it answered is gone. */
+    #[On('opponent-list-changed')]
+    public function opponentListChanged(): void
+    {
         $this->error = '';
     }
 
@@ -379,6 +388,10 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
     $gameName = $headGame === null ? '' : GameNames::game($headGame);
     $bestOfs = $lineup?->gameMode()->bestOf ?? [3, 5];
     $minutes = fn (int $bo): int => $lineup === null ? 0 : (int) (ceil(GameProfile::for($lineup->game, $lineup->mode)->slot($bo) / 5) * 5);
+    // P57: a rated challenge needs the sender and a captain of the other lineup to list each other (RatedTrustGate::forChallenge).
+    $captains = $rated && $ratedOpen && $picked !== null ? array_values(array_diff(app(SeriesService::class)->captainPubkeys($picked['lineup']), [$me->pubkey])) : [];
+    $needsMutual = $captains === [] || collect($captains)->contains(fn (string $pubkey): bool => in_array($pubkey, app(Opponents::class)->mutual($me), true))
+        ? collect() : User::query()->whereIn('pubkey', $captains)->orderBy('id')->get();
 @endphp
 
 <div class="flex grow flex-col gap-5 px-4 pt-5 pb-28 lg:mx-auto lg:w-full lg:max-w-[1232px] lg:px-4 lg:pt-8 lg:pb-10" data-test="challenge-create" x-data="{ step: 1 }">
@@ -474,6 +487,11 @@ new #[Title('New challenge')] #[Layout('layouts::app', ['section' => 'clans'])] 
                             </button>
                         @endforeach
                     </div>
+                    @if ($needsMutual->isNotEmpty())
+                        <x-opponents.needs-mutual class="mt-3" :players="$needsMutual" :heading="trans_choice('You and :clan\'s captain do not list each other as opponents yet, so this challenge cannot be rated.|You and none of :clan\'s captains list each other as opponents yet, so this challenge cannot be rated.', $needsMutual->count(), ['clan' => $picked['lineup']->clan->name])">
+                            <x-button variant="quiet" wire:click="$set('rated', false)" data-test="needs-mutual-casual">{{ __('Make it casual instead') }}</x-button>
+                        </x-opponents.needs-mutual>
+                    @endif
                 </section>
 
                 {{-- Your lineup --}}

@@ -192,6 +192,9 @@ return [
     'opponents' => [
         'changes_per_minute' => (int) env('ESPORTS_OPPONENT_CHANGES_PER_MINUTE', 10),
         'changes_per_day' => (int) env('ESPORTS_OPPONENT_CHANGES_PER_DAY', 100),
+        // P57: "X added you as an opponent" goes out at most this often per requester and UTC day
+        // (a list made in another client can add hundreds at once); the rest still show on the page.
+        'requests_per_day' => (int) env('ESPORTS_OPPONENT_REQUESTS_PER_DAY', 20),
     ],
 
     'chess' => [

@@ -4,6 +4,7 @@ namespace App\Support\SeasonChain;
 
 use App\Jobs\PublishNostrEvent;
 use App\Models\NostrEvent;
+use App\Models\OpponentRequest;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -56,7 +57,12 @@ final class Opponents
      */
     public function add(User $player, User $opponent, array $signed): NostrEvent
     {
-        return $this->submit($player, $this->addTemplate($player, $opponent), $signed);
+        $version = $this->submit($player, $this->addTemplate($player, $opponent), $signed);
+
+        // Accepting a request lifts an earlier decline of it (P57, OpponentRequests).
+        OpponentRequest::query()->where('user_id', $player->id)->where('requester_pubkey', $opponent->pubkey)->update(['declined_at' => null]);
+
+        return $version;
     }
 
     /**

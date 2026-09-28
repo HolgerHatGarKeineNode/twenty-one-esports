@@ -19,14 +19,24 @@ use Livewire\Component;
  * design's "You're connected" (Player.dc.html): that is what rated play
  * needs. Nothing shows for guests, on the own page, or before the league
  * key is set.
+ *
+ * P57: a player who lists you is a request ("Accept :name's request", the
+ * same signed add). `inline` drops the sidebar rule and names the player on
+ * the button, for the notices where rated play was refused because two
+ * players do not list each other (challenge, answer, rated queue). Every
+ * change dispatches `opponent-list-changed`, so such a notice re-renders.
  */
 new class extends Component {
     #[Locked]
     public int $playerId;
 
-    public function mount(User $player): void
+    #[Locked]
+    public bool $inline = false;
+
+    public function mount(User $player, bool $inline = false): void
     {
         $this->playerId = $player->id;
+        $this->inline = $inline;
     }
 
     /**
@@ -40,6 +50,7 @@ new class extends Component {
     public function add(string $signed, Opponents $opponents): void
     {
         $this->refusable(fn () => $opponents->add($this->me(), $this->player(), array_values((array) json_decode($signed, true))));
+        $this->dispatch('opponent-list-changed');
     }
 
     /**
@@ -53,6 +64,7 @@ new class extends Component {
     public function remove(string $signed, Opponents $opponents): void
     {
         $this->refusable(fn () => $opponents->remove($this->me(), $this->player()->pubkey, array_values((array) json_decode($signed, true))));
+        $this->dispatch('opponent-list-changed');
     }
 
     /**
@@ -98,7 +110,7 @@ new class extends Component {
     $name = $player->displayName();
 @endphp
 
-<div @class(['flex min-w-0 flex-col gap-1.5 border-b border-hairline py-3 lg:pt-0' => $show, 'hidden' => ! $show])>
+<div @class(['flex min-w-0 flex-col gap-1.5', 'border-b border-hairline py-3 lg:pt-0' => $show && ! $inline, 'hidden' => ! $show])>
     @if ($show)
         <div class="flex min-w-0 flex-col gap-1.5" data-test="opponent" data-state="{{ $mine && $theirs ? 'mutual' : ($mine ? 'listed' : ($theirs ? 'lists-you' : 'none')) }}"
              x-data="nostrAction({ pubkey: @js($viewer->pubkey), messages: @js(SignerMessages::labels()) })">
@@ -119,17 +131,17 @@ new class extends Component {
                 @else
                     <button type="button" x-on:click="run('prepareAdd', 'add')" x-bind:disabled="busy" data-test="opponent-add"
                             class="btn-w inline-flex h-11 min-w-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-4 text-[13px] font-bold whitespace-nowrap text-ink disabled:cursor-wait disabled:opacity-70">
-                        <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" /><span class="truncate">{{ $theirs ? __('Add :name back', ['name' => $name]) : __('Add as opponent') }}</span>
+                        <x-icon name="shield-check" :size="16" class="shrink-0 text-proof" /><span class="truncate">{{ $theirs ? __('Accept :name\'s request', ['name' => $name]) : ($inline ? __('Add :name as opponent', ['name' => $name]) : __('Add as opponent')) }}</span>
                     </button>
                 @endif
             </div>
-            <span class="text-xs leading-normal text-ink-3" data-test="opponent-note">
+            <span @class(["text-xs leading-normal text-ink-3", "max-w-[68ch]" => $inline]) data-test="opponent-note">
                 @if ($mine && $theirs)
                     {{ __('Rated games between you are possible. Opponent lists are public on Nostr.') }}
                 @elseif ($mine)
                     {{ __('Rated games need :name to add you back. Opponent lists are public on Nostr.', ['name' => $name]) }}
                 @elseif ($theirs)
-                    {{ __(':name lists you as an opponent. Add them back for rated games. Opponent lists are public on Nostr.', ['name' => $name]) }}
+                    {{ __(':name added you as an opponent. Accept for rated games between you. Opponent lists are public on Nostr.', ['name' => $name]) }}
                 @else
                     {{ __('Rated games need you to list each other. Opponent lists are public on Nostr.') }}
                 @endif

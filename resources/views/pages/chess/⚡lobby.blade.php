@@ -27,6 +27,7 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
@@ -155,6 +156,52 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         $user = auth()->user();
 
         return $user instanceof User ? count(app(Opponents::class)->mutual($user)) : 0;
+    }
+
+    /**
+     * P57: the rated queue pairs only players who list each other, and skips
+     * everyone else in silence. While searching rated, this says how many
+     * others search rated in this mode, how many of them list each other
+     * with this player, and who of them lists this player already (a
+     * request one click accepts). Nobody else is named.
+     *
+     * @return array{others: int, mutual: int, asking: Collection<int, User>}
+     */
+    #[Computed]
+    public function ratedQueue(): array
+    {
+        $user = auth()->user();
+        $entry = $this->entry;
+
+        if (! $user instanceof User || $entry === null || ! $entry->rated) {
+            return ['others' => 0, 'mutual' => 0, 'asking' => collect()];
+        }
+
+        $opponents = app(Opponents::class);
+        $others = ChessQueueEntry::query()->where('rated', true)->where('mode', $entry->mode)->where('user_id', '!=', $user->id)->with('user')->get()->pluck('user');
+        $mine = $opponents->entries($user);
+        $listingMe = $opponents->listedBy($user);
+
+        return [
+            'others' => $others->count(),
+            'mutual' => $others->filter(fn (User $other): bool => in_array($other->pubkey, $mine, true) && in_array($other->pubkey, $listingMe, true))->count(),
+            'asking' => $others->filter(fn (User $other): bool => ! in_array($other->pubkey, $mine, true) && in_array($other->pubkey, $listingMe, true))->values(),
+        ];
+    }
+
+    /** P57: leave the rated search and search casual, which pairs with anyone. */
+    public function searchCasualInstead(): void
+    {
+        $this->attempt(fn (User $user) => app(ChessQueue::class)->leave($user));
+        unset($this->entry);
+        $this->findOpponent(false);
+    }
+
+    /** P57: an accept from the searching card; the next poll can pair the two. */
+    #[On('opponent-list-changed')]
+    public function opponentListChanged(): void
+    {
+        unset($this->ratedQueue, $this->mutualOpponents);
     }
 
     public function cancelSearch(): void

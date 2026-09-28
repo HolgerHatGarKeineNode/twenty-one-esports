@@ -104,6 +104,28 @@ signed by the player's own signer only after the player saw the event and clicke
 - **The tournament's event set grows.** `{"#a":["31923:<league>:<slug>"]}` now also returns comments,
   likes and RSVPs; a reader tells them apart by kind.
 
+### Changelog of revision 9.10 (2026-09-29)
+
+Opponent requests ([Opponent list](#opponent-list-30000-reused-from-nip-51),
+[Notifications](#notifications)). No new kind and no new tag; the opponent list stays the player's
+NIP-51 follow set, and everything below is league data.
+
+- **A request.** A player whose newest opponent list names you while yours does not name them has
+  asked you for rated games. The app shows it with what the league knows about them (when they
+  joined, finished games, trust, clan, who on your list lists them too) and offers **Accept** (the
+  ordinary signed add of the requester) and **Decline**.
+- **Opponent request notification.** A new list version that adds a player notifies that player
+  once per requester: not for a re-publish, a removal, a version signed more than a day ago (a list
+  first read from the relays), when the player lists the requester already, or after a decline. At
+  most a configured number per requester and UTC day. It is its own opt-in type and, like a clan join
+  request, goes out as a DM by default.
+- **Decline is not on Nostr.** It hides the request and stops notifications from that player, and
+  can be undone. The requester's list still names the player (it is their list), and no rated game
+  happens between the two unless the player adds them back.
+- **Refusals name the fix.** Where rated play is refused or skipped because two players do not list
+  each other (a rated challenge, its accept, the rated blitz queue), the app says so with the name
+  and offers the add, or Accept when the other lists you already, and the casual alternative.
+
 ### Changelog of revision 9.7 (2026-09-29)
 
 The player's own posts ([Share posts](#share-posts-rev-8)). No new kind and no new tag; share posts

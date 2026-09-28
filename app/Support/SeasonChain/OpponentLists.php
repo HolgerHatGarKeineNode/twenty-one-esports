@@ -161,20 +161,23 @@ final class OpponentLists
      * it is the author's first version in that league, or newer (higher
      * `created_at`, ties to the lower id, NIP-01). Any other event is left
      * alone. Called for every created NostrEvent.
+     *
+     * @return list<string>|null the entries of the version it replaced ([] for
+     *                           a first one), null when the row was left alone
      */
-    public static function track(NostrEvent $event): void
+    public static function track(NostrEvent $event): ?array
     {
         if ($event->kind !== self::KIND || preg_match('#^esports/[0-9a-f]{64}$#', (string) $event->d) !== 1) {
-            return;
+            return null;
         }
 
-        $current = DB::table('opponent_lists_current')->where('d', $event->d)->where('pubkey', $event->pubkey)->lockForUpdate()->first(['signed_at', 'event_id']);
+        $current = DB::table('opponent_lists_current')->where('d', $event->d)->where('pubkey', $event->pubkey)->lockForUpdate()->first(['signed_at', 'event_id', 'entries']);
 
         $newer = $current === null || $event->signed_at > (int) $current->signed_at
             || ($event->signed_at === (int) $current->signed_at && $event->event_id < (string) $current->event_id);
 
         if (! $newer) {
-            return;
+            return null;
         }
 
         DB::table('opponent_lists_current')->updateOrInsert(['d' => $event->d, 'pubkey' => $event->pubkey], [
@@ -185,6 +188,8 @@ final class OpponentLists
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        return $current === null ? [] : self::decode((string) $current->entries);
     }
 
     /** @return list<string> */

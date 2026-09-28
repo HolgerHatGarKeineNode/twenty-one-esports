@@ -116,6 +116,14 @@
                 {{ trans_choice(':count player searching right now.|:count players searching right now.', $searching) }}
                 {{ __('Your range: ±:range around :rating, it opens by :step every :seconds s. As soon as someone fits, the game starts, no extra click.', ['range' => app(ChessQueue::class)->range($entry), 'rating' => $entry->rating, 'step' => $range['step'], 'seconds' => $range['every_seconds']]) }}
             </span>
+            {{-- P57: the rated queue skips players who do not list each other; say so, and offer the fix. --}}
+            @php($ratedQueue = $this->ratedQueue)
+            @if ($entry->rated && $ratedQueue['others'] > 0 && $ratedQueue['mutual'] === 0)
+                <x-opponents.needs-mutual class="self-stretch text-left" :players="$ratedQueue['asking']"
+                    :heading="trans_choice(':count other player searches rated right now, but you do not list each other, so the queue cannot pair you.|:count other players search rated right now, but you list each other with none of them, so the queue cannot pair you.', $ratedQueue['others'])">
+                    <x-button variant="quiet" wire:click="searchCasualInstead" data-test="needs-mutual-casual">{{ __('Search casual instead') }}</x-button>
+                </x-opponents.needs-mutual>
+            @endif
             {{-- P5c: asked once per browser, when the player joins the queue; the browser's own prompt only after "Allow". --}}
             <div x-show="askNotify" x-cloak class="flex flex-col gap-2.5 self-stretch rounded-md bg-toast-challenge p-3 text-left shadow-ring-btc" data-test="notify-prompt">
                 <span class="flex items-start gap-2.5 text-[13px]"><x-icon name="bell" :size="16" class="mt-0.5 shrink-0 text-btc" /><span><b>{{ __('Hear about it in another tab?') }}</b> <span class="text-ink-2">{{ __('A desktop notification when an opponent is found, while this tab is in the background.') }}</span></span></span>

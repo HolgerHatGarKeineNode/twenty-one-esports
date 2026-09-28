@@ -1601,7 +1601,7 @@ final class SeriesService
     /**
      * @return list<string>
      */
-    private function captainPubkeys(?Lineup $lineup): array
+    public function captainPubkeys(?Lineup $lineup): array
     {
         if ($lineup === null) {
             return [];

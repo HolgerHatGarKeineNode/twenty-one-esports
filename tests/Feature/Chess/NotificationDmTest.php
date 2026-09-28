@@ -74,7 +74,7 @@ test('the default covers only the kinds that need the player, an explicit on cov
     $on = User::factory()->create(['chess_settings' => ['dm' => true]]);
 
     expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())
-        ->toBe(['challenge', 'your_move', 'reminder', 'clan_join_request', 'tournament_news', 'casual_noshow', 'casual_report', 'casual_challenge', 'casual_reminder', 'tournament_reminder', 'block0', 'season_payout'])
+        ->toBe(['challenge', 'your_move', 'reminder', 'clan_join_request', 'tournament_news', 'casual_noshow', 'casual_report', 'casual_challenge', 'casual_reminder', 'tournament_reminder', 'block0', 'season_payout', 'opponent_request'])
         ->and(collect(ChessSettings::triggers())->every(fn (string $trigger) => $on->chessSettings()->dmFor($trigger)))->toBeTrue();
 
     // A daily game over is remote, but not in the default set.

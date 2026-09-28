@@ -10,6 +10,7 @@ use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Rating\Ratings;
+use App\Support\SeasonChain\Opponents;
 use App\Support\Series\CasualChallenges;
 use App\Support\Series\CasualInvites;
 use App\Support\Series\CasualLobby;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -572,6 +574,13 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
      * @param  callable(): T  $action
      * @return T|null
      */
+    /** P57: an add from the "you do not list each other" notice; the refusal it answered is gone. */
+    #[On('opponent-list-changed')]
+    public function opponentListChanged(): void
+    {
+        $this->error = '';
+    }
+
     private function attempt(callable $action): mixed
     {
         $this->error = '';
@@ -852,6 +861,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @if ($m->message)<p class="m-0 text-[13px] text-ink-2">“{{ $m->message }}”</p>@endif
             <span class="text-xs text-ink-2">{{ __('Answer by :time', ['time' => SeriesPresenter::time($m->respond_by, $viewer)]) }}</span>
             @if ($captainSide === 'challenged')
+                {{-- P57: a rated accept needs the answering captain and the sender to list each other (RatedTrustGate::forAccept). --}}
+                @if ($m->rated && $m->createdBy !== null && $m->createdBy->id !== $viewer->id && ! app(Opponents::class)->listEachOther($viewer, $m->createdBy))
+                    <x-opponents.needs-mutual :players="[$m->createdBy]" :heading="__('You and :name do not list each other as opponents yet, so you cannot accept this rated challenge.', ['name' => $m->createdBy->displayName()])">
+                        <x-button variant="quiet" :href="route('challenges.create', ['to' => $m->challenger_lineup_id, 'game' => $m->game])" data-test="needs-mutual-casual">{{ __('Challenge them to a casual match instead') }}</x-button>
+                    </x-opponents.needs-mutual>
+                @endif
                 <div role="radiogroup" aria-label="{{ __('Suggested times') }}" class="flex flex-wrap gap-2">
                     @foreach ($m->proposals as $proposal)
                         <button type="button" role="radio" wire:click="$set('pickedStart', {{ $proposal }})" aria-checked="{{ $pickedStart === $proposal ? 'true' : 'false' }}"
