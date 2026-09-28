@@ -1,24 +1,34 @@
 <?php
 
+use App\Models\Rating;
+use App\Models\Season;
+use App\Models\SeasonSettingChange;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
 use App\Support\PreSeason;
+use App\Support\Rating\RankTiers;
+use App\Support\Rating\RatingSettings;
+use App\Support\Rating\SoftReset;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\SeasonReleaseRefused;
+use App\Support\SeasonChain\SeasonReview;
 use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 
 /*
  * AdminSeason (AdminSeason.dc.html), the season chain part (P7c): the chain
@@ -26,12 +36,20 @@ use Livewire\Component;
  * data of the last 4 weeks, the release of Block 0 and the rule changes
  * during a season with the public change log.
  *
- * Every admin sees the page; releasing Block 0 and changing rules is for the
+ * P35: the rating, rank and hashrate values for Block 0 (RatingSettings,
+ * which documents per value why it is editable and when it locks) with the
+ * log of who changed what, the read-only soft-reset preview (SoftReset) and
+ * the review of the last ended season (SeasonReview). There is no settle
+ * action: the season-chain payout is not built.
+ *
+ * Every admin sees the page and may edit the rating draft (authorized again
+ * in the action); releasing Block 0 and changing chain rules is for the
  * board (the public admin list) only, checked again in SeasonRelease and
- * SeasonChains. Not built here: the rating, rank and hashrate settings, the
- * soft-reset preview, the season review and settlement (P9).
+ * SeasonChains.
  */
 new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
+    use WithPagination;
+
     public string $supply = '';
 
     public string $message = '';
@@ -65,6 +83,20 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
 
     public string $notice = '';
 
+    /** @var array<string, string> the rating draft, `start` … `daily_pair_limit` */
+    public array $rating = [];
+
+    /** @var array<string, string> tier token => minimum rating */
+    public array $tiers = [];
+
+    /** @var array<string, string> `win`, `draw`, `loss`, `team_win_bonus` */
+    public array $hashrate = [];
+
+    public string $settingsError = '';
+
+    /** The soft-reset preview's carry-over factor f; 0.5 as in the NIP examples. */
+    public string $resetFactor = '0.5';
+
     public function mount(): void
     {
         Gate::authorize('admin');
@@ -72,6 +104,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $this->message = (string) PreSeason::genesisMessage();
         $this->endsAt = SeasonRelease::plannedEnd(CarbonImmutable::now());
         $this->fillChangeForm();
+        $this->fillSettingsForm();
     }
 
     /**
@@ -83,6 +116,107 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         $season = Seasons::live();
 
         return $season === null ? app(ChainOverview::class)->draft() : app(ChainOverview::class)->live($season);
+    }
+
+    /** The rating draft cannot change once a season has been released. */
+    #[Computed]
+    public function settingsLocked(): bool
+    {
+        return RatingSettings::locked();
+    }
+
+    /**
+     * @return Collection<int, SeasonSettingChange>
+     */
+    #[Computed]
+    public function settingsLog(): Collection
+    {
+        return SeasonSettingChange::query()->with('changedBy')->latest('id')->limit(20)->get();
+    }
+
+    /** The season the soft reset would carry over from: the newest one, live or ended. */
+    #[Computed]
+    public function resetFrom(): ?Season
+    {
+        return Seasons::latest();
+    }
+
+    /** The factor in thousandths, or null while the input is not a factor from 0 to 1. */
+    #[Computed]
+    public function resetFactorMilli(): ?int
+    {
+        return SoftReset::factorMilli($this->resetFactor);
+    }
+
+    /**
+     * @return LengthAwarePaginator<int, Rating>|null
+     */
+    #[Computed]
+    public function resetRows(): ?LengthAwarePaginator
+    {
+        return $this->resetFrom === null ? null : SoftReset::carriedOver($this->resetFrom)->paginate(25, pageName: 'reset');
+    }
+
+    #[Computed]
+    public function endedSeason(): ?Season
+    {
+        return SeasonReview::latestEnded();
+    }
+
+    /**
+     * @return array{champions: list<array{ladder: string, name: string, rating: int, results: int, tier: string}>, blocks: int, mined: int, remaining: int, supply: int, rejected: int}|null
+     */
+    #[Computed]
+    public function review(): ?array
+    {
+        return $this->endedSeason === null ? null : app(SeasonReview::class)->of($this->endedSeason);
+    }
+
+    public function updatedResetFactor(): void
+    {
+        $this->resetPage('reset');
+    }
+
+    /** Save the rating, rank and hashrate draft for Block 0, with the audit row. */
+    public function saveSettings(): void
+    {
+        Gate::authorize('admin');
+
+        $this->settingsError = '';
+        $this->notice = '';
+
+        try {
+            $change = RatingSettings::saveDraft($this->admin(), $this->settingsValues());
+        } catch (SeasonReleaseRefused $refused) {
+            $this->settingsError = $refused->getMessage();
+
+            return;
+        }
+
+        $this->notice = $change === null ? __('Nothing changed.') : __('Saved. Block 0 releases the season with these values.');
+        unset($this->settingsLog);
+        $this->fillSettingsForm();
+    }
+
+    /**
+     * Field labels, by dot path.
+     *
+     * @return array<string, string>
+     */
+    public function settingLabels(): array
+    {
+        return [
+            'rating.start' => __('Start rating'),
+            'rating.k' => __('K-factor'),
+            'rating.provisional_k' => __('K while provisional'),
+            'rating.provisional' => __('Results until a rank'),
+            'rating.scale' => __('Rating scale'),
+            'rating.daily_pair_limit' => __('Pairing limit per day'),
+            'hashrate.win' => __('Hashrate for a win'),
+            'hashrate.draw' => __('Hashrate for a draw'),
+            'hashrate.loss' => __('Hashrate for a loss'),
+            'hashrate.team_win_bonus' => __('Bonus for a team win'),
+        ];
     }
 
     #[Computed]
@@ -219,6 +353,75 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         }
 
         return $changes;
+    }
+
+    /**
+     * The validated draft from the form. Only the known keys are read, so a
+     * key added from the browser is ignored; the lowest tier stays at 0.
+     *
+     * @return array{rating: array{start: int, k: int, provisional_k: int, provisional: int, scale: int, daily_pair_limit: int|null}, tiers: array<string, int>, hashrate: array{win: int, draw: int, loss: int, team_win_bonus: int}}
+     *
+     * @throws SeasonReleaseRefused
+     */
+    private function settingsValues(): array
+    {
+        $defaults = RatingSettings::defaults();
+        $labels = $this->settingLabels();
+        $number = function (mixed $value, string $limit, string $field): int {
+            [$min, $max] = RatingSettings::LIMITS[$limit];
+            $value = is_scalar($value) ? trim((string) $value) : '';
+
+            if (preg_match('/^\d{1,5}$/', $value) !== 1 || (int) $value < $min || (int) $value > $max) {
+                throw new SeasonReleaseRefused(__(':field must be a whole number from :min to :max.', ['field' => $field, 'min' => $min, 'max' => $max]));
+            }
+
+            return (int) $value;
+        };
+
+        $rating = [];
+
+        foreach (array_keys($defaults['rating']) as $key) {
+            $raw = $this->rating[$key] ?? '';
+
+            // An empty pairing limit means no limit, as `null` in config/season.php.
+            $rating[$key] = $key === 'daily_pair_limit' && trim((string) $raw) === ''
+                ? null
+                : $number($raw, 'rating.'.$key, $labels['rating.'.$key]);
+        }
+
+        $tiers = [];
+        $previous = null;
+
+        foreach (array_keys($defaults['tiers']) as $index => $token) {
+            $minimum = $index === 0 ? 0 : $number($this->tiers[$token] ?? '', 'tiers', RankTiers::label($token));
+
+            if ($previous !== null && $minimum <= $previous) {
+                throw new SeasonReleaseRefused(__(':tier must start above the rank below it.', ['tier' => RankTiers::label($token)]));
+            }
+
+            $tiers[$token] = $previous = $minimum;
+        }
+
+        $hashrate = [];
+
+        foreach (array_keys($defaults['hashrate']) as $key) {
+            $hashrate[$key] = $number($this->hashrate[$key] ?? '', 'hashrate', $labels['hashrate.'.$key]);
+        }
+
+        /** @var array{start: int, k: int, provisional_k: int, provisional: int, scale: int, daily_pair_limit: int|null} $rating */
+        /** @var array{win: int, draw: int, loss: int, team_win_bonus: int} $hashrate */
+        return ['rating' => $rating, 'tiers' => $tiers, 'hashrate' => $hashrate];
+    }
+
+    /** The draft while it can change, else what the newest season froze. */
+    private function fillSettingsForm(): void
+    {
+        $values = RatingSettings::locked() ? RatingSettings::inForce() : RatingSettings::draft();
+        $text = fn (?int $value): string => $value === null ? '' : (string) $value;
+
+        $this->rating = array_map($text, $values['rating']);
+        $this->tiers = array_map($text, $values['tiers']);
+        $this->hashrate = array_map($text, $values['hashrate']);
     }
 
     private function fillChangeForm(): void
@@ -486,4 +689,160 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             @endforelse
         </section>
     @endunless
+
+    {{-- Rating, rank and hashrate values for Block 0 (P35, RatingSettings) --}}
+    @php($locked = $this->settingsLocked)
+    @php($labels = $this->settingLabels())
+    @php($limit = fn (string $key): string => __(':min to :max', ['min' => RatingSettings::LIMITS[$key][0], 'max' => RatingSettings::LIMITS[$key][1]]))
+    <x-admin.panel :title="__('Rating, ranks and hashrate')" :meta="$locked ? __('frozen at Block 0 in the signed ladders') : __('the values Block 0 releases the season with')" data-test="season-settings">
+        <p class="m-0 text-xs text-ink-2">{{ $locked
+            ? __('A season has been released. Its ladders carry these values, and every rating is replayed from them, so they cannot change during or after the season.')
+            : __('Every admin can change these until Block 0. The release freezes them for the whole season; each change is logged below with who made it.') }}</p>
+        <form wire:submit="saveSettings" class="flex flex-col gap-4">
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-6" @disabled($locked)>
+                <legend class="mb-2 text-xs text-ink-2">{{ __('Rating') }}</legend>
+                @foreach (array_keys(RatingSettings::defaults()['rating']) as $key)
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ $labels['rating.'.$key] }}
+                        <input type="text" inputmode="numeric" wire:model="rating.{{ $key }}" class="{{ $input }}" data-test="setting-rating-{{ $key }}">
+                        <span class="text-ink-3">{{ $key === 'daily_pair_limit' ? __(':range, empty = no limit', ['range' => $limit('rating.'.$key)]) : $limit('rating.'.$key) }}</span>
+                    </label>
+                @endforeach
+            </fieldset>
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 sm:grid-cols-3 lg:grid-cols-7" @disabled($locked)>
+                <legend class="mb-2 text-xs text-ink-2">{{ __('Minimum rating per rank (:range, each above the one below; Bronze I starts at 0)', ['range' => $limit('tiers')]) }}</legend>
+                @foreach (array_keys(RatingSettings::defaults()['tiers']) as $token)
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ RankTiers::label($token) }}
+                        <input type="text" inputmode="numeric" wire:model="tiers.{{ $token }}" class="{{ $input }}" @disabled($loop->first) data-test="setting-tier-{{ $token }}">
+                    </label>
+                @endforeach
+            </fieldset>
+            <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled($locked)>
+                <legend class="mb-2 text-xs text-ink-2">{{ __('Clan hashrate points per rated result (:range)', ['range' => $limit('hashrate')]) }}</legend>
+                @foreach (array_keys(RatingSettings::defaults()['hashrate']) as $key)
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ $labels['hashrate.'.$key] }}<input type="text" inputmode="numeric" wire:model="hashrate.{{ $key }}" class="{{ $input }}" data-test="setting-hashrate-{{ $key }}"></label>
+                @endforeach
+            </fieldset>
+            @unless ($locked)
+                <span class="flex flex-wrap items-center gap-3">
+                    <button type="submit" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc" data-test="save-settings">{{ __('Save the values') }}</button>
+                </span>
+            @endunless
+            @if ($settingsError)
+                <p class="m-0 text-[13px] text-loss" role="alert" data-test="settings-error">{{ $settingsError }}</p>
+            @endif
+        </form>
+        <div class="flex flex-col" data-test="settings-log">
+            <h3 class="m-0 pb-1 text-[13px] font-bold">{{ __('Who changed what') }}</h3>
+            @forelse ($this->settingsLog as $change)
+                <div wire:key="setting-change-{{ $change->id }}" class="flex flex-col gap-1 border-b border-hairline py-2.5 text-[13px] last:border-0">
+                    <span class="flex flex-wrap gap-x-3"><b>{{ $date(CarbonImmutable::instance($change->created_at)) }}</b><span class="text-ink-2">{{ __('by :name', ['name' => $change->changedBy?->displayName() ?? substr($change->changed_by_pubkey, 0, 8)]) }}</span></span>
+                    <span class="text-xs break-words text-ink-3">{{ collect($change->changes)->map(fn (array $pair, string $path): string => ($labels[$path] ?? (str_starts_with($path, 'tiers.') ? RankTiers::label(substr($path, 6)) : $path)).': '.($pair[0] ?? '–').' → '.($pair[1] ?? '–'))->implode(' · ') }}</span>
+                </div>
+            @empty
+                <x-admin.empty :text="__('No change yet: config/season.php holds the values.')" />
+            @endforelse
+        </div>
+    </x-admin.panel>
+
+    {{-- Soft-reset preview (P35, SoftReset) --}}
+    @php($from = $this->resetFrom)
+    <x-admin.panel :title="__('Soft-reset preview')" :meta="__('read-only, nothing is applied')" data-test="season-soft-reset">
+        <p class="m-0 text-xs text-ink-2">{{ __('The NIP soft reset: next start = start rating + (rating now − start rating of the season) × f, rounded. f = 0 resets everyone, f = 1 keeps every rating. No release applies it yet: only the Pre-Season can be released here.') }}</p>
+        @if ($from === null)
+            <x-admin.empty :text="__('No season has been released, so there are no rated ratings to carry over.')" />
+        @else
+            @php($startFrom = RatingSettings::forSeason($from)['rating']['start'])
+            @php($startNext = RatingSettings::draft()['rating']['start'])
+            @php($factor = $this->resetFactorMilli)
+            <div class="flex flex-wrap items-end gap-x-6 gap-y-3">
+                <label class="flex w-60 flex-col gap-1 text-xs text-ink-2">{{ __('Carry-over factor f (0 to 1)') }}<input type="text" inputmode="decimal" wire:model.live.debounce.400ms="resetFactor" class="{{ $input }}" data-test="reset-factor"></label>
+                <span class="text-xs text-ink-2">{{ __('From :season (start :from), next start :next', ['season' => $from->slug, 'from' => $startFrom, 'next' => $startNext]) }}@if ($from->isLiveAt(CarbonImmutable::now())) · {{ __('the season is still live: ratings so far') }}@endif</span>
+            </div>
+            @if ($factor === null)
+                <p class="m-0 text-[13px] text-loss" role="alert" data-test="reset-factor-error">{{ __('The factor is a number from 0 to 1 with at most three decimals.') }}</p>
+            @else
+                @php($rows = $this->resetRows)
+                @if ($rows->isEmpty())
+                    <x-admin.empty :text="__('No rated result in this season yet, so every player would start at :start.', ['start' => $startNext])" />
+                @else
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[560px] border-collapse text-left text-xs" data-test="reset-table">
+                            <thead class="text-ink-2">
+                                <tr class="border-b border-hairline">
+                                    <th scope="col" class="py-2 pr-3 font-normal">{{ __('Ladder') }}</th>
+                                    <th scope="col" class="py-2 pr-3 font-normal">{{ __('Player or lineup') }}</th>
+                                    <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __('Results') }}</th>
+                                    <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __('Rating now') }}</th>
+                                    <th scope="col" class="py-2 pr-3 text-right font-normal">{{ __('Next start') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach ($rows as $row)
+                                    @php($seed = SoftReset::seed($row->rating, $startFrom, $startNext, $factor))
+                                    <tr wire:key="reset-{{ $row->id }}" class="border-b border-hairline last:border-0" data-test="reset-row">
+                                        <td class="py-2 pr-3 whitespace-nowrap text-ink-2">{{ ChainOverview::keyLabel($row->game.'/'.$row->mode) }}</td>
+                                        <td class="max-w-[16rem] truncate py-2 pr-3">{{ SeasonReview::entityName($row) }}</td>
+                                        <td class="py-2 pr-3 text-right">{{ $row->results }}</td>
+                                        <td class="py-2 pr-3 text-right">{{ $row->rating }}</td>
+                                        <td class="py-2 pr-3 text-right font-bold" data-test="reset-seed">{{ $seed }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    @if ($rows->hasPages())
+                        @php($page = $rows->currentPage())
+                        @php($last = $rows->lastPage())
+                        <nav aria-label="{{ __('Pages') }}" class="flex justify-center" data-test="reset-pages">
+                            <div class="flex gap-0.5 overflow-hidden rounded-md">
+                                @foreach ([['«', 1, __('First page')], ['‹', max(1, $page - 1), __('Previous page')]] as [$glyph, $target, $label])
+                                    <button type="button" wire:click="gotoPage({{ $target }}, 'reset')" aria-label="{{ $label }}" @disabled($page === 1) class="flex size-11 cursor-pointer items-center justify-center border-0 bg-ground text-[13px] text-ink-2 disabled:cursor-default disabled:text-[#4A4A50]">{{ $glyph }}</button>
+                                @endforeach
+                                @foreach (range(max(1, $page - 2), min($last, $page + 2)) as $number)
+                                    <button type="button" wire:click="gotoPage({{ $number }}, 'reset')" @if ($number === $page) aria-current="page" @endif
+                                            @class(['flex size-11 cursor-pointer items-center justify-center border-0 text-[13px]', 'bg-btc font-bold text-on-btc' => $number === $page, 'bg-ground text-ink-2' => $number !== $page])>{{ $number }}</button>
+                                @endforeach
+                                @foreach ([['›', min($last, $page + 1), __('Next page')], ['»', $last, __('Last page')]] as [$glyph, $target, $label])
+                                    <button type="button" wire:click="gotoPage({{ $target }}, 'reset')" aria-label="{{ $label }}" @disabled($page === $last) class="flex size-11 cursor-pointer items-center justify-center border-0 bg-ground text-[13px] text-ink-2 disabled:cursor-default disabled:text-[#4A4A50]">{{ $glyph }}</button>
+                                @endforeach
+                            </div>
+                        </nav>
+                    @endif
+                @endif
+            @endif
+        @endif
+    </x-admin.panel>
+
+    {{-- Review of the last ended season (P35, SeasonReview) --}}
+    @php($ended = $this->endedSeason)
+    <x-admin.panel :title="__('Season review')" :meta="$ended ? __(':season, ended :when', ['season' => $ended->slug, 'when' => $date(CarbonImmutable::instance($ended->ends_at))]) : null" data-test="season-review">
+        @if ($ended === null)
+            <x-admin.empty :text="__('No season has ended yet. The review shows the champions and the chain once one has.')" />
+        @else
+            @php($review = $this->review)
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                @foreach ([
+                    [__('Blocks'), (string) $review['blocks'], __('mined in the season')],
+                    [__('Supply issued'), $sats($review['mined']), __('of :supply sats', ['supply' => $sats($review['supply'])])],
+                    [__('Left in the pot'), $sats($review['remaining']), __('sats')],
+                    [__('Wins that did not mine'), (string) $review['rejected'], __('rejected by a consensus rule')],
+                ] as [$label, $value, $sub])
+                    <div class="flex min-w-0 flex-col gap-1 rounded-md bg-ground px-3.5 py-3 shadow-ring">
+                        <span class="text-xs text-ink-2">{{ $label }}</span><b class="font-display text-lg leading-tight">{{ $value }}</b><span class="text-xs text-ink-3">{{ $sub }}</span>
+                    </div>
+                @endforeach
+            </div>
+            <h3 class="m-0 text-[13px] font-bold">{{ __('Champions') }}</h3>
+            @forelse ($review['champions'] as $champion)
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-hairline py-2 text-[13px] last:border-0" data-test="review-champion">
+                    <span class="flex min-w-0 flex-col"><span class="text-xs text-ink-2">{{ $champion['ladder'] }}</span><b class="truncate">{{ $champion['name'] }}</b></span>
+                    <span class="text-xs text-ink-2">{{ __(':rating Elo · :tier · :count rated results', ['rating' => $champion['rating'], 'tier' => RankTiers::label($champion['tier']), 'count' => $champion['results']]) }}</span>
+                </div>
+            @empty
+                <x-admin.empty :text="__('No ladder had a rated result in this season.')" />
+            @endforelse
+            <h3 class="m-0 text-[13px] font-bold">{{ __('Season payouts') }}</h3>
+            <p class="m-0 text-[13px] text-ink-2" data-test="review-payouts">{{ __('No season payouts have been made. The settlement of the chain rewards is not built, so there is nothing to settle here.') }}</p>
+        @endif
+    </x-admin.panel>
 </x-admin.page>

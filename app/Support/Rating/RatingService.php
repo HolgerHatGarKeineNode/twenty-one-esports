@@ -541,7 +541,7 @@ final class RatingService
      */
     private function pairCapReached(string $pool, Rating $a, Rating $b): bool
     {
-        $limit = config($pool === Rating::RATED ? 'season.rating.daily_pair_limit' : 'season.casual.daily_pair_limit');
+        $limit = $pool === Rating::RATED ? RatingSettings::inForce()['rating']['daily_pair_limit'] : config('season.casual.daily_pair_limit');
 
         if ($limit === null) {
             return false;

@@ -10,6 +10,7 @@ use App\Models\Season;
 use App\Models\User;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RankTiers;
+use App\Support\Rating\RatingSettings;
 use App\Support\Series\Ladders;
 
 /**
@@ -102,7 +103,7 @@ final class LadderEvents
 
     /**
      * The season parameters of a first version, from the game registry and
-     * config/season.php.
+     * the rating values the season froze at Block 0 (RatingSettings).
      *
      * @return list<list<string>>
      */
@@ -125,14 +126,15 @@ final class LadderEvents
             $tags[] = ['variant', 'standard'];
         }
 
-        $tags[] = ['rating', 'elo', (string) config('season.rating.start'), (string) config('season.rating.k'), (string) config('season.rating.scale')];
+        $settings = RatingSettings::forSeason($season);
+        $tags[] = ['rating', 'elo', (string) $settings['rating']['start'], (string) $settings['rating']['k'], (string) $settings['rating']['scale']];
 
-        foreach ((array) config('season.tiers') as $tier => $minimum) {
+        foreach ($settings['tiers'] as $tier => $minimum) {
             $tags[] = ['tier', (string) $tier, (string) $minimum];
         }
 
-        $tags[] = ['provisional', (string) config('season.rating.provisional'), (string) config('season.rating.provisional_k')];
-        $tags[] = ['hashrate', ...array_map(strval(...), array_values((array) config('season.hashrate')))];
+        $tags[] = ['provisional', (string) $settings['rating']['provisional'], (string) $settings['rating']['provisional_k']];
+        $tags[] = ['hashrate', ...array_map(strval(...), [$settings['hashrate']['win'], $settings['hashrate']['draw'], $settings['hashrate']['loss'], $settings['hashrate']['team_win_bonus']])];
 
         return $tags;
     }
@@ -145,7 +147,8 @@ final class LadderEvents
     private function standings(Season $season, string $game, string $mode): array
     {
         $rates = $this->games->mode($game, $mode)->rates ?? 'lineup';
-        $tiers = RankTiers::fromConfig();
+        $settings = RatingSettings::forSeason($season);
+        $tiers = new RankTiers($settings['tiers'], $settings['rating']['provisional']);
         $rows = Rating::query()->where(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => $game, 'mode' => $mode])
             ->where('results', '>', 0)->orderByDesc('rating')->orderBy('id')->get();
         $users = User::query()->whereIn('id', $rows->pluck('user_id')->filter())->pluck('pubkey', 'id');

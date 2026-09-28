@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Board;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
+use App\Support\Rating\RatingSettings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -183,6 +184,8 @@ final class SeasonRelease
                     'claim_seconds' => $draft['claim_seconds'],
                     'minimum_trust' => $draft['minimum_trust'],
                     'parameters' => $draft['parameters'],
+                    // The admin's rating draft, frozen here as the ladders below freeze it in their tags.
+                    'rating_parameters' => RatingSettings::draft(),
                     'genesis_message' => $message,
                     'digest' => (string) $label->tag('x'),
                     'genesis_at' => CarbonImmutable::createFromTimestamp($genesisAt),

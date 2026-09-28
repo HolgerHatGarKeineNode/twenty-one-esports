@@ -8,6 +8,7 @@ use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\GameNames;
 use App\Support\Prizes\PrizePool;
+use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentDeadlines;
@@ -68,7 +69,7 @@ final class RulesPage
     private static function league(): array
     {
         $season = Ladders::season();
-        $rating = (array) config('season.rating');
+        $rating = RatingSettings::inForce()['rating'];
 
         return [
             'id' => 'league',

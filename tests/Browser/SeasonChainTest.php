@@ -2,8 +2,10 @@
 
 use App\Models\Admin;
 use App\Models\NostrEvent;
+use App\Models\Rating;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\SeasonSettingChange;
 use App\Models\SeriesMatch;
 use App\Models\TrustExclusion;
 use App\Models\TrustReportDismissal;
@@ -303,4 +305,72 @@ test('a series change reaches the other captain\'s match dock over Reverb, witho
     BrowserWait::until($page, '() => document.querySelector("[data-test=match-dock-root]")?.innerText.includes("0 : 1")', 8_000);
 
     expect($page->evaluate('() => window.__errors'))->toBe([]);
+});
+
+test('AdminSeason P35: rating settings, soft-reset preview and season review stay clean and inside 375 and 1440 px, with round-trips', function () {
+    $admin = User::factory()->create(['name' => 'satsjaeger']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    // Positive control: an injected throw and a 404 fetch must show up as problems.
+    $control = chainPage($admin, route('admin.season'), 'window.addEventListener("load", () => { setTimeout(() => { throw new Error("p35-positive-control"); }, 0); fetch("/p35-positive-control-missing"); });');
+    $controlProblems = implode("\n", chainProblems($control, [route('admin.season')]));
+    // The fetch answers after the load event that chainProblems() reads at, so wait for it.
+    BrowserWait::until($control, '() => (window.__errors || []).some((entry) => entry.startsWith("404 "))', 10_000);
+
+    expect($controlProblems)->toContain('p35-positive-control')
+        ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('404 ')
+        ->and(implode("\n", $control->evaluate('() => window.__errors')))->toContain('p35-positive-control-missing');
+
+    // Before Block 0: every admin edits the draft through a Livewire round-trip.
+    $page = chainPage($admin, route('admin.season'));
+
+    expect(chainProblems($page, [route('admin.season')]))->toBe([]);
+
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('admin.season')));
+    $page->locator('[data-test=setting-rating-k]')->fill('24');
+    $page->locator('[data-test=save-settings]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=settings-log]")?.innerText.includes("32 → 24")', 10_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and(SeasonSettingChange::query()->sole()->changes)->toBe(['rating.k' => [32, 24]]);
+
+    // An ended season with 26 rated players: the preview pages, the review lists the champion.
+    $season = openSeason(['genesis_at' => now()->subDays(30), 'ends_at' => now()->subHour()]);
+    $players = User::factory()->count(26)->sequence(fn ($sequence) => ['name' => 'Player '.str_pad((string) $sequence->index, 2, '0', STR_PAD_LEFT)])->create();
+
+    foreach ($players as $index => $player) {
+        Rating::query()->create(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => 'chess', 'mode' => 'blitz', 'subject' => 'user:'.$player->id,
+            'user_id' => $player->id, 'rating' => 1100 - $index, 'results' => 6, 'wins' => 6]);
+    }
+
+    expect(chainProblems($page, [route('admin.season')]))->toBe([]);
+
+    $sizes = [];
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('admin.season')));
+        $sizes[$width] = $page->evaluate('() => Object.fromEntries(["season-settings", "season-soft-reset", "season-review", "reset-table"].map((name) => {'
+            .' const r = document.querySelector(`[data-test=${name}]`).getBoundingClientRect();'
+            .' return [name, [Math.round(r.left), Math.round(r.right), Math.round(r.width), Math.round(r.height)]]; }))');
+    }
+
+    fwrite(STDERR, "\n[admin-season P35] left/right/width/height: ".json_encode($sizes)."\n");
+
+    foreach (['season-settings', 'season-soft-reset', 'season-review'] as $section) {
+        expect($sizes[375][$section][0])->toBeGreaterThanOrEqual(0)
+            ->and($sizes[375][$section][1])->toBeLessThanOrEqual(375)
+            ->and($sizes[1440][$section][1])->toBeLessThanOrEqual(1440);
+    }
+
+    // Page 2 of the preview and a new factor, both through Livewire.
+    $page->locator('[data-test=reset-pages] button[aria-label="Next page"]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=reset-table]")?.innerText.includes("Player 25")', 10_000);
+    $page->locator('[data-test=reset-factor]')->fill('0.2');
+    BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=reset-seed]")].some((cell) => cell.innerText === "1015")', 10_000);
+
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate('() => document.querySelector("[data-test=season-review]").innerText'))->toContain('Player 00')
+        ->and($page->evaluate('() => document.querySelector("[data-test=review-payouts]").innerText'))->toContain('No season payouts have been made.');
 });

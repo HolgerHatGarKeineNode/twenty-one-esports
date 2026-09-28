@@ -30,12 +30,12 @@ final class RankTiers
         $this->descending = $tiers;
     }
 
+    /** The tiers in force (RatingSettings: config/season.php, the admin draft or the released season's). */
     public static function fromConfig(): self
     {
-        /** @var array<string, int> $tiers */
-        $tiers = config('season.tiers');
+        $settings = RatingSettings::inForce();
 
-        return new self($tiers, (int) config('season.rating.provisional'));
+        return new self($settings['tiers'], $settings['rating']['provisional']);
     }
 
     /**

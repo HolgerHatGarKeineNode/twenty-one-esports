@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\SeasonParameters;
 use Carbon\CarbonImmutable;
@@ -26,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property int $claim_seconds
  * @property int $minimum_trust
  * @property array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int} $parameters
+ * @property array{rating: array{start: int, k: int, provisional_k: int, provisional: int, scale: int, daily_pair_limit: int|null}, tiers: array<string, int>, hashrate: array{win: int, draw: int, loss: int, team_win_bonus: int}}|null $rating_parameters frozen at Block 0 (RatingSettings), null before P35
  * @property string $genesis_message
  * @property string $digest
  * @property Carbon $genesis_at
@@ -42,7 +44,7 @@ use Illuminate\Support\Carbon;
  * @property-read User|null $releasedBy
  */
 #[Fillable([
-    'slug', 'league_pubkey', 'supply', 'subsidy', 'halving_seconds', 'claim_seconds', 'minimum_trust', 'parameters',
+    'slug', 'league_pubkey', 'supply', 'subsidy', 'halving_seconds', 'claim_seconds', 'minimum_trust', 'parameters', 'rating_parameters',
     'genesis_message', 'digest', 'genesis_at', 'ends_at', 'genesis_event_id', 'release_event_id', 'admin_list_event_id',
     'announcement_event_id', 'released_by_id', 'released_by_pubkey',
 ])]
@@ -50,6 +52,12 @@ class Season extends Model
 {
     /** @use HasFactory<SeasonFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => RatingSettings::forget());
+        static::deleted(fn () => RatingSettings::forget());
+    }
 
     protected function casts(): array
     {
@@ -60,6 +68,7 @@ class Season extends Model
             'claim_seconds' => 'integer',
             'minimum_trust' => 'integer',
             'parameters' => 'array',
+            'rating_parameters' => 'array',
             'genesis_at' => 'datetime',
             'ends_at' => 'datetime',
         ];

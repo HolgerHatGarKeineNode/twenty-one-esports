@@ -21,16 +21,23 @@ final class EloRating
     ) {}
 
     /**
+     * The rated ladders use the season's values (RatingSettings: the admin
+     * draft before Block 0, frozen at the release, config/season.php by
+     * default); casual reads `season.casual`.
+     *
      * @param  'rating'|'casual'  $key  `season.rating` (the rated ladders) or `season.casual`
      */
     public static function fromConfig(string $key = 'rating'): self
     {
+        /** @var array{start: int, k: int, provisional_k: int, provisional: int, scale: int} $values */
+        $values = $key === 'rating' ? RatingSettings::inForce()['rating'] : config('season.casual');
+
         return new self(
-            (int) config("season.{$key}.start"),
-            (int) config("season.{$key}.k"),
-            (int) config("season.{$key}.provisional_k"),
-            (int) config("season.{$key}.provisional"),
-            (int) config("season.{$key}.scale"),
+            (int) $values['start'],
+            (int) $values['k'],
+            (int) $values['provisional_k'],
+            (int) $values['provisional'],
+            (int) $values['scale'],
         );
     }
 

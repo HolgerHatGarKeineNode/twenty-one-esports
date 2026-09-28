@@ -10,6 +10,7 @@ use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
 use App\Support\Prizes\WalletPrizePool;
+use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Tournaments\TournamentPrizePool;
@@ -21,8 +22,10 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -120,6 +123,10 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));
+
+        // The rating settings are looked up once per request (RatingSettings); a
+        // queue worker keeps one request for its whole life, so once per job.
+        Event::listen(JobProcessing::class, fn () => RatingSettings::forget());
 
         // `composer dev` also runs the scheduler: the chess flag sweep
         // (routes/console.php) is part of how a clock runs out.

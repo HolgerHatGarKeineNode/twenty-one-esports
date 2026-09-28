@@ -257,8 +257,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
         <section class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-8 lg:py-7" data-test="ladder-preseason">
             <x-empty-state :heading="__('Pre-Season starts at Block 0')"
                            :text="$players
-                               ? __('The ladder fills with the first rated game after Block 0. Every player starts at :elo Elo. Until then every game is casual and counts for the casual ladder only.', ['elo' => (int) config('season.rating.start')])
-                               : __('The ladder fills with the first rated series after Block 0. Every lineup starts at :elo Elo. Until then every match is casual and counts for the casual ladder only.', ['elo' => (int) config('season.rating.start')])">
+                               ? __('The ladder fills with the first rated game after Block 0. Every player starts at :elo Elo. Until then every game is casual and counts for the casual ladder only.', ['elo' => \App\Support\Rating\RatingSettings::inForce()['rating']['start']])
+                               : __('The ladder fills with the first rated series after Block 0. Every lineup starts at :elo Elo. Until then every match is casual and counts for the casual ladder only.', ['elo' => \App\Support\Rating\RatingSettings::inForce()['rating']['start']])">
                 <button type="button" wire:click="pickPool('casual')" class="btn-p inline-flex h-11 cursor-pointer items-center rounded-md border-0 bg-btc px-5 text-sm font-bold text-on-btc">{{ __('Show the casual ladder') }}</button>
                 <a href="{{ \App\Support\GameNames::page($game) }}" class="inline-flex h-11 items-center rounded-md border border-edge bg-ground px-5 text-sm text-ink hover:text-ink">{{ __('Play a casual game') }}</a>
             </x-empty-state>
@@ -459,7 +459,7 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                 @if ($rows->isNotEmpty())
                     <p class="mx-2 mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2 lg:mx-0">
                         @if ($rated)
-                            {{ __('Rank from Elo alone, provisional until :n rated results.', ['n' => (int) config('season.rating.provisional')]) }}
+                            {{ __('Rank from Elo alone, provisional until :n rated results.', ['n' => \App\Support\Rating\RatingSettings::inForce()['rating']['provisional']]) }}
                             @if ($showScore) {{ __('Global Rating shows from :n rated results in the season.', ['n' => (int) config('season.global_rating_min_weight')]) }} @endif
                         @elseif (config('season.casual.daily_pair_limit') !== null)
                             {{ __('Casual Elo is just for fun: it never counts for ranks, badges, Block Height, mining or rewards. At most :n games of the same pairing per day move it.', ['n' => (int) config('season.casual.daily_pair_limit')]) }}

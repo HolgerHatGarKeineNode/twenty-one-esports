@@ -19,14 +19,17 @@ final class ClanRating
         public readonly int $teamWinBonus = 5,
     ) {}
 
+    /** The top count from config/season.php, the hashrate points in force (RatingSettings). */
     public static function fromConfig(): self
     {
+        $hashrate = RatingSettings::inForce()['hashrate'];
+
         return new self(
             (int) config('season.clan_rating_top'),
-            (int) config('season.hashrate.win'),
-            (int) config('season.hashrate.draw'),
-            (int) config('season.hashrate.loss'),
-            (int) config('season.hashrate.team_win_bonus'),
+            $hashrate['win'],
+            $hashrate['draw'],
+            $hashrate['loss'],
+            $hashrate['team_win_bonus'],
         );
     }
 

@@ -72,13 +72,14 @@ final class Ratings
      */
     public static function summary(?Rating $rating, string $pool): array
     {
-        $key = $pool === Rating::CASUAL ? 'casual' : 'rating';
+        /** @var array{start: int, provisional: int} $values */
+        $values = $pool === Rating::CASUAL ? config('season.casual') : RatingSettings::inForce()['rating'];
 
         // No row yet: the start rating with no results.
         [$value, $results, $wins, $draws, $losses] = $rating === null
-            ? [(int) config("season.{$key}.start"), 0, 0, 0, 0]
+            ? [(int) $values['start'], 0, 0, 0, 0]
             : [$rating->rating, $rating->results, $rating->wins, $rating->draws, $rating->losses];
-        $provisional = $results < (int) config("season.{$key}.provisional");
+        $provisional = $results < (int) $values['provisional'];
 
         return [
             'rating' => $value,
