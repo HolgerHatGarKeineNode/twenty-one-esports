@@ -315,7 +315,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
                             @foreach ($this->tournaments as $tournament)
                                 {{-- The game's cover beside the name (P53): which game runs reads before the words. --}}
                                 <li wire:key="live-tournament-{{ $tournament->id }}" class="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-x-3">
-                                    <x-game-cover :game="$tournament->game" size="thumb" class="row-span-2 w-20 rounded-xs" data-test="live-tournament-cover" />
+                                    <x-game-cover :game="$tournament->game" size="thumb" loading="eager" class="row-span-2 w-20 rounded-xs" data-test="live-tournament-cover" />
                                     <b class="text-[13px] break-words">{{ $tournament->name }}</b>
                                     <span class="flex flex-wrap gap-x-4 text-xs">
                                         <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-11 items-center lg:min-h-6">{{ __('Bracket') }}</a>
