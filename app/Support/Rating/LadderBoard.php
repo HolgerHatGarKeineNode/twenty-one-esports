@@ -2,7 +2,6 @@
 
 namespace App\Support\Rating;
 
-use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\NostrEvent;
@@ -479,10 +478,5 @@ final class LadderBoard
         return Rating::query()
             ->where(['pool' => $this->pool, 'season' => $this->season, 'game' => $this->game, 'mode' => $this->mode])
             ->where('results', '>', 0);
-    }
-
-    public function gameMode(): GameMode
-    {
-        return app(GameRegistry::class)->mode($this->game, $this->mode) ?? throw new \LogicException('Unknown ladder '.$this->game.'/'.$this->mode);
     }
 }
