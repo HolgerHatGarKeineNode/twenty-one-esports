@@ -22,6 +22,9 @@ use App\Support\Rating\RatingSettings;
 use App\Support\Rating\SoftReset;
 use App\Support\SeasonChain\SeasonReview;
 use App\Support\Series\Ladders;
+use Illuminate\Contracts\Queue\Job;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Tests\Support\TestSigner;
@@ -291,4 +294,19 @@ test('the review of an ended season shows each ladder\'s champion, the chain and
     expect($review['champions'])->toHaveCount(1)
         ->and($review['champions'][0]['name'])->toBe('Hodl Queen')
         ->and($review['blocks'])->toBe(1);
+});
+
+test('a queue worker forgets the values in force before every job, so a change made elsewhere reaches the next job', function () {
+    expect(RatingSettings::inForce()['rating']['k'])->toBe(32);
+
+    $values = RatingSettings::defaults();
+    $values['rating']['k'] = 27;
+    // Written by another process: a raw row, so no model event of this one forgets the memo.
+    DB::table('season_setting_changes')->insert(['changed_by_id' => $this->admin->id, 'changed_by_pubkey' => $this->admin->pubkey, 'values' => json_encode($values), 'changes' => json_encode(['rating.k' => [32, 27]]), 'created_at' => now(), 'updated_at' => now()]);
+
+    expect(RatingSettings::inForce()['rating']['k'])->toBe(32);
+
+    event(new JobProcessing('database', Mockery::mock(Job::class)->shouldIgnoreMissing()));
+
+    expect(RatingSettings::inForce()['rating']['k'])->toBe(27);
 });
