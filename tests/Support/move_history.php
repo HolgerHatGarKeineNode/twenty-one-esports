@@ -44,6 +44,9 @@ const HISTORY_PROBE = <<<'JS'
             clock: rect(clock),
             steps,
             cut,
+            // The first viewport ends where what is fixed at the bottom starts (the tab bar, the chat sheet).
+            floor: Math.round(Math.min(innerHeight, ...[...document.body.querySelectorAll("*")].filter((el) => getComputedStyle(el).position === "fixed" && el.checkVisibility() && el.getBoundingClientRect().top > innerHeight / 2).map((el) => el.getBoundingClientRect().top))),
+            banner: !!document.querySelector("[data-test=first-steps]")?.checkVisibility(),
             doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
         };
     }

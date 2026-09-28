@@ -542,6 +542,11 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     $abortable = $game->tournament_match_id === null;
     $players = ['w' => $this->player($game->white), 'b' => $this->player($game->black)];
     $opponent = $color === null ? null : $players[$color === 'w' ? 'b' : 'w'];
+    // A guest has the "New here?" strip above the page (~70 px at 1440): its board gives up what the first
+    // viewport lacks, so the history bar under it stays in view (1440 x 900: board top 307 + 16 + bar 44 ended
+    // at 943). 383 px = that board top, the gap, the bar and 16 px air. From ~960 px of height it is 576 again;
+    // players and logged-in spectators keep 576 px.
+    $boardWidth = auth()->guest() ? 'lg:max-w-[min(576px,calc(100dvh-383px))]' : 'lg:max-w-[576px]';
 @endphp
 
 <div class="flex grow flex-col">
@@ -617,7 +622,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                 --}}
                 <div class="max-lg:contents lg:col-start-1 lg:row-span-4 lg:row-start-1 lg:mt-4 lg:flex lg:flex-col lg:gap-4">
                     <div class="order-2 -mx-4 flex flex-col gap-4 lg:contents">
-                        <x-chess.board playable class="lg:max-w-[576px]" x-bind:class="browsing && 'is-past'" data-test="live-board">
+                        <x-chess.board playable :class="$boardWidth" x-bind:class="browsing && 'is-past'" data-test="live-board">
                             {{-- Promotion picker, on the target file (ChessOverlays 2) --}}
                             <template x-if="promotion">
                                 <div class="absolute inset-0">
@@ -792,7 +797,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                     </div>
 
                     {{-- Stepping through the moves (P55): the board shows an earlier position, the game and the clocks go on. From lg the move field shares its row: on an earlier position it gives way to "Back to the current position". --}}
-                    <x-chess.history-bar class="order-4 lg:order-none lg:w-full lg:max-w-[576px]">
+                    <x-chess.history-bar @class(['order-4 lg:order-none lg:w-full', $boardWidth])>
                         @if ($color)
                             <form class="flex min-w-0 grow items-center gap-2.5" x-on:submit.prevent="submitSan()">
                                 <label for="mv" class="text-[13px] whitespace-nowrap text-ink-2">{{ __('Enter move') }}</label>

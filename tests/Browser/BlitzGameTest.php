@@ -653,3 +653,57 @@ test('the history bar fits a German phone: nothing cut off on an earlier positio
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
+
+/*
+ * The guest-only "New here?" strip puts the board of a watched game ~70 px lower. At 1440 x 900 the guest's
+ * board gives that back (⚡show.blade.php, $boardWidth), so the history bar stays in the first viewport. At
+ * 375 x 812 it cannot without shrinking the edge-to-edge board: the board alone ends at the tab bar (746 of
+ * 748 px), the bar (96 px) sits under the bottom player as it does for players (measured 2026-09-28).
+ */
+test('a guest watching a live game has the history bar in the first viewport at 1440 under the "New here?" strip, and the players\' board does not move', function () {
+    $games = app(ChessGameService::class);
+    [$anna, $bert] = User::factory()->count(2)->create();
+    $game = $games->start($anna, $bert);
+    foreach (['e2e4', 'e7e5', 'g1f3', 'b8c6'] as $i => $uci) {
+        $game = $games->move($game->refresh(), $i % 2 === 0 ? $anna : $bert, $uci);
+    }
+    $path = route('games.show', $game, false);
+    $sizes = [];
+
+    foreach ([1440 => 900, 375 => 812] as $width => $height) {
+        $guest = visit('/robots.txt')->page();
+        $guest->context()->addInitScript(BLITZ_COLLECTOR);
+        $guest->setViewportSize($width, $height);
+        $guest->goto(ComputeUrl::from($path));
+        BrowserWait::until($guest, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chess-game]"))?.state.ply === 4 && document.fonts.status === "loaded"', 10_000);
+        $guest->evaluate('() => window.scrollTo(0, 0)');
+        $sizes["guest {$width}"] = historyOf($guest, fenAt($game, 4));
+        shellShot($guest, "p55-{$width}-guest-fold");
+        expect($guest->evaluate('() => window.__errors'))->toBe([], "console guest {$width}")
+            ->and($guest->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "responses guest {$width}");
+
+        $player = blitzPage($anna, $path);
+        $player->setViewportSize($width, $height);
+        BrowserWait::until($player, '() => window.Alpine && Alpine.$data(document.querySelector("[data-test=chess-game]"))?.state.ply === 4 && document.fonts.status === "loaded"', 10_000);
+        $player->evaluate('() => window.scrollTo(0, 0)');
+        $sizes["player {$width}"] = historyOf($player, fenAt($game, 4));
+    }
+
+    fwrite(STDERR, "\n[p55-guest-fold] ".json_encode(array_map(fn (array $s) => array_intersect_key($s, array_flip(['bar', 'board', 'clock', 'floor', 'banner', 'doc'])), $sizes)));
+
+    foreach ([1440, 375] as $width) {
+        $guest = $sizes["guest {$width}"];
+        expect($guest['banner'])->toBeTrue("guest {$width}: the strip is there")
+            ->and($guest['boardMatches'])->toBeTrue()
+            ->and($guest['doc'][0])->toBeLessThanOrEqual($guest['doc'][1], "guest {$width}: sideways");
+    }
+    [$top, $height] = $sizes['guest 1440']['bar'];
+    expect($top + $height)->toBeLessThanOrEqual($sizes['guest 1440']['floor'], 'guest 1440: the history bar ends above the fold')
+        ->and($sizes['guest 1440']['bar'][2])->toBe($sizes['guest 1440']['board'][2], 'guest 1440: the bar is as wide as the board')
+        ->and($sizes['guest 375']['board'][1])->toBe(375, 'guest 375: the board stays edge to edge');
+
+    // The players keep their board and bar where they were (P55: 1440 bar at 830, board 576 px; 375 board 375 px).
+    expect($sizes['player 1440']['bar'][0])->toBe(830)
+        ->and($sizes['player 1440']['board'][1])->toBe(576)
+        ->and($sizes['player 375']['board'][1])->toBe(375);
+});
