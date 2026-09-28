@@ -2,6 +2,8 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use Normalizer;
+
 /**
  * Shared layout helpers for the rotation scenes (resources/views/stream/rotation/*): text that fits without
  * a browser, clocks in fixed cells, board geometry from a FEN, and stats that may be missing.
@@ -33,7 +35,10 @@ final class RotationKit
      */
     public static function clean(?string $s): string
     {
-        $s = preg_replace(self::COVERED, '', PublicName::clean((string) $s)) ?? '';
+        $s = PublicName::clean((string) $s);
+        // Styled letters (𝕞, 𝐁, ｆｕｌｌｗｉｄｔｈ) fold to the letters the fonts have, instead of being dropped.
+        $folded = Normalizer::normalize($s, Normalizer::FORM_KC);
+        $s = preg_replace(self::COVERED, '', is_string($folded) ? $folded : $s) ?? '';
 
         return trim(preg_replace('/\s+/u', ' ', $s) ?? '');
     }

@@ -6,6 +6,7 @@ use App\Models\RatingChange;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\TwentyOne\Stream\PrideSlides;
+use App\Support\TwentyOne\Stream\RotationKit;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
@@ -88,4 +89,10 @@ test('without games, climbs, sign-ups or pots every pride slide says so instead 
         ->and($svg('e2'))->toContain('Nobody has climbed this week yet.')
         ->and($svg('e3'))->toContain('No sign-ups yet.')
         ->and($svg('e4'))->toContain('No pot open right now.');
+});
+
+test('a styled name keeps its letters on the stream instead of losing them', function () {
+    expect(RotationKit::clean('𝕞ptf'))->toBe('mptf')
+        ->and(RotationKit::clean('Ｂｅｎ 🚀'))->toBe('Ben')
+        ->and(RotationKit::clean('Müller'))->toBe('Müller');
 });
