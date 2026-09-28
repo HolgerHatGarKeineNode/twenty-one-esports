@@ -95,6 +95,17 @@ export function plainDraft(template, now = Date.now()) {
 }
 
 /**
+ * Whether two templates are the same note apart from `created_at`: what a
+ * preview showed and what is about to be signed. A note that changed in
+ * between (a new card version, a new name) is shown again, never signed unseen.
+ */
+export function sameDraft(a, b) {
+    if (!a || !b) return false;
+
+    return a.kind === b.kind && (a.content ?? '') === (b.content ?? '') && JSON.stringify(a.tags ?? []) === JSON.stringify(b.tags ?? []);
+}
+
+/**
  * Sign the template and return the signed event as a plain object.
  *
  * @param {{ kind: number, created_at?: number, tags?: string[][], content?: string }} template

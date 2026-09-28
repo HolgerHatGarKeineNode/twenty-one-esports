@@ -34,7 +34,11 @@
             </span>
             <h2 id="placement-h" class="pr-name m-0 font-display text-2xl font-extrabold" style="color: var(--tier)" data-test="placement-rank">{{ $rank }}</h2>
             <p class="pr-rating m-0 text-[13px] text-ink-2">{{ __('Five rated results played. You placed with a rating of :rating.', ['rating' => $reveal->rating]) }}</p>
-            <x-button class="pr-rating" x-on:click="open = false" data-test="placement-close">{{ __('Nice') }}</x-button>
+            <span class="pr-rating flex flex-wrap justify-center gap-2">
+                <x-button x-on:click="open = false" data-test="placement-close">{{ __('Nice') }}</x-button>
+                {{-- P46: the rank badge and its post live on the own profile; nothing is signed from here --}}
+                <x-button variant="quiet" :href="route('players.show', auth()->user()->npub).'#rb-h'" icon="send" data-test="placement-share">{{ __('Share your rank') }}</x-button>
+            </span>
         </div>
     </div>
 @endif

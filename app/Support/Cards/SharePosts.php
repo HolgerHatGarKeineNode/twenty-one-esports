@@ -2,31 +2,49 @@
 
 namespace App\Support\Cards;
 
+use App\Enums\ChessGameStatus;
+use App\Enums\ReportStatus;
+use App\Enums\TournamentStatus;
 use App\Jobs\PublishNostrEvent;
+use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
 use App\Support\Rating\RankTiers;
 use App\Support\Tournaments\TournamentChampion;
+use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * The share button (P11, NIP "Share posts", rev. 8): a kind 1 note signed by
- * the player in the browser, with a sentence about the moment, the share
- * card's URL in the content and a NIP-92 `imeta` for it, so clients show the
- * card inline. The league builds the template, checks the signed note against
- * it ({@see SignedEventGate}, rule 37), archives it and queues it for the
- * league relays; the browser publishes it to the player's write relays.
+ * The share button (P11, NIP "Share posts", rev. 8; P46, rev. 9.7): a kind 1
+ * note signed by the player in the browser, with a sentence about the
+ * moment, the card's URL in the content and a NIP-92 `imeta` for it, so
+ * clients show the card inline. The league builds the template, checks the
+ * signed note against it ({@see SignedEventGate}, rule 37), archives it and
+ * queues it for the league relays; the browser publishes it to the player's
+ * write relays. The page shows the note before anything is signed.
  *
- * Only the player's own moments can be shared ({@see card()}), and at most
- * `esports.badges.shares_per_hour` per player: the league relays carry them.
+ * Moments (only the player's own, {@see post()}):
+ * - rank up, block mined, tournament win, Season Wrapped (P11), with a share
+ *   card of their own;
+ * - a won chess game or series (P46), with the page's own card (P54), the
+ *   opponents mentioned (`nostr:npub…` and `p`, NIP-27) and the league's
+ *   record of the result quoted (`nostr:nevent…` and `q`, NIP-18) when there
+ *   is one; a tournament win also quotes the tournament's `31923`;
+ * - "I'm in" (P46): the player's entry in a tournament that is open for
+ *   sign-up or waits for its draw, with the tournament's invite card, its
+ *   page (the invite) and its `31923` quoted.
+ *
+ * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
 final class SharePosts
 {
@@ -34,10 +52,34 @@ final class SharePosts
 
     public const FORMAT = 'wide';
 
-    public function __construct(private SignedEventGate $gate, private TournamentChampion $champions) {}
+    /** The moments a share post can be about. */
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'game', 'series', 'signup'];
+
+    /** Opponents one post mentions at most: a team of five, never a whole bracket. */
+    public const MAX_MENTIONS = 5;
+
+    public function __construct(private SignedEventGate $gate, private TournamentChampion $champions, private TournamentSignups $signups) {}
 
     /**
-     * The player's own card of a moment, or a refusal.
+     * The player's own post of a moment, or a refusal.
+     *
+     * @throws ShareRefused
+     */
+    public function post(User $user, string $type, string $id): SharePost
+    {
+        $post = match ($type) {
+            'rank-up', 'block', 'tournament', 'wrapped' => $this->ofCard($user, $type, $id),
+            'game' => $this->game($user, $id),
+            'series' => $this->series($user, $id),
+            'signup' => $this->signup($user, $id),
+            default => null,
+        };
+
+        return $post ?? throw new ShareRefused(__('There is nothing of yours to share here.'));
+    }
+
+    /**
+     * The player's own share card of a P11 moment, or a refusal.
      *
      * @param  'rank-up'|'block'|'tournament'|'wrapped'|string  $type
      *
@@ -63,7 +105,7 @@ final class SharePosts
      */
     public function prepare(User $user, string $type, string $id): array
     {
-        return $this->template($user, $this->card($user, $type, $id));
+        return $this->template($this->post($user, $type, $id));
     }
 
     /**
@@ -78,7 +120,7 @@ final class SharePosts
             throw new ShareRefused(__('You shared a lot this hour. Try again later.'));
         }
 
-        $template = $this->template($user, $this->card($user, $type, $id));
+        $template = $this->template($this->post($user, $type, $id));
         $event = $this->gate->check($signed, $template, $user);
 
         return DB::transaction(function () use ($event): NostrEvent {
@@ -90,28 +132,49 @@ final class SharePosts
     }
 
     /**
+     * The note: the sentence (and for "I'm in" the invite link under it), a
+     * "GG" line that mentions the opponents, the card, the page, and the
+     * quoted event last. Without mentions and quote it is the rev. 8 note.
+     *
      * @return array{kind: int, tags: list<list<string>>, content: string, created_at: int}
      */
-    public function template(User $user, ShareCard $card): array
+    public function template(SharePost $post): array
     {
-        $url = $card->url(self::FORMAT);
-        [$width, $height] = ShareCard::FORMATS[self::FORMAT];
-        $page = rtrim((string) config('app.url'), '/').'/players/'.$user->npub;
-        $text = $this->sentence($card);
+        [$width, $height] = $post->dimensions;
+        $head = $post->linkInSentence ? $post->sentence."\n".$post->link : $post->sentence;
+
+        if ($post->mentions !== []) {
+            $head .= "\n".'GG '.implode(' ', array_map(fn (array $mention): string => 'nostr:'.NostrKeys::hexToNpub($mention['pubkey']), $post->mentions));
+        }
+
+        $content = $head."\n\n".$post->cardUrl.($post->linkInSentence ? '' : "\n".$post->link);
+
+        if ($post->quote !== null) {
+            $content .= "\n\n".$post->quote['uri'];
+        }
+
+        // NIP-18: an address carries no author, an event id carries its author after the relay hint.
+        $quote = match (true) {
+            $post->quote === null => [],
+            $post->quote['pubkey'] === null => [['q', $post->quote['ref'], $post->quote['relay']]],
+            default => [['q', $post->quote['ref'], $post->quote['relay'], $post->quote['pubkey']]],
+        };
 
         return [
             'kind' => self::KIND,
             'tags' => [
-                ['imeta', 'url '.$url, 'm image/png', 'dim '.$width.'x'.$height, 'alt '.$text],
-                ['r', $page],
-                ['alt', 'Share post: '.$card->type.' in TWENTY ONE Esports'],
+                ['imeta', 'url '.$post->cardUrl, 'm image/png', 'dim '.$width.'x'.$height, 'alt '.$post->sentence],
+                ['r', $post->link],
+                ...array_map(fn (array $mention): array => ['p', $mention['pubkey']], $post->mentions),
+                ...$quote,
+                ['alt', 'Share post: '.$post->type.' in TWENTY ONE Esports'],
             ],
-            'content' => $text."\n\n".$url."\n".$page,
+            'content' => $content,
             'created_at' => now()->getTimestamp(),
         ];
     }
 
-    /** The sentence of the post, in the player's language. */
+    /** The sentence of a P11 card post, in the player's language. */
     public function sentence(ShareCard $card): string
     {
         $f = $card->facts;
@@ -122,6 +185,32 @@ final class SharePosts
             'tournament' => __('Won :tournament on TWENTY ONE Esports.', ['tournament' => $f['tournament']]),
             default => __('My :season on TWENTY ONE Esports: :blocks blocks mined, :sats sats.', ['season' => BadgeCopy::season((string) $f['season']), 'blocks' => $f['blocks'], 'sats' => ShareCard::sats((int) $f['sats'])]),
         };
+    }
+
+    /* ---------- The P11 moments: a share card each ---------------------------------------------------------- */
+
+    /**
+     * @throws ShareRefused
+     */
+    private function ofCard(User $user, string $type, string $id): SharePost
+    {
+        $card = $this->card($user, $type, $id);
+        $quote = null;
+
+        // A tournament win quotes the tournament's calendar event (rev. 9.7).
+        if ($type === 'tournament' && ($tournament = Tournament::query()->with('event')->find((int) $id)) !== null) {
+            $quote = $this->tournamentQuote($tournament);
+        }
+
+        return new SharePost(
+            type: $type,
+            sentence: $this->sentence($card),
+            cardUrl: $card->url(self::FORMAT),
+            dimensions: ShareCard::FORMATS[self::FORMAT],
+            storyPath: $card->path('story'),
+            link: self::absolute('/players/'.$user->npub),
+            quote: $quote,
+        );
     }
 
     private function rankUp(User $user, int $id): ?ShareCard
@@ -151,5 +240,198 @@ final class SharePosts
         $season = Season::query()->where('slug', $slug)->first();
 
         return $season !== null && ShareMoments::hasWrapped($season, $user) ? ShareCard::wrapped($season, $user) : null;
+    }
+
+    /* ---------- P46: a won game or series, "I'm in" --------------------------------------------------------- */
+
+    /**
+     * A finished chess game the player won: the game's page card (board,
+     * faces, result), the opponent mentioned, and the league's record quoted
+     * when the game has one (a rated game; a casual game has none).
+     */
+    private function game(User $user, string $id): ?SharePost
+    {
+        $game = ctype_digit($id) ? ChessGame::query()->with(['white', 'black', 'recordEvent'])->find((int) $id) : null;
+        $color = $game?->colorOf($user);
+
+        // Both players still there: a deleted account's game names no one to mention.
+        if ($game === null || $color === null || $game->status !== ChessGameStatus::Finished || $game->ply === 0
+            || $game->white_id === null || $game->black_id === null || $game->result !== ($color === 'w' ? '1-0' : '0-1')) {
+            return null;
+        }
+
+        $opponent = $color === 'w' ? $game->black : $game->white;
+
+        $record = $game->recordEvent;
+        $name = $opponent->displayName();
+
+        return new SharePost(
+            type: 'game',
+            sentence: $game->isCorrespondence()
+                ? __('Won a daily chess game against :opponent on TWENTY ONE Esports.', ['opponent' => $name])
+                : __('Won a blitz game against :opponent on TWENTY ONE Esports.', ['opponent' => $name]),
+            cardUrl: PageCard::game($game)->url(),
+            dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
+            storyPath: null,
+            link: self::absolute(route('games.show', $game, false)),
+            mentions: [['pubkey' => $opponent->pubkey, 'name' => $name]],
+            quote: $record === null ? null : $this->eventQuote($record, __('the league’s record of the game')),
+        );
+    }
+
+    /**
+     * A series whose result stands (confirmed or decided) and that the
+     * player's side won: the series' page card, the players of the other side
+     * mentioned, and for a rated series the result report quoted.
+     */
+    private function series(User $user, string $number): ?SharePost
+    {
+        $match = ctype_digit($number) ? SeriesMatch::query()->with(['latestReport.event'])->where('number', (int) $number)->first() : null;
+
+        if ($match === null || ! $match->status->hasResult() || ! in_array($match->winner, ['challenger', 'challenged'], true)) {
+            return null;
+        }
+
+        $won = $match->winner;
+        $lost = $won === 'challenger' ? 'challenged' : 'challenger';
+
+        if (! in_array($user->id, $this->playersOf($match, $won), true)) {
+            return null;
+        }
+
+        $opponents = User::query()->whereKey($this->playersOf($match, $lost))->whereNotNull('pubkey')->orderBy('id')->limit(self::MAX_MENTIONS)->get();
+        $score = SeriesMatch::seriesScore($match->result_games);
+        $report = $match->latestReport;
+        $record = $match->rated && $report !== null && $report->status !== ReportStatus::Superseded ? $report->event : null;
+
+        return new SharePost(
+            type: 'series',
+            sentence: __('Won :score against :side in :ladder on TWENTY ONE Esports.', [
+                'score' => $score[$won].'–'.$score[$lost],
+                'side' => $match->sideName($lost),
+                'ladder' => BadgeCopy::ladder($match->game, $match->mode),
+            ]),
+            cardUrl: PageCard::series($match)->url(),
+            dimensions: [PageCard::WIDTH, PageCard::HEIGHT],
+            storyPath: null,
+            link: self::absolute(route('matches.show', $match, false)),
+            mentions: array_values($opponents->map(fn (User $opponent): array => ['pubkey' => (string) $opponent->pubkey, 'name' => $opponent->displayName()])->all()),
+            quote: $record === null ? null : $this->eventQuote($record, __('the result report of the series')),
+        );
+    }
+
+    /**
+     * Who played a side of the series: the players it named when it was
+     * played (`rosters`), else the roster of the report that stands or of an
+     * admin decision, else a roster side's players (a mix team, an RL 1v1
+     * player), else the lineup's accepted seats.
+     *
+     * @return list<int>
+     */
+    private function playersOf(SeriesMatch $match, string $side): array
+    {
+        $played = array_map(intval(...), $match->rosters[$side] ?? []);
+
+        if ($played !== []) {
+            return $played;
+        }
+
+        $report = $match->latestReport;
+        $named = $match->resolved_roster ?? ($report !== null && $report->status !== ReportStatus::Superseded ? $report->roster : []);
+        $played = array_values(array_map(fn (array $row): int => (int) $row['user_id'], array_filter($named, fn (array $row): bool => $row['side'] === $side)));
+
+        if ($played !== []) {
+            return $played;
+        }
+
+        $roster = $match->rosterSide($side);
+
+        if ($roster !== []) {
+            return $roster;
+        }
+
+        return array_values(array_map(intval(...), $match->lineup($side)?->seats()->whereNotNull('accepted_at')->pluck('user_id')->all() ?? []));
+    }
+
+    /**
+     * "I'm in": the player's entry in a published tournament that is open
+     * for sign-up or waits for its draw. The invite card, the tournament's
+     * page as the invite under the sentence, its `31923` quoted.
+     */
+    private function signup(User $user, string $id): ?SharePost
+    {
+        $tournament = ctype_digit($id) ? Tournament::query()->with('event')->find((int) $id) : null;
+
+        if ($tournament === null || $tournament->published_at === null || ! $tournament->isVisibleTo(null)
+            || ! in_array($tournament->status, [TournamentStatus::Signup, TournamentStatus::Drawing], true)
+            || $this->signups->entryOf($tournament, $user) === null) {
+            return null;
+        }
+
+        $quote = $this->tournamentQuote($tournament);
+
+        if ($quote === null) {
+            return null;
+        }
+
+        $card = ShareCard::tournamentInvite($tournament);
+
+        return new SharePost(
+            type: 'signup',
+            sentence: __('I’m in :tournament on TWENTY ONE Esports (:game). Join me:', ['tournament' => $tournament->name, 'game' => BadgeCopy::ladder($tournament->game, $tournament->mode)]),
+            cardUrl: $card->url(self::FORMAT),
+            dimensions: ShareCard::FORMATS[self::FORMAT],
+            storyPath: $card->path('story'),
+            link: self::absolute(route('tournaments.show', $tournament, false)),
+            quote: $quote,
+            linkInSentence: true,
+        );
+    }
+
+    /* ---------- References --------------------------------------------------------------------------------- */
+
+    /**
+     * @return array{ref: string, relay: string, pubkey: string|null, uri: string, what: string}|null
+     */
+    private function tournamentQuote(Tournament $tournament): ?array
+    {
+        $address = $tournament->address();
+
+        if ($address === null || $tournament->event === null) {
+            return null;
+        }
+
+        return [
+            'ref' => $address,
+            'relay' => self::relayHint(),
+            'pubkey' => null,
+            'uri' => 'nostr:'.NostrKeys::naddr(Tournament::CALENDAR_EVENT, $tournament->event->pubkey, (string) $tournament->slug, self::relayHint()),
+            'what' => __('the tournament’s calendar event'),
+        ];
+    }
+
+    /**
+     * @return array{ref: string, relay: string, pubkey: string|null, uri: string, what: string}
+     */
+    private function eventQuote(NostrEvent $event, string $what): array
+    {
+        return [
+            'ref' => $event->event_id,
+            'relay' => self::relayHint(),
+            'pubkey' => $event->pubkey,
+            'uri' => 'nostr:'.NostrKeys::nevent($event->event_id, $event->pubkey, $event->kind),
+            'what' => $what,
+        ];
+    }
+
+    /** The first league relay: where the quoted event is sent first. */
+    private static function relayHint(): string
+    {
+        return (string) (config('esports.relays')[0] ?? '');
+    }
+
+    private static function absolute(string $path): string
+    {
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($path, '/');
     }
 }

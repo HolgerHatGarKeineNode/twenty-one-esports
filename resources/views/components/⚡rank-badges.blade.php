@@ -6,6 +6,7 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\Badges\ProfileBadges;
 use App\Support\Badges\ProfileBadgesRefused;
 use App\Support\Badges\RankBadges;
+use App\Support\Cards\ShareMoments;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
@@ -130,6 +131,8 @@ new class extends Component {
     $viewer = auth()->user();
     $mine = $viewer instanceof User && $viewer->id === $playerId;
     $profiles = app(ProfileBadges::class);
+    // P46: the newest rank up of each badge, when it is the badge's current tier: a post with its card, on the own profile.
+    $rankUps = $mine && $shareLink ? ShareMoments::rankUpsOf($viewer, 40)->unique('rank_badge_id')->keyBy('rank_badge_id') : collect();
 @endphp
 
 <section aria-labelledby="rb-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="rank-badges"
@@ -163,6 +166,12 @@ new class extends Component {
                             </button>
                             <span x-show="step === 'done' && badge === {{ $badge->id }}" x-cloak class="inline-flex h-11 shrink-0 items-center gap-1.5 text-xs text-win" data-test="badge-added"><x-icon name="check" :size="14" />{{ __('On your Nostr profile') }}</span>
                         @endif
+                    @endif
+                    @if (($rankUp = $rankUps->get($badge->id)) !== null && $rankUp->tier === $badge->tier)
+                        <div class="flex min-w-0 basis-full flex-col gap-1.5 pb-1" data-test="rank-up-share">
+                            <span class="text-xs text-ink-2">{{ __('New rank: post it with the rank card.') }}</span>
+                            <livewire:share-button type="rank-up" :moment="(string) $rankUp->id" :label="__('Post my rank up')" :wire:key="'rank-up-share-'.$rankUp->id" />
+                        </div>
                     @endif
                 </li>
             @endforeach

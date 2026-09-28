@@ -73,6 +73,14 @@
         @endif
     </div>
 
+    {{-- P46: the winner can also post the win as a note with the result card, mentioning the opponent; own preview, own click --}}
+    @if ($won)
+        <div class="order-2 col-span-2 flex min-w-0 flex-col gap-2 border-t border-hairline pt-4 sm:order-none sm:col-span-1 sm:col-start-2" data-test="game-win-share">
+            <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('Or post the win as a note with the result card; it mentions :name.', ['name' => $rival?->displayName() ?? '']) }}</p>
+            <livewire:share-button type="game" :moment="(string) $game->id" :label="__('Post the win')" :wire:key="'win-share-'.$game->id" />
+        </div>
+    @endif
+
     <template x-if="step === 'preview' || step === 'posting'">
         <div class="order-3 col-span-2 flex min-w-0 flex-col gap-2.5 rounded-md bg-well px-3.5 py-3" role="group" aria-labelledby="post-pv" data-test="game-post-preview">
             <b id="post-pv" class="text-[13px]">{{ __('Preview: this is what your profile shows') }}</b>

@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey, verifyEvent } from 'nostr-tools/pure';
-import { DECLINED, FAILED, plainDraft, REVOKED, SignerError, signerFailure, signerMessage, signTemplate, UNREACHABLE, WRONG_KEY } from '../../resources/js/signing.js';
+import { DECLINED, FAILED, plainDraft, REVOKED, sameDraft, SignerError, signerFailure, signerMessage, signTemplate, UNREACHABLE, WRONG_KEY } from '../../resources/js/signing.js';
 
 const secret = generateSecretKey();
 const pubkey = getPublicKey(secret);
@@ -150,4 +150,15 @@ test('an older page without the new messages still says "not confirmed", and a l
     const long = signerMessage(messages, new SignerError(FAILED, new Error('x'.repeat(500))));
     assert.ok(long.length < 200, long.length);
     assert.ok(long.endsWith('…)'));
+});
+
+test('a preview is signed only while the note is the same: created_at may move, the text, the tags and the kind may not', () => {
+    const shown = reactive({ ...template });
+    assert.equal(sameDraft(shown, { ...template, created_at: template.created_at + 30 }), true);
+    assert.equal(sameDraft(shown, { ...template, content: template.content + ' ' }), false);
+    assert.equal(sameDraft(shown, { ...template, tags: [...template.tags, ['p', 'c'.repeat(64)]] }), false);
+    assert.equal(sameDraft(shown, { ...template, tags: [template.tags[1], template.tags[0], template.tags[2]] }), false);
+    assert.equal(sameDraft(shown, { ...template, kind: 1 }), false);
+    assert.equal(sameDraft(shown, null), false);
+    assert.equal(sameDraft(null, template), false);
 });

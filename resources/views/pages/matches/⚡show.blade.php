@@ -261,6 +261,12 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <x-button variant="quiet" :href="route('settings.badges').'#share'" icon="send" data-test="match-share">{{ __('Badges and share cards') }}</x-button>
                 @endif
             </div>
+            {{-- P46: the winning side posts the win with the series card; renders nothing for anyone else --}}
+            @if ($viewer !== null && $match->status->hasResult() && rescue(fn () => app(\App\Support\Cards\SharePosts::class)->post($viewer, 'series', (string) $match->number), null, false) !== null)
+                <div class="mt-4 flex min-w-0 flex-col gap-2 border-t border-hairline pt-4" data-test="series-win-share">
+                    <livewire:share-button type="series" :moment="(string) $match->number" :label="__('Post the win')" :wire:key="'series-share-'.$match->number" />
+                </div>
+            @endif
             @if ($match->resolution_reason)
                 <p class="mt-3 mb-0 rounded-md bg-ground px-3.5 py-2.5 text-xs leading-normal text-ink-2 shadow-ring">{{ __('Admin decision') }}: {{ $match->resolution_reason }}</p>
             @endif

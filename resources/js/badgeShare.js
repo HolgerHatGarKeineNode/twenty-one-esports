@@ -15,13 +15,15 @@
  *      least one answered OK does it go to the league ($wire.submitProfile())
  *      and the badge count as shown
  *
- * sharePost: the share button of one moment. $wire.prepareShare() -> kind 1
- *   template, sign, publish to the write relays, then $wire.submitShare().
+ * sharePost: the share button of one moment (P11, P46). $wire.prepareShare()
+ *   -> kind 1 template, shown as the preview with its card; only "Sign and
+ *   post" signs it (a fresh template, which must equal the preview), publishes
+ *   it to the write relays, then $wire.submitShare().
  *
  * Signed events travel as JSON strings (TrimStrings must never touch them).
  */
 import { ensureSigner } from './nostrSign.js';
-import { signerMessage, signTemplate } from './signing.js';
+import { sameDraft, signerMessage, signTemplate } from './signing.js';
 import { publishToRelays, readProfileBadges, writeRelaysFor } from './relayRead.js';
 
 function profileBadge({ pubkey, relays = [], messages = {} }) {
@@ -129,39 +131,105 @@ function profileBadge({ pubkey, relays = [], messages = {} }) {
 
 function sharePost({ pubkey, relays = [], messages = {} }) {
     return {
-        busy: false,
-        done: false,
+        // idle -> preview (the exact note and its card) -> posting -> done; nothing is signed before "Sign and post".
+        step: 'idle',
+        template: null,
         error: null,
         warning: null,
         published: 0,
 
-        async share() {
-            if (this.busy) {
+        get busy() {
+            return this.step === 'opening' || this.step === 'posting';
+        },
+
+        get done() {
+            return this.step === 'done';
+        },
+
+        async open() {
+            if (this.step !== 'idle') {
                 return;
             }
 
-            this.busy = true;
+            // Resolved before the awaits: the button that called this is hidden once the step changes.
+            const wire = this.$wire;
+            void wire.$id;
+            this.step = 'opening';
             this.error = null;
             this.warning = null;
 
             try {
-                const template = await this.$wire.prepareShare();
+                const template = await wire.prepareShare();
 
                 if (! template || typeof template !== 'object') {
+                    this.step = 'idle';
+
                     return;
                 }
 
+                this.template = template;
+                this.step = 'preview';
+            } catch (error) {
+                console.warn('[share] preparing the post failed:', error);
+                this.error = messages.failed ?? 'That did not work. Please try again.';
+                this.step = 'idle';
+            }
+        },
+
+        cancel() {
+            if (this.step === 'posting') {
+                return;
+            }
+
+            this.step = 'idle';
+            this.template = null;
+            this.error = null;
+            this.warning = null;
+        },
+
+        async post() {
+            if (this.step !== 'preview') {
+                return;
+            }
+
+            const wire = this.$wire;
+            void wire.$id;
+            this.step = 'posting';
+            this.error = null;
+            this.warning = null;
+
+            try {
                 if (! (await ensureSigner())) {
                     this.error = messages.noSigner;
+                    this.step = 'preview';
+
+                    return;
+                }
+
+                // A fresh template (created_at inside the league's window); if the note changed since the
+                // preview (a new card version, a renamed opponent), it is shown again instead of signed.
+                const fresh = await wire.prepareShare();
+
+                if (! fresh || typeof fresh !== 'object') {
+                    this.step = 'idle';
+
+                    return;
+                }
+
+                if (! sameDraft(fresh, this.template)) {
+                    this.template = fresh;
+                    this.warning = messages.changed ?? 'The post changed. Check it again, then sign.';
+                    this.step = 'preview';
 
                     return;
                 }
 
                 let signed;
                 try {
-                    signed = await signTemplate(template, { pubkey });
+                    signed = await signTemplate(fresh, { pubkey });
                 } catch (error) {
                     this.error = signerMessage(messages, error);
+                    this.step = 'preview';
 
                     return;
                 }
@@ -170,16 +238,16 @@ function sharePost({ pubkey, relays = [], messages = {} }) {
 
                 if (this.published === 0) {
                     this.warning = messages.notPosted ?? 'None of your relays took the post. Try again later.';
+                    this.step = 'preview';
 
                     return;
                 }
 
-                this.done = (await this.$wire.submitShare(JSON.stringify(signed))) === true;
+                this.step = (await wire.submitShare(JSON.stringify(signed))) === true ? 'done' : 'preview';
             } catch (error) {
                 console.warn('[share] posting failed:', error);
                 this.error = messages.failed ?? 'That did not work. Please try again.';
-            } finally {
-                this.busy = false;
+                this.step = 'preview';
             }
         },
     };

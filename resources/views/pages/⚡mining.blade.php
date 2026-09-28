@@ -4,6 +4,9 @@ use App\Models\Season;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeasonPayout;
 use App\Models\User;
+use App\Support\Badges\BadgeCopy;
+use App\Support\Cards\ShareCard;
+use App\Support\Cards\ShareMoments;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
 use App\Support\PreSeason;
@@ -158,6 +161,22 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             @endif
         </section>
     @endunless
+
+    {{-- P46: at season end, the player's own Season Wrapped card with its post (preview first, then the signer) --}}
+    @if ($ended && $hasChain && $viewer instanceof User && ShareMoments::hasWrapped($chain['season'], $viewer))
+        @php
+            $wrapped = ShareCard::wrapped($chain['season'], $viewer);
+        @endphp
+        <section aria-labelledby="wrapped-h" class="flex flex-col gap-4 rounded-lg bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-start lg:px-6" data-test="season-wrapped">
+            <img src="{{ $wrapped->path('wide') }}" alt="{{ __('Your :season on one card', ['season' => BadgeCopy::season($chain['season']->slug)]) }}" width="1200" height="630" loading="lazy"
+                 class="aspect-[1200/630] h-auto w-full shrink-0 rounded-md shadow-ring sm:w-[280px]">
+            <div class="flex min-w-0 flex-col gap-2">
+                <h2 id="wrapped-h" class="m-0 font-display text-lg font-bold lg:text-[22px]">{{ __('Your :season, wrapped', ['season' => BadgeCopy::season($chain['season']->slug)]) }}</h2>
+                <p class="m-0 max-w-[60ch] text-[13px] leading-normal text-ink-2">{{ __('Your blocks, sats, wins and best rank of the season on one card. Post it, or download it for your chats.') }}</p>
+                <livewire:share-button type="wrapped" :moment="$chain['season']->slug" :label="__('Post my season')" :wire:key="'wrapped-share-'.$chain['season']->slug" />
+            </div>
+        </section>
+    @endif
 
     <section aria-label="{{ __('Chain stats') }}" class="grid grid-cols-2 gap-3 lg:grid-cols-5 lg:gap-4" data-test="mining-stats">
         @php

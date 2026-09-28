@@ -264,6 +264,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <p class="m-0 flex items-center gap-2 text-[13px] text-ink-2"><x-icon name="flag" :size="16" class="shrink-0 text-win" />{{ __('Round 1 starts :time.', ['time' => $at($tournament->starts_at)]) }}</p>
                 </div>
 
+                {{-- P46: "I'm in" as a note signed by the player, with the invite card and the tournament's page; preview first --}}
+                @if (rescue(fn () => app(\App\Support\Cards\SharePosts::class)->post($me, 'signup', (string) $tournament->id), null, false) !== null)
+                    <div class="flex min-w-0 flex-col gap-2" data-test="signup-post">
+                        <span class="text-xs text-ink-2">{{ __('Tell your followers on Nostr: a note with the tournament card and its link.') }}</span>
+                        <livewire:share-button type="signup" :moment="(string) $tournament->id" :label="__('Post that you’re in')" :downloads="false" :wire:key="'signup-share-'.$tournament->id" />
+                    </div>
+                @endif
+
                 @include('pages.tournaments.partials.share', ['tournament' => $tournament, 'label' => __('Bring a friend: every spot filled is one more match'),
                     'text' => __('I’m in :tournament on TWENTY ONE Esports (:game). :spots. Join me:', ['tournament' => $tournament->name, 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $left)])])
 

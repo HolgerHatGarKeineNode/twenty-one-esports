@@ -38,7 +38,7 @@ use App\Support\Tournaments\TournamentSignups;
  *     pubkeys other than the author.
  * 29. 1985 with `release-block-0`, an admin's release of Block 0 (P7c).
  * 36. 10008 the player's profile badges (P11, rev. 8).
- * 37. 1 a share post with a share card (P11, rev. 8).
+ * 37. 1 a share post with a card (P11, rev. 8; mentions and one quote, P46, rev. 9.7).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -111,10 +111,13 @@ final class EsportsEventRules
     }
 
     /**
-     * Rule 37 (rev. 8), a share post (kind 1): exactly one NIP-92 `imeta`
-     * whose `url` is a share card of this league (`<app url>/cards/…`) and
-     * appears in the content; no `e`, `p`, `q` or `a` (not a reply, no
-     * mentions). The text and the card are the league's template
+     * Rule 37 (rev. 8, rev. 9.7), a share post (kind 1): exactly one NIP-92
+     * `imeta` whose `url` is a card of this league (`<app url>/cards/…`) and
+     * appears in the content; no `e` or `a` (never a reply). Rev. 9.7: up to
+     * five `p`, each a hex pubkey named in the content as `nostr:npub…`
+     * (NIP-27), and at most one `q` (NIP-18), an event id with a
+     * `nostr:nevent…` or an address with a `nostr:naddr…` in the content.
+     * The text, the card and the references are the league's template
      * ({@see SharePosts}).
      */
     private function sharePost(SignedEvent $event): ?string
@@ -137,9 +140,40 @@ final class EsportsEventRules
             return 'share_post_card';
         }
 
-        foreach (['e', 'p', 'q', 'a'] as $name) {
+        foreach (['e', 'a'] as $name) {
             if ($event->tagsNamed($name) !== []) {
                 return 'share_post_reference';
+            }
+        }
+
+        $mentions = $event->tagsNamed('p');
+
+        if (count($mentions) > SharePosts::MAX_MENTIONS) {
+            return 'share_post_mention';
+        }
+
+        foreach ($mentions as $p) {
+            if (! NostrKeys::isHexPubkey($p[0] ?? null) || ! str_contains($event->content, 'nostr:'.NostrKeys::hexToNpub((string) $p[0]))) {
+                return 'share_post_mention';
+            }
+        }
+
+        $quotes = $event->tagsNamed('q');
+
+        if (count($quotes) > 1) {
+            return 'share_post_quote';
+        }
+
+        foreach ($quotes as $q) {
+            $ref = (string) ($q[0] ?? '');
+            $valid = match (true) {
+                preg_match('/^[0-9a-f]{64}$/', $ref) === 1 => str_contains($event->content, 'nostr:nevent1'),
+                preg_match('/^3[0-9]{4}:[0-9a-f]{64}:.+$/', $ref) === 1 => str_contains($event->content, 'nostr:naddr1'),
+                default => false,
+            };
+
+            if (! $valid) {
+                return 'share_post_quote';
             }
         }
 

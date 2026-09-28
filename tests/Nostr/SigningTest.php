@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Process;
  * tests/js/signing.test.mjs under Node. It fails if any Node test fails or is
  * skipped.
  */
-test('signing hands the signer a plain copy and tells declined, unreachable, wrong key and other failures apart', function () {
+test('signing hands the signer a plain copy, tells declined, unreachable, wrong key and other failures apart, and signs a preview only unchanged', function () {
     $run = Process::path(base_path())
         ->timeout(60)
         ->run(['node', '--test', 'tests/js/signing.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 5')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 6')->toContain('ℹ skipped 0');
 });
 
 test('every signer message is translated, and the reason placeholder survives translation', function () {

@@ -1,11 +1,16 @@
 <?php
 
+use App\Enums\ChessEndReason;
+use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\PlacementReveal;
 use App\Models\Rating;
+use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Badges\RankBadges;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Rating\RankTiers;
 use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -202,8 +207,10 @@ test('badges go on the Nostr profile without losing the old list, a share post r
         ->and(SignedEvent::fromInput($lists[0])?->hasValidSignature())->toBeTrue()
         ->and(NostrEvent::query()->where('kind', 10008)->where('event_id', $lists[0]['id'])->exists())->toBeTrue();
 
-    // Post on Nostr: the block share.
+    // Post on Nostr: the block share, the preview first (P46), then the signer.
     $page->locator('[data-test=share-moment][data-type=block] [data-test=share-post]')->first()->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=share-moment][data-type=block] [data-test=share-preview-text]")?.innerText.includes("Mined block 2")', 15_000);
+    $page->locator('[data-test=share-moment][data-type=block] [data-test=share-sign]')->first()->click();
     BrowserWait::until($page, '() => getComputedStyle(document.querySelector("[data-test=share-moment][data-type=block] [data-test=share-done]")).display !== "none"', 15_000);
     shareShot($page, 'share-posted-1440');
 
@@ -216,6 +223,200 @@ test('badges go on the Nostr profile without losing the old list, a share post r
         ->and(SignedEvent::fromInput($notes[0])?->hasValidSignature())->toBeTrue()
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(SHARE_BAD_RESPONSES))->toBe([]);
+});
+
+/** Counts every call of the stubbed signer, across reloads of the tab (as ChessCorrespondenceQuietTest). */
+const SHARE_SIGN_COUNTER = <<<'JS'
+    (() => {
+        const sign = window.nostr?.signEvent;
+        if (!sign) return;
+        window.nostr.signEvent = (draft) => {
+            sessionStorage.setItem('__signs', String(Number(sessionStorage.getItem('__signs') ?? '0') + 1));
+            return sign(draft);
+        };
+    })();
+    JS;
+
+/** The box of an entry point and of its post button, the document overflow and the page language. */
+const SHARE_ENTRY = <<<'JS'
+    (sel) => {
+        const el = document.querySelector(sel);
+        const button = el?.querySelector('[data-test=share-post]');
+        const box = (node) => { const b = node.getBoundingClientRect(); return { left: Math.round(b.left), right: Math.round(b.right), width: Math.round(b.width), height: Math.round(b.height) }; };
+        return {
+            lang: document.documentElement.lang,
+            doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth],
+            entry: el && el.checkVisibility() ? box(el) : null,
+            button: button && button.checkVisibility() ? { ...box(button), text: button.innerText.trim() } : null,
+            // Anything inside the entry that reaches past it (a long npub, a cut label).
+            spill: el ? [...el.querySelectorAll('*')].filter((n) => n.checkVisibility() && n.getBoundingClientRect().right > el.getBoundingClientRect().right + 1).map((n) => (n.dataset.test ?? n.tagName) + ':' + Math.round(n.getBoundingClientRect().right) + ':' + n.textContent.trim().slice(0, 30)) : [],
+        };
+    }
+    JS;
+
+/** @param  (Closure(): void)|null  $beforeVisit  runs after the login and the language switch, before the page loads */
+function sharePageIn(User $user, string $to, int $width, string $locale, ?Closure $beforeVisit = null): Page
+{
+    $page = visit(route('testing.login', ['user' => $user, 'to' => $to]))->page();
+    $page->context()->addInitScript(SHARE_COLLECTOR);
+    $page->context()->addInitScript(TestSigner::browserStub($user));
+    $page->context()->addInitScript(SHARE_SIGN_COUNTER);
+    $page->setViewportSize($width, 900);
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+
+    if ($beforeVisit !== null) {
+        $beforeVisit();
+    }
+
+    $page->goto(ComputeUrl::from($to));
+    BrowserWait::until($page, '() => document.readyState === "complete" && window.Alpine !== undefined', 10_000);
+
+    return $page;
+}
+
+function shareSigns(Page $page): int
+{
+    return (int) $page->evaluate('() => Number(sessionStorage.getItem("__signs") ?? "0")');
+}
+
+test('P46: every moment offers its own post where it happens, shows the note first and signs only on the click; en and de at 375 and 1440', function () {
+    $user = User::factory()->create(['name' => 'satsjaeger', 'locale' => 'en']);
+    $signer = TestSigner::forBrowser($user);
+    $user->refresh();
+    $season = openSeason(['slug' => 'pre-season']);
+    $moments = shareMoments($user, $season);
+    $opponent = $moments['opponent'];
+
+    // A won rated blitz game (fool's mate, the player is Black) with the league's record.
+    $league = new TestSigner;
+    $record = NostrEvent::fromSigned(SignedEvent::fromInput($league->sign(64, [['alt', 'Chess game']], "1. f3 e5 2. g4 Qh4# 0-1\n")));
+    $game = ChessGame::factory()->rated()->finished('0-1', ChessEndReason::Checkmate)->create([
+        'white_id' => $opponent->id, 'black_id' => $user->id, 'ply' => 4, 'record_event_id' => $record->id,
+        'fen' => 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3',
+    ]);
+    foreach ([['f2f3', 'f3', 'rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1'], ['e7e5', 'e5', 'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2'],
+        ['g2g4', 'g4', 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2'], ['d8h4', 'Qh4#', 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3']] as $index => [$uci, $san, $fen]) {
+        $game->moves()->create(['ply' => $index + 1, 'uci' => $uci, 'san' => $san, 'fen' => $fen, 'spent_ms' => 1000, 'clock_ms' => 290_000]);
+    }
+
+    // A confirmed casual series the player's side won.
+    $series = SeriesMatch::factory()->create([
+        'status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'finished_at' => now(),
+        'result_games' => [['winner' => 'challenger', 'challenger' => 3, 'challenged' => 1], ['winner' => 'challenger', 'challenger' => 2, 'challenged' => 0]],
+        'rosters' => ['challenger' => [$user->id], 'challenged' => [$opponent->id]],
+    ]);
+
+    // A published tournament the player entered.
+    $tournament = openTournament(['name' => 'Testnet Open']);
+    soloSignup($tournament, $user, $signer);
+
+    // A placement reveal per locale round, written right before the first page at 375 (the login's own landing would claim it):
+    // the rank-up notice links to the profile's badges.
+    $revealLadders = ['en' => ['chess', 'correspondence'], 'de' => ['rocket-league', '1v1']];
+    $reveal = fn (string $locale) => function () use ($user, $season, $revealLadders, $locale): void {
+        [$game, $mode] = $revealLadders[$locale];
+        $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => $game, 'mode' => $mode,
+            'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1010, 'results' => 5]);
+        PlacementReveal::query()->create(['user_id' => $user->id, 'rating_id' => $rating->id, 'game' => $game, 'mode' => $mode, 'rating' => 1010, 'tier' => RankTiers::fromConfig()->tierFor(1010, 5)]);
+    };
+
+    // The season is over: /mining shows the player's Wrapped card.
+    $season->forceFill(['ends_at' => now()->subMinute()])->save();
+
+    $entries = [
+        'game' => [route('games.show', $game, false), '[data-test=game-win-share]', ['en' => 'Post the win', 'de' => 'Sieg posten']],
+        'series' => [route('matches.show', $series, false), '[data-test=series-win-share]', ['en' => 'Post the win', 'de' => 'Sieg posten']],
+        'signup' => [route('tournaments.signup', $tournament, false), '[data-test=signup-post]', ['en' => 'Post that you’re in', 'de' => 'Posten, dass du dabei bist']],
+        'rank-up' => [route('players.show', $user->npub, false), '[data-test=rank-up-share]', ['en' => 'Post my rank up', 'de' => 'Meinen Aufstieg posten']],
+        'wrapped' => [route('mining', absolute: false), '[data-test=season-wrapped]', ['en' => 'Post my season', 'de' => 'Meine Season posten']],
+    ];
+    $failures = [];
+    $reveals = [];
+
+    foreach (['en', 'de'] as $locale) {
+        foreach ([375, 1440] as $width) {
+            foreach ($entries as $name => [$to, $selector, $labels]) {
+                $page = sharePageIn($user, $to, $width, $locale, $width === 375 && $name === 'game' ? $reveal($locale) : null);
+
+                // The rank-up notice (P10 placement) shows once, on the first page: it links to the badges, it signs nothing.
+                if ($page->evaluate('() => document.querySelector("[data-test=placement-reveal]")?.checkVisibility() ?? false')) {
+                    $reveals["{$locale}@{$width}"] = $page->evaluate('() => { const a = document.querySelector("[data-test=placement-share]"); const b = a.getBoundingClientRect(); return { href: a.getAttribute("href"), text: a.innerText.trim(), right: Math.round(b.right), height: Math.round(b.height), inner: innerWidth }; }');
+                    shareShot($page, "p46-reveal-{$locale}-{$width}");
+                    $page->locator('[data-test=placement-close]')->click();
+                }
+
+                BrowserWait::until($page, SHARE_IMAGES_LOADED, 20_000);
+                $m = $page->evaluate(SHARE_ENTRY, $selector);
+                fwrite(STDERR, "\n[p46] {$name} {$locale} {$width}px ".json_encode($m)."\n");
+                shareShot($page, "p46-{$name}-{$locale}-{$width}");
+
+                $ok = $m['lang'] === $locale && $m['doc'][0] <= $m['doc'][1] && $m['entry'] !== null && $m['entry']['left'] >= 0 && $m['entry']['right'] <= $width
+                    && $m['button'] !== null && $m['button']['height'] === 44 && $m['button']['text'] === $labels[$locale] && $m['spill'] === []
+                    && $page->evaluate('() => window.__errors') === [] && $page->evaluate(SHARE_BAD_RESPONSES) === [] && shareSigns($page) === 0;
+
+                if (! $ok) {
+                    $failures[] = "{$name} {$locale}@{$width}: ".json_encode([...$m, 'errors' => $page->evaluate('() => window.__errors'), 'bad' => $page->evaluate(SHARE_BAD_RESPONSES), 'signs' => shareSigns($page)]);
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and(array_keys($reveals))->toBe(['en@375', 'de@375'])
+        ->and(array_column($reveals, 'href'))->each->toEndWith('/players/'.$user->npub.'#rb-h')
+        ->and(array_column($reveals, 'text'))->toBe(['Share your rank', 'Rang teilen'])
+        ->and(array_column($reveals, 'height'))->toBe([44, 44])
+        ->and(array_filter($reveals, fn (array $link): bool => $link['right'] > $link['inner']))->toBe([]);
+
+    // The win at 375 in German: the preview shows the exact note and the card; nothing is signed until "Sign and post".
+    $page = sharePageIn($user, $entries['game'][0], 375, 'de');
+    $page->locator('[data-test=game-win-share] [data-test=share-post]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-text]")?.innerText.includes("GG nostr:npub1")', 15_000);
+    BrowserWait::until($page, '() => { const i = document.querySelector("[data-test=game-win-share] [data-test=share-preview-card]"); return i.complete && i.naturalWidth === 1200; }', 20_000);
+    $preview = $page->evaluate(SHARE_ENTRY, '[data-test=game-win-share]');
+    shareShot($page, 'p46-game-preview-de-375');
+
+    expect(shareSigns($page))->toBe(0)
+        ->and($preview['doc'][0])->toBeLessThanOrEqual($preview['doc'][1])
+        ->and($preview['spill'])->toBe([])
+        ->and($page->evaluate('() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-text]").innerText'))->toStartWith('Blitzpartie gegen pillpusher bei TWENTY ONE Esports gewonnen.')
+        ->and($page->evaluate('() => document.querySelector("[data-test=game-win-share] [data-test=share-preview-mentions]").innerText'))->toContain('pillpusher');
+
+    // Cancel signs nothing; opening again and "Sign and post" signs once.
+    $page->locator('[data-test=game-win-share] [data-test=share-cancel]')->click();
+    expect(shareSigns($page))->toBe(0);
+    $page->locator('[data-test=game-win-share] [data-test=share-post]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-win-share] [data-test=share-sign]")?.checkVisibility()', 15_000);
+    $page->locator('[data-test=game-win-share] [data-test=share-sign]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=game-win-share] [data-test=share-posted]")?.checkVisibility()', 15_000);
+
+    // "I'm in" at 1440 in English, the same way.
+    $signup = sharePageIn($user, $entries['signup'][0], 1440, 'en');
+    $signup->locator('[data-test=signup-post] [data-test=share-post]')->click();
+    BrowserWait::until($signup, '() => document.querySelector("[data-test=signup-post] [data-test=share-preview-text]")?.innerText.includes("nostr:naddr1")', 15_000);
+    expect(shareSigns($signup))->toBe(0);
+    $signup->locator('[data-test=signup-post] [data-test=share-sign]')->click();
+    BrowserWait::until($signup, '() => document.querySelector("[data-test=signup-post] [data-test=share-posted]")?.checkVisibility()', 15_000);
+
+    $notes = collect(relayQuery($this->relayUrl, '-k 1 -a '.$user->pubkey))->keyBy(fn (array $note) => collect($note['tags'])->firstWhere(0, 'alt')[1]);
+    $win = $notes->get('Share post: game in TWENTY ONE Esports');
+    $in = $notes->get('Share post: signup in TWENTY ONE Esports');
+
+    expect(shareSigns($page))->toBe(1)
+        ->and(shareSigns($signup))->toBe(1)
+        ->and($win)->not->toBeNull()
+        ->and(SignedEvent::fromInput($win)?->hasValidSignature())->toBeTrue()
+        ->and(collect($win['tags'])->where(0, 'p')->pluck(1)->all())->toBe([$opponent->pubkey])
+        ->and(collect($win['tags'])->firstWhere(0, 'q')[1])->toBe($record->event_id)
+        ->and($win['content'])->toContain('GG nostr:'.$opponent->npub)
+        ->and($win['content'])->toContain('/cards/de/page/game/'.$game->id.'.png?v=')
+        ->and($in)->not->toBeNull()
+        ->and(collect($in['tags'])->firstWhere(0, 'q')[1])->toBe($tournament->refresh()->address())
+        ->and($in['content'])->toContain('/tournaments/'.$tournament->id)
+        ->and($notes->flatMap(fn (array $note) => collect($note['tags'])->where(0, 't'))->all())->toBe([])
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($signup->evaluate('() => window.__errors'))->toBe([])
+        ->and($signup->evaluate(SHARE_BAD_RESPONSES))->toBe([]);
 });
 
 test('the share collectors see a thrown error and a failed card (positive control)', function () {
