@@ -8,6 +8,7 @@ use App\Jobs\SendNostrDm;
 use App\Jobs\SendWebPush;
 use App\Models\ChatMute;
 use App\Models\ChessGame;
+use App\Models\NotificationDigestItem;
 use App\Models\User;
 use App\Notifications\LeagueNotification;
 use App\Support\Chess\Broadcasts;
@@ -41,7 +42,7 @@ use Throwable;
 final class Notifier
 {
     /**
-     * @return list<'push'|'dm'> the remote channels it went out on
+     * @return list<'push'|'dm'|'digest'> the remote channels it went out on ('digest': a DM that waits for the daily digest)
      */
     public function send(User $user, NotificationKind $kind, Notice $notice, ?ChessGame $game = null, bool $remote = true, ?User $sender = null): array
     {
@@ -96,8 +97,21 @@ final class Notifier
         }
 
         if (in_array('dm', $channels, true) && NotificationDm::fromConfig()->isConfigured()) {
-            SendNostrDm::dispatch($user, $notice->toDmText(NotificationDmOptOut::line($user)), $notice->match);
-            $sent['dm'] = 'dm';
+            if ($settings->digestFor($trigger)) {
+                // P45: waits for the daily digest (DmDigest), in the same transaction as its cause.
+                NotificationDigestItem::query()->create([
+                    'user_id' => $user->id,
+                    'kind' => $trigger,
+                    'title' => mb_substr($notice->title, 0, 200),
+                    'body' => mb_substr($notice->body, 0, 500),
+                    'url' => mb_substr(Notice::onApp($notice->url), 0, 500),
+                    'match' => $notice->match,
+                ]);
+                $sent['dm'] = 'digest';
+            } else {
+                SendNostrDm::dispatch($user, $notice->toDmText(NotificationDmOptOut::line($user)), $notice->match);
+                $sent['dm'] = 'dm';
+            }
         }
 
         return array_values($sent);

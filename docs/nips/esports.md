@@ -149,6 +149,7 @@ Where a notification DM goes, and a fallback for players whose client does not r
   DNS name, the connection pinned to the checked address; others are never contacted.
 - **Test DM.** A player can send one test DM to themselves from the notification settings, at most one
   a minute, and sees which format went out and how many relays took it.
+- **Daily digest.** Per notification type a player chooses a DM at once or one digest DM a day.
 - **Follows (client side).** A player can follow another player, a clan owner, a tournament organizer,
   the league or the stream from the app. The player's own client writes the kind `3` (NIP-02), never
   the league: see [Follows](#follows-rev-98). Revision 4 read kind `3` only.
@@ -3446,6 +3447,10 @@ The league notifies players by Nostr DM from a dedicated **notification key**, b
   sent to the chat relays only.)
 - **Test DM (rev. 9.8).** From the notification settings a player sends one DM to themselves (at most
   one a minute), looked up afresh, and sees the format and how many relays took it.
+- **Daily digest (rev. 9.8).** Per type a player chooses "at once" (the default) or "daily". A daily
+  type is not sent when it happens; once a day (18:00 Europe/Berlin) the player gets one notification
+  DM listing everything collected (at most 15, then a count), same key, same format rules, the opt-out
+  line last. A type switched off, or DMs switched off, before the digest is dropped from it.
 - **No replies.** The notification key publishes a kind `0` with `bot: true` (NIP-24) and the note
   that it reads no replies, and **no** `10050`: NIP-17 clients then do not send replies at all.
 - **Content.** Plain text with a link into the app and `match` for the match it is about; never lobby

@@ -24,6 +24,9 @@ use App\Enums\NotificationKind;
  * for that event: no bell entry, no toast, no push, no DM. A kind added
  * later is on until the player turns it off.
  *
+ * Digest (P45): `digest` names the kinds whose Nostr DM waits for the daily
+ * digest (App\Support\Notifications\DmDigest); a kind not named goes out at once.
+ *
  * Sounds (P5c): `sound` on or off and `volume` in percent, played by the
  * page (resources/js/sounds.js); on at a moderate volume by default.
  */
@@ -37,6 +40,7 @@ final readonly class ChessSettings
 
     /**
      * @param  array<string, bool>  $triggers  missing kinds count as on
+     * @param  array<string, true>  $digest  kinds whose DM waits for the daily digest (P45); missing: at once
      */
     public function __construct(
         public string $board = 'house',
@@ -50,6 +54,7 @@ final readonly class ChessSettings
         public array $triggers = [],
         public bool $sound = true,
         public int $volume = self::DEFAULT_VOLUME,
+        public array $digest = [],
     ) {}
 
     /**
@@ -76,6 +81,14 @@ final readonly class ChessSettings
         }
 
         $volume = $values['volume'] ?? null;
+        $storedDigest = is_array($values['digest'] ?? null) ? $values['digest'] : [];
+        $digest = [];
+
+        foreach (self::triggers() as $trigger) {
+            if (($storedDigest[$trigger] ?? null) === true) {
+                $digest[$trigger] = true;
+            }
+        }
 
         return new self(
             board: in_array($values['board'] ?? null, self::BOARDS, true) ? $values['board'] : $defaults->board,
@@ -89,11 +102,12 @@ final readonly class ChessSettings
             triggers: $triggers,
             sound: $bool('sound', $defaults->sound),
             volume: is_int($volume) && $volume >= 0 && $volume <= 100 ? $volume : $defaults->volume,
+            digest: $digest,
         );
     }
 
     /**
-     * @return array{board: string, coordinates: bool, pieceNames: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool|null, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int}
+     * @return array{board: string, coordinates: bool, pieceNames: bool, alwaysQueen: bool, doubleCheck: bool, push: bool, dm: bool|null, remindHours: int, triggers: array<string, bool>, sound: bool, volume: int, digest: array<string, true>}
      */
     public function toArray(): array
     {
@@ -109,6 +123,7 @@ final readonly class ChessSettings
             'triggers' => $this->triggers,
             'sound' => $this->sound,
             'volume' => $this->volume,
+            'digest' => $this->digest,
         ];
     }
 
@@ -127,6 +142,14 @@ final readonly class ChessSettings
     public function dmOn(): bool
     {
         return $this->dm ?? true;
+    }
+
+    /**
+     * P45: this kind's DM waits for the daily digest instead of going out at once.
+     */
+    public function digestFor(string $trigger): bool
+    {
+        return $this->digest[$trigger] ?? false;
     }
 
     public function wants(string $trigger): bool

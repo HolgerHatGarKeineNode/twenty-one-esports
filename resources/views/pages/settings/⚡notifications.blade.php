@@ -47,6 +47,24 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
         $this->store($settings);
     }
 
+    /**
+     * P45: a kind's Nostr DM at once, or in the daily digest.
+     */
+    public function setDigest(string $trigger, string $timing): void
+    {
+        abort_unless(in_array($trigger, ChessSettings::triggers(), true) && in_array($timing, ['instant', 'daily'], true), 422);
+
+        $settings = $this->settings()->toArray();
+
+        if ($timing === 'daily') {
+            $settings['digest'][$trigger] = true;
+        } else {
+            unset($settings['digest'][$trigger]);
+        }
+
+        $this->store($settings);
+    }
+
     public function setRemindHours(int $hours): void
     {
         abort_unless(in_array($hours, ChessSettings::REMIND_HOURS, true), 422);
@@ -166,6 +184,7 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
     </x-settings.header>
 
     <div class="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+        <div class="flex min-w-0 flex-col gap-5">
         <section id="notifications" aria-labelledby="ch-h" class="flex scroll-mt-20 flex-col rounded-lg bg-card px-4 py-5 lg:px-6" data-test="notification-channels">
             <h2 id="ch-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Channels') }}</h2>
             <div class="flex min-h-[61px] items-center gap-4 border-b border-hairline py-2" data-test="channel-bell">
@@ -237,6 +256,27 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
                 <span class="border-t border-hairline pt-3 text-xs leading-normal text-ink-3" data-test="channels-explained">{{ __('Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.') }}</span>
                 <span class="pt-2 text-xs leading-normal text-ink-3" data-test="dm-explained">{{ __('Nostr DMs come from the league\'s own notification key, never from another player. They are on by default for what needs you while you are away. Turn them off with the switch above, or with the link at the end of every DM, no login needed.') }}</span>
         </section>
+
+            {{-- P45: per kind that goes out by DM, at once or in one DM a day (DmDigest, 18:00 Berlin time). --}}
+            @php($dmKinds = $dmReady ? array_values(array_filter(NotificationKind::cases(), fn (NotificationKind $kind): bool => $settings->wants($kind->value) && $settings->dmFor($kind->value))) : [])
+            @if ($dmKinds !== [])
+                <section aria-labelledby="dt-h" class="flex flex-col rounded-lg bg-card px-4 py-5 lg:px-6" data-test="dm-timing">
+                    <h2 id="dt-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Nostr DM: at once or daily') }}</h2>
+                    <p class="m-0 mb-2 text-xs leading-normal text-ink-2">{{ __('Daily collects these into one DM at 18:00 (Berlin time). The bell still shows each at once.') }}</p>
+                    @foreach ($dmKinds as $kind)
+                        @php([$label] = $kind->setting())
+                        <div class="flex min-h-[61px] items-center gap-4 border-b border-hairline py-2 last:border-0">
+                            <label for="dm-timing-{{ $kind->value }}" class="min-w-0 grow text-sm">{{ __($label) }}</label>
+                            <select id="dm-timing-{{ $kind->value }}" wire:change="setDigest('{{ $kind->value }}', $event.target.value)" data-test="dm-timing-{{ $kind->value }}"
+                                    class="h-11 shrink-0 rounded-lg border border-edge bg-ground px-3 text-[13px] text-ink">
+                                <option value="instant" @selected(! $settings->digestFor($kind->value))>{{ __('At once') }}</option>
+                                <option value="daily" @selected($settings->digestFor($kind->value))>{{ __('Daily digest') }}</option>
+                            </select>
+                        </div>
+                    @endforeach
+                </section>
+            @endif
+        </div>
 
             <section aria-labelledby="nf-h" class="flex flex-col self-start rounded-lg bg-card px-4 py-5 lg:px-6" data-test="notify-about">
                 <h2 id="nf-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Notify me about') }}</h2>

@@ -279,6 +279,12 @@ test('"Send a test DM" in the notification settings delivers a NIP-17 DM to the 
         expect($row[1])->toBeGreaterThanOrEqual(44)->and($row[0])->toBeGreaterThanOrEqual(44)->and($row[2])->toBeLessThanOrEqual($width)
             ->and($page->evaluate(BrowserConsole::WIDTHS)[0])->toBeLessThanOrEqual($width);
 
+        // P45 digest: one "at once / daily" select per kind that goes out by DM, each 44 px high and inside the page.
+        $selects = $page->evaluate('() => [...document.querySelectorAll("[data-test=dm-timing] select")].map((s) => { const b = s.getBoundingClientRect(); return [Math.round(b.height), Math.round(b.right)]; })');
+        fwrite(STDERR, "\n[nostr-bar] dm-timing {$width}px ".count($selects).' selects, first '.json_encode($selects[0] ?? null));
+        expect($selects)->not->toBe([])
+            ->and(array_filter($selects, fn (array $s): bool => $s[0] < 44 || $s[1] > $width))->toBe([]);
+
         if ($width === 375) {
             $page->locator('[data-test=send-test-dm]')->click();
             BrowserWait::until($page, '() => document.querySelector("[data-test=test-dm-status]")?.dataset.state === "done"', 20_000);

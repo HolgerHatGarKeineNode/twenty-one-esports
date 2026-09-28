@@ -12,6 +12,7 @@ use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Notifications\BlockZeroNotifications;
 use App\Support\Notifications\ChessNotifications;
+use App\Support\Notifications\DmDigest;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
 use App\Support\SeasonChain\TrustJob;
@@ -95,6 +96,16 @@ Artisan::command('chess:daily-reminders', function (ChessNotifications $notifica
 })->purpose('Remind players whose daily chess move is due soon');
 
 Schedule::command('chess:daily-reminders')->everyFiveMinutes()->withoutOverlapping();
+
+/*
+ * P45: the daily DM digest. Every notification a player chose to get "once a
+ * day" by Nostr DM waits until here; each player gets one DM listing them.
+ */
+Artisan::command('notifications:dm-digest', function (DmDigest $digest) {
+    $this->info('Queued '.$digest->run().' digest DM(s).');
+})->purpose('Send each player one Nostr DM with the notifications they chose to get once a day');
+
+Schedule::command('notifications:dm-digest')->dailyAt('18:00')->timezone('Europe/Berlin')->withoutOverlapping()->onOneServer();
 
 /*
  * A fresh VAPID key pair for Web Push, printed for `.env`. Nothing is written:

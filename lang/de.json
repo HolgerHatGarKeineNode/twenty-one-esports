@@ -5283,5 +5283,11 @@
     "You follow :name now. Signed by you, taken by :count relays.": "Du folgst jetzt :name. Von dir signiert, von :count Relays angenommen.",
     "Your follow list changed in the meantime. Here is the new state; nothing was sent.": "Deine Folgeliste hat sich inzwischen geändert. Hier ist der neue Stand; nichts wurde gesendet.",
     "Your follow list could not be read from all your relays (:answered of :asked answered). Nothing was changed. Please try again later.": "Deine Folgeliste konnte nicht von allen deinen Relays gelesen werden (:answered von :asked haben geantwortet). Nichts wurde geändert. Bitte versuch es später noch einmal.",
-    "Your signer cannot encrypt messages (neither NIP-44 nor NIP-04).": "Dein Signer kann keine Nachrichten verschlüsseln (weder NIP-44 noch NIP-04)."
+    "Your signer cannot encrypt messages (neither NIP-44 nor NIP-04).": "Dein Signer kann keine Nachrichten verschlüsseln (weder NIP-44 noch NIP-04).",
+    "Your TWENTY ONE esports digest: :count notification|Your TWENTY ONE esports digest: :count notifications": "Deine TWENTY ONE esports-Zusammenfassung: :count Benachrichtigung|Deine TWENTY ONE esports-Zusammenfassung: :count Benachrichtigungen",
+    "… and :count more in the bell on the site.": "… und :count weitere in der Glocke auf der Seite.",
+    "Nostr DM: at once or daily": "Nostr-DM: sofort oder täglich",
+    "Daily collects these into one DM at 18:00 (Berlin time). The bell still shows each at once.": "Täglich sammelt sie in einer DM um 18:00 Uhr (Berliner Zeit). Die Glocke zeigt jede weiterhin sofort.",
+    "At once": "Sofort",
+    "Daily digest": "Tägliche Zusammenfassung"
 }
