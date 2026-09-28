@@ -1152,7 +1152,7 @@ final class RotationKit
         $total = 0;
 
         foreach ($upcoming as $t) {
-            if (! is_array($t) || ! is_int($t['pot'] ?? null) || $t['pot'] <= 0) {
+            if (! is_int($t['pot'] ?? null) || $t['pot'] <= 0) {
                 continue;
             }
 
@@ -1176,7 +1176,7 @@ final class RotationKit
         $cups = [];
 
         foreach ($upcoming as $t) {
-            if (! is_array($t) || ($t['cup'] ?? false) !== true) {
+            if (($t['cup'] ?? false) !== true) {
                 continue;
             }
 
