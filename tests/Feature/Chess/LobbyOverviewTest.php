@@ -171,7 +171,7 @@ test('the ladder shows its top five from the view the ladder opens on', function
         ->and($html)->toContain('data-pool="casual"')
         ->and($html)->toContain($players[5]->displayName())
         ->and($html)->not->toContain('>'.e($players[0]->displayName()).'<')
-        ->and(strpos($html, (string) 1050))->toBeLessThan(strpos($html, (string) 1010));
+        ->and(strpos($html, e($players[5]->displayName())))->toBeLessThan(strpos($html, e($players[1]->displayName())));
 });
 
 test('/chess#blitz opens the blitz panel, and a search shows its card whatever the tile', function () {
