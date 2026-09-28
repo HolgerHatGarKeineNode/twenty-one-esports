@@ -173,7 +173,10 @@ test('clan logos show in front of the tag on the chess ladder, the clan list and
             fwrite(STDERR, "\n[clan-logo] {$name} {$width}px scrollWidth/clientWidth ".json_encode($overflow).' logos '.json_encode($logos)."\n");
 
             expect($logos)->not->toBeEmpty()
-                ->and(collect($logos)->every(fn (array $logo) => $logo['natural'] > 0 && $logo['loading'] === 'lazy' && $logo['alt'] === ''))->toBeTrue()
+                // Lazy everywhere, except the clan cards of the first row on /clans (first screen, eager).
+                ->and(collect($logos)->every(fn (array $logo) => $logo['natural'] > 0 && $logo['alt'] === ''
+                    && ($logo['loading'] === 'lazy' || ($name === 'clans' && $logo['loading'] === 'eager'))))->toBeTrue()
+                ->and(collect($logos)->where('loading', 'eager')->count())->toBeLessThanOrEqual($name === 'clans' ? 3 : 0)
                 ->and($overflow[0])->toBeLessThanOrEqual($overflow[1])
                 ->and($page->evaluate('() => document.body.innerText'))->toContain($plain->clantag);
 

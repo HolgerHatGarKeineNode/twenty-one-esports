@@ -73,7 +73,7 @@ test('the clans page and the clan page show the same real Clan Rating, Hashrate 
     $clanRating = (int) round(($top + 1100 + 1000) / 3);
 
     $this->get(route('clans.index'))->assertOk()
-        ->assertSeeInOrder(['id="cr-h"', 'Laser Eyes', (string) $clanRating, __('avg top 3'), $top.' · 1100 · 1000'], false)
+        ->assertSeeInOrder(['id="cr-h"', 'Laser Eyes', $top.' · 1100 · 1000', (string) $clanRating, __('avg top 3')], false)
         ->assertSeeInOrder(['id="hs-h"', 'Laser Eyes', '<b class="text-right">3</b>'], false)
         ->assertDontSee('1151 · 1089 · 1034')
         ->assertDontSee('data-test="rating-empty"', false);
@@ -97,9 +97,11 @@ test('before Block 0 every rated clan panel shows its empty state and no numbers
     $this->get(route('clans.index'))->assertOk()
         ->assertSee('data-test="rating-empty"', false)
         ->assertSee('data-test="hashrate-empty"', false)
-        ->assertSee(__('Clan Ratings start at Block 0, with the first rated blitz games.'))
-        // The rating panel is the clan directory too: the clan stays listed, without numbers.
-        ->assertSeeInOrder(['id="cr-h"', 'Laser Eyes', __('starts at Block 0')], false)
+        ->assertSee(__('Clan Rating, Hashrate and the meetup ranking start at Block 0, with the first rated games.'))
+        // The standings are that one line; the clan is listed (new this week: on top), without numbers.
+        ->assertDontSee('id="cr-h"', false)
+        ->assertSee('data-clan="'.$clan->slug.'"', false)
+        ->assertDontSee('data-test="clan-card-numbers"', false)
         ->assertDontSee('1151 · 1089 · 1034');
 
     $this->get(route('clans.show', $clan))->assertOk()

@@ -31,7 +31,7 @@
 # Files are grouped by measured wall time (per-test durations captured with a
 # temporary beforeEach/afterEach timer on this machine — RouteSweepTest alone
 # is heavier than any other file, so it gets its own shard):
-#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since), LiveCountTest (P20b, the live count and on-air flips)
+#   1: RouteSweepTest, NotificationDmPagesTest (~29s + ~6s, grown since), LiveCountTest (P20b, the live count and on-air flips), ClanPrideTest (/clans cards and proud moments at 0, 2 and 12 clans)
 #   2: BlitzGameTest, ClanRosterTest, LoginTest, ClanLogoTest, ShareTest, StrongestListTest (~26s + clan logos + P40)
 #   3: ChatAndDailyTest, ChessCorrespondenceQuietTest (P52), SeriesResultTest, OpponentRatedTest, TournamentFlowTest, LadderDefaultTest, GameCoversTest, GamePageTest (~27s + P8b + ladder + covers + P26 game pages)
 #   4: NotificationsTest, SeasonChainTest, ClanEditTest, TournamentChooserTest, EngagementTest (~25s + P10), TournamentEditTest, TournamentHonestDurationTest, RulesProtocolTest (P28/P29)
@@ -171,7 +171,7 @@ esports_sweep_stale_playwright_servers
 npm run build
 
 SHARD_FILES=(
-    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/LiveCountTest.php"
+    "tests/Browser/RouteSweepTest.php tests/Browser/NotificationDmPagesTest.php tests/Browser/LiveCountTest.php tests/Browser/ClanPrideTest.php"
     "tests/Browser/BlitzGameTest.php tests/Browser/ClanRosterTest.php tests/Browser/LoginTest.php tests/Browser/ClanLogoTest.php tests/Browser/ShareTest.php tests/Browser/StrongestListTest.php tests/Browser/VisualPassTest.php"
     "tests/Browser/ChatAndDailyTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/SeriesResultTest.php tests/Browser/OpponentRatedTest.php tests/Browser/TournamentFlowTest.php tests/Browser/LadderDefaultTest.php tests/Browser/GameCoversTest.php tests/Browser/GamePageTest.php"
     "tests/Browser/NotificationsTest.php tests/Browser/SeasonChainTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentChooserTest.php tests/Browser/EngagementTest.php tests/Browser/TournamentEditTest.php tests/Browser/TournamentHonestDurationTest.php tests/Browser/RulesProtocolTest.php"

@@ -99,7 +99,7 @@ test('every touched page shows its pictures at 1440 and 375, German at 375, with
         '/live' => ['[data-test=live-tournament-cover], [data-test=live-offline-next-cover]', 2],
         '/rules' => ['[data-test=rules-table-cover]', 7],
         '/mining' => ['[data-test=era-pay-bar], [data-test=share-cap-bar]', 7],
-        '/clans' => ['[data-test=clan-counters-marks]', 1],
+        '/clans' => ['[data-test=clan-card-mark], [data-test=clan-spotlight-mark]', 1],
         '/challenges/casual' => ['[data-test^=casual-game-] picture', 3],
         '/players/'.$player->npub => ['[data-test=open-picture-cover], [data-test=join-picture]', 2],
         '/me' => ['[data-test=open-picture-cover], [data-test=join-picture]', 2],

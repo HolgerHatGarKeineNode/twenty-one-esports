@@ -1,4 +1,4 @@
-@props(['clan' => null, 'tag' => null, 'size' => 'md', 'tile' => null, 'compact' => false])
+@props(['clan' => null, 'tag' => null, 'size' => 'md', 'tile' => null, 'compact' => false, 'loading' => 'lazy'])
 
 {{--
     A clan's mark wherever the clan appears.
@@ -19,7 +19,7 @@
     Only logos the league stored itself are shown (Clan::localLogoUrl()); a
     foreign `picture` falls back to the tag and is never requested. `tag`
     overrides the clan's current tag, for matches that keep the tag they
-    were played under.
+    were played under. `loading`: "eager" for a logo in the first screen.
 --}}
 @php
     $label = $tag ?? $clan?->clantag;
@@ -28,7 +28,7 @@
 @endphp
 
 @if ($tile !== null)
-    <span {{ $attributes->class(['overflow-hidden' => $logo]) }}>@if ($logo)<img src="{{ $logo }}" alt="" width="{{ $side }}" height="{{ $side }}" loading="lazy" decoding="async" class="size-full bg-card object-cover" data-clan-logo><span class="sr-only">{{ $label }}</span>@else{{ $label }}@endif</span>
+    <span {{ $attributes->class(['overflow-hidden' => $logo]) }}>@if ($logo)<img src="{{ $logo }}" alt="" width="{{ $side }}" height="{{ $side }}" loading="{{ $loading }}" decoding="async" class="size-full bg-card object-cover" data-clan-logo><span class="sr-only">{{ $label }}</span>@else{{ $label }}@endif</span>
 @elseif (filled($label) && $logo)
     <span {{ $attributes->class([
         'relative inline-flex shrink-0 items-stretch overflow-hidden rounded-sm bg-btc-tint font-bold text-btc',

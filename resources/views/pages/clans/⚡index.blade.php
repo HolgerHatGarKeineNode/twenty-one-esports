@@ -1,25 +1,25 @@
 <?php
 
 use App\Models\Clan;
-use App\Models\ClanMember;
-use App\Models\Rating;
-use App\Models\RatingChange;
+use App\Models\Lineup;
+use App\Models\User;
+use App\Support\Clans\ClanPride;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
 use App\Support\Series\Ladders;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /*
- * Clans, 1:1 from Clans.dc.html. Clans, players, meetup pins, Clan Rating,
- * Hashrate and the rated results are real (ClanStats); before Block 0 the
- * rated panels show their empty state.
+ * Clans: every clan as a card with its mark, its players' faces and its
+ * proudest moment (ClanPride), the clan with the strongest moment large on
+ * top, then the season standings (ClanStats). All of it is the league's own
+ * records; before Block 0 the standings are one line, and a clan without a
+ * moment shows none.
  */
 new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -31,6 +31,116 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
+
+    /** Hashrate window: `s` season, `w` last 7 days (design default). */
+    public string $window = 'w';
+
+    public function pickWindow(string $window): void
+    {
+        $this->window = $window === 's' ? 's' : 'w';
+    }
+
+    /**
+     * Every clan with its players and lineups, once per request; the search filters this list.
+     *
+     * @return Collection<int, Clan>
+     */
+    #[Computed]
+    public function directory(): Collection
+    {
+        return Clan::query()->with(['members.user', 'lineups'])->orderBy('name')->get();
+    }
+
+    /**
+     * The clans the search matches (name, tag or meetup city), by name.
+     *
+     * @return Collection<int, Clan>
+     */
+    #[Computed]
+    public function clans(): Collection
+    {
+        $search = mb_strtolower(trim($this->search));
+
+        return $search === '' ? $this->directory : $this->directory->filter(fn (Clan $clan): bool => str_contains(mb_strtolower($clan->name), $search)
+            || str_contains(mb_strtolower($clan->clantag), $search)
+            || str_contains(mb_strtolower((string) $clan->meetup_city), $search))->values();
+    }
+
+    /**
+     * Clan id => its proud moments, best first (ClanPride, cached a minute).
+     *
+     * @return array<int, list<array<string, mixed>>>
+     */
+    #[Computed]
+    public function pride(): array
+    {
+        return app(ClanPride::class)->all();
+    }
+
+    /** The clan shown large on top: the strongest moment, only while nobody searches. */
+    #[Computed]
+    public function spotlight(): ?Clan
+    {
+        $id = trim($this->search) === '' ? ClanPride::spotlight($this->pride) : null;
+
+        return $id === null ? null : $this->directory->firstWhere('id', $id);
+    }
+
+    /** The page's clan numbers, computed once per request. */
+    #[Computed]
+    public function stats(): ClanStats
+    {
+        return app(ClanStats::class);
+    }
+
+    /** The viewer's clan id, null for guests and players without a clan. */
+    #[Computed]
+    public function myClanId(): ?int
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? $user->clanMember?->clan_id : null;
+    }
+
+    /**
+     * Clan id => "Challenge" link, as on the clan page (P16): the challenge
+     * form with the clan's Rocket League lineup picked, in the mode of a
+     * lineup the viewer captains when both have one. None for the own clan
+     * and for clans without a lineup; a guest gets the link, the form asks
+     * them to log in.
+     *
+     * @return array<int, string>
+     */
+    #[Computed]
+    public function challenges(): array
+    {
+        $user = auth()->user();
+        $modes = ['3v3', '2v2', '1v1'];
+        $mine = $user instanceof User && $this->myClanId !== null
+            ? Lineup::query()->with(['seats', 'clan'])->where(['clan_id' => $this->myClanId, 'game' => 'rocket-league'])->get()
+                ->filter(fn (Lineup $lineup): bool => $lineup->isActingCaptain($user))
+                ->sortBy(fn (Lineup $lineup): int => (int) array_search($lineup->mode, $modes, true))->values()
+            : collect();
+        $links = [];
+
+        foreach ($this->directory as $clan) {
+            if ($clan->id === $this->myClanId) {
+                continue;
+            }
+
+            $theirs = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup): int => (int) array_search($lineup->mode, $modes, true))->keyBy('mode');
+
+            if ($theirs->isEmpty()) {
+                continue;
+            }
+
+            $own = $mine->first(fn (Lineup $lineup): bool => $theirs->has($lineup->mode));
+            $target = $own !== null ? $theirs[$own->mode] : $theirs->first();
+            $links[$clan->id] = route('challenges.create', array_filter(['lineup' => $own?->id, 'to' => $target->id]));
+        }
+
+        return $links;
+    }
 
     /**
      * Meetup against meetup (P10): the live season's clan hashrate per meetup
@@ -44,58 +154,6 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         return app(ClanHashrate::class)->cities(Ladders::season());
     }
 
-    /** Hashrate window: `s` season, `w` last 7 days (design default). */
-    public string $window = 'w';
-
-    public function pickWindow(string $window): void
-    {
-        $this->window = $window === 's' ? 's' : 'w';
-    }
-
-    /**
-     * @return Collection<int, Clan>
-     */
-    #[Computed]
-    public function clans(): Collection
-    {
-        $search = trim($this->search);
-
-        return Clan::query()
-            ->with('members.user')
-            ->when($search !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
-                ->whereLike('name', "%{$search}%")
-                ->orWhereLike('clantag', "%{$search}%")
-                ->orWhereLike('meetup_city', "%{$search}%")))
-            ->orderBy('name')
-            ->get();
-    }
-
-    /**
-     * @return array{clans: int, newest: Clan|null, recent: \Illuminate\Database\Eloquent\Collection<int, Clan>, players: int, meetups: int, blocks: int}
-     */
-    /** The page's clan numbers, computed once per request. */
-    #[Computed]
-    public function stats(): ClanStats
-    {
-        return app(ClanStats::class);
-    }
-
-    #[Computed]
-    public function counters(): array
-    {
-        return [
-            'clans' => Clan::query()->count(),
-            'newest' => Clan::query()->latest('created_at')->latest('id')->first(),
-            // The marks of the five newest clans, the picture of the counter line (P53).
-            'recent' => Clan::query()->latest('created_at')->latest('id')->limit(5)->get(),
-            'players' => ClanMember::query()->count(),
-            'meetups' => Clan::query()->whereNotNull('meetup_name')->count(),
-            // Rated results since launch: every game or series that moved a rated rating, once.
-            'blocks' => DB::query()->fromSub(RatingChange::query()->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
-                ->where('ratings.pool', Rating::RATED)->distinct()->select(['rating_changes.source', 'rating_changes.source_id']), 'results')->count(),
-        ];
-    }
-
     /**
      * Pins on the placeholder map: a plain projection of the meetup
      * coordinates onto the German-speaking area.
@@ -105,7 +163,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     #[Computed]
     public function pins(): array
     {
-        return Clan::query()->whereNotNull('meetup_latitude')->whereNotNull('meetup_longitude')->get()
+        return $this->directory->filter(fn (Clan $clan): bool => $clan->meetup_latitude !== null && $clan->meetup_longitude !== null)
             ->map(fn (Clan $clan) => [
                 'clan' => $clan,
                 'tag' => $clan->clantag,
@@ -116,88 +174,218 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * @return list<array{clan: Clan, rank: int|string, rating: int|null, top: list<int>, member: bool}>
+     * The three strongest clans by Clan Rating (all clans, not the search).
+     *
+     * @return list<array{clan: Clan, rating: int, top: list<int>}>
      */
     #[Computed]
     public function byRating(): array
     {
-        $rows = $this->clans->map(fn (Clan $clan) => ['clan' => $clan, ...$this->stats->clanRating($clan), 'member' => $clan->isMemberClan()])
-            ->sortBy([fn ($a, $b) => ($b['rating'] ?? -1) <=> ($a['rating'] ?? -1)])->values()->all();
-
-        foreach ($rows as $index => $row) {
-            $rows[$index]['rank'] = $row['rating'] === null ? '–' : $index + 1;
-        }
-
-        return $rows;
+        return $this->directory->map(fn (Clan $clan) => ['clan' => $clan, ...$this->stats->clanRating($clan)])
+            ->filter(fn (array $row): bool => $row['rating'] !== null)
+            ->sortByDesc('rating')->take(3)->values()->all();
     }
 
     /**
-     * @return array{rows: list<array{clan: Clan, rank: int, points: int, bonus: int, width: string, share: string, member: bool}>, total: int}
+     * The three most active clans by Hashrate in the window, with their share of the leader for the bar.
+     *
+     * @return array{rows: list<array{clan: Clan, points: int, width: string}>, total: int}
      */
     #[Computed]
     public function byHash(): array
     {
         $season = $this->window === 's';
-        $rows = $this->clans->map(function (Clan $clan) use ($season) {
+        $rows = $this->directory->map(function (Clan $clan) use ($season) {
             $hashrate = $this->stats->hashrate($clan);
 
-            return ['clan' => $clan, 'points' => $season ? $hashrate['season'] : $hashrate['week'], 'bonus' => $season ? $hashrate['seasonBonus'] : $hashrate['weekBonus'], 'member' => $clan->isMemberClan()];
+            return ['clan' => $clan, 'points' => $season ? $hashrate['season'] : $hashrate['week']];
         })->sortByDesc('points')->values();
 
         $top = max(1, (int) $rows->max('points'));
-        $total = (int) $rows->sum('points');
 
-        return ['total' => $total, 'rows' => $rows->map(fn (array $row, int $index) => [...$row,
-            'rank' => $index + 1,
-            'width' => number_format($row['points'] / $top * 100, 1).'%',
-            'share' => number_format($total === 0 ? 0 : $row['points'] / $total * 100, 1).'%',
-        ])->all()];
+        return [
+            'total' => (int) $rows->sum('points'),
+            'rows' => $rows->filter(fn (array $row): bool => $row['points'] > 0)->take(3)
+                ->map(fn (array $row) => [...$row, 'width' => number_format($row['points'] / $top * 100, 1).'%'])->values()->all(),
+        ];
     }
 }; ?>
 
-<div class="flex grow flex-col gap-4 px-4 pb-6 lg:gap-6 lg:px-12 lg:pb-8">
-    <div class="flex flex-wrap items-center gap-3 lg:flex-nowrap lg:gap-4">
-        <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clans') }}</h1>
+@php
+    $directory = $this->directory;
+    $clans = $this->clans;
+    $pride = $this->pride;
+    $spotlight = $this->spotlight;
+    $live = $this->stats->seasonLive();
+    $challenges = $this->challenges;
+    $myClanId = $this->myClanId;
+    $grid = $spotlight === null ? $clans : $clans->reject(fn ($clan) => $clan->id === $spotlight->id)->values();
+    $players = $directory->sum(fn ($clan) => $clan->members->count());
+    $meetups = $directory->filter(fn ($clan) => filled($clan->meetup_name))->count();
+    $myClan = $myClanId === null ? null : $directory->firstWhere('id', $myClanId);
+@endphp
+
+<div class="flex grow flex-col gap-6 px-4 pb-6 lg:gap-8 lg:px-12 lg:pb-8">
+    {{-- Header: the name, the league in one sentence, search and the way in. --}}
+    <div class="flex flex-wrap items-end gap-x-4 gap-y-3 lg:flex-nowrap">
+        <div class="flex min-w-0 flex-col gap-1">
+            <h1 class="m-0 font-display text-2xl font-bold lg:text-[28px]">{{ __('Clans') }}</h1>
+            {{-- Without clans the empty state below says it. --}}
+            @if ($directory->isNotEmpty())
+                <p class="m-0 text-[13px] text-ink-2" data-test="clan-counters">
+                    {{ __(':players in :clans.', ['players' => trans_choice(':count player|:count players', $players), 'clans' => trans_choice(':count clan|:count clans', $directory->count())]) }}
+                    @if ($meetups > 0){{ trans_choice(':count clan meets at a portal meetup.|:count clans meet at a portal meetup.', $meetups) }}@endif
+                </p>
+            @endif
+        </div>
         <span class="hidden grow lg:block"></span>
-        <label for="clan-q" class="sr-only">{{ __('Search clans') }}</label>
-        <span class="relative order-3 flex w-full items-center lg:order-none lg:w-80">
-            <x-icon name="search" :size="16" class="pointer-events-none absolute left-3 text-ink-3" />
-            <input id="clan-q" type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('Clan, tag or meetup city') }}"
-                   class="h-11 w-full rounded-md border border-edge bg-ground pr-3 pl-9 text-[13px] text-ink placeholder:text-ink-3">
-        </span>
-        <a href="{{ route('clans.create') }}" class="btn-p ml-auto inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc lg:ml-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
-            {{ __('Start a clan') }}
-        </a>
+        @if ($directory->isNotEmpty())
+            <label for="clan-q" class="sr-only">{{ __('Search clans') }}</label>
+            <span class="relative order-3 flex w-full items-center lg:order-none lg:w-80">
+                <x-icon name="search" :size="16" class="pointer-events-none absolute left-3 text-ink-3" />
+                <input id="clan-q" type="search" wire:model.live.debounce.300ms="search" placeholder="{{ __('Clan, tag or meetup city') }}"
+                       class="h-11 w-full rounded-md border border-edge bg-ground pr-3 pl-9 text-[13px] text-ink placeholder:text-ink-3">
+            </span>
+        @endif
+        @if ($myClan)
+            <a href="{{ route('clans.show', $myClan) }}" class="btn-s inline-flex h-11 min-w-0 items-center gap-2 rounded-md border border-edge px-4 text-[13px] font-bold text-ink hover:text-ink" data-test="clan-mine-link">
+                <x-clan-tag :clan="$myClan" size="sm" /><span class="truncate">{{ __('Your clan') }}</span>
+            </a>
+        @elseif ($directory->isNotEmpty())
+            <a href="{{ route('clans.create') }}" class="btn-p inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc" data-test="clan-start">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+                {{ __('Start a clan') }}
+            </a>
+        @endif
     </div>
 
-    @php($counters = $this->counters)
-    {{--
-        The numbers folded into one line under the header (P53: four number tiles read as text): the newest
-        clans' marks as the picture, then players, meetups and blocks, each with its icon.
-    --}}
-    <div class="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg bg-card px-4 py-3 text-[13px] text-ink-2 lg:px-6" data-test="clan-counters">
-        <span class="flex items-center gap-3">
-            @if ($counters['recent']->isNotEmpty())
-                <span class="flex gap-1" aria-hidden="true" data-test="clan-counters-marks">
-                    @foreach ($counters['recent'] as $recentClan)
-                        <x-clan-tag :clan="$recentClan" :tile="28" class="flex size-7 shrink-0 items-center justify-center rounded-xs bg-btc-tint text-[9px] font-bold text-btc" />
-                    @endforeach
+    @if ($spotlight)
+        <x-clans.spotlight :clan="$spotlight" :moments="$pride[$spotlight->id]" :challenge="$challenges[$spotlight->id] ?? null" :mine="$spotlight->id === $myClanId" wire:key="spot-{{ $spotlight->id }}" />
+    @endif
+
+    {{-- The season standings, top three each, once Block 0 is mined: pride with numbers, so above the cards. --}}
+    @if ($live)
+        @php($hash = $this->byHash)
+        @php($cities = array_slice($this->cities, 0, 3))
+        @php($topCity = max(1, $cities[0]['hashrate'] ?? 0))
+        <section aria-label="{{ __('Season standings') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6" data-test="clan-standings">
+            <div class="flex flex-col gap-3 rounded-card bg-card px-4 py-4 lg:px-5">
+                <span class="flex flex-col gap-0.5">
+                    <h2 id="cr-h" class="m-0 text-[15px] font-bold">{{ __('Strongest clans') }}</h2>
+                    <span class="text-xs text-ink-3">{{ __('Clan Rating: the average of the 3 best solo blitz Elos') }}</span>
                 </span>
-            @endif
-            <span><b class="font-display text-lg text-ink tabular-nums">{{ $counters['clans'] }}</b> {{ __('Clans') }}</span>
-        </span>
-        <span class="flex items-center gap-2"><x-icon name="user" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['players'] }}</b> {{ __('Players') }} <span class="text-xs text-ink-3">{{ __('in a clan') }}</span></span>
-        <span class="flex items-center gap-2"><x-icon name="clans" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['meetups'] }}</b> {{ __('Meetups') }}</span>
-        <span class="flex items-center gap-2"><x-icon name="mining" :size="16" class="text-ink-3" /><b class="font-display text-lg text-ink tabular-nums">{{ $counters['blocks'] }}</b> {{ __('Blocks mined') }}</span>
-        <span class="text-xs lg:ml-auto">
-            @if ($counters['newest'])
-                {{ __('newest: :name, :date', ['name' => $counters['newest']->name, 'date' => $counters['newest']->created_at?->translatedFormat('M j')]) }}
-            @else
-                {{ __('none yet') }}
-            @endif
-        </span>
-    </div>
+                <ol class="m-0 flex list-none flex-col gap-1 p-0">
+                    @forelse ($this->byRating as $index => $row)
+                        <li wire:key="cr-{{ $row['clan']->id }}" @class(['relative grid grid-cols-[24px_32px_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-2 text-[13px]', 'bg-btc-tint' => $index === 0]) data-test="rating-row">
+                            <b @class(['font-display', 'text-lg text-btc' => $index === 0, 'text-ink-3' => $index > 0])>{{ $index + 1 }}</b>
+                            <x-clan-tag :clan="$row['clan']" :tile="32" class="flex size-8 shrink-0 items-center justify-center rounded-xs bg-btc-tint text-[10px] font-bold text-btc" />
+                            <span class="flex min-w-0 flex-col gap-0.5">
+                                <a href="{{ route('clans.show', $row['clan']) }}" class="truncate text-ink after:absolute after:inset-0 hover:text-btc-hi">{{ $row['clan']->name }}</a>
+                                <span class="truncate text-[11px] text-ink-3">{{ implode(' · ', $row['top']) }}</span>
+                            </span>
+                            <span class="flex flex-col items-end gap-0.5"><b class="font-display text-[15px]">{{ $row['rating'] }}</b><span class="text-[11px] whitespace-nowrap text-ink-3">{{ __('avg top 3') }}</span></span>
+                        </li>
+                    @empty
+                        <li class="py-3 text-[13px] text-ink-2">{{ __('No clan has 3 blitz Elos yet.') }}</li>
+                    @endforelse
+                </ol>
+            </div>
+
+            <div class="flex flex-col gap-3 rounded-card bg-card px-4 py-4 lg:px-5">
+                <span class="flex flex-wrap items-center justify-between gap-3">
+                    <span class="flex flex-col gap-0.5">
+                        <h2 id="hs-h" class="m-0 text-[15px] font-bold">{{ __('Most active clans') }}</h2>
+                        <span class="text-xs text-ink-3">{{ __('Hashrate: points from every rated game') }}</span>
+                    </span>
+                    <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge" data-test="hashrate-window">
+                        @foreach (['s' => $this->stats->seasonName(), 'w' => __('7 days')] as $key => $label)
+                            <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
+                                    @class(['h-11 cursor-pointer px-3 text-[13px]', 'border-l border-edge' => $key === 'w',
+                                        'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
+                        @endforeach
+                    </div>
+                </span>
+                <ol class="m-0 flex list-none flex-col gap-1 p-0">
+                    @forelse ($hash['rows'] as $index => $row)
+                        <li wire:key="hs-{{ $row['clan']->id }}" @class(['relative grid grid-cols-[24px_32px_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-2 text-[13px]', 'bg-btc-tint' => $index === 0]) data-test="hashrate-row">
+                            <b @class(['font-display', 'text-lg text-btc' => $index === 0, 'text-ink-3' => $index > 0])>{{ $index + 1 }}</b>
+                            <x-clan-tag :clan="$row['clan']" :tile="32" class="flex size-8 shrink-0 items-center justify-center rounded-xs bg-btc-tint text-[10px] font-bold text-btc" />
+                            <span class="flex min-w-0 flex-col gap-1.5">
+                                <a href="{{ route('clans.show', $row['clan']) }}" class="truncate text-ink after:absolute after:inset-0 hover:text-btc-hi">{{ $row['clan']->name }}</a>
+                                <span class="grid grid-cols-[minmax(0,1fr)_36px] items-center gap-2">
+                                    <span class="block h-2 rounded-r bg-raised"><span class="block h-2 animate-fill rounded-r bg-btc" style="width: {{ $row['width'] }}"></span></span>
+                                    <b class="text-right">{{ $row['points'] }}</b>
+                                </span>
+                            </span>
+                        </li>
+                    @empty
+                        <li class="py-3 text-[13px] text-ink-2">{{ $window === 'w' ? __('No clan scored in the last 7 days.') : __('No clan scored this season yet.') }}</li>
+                    @endforelse
+                </ol>
+            </div>
+
+            <div class="flex flex-col gap-3 rounded-card bg-card px-4 py-4 lg:px-5" data-test="city-ranking">
+                <span class="flex flex-col gap-0.5">
+                    <h2 id="cities-h" class="m-0 text-[15px] font-bold">{{ __('Meetup against meetup') }}</h2>
+                    <span class="text-xs text-ink-3">{{ __('the Hashrate of all clans of a meetup city, this season') }}</span>
+                </span>
+                <ol class="m-0 flex list-none flex-col gap-1 p-0">
+                    @forelse ($cities as $index => $row)
+                        <li wire:key="city-{{ $index }}" @class(['grid grid-cols-[24px_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-2 text-[13px]', 'bg-btc-tint' => $index === 0]) data-test="city-row">
+                            <b @class(['font-display', 'text-lg text-btc' => $index === 0, 'text-ink-3' => $index > 0])>{{ $index + 1 }}</b>
+                            <span class="flex min-w-0 flex-col gap-1.5">
+                                <span class="truncate">{{ $row['city'] }} <span class="text-[11px] text-ink-3">{{ trans_choice(':count clan|:count clans', $row['clans']) }}</span></span>
+                                <span class="grid grid-cols-[minmax(0,1fr)_40px] items-center gap-2">
+                                    <span class="block h-2 rounded-r bg-raised"><span class="block h-2 animate-fill rounded-r bg-btc" style="width: {{ intdiv(100 * $row['hashrate'], $topCity) }}%"></span></span>
+                                    <b class="text-right">{{ $row['hashrate'] }}</b>
+                                </span>
+                            </span>
+                        </li>
+                    @empty
+                        <li class="py-3 text-[13px] text-ink-2">{{ __('No clan is linked to a meetup yet.') }}</li>
+                    @endforelse
+                </ol>
+            </div>
+        </section>
+    @endif
+
+    {{-- Every clan as a card; the first three load their logos eagerly (first screen at 1440). --}}
+    @if ($directory->isEmpty())
+        <x-empty-state :heading="__('No clan yet')" :text="__('Start the first one: your tag, your players, your meetup city.')" class="rounded-card bg-card px-4 py-6 lg:px-6" data-test="clans-empty">
+            <a href="{{ route('clans.create') }}" class="btn-p inline-flex h-11 items-center gap-2 rounded-md bg-btc px-5 text-sm font-bold text-on-btc hover:text-on-btc">{{ __('Start a clan') }}</a>
+        </x-empty-state>
+    @elseif ($clans->isEmpty())
+        <p class="m-0 rounded-card bg-card px-4 py-6 text-center text-[13px] text-ink-2" data-test="clans-no-match">{{ __('No clan matches your search.') }}</p>
+    @elseif ($grid->isNotEmpty())
+        <section aria-label="{{ __('All clans') }}" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 xl:grid-cols-3" data-test="clan-grid">
+            @foreach ($grid as $clan)
+                <x-clans.card :clan="$clan" :moment="$pride[$clan->id][0] ?? null" :challenge="$challenges[$clan->id] ?? null" :mine="$clan->id === $myClanId"
+                              :numbers="$live ? ['rating' => $this->stats->clanRating($clan)['rating'], 'week' => $this->stats->hashrate($clan)['week']] : null"
+                              :loading="$loop->index < 3 ? 'eager' : 'lazy'" wire:key="clan-{{ $clan->id }}" />
+            @endforeach
+        </section>
+    @endif
+
+    {{-- Before Block 0 the standings are one line; the rules fold out. --}}
+    @if (! $live)
+        <div class="flex flex-col gap-1 rounded-card bg-card px-4 py-3 lg:px-5" data-test="standings-teaser">
+            <p class="m-0 flex items-start gap-3 text-[13px] text-ink-2">
+                <x-icon name="mining" :size="16" class="mt-0.5 shrink-0 text-btc" />
+                <span data-test="rating-empty">{{ __('Clan Rating, Hashrate and the meetup ranking start at Block 0, with the first rated games.') }}</span>
+            </p>
+            <details class="group" data-test="standings-rules">
+                <summary class="inline-flex h-11 cursor-pointer items-center gap-2 text-xs text-ink-2 hover:text-ink">
+                    <span class="transition-transform duration-150 group-open:rotate-90 motion-reduce:transition-none" aria-hidden="true">▸</span>{{ __('How it counts') }}
+                </summary>
+                <ul class="m-0 flex max-w-[72ch] list-disc flex-col gap-2 pb-2 pl-5 text-xs leading-[1.6] text-ink-2" data-test="hashrate-empty">
+                    <li>{{ __('Clan Rating: the average of the 3 best solo blitz Elos in the clan. Chess has no separate team Elo: every board of a team match is a rated solo game.') }}</li>
+                    <li>{{ __('Hashrate: win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}</li>
+                    <li>{{ __('Meetup against meetup: a clan counts for the city of the portal meetup it is linked to.') }}</li>
+                    <li><a href="{{ route('rules') }}">{{ __('All league rules') }}</a></li>
+                </ul>
+            </details>
+        </div>
+    @endif
 
     {{-- The map only once a clan is linked to a meetup city: an empty placeholder map said nothing (P53). --}}
     @if (count($this->pins) > 0)
@@ -218,127 +406,4 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         </div>
     </section>
     @endif
-
-    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
-        {{-- Strongest clans: Clan Rating of the live season. --}}
-        <section aria-labelledby="cr-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="flex min-h-10 items-center justify-between gap-3 pb-3">
-                <span class="flex flex-col gap-0.5">
-                    <h2 id="cr-h" class="m-0 text-[15px] font-bold">{{ __('Strongest clans · Clan Rating') }}</h2>
-                    <span class="text-xs text-ink-3">{{ __('chess, average of the 3 best solo Elos') }}</span>
-                </span>
-                <a href="{{ route('rules') }}" class="inline-flex min-h-11 shrink-0 items-center text-xs">{{ __('How it counts') }}</a>
-            </span>
-            <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
-                <span>#</span><span>{{ __('Clan') }}</span><span class="text-right">{{ __('Clan Rating') }}</span><span class="hidden text-right lg:block">{{ __('Top 3 solo Elo') }}</span>
-            </div>
-            {{-- Also the clan directory: before Block 0 it lists every clan, without numbers. --}}
-            @if (! $this->stats->seasonLive())
-                <p class="m-0 border-b border-hairline py-3 text-[13px] text-ink-2" data-test="rating-empty">{{ __('Clan Ratings start at Block 0, with the first rated blitz games.') }}</p>
-            @endif
-            @forelse ($this->byRating as $row)
-                <a href="{{ route('clans.show', $row['clan']) }}" wire:key="cr-{{ $row['clan']->id }}"
-                   class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_72px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_96px_168px]">
-                    <span class="text-ink-3">{{ $row['rank'] }}</span>
-                    <span class="flex min-w-0 items-center gap-2.5">
-                        <x-clan-tag :clan="$row['clan']" />
-                        <span class="flex min-w-0 flex-col gap-0.5">
-                            <span class="flex min-w-0 items-center gap-2"><span class="truncate">{{ $row['clan']->name }}</span>@if ($row['member'])<x-member-badge />@endif</span>
-                            <span class="text-[11px] whitespace-nowrap text-ink-2">{{ trans_choice(':count player|:count players', $row['clan']->members->count()) }}</span>
-                        </span>
-                    </span>
-                    <span class="flex flex-col items-end gap-0.5">
-                        <b @class(['text-[15px]', 'text-ink-3' => $row['rating'] === null])>{{ $row['rating'] ?? '–' }}</b>
-                        <span class="text-[11px] whitespace-nowrap text-ink-3">{{ $row['rating'] !== null ? __('avg top 3') : ($this->stats->seasonLive() ? __('needs 3 blitz Elos') : __('starts at Block 0')) }}</span>
-                    </span>
-                    <span class="hidden text-right text-xs whitespace-nowrap text-ink-2 lg:block">{{ $this->stats->seasonLive() ? implode(' · ', [...$row['top'], ...(count($row['top']) < 3 ? [__('missing')] : [])]) : '–' }}</span>
-                </a>
-            @empty
-                <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
-            @endforelse
-            <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('Chess has no separate team Elo: every board of a team match is a rated solo game. Rocket League keeps its Elo per lineup.') }}</p>
-        </section>
-
-        {{-- Most active clans: Hashrate of the live season (ClanHashrate). --}}
-        @php($hash = $this->byHash)
-        <section aria-labelledby="hs-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-            <span class="flex min-h-10 flex-wrap items-center justify-between gap-3 pb-3">
-                <span class="flex flex-col gap-0.5">
-                    <h2 id="hs-h" class="m-0 text-[15px] font-bold">{{ __('Most active clans · Hashrate') }}</h2>
-                    <span class="text-xs text-ink-3">{{ __('points from every game, chess and Rocket League') }}</span>
-                </span>
-                {{-- The window switch names the live season; before Block 0 there is nothing to switch. --}}
-                @if ($this->stats->seasonLive())
-                <div role="group" aria-label="{{ __('Time window') }}" class="flex shrink-0 overflow-hidden rounded-md border border-edge" data-test="hashrate-window">
-                    @foreach (['s' => $this->stats->seasonName(), 'w' => __('7 days')] as $key => $label)
-                        <button type="button" wire:click="pickWindow('{{ $key }}')" aria-pressed="{{ $window === $key ? 'true' : 'false' }}"
-                                @class(['h-[42px] cursor-pointer px-3 text-[13px] lg:px-3.5', 'border-l border-edge' => $key === 'w',
-                                    'bg-btc font-bold text-on-btc' => $window === $key, 'bg-ground text-ink-2' => $window !== $key])>{{ $label }}</button>
-                    @endforeach
-                </div>
-                @endif
-            </span>
-            <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
-                <span>#</span><span>{{ __('Clan') }}</span><span>{{ __('Hashrate') }}</span><span class="hidden text-right lg:block">{{ __('Team wins') }}</span><span class="hidden text-right lg:block">{{ __('Share') }}</span>
-            </div>
-            @if (! $this->stats->seasonLive())
-                <p class="m-0 py-6 text-center text-[13px] text-ink-2" data-test="hashrate-empty">{{ __('Hashrate starts at Block 0: rated games earn points for their clan.') }}</p>
-            @else
-            @forelse ($hash['rows'] as $row)
-                <a href="{{ route('clans.show', $row['clan']) }}" wire:key="hs-{{ $row['clan']->id }}"
-                   class="tr grid h-[52px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 rounded-sm px-2 text-[13px] text-ink hover:text-ink lg:grid-cols-[24px_minmax(0,1fr)_150px_56px_64px]">
-                    <span class="text-ink-3">{{ $row['rank'] }}</span>
-                    <span class="flex min-w-0 items-center gap-2.5">
-                        <x-clan-tag :clan="$row['clan']" />
-                        <span class="truncate">{{ $row['clan']->name }}</span>
-                        @if ($row['member'])<x-member-badge />@endif
-                    </span>
-                    <span class="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-2 lg:grid-cols-[minmax(0,1fr)_36px]">
-                        <span class="block h-2 rounded-r bg-raised"><span class="block h-2 animate-fill rounded-r bg-btc" style="width: {{ $row['width'] }}"></span></span>
-                        <b class="text-right">{{ $row['points'] }}</b>
-                    </span>
-                    <span class="hidden text-right text-ink-2 lg:block">+{{ $row['bonus'] }}</span>
-                    <span class="hidden text-right text-ink-2 lg:block">{{ $row['share'] }}</span>
-                </a>
-            @empty
-                <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan matches your search.') }}</p>
-            @endforelse
-            @endif
-            <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">
-                {{ $window === 'w' ? __('Last 7 days: :n points.', ['n' => $hash['total']]) : __(':season: :n points.', ['season' => $this->stats->seasonName() ?? __('Pre-Season'), 'n' => $hash['total']]) }}
-                {{ __('Win 3, draw 2, loss 1 per rated game; a won team match or series adds +5 for the clan. Casual games don\'t count.') }}
-            </p>
-        </section>
-
-        {{-- Meetup against meetup (P10): the live season's clan hashrate per meetup city. --}}
-        @php($cities = $this->cities)
-        @php($topCity = max(1, $cities[0]['hashrate'] ?? 0))
-        <section aria-labelledby="cities-h" class="flex flex-col rounded-lg bg-card px-4 py-4 lg:col-span-2 lg:px-6 lg:py-5" data-test="city-ranking">
-            <span class="flex flex-col gap-0.5 pb-3">
-                <h2 id="cities-h" class="m-0 text-[15px] font-bold">{{ __('Meetup against meetup') }}</h2>
-                <span class="text-xs text-ink-3">{{ __('the Hashrate of all clans of a meetup city, this season') }}</span>
-            </span>
-            @if (Ladders::season() === null)
-                <p class="m-0 border-t border-hairline py-6 text-center text-[13px] text-ink-2">{{ __('The city ranking starts at Block 0, with the first rated games.') }}</p>
-            @else
-                <div class="grid h-8 grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 border-b border-hairline px-2 text-xs font-bold text-ink-2 lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,2fr)_64px]">
-                    <span>#</span><span>{{ __('City') }}</span><span>{{ __('Hashrate') }}</span><span class="hidden text-right lg:block">{{ __('Clans') }}</span>
-                </div>
-                @forelse ($cities as $row)
-                    <div wire:key="city-{{ $loop->index }}" class="grid h-[52px] grid-cols-[20px_minmax(0,1fr)_96px] items-center gap-3 px-2 text-[13px] lg:grid-cols-[24px_minmax(0,1fr)_minmax(0,2fr)_64px]" data-test="city-row">
-                        <span class="text-ink-3">{{ $loop->iteration }}</span>
-                        <span class="truncate">{{ $row['city'] }}</span>
-                        <span class="grid grid-cols-[minmax(0,1fr)_40px] items-center gap-2">
-                            <span class="block h-2 rounded-r bg-raised"><span class="block h-2 animate-fill rounded-r bg-btc" style="width: {{ intdiv(100 * $row['hashrate'], $topCity) }}%"></span></span>
-                            <b class="text-right">{{ $row['hashrate'] }}</b>
-                        </span>
-                        <span class="hidden text-right text-ink-2 lg:block">{{ $row['clans'] }}</span>
-                    </div>
-                @empty
-                    <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('No clan is linked to a meetup yet.') }}</p>
-                @endforelse
-            @endif
-            <p class="mt-3 mb-0 border-t border-hairline pt-3 text-xs leading-[1.6] text-ink-2">{{ __('A clan counts for the city of the portal meetup it is linked to.') }}</p>
-        </section>
-    </div>
 </div>

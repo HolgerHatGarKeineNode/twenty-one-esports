@@ -77,5 +77,8 @@ test('before Block 0 there is no city ranking, only its empty state', function (
 
     expect(app(ClanHashrate::class)->cities(null))->toBe([]);
 
-    $this->get(route('clans.index'))->assertOk()->assertSee(__('The city ranking starts at Block 0, with the first rated games.'));
+    // One line for all three standings, no city table.
+    $this->get(route('clans.index'))->assertOk()
+        ->assertSee(__('Clan Rating, Hashrate and the meetup ranking start at Block 0, with the first rated games.'))
+        ->assertDontSee('data-test="city-ranking"', false);
 });
