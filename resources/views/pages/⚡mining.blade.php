@@ -3,6 +3,8 @@
 use App\Models\User;
 use App\Support\PageMeta;
 use App\Support\PreSeason;
+use App\Support\Prizes\PoolInvoices;
+use App\Support\QrCode;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\Seasons;
@@ -21,7 +23,8 @@ use Livewire\Component;
  * board releases.
  *
  * Amounts are configured, mined, or received per zap; no pot ever shows a
- * wallet balance.
+ * wallet balance. The reserve is zapped through a QR code of the league's
+ * LNURL, never its Lightning address as text (P39).
  */
 new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
 {
@@ -57,6 +60,17 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
     public function zaps(): array
     {
         return app(ChainOverview::class)->reserveZaps();
+    }
+
+    /**
+     * The QR code (SVG) of the league's LNURL, the pool key's Lightning
+     * address `pool@<host>` that takes zaps into the reserve; null while
+     * that endpoint takes no payments.
+     */
+    #[Computed]
+    public function reserveZapQr(): ?string
+    {
+        return PoolInvoices::receives() ? QrCode::svg('lightning:'.PoolInvoices::lnurl(), label: __('QR code to zap the league reserve')) : null;
     }
 }; ?>
 
@@ -256,6 +270,12 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         </li>
                     @endforeach
                 </ul>
+            @endif
+            @if ($this->reserveZapQr !== null)
+                <div class="flex items-center gap-4 border-t border-hairline pt-4" data-test="reserve-zap">
+                    <div class="size-28 shrink-0 rounded-sm bg-white p-2" data-test="reserve-zap-qr">{!! $this->reserveZapQr !!}</div>
+                    <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Zap the league reserve: scan the code with a Lightning wallet or a Nostr client.') }}</p>
+                </div>
             @endif
         </section>
 

@@ -12,6 +12,7 @@ use App\Models\TrustReportDismissal;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
+use App\Support\Prizes\PoolInvoices;
 use App\Support\SeasonChain\Candidate;
 use App\Support\SeasonChain\Resolution;
 use App\Support\SeasonChain\SeasonChains;
@@ -184,6 +185,37 @@ test('/mining and AdminSeason stay clean before Block 0, through the release, an
     expect($admin->evaluate('() => window.__errors'))->toBe([])
         ->and(chainProblems($admin, [route('mining'), route('admin.season')]))->toBe([])
         ->and(app(SeasonChains::class)->chain($season->refresh())->season->changes())->toHaveCount(1);
+});
+
+test('the reserve card shows the zap QR code inside the card at 375 and 1440 px, never the address, with a quiet console', function () {
+    fakeWallet();
+    openSeason();
+    $page = chainPage(User::factory()->create(), route('mining'));
+
+    expect(chainProblems($page, [route('mining')]))->toBe([]);
+
+    $sizes = [];
+
+    foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('mining')));
+        $sizes[$width] = $page->evaluate('() => { const card = document.querySelector("[data-test=mining-reserve]"); const c = card.getBoundingClientRect();'
+            .' const q = document.querySelector("[data-test=reserve-zap-qr] svg").getBoundingClientRect();'
+            .' return {qr: [Math.round(q.left - c.left), Math.round(c.right - q.right), Math.round(q.width), Math.round(q.height)], text: card.innerText}; }');
+    }
+
+    fwrite(STDERR, "\n[mining reserve QR] left/right/width/height in the card: ".json_encode(array_map(fn (array $size): array => $size['qr'], $sizes))."\n");
+
+    foreach ($sizes as $size) {
+        expect($size['qr'][0])->toBeGreaterThanOrEqual(0)
+            ->and($size['qr'][1])->toBeGreaterThanOrEqual(0)
+            ->and($size['qr'][2])->toBeGreaterThanOrEqual(90)
+            ->and($size['qr'][2])->toBe($size['qr'][3])
+            ->and($size['text'])->not->toContain(PoolInvoices::address())
+            ->and($size['text'])->not->toContain('LNURL');
+    }
+
+    expect($page->evaluate('() => window.__errors'))->toBe([]);
 });
 
 const SUPPLY_MEASURE = <<<'JS'

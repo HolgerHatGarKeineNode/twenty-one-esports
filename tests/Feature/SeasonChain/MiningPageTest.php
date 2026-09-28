@@ -13,6 +13,8 @@ use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
+use App\Support\Prizes\PoolInvoices;
+use App\Support\QrCode;
 use App\Support\SeasonChain\Candidate;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\Resolution;
@@ -189,6 +191,26 @@ test('the reserve lists each settled zap with its payer, never a total, so no ba
         ->assertDontSee("3\u{00A0}000", false)
         ->assertDontSee("50\u{00A0}000", false);
 });
+
+test('the reserve card shows a QR code to zap the league reserve, never its address as text, and nothing without one', function (string $state) {
+    if ($state === 'live') {
+        openSeason();
+    }
+
+    // Without the league's LNURL endpoint (no receiving wallet) there is nothing to zap.
+    $this->get(route('mining'))->assertOk()->assertSee('data-test="mining-reserve"', false)->assertDontSee('data-test="reserve-zap-qr"', false);
+
+    fakeWallet();
+    $qr = QrCode::svg('lightning:'.PoolInvoices::lnurl(), label: __('QR code to zap the league reserve'));
+
+    $html = $this->get(route('mining'))->assertOk()->getContent();
+
+    expect($html)->toContain('data-test="reserve-zap-qr"')
+        ->and($html)->toContain($qr)
+        ->and(strip_tags($html))->not->toContain(PoolInvoices::address())
+        ->and(strip_tags($html))->not->toContain(PoolInvoices::lnurl())
+        ->and($html)->not->toContain('lightning:');
+})->with(['draft', 'live']);
 
 test('between seasons the page shows the ended season as it closed: no forecast, the unmined rest and the review', function () {
     $season = openSeason(['genesis_at' => now()->subDays(30)->startOfSecond(), 'ends_at' => now()->subHour()->startOfSecond()]);

@@ -3699,6 +3699,8 @@
     "No game running right now.": "Gerade läuft keine Partie.",
     "Tournaments running": "Laufende Turniere",
     "QR code to zap the stream": "QR-Code, um den Stream zu zappen",
+    "QR code to zap the league reserve": "QR-Code, um die Liga-Reserve zu zappen",
+    "Zap the league reserve: scan the code with a Lightning wallet or a Nostr client.": "Zappe die Liga-Reserve: Scanne den Code mit einer Lightning-Wallet oder einem Nostr-Client.",
     "Zap the stream": "Zap den Stream",
     "Scan the code with your Lightning wallet, or tap the bolt in your Nostr client.": "Scanne den Code mit deiner Lightning-Wallet oder tippe in deinem Nostr-Client auf den Blitz.",
     "Your browser blocks autoplay. Press play, or allow autoplay for this site in the address bar.": "Dein Browser blockiert Autoplay. Drück auf Play oder erlaube Autoplay für diese Seite in der Adressleiste.",

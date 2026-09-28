@@ -6,7 +6,6 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Prizes\PoolInvoices;
 use App\Support\Prizes\PoolRefusal;
 use App\Support\SeasonChain\LeagueKey;
-use App\Support\Wallet\WalletSetup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,7 +34,7 @@ class LnurlPayController extends Controller
 
         $key = LeagueKey::lnurl();
 
-        if ($key === null || ! WalletSetup::canReceive() || LeagueKey::poolPubkey() === null) {
+        if ($key === null || ! PoolInvoices::receives()) {
             return self::error(__('The league wallet cannot take payments yet.'));
         }
 

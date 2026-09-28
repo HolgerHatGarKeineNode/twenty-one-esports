@@ -10,6 +10,7 @@ use App\Support\PreSeason;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Wallet\NwcError;
 use App\Support\Wallet\ReceivingWallet;
+use App\Support\Wallet\WalletSetup;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Log;
 
@@ -77,6 +78,16 @@ final class PoolInvoices
             ['text/plain', 'TWENTY ONE Esports league reserve'],
             ['text/identifier', self::address()],
         ], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * Whether the league's pay endpoint takes payments: the LNURL server key,
+     * the receiving wallet and the pool key are all set up. Without them the
+     * endpoint answers with an error (LnurlPayController, fail closed).
+     */
+    public static function receives(): bool
+    {
+        return LeagueKey::lnurl() !== null && WalletSetup::canReceive() && LeagueKey::poolPubkey() !== null;
     }
 
     /** `pool@<host>`: the Lightning address of the pool key's profile. */
