@@ -85,6 +85,7 @@ const NAV_PAGES = [
     'admin.season' => ['roles' => ['admin'], 'max' => 2],
     'admin.events' => ['roles' => ['admin'], 'max' => 2],
     'admin.trust' => ['roles' => ['admin'], 'max' => 2],
+    'admin.fair-play' => ['roles' => ['admin'], 'max' => 2],
     'admin.admins' => ['roles' => ['admin'], 'max' => 2],
     'admin.organizers' => ['roles' => ['admin'], 'max' => 2],
     'gaming.edit' => ['roles' => NAV_LOGGED_IN, 'max' => 1],
