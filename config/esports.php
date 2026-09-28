@@ -986,4 +986,35 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Comments, likes and RSVPs on Nostr (P48)
+    |--------------------------------------------------------------------------
+    |
+    | NIP-22 comments (kind 1111) and NIP-25 likes (kind 7) on a tournament's
+    | calendar event, a rated game's record and a rated series' challenge, and
+    | NIP-52 RSVPs (kind 31925) to a tournament; each signed by the player on
+    | click and relayed by the league (App\Support\Comments). The browser reads
+    | them from at most `read_relays` of the league relays (`relays` above).
+    |
+    | per_hour: what the league accepts and relays per player and hour, every
+    | attempt counted. page: comments per read ("Load more" reads the next
+    | page), at most `max_shown` on one page view. max_length: characters of
+    | one comment. read_limit: reactions and RSVPs read per page view.
+    |
+    */
+
+    'comments' => [
+        'max_length' => 1000,
+        'page' => 20,
+        'max_shown' => 200,
+        'read_limit' => 500,
+        'read_relays' => 5,
+        'per_hour' => [
+            'comments' => 20,
+            'reactions' => 60,
+            'rsvps' => 10,
+        ],
+    ],
+
 ];

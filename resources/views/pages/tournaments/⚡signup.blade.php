@@ -272,6 +272,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     </div>
                 @endif
 
+                {{-- P48: "going" as a NIP-52 RSVP for calendar apps; preview first, signed on click --}}
+                <livewire:rsvp-offer :tournament="$tournament->id" :wire:key="'rsvp-in-'.$tournament->id" />
+
                 @include('pages.tournaments.partials.share', ['tournament' => $tournament, 'label' => __('Bring a friend: every spot filled is one more match'),
                     'text' => __('I’m in :tournament on TWENTY ONE Esports (:game). :spots. Join me:', ['tournament' => $tournament->name, 'game' => $gameLine, 'spots' => trans_choice(':count spot left|:count spots left', $left)])])
 
@@ -342,6 +345,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </div>
                 <p class="m-0 text-xs leading-normal text-ink-3">{{ __('You sign with your Nostr key; the league keeps the signature as your consent and never publishes it. By registering you accept the tournament rules. You can pull out until registration closes.') }}</p>
             @endif
+
+            {{-- P48: after pulling out, "not going" replaces the player's "going" RSVP; only offered to who said "going" --}}
+            @unless ($entry)
+                <livewire:rsvp-offer :tournament="$tournament->id" :wire:key="'rsvp-out-'.$tournament->id" />
+            @endunless
 
             @if ($error !== '')
                 <p class="m-0 text-[13px] text-loss" role="alert" data-test="signup-error">{{ $error }}</p>

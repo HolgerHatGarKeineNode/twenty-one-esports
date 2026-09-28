@@ -276,4 +276,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="SeriesPresenter::proofRows($match)">
         {{ $match->rated ? __('Every step of this series is a Nostr event anyone can check.') : __('A casual match publishes no events: the NIP gives casual games no match-flow events. Rated matches start at Block 0.') }}
     </x-proof>
+
+    {{-- P48: comments and likes on the series' challenge (NIP-22, NIP-25); a casual series has no league event and none --}}
+    @if ($match->challenge_event_id !== null)
+        <livewire:nostr-comments type="series" :target="(string) $match->number" :key="'comments-series-'.$match->number" />
+    @endif
 </div>

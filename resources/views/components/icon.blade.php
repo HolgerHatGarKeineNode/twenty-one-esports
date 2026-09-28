@@ -68,6 +68,8 @@
         'expand' => '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>',
         'minimize' => '<path d="M5 19h14"></path>',
         'play' => '<path d="M7 4v16l13-8z"></path>',
+        // A like on Nostr (P48, NIP-25).
+        'heart' => '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z"></path>',
         default => throw new InvalidArgumentException("Unknown icon [{$name}]."),
     };
 @endphp

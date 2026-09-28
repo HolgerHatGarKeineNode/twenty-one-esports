@@ -278,4 +278,9 @@
             @endif
         </div>
     </div>
+
+    {{-- P48: comments and likes on the league's record (NIP-22, NIP-25); a game without a record has none --}}
+    @if ($game->record_event_id !== null)
+        <livewire:nostr-comments type="game" :target="(string) $game->id" :key="'comments-game-'.$game->id" />
+    @endif
 </div>

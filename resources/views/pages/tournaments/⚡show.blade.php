@@ -641,6 +641,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         <span class="block h-full animate-fill bg-btc" style="width: {{ $places['places'] > 0 ? round($places['taken'] / $places['places'] * 100, 2) : 0 }}%"></span>
                     </div>
                 @endif
+                {{-- P48: NIP-52 RSVPs from the relays, under the sign-ups and never added to them --}}
+                <livewire:rsvp-summary :tournament="$tournament->id" :key="'rsvps-'.$tournament->id" />
             </div>
         @endif
     </section>
@@ -947,4 +949,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </details>
         @endif
     </section>
+
+    {{-- P48: comments and likes on the tournament's calendar event (NIP-22, NIP-25), read from the league relays --}}
+    @if ($published)
+        <div class="px-4 lg:px-12">
+            <livewire:nostr-comments type="tournament" :target="(string) $tournament->id" :key="'comments-'.$tournament->id" />
+        </div>
+    @endif
 </div>

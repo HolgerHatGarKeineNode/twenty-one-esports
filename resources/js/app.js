@@ -24,6 +24,8 @@ import './tournamentLanding.js';
 import './autoDecision.js';
 import './leagueTime.js';
 import './tournamentTv.js';
+// Comments, likes and RSVPs on Nostr (P48): tournament, game and match pages.
+import './nostrComments.js';
 import { dropAnswersForDetachedComponents } from './livewireDetached.js';
 
 // A Livewire answer for a component that wire:navigate already took off the page is not morphed into it.

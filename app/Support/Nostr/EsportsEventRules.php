@@ -9,6 +9,8 @@ use App\Models\Lineup;
 use App\Models\Tournament;
 use App\Support\Badges\ProfileBadges;
 use App\Support\Cards\SharePosts;
+use App\Support\Comments\NostrComments;
+use App\Support\Comments\Rsvps;
 use App\Support\SeasonChain\OpponentLists;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\Series\Ladders;
@@ -39,6 +41,10 @@ use App\Support\Tournaments\TournamentSignups;
  * 29. 1985 with `release-block-0`, an admin's release of Block 0 (P7c).
  * 36. 10008 the player's profile badges (P11, rev. 8).
  * 37. 1 a share post with a card (P11, rev. 8; mentions and one quote, P46, rev. 9.7).
+ * 38. 1111 a top-level comment (NIP-22) on a tournament, a game record or a
+ *     challenge (P48, rev. 9.9).
+ * 39. 7 a like (NIP-25) of the same (P48, rev. 9.9).
+ * 40. 31925 an RSVP (NIP-52) to a tournament (P48, rev. 9.9).
  *
  * Returns an error code or null. Signature, clock, replay and authorship are
  * checked in {@see SignedEventGate}.
@@ -75,6 +81,9 @@ final class EsportsEventRules
             TournamentSignups::CONSENT => $this->tournamentConsent($event),
             ProfileBadges::KIND => $this->profileBadges($event),
             SharePosts::KIND => $this->sharePost($event),
+            NostrComments::COMMENT => $this->comment($event),
+            NostrComments::REACTION => $this->reaction($event),
+            Rsvps::KIND => $this->rsvp($event),
             default => 'kind_not_allowed',
         };
     }
@@ -175,6 +184,120 @@ final class EsportsEventRules
             if (! $valid) {
                 return 'share_post_quote';
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * Rule 38 (rev. 9.9), a comment (1111) as the app writes it: top-level
+     * (NIP-22), so root and parent are the same item. Either an address of an
+     * addressable kind as `A` and `a` (with at most one `e`, its version) or
+     * an event id as `E` and `e`, never both and no `I`; `K` and `k` the same
+     * kind (the kind of the address); `P` and `p` the same hex pubkey (the
+     * author of the address); no `t` (no hashtags); `content` not empty and
+     * at most `esports.comments.max_length` characters. Which item it is, is
+     * the league's template ({@see NostrComments}).
+     */
+    private function comment(SignedEvent $event): ?string
+    {
+        $single = function (string $name) use ($event): ?string {
+            $tags = $event->tagsNamed($name);
+
+            return count($tags) === 1 && is_string($tags[0][0] ?? null) ? $tags[0][0] : null;
+        };
+
+        $kind = $single('K');
+        $author = $single('P');
+
+        if ($kind === null || preg_match('/^[0-9]{1,5}$/', $kind) !== 1 || $single('k') !== $kind
+            || ! NostrKeys::isHexPubkey($author) || $single('p') !== $author || $event->tagsNamed('I') !== [] || $event->tagsNamed('i') !== []) {
+            return 'comment_scope';
+        }
+
+        $address = $single('A');
+        $id = $single('E');
+
+        if ($address !== null && $event->tagsNamed('E') === []) {
+            $versions = $event->tagsNamed('e');
+
+            if (preg_match('/^(3[0-9]{4}):([0-9a-f]{64}):.+$/', $address, $parts) !== 1 || $parts[1] !== $kind || $parts[2] !== $author
+                || $single('a') !== $address || count($versions) > 1 || ($versions !== [] && preg_match('/^[0-9a-f]{64}$/', (string) ($versions[0][0] ?? '')) !== 1)) {
+                return 'comment_scope';
+            }
+        } elseif ($id !== null && $event->tagsNamed('A') === [] && $event->tagsNamed('a') === []) {
+            if (preg_match('/^[0-9a-f]{64}$/', $id) !== 1 || $single('e') !== $id) {
+                return 'comment_scope';
+            }
+        } else {
+            return 'comment_scope';
+        }
+
+        if ($event->tagsNamed('t') !== []) {
+            return 'comment_hashtag';
+        }
+
+        $length = mb_strlen(trim($event->content));
+
+        if ($length === 0 || $length > max(1, (int) config('esports.comments.max_length', 1000))) {
+            return 'comment_content';
+        }
+
+        return null;
+    }
+
+    /**
+     * Rule 39 (rev. 9.9), a like (7) as the app writes it (NIP-25): `content`
+     * `+`; exactly one `e` (an event id), one `p` (a hex pubkey), one `k` (a
+     * kind); at most one `a`, an address of that kind by that pubkey.
+     */
+    private function reaction(SignedEvent $event): ?string
+    {
+        $ids = $event->tagsNamed('e');
+        $authors = $event->tagsNamed('p');
+        $kinds = $event->tagsNamed('k');
+        $addresses = $event->tagsNamed('a');
+        $kind = (string) ($kinds[0][0] ?? '');
+        $author = $authors[0][0] ?? null;
+
+        if ($event->content !== NostrComments::LIKE || count($ids) !== 1 || count($authors) !== 1 || count($kinds) !== 1 || count($addresses) > 1
+            || preg_match('/^[0-9a-f]{64}$/', (string) ($ids[0][0] ?? '')) !== 1 || ! NostrKeys::isHexPubkey($author)
+            || preg_match('/^[0-9]{1,5}$/', $kind) !== 1) {
+            return 'reaction_shape';
+        }
+
+        if ($addresses !== [] && ! str_starts_with((string) ($addresses[0][0] ?? ''), $kind.':'.$author.':')) {
+            return 'reaction_shape';
+        }
+
+        return null;
+    }
+
+    /**
+     * Rule 40 (rev. 9.9), an RSVP (31925, NIP-52) as the app writes it:
+     * exactly one `a`, the address of a `31923`; `d` that same address, so a
+     * later answer replaces the earlier one; `status` `accepted` or
+     * `declined`; at most one `p` (a hex pubkey); no `e` (a tournament's
+     * versions change) and no `fb`; `content` empty.
+     */
+    private function rsvp(SignedEvent $event): ?string
+    {
+        $addresses = $event->tagsNamed('a');
+        $address = (string) ($addresses[0][0] ?? '');
+        $authors = $event->tagsNamed('p');
+
+        if (count($addresses) !== 1 || preg_match('/^'.Tournament::CALENDAR_EVENT.':[0-9a-f]{64}:.+$/', $address) !== 1
+            || count($event->tagsNamed('d')) !== 1 || $event->tag('d') !== $address) {
+            return 'rsvp_address';
+        }
+
+        if (count($event->tagsNamed('status')) !== 1 || ! in_array($event->tag('status'), [Rsvps::ACCEPTED, Rsvps::DECLINED], true)) {
+            return 'rsvp_status';
+        }
+
+        if (count($authors) > 1 || ($authors !== [] && ! NostrKeys::isHexPubkey($authors[0][0] ?? null))
+            || $event->tagsNamed('e') !== [] || $event->tagsNamed('fb') !== [] || $event->content !== '') {
+            return 'rsvp_shape';
         }
 
         return null;
