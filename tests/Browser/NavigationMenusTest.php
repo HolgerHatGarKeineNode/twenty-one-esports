@@ -1,10 +1,14 @@
 <?php
 
+use App\Enums\SeriesStatus;
+use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
+use App\Support\Navigation\AdminNavigation;
 use Illuminate\Support\Facades\Http;
+use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
 
@@ -260,4 +264,103 @@ test('an open challenge shows in the opponent list and replaces the send button,
     }
 
     expect($problems)->toBe([]);
+});
+
+test('the admin nav: groups on top, only the active group\'s pages below, the whole map behind one disclosure, at 375 and 1440 px in English and German', function () {
+    $admin = User::factory()->create(['name' => 'Ada Admin']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    SeriesMatch::factory()->accepted()->create(['status' => SeriesStatus::Disputed]);
+    $page = navPage($admin);
+    $problems = [];
+    $failures = [];
+
+    // Per viewport: sideways scroll, the nav, the rows, and the visible nav links as [text, height, right edge].
+    $measure = <<<'JS'
+        () => {
+            const nav = document.querySelector('[data-test=admin-nav]');
+            const vis = (el) => !!el && el.checkVisibility({ checkVisibilityCSS: true });
+            const links = [...nav.querySelectorAll('a')].filter(vis).map((a) => { const r = a.getBoundingClientRect(); return [a.innerText.trim().replace(/\s+/g, ' '), Math.round(r.height), Math.round(r.right)]; });
+            // The phone row: its height and the outer edges of what it paints (text and chevron), not of its box.
+            const summaryBox = nav.querySelector('summary').getBoundingClientRect();
+            const painted = [...nav.querySelectorAll('summary > *')].filter(vis).map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0);
+            return {
+                lang: document.documentElement.lang,
+                scroll: document.documentElement.scrollWidth,
+                client: document.documentElement.clientWidth,
+                navHeight: Math.round(nav.getBoundingClientRect().height),
+                groups: vis(nav.querySelector('[data-test=admin-nav-groups]')),
+                activeGroup: nav.querySelector('[data-test=admin-nav-groups] [aria-current=true]')?.innerText.trim() ?? null,
+                pages: [...nav.querySelectorAll('[data-test=admin-nav-pages] a')].filter(vis).map((a) => a.dataset.test),
+                current: [...nav.querySelectorAll('[aria-current=page]')].filter(vis).map((a) => a.dataset.test),
+                summary: [Math.round(summaryBox.height), Math.min(...painted.map((r) => r.left)), Math.max(...painted.map((r) => r.right))],
+                links,
+            };
+        }
+        JS;
+
+    foreach (['en', 'de'] as $locale) {
+        if ($locale === 'de') {
+            $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
+        }
+
+        // Tournaments: the longest group and page pair in English ("Tournaments / All tournaments").
+        foreach (['disputes' => 'league', 'organizers' => 'people', 'tournaments' => 'tournaments'] as $key => $group) {
+            navOpen($page, route('admin.'.$key, absolute: false), $problems);
+
+            foreach ([1440, 375, 320] as $width) {
+                $page->setViewportSize($width, 900);
+                $page->evaluate(NAV_SETTLE);
+                // The chevron turns back for 150 ms after the map closed; a turning box is wider than the chevron.
+                $page->evaluate('() => Promise.all(document.querySelector("[data-test=admin-nav]").getAnimations({ subtree: true }).map((a) => a.finished)).then(() => true)');
+                $m = $page->evaluate($measure);
+                $widest = max(array_column($m['links'], 2) ?: [0]);
+                fwrite(STDERR, "\n[admin-nav] {$locale} {$key} @{$width} ".json_encode(array_diff_key($m, ['links' => true]))." widest link right edge {$widest}");
+                $short = array_filter($m['links'], fn (array $link): bool => $link[1] < 44);
+                $ok = $m['lang'] === $locale && $m['scroll'] <= $m['client'] && $short === [] && $m['summary'][0] >= 44
+                    && $m['summary'][1] >= 16 && $m['summary'][2] <= $m['client'] - 16;
+
+                if ($width === 1440) {
+                    $expected = array_map(fn (string $page): string => 'admin-nav-'.$page, array_keys(array_filter(AdminNavigation::PAGES, fn (string $g): bool => $g === $group)));
+                    // Two rows of 44 px and the hairline; as wide as the widest group, not as all eleven pages with their labels.
+                    $ok = $ok && $m['groups'] && $m['navHeight'] <= 89 && $m['pages'] === $expected && $m['current'] === ['admin-nav-'.$key]
+                        && $m['activeGroup'] === AdminNavigation::groupLabel($group) && $widest <= 640;
+                    // An open case waits in League: seen from another group, the League tab carries the count.
+                    if ($group !== 'league') {
+                        $ok = $ok && in_array(AdminNavigation::groupLabel('league').' 1 '.__('waiting'), array_column($m['links'], 0), true);
+                    }
+                } else {
+                    $ok = $ok && ! $m['groups'] && $m['links'] === [];
+                }
+
+                if (! $ok) {
+                    $failures[] = "{$locale} {$key} @{$width}: ".json_encode($m);
+                }
+
+                if ($key === 'disputes' && $width !== 320) {
+                    navShot($page, "p17-admin-nav-{$locale}-{$width}");
+                    // The whole map opens from the one disclosure, every page a row of 44 px, and Escape closes it.
+                    $page->locator('[data-test=admin-nav-menu] summary')->click();
+                    $page->evaluate(NAV_SETTLE);
+                    $map = $page->evaluate('() => [...document.querySelectorAll("[data-test=admin-nav-menu] a")].filter((a) => a.checkVisibility()).map((a) => Math.round(a.getBoundingClientRect().height))');
+                    $fits = $page->evaluate(BrowserConsole::WIDTHS);
+                    navShot($page, "p17-admin-nav-{$locale}-{$width}-map");
+                    $page->locator('[data-test=admin-nav-menu] summary')->press('Escape');
+                    $closed = $page->evaluate('() => !document.querySelector("[data-test=admin-nav-menu]").open && document.activeElement.tagName === "SUMMARY"');
+                    if (count($map) !== count(AdminNavigation::PAGES) || min($map ?: [0]) < 44 || $fits[0] > $fits[1] || ! $closed) {
+                        $failures[] = "{$locale} map @{$width}: ".json_encode([$map, $fits, $closed]);
+                    }
+                }
+            }
+
+            foreach ($page->evaluate('() => window.__errors') as $error) {
+                $problems[] = "{$key}: {$error}";
+            }
+        }
+    }
+
+    // Positive control, same page and collector: a thrown error is caught.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("admin nav control"); }); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("admin nav control"))', 5_000);
+
+    expect($failures)->toBe([])->and($problems)->toBe([]);
 });
