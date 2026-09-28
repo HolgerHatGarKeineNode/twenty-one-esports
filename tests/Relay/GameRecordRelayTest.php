@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\GameRecords;
 use App\Support\Nostr\EsportsEventRules;
+use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Notifications\NotificationDm;
 use Tests\Support\TestSigner;
@@ -65,11 +66,28 @@ test('the league\'s NIP-64 records of a blitz and a daily game, and a player\'s 
 
 test('a notification DM (gift wrap from the notification key) is accepted by the ndak relays', function () {
     config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
-    $player = User::factory()->withPubkey((new TestSigner)->pubkey)->create();
+    $key = new TestSigner;
+    $player = User::factory()->withPubkey($key->pubkey)->create();
+
+    // P45: the player's DM relay list, published first, is what the lookup finds.
+    $list = NostrEvent::fromSigned(SignedEvent::fromInput($key->sign(10050, array_map(fn (string $relay) => ['relay', $relay], NDAK_RELAYS))));
+    app(RelayPublisher::class)->publish($list, NDAK_RELAYS);
 
     $wrap = NotificationDm::fromConfig()->send($player, 'Your move in daily chess #1', 1);
 
     expect($wrap->kind)->toBe(1059)
         ->and(RelayDelivery::query()->where('nostr_event_id', $wrap->id)->pluck('accepted', 'relay')->all())
+        ->toBe(array_fill_keys(NDAK_RELAYS, true));
+});
+
+test('P45: for a player the ndak relays know no DM relay list of, the notification DM is a NIP-04 kind 4 they accept', function () {
+    config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
+    $player = User::factory()->withPubkey((new TestSigner)->pubkey)->create();
+
+    $delivery = NotificationDm::fromConfig()->deliver($player, 'Your move in daily chess #1', 1);
+
+    expect($delivery->format)->toBe('nip04')
+        ->and($delivery->event->kind)->toBe(4)
+        ->and(RelayDelivery::query()->where('nostr_event_id', $delivery->event->id)->pluck('accepted', 'relay')->all())
         ->toBe(array_fill_keys(NDAK_RELAYS, true));
 });

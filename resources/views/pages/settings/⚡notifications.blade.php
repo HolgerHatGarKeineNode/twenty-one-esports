@@ -1,12 +1,17 @@
 <?php
 
 use App\Enums\NotificationKind;
+use App\Jobs\SendNostrDm;
 use App\Models\PushSubscription;
 use App\Models\User;
 use App\Support\Chess\ChessSettings;
+use App\Support\Notifications\Notice;
 use App\Support\Notifications\NotificationDm;
+use App\Support\Notifications\NotificationDmOptOut;
 use App\Support\Notifications\WebPush;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -47,6 +52,50 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
         abort_unless(in_array($hours, ChessSettings::REMIND_HOURS, true), 422);
 
         $this->store([...$this->settings()->toArray(), 'remindHours' => $hours]);
+    }
+
+    /**
+     * "Send a test DM" (P45): one DM from the notification key to the player,
+     * whatever the DM switch says (it is asked for), at most one a minute. The
+     * job looks up the player's DM relays afresh and leaves its outcome for
+     * testDm(); the page polls it while it is pending.
+     */
+    public function sendTestDm(): void
+    {
+        $user = $this->user();
+        abort_unless(NotificationDm::fromConfig()->isConfigured(), 422);
+
+        $key = 'dm-test-send:'.$user->id;
+
+        if (RateLimiter::tooManyAttempts($key, 1)) {
+            $this->addError('testDm', __('One test DM a minute. Wait :seconds s and try again.', ['seconds' => RateLimiter::availableIn($key)]));
+
+            return;
+        }
+
+        RateLimiter::hit($key, 60);
+        Cache::put(SendNostrDm::testResultKey($user), ['state' => 'pending', 'format' => null, 'accepted' => 0, 'asked' => 0, 'at' => now()->getTimestamp()], now()->addMinutes(SendNostrDm::TEST_RESULT_MINUTES));
+
+        $locale = $user->locale ?? (string) config('app.locale');
+        $notice = new Notice(
+            __('Test DM from TWENTY ONE esports', [], $locale),
+            __('If you can read this, league notifications reach your Nostr inbox.', [], $locale),
+            route('settings.notifications'),
+        );
+
+        SendNostrDm::dispatch($user, $notice->toDmText(NotificationDmOptOut::line($user)), null, true);
+    }
+
+    /**
+     * The outcome of the last test DM, while it is kept.
+     *
+     * @return array{state: string, format: string|null, accepted: int, asked: int, at: int}|null
+     */
+    public function testDm(): ?array
+    {
+        $result = Cache::get(SendNostrDm::testResultKey($this->user()));
+
+        return is_array($result) ? $result : null;
     }
 
     public function setPush(bool $on): void
@@ -143,6 +192,38 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
                     default => __('off · the league sends you no DM'),
                 })
                 @include('pages.settings.partials.switch', ['label' => __('Notifications by Nostr DM'), 'hint' => $dmHint, 'on' => $settings->dmOn(), 'action' => "toggle('dm')", 'test' => 'dm'])
+
+                @if ($dmReady)
+                    {{-- P45: one DM now, to see whether and how league DMs reach this player. --}}
+                    @php($testDm = $this->testDm())
+                    <div class="flex min-h-[61px] flex-wrap items-center gap-x-4 gap-y-2 border-b border-hairline py-2" data-test="test-dm"
+                         @if (($testDm['state'] ?? null) === 'pending') wire:poll.2s @endif>
+                        <span class="flex min-w-0 grow basis-48 flex-col gap-0.5">
+                            <span class="text-sm">{{ __('Test DM') }}</span>
+                            <span class="text-xs text-ink-2" role="status" data-test="test-dm-status" data-state="{{ $testDm['state'] ?? 'none' }}" data-format="{{ $testDm['format'] ?? '' }}">
+                                @if ($testDm === null)
+                                    {{ __('sends one DM to your Nostr inbox now, to check that they reach you') }}
+                                @elseif ($testDm['state'] === 'pending')
+                                    {{ __('Sending…') }}
+                                @elseif ($testDm['state'] === 'failed')
+                                    {{ __('That did not work. Please try again.') }}
+                                @elseif ($testDm['accepted'] === 0)
+                                    {{ __('No relay took it. Please try again later.') }}
+                                @elseif ($testDm['format'] === 'nip04')
+                                    {{ __('Sent as an older NIP-04 DM, because you have no DM relay list (kind 10050): :accepted of :asked relays took it. Apps that only read NIP-17 will not show it.', ['accepted' => $testDm['accepted'], 'asked' => $testDm['asked']]) }}
+                                @else
+                                    {{ __('Sent as a NIP-17 DM to your DM relays: :accepted of :asked relays took it. Look in your Nostr app.', ['accepted' => $testDm['accepted'], 'asked' => $testDm['asked']]) }}
+                                @endif
+                            </span>
+                            @error('testDm')<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                        </span>
+                        <button type="button" wire:click="sendTestDm" wire:loading.attr="disabled" wire:target="sendTestDm" data-test="send-test-dm"
+                                @disabled(($testDm['state'] ?? null) === 'pending')
+                                class="btn-w inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink disabled:cursor-wait disabled:opacity-70">
+                            <x-icon name="send" :size="16" />{{ __('Send a test DM') }}
+                        </button>
+                    </div>
+                @endif
 
                 <div class="flex min-h-[61px] items-center gap-4 py-2">
                     <span class="flex min-w-0 grow flex-col gap-0.5"><label for="remind-hours" class="text-sm">{{ __('Remind me when') }}</label><span class="text-xs text-ink-2">{{ __('are left before your move is due') }}</span></span>

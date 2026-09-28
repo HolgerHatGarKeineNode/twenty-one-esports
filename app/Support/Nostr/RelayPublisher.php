@@ -4,6 +4,8 @@ namespace App\Support\Nostr;
 
 use App\Models\NostrEvent;
 use App\Models\RelayDelivery;
+use App\Support\Wallet\PinnedStreamFactory;
+use App\Support\Wallet\RelayGuard;
 use Throwable;
 use WebSocket\Client;
 use WebSocket\Message\Text;
@@ -30,10 +32,46 @@ final class RelayPublisher
      */
     public function publish(NostrEvent $event, ?array $relays = null): array
     {
+        return $this->deliver($event, $relays ?? config('esports.relays', []), []);
+    }
+
+    /**
+     * publish() to relays a player named (a DM relay list `10050`, a NIP-65
+     * inbox): untrusted input that makes the server connect, so each goes
+     * through {@see RelayGuard} (`wss://` on 443 of a public DNS name) and the
+     * socket is pinned to the checked address. A relay the guard refuses is
+     * recorded as not accepted and never contacted. `$trusted` are the
+     * league's own configured relays, reached as they are.
+     *
+     * @param  list<string>  $untrusted
+     * @param  list<string>  $trusted
+     * @return array<string, array{accepted: bool, message: string}>
+     */
+    public function publishGuarded(NostrEvent $event, array $untrusted, array $trusted = []): array
+    {
+        $guard = app(RelayGuard::class);
+        $pins = [];
+
+        foreach (array_diff($untrusted, $trusted) as $relay) {
+            $pins[$relay] = $guard->target($relay) ?? false;
+        }
+
+        return $this->deliver($event, array_values(array_unique([...$trusted, ...$untrusted])), $pins);
+    }
+
+    /**
+     * @param  list<string>  $relays
+     * @param  array<string, array{host: string, ip: string|null}|false>  $pins  false: refused by the guard
+     * @return array<string, array{accepted: bool, message: string}>
+     */
+    private function deliver(NostrEvent $event, array $relays, array $pins): array
+    {
         $results = [];
 
-        foreach ($relays ?? config('esports.relays', []) as $relay) {
-            $results[$relay] = $this->send($relay, $event);
+        foreach ($relays as $relay) {
+            $results[$relay] = ($pins[$relay] ?? null) === false
+                ? ['accepted' => false, 'message' => 'error: relay not allowed']
+                : $this->send($relay, $event, $pins[$relay] ?? null);
 
             RelayDelivery::query()->updateOrCreate(
                 ['nostr_event_id' => $event->id, 'relay' => $relay],
@@ -45,9 +83,10 @@ final class RelayPublisher
     }
 
     /**
+     * @param  array{host: string, ip: string|null}|null  $pin  the address RelayGuard checked
      * @return array{accepted: bool, message: string}
      */
-    private function send(string $relay, NostrEvent $event): array
+    private function send(string $relay, NostrEvent $event, ?array $pin = null): array
     {
         if (preg_match('#^wss?://#', $relay) !== 1) {
             return ['accepted' => false, 'message' => 'error: not a websocket url'];
@@ -59,6 +98,11 @@ final class RelayPublisher
 
         try {
             $client = new Client($relay);
+
+            if ($pin !== null && $pin['ip'] !== null) {
+                $client->setStreamFactory(new PinnedStreamFactory($pin['host'], $pin['ip']));
+            }
+
             $client->setTimeout($timeout);
             $client->text('["EVENT",'.$event->raw.']');
 

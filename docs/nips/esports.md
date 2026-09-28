@@ -34,6 +34,8 @@ game record when a rated game ends, and a player posts the game to their own pro
 the reserve goal and a reserve balance no longer required at Block 0; **revision 9.6** (2026-09-28): the
 season settlement as the league runs it, without fees; **revision 9.7** (2026-09-29): share posts of a
 won game or series and "I'm in", which mention the opponents and quote the league's record;
+**revision 9.8** (2026-09-29): notification DMs to the player's DM relays, with NIP-04 for a player without a
+DM relay list;
 **revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
 RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data). Not
 submitted to
@@ -42,7 +44,7 @@ numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.9 and 9.10 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9 and 9.10 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
@@ -79,6 +81,29 @@ only; no ladder and no league state depends on them, and they apply from the day
 revision 9.9. The rules marked "rev. 9.10" concern opponent requests and their notification only; they change no
 event and no gate, and apply from the day a league adopts revision 9.10.
 
+### Changelog of revision 9.10 (2026-09-29)
+
+Opponent requests ([Opponent list](#opponent-list-30000-reused-from-nip-51),
+[Notifications](#notifications)). No new kind and no new tag; the opponent list stays the player's
+NIP-51 follow set, and everything below is league data.
+
+- **A request.** A player whose newest opponent list names you while yours does not name them has
+  asked you for rated games. The app shows it with what the league knows about them (when they
+  joined, finished games, trust, clan, who on your list lists them too) and offers **Accept** (the
+  ordinary signed add of the requester) and **Decline**.
+- **Opponent request notification.** A new list version that adds a player notifies that player
+  once per requester: not for a re-publish, a removal, a version signed more than a day ago (a list
+  first read from the relays), when the player lists the requester already, or after a decline. At
+  most a configured number per requester and UTC day. It is its own opt-in type and, like a clan join
+  request, goes out as a DM by default.
+- **Decline is not on Nostr.** It hides the request and stops notifications from that player, and
+  can be undone. The requester's list still names the player (it is their list), and no rated game
+  happens between the two unless the player adds them back.
+- **Refusals name the fix.** Where rated play is refused or skipped because two players do not list
+  each other (a rated challenge, its accept, the rated blitz queue), the app says so with the name
+  and offers the add, or Accept when the other lists you already, and the casual alternative. The
+  rated queue says it in counts only and names nobody: who searches right now is live presence.
+
 ### Changelog of revision 9.9 (2026-09-29)
 
 Comments, likes and RSVPs ([Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99)). No new
@@ -106,28 +131,23 @@ signed by the player's own signer only after the player saw the event and clicke
 - **The tournament's event set grows.** `{"#a":["31923:<league>:<slug>"]}` now also returns comments,
   likes and RSVPs; a reader tells them apart by kind.
 
-### Changelog of revision 9.10 (2026-09-29)
+### Changelog of revision 9.8 (2026-09-29)
 
-Opponent requests ([Opponent list](#opponent-list-30000-reused-from-nip-51),
-[Notifications](#notifications)). No new kind and no new tag; the opponent list stays the player's
-NIP-51 follow set, and everything below is league data.
+Where a notification DM goes, and a fallback for players whose client does not read NIP-17
+([Notifications](#notifications)). No new kind and no new tag.
 
-- **A request.** A player whose newest opponent list names you while yours does not name them has
-  asked you for rated games. The app shows it with what the league knows about them (when they
-  joined, finished games, trust, clan, who on your list lists them too) and offers **Accept** (the
-  ordinary signed add of the requester) and **Decline**.
-- **Opponent request notification.** A new list version that adds a player notifies that player
-  once per requester: not for a re-publish, a removal, a version signed more than a day ago (a list
-  first read from the relays), when the player lists the requester already, or after a decline. At
-  most a configured number per requester and UTC day. It is its own opt-in type and, like a clan join
-  request, goes out as a DM by default.
-- **Decline is not on Nostr.** It hides the request and stops notifications from that player, and
-  can be undone. The requester's list still names the player (it is their list), and no rated game
-  happens between the two unless the player adds them back.
-- **Refusals name the fix.** Where rated play is refused or skipped because two players do not list
-  each other (a rated challenge, its accept, the rated blitz queue), the app says so with the name
-  and offers the add, or Accept when the other lists you already, and the casual alternative. The
-  rated queue says it in counts only and names nobody: who searches right now is live presence.
+- **To the player's DM relays.** The league looks up the player's `10050` and NIP-65 list (`10002`) on
+  its profile and chat relays, and sends the gift wrap to the relays of the `10050` as well as to its
+  chat relays. Revision 4 said "to the relays of the player's `10050`"; the app sent to the chat relays
+  only.
+- **NIP-04 fallback.** If at least one relay answered the lookup and the player has no `10050`, the DM
+  is a NIP-04 kind `4` from the notification key, to the read relays of the player's `10002` and the
+  chat relays. A lookup no relay answered is not "no list": the DM stays NIP-17. NIP-04 is still
+  `unrecommended`; it is used for this one case only.
+- **Relays a player names are untrusted.** At most five of each list, `wss://` on port 443 of a public
+  DNS name, the connection pinned to the checked address; others are never contacted.
+- **Test DM.** A player can send one test DM to themselves from the notification settings, at most one
+  a minute, and sees which format went out and how many relays took it.
 
 ### Changelog of revision 9.7 (2026-09-29)
 
@@ -3369,7 +3389,19 @@ The league notifies players by Nostr DM from a dedicated **notification key**, b
 - **NIP-17, not NIP-04.** NIP-04 is marked `unrecommended` and "deprecated in favor of NIP-17"
   (`04.md`); its events show sender, recipient and time to everyone. A notification is a kind `14`
   rumor sealed by the notification key and wrapped to the player only; there is no copy to the sender.
-- **Where to.** To the relays of the player's `10050`, and to none if the player has none.
+- **Where to (rev. 9.8).** The league looks up the player's `10050` and `10002` on its profile and chat
+  relays (the newest of each, NIP-01) and remembers an answered lookup for 30 minutes. With a `10050`:
+  the gift wrap goes to its relays and to the chat relays. Without one, when at least one relay
+  answered: a NIP-04 kind `4` from the notification key with `p` (and `match`), `content` NIP-04
+  encrypted, to the read relays of the `10002` and the chat relays: the one case in which this league
+  uses NIP-04, so that a player whose client reads no NIP-17 still gets the message. It shows every
+  relay that the notification key wrote to the player at that time, nothing more. When no relay
+  answered the lookup, the gift wrap goes to the chat relays. Relays taken from a player's list are
+  untrusted: at most five per list, `wss://` on 443 of a public DNS name, the connection pinned to the
+  checked address. (Revisions 4 to 9.7: to the relays of the `10050` and to none without one; the app
+  sent to the chat relays only.)
+- **Test DM (rev. 9.8).** From the notification settings a player sends one DM to themselves (at most
+  one a minute), looked up afresh, and sees the format and how many relays took it.
 - **No replies.** The notification key publishes a kind `0` with `bot: true` (NIP-24) and the note
   that it reads no replies, and **no** `10050`: NIP-17 clients then do not send replies at all.
 - **Content.** Plain text with a link into the app and `match` for the match it is about; never lobby
@@ -3725,7 +3757,7 @@ wanted protected player events would have to accept them from their authenticate
 | 09 | deletion requests are accepted by relays but do not change league state |
 | 19, 21 | `naddr` for clans, lineups, ladders; `nevent` for matches and draws; `nostr:` links |
 | 18, 27 | the stream bot's tournament notes (kind `1`): the calendar event as `nostr:naddr1…` in `content` and a `q` tag on its address |
-| 04 | deliberately **not** used: `unrecommended`, deprecated in favor of NIP-17 |
+| 04 | `unrecommended`, deprecated in favor of NIP-17; rev. 9.8: only as the fallback of a notification DM to a player who has no DM relay list `10050` (see [Notifications](#notifications)) |
 | 17, 44, 59 | private chat and notifications: kind `14` rumors, NIP-44 sealed (`13`), gift-wrapped (`1059`); DM relay list `10050`; not the ephemeral `21059` |
 | 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind; rev. 9.9: also on a tournament (`31923` by address) and on the league's record of a rated game (`64`), top-level, see [Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99) |
 | 25 | rev. 9.9: likes (`7`, `+`) of a tournament, a game record or a challenge |

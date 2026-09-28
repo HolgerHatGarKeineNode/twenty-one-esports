@@ -65,11 +65,36 @@ class RelayReader
      */
     public function fetch(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1): array
     {
+        return $this->fetchCounted($filters, $relays, $known, $perAuthor)['events'];
+    }
+
+    /**
+     * fetch(), plus how many relays were read to EOSE: a caller that must
+     * tell "nobody has this event" from "no relay answered" (the DM relay
+     * lookup, App\Support\Notifications\DmRelays) needs the count, since a
+     * failed read and an empty one both leave no events.
+     *
+     * @param  list<array<string, mixed>>  $filters
+     * @param  list<string>|null  $relays
+     * @param  array<string, true>  $known
+     * @return array{events: list<SignedEvent>, answered: int}
+     */
+    public function fetchCounted(array $filters, ?array $relays = null, array $known = [], int $perAuthor = 1): array
+    {
         $collected = [];
+        $answered = 0;
 
         foreach ($relays ?? config('esports.relays', []) as $relay) {
+            $read = $this->read($relay, $filters, $known + $collected, $perAuthor);
+
             // A failed read (null): nothing of this relay counts this time.
-            foreach ($this->read($relay, $filters, $known + $collected, $perAuthor) ?? [] as $event) {
+            if ($read === null) {
+                continue;
+            }
+
+            $answered++;
+
+            foreach ($read as $event) {
                 $collected[$event->id] = $event;
             }
         }
@@ -86,7 +111,7 @@ class RelayReader
             }
         }
 
-        return $events;
+        return ['events' => $events, 'answered' => $answered];
     }
 
     /**
@@ -132,7 +157,12 @@ class RelayReader
      */
     private function read(string $relay, array $filters, array $skip, int $perAuthor): ?array
     {
-        if (preg_match('#^wss?://#', $relay) !== 1 || $filters === []) {
+        // Not a relay: not read (so it never counts as one that answered, fetchCounted()).
+        if (preg_match('#^wss?://#', $relay) !== 1) {
+            return null;
+        }
+
+        if ($filters === []) {
             return [];
         }
 

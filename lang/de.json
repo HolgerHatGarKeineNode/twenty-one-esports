@@ -5241,5 +5241,15 @@
     "Search casual instead": "Stattdessen casual suchen",
     ":count player in the queue lists you. Accept the request on your Opponents page and the queue can pair you.|:count players in the queue list you. Accept their requests on your Opponents page and the queue can pair you.": ":count Spieler in der Warteschlange führt dich. Nimm die Anfrage auf deiner Gegner-Seite an, dann kann die Warteschlange euch paaren.|:count Spieler in der Warteschlange führen dich. Nimm ihre Anfragen auf deiner Gegner-Seite an, dann kann die Warteschlange dich paaren.",
     "A rated game needs both of you to add the other as an opponent. Casual pairs you with anyone.": "Eine gewertete Partie braucht, dass ihr euch gegenseitig als Gegner hinzufügt. Casual paart dich mit allen.",
-    "Open your requests": "Deine Anfragen öffnen"
+    "Open your requests": "Deine Anfragen öffnen",
+    "One test DM a minute. Wait :seconds s and try again.": "Eine Test-DM pro Minute. Warte :seconds s und versuch es dann noch einmal.",
+    "Test DM from TWENTY ONE esports": "Test-DM von TWENTY ONE esports",
+    "If you can read this, league notifications reach your Nostr inbox.": "Wenn du das lesen kannst, erreichen dich die Benachrichtigungen der Liga in deinem Nostr-Postfach.",
+    "Test DM": "Test-DM",
+    "sends one DM to your Nostr inbox now, to check that they reach you": "schickt dir jetzt eine DM in dein Nostr-Postfach, damit du siehst, ob sie ankommen",
+    "Sending…": "Wird gesendet …",
+    "No relay took it. Please try again later.": "Kein Relay hat sie angenommen. Bitte versuch es später noch einmal.",
+    "Sent as an older NIP-04 DM, because you have no DM relay list (kind 10050): :accepted of :asked relays took it. Apps that only read NIP-17 will not show it.": "Als ältere NIP-04-DM gesendet, weil du keine DM-Relay-Liste (Kind 10050) hast: :accepted von :asked Relays haben sie angenommen. Apps, die nur NIP-17 lesen, zeigen sie nicht an.",
+    "Sent as a NIP-17 DM to your DM relays: :accepted of :asked relays took it. Look in your Nostr app.": "Als NIP-17-DM an deine DM-Relays gesendet: :accepted von :asked Relays haben sie angenommen. Schau in deiner Nostr-App nach.",
+    "Send a test DM": "Test-DM senden"
 }
