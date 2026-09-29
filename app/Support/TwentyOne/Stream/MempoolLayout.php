@@ -42,6 +42,14 @@ final class MempoolLayout
 
     public const LINE2_Y = 570;
 
+    /** Baselines of the small lines under a mined block: what the reward is, and each winner's share of a team's. */
+    public const LINE3_Y = 594;
+
+    public const LINE4_Y = 618;
+
+    /** Baseline of the last row: the call to act, and the legend of the games on screen after it. */
+    public const FOOT_Y = 648;
+
     /** Orange of the league (the chain's colour on the site). */
     public const BTC = '#F7931A';
 
@@ -210,25 +218,25 @@ final class MempoolLayout
                 $empty => 'Start a game and it lands here first. '.$mining,
                 default => 'Every game, played and running. '.$mining,
             }, K::MONO, 22, 1200),
-            'cta' => $season ? 'Mine the next block. Play on esports.einundzwanzig.space' : 'Your game lands here next. Play on esports.einundzwanzig.space',
+            // The site's address is in the ticker below on every slide; this row says what to do.
+            'cta' => $cta = $season ? 'Mine the next block.' : 'Your game lands here next.',
             'labels' => $labels,
             'divider' => $cols['divider'],
             'cubes' => $cubes,
-            'legend' => self::legend(array_values($legend)),
+            'legend' => self::legend(array_values($legend), 40 + K::width($cta, K::MONO, 22) + 48),
         ];
     }
 
     /**
-     * The games on screen, each a colour chip and its name, left to right as
-     * long as they fit the line.
+     * The games on screen, each a colour chip and its name, left to right
+     * after the call to act, as long as they fit the line.
      *
      * @param  list<array{name: string, colour: string}>  $games
      * @return list<array{name: string, colour: string, x: float, textX: float}>
      */
-    private static function legend(array $games): array
+    private static function legend(array $games, float $x): array
     {
         $out = [];
-        $x = 40.0;
 
         foreach ($games as $game) {
             $width = 24 + K::width($game['name'], K::MONO, 18);
@@ -298,7 +306,7 @@ final class MempoolLayout
      * The faces and the two lines under a cube.
      *
      * @param  array<string, mixed>  $item
-     * @return array{faces: list<array<string, mixed>>, vs: array{x: float, y: float}|null, line1: array{text: string, font: string, size: float}|null, line2: array{text: string, ink: string, size: float}|null}
+     * @return array{faces: list<array<string, mixed>>, vs: array{x: float, y: float}|null, extra: list<array{text: string, y: int}>, line1: array{text: string, font: string, size: float}|null, line2: array{text: string, ink: string, size: float}|null}
      */
     private static function people(string $kind, string $state, array $item, float $x, string $id): array
     {
@@ -307,9 +315,9 @@ final class MempoolLayout
 
         if (str_starts_with($kind, 'ghost')) {
             return match ($kind) {
-                'ghost-block' => ['faces' => [self::seat($x, $id.'s', self::BTC)], 'vs' => null, 'line1' => ['text' => 'Next block', 'font' => K::DISPLAY, 'size' => 22], 'line2' => ['text' => 'Win a rated game', 'ink' => self::BTC, 'size' => 18]],
-                'ghost-game' => ['faces' => [self::seat($x, $id.'s', '#6B6B72')], 'vs' => null, 'line1' => ['text' => 'Your game', 'font' => K::DISPLAY, 'size' => 22], 'line2' => ['text' => 'Start one now', 'ink' => self::MUTED, 'size' => 18]],
-                default => ['faces' => [], 'vs' => null, 'line1' => null, 'line2' => null],
+                'ghost-block' => ['faces' => [self::seat($x, $id.'s', self::BTC)], 'vs' => null, 'extra' => [], 'line1' => ['text' => 'Next block', 'font' => K::DISPLAY, 'size' => 22], 'line2' => ['text' => 'Win a rated game', 'ink' => self::BTC, 'size' => 18]],
+                'ghost-game' => ['faces' => [self::seat($x, $id.'s', '#6B6B72')], 'vs' => null, 'extra' => [], 'line1' => ['text' => 'Your game', 'font' => K::DISPLAY, 'size' => 22], 'line2' => ['text' => 'Start one now', 'ink' => self::MUTED, 'size' => 18]],
+                default => ['faces' => [], 'vs' => null, 'extra' => [], 'line1' => null, 'line2' => null],
             };
         }
 
@@ -329,13 +337,19 @@ final class MempoolLayout
             $more = count($sides) > 1 ? ' +'.(count($sides) - 1) : '';
             $name = K::name((string) $first, 'Winner', 22, $max - K::width($more, K::DISPLAY, 22) * 1.04);
             $reward = (int) ($item['reward'] ?? 0);
+            $perPlayer = (int) ($item['perPlayer'] ?? 0);
 
             return [
                 'faces' => $faces,
                 'vs' => null,
                 'line1' => ['text' => $name['text'].$more, 'font' => $name['font'], 'size' => 22],
-                // The block's reward as /mining lists it; nothing when the block carries none.
+                // The block's reward as /mining lists it, named as such; a team's share per winner under it. Nothing when the block carries none.
                 'line2' => $reward > 0 ? ['text' => K::fit(K::sats($reward).' sats', K::MONO, 20, $max), 'ink' => self::BTC, 'size' => 20] : null,
+                'extra' => match (true) {
+                    $reward <= 0 => [],
+                    $team && $perPlayer > 0 => [['text' => 'block reward', 'y' => self::LINE3_Y], ['text' => K::fit(K::sats($perPlayer).' sats each', K::MONO, 16, $max), 'y' => self::LINE4_Y]],
+                    default => [['text' => 'block reward', 'y' => self::LINE3_Y]],
+                },
             ];
         }
 
@@ -360,6 +374,7 @@ final class MempoolLayout
                     self::face($loser, $x + 86, self::SIDES_Y + 32, 40, $id.'l', null, null),
                 ],
                 'vs' => null,
+                'extra' => [],
                 'line1' => ['text' => $name['text'], 'font' => $name['font'], 'size' => 22],
                 'line2' => ['text' => K::fit('beat '.K::clean((string) ($loser['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
             ];
@@ -373,6 +388,7 @@ final class MempoolLayout
                 self::face($b, $x + 104, self::SIDES_Y + 16, 56, $id.'b', null, null),
             ],
             'vs' => ['x' => $x + 80, 'y' => self::SIDES_Y + 50],
+            'extra' => [],
             'line1' => ['text' => $name['text'], 'font' => $name['font'], 'size' => 22],
             'line2' => ['text' => K::fit('vs '.K::clean((string) ($b['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
         ];

@@ -10,7 +10,7 @@ namespace App\Support\TwentyOne\Stream;
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
  * the same look when two or more games run, then the EVERY_ROUND teasers
- * (sats to win, casual cups, a player's pride moment), then TEASERS from the pool of twelve,
+ * (sats to win, casual cups or the mempool, a player's pride moment), then TEASERS from the pool of eleven,
  * continuing where the last round stopped. Without games a round is the
  * teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
@@ -68,18 +68,18 @@ final class RotationPlanner
 
     public const LOOKS = ['a', 'b', 'c'];
 
-    /** The pool, in turn; m1 (last, so the first rounds keep their order) is the mempool of every game (MempoolSlides). */
-    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4', 'm1'];
+    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4'];
 
     /**
      * Teasers in every round, before the pool's: one of each group, the groups
      * taking turns from round to round: the sats to win (all pots d1, the
-     * biggest pot's prizes e4), the casual cups (d2), a player named for what
+     * biggest pot's prizes e4), the casual cups (d2) or the mempool of every
+     * game (m1, MempoolSlides) every second round, a player named for what
      * they did (latest win e1, climbers e2, new sign-ups e3, the block a win
      * mined e5, the strongest across all games e6, rank-ups e7, win streaks
      * e8, the season's payouts e9).
      */
-    public const EVERY_ROUND = [['d1', 'e4'], ['d2'], ['e1', 'e2', 'e3', 'e5', 'e6', 'e7', 'e8', 'e9']];
+    public const EVERY_ROUND = [['d1', 'e4'], ['d2', 'm1'], ['e1', 'e2', 'e3', 'e5', 'e6', 'e7', 'e8', 'e9']];
 
     /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes, block mined, strongest, rank-ups, streaks, payouts. */
     public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9'];

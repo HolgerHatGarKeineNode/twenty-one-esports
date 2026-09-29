@@ -90,10 +90,13 @@
 @if ($cube['vs'])<text x="{{ $cube['vs']['x'] }}" y="{{ $cube['vs']['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0" text-anchor="middle">vs</text>@endif
 @if ($cube['line1'])<text data-unit="line1-{{ $id }}" data-box="{{ $x - 1 }} {{ L::LINE1_Y - 26 }} {{ $x + L::COL }} {{ L::LINE1_Y + 8 }}" x="{{ $x }}" y="{{ L::LINE1_Y }}" font-family="{{ $cube['line1']['font'] }}" font-weight="800" font-size="{{ $cube['line1']['size'] }}" fill="#FFFFFF">{{ $cube['line1']['text'] }}</text>@endif
 @if ($cube['line2'])<text data-unit="line2-{{ $id }}" data-box="{{ $x - 1 }} {{ L::LINE2_Y - 20 }} {{ $x + L::COL }} {{ L::LINE2_Y + 6 }}" x="{{ $x }}" y="{{ L::LINE2_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $cube['line2']['size'] }}" fill="{{ $cube['line2']['ink'] }}">{{ $cube['line2']['text'] }}</text>@endif
+@foreach ($cube['extra'] as $j => $line)
+<text data-unit="line{{ $j + 3 }}-{{ $id }}" data-box="{{ $x - 1 }} {{ $line['y'] - 16 }} {{ $x + L::COL }} {{ $line['y'] + 5 }}" x="{{ $x }}" y="{{ $line['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0">{{ $line['text'] }}</text>
+@endforeach
 @endforeach
 @foreach ($lay['legend'] as $i => $key)
-<rect x="{{ $key['x'] }}" y="{{ 597 }}" width="16" height="16" rx="3" fill="{{ $key['colour'] }}"/>
-<text data-unit="legend-{{ $i }}" data-box="{{ $key['textX'] - 1 }} 594 {{ $key['textX'] + mb_strlen($key['name']) * 10.8 + 2 }} 618" x="{{ $key['textX'] }}" y="{{ 611 }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $key['name'] }}</text>
+<rect x="{{ $key['x'] }}" y="{{ L::FOOT_Y - 14 }}" width="16" height="16" rx="3" fill="{{ $key['colour'] }}"/>
+<text data-unit="legend-{{ $i }}" data-box="{{ $key['textX'] - 1 }} {{ L::FOOT_Y - 17 }} {{ $key['textX'] + mb_strlen($key['name']) * 10.8 + 2 }} {{ L::FOOT_Y + 6 }}" x="{{ $key['textX'] }}" y="{{ L::FOOT_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $key['name'] }}</text>
 @endforeach
-<text data-unit="cta" data-box="39 628 1241 656" x="40" y="648" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#FFFFFF">{{ $lay['cta'] }}</text>
+<text data-unit="cta" data-box="39 {{ L::FOOT_Y - 20 }} {{ $lay['legend'][0]['x'] ?? 1241 }} {{ L::FOOT_Y + 8 }}" x="40" y="{{ L::FOOT_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#FFFFFF">{{ $lay['cta'] }}</text>
 </svg>

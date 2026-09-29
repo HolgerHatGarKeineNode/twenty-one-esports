@@ -245,6 +245,7 @@ class MempoolSlides
                 'mode' => self::modeLabel($row->game, $row->mode),
                 'height' => (int) $row->height,
                 'reward' => max(0, (int) $row->reward),
+                'perPlayer' => max(0, (int) $row->reward_per_player),
                 'when' => $row->attested_at->diffForHumans(['short' => true]),
                 'sides' => $winners,
             ];

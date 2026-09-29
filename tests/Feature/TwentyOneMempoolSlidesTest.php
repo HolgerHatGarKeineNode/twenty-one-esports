@@ -113,11 +113,14 @@ test('while a season runs the slide shows its mined blocks with height, reward a
         ->and(array_column($data['blocks'][1]['sides'], 'name'))->toBe(['Bob', 'Cat'])
         ->and($data['finished'])->toBe([])
         ->and(array_column($data['running'], 'state'))->toBe(['live'])
-        ->and($svg)->toContain('Pre-Season chain', 'Block 811', 'Block 812', '2,100 sats', '4,200 sats', '>Ada<', 'Bob +1', '>Mempool<', 'move 11')
+        ->and($svg)->toContain('Pre-Season chain', 'Block 811', 'Block 812', '2,100 sats<', '4,200 sats<', '>block reward<', '>2,100 sats each<', '>Ada<', 'Bob +1', '>Mempool<', 'move 11')
         ->not->toContain('Block 813')
         ->not->toContain('9,999')
         ->not->toContain('Block 814')
-        ->not->toContain('7,777');
+        ->not->toContain('7,777')
+        // The total is named the block's reward; only the team block adds each winner's share.
+        ->and(substr_count($svg, '>block reward<'))->toBe(2)
+        ->and(substr_count($svg, ' sats each<'))->toBe(1);
 });
 
 test('an empty mempool invites to play, casual and in a season', function () {

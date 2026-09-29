@@ -36,10 +36,10 @@ function planner(float $loopSeconds = 30): RotationPlanner
 test('one blitz game: a 60 s match per round, looks A B C, no gallery, teasers in turn', function () {
     $log = rotation(planner(), 3 * 132, fn () => [['id' => 7, 'blitz' => true]]);
 
-    // Every round: sats to win (d1, e4 in turn), casual cups, a pride moment (e1, e2, e3 in turn), then three from the pool.
+    // Every round: sats to win (d1, e4 in turn), casual cups or the mempool (d2, m1 in turn), a pride moment (e1, e2, e3 in turn), then three from the pool.
     expect($log)->toBe([
         '0 match a1 #7', '60 teaser d1', '72 teaser d2', '84 teaser e1', '96 teaser a3', '108 teaser a4', '120 teaser a5',
-        '132 match b1 #7', '192 teaser e4', '204 teaser d2', '216 teaser e2', '228 teaser b3', '240 teaser b4', '252 teaser b5',
+        '132 match b1 #7', '192 teaser e4', '204 teaser m1', '216 teaser e2', '228 teaser b3', '240 teaser b4', '252 teaser b5',
         '264 match c1 #7', '324 teaser d1', '336 teaser d2', '348 teaser e3', '360 teaser c3', '372 teaser c4', '384 teaser c5',
     ]);
 });
@@ -52,7 +52,7 @@ test('three games: the match takes them in turn, the gallery follows in the same
     expect($log)->toBe([
         '0 match a1 #1', '60 gallery a2', '80 teaser d1', '92 teaser d2', '104 teaser e1', '116 teaser a3', '128 teaser a4', '140 teaser a5',
         // A daily game's match is 45 s.
-        '152 match b1 #2', '197 gallery b2', '217 teaser e4', '229 teaser d2', '241 teaser e2', '253 teaser b3', '265 teaser b4', '277 teaser b5',
+        '152 match b1 #2', '197 gallery b2', '217 teaser e4', '229 teaser m1', '241 teaser e2', '253 teaser b3', '265 teaser b4', '277 teaser b5',
         '289 match c1 #3', '334 gallery c2', '354 teaser d1', '366 teaser d2', '378 teaser e3', '390 teaser c3', '402 teaser c4', '414 teaser c5',
         '426 match a1 #1',
     ]);
@@ -63,7 +63,7 @@ test('without games: the loop every third round, the first one included, teasers
 
     expect($log)->toBe([
         '0 loop -', '30 teaser d1', '42 teaser d2', '54 teaser e1', '66 teaser a3', '78 teaser a4', '90 teaser a5',
-        '102 teaser e4', '114 teaser d2', '126 teaser e2', '138 teaser b3', '150 teaser b4', '162 teaser b5',
+        '102 teaser e4', '114 teaser m1', '126 teaser e2', '138 teaser b3', '150 teaser b4', '162 teaser b5',
         '174 loop -', '204 teaser d1', '216 teaser d2', '228 teaser e3', '240 teaser c3', '252 teaser c4', '264 teaser c5',
         '276 teaser e4',
     ]);
@@ -101,7 +101,7 @@ test('an upcoming tournament comes in every round with games: its hero, bracket 
         '0 match a1 #1', '60 gallery a2', '80 tournament ta1 @9', '95 tournament ta2 @9', '110 tournament ta3 @9',
         '125 teaser d1', '137 teaser d2', '149 teaser e1', '161 teaser a3', '173 teaser a4', '185 teaser a5',
         '197 match b1 #2', '257 gallery b2', '277 tournament tb1 @9', '292 tournament tb2 @9', '307 tournament tb3 @9',
-        '322 teaser e4', '334 teaser d2', '346 teaser e2', '358 teaser b3', '370 teaser b4', '382 teaser b5',
+        '322 teaser e4', '334 teaser m1', '346 teaser e2', '358 teaser b3', '370 teaser b4', '382 teaser b5',
         '394 match c1 #1',
     ]);
 });
@@ -112,7 +112,7 @@ test('without games a tournament round is hero, bracket, how it runs, pots, cups
     expect($log)->toBe([
         '0 loop -',
         '30 tournament ta1 @9', '45 tournament ta2 @9', '60 tournament ta3 @9', '75 teaser d1', '87 teaser d2', '99 teaser e1', '111 teaser a3',
-        '123 tournament tb1 @9', '138 tournament tb2 @9', '153 tournament tb3 @9', '168 teaser e4', '180 teaser d2', '192 teaser e2', '204 teaser a4',
+        '123 tournament tb1 @9', '138 tournament tb2 @9', '153 tournament tb3 @9', '168 teaser e4', '180 teaser m1', '192 teaser e2', '204 teaser a4',
         '216 loop -',
         '246 tournament tc1 @9', '261 tournament tc2 @9', '276 tournament tc3 @9', '291 teaser d1', '303 teaser d2', '315 teaser e3', '327 teaser a5',
         '339 tournament ta1 @9',
@@ -136,13 +136,16 @@ test('a tournament that closes ends its slide at once and its bracket is skipped
 
     expect($log)->toBe([
         '0 loop -', '30 tournament ta1 @9', '40 teaser d1', '52 teaser d2', '64 teaser e1', '76 teaser a3',
-        '88 teaser e4', '100 teaser d2', '112 teaser e2', '124 teaser a4', '136 teaser a5', '148 teaser b3', '160 loop -',
+        '88 teaser e4', '100 teaser m1', '112 teaser e2', '124 teaser a4', '136 teaser a5', '148 teaser b3', '160 loop -',
     ]);
 });
 
-test('the mempool slide (m1) takes its turn in the teaser pool, after the eleven before it', function () {
+test('the mempool slide (m1) comes every second round, in turn with the casual cups, and never from the pool', function () {
     $log = rotation(planner(), 4 * 132, fn () => [['id' => 7, 'blitz' => true]]);
+    $second = array_values(array_filter($log, fn (string $line): bool => str_ends_with($line, 'teaser d2') || str_ends_with($line, 'teaser m1')));
 
-    expect(array_slice($log, 21))->toBe(['396 match a1 #7', '456 teaser e4', '468 teaser d2', '480 teaser e1', '492 teaser d3', '504 teaser d4', '516 teaser m1'])
+    // One of the two right after the sats to win, every round: cups, mempool, cups, mempool.
+    expect($second)->toBe(['72 teaser d2', '204 teaser m1', '336 teaser d2', '468 teaser m1'])
+        ->and(RotationPlanner::TEASERS)->not->toContain('m1')
         ->and(RotationPlanner::VIEWS['m1'])->toBe('stream.rotation.m1-mempool');
 });
