@@ -3,6 +3,7 @@
 use App\Games\Chess;
 use App\Games\EaSportsFc26;
 use App\Games\EaSportsFc27;
+use App\Games\NineMensMorris;
 use App\Games\RocketLeague;
 
 return [
@@ -199,7 +200,7 @@ return [
         'enabled' => (bool) env('ESPORTS_BOARD_GAMES', false),
         'first_move_seconds' => 30,
         'games' => [
-            'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => null],
+            'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => null],
         ],
     ],

@@ -6,7 +6,9 @@ use App\Enums\TournamentFormat;
 use App\Games\GameKind;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
+use App\Games\NineMensMorris;
 use App\Models\Tournament;
+use App\Support\Board\NineMensMorrisRules;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
 use App\Support\PreSeason;
@@ -49,6 +51,7 @@ final class RulesPage
             self::games(),
             self::casual(),
             self::chess(),
+            ...self::nineMensMorris(),
             self::series(),
             self::tournaments(),
             self::cups(),
@@ -272,6 +275,39 @@ final class RulesPage
             ],
             'links' => [[__('Chess'), route('chess.lobby')]],
         ];
+    }
+
+    /**
+     * Nine men's morris (plan "Mühle und Dame", P3), only while it is
+     * switched on: the rules of NineMensMorrisRules, its numbers read from there.
+     *
+     * @return list<Section>
+     */
+    private static function nineMensMorris(): array
+    {
+        if (app(GameRegistry::class)->find(NineMensMorris::SLUG) === null) {
+            return [];
+        }
+
+        return [[
+            'id' => 'nine-mens-morris',
+            'title' => GameNames::game(NineMensMorris::SLUG),
+            'lead' => __('Nine men\'s morris, blitz 5+3 live. The server checks every move.'),
+            'facts' => [
+                [__('Men per side'), (string) NineMensMorrisRules::MEN],
+                [__('Flying with'), (string) NineMensMorrisRules::FLYING_MEN],
+                [__('Moves each without a mill to a draw'), (string) intdiv(NineMensMorrisRules::QUIET_PLY_LIMIT, 2)],
+                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+            ],
+            'items' => [
+                __('White places first. Each side places its :men men one by one on empty points, then moves a man along a line to a neighbouring empty point.', ['men' => NineMensMorrisRules::MEN]),
+                __('A side down to :men men flies: a man may move to any empty point.', ['men' => NineMensMorrisRules::FLYING_MEN]),
+                __('Three men of one side on a line are a mill. Closing a mill removes one man of the other side, from a mill only when all its men stand in mills. Closing two mills at once removes one man.'),
+                __('A side left with two men loses, and so does a side that cannot move.'),
+                __('The same position a third time is a draw, and so are :moves moves each without a mill.', ['moves' => intdiv(NineMensMorrisRules::QUIET_PLY_LIMIT, 2)]),
+                __('To move, click your man and then the point. After a mill, click the man you remove.'),
+            ],
+        ]];
     }
 
     /**

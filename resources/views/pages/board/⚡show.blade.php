@@ -5,6 +5,7 @@ use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\GameNames;
 use Livewire\Attributes\Json;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -40,7 +41,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__(':game: :white vs :black', [
-            'game' => app(GameRegistry::class)->name($this->boardGame->game),
+            'game' => GameNames::game($this->boardGame->game),
             'white' => $this->name('w'),
             'black' => $this->name('b'),
         ]));
@@ -184,7 +185,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
         {{-- Title row --}}
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ app(GameRegistry::class)->name($boardGame->game) }}</h1>
+            <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ GameNames::game($boardGame->game) }}</h1>
             <span class="grow"></span>
             <span role="status" class="flex h-[34px] items-center gap-2 rounded-md px-3 text-[13px]"
                   :class="connection === 'connected' ? 'bg-[#122016] text-win' : 'bg-[#241D10] text-btc-hi'">

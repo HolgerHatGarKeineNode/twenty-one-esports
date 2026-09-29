@@ -5402,5 +5402,19 @@
     "This browser's push service cannot be reached from here: its address must be https on a public host.": "Der Push-Dienst dieses Browsers ist von hier aus nicht erreichbar: seine Adresse muss https auf einem öffentlichen Host sein.",
     "Search a held name": "Gesperrten Namen suchen",
     ":game: :white vs :black": ":game: :white gegen :black",
-    "Game board": "Spielbrett"
+    "Game board": "Spielbrett",
+    "Nine Men's Morris": "Mühle",
+    "Down to two men": "Nur noch zwei Steine",
+    "No move left": "Kein Zug mehr möglich",
+    "Fifty moves each without a mill": "Fünfzig Züge je Seite ohne Mühle",
+    "Nine men's morris, blitz 5+3 live. The server checks every move.": "Mühle, Blitz 5+3 live. Der Server prüft jeden Zug.",
+    "Men per side": "Steine je Seite",
+    "Flying with": "Springen ab",
+    "Moves each without a mill to a draw": "Züge je Seite ohne Mühle bis Remis",
+    "White places first. Each side places its :men men one by one on empty points, then moves a man along a line to a neighbouring empty point.": "Weiß setzt zuerst. Jede Seite setzt ihre :men Steine einzeln auf freie Punkte und zieht danach einen Stein entlang einer Linie auf einen freien Nachbarpunkt.",
+    "A side down to :men men flies: a man may move to any empty point.": "Eine Seite mit nur noch :men Steinen springt: ein Stein darf auf jeden freien Punkt.",
+    "Three men of one side on a line are a mill. Closing a mill removes one man of the other side, from a mill only when all its men stand in mills. Closing two mills at once removes one man.": "Drei Steine einer Seite auf einer Linie sind eine Mühle. Wer eine Mühle schließt, nimmt einen Stein der Gegenseite, aus einer Mühle nur, wenn alle ihre Steine in Mühlen stehen. Wer zwei Mühlen auf einmal schließt, nimmt einen Stein.",
+    "A side left with two men loses, and so does a side that cannot move.": "Wer nur noch zwei Steine hat, verliert, ebenso wer nicht mehr ziehen kann.",
+    "The same position a third time is a draw, and so are :moves moves each without a mill.": "Dieselbe Stellung zum dritten Mal ist Remis, ebenso :moves Züge je Seite ohne Mühle.",
+    "To move, click your man and then the point. After a mill, click the man you remove.": "Zum Ziehen erst den eigenen Stein, dann den Punkt anklicken. Nach einer Mühle den Stein anklicken, den du nimmst."
 }
