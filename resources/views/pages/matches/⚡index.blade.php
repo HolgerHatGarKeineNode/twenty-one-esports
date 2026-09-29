@@ -1,8 +1,11 @@
 <?php
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
@@ -20,11 +23,14 @@ use Livewire\Component;
 use Livewire\WithPagination;
 
 /*
- * Matches, 1:1 from Matches.dc.html: the block strip over the latest series,
- * filters (game, clan, status) and the table. Rocket League series and chess
- * games (blitz and daily) share the table; the Game filter narrows it. Chess
- * games only know "live" and "done" (a chess game starts when it is created);
- * every row carries its league match number, one sequence for both (P7b).
+ * Matches, from Matches.dc.html: the mempool strip over the latest matches of
+ * every game, filters (game, clan, status) and the table. Series (Rocket
+ * League, EA Sports FC), chess games (blitz and daily) and the board games
+ * switched on (nine men's morris, checkers; plan "Mempool-Streifen", P2)
+ * share the table; the Game filter narrows it. Chess and board games only
+ * know "live" and "done" (they start when they are created). Series, chess
+ * and rated board games carry their league match number, one sequence
+ * (P7b); a casual board game has none.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -59,20 +65,37 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     }
 
     /**
-     * A board game has no matches here before P5 of plan "Mühle und Dame":
-     * its filter from the address shows all games, never the chess list.
+     * A game filter from the address that the table cannot show (unknown, or
+     * a board game switched off or without its route) shows all games.
      */
     public function mount(): void
     {
-        if (app(GameRegistry::class)->isBoard($this->game)) {
-            $this->game = 'all';
-        }
+        $this->game = $this->listable($this->game) ? $this->game : 'all';
     }
 
     public function pickGame(string $game): void
     {
-        $this->game = $game === 'all' || (app(GameRegistry::class)->find($game) !== null && ! app(GameRegistry::class)->isBoard($game)) ? $game : 'all';
+        $this->game = $this->listable($game) ? $game : 'all';
         $this->resetPage();
+    }
+
+    /**
+     * The games of the filter: every registered game, the board games only
+     * while their page is routed (App\Support\Matches\MempoolStrip::boardSlugs()).
+     *
+     * @return list<string>
+     */
+    private function gameFilters(): array
+    {
+        $registry = app(GameRegistry::class);
+        $boards = MempoolStrip::boardSlugs();
+
+        return array_values(array_filter(array_keys($registry->all()), fn (string $slug): bool => ! $registry->isBoard($slug) || in_array($slug, $boards, true)));
+    }
+
+    private function listable(string $game): bool
+    {
+        return $game === 'all' || in_array($game, $this->gameFilters(), true);
     }
 
     public function pickStatus(string $status): void
@@ -153,7 +176,50 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
      */
     private function listsChess(string $status): bool
     {
-        return ($this->game === 'all' || ! app(GameRegistry::class)->isSeries($this->game)) && $this->chessStatuses($status) !== [];
+        return ($this->game === 'all' || app(GameRegistry::class)->find($this->game)?->kind() === GameKind::Chess) && $this->chessStatuses($status) !== [];
+    }
+
+    /**
+     * The board games the table lists under the game filter: all routed ones,
+     * the chosen one, or none.
+     *
+     * @return list<string>
+     */
+    private function listedBoards(): array
+    {
+        $boards = MempoolStrip::boardSlugs();
+
+        return $this->game === 'all' ? $boards : array_values(array_intersect($boards, [$this->game]));
+    }
+
+    /**
+     * Whether board games can show under these filters: as chess, they know
+     * only "live" and "done".
+     */
+    private function listsBoards(string $status): bool
+    {
+        return $this->listedBoards() !== [] && $this->chessStatuses($status) !== [];
+    }
+
+    /**
+     * @param  Builder<BoardGame>  $query
+     * @return Builder<BoardGame>
+     */
+    private function filteredBoards(Builder $query, string $status): Builder
+    {
+        $clan = $this->selectedClan;
+        $statuses = match ($status) {
+            'live' => [BoardGameStatus::Active],
+            'done' => [BoardGameStatus::Finished, BoardGameStatus::Aborted],
+            default => null,
+        };
+
+        return $query
+            ->whereIn('game', $this->listedBoards())
+            ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
+                ->whereHas('white.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))
+                ->orWhereHas('black.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))))
+            ->when($statuses !== null, fn (Builder $query) => $query->whereIn('status', $statuses));
     }
 
     /**
@@ -166,9 +232,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
     /**
      * Rows of the table, newest first: `series` rows carry a SeriesMatch,
-     * `chess` rows a ChessGame.
+     * `chess` rows a ChessGame, `board` rows a BoardGame.
      *
-     * @return LengthAwarePaginator<int, array{type: 'series'|'chess', model: SeriesMatch|ChessGame}>
+     * @return LengthAwarePaginator<int, array{type: 'series'|'chess'|'board', model: SeriesMatch|ChessGame|BoardGame}>
      */
     #[Computed]
     public function matches(): LengthAwarePaginator
@@ -178,11 +244,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $take = $page * $perPage;
         $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
+        $boards = $this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $total = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
-            + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0);
+            + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0)
+            + ($this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query(), $this->status)->count() : 0);
 
         $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
             ->concat($chess->map(fn (ChessGame $game) => ['type' => 'chess', 'model' => $game]))
+            ->concat($boards->map(fn (BoardGame $game) => ['type' => 'board', 'model' => $game]))
             ->sortByDesc(fn (array $row) => $row['model']->created_at)
             ->values()
             ->slice(($page - 1) * $perPage, $perPage)
@@ -202,7 +271,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         foreach (array_keys($this->statusFilters()) as $status) {
             if ($status !== 'all') {
                 $counts[$status] = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
-                    + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0);
+                    + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0)
+                    + ($this->listsBoards($status) ? $this->filteredBoards(BoardGame::query(), $status)->count() : 0);
             }
         }
 
@@ -236,6 +306,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $labels = SeriesPresenter::statusLabels();
     $strip = $this->strip;
     $filterBtn = 'h-[42px] shrink-0 cursor-pointer border-0 px-3.5 text-[13px] whitespace-nowrap';
+    $gameFilters = array_intersect_key(app(GameRegistry::class)->all(), array_flip($this->gameFilters()));
 @endphp
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
@@ -251,20 +322,20 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-3">
                 <div class="flex items-center gap-2">
                     <label for="f-game-select" id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</label>
-                    {{-- Below sm a select (five buttons do not fit a phone), from sm the buttons: short labels (RL, FC27) below xl. --}}
+                    {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, Morris) below xl, cover and full name from xl; seven buttons with covers overflowed 640 px (754 px document). --}}
                     <select id="f-game-select" wire:change="pickGame($event.target.value)" data-test="game-filter-select"
                             class="h-11 w-[200px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden">
                         <option value="all" @selected($game === 'all')>{{ __('All') }}</option>
-                        @foreach (array_diff_key(app(GameRegistry::class)->all(), app(GameRegistry::class)->boards()) as $key => $option)
+                        @foreach ($gameFilters as $key => $option)
                             <option value="{{ $key }}" @selected($game === $key)>{{ GameNames::game($key) }}</option>
                         @endforeach
                     </select>
                     <div role="group" aria-labelledby="f-game" class="flex max-w-full overflow-hidden rounded-md border border-line max-sm:hidden">
                         <button type="button" wire:click="pickGame('all')" aria-pressed="{{ $game === 'all' ? 'true' : 'false' }}" data-test="game-all"
                                 @class([$filterBtn, 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
-                        @foreach (array_diff_key(app(GameRegistry::class)->all(), app(GameRegistry::class)->boards()) as $key => $option)
+                        @foreach ($gameFilters as $key => $option)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}" aria-label="{{ GameNames::game($key) }}"
-                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-sm:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
+                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-xl:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
                         @endforeach
                     </div>
                 </div>
@@ -302,6 +373,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     @include('pages.matches.partials.chess-row', ['chessGame' => $row['model'], 'viewer' => $viewer])
                     @continue
                 @endif
+                @if ($row['type'] === 'board')
+                    @include('pages.matches.partials.board-row', ['boardGame' => $row['model'], 'viewer' => $viewer])
+                    @continue
+                @endif
                 @php($match = $row['model'])
                 @php($chip = SeriesPresenter::chip($match))
                 @php($result = SeriesPresenter::result($match, $viewer))
@@ -336,7 +411,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 </a>
             @empty
                 <div class="px-2 py-6">
-                    @if ($game !== 'all' && ! app(GameRegistry::class)->isSeries($game))
+                    @if ($game !== 'all' && app(GameRegistry::class)->isBoard($game))
+                        <x-empty-state :heading="__('No games yet')" :text="__('The first game opens the list.')">
+                            <x-button :href="\App\Support\GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
+                        </x-empty-state>
+                    @elseif ($game !== 'all' && ! app(GameRegistry::class)->isSeries($game))
                         <x-empty-state :heading="__('No games yet')" :text="__('The first chess game opens the list.')">
                             <x-button :href="route('chess.lobby')">{{ __('Play chess') }}</x-button>
                         </x-empty-state>

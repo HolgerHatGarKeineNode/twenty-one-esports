@@ -5533,5 +5533,6 @@
     "no block": "kein Block",
     "No block: :reason": "Kein Block: :reason",
     "no result": "kein Ergebnis",
-    "Daily game": "Fernpartie"
+    "Daily game": "Fernpartie",
+    "The first game opens the list.": "Die erste Partie eröffnet die Liste."
 }

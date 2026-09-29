@@ -14,6 +14,7 @@ use App\Games\BoardGame;
 use App\Games\Chess;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Models\ChessGame;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
 use App\Models\User;
@@ -123,14 +124,24 @@ test('the shell navigation lists a board game with its own actions (P5), while t
     expect(ShellNavigation::current()->pageGame())->toBeNull();
 });
 
-test('the match list never files chess games under a board game', function () {
+test('the match list never files chess games under a board game, and lists a board game only while its route is there', function () {
     FixtureBoardGame::register();
+    ChessGame::factory()->create();
 
+    // Registered, but its route is not: no filter for it.
     Livewire::withQueryParams(['game' => FIXTURE_BOARD])->test('pages::matches.index')
         ->assertSet('game', 'all')
         ->assertDontSeeHtml('data-test="game-'.FIXTURE_BOARD.'"')
         ->call('pickGame', FIXTURE_BOARD)->assertSet('game', 'all')
         ->call('pickGame', 'chess')->assertSet('game', 'chess');
+
+    // Routed (plan "Mempool-Streifen", P2): its own filter, and still no chess game under it.
+    FixtureBoardGame::play();
+
+    Livewire::withQueryParams(['game' => FIXTURE_BOARD])->test('pages::matches.index')
+        ->assertSet('game', FIXTURE_BOARD)
+        ->assertSeeHtml('data-test="game-'.FIXTURE_BOARD.'"')
+        ->assertDontSeeHtml('data-test="chess-row"');
 });
 
 test('the invite link module shows nothing for a board game, not the chess daily link', function () {
