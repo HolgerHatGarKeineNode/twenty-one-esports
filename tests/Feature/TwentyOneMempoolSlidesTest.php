@@ -7,9 +7,12 @@
 | the pending games. Voids never show as a win; board games only while on.
 */
 
+use App\Enums\BoardEndReason;
 use App\Enums\BoardGameStatus;
+use App\Enums\ChessEndReason;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
 use App\Games\Checkers;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
@@ -84,6 +87,35 @@ test('without a season the slide is the casual mempool: played games with the wi
         ->not->toContain(' sats')
         ->not->toContain('Schach')
         ->not->toContain('Zug');
+});
+
+test('a win nobody played for stays on the slide, uncrowned and labelled a forfeit, never "beat"', function () {
+    NineMensMorrisOn::play();
+    $this->freezeTime();
+    $winner = User::factory()->create(['name' => 'Winner']);
+    $absent = User::factory()->create(['name' => 'Absent']);
+    ChessGame::factory()->finished('1-0')->create(['white_id' => $winner->id, 'black_id' => $absent->id, 'ended_at' => now()->subMinutes(4), 'end_reason' => ChessEndReason::Forfeit]);
+    mempoolBoard(NineMensMorris::SLUG, ['status' => BoardGameStatus::Finished, 'result' => '1-0', 'ended_at' => now()->subMinutes(3), 'end_reason' => BoardEndReason::Forfeit->value, 'white_id' => $winner->id, 'black_id' => $absent->id]);
+    mempoolSeries(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Forfeit, 'result_games' => [], 'finished_at' => now()->subMinutes(2)]);
+    // A game played to the end next to them keeps its crown.
+    $played = User::factory()->create(['name' => 'Player']);
+    ChessGame::factory()->finished('0-1')->create(['white_id' => $absent->id, 'black_id' => $played->id, 'ended_at' => now()->subSeconds(30)]);
+    $first = app(MempoolSlides::class)->read();
+    // A director's no-show result: the tournament match says forfeit (SeasonChains attests it so). Its tournament
+    // runs games, so the right side takes a place and the oldest cube (the chess forfeit) leaves the row.
+    $match = runningChess(TournamentFormat::SingleElimination, 4)->matches()->firstOrFail();
+    $match->forceFill(['result' => [...(array) $match->result, 'forfeit' => true]])->save();
+    ChessGame::factory()->finished('1-0')->create(['white_id' => $winner->id, 'black_id' => $absent->id, 'ended_at' => now(), 'end_reason' => ChessEndReason::Director, 'tournament_match_id' => $match->id]);
+
+    $data = app(MempoolSlides::class)->read();
+    $svg = mempoolSlide();
+
+    expect(array_column($first['finished'], 'forfeit'))->toBe([true, true, true, false])
+        ->and(array_column($data['finished'], 'forfeit'))->toBe([true, true, false, true])
+        ->and(substr_count($svg, '>won by forfeit<'))->toBe(3)
+        // Only the game played to the end: one "beat", one crown (partials/face draws it as this path).
+        ->and(substr_count($svg, '>beat Absent<'))->toBe(1)
+        ->and(substr_count($svg, 'd="M0 16L1.5 3.5L7 9L12 0L17 9L22.5 3.5L24 16Z"'))->toBe(1);
 });
 
 test('while a season runs the slide shows its mined blocks with height, reward and miners, never a voided one, and the pending games', function () {

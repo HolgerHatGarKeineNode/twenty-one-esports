@@ -2,8 +2,12 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Enums\BoardEndReason;
+use App\Enums\ChessEndReason;
 use App\Enums\SeriesResolution;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\FairPlayVoid;
 use App\Models\SeasonAttestation;
@@ -16,6 +20,7 @@ use App\Support\Matches\MatchBlocks;
 use App\Support\Matches\MempoolStrip;
 use App\Support\PreSeason;
 use App\Support\SeasonChain\Seasons;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Cache;
@@ -116,8 +121,8 @@ class MempoolSlides
         try {
             $strip = MempoolStrip::build();
             $season = Seasons::live();
-            $voided = $this->voidedSeries($strip['finished']);
-            $finished = array_values(array_filter($strip['finished'], fn (array $cube): bool => ! in_array($cube['key'], $voided, true)));
+            $outcomes = $this->outcomes($strip['finished']);
+            $finished = array_values(array_filter($strip['finished'], fn (array $cube): bool => ! in_array($cube['key'], $outcomes['void'], true)));
             $blocks = $season === null ? [] : $this->blocks($season->id);
             $left = $season === null ? count($finished) : count($blocks);
             // The running side keeps RUNNING places; what the other side leaves free it may use too.
@@ -129,8 +134,8 @@ class MempoolSlides
                 'mode' => $season === null ? 'casual' : 'season',
                 'rest' => $season === null ? Seasons::state() : 'live',
                 'season' => $season === null ? null : BadgeCopy::season($season->slug),
-                'finished' => $season === null ? array_map($this->cube(...), array_slice($finished, max(0, count($finished) - $keep))) : [],
-                'running' => array_map($this->cube(...), $running),
+                'finished' => $season === null ? array_map(fn (array $cube): array => $this->cube($cube, in_array($cube['key'], $outcomes['forfeit'], true)), array_slice($finished, max(0, count($finished) - $keep))) : [],
+                'running' => array_map(fn (array $cube): array => $this->cube($cube, false), $running),
                 'blocks' => array_slice($blocks, max(0, count($blocks) - $keep)),
             ];
         } finally {
@@ -176,28 +181,61 @@ class MempoolSlides
     }
 
     /**
-     * The keys of the finished series the league voided: a void is no result,
-     * so it is no cube on the stream at all.
+     * How the finished matches were decided, where the strip's cubes do not
+     * say (MatchBlocks::shape() keeps no end reason): `void` the series the
+     * league voided (no result, so no cube on the stream at all), `forfeit`
+     * the wins nobody played for (a series resolved as a forfeit, a chess or
+     * board game ended by forfeit, a director's no-show result as
+     * SeasonChains attests it), shown without a crown. One query per kind
+     * of match, for any number of them.
      *
      * @param  list<array<string, mixed>>  $finished
-     * @return list<string>
+     * @return array{void: list<string>, forfeit: list<string>}
      */
-    private function voidedSeries(array $finished): array
+    private function outcomes(array $finished): array
     {
-        $ids = [];
+        $ids = ['series' => [], 'chess' => [], 'board' => []];
 
         foreach ($finished as $cube) {
-            if (str_starts_with((string) $cube['key'], 'series-')) {
-                $ids[] = (int) substr((string) $cube['key'], 7);
+            [$kind, $id] = array_pad(explode('-', (string) $cube['key'], 2), 2, '');
+
+            if (isset($ids[$kind]) && ctype_digit($id)) {
+                $ids[$kind][] = (int) $id;
             }
         }
 
-        if ($ids === []) {
-            return [];
+        $void = [];
+        $forfeit = [];
+
+        if ($ids['series'] !== []) {
+            foreach (SeriesMatch::query()->whereIn('id', $ids['series'])->whereIn('resolution', [SeriesResolution::Void, SeriesResolution::Forfeit])->get(['id', 'resolution']) as $match) {
+                if ($match->resolution === SeriesResolution::Void) {
+                    $void[] = 'series-'.$match->id;
+                } else {
+                    $forfeit[] = 'series-'.$match->id;
+                }
+            }
         }
 
-        return array_values(SeriesMatch::query()->whereIn('id', $ids)->where('resolution', SeriesResolution::Void)->pluck('id')
-            ->map(fn (mixed $id): string => 'series-'.$id)->all());
+        if ($ids['chess'] !== []) {
+            $chess = ChessGame::query()->whereIn('id', $ids['chess'])
+                ->where(fn (EloquentBuilder $query) => $query->where('end_reason', ChessEndReason::Forfeit)
+                    ->orWhere(fn (EloquentBuilder $query) => $query->where('end_reason', ChessEndReason::Director)
+                        ->whereHas('tournamentMatch', fn (EloquentBuilder $match) => $match->where('result->forfeit', true))))
+                ->pluck('id');
+
+            foreach ($chess as $id) {
+                $forfeit[] = 'chess-'.$id;
+            }
+        }
+
+        if ($ids['board'] !== []) {
+            foreach (BoardGame::query()->whereIn('id', $ids['board'])->where('end_reason', BoardEndReason::Forfeit->value)->pluck('id') as $id) {
+                $forfeit[] = 'board-'.$id;
+            }
+        }
+
+        return ['void' => $void, 'forfeit' => $forfeit];
     }
 
     /**
@@ -266,11 +304,12 @@ class MempoolSlides
 
     /**
      * One cube of MempoolStrip as plain data: no models, picture refs only.
+     * `forfeit`: a win nobody played for (outcomes()), shown without a crown.
      *
      * @param  array<string, mixed>  $cube  MatchBlocks::shape()
      * @return array<string, mixed>
      */
-    private function cube(array $cube): array
+    private function cube(array $cube, bool $forfeit): array
     {
         $sides = [];
 
@@ -287,8 +326,6 @@ class MempoolSlides
             ];
         }
 
-        // Only a block of the season /mining shows: an older season's "Block 3" would read as this one's.
-        $chain = is_array($cube['chain'] ?? null) && ($cube['chain']['state'] ?? null) === 'mined' && ($cube['chain']['note'] ?? null) === null ? $cube['chain'] : null;
         $when = (string) $cube['when'];
 
         // A scheduled series names its time ("20:00", the cube is narrow) and on the stream in which zone.
@@ -308,7 +345,7 @@ class MempoolSlides
             'state' => (string) $cube['state'],
             'casual' => (bool) $cube['casual'],
             'level' => (int) $cube['level'],
-            'block' => $chain === null ? null : (int) $chain['height'],
+            'forfeit' => $forfeit,
             'sides' => $sides,
         ];
     }

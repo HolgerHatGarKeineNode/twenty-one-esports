@@ -367,16 +367,18 @@ final class MempoolLayout
         if ($state === 'fin' && $winner !== null) {
             $loser = $sides[1 - $winner] ?? ['name' => ''];
             $name = K::name((string) ($sides[$winner]['name'] ?? ''), 'Player', 22, $max);
+            // A win nobody played for (a forfeit or no-show) stays on the record, but uncrowned and without "beat".
+            $forfeit = (bool) ($item['forfeit'] ?? false);
 
             return [
                 'faces' => [
-                    self::face($sides[$winner], $x, self::SIDES_Y, 72, $id.'w', self::BTC, self::BTC),
+                    $forfeit ? self::face($sides[$winner], $x, self::SIDES_Y + 16, 56, $id.'w', null, null) : self::face($sides[$winner], $x, self::SIDES_Y, 72, $id.'w', self::BTC, self::BTC),
                     self::face($loser, $x + 86, self::SIDES_Y + 32, 40, $id.'l', null, null),
                 ],
                 'vs' => null,
                 'extra' => [],
                 'line1' => ['text' => $name['text'], 'font' => $name['font'], 'size' => 22],
-                'line2' => ['text' => K::fit('beat '.K::clean((string) ($loser['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
+                'line2' => ['text' => $forfeit ? 'won by forfeit' : K::fit('beat '.K::clean((string) ($loser['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
             ];
         }
 
