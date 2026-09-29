@@ -5472,5 +5472,7 @@
     "Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.": "Braucht ein Spiel mit Punkten oder Zeit, das man allein spielt, etwa ein Zeitfahren. Brettspiele gewinnt man gegen einen Gegner.",
     "Board games mine, so they need a share and a daily limit in the same change.": "Brettspiele schürfen, brauchen also in derselben Änderung einen Anteil und ein Tageslimit.",
     "Board games mine, so they need a share and a daily limit.": "Brettspiele schürfen, brauchen also einen Anteil und ein Tageslimit.",
-    "no: a board game result the directors enter was not played on the league server": "nein: ein Brettspiel-Ergebnis, das die Turnierleitung einträgt, wurde nicht auf dem Liga-Server gespielt"
+    "no: a board game result the directors enter was not played on the league server": "nein: ein Brettspiel-Ergebnis, das die Turnierleitung einträgt, wurde nicht auf dem Liga-Server gespielt",
+    "A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit.": "Ein Spiel und Modus ohne Gewicht schürft nicht. Beide EA-Sports-FC-Ausgaben teilen sich einen Anteil und ein Tageslimit.",
+    "Rated :game starts when the board adds it to the running season.": "Gewertetes :game beginnt, sobald der Vorstand es in die laufende Season aufnimmt."
 }

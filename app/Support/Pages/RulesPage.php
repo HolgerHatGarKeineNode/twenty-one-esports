@@ -166,7 +166,10 @@ final class RulesPage
             'table' => ['head' => [__('Game and mode'), __('Weight'), __('Share of an era'), __('Blocks per player a day')], 'rows' => $rows],
             'items' => [
                 __('Rewards halve every era. The sats are paid once, after the season review, to the Lightning address of each player.'),
-                __("A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit, and so do the board games nine men's morris and checkers."),
+                // The board games' share group only while one of them is switched on (plan "Mühle und Dame", P6).
+                app(GameRegistry::class)->boards() === []
+                    ? __('A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit.')
+                    : __("A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit, and so do the board games nine men's morris and checkers."),
                 __('The board can change weights, shares and limits during a season; a change only counts for blocks after it.'),
             ],
             'links' => [[__('The season and mining'), route('mining')]],

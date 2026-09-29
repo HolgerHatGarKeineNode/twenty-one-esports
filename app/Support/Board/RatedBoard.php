@@ -40,7 +40,10 @@ final class RatedBoard
         }
 
         if (! Ladders::isOpen($game, $mode)) {
-            return Seasons::restMessage($user);
+            // A season live since before the board games joined: their ladder opens with the board's next rule change.
+            return Seasons::live() !== null
+                ? __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::game($game)])
+                : Seasons::restMessage($user);
         }
 
         if (! self::offered()) {

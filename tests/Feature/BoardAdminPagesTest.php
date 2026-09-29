@@ -16,6 +16,7 @@ use App\Models\WeeklySlot;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentGames;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Livewire;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
@@ -67,4 +68,15 @@ test('a format that cannot run says why in board game words, never as a series',
         // Chess and a series keep theirs.
         ->and($estimator->disabledReason(TournamentFormat::FreeForAll, GameProfile::for('chess', 'blitz'), 8))->toBe('Needs 3 or more players in one match. Chess is always one player against one.')
         ->and($estimator->disabledReason(TournamentFormat::FreeForAll, GameProfile::for('rocket-league', '3v3'), 8))->toBe('Needs 3 or more players in one match. A series is always one side against the other.');
+});
+
+test('the rules page names the share group of the board games only while a board game is switched on', function () {
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('Both EA Sports FC editions share one share and one daily limit.')
+        ->assertDontSee('and so do the board games');
+
+    CheckersGame::play();
+    Cache::flush();
+
+    $this->get(route('rules'))->assertOk()->assertSee('and so do the board games nine men', false);
 });

@@ -21,6 +21,7 @@ use App\Models\BoardQueueEntry;
 use App\Models\Clan;
 use App\Models\FairPlayVoid;
 use App\Models\NostrEvent;
+use App\Models\QuestCredit;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\Season;
@@ -31,6 +32,7 @@ use App\Support\Board\BoardQueue;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Board\RatedBoard;
 use App\Support\Engagement\ClanHashrate;
+use App\Support\Engagement\Quests;
 use App\Support\FairPlay\AccountLinks;
 use App\Support\Rating\ClanRating;
 use App\Support\SeasonChain\ChainDraft;
@@ -488,4 +490,48 @@ test('linking two accounts voids their board games like their chess games: no re
     // A later game between them rates nothing.
     $later = whiteWinsAfterOneMove(app(BoardGameService::class)->start(Checkers::SLUG, $second, $main));
     expect(RatingChange::query()->where('source', RatingChange::BOARD)->where('source_id', $later->id)->count())->toBe(0);
+});
+
+/* ---------- Follow-ups of the P6 review --------------------------------------------------------------------- */
+
+test('a rated board win credits the "for the clan" quest of both clan players; a casual one only the plain quest', function () {
+    boardMiningSeason();
+    [$anna, $bert] = User::factory()->count(2)->create();
+    Clan::factory()->create(['owner_id' => $anna->id]);
+    Clan::factory()->create(['owner_id' => $bert->id]);
+
+    $rated = whiteWinsAfterOneMove(ratedBoardGame(Checkers::SLUG, $anna, $bert));
+    $casual = whiteWinsAfterOneMove(app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $bert));
+    $quests = fn (BoardGame $game, User $user): array => QuestCredit::query()->where(['source' => 'board:'.$game->id, 'user_id' => $user->id])->orderBy('quest')->pluck('quest')->all();
+
+    expect($quests($rated, $anna))->toContain(Quests::FOR_THE_CLAN, Quests::THREE_GAMES)
+        ->and($quests($rated, $bert))->toContain(Quests::FOR_THE_CLAN, Quests::THREE_GAMES)
+        ->and($quests($casual, $anna))->toContain(Quests::THREE_GAMES)
+        ->and($quests($casual, $anna))->not->toContain(Quests::FOR_THE_CLAN);
+});
+
+test('a board game\'s ladder is open at a moment only if the league had published it by then', function () {
+    $season = openSeason();
+    $this->travel(10)->minutes();
+    $before = CarbonImmutable::now()->subMinute();
+    publishLadders($season);
+    $address = Ladders::address(NineMensMorris::SLUG, 'blitz');
+
+    expect($address)->not->toBeNull()
+        ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', $before))->toBeNull()
+        ->and(Ladders::address(NineMensMorris::SLUG, 'blitz', CarbonImmutable::now()))->toBe($address)
+        // Chess is open from Block 0 on, published or not.
+        ->and(Ladders::address('chess', 'blitz', $before))->not->toBeNull();
+});
+
+test('a lobby in a season live since before the board games joined says rated play starts with the board\'s rule change', function () {
+    openSeason();
+    [$anna] = boardLobbyPlayer('Anna');
+
+    expect(app(RatedBoard::class)->refusal($anna, Checkers::SLUG, 'blitz'))->toBe('Rated Checkers starts when the board adds it to the running season.');
+
+    Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => Checkers::SLUG])
+        ->assertSee('data-rated-open="false"', false)
+        ->assertSee('Rated Checkers starts when the board adds it to the running season.')
+        ->assertDontSee('Casual until Block 0');
 });

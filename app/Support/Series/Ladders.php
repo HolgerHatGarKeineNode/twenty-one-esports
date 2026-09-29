@@ -50,26 +50,30 @@ final class Ladders
 
         $address = self::KIND.':'.$season->league_pubkey.':'.$game.'/'.$mode.'/'.$season->slug;
 
-        return ! $board || self::published($address, $season->league_pubkey, $game.'/'.$mode.'/'.$season->slug) ? $address : null;
+        return ! $board || self::published($address, $season->league_pubkey, $game.'/'.$mode.'/'.$season->slug, $at) ? $address : null;
     }
 
     /**
-     * Whether the league signed a version of this ladder (a board game's
-     * ladder opens with it, P6). Kept once per request or job when it has:
-     * a published ladder stays published.
+     * Whether the league had signed a version of this ladder by `$at` (now
+     * when null): a board game's ladder opens with it (P6). A tournament that
+     * re-derives its frozen ladder from its first publish time gets none
+     * that did not exist then. Kept once per request or job when it has, for
+     * now only: a published ladder stays published.
      */
-    private static function published(string $address, string $pubkey, string $d): bool
+    private static function published(string $address, string $pubkey, string $d, ?CarbonImmutable $at = null): bool
     {
         $attributes = request()->attributes;
         $memo = 'ladder-published.'.$address;
 
-        if ($attributes->get($memo) === true) {
+        if ($at === null && $attributes->get($memo) === true) {
             return true;
         }
 
-        $published = NostrEvent::query()->where(['kind' => self::KIND, 'pubkey' => $pubkey, 'd' => $d])->exists();
+        $published = NostrEvent::query()->where(['kind' => self::KIND, 'pubkey' => $pubkey, 'd' => $d])
+            ->when($at !== null, fn ($query) => $query->where('signed_at', '<=', $at?->getTimestamp()))
+            ->exists();
 
-        if ($published) {
+        if ($published && $at === null) {
             $attributes->set($memo, true);
         }
 

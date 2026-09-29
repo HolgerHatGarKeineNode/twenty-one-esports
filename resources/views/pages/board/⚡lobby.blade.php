@@ -106,7 +106,12 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
         $user = auth()->user();
 
         if (! $user instanceof User) {
-            return Ladders::isOpen($this->slug, 'blitz') ? __('Log in to play rated games.') : Seasons::restMessage();
+            return match (true) {
+                Ladders::isOpen($this->slug, 'blitz') => __('Log in to play rated games.'),
+                // A season live since before the board games joined: their ladder opens with the board's next rule change.
+                Seasons::live() !== null => __('Rated :game starts when the board adds it to the running season.', ['game' => GameNames::game($this->slug)]),
+                default => Seasons::restMessage(),
+            };
         }
 
         $refusal = app(RatedBoard::class)->refusal($user, $this->slug, 'blitz');
