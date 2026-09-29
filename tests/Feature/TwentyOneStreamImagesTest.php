@@ -326,6 +326,26 @@ test('a backdrop is built once per cover and again when the cover changes', func
         ->and(is_file(StreamImages::backdropFile(StreamImages::BRAND)))->toBeTrue();
 });
 
+test('every game cover gets a d2 tile, rebuilt when missing, and d2 embeds the tile instead of the full cover', function () {
+    $builder = app(StreamImageBuilder::class);
+    $builder->buildBackdrops();
+    File::delete(StreamImages::coverTileFile(StreamImages::CHESS));
+    $again = $builder->buildBackdrops();
+    $size = getimagesize(StreamImages::coverTileFile(StreamImages::CHESS));
+    $tile = app(StreamImages::class)->coverTile(StreamImages::CHESS);
+    $cover = TournamentSlides::coverUri(app(GameRegistry::class)->coverPath(StreamImages::CHESS));
+    $cup = ['cup' => true, 'game' => 'Chess', 'region' => 'EU', 'taken' => 2, 'places' => 8, 'cover' => $cover];
+    $svg = fn (array $frame): string => SceneRenderer::fromConfig()->svg(['upcoming' => [$frame], 'stats' => []], RotationPlanner::VIEWS['d2']);
+
+    expect($again['built'])->toBe(1)
+        ->and([$size[0], $size[1], $size['mime']])->toBe([288, 162, 'image/jpeg'])
+        ->and(is_file(StreamImages::coverTileFile(StreamImages::BRAND)))->toBeFalse()
+        ->and($svg([...$cup, 'coverTile' => $tile]))->toContain($tile)->not->toContain($cover)
+        ->and(strlen($tile))->toBeLessThan(intdiv(strlen((string) $cover), 2))
+        // Until the tile is built, d2 keeps the full cover.
+        ->and($svg([...$cup, 'coverTile' => null]))->toContain($cover);
+});
+
 test('the command survives a failing player, removes stale files and runs every ten minutes without overlapping', function () {
     $good = User::factory()->create(['picture' => 'https://cdn.example/good.png']);
     User::factory()->create(['picture' => 'https://cdn.example/bad.png']);

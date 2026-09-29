@@ -11,7 +11,7 @@ use Throwable;
 
 /**
  * The pictures of the stream scenes as data URIs, read from local files
- * only: the avatars, backdrops and 128 px clan logos StreamImageBuilder wrote
+ * only: the avatars, backdrops, cover tiles and 128 px clan logos StreamImageBuilder wrote
  * (`twentyone.stream.images.dir`; a logo only from a clan's own redrawn
  * ClanLogos file, never a foreign picture). Nothing here touches the network or the database; a caller
  * hands in the users and clans it already loaded, or the plain refs
@@ -75,6 +75,12 @@ class StreamImages
     public static function backdropFile(string $slug): string
     {
         return self::dir().'/backdrops/'.$slug.'.jpg';
+    }
+
+    /** A game cover at the size of d2's tile (StreamImageBuilder::coverTileJpeg). */
+    public static function coverTileFile(string $slug): string
+    {
+        return self::dir().'/tiles/'.$slug.'.jpg';
     }
 
     /**
@@ -159,6 +165,17 @@ class StreamImages
     public function backdrop(string $slug): ?string
     {
         $path = self::backdropFile($slug);
+
+        return $this->remember('file:'.$path, fn (): ?string => self::fileUri($path, 'image/jpeg'));
+    }
+
+    /**
+     * A game's cover tile (StreamImageBuilder) as a JPEG data URI, or null
+     * while it has not been built.
+     */
+    public function coverTile(string $slug): ?string
+    {
+        $path = self::coverTileFile($slug);
 
         return $this->remember('file:'.$path, fn (): ?string => self::fileUri($path, 'image/jpeg'));
     }

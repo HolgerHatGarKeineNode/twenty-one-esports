@@ -7,7 +7,8 @@
 
     Data contract:
       $upcoming  list<array>: TournamentSlides::frames() of every upcoming tournament; read are cup (bool), region
-                 ("EU", "US" or null), game, cover (data URI or null), taken, places, signupClosesAt
+                 ("EU", "US" or null), game, coverTile and cover (data URI or null; the tile wins), taken, places,
+                 signupClosesAt
       $stats     array: the ticker counts (b-chrome)
       $backdrop  ?string, optional: the brand backdrop, as in a1-match
 --}}

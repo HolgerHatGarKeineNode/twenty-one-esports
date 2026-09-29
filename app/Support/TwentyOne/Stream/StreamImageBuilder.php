@@ -30,7 +30,10 @@ use Throwable;
  * - backdrops: every game cover (GameRegistry::coverPath) and the brand
  *   cover, blurred, darkened and written as a 640x360 JPEG (q60) under
  *   `backdrops/<slug>.jpg`, again only when the source's mtime changed
- *   (the backdrop carries its source's mtime).
+ *   (the backdrop carries its source's mtime). Every game cover also gets its
+ *   tile: the centre 16:9, sharp, at the size d2 draws it (288x162, q90) under
+ *   `tiles/<slug>.jpg`, so rsvg-convert no longer decodes and scales a 1280 px
+ *   cover per tile on every render (four of them were half of d2's render time).
  *
  * The picture is redrawn, never copied: what reaches the scene is a JPEG
  * GD wrote. Dimensions are read from the header first (getimagesizefromstring),
@@ -48,6 +51,11 @@ class StreamImageBuilder
     public const BACKDROP_WIDTH = 640;
 
     public const BACKDROP_HEIGHT = 360;
+
+    /** A cover tile's size: the cover box of d2 (resources/views/stream/rotation/d2-cups.blade.php), drawn 1:1. */
+    public const COVER_TILE_WIDTH = 288;
+
+    public const COVER_TILE_HEIGHT = 162;
 
     /** GD alpha of the black veil over a backdrop: 57/127 lets ~45 % of the light through (darkened by ~55 %). */
     private const BACKDROP_VEIL_ALPHA = 57;
@@ -283,18 +291,28 @@ class StreamImageBuilder
 
         foreach ($sources as $slug => $source) {
             $target = StreamImages::backdropFile($slug);
+            // The brand cover is only ever a backdrop; a game cover is a d2 tile too.
+            $tile = $slug === StreamImages::BRAND ? null : StreamImages::coverTileFile($slug);
 
             try {
                 $mtime = (int) filemtime($source);
 
-                if (is_file($target) && (int) filemtime($target) === $mtime) {
+                if (is_file($target) && (int) filemtime($target) === $mtime && ($tile === null || (is_file($tile) && (int) filemtime($tile) === $mtime))) {
                     $counts['fresh']++;
 
                     continue;
                 }
 
-                PlaylistWriter::writeAtomically($target, $this->backdropJpeg((string) file_get_contents($source)));
+                $bytes = (string) file_get_contents($source);
+                PlaylistWriter::writeAtomically($target, $this->backdropJpeg($bytes));
                 touch($target, $mtime);
+
+                if ($tile !== null) {
+                    File::ensureDirectoryExists(dirname($tile));
+                    PlaylistWriter::writeAtomically($tile, $this->coverTileJpeg($bytes));
+                    touch($tile, $mtime);
+                }
+
                 $counts['built']++;
             } catch (Throwable $e) {
                 Log::warning('stream backdrop '.$slug.' not built from '.basename($source).': '.$e->getMessage());
@@ -360,6 +378,22 @@ class StreamImageBuilder
         imagefilledrectangle($backdrop, 0, 0, self::BACKDROP_WIDTH - 1, self::BACKDROP_HEIGHT - 1, (int) imagecolorallocatealpha($backdrop, 0, 0, 0, self::BACKDROP_VEIL_ALPHA));
 
         return $this->jpeg($backdrop, 60);
+    }
+
+    /**
+     * A cover redrawn as a d2 tile: the centre 16:9, sharp, 288x162, q90.
+     *
+     * @throws StreamImageFailed
+     */
+    public function coverTileJpeg(string $bytes): string
+    {
+        $image = $this->decode($bytes);
+        [$width, $height] = [imagesx($image), imagesy($image)];
+        [$cropWidth, $cropHeight] = $width * 9 > $height * 16 ? [intdiv($height * 16, 9), $height] : [$width, intdiv($width * 9, 16)];
+        $tile = imagecreatetruecolor(self::COVER_TILE_WIDTH, self::COVER_TILE_HEIGHT);
+        imagecopyresampled($tile, $image, 0, 0, intdiv($width - $cropWidth, 2), intdiv($height - $cropHeight, 2), self::COVER_TILE_WIDTH, self::COVER_TILE_HEIGHT, $cropWidth, $cropHeight);
+
+        return $this->jpeg($tile, 90);
     }
 
     /**

@@ -38,7 +38,8 @@ use Throwable;
  * (StreamImages): every roster row and every preview side with a name gets
  * `avatar` (a player's picture or Blockpile; null for a lineup, a mix team
  * or an open spot) and `logo` (a lineup's clan logo, if we redrew it; else
- * null); the slide gets `backdrop`, its game's blurred cover.
+ * null); the slide gets `backdrop`, its game's blurred cover, and
+ * `coverTile`, its cover at the size of d2's tile (null until built).
  */
 class TournamentSlides
 {
@@ -284,6 +285,7 @@ class TournamentSlides
             'countdown' => self::countdown(is_int($deadline) ? $deadline : $nowMs, $nowMs),
             'cover' => $this->cover($slug),
             'backdrop' => $this->images->backdrop($slug),
+            'coverTile' => $this->images->coverTile($slug),
         ];
     }
 
