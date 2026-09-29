@@ -31,6 +31,9 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     // Fair play (P41): linked accounts of one person, and players locked after confirmed false reports.
     Route::livewire('fair-play', 'pages::admin.fair-play')->name('fair-play');
 
+    // NIP-05 names (P47): the names players claimed on the league's domain, and revoking one.
+    Route::livewire('nip05', 'pages::admin.nip05')->name('nip05');
+
     // Tournament payouts (P9): the admin check at the end and the payments; `?tournament=<id>`.
     Route::livewire('payouts', 'pages::admin.payouts')->name('payouts');
 

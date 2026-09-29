@@ -226,7 +226,7 @@ Route::prefix('cards/{locale}')
             ->name('cards.page');
     });
 
-// NIP-05 for esports@esports.einundzwanzig.space; public JSON, no session.
+// NIP-05 for esports@esports.einundzwanzig.space and the names players claimed (P47); public JSON, no session.
 Route::get('.well-known/nostr.json', NostrJsonController::class)
     ->withoutMiddleware('web')
     ->name('nostr.nip05');

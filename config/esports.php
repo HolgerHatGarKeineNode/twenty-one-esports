@@ -94,6 +94,47 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | NIP-05 names on the league's domain (P47)
+    |--------------------------------------------------------------------------
+    |
+    | A player may claim `name@<app host>` (App\Support\Nostr\Nip05Names),
+    | served from /.well-known/nostr.json. `change_days`: a claimed name
+    | changes (or is claimed again after a release) at most once in this
+    | many days. `reserved`: names nobody claims, on top of the league's own
+    | NIP-05 name and the Lightning address of the pool (both from config).
+    |
+    */
+
+    'nip05' => [
+        'min_length' => 3,
+        'max_length' => 30,
+        'change_days' => 30,
+        'reserved' => [
+            'admin', 'administrator', 'root', 'system', 'league', 'liga', 'twentyone', 'twenty-one', 'twenty_one', '21',
+            'einundzwanzig', 'verein', 'esports', 'support', 'help', 'hilfe', 'info', 'contact', 'kontakt', 'team', 'staff',
+            'official', 'offiziell', 'mod', 'moderator', 'security', 'abuse', 'postmaster', 'webmaster', 'hostmaster',
+            'noreply', 'no-reply', 'bot', 'stream', 'live', 'news', 'nostr', 'pool', 'wallet', 'payout', 'payouts',
+            'www', 'mail', 'api', 'relay', 'tournament', 'tournaments', 'director', 'organizer', 'null', 'undefined',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Zap the winner (P47)
+    |--------------------------------------------------------------------------
+    |
+    | App\Support\Lightning\WinnerZaps: invoices one player may ask the
+    | winners' Lightning servers for per hour (each is a request the league
+    | makes to a stranger's server on the player's behalf).
+    |
+    */
+
+    'zaps' => [
+        'invoices_per_hour' => 20,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Gamer tags
     |--------------------------------------------------------------------------
     |

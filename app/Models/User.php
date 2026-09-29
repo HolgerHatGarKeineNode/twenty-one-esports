@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\Platform;
 use App\Support\Board;
 use App\Support\Chess\ChessSettings;
+use App\Support\Nostr\Nip05Names;
 use App\Support\Nostr\PlayerProfile;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -35,6 +36,10 @@ use Illuminate\Support\Str;
  * @property string|null $nip05 as the profile names it, lowercased
  * @property Carbon|null $nip05_verified_at set when the domain's nostr.json named this key
  * @property Carbon|null $nip05_checked_at last NIP-05 check, successful or not
+ * @property string|null $nip05_name the player's own name on the league's domain (P47, {@see Nip05Names}), opt-in
+ * @property Carbon|null $nip05_changed_at last claim, change or release of that name (change limit)
+ * @property Carbon|null $nip05_revoked_at when an admin took the name back
+ * @property string|null $nip05_revoked_name the name an admin took back; nobody claims it while this account exists
  * @property Carbon|null $profile_event_at
  * @property Carbon|null $profile_checked_at last time a browser handed in this profile, new or unchanged
  * @property string|null $locale
@@ -81,6 +86,8 @@ class User extends Authenticatable
             'profile_checked_at' => 'datetime',
             'nip05_verified_at' => 'datetime',
             'nip05_checked_at' => 'datetime',
+            'nip05_changed_at' => 'datetime',
+            'nip05_revoked_at' => 'datetime',
             'is_member' => 'boolean',
             'member_checked_at' => 'datetime',
             'platform' => Platform::class,

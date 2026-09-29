@@ -11,4 +11,6 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('settings/chess', 'pages::settings.chess')->name('settings.chess');
     Route::livewire('settings/opponents', 'pages::settings.opponents')->name('settings.opponents');
     Route::livewire('settings/badges', 'pages::settings.badges')->name('settings.badges');
+    // P47: an optional NIP-05 name on the league's domain.
+    Route::livewire('settings/nostr-address', 'pages::settings.nip05')->name('settings.nip05');
 });

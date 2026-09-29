@@ -33,6 +33,7 @@ final class AdminNavigation
         'organizers' => 'people',
         'trust' => 'people',
         'fair-play' => 'people',
+        'nip05' => 'people',
         'status' => 'system',
     ];
 
@@ -81,6 +82,7 @@ final class AdminNavigation
                 self::item('organizers', __('Organizers'), route('admin.organizers')),
                 self::item('trust', __('Trust'), route('admin.trust')),
                 self::item('fair-play', __('Fair play'), route('admin.fair-play')),
+                self::item('nip05', __('Nostr addresses'), route('admin.nip05')),
             ]],
             ['key' => 'system', 'label' => self::groupLabel('system'), 'items' => [
                 self::item('status', __('Status'), route('admin.status')),

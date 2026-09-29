@@ -11,6 +11,10 @@ test('nostr.json names the TWENTY ONE pubkey and its relays', function () {
         ->assertOk()
         ->assertHeader('Access-Control-Allow-Origin', '*')
         ->assertExactJson(['names' => ['esports' => $pubkey], 'relays' => [$pubkey => ['wss://nos.lol']]]);
+
+    // NIP-05 names are case-insensitive; the answer names the lowercase name.
+    $this->get(route('nostr.nip05', ['name' => 'ESports']))
+        ->assertExactJson(['names' => ['esports' => $pubkey], 'relays' => [$pubkey => ['wss://nos.lol']]]);
 });
 
 test('nostr.json knows no other name', function () {
