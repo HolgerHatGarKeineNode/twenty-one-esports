@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property int $season_id
- * @property string $source `series` or `chess`
+ * @property string $source `series`, `chess` or `board` (a board game other than chess, P6)
  * @property int $source_id
  * @property int $board
  * @property int|null $match_number
@@ -50,6 +50,9 @@ class SeasonAttestation extends Model
     public const SERIES = 'series';
 
     public const CHESS = 'chess';
+
+    /** A board game other than chess (plan "Mühle und Dame", P6); `source_id` is the board_games row. */
+    public const BOARD = 'board';
 
     protected function casts(): array
     {

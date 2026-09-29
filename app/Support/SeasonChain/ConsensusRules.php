@@ -93,7 +93,9 @@ final class ConsensusRules
 
     /**
      * 2. A forfeit never mines; a chess game needs at least `moves` full
-     * moves (which also excludes a resignation before move 10).
+     * moves (which also excludes a resignation before move 10), and so does
+     * a board game played on the league server (NIP rev. 9.13): every
+     * candidate that counts its moves.
      *
      * @return array{0: string, 1: ?string}|null
      */
@@ -103,7 +105,7 @@ final class ConsensusRules
             return ['forfeit', null];
         }
 
-        if ($candidate->game === self::Chess && ($candidate->moves ?? 0) < $parameters->moves) {
+        if (($candidate->game === self::Chess || $candidate->moves !== null) && ($candidate->moves ?? 0) < $parameters->moves) {
             return ['too-few-moves', (string) ($candidate->moves ?? 0)];
         }
 

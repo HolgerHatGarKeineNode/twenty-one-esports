@@ -46,6 +46,11 @@ use Illuminate\Support\Carbon;
  * @property int|null $tournament_match_id the tournament match this game is played for (P5), null for a casual game
  * @property int|null $tournament_game its number within that match (a replay after a draw is the next)
  * @property int|null $first_move_seconds a tournament game's first-move window, pinned at the start; null = the league default
+ * @property int|null $number league match number of a rated game (MatchNumber, shared with chess and series); null for a casual game
+ * @property bool $rated rated at the pairing (P6): pinned to `ladder_address` with the trust gate and clans read then
+ * @property string|null $ladder_address the ladder open at the start; null for a casual game
+ * @property array<string, mixed>|null $gate_at_accept App\Support\SeasonChain\GatePin of a rated game
+ * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing, for a rated game
  * @property Carbon|null $ended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -55,12 +60,32 @@ use Illuminate\Support\Carbon;
  * @property-read TournamentMatch|null $tournamentMatch
  */
 #[Fillable(['game', 'mode', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'position', 'turn', 'ply', 'initial_ms', 'increment_ms',
-    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at', 'tournament_match_id', 'tournament_game', 'first_move_seconds'])]
+    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at', 'tournament_match_id', 'tournament_game', 'first_move_seconds',
+    'number', 'rated', 'ladder_address', 'gate_at_accept', 'clans_at_accept'])]
 class BoardGame extends Model
 {
+    /**
+     * A rated game takes the next league match number when it is created
+     * (plan "Mühle und Dame", P6), as every chess game does, recorded as used
+     * by White: its attestation (`2154`) names it as `match`. A casual board
+     * game takes none.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (BoardGame $game): void {
+            if ($game->rated && $game->white_id !== null) {
+                $game->number ??= MatchNumber::query()->create(['user_id' => $game->white_id, 'used_at' => now()])->id;
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'number' => 'integer',
+            'rated' => 'boolean',
+            'gate_at_accept' => 'array',
+            'clans_at_accept' => 'array',
             'status' => BoardGameStatus::class,
             'ply' => 'integer',
             'initial_ms' => 'integer',

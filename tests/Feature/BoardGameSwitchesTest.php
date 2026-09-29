@@ -145,7 +145,7 @@ test('the invite link module shows nothing for a board game, not the chess daily
     expect(Livewire::test('invite-link', ['game' => FIXTURE_BOARD])->instance()->state)->toBe('hidden');
 });
 
-test('a board game has its ladder page, card and sitemap entries (P5); the event admin still leaves it out (P6)', function () {
+test('a board game has its ladder page, card and sitemap entries (P5), and a place in the weekly events (P6)', function () {
     FixtureBoardGame::play();
     $admin = User::factory()->create();
     config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
@@ -163,7 +163,7 @@ test('a board game has its ladder page, card and sitemap entries (P5); the event
 
     $this->get(route('ladder.strongest'))->assertOk()->assertSee('Fixture Board');
     Livewire::actingAs($admin)->test('pages::admin.events')
-        ->assertSeeHtml('value="chess/blitz"')->assertDontSeeHtml('value="'.FIXTURE_BOARD.'/blitz"');
+        ->assertSeeHtml('value="chess/blitz"')->assertSeeHtml('value="'.FIXTURE_BOARD.'/blitz"');
 });
 
 test('the rules, the games list, the tournaments list and their cards name a board game once it is on (P5)', function () {
@@ -228,7 +228,7 @@ test('switched off, a board game has no route and no place in the navigation', f
     expect(array_column(ShellNavigation::current()->games(), 'slug'))->not->toContain('checkers');
 });
 
-test('a board game mines nothing before P6: no ladder event, no chain row, no parameter change', function () {
+test('from P6 a board game joins the chain: its ladder is published, it has a draft row, and a running season takes it in by a parameter change', function () {
     FixtureBoardGame::register();
     $season = openSeason();
     $trust = new TestSigner;
@@ -236,21 +236,29 @@ test('a board game mines nothing before P6: no ladder event, no chain row, no pa
 
     app(LadderEvents::class)->publish($season, LeagueKey::required(), $trust->pubkey);
 
-    expect(NostrEvent::query()->where('kind', Ladders::KIND)->where('d', 'like', FIXTURE_BOARD.'/%')->count())->toBe(0)
+    expect(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => FIXTURE_BOARD.'/blitz/'.$season->slug])->count())->toBe(1)
         ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/'.$season->slug])->count())->toBe(1)
-        ->and(array_keys(ChainDraft::table(ChainDraft::defaults())))->not->toContain(FIXTURE_BOARD)
+        ->and(ChainDraft::table(ChainDraft::defaults()))->toHaveKey(FIXTURE_BOARD)
         ->and(ChainDraft::table(ChainDraft::defaults()))->toHaveKey('chess');
 
     $admin = User::factory()->create();
     config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
     $this->travel(1)->minutes();
 
-    foreach ([['weights' => [FIXTURE_BOARD.'/blitz' => 1000]], ['shares' => [FIXTURE_BOARD => 10]], ['daily' => [FIXTURE_BOARD => 4]]] as $change) {
-        expect(fn () => app(SeasonChains::class)->changeParameters($admin, $change, 'Board games mine.', CarbonImmutable::now()))
-            ->toThrow(SeasonReleaseRefused::class);
-    }
+    // A weight alone is refused: a game that starts to mine brings its share and daily limit in the same change.
+    expect(fn () => app(SeasonChains::class)->changeParameters($admin, ['weights' => [FIXTURE_BOARD.'/blitz' => 1000]], 'Board games mine.', CarbonImmutable::now()))
+        ->toThrow(SeasonReleaseRefused::class);
 
-    // The same change for chess goes through: the refusal is the board game's, not the form's.
-    app(SeasonChains::class)->changeParameters($admin, ['daily' => ['chess' => 4]], 'Long blitz evenings.', CarbonImmutable::now());
-    expect(NostrEvent::query()->where('kind', Ladders::KIND)->where('d', 'like', FIXTURE_BOARD.'/%')->count())->toBe(0);
+    // With all three, and the shares still at most 100 %, the running season takes it in.
+    app(SeasonChains::class)->changeParameters($admin, [
+        'weights' => [FIXTURE_BOARD.'/blitz' => 1000],
+        'shares' => ['chess' => 30, FIXTURE_BOARD => 5],
+        'daily' => [FIXTURE_BOARD => 4],
+    ], 'Board games mine.', CarbonImmutable::now());
+
+    $inForce = $season->refresh()->chainParameters()->inForceAt(CarbonImmutable::now()->addMinute());
+    expect($inForce->weightFor(FIXTURE_BOARD.'/blitz'))->toBe(1000)
+        ->and($inForce->shareFor(FIXTURE_BOARD))->toBe(5)
+        ->and($inForce->dailyLimitFor(FIXTURE_BOARD))->toBe(4)
+        ->and($inForce->weightFor('chess/blitz'))->toBe(1000);
 });

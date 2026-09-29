@@ -33,9 +33,10 @@ use InvalidArgumentException;
  *   between two single players (RL 1v1 entries, P8b) rates the two players;
  *   a mix team (a roster side of several players) is never rated.
  * - A board game other than chess (plan "Mühle und Dame", P5) rates its two
- *   players on the casual ladder of that board game, White as the
- *   challenger: the rating row names the board game, so chess ratings never
- *   move. Board games have no rated ladder before they mine (P6).
+ *   players, White as the challenger, on the ladder of that board game: the
+ *   rating row names the board game, so chess ratings never move. A rated
+ *   board game (P6) goes to its season ladder as a rated chess game does,
+ *   a casual one to its casual ladder.
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
  *   result moves nothing (fail closed). A rated series counts only on the
@@ -99,8 +100,9 @@ final class RatingService
     }
 
     /**
-     * A finished game of a board game other than chess: casual, on the ladder
-     * of its own board game and mode (plan "Mühle und Dame", P5).
+     * A finished game of a board game other than chess, on the ladder of its
+     * own board game and mode (plan "Mühle und Dame", P5): casual, or rated
+     * (P6) under the same gates as a rated chess game.
      *
      * @return bool whether any rating moved
      */
@@ -122,11 +124,20 @@ final class RatingService
             return false;
         }
 
+        if ($game->rated && ($game->white === null || $game->black === null || ! $this->pinAdmits(GatePin::fromArray($game->gate_at_accept), [$game->white->pubkey, $game->black->pubkey]))) {
+            return false;
+        }
+
+        // Only on the ladder pinned at the start, while it is still the open one (as chess, fail closed).
+        if ($game->rated && ($game->ladder_address === null || $game->ladder_address !== Ladders::address($game->game, $game->mode))) {
+            return false;
+        }
+
         return $this->apply(
-            false, $game->game, $game->mode,
+            $game->rated, $game->game, $game->mode,
             ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],
             ['subject' => 'user:'.$game->black_id, 'user_id' => $game->black_id],
-            $score, RatingChange::BOARD, $game->id, null,
+            $score, RatingChange::BOARD, $game->id, $game->number,
         );
     }
 
@@ -175,14 +186,14 @@ final class RatingService
 
     /**
      * What a correction of this rated result to `$score` (the challenger's,
-     * White's in chess; null for a forfeit or void) would do to the Elo,
+     * White's in chess and a board game; null for a forfeit or void) would do to the Elo,
      * without writing anything; see {@see correct()}. Deltas challenger (or
      * White) first. Null when the correction moves no Elo: the result moved
      * no rated Elo that still counts, or its outcome stays the same.
      *
      * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
      */
-    public function correction(SeriesMatch|ChessGame $result, ?float $score): ?array
+    public function correction(SeriesMatch|ChessGame|BoardGame $result, ?float $score): ?array
     {
         $changes = $this->correctable($result);
 
@@ -214,7 +225,7 @@ final class RatingService
      *
      * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null the effect, as {@see correction()}
      */
-    public function correct(SeriesMatch|ChessGame $result, ?float $score): ?array
+    public function correct(SeriesMatch|ChessGame|BoardGame $result, ?float $score): ?array
     {
         $done = DB::transaction(function () use ($result, $score): ?array {
             $changes = $this->correctable($result);
@@ -275,7 +286,7 @@ final class RatingService
      *
      * @return array{reverted: array{0: int, 1: int}, applied: array{0: int, 1: int}|null}|null
      */
-    public function revert(SeriesMatch|ChessGame $result): ?array
+    public function revert(SeriesMatch|ChessGame|BoardGame $result): ?array
     {
         return $this->correct($result, null);
     }
@@ -287,10 +298,14 @@ final class RatingService
      *
      * @return array{0: RatingChange, 1: RatingChange}|null
      */
-    private function correctable(SeriesMatch|ChessGame $result, bool $lock = false): ?array
+    private function correctable(SeriesMatch|ChessGame|BoardGame $result, bool $lock = false): ?array
     {
         $query = RatingChange::query()->with('rating')
-            ->where('source', $result instanceof ChessGame ? RatingChange::CHESS : RatingChange::SERIES)
+            ->where('source', match (true) {
+                $result instanceof ChessGame => RatingChange::CHESS,
+                $result instanceof BoardGame => RatingChange::BOARD,
+                default => RatingChange::SERIES,
+            })
             ->where('source_id', $result->id)->orderBy('id');
         $changes = ($lock ? $query->lockForUpdate() : $query)->get();
 

@@ -2,10 +2,13 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\RatingChange;
 use App\Models\Season;
@@ -319,6 +322,186 @@ final class SeasonChains
     }
 
     /**
+     * Attest a finished rated board game other than chess (plan "Mühle und
+     * Dame", P6), as a rated chess game is attested: one `2154` on the player
+     * ladder of its board game and mode with one `board` row. Null for a
+     * casual or unfinished game, or outside a live season. A decisive game
+     * is a block candidate; a draw is not, nor a tournament game.
+     *
+     * Played on the league's server, which checked every move, and signed
+     * by no player: the resolution is `admin` (`forfeit` for a Black who
+     * missed the first move of a tournament game) and the content says so.
+     * A board game has no game record (`64`), so no `e` names one.
+     */
+    public function attestBoardGame(BoardGame $game): ?SeasonAttestation
+    {
+        if (! $game->rated || $game->status !== BoardGameStatus::Finished || ! in_array($game->result, ['1-0', '0-1', '1/2-1/2'], true)
+            || $game->white_id === null || $game->black_id === null) {
+            return null;
+        }
+
+        $live = Seasons::live();
+        $ladder = Ladders::address($game->game, $game->mode);
+
+        // Only on the ladder pinned when the game started, while it is still open (NIP rule 16).
+        if ($live === null || $ladder === null || $game->ladder_address !== $ladder) {
+            return null;
+        }
+
+        $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+        $existing = $season->attestations()->where(['source' => SeasonAttestation::BOARD, 'source_id' => $game->id, 'board' => 1])->first();
+
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $league = LeagueKey::required();
+        $game->loadMissing(['white', 'black']);
+        $attestedAt = $this->nextAttestationTime($season);
+        // Tournament games never mine (user, 2026-09-26: "die Chain gehört zur Season").
+        $candidate = $game->tournament_match_id === null ? $this->boardCandidate($game, $attestedAt) : null;
+
+        $row = [
+            'season_id' => $season->id,
+            'source' => SeasonAttestation::BOARD,
+            'source_id' => $game->id,
+            'board' => 1,
+            'match_number' => $game->number,
+            'label' => '#'.$game->number,
+            'game' => $game->game,
+            'mode' => $game->mode,
+            'ladder_address' => $ladder,
+            'attested_at' => $attestedAt,
+            'candidate' => $candidate?->toArray(),
+        ];
+        $block = null;
+
+        if ($candidate !== null) {
+            $verdict = $this->chain($season)->attest($candidate);
+            $tip = $this->tip($season);
+
+            $row += [
+                'height' => $verdict->mines() ? ($tip['height'] ?? 0) + 1 : null,
+                'rule' => $verdict->rule?->value,
+                'reason' => $verdict->reason,
+                'subject' => $verdict->subject === null ? null : mb_substr($verdict->subject, 0, 200),
+                'era' => $verdict->era,
+                'reward_per_player' => $verdict->rewardPerPlayer,
+                'reward' => $verdict->mines() ? $verdict->reward : 0,
+                'link_event_id' => $tip['id'],
+            ];
+            $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
+        }
+
+        $content = $game->end_reason === BoardEndReason::Forfeit->value
+            ? 'Decided by forfeit: a player missed the first move of a tournament game; unrated.'
+            : 'Played on the league server, which checked every move; no signed report or response.';
+        $event = $league->publish(self::ATTESTATION, $this->boardTags($game, $season, $ladder, $block), $content, $attestedAt->getTimestamp());
+
+        return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+    }
+
+    /**
+     * The block candidate of a decisive rated board game, or null (a draw).
+     * White is the challenger, as in the rating (RatingService). `moves` are
+     * the full moves played, which rule 2 counts as for chess.
+     */
+    private function boardCandidate(BoardGame $game, CarbonImmutable $attestedAt): ?Candidate
+    {
+        if ($game->result === '1/2-1/2' || $game->white === null || $game->black === null) {
+            return null;
+        }
+
+        [$winner, $loser] = $game->result === '1-0' ? [$game->white->pubkey, $game->black->pubkey] : [$game->black->pubkey, $game->white->pubkey];
+        $pin = GatePin::fromArray($game->gate_at_accept);
+        $clans = $this->clans([$winner, $loser], $game->clans_at_accept);
+
+        return new Candidate(
+            '#'.$game->number,
+            'board:'.$game->id,
+            $game->game,
+            $game->game.'/'.$game->mode,
+            $attestedAt,
+            $game->end_reason === BoardEndReason::Forfeit->value ? Resolution::Forfeit : Resolution::Admin,
+            intdiv($game->ply + 1, 2),
+            [$winner],
+            [$loser],
+            $clans[$winner],
+            [$game->white->pubkey, $game->black->pubkey],
+            [$game->white->pubkey, $game->black->pubkey],
+            $pin->connected ?? false,
+            $pin?->ranks([$winner, $loser]) ?? [],
+            $clans,
+            $pin?->anchors([$winner, $loser]) ?? [],
+        );
+    }
+
+    /**
+     * The `2154` of a board game: the players as challenger (White) and
+     * challenged, one `board` row, `elo` per player, and the gate pinned at
+     * the pairing; the tags of a solo chess game without the record `e`.
+     *
+     * @param  list<string>|null  $block
+     * @return list<list<string>>
+     */
+    private function boardTags(BoardGame $game, Season $season, string $ladder, ?array $block): array
+    {
+        $white = (string) $game->white?->pubkey;
+        $black = (string) $game->black?->pubkey;
+        $tags = [];
+
+        $tags[] = ['a', $ladder, ''];
+        $tags[] = ['p', $white, '', 'challenger'];
+        $tags[] = ['p', $black, '', 'challenged'];
+        $tags[] = ['board', '1', $white, $black, (string) $game->result];
+        $tags[] = ['resolution', ($game->end_reason === BoardEndReason::Forfeit->value ? Resolution::Forfeit : Resolution::Admin)->value];
+        $tags[] = ['winner', match ($game->result) {
+            '1-0' => 'challenger',
+            '0-1' => 'challenged',
+            default => 'draw',
+        }];
+
+        $players = [$game->white_id => $white, $game->black_id => $black];
+        $changes = RatingChange::query()->with('rating')->where('source', RatingChange::BOARD)->where('source_id', $game->id)->orderBy('id')->get();
+
+        foreach ($changes as $change) {
+            $userId = $change->rating->user_id;
+
+            if ($userId !== null && isset($players[$userId])) {
+                $tags[] = ['elo', $players[$userId], (string) $change->before, (string) $change->after];
+            }
+        }
+
+        $previous = $season->attestations()->where('ladder_address', $ladder)->orderByDesc('id')->value('event_id');
+
+        if (is_string($previous)) {
+            $tags[] = ['prev', $previous];
+        }
+
+        $tags[] = ['match', (string) $game->number];
+
+        foreach (GatePin::fromArray($game->gate_at_accept)?->tags([$white, $black]) ?? [] as $tag) {
+            $tags[] = $tag;
+        }
+
+        foreach ($this->clans([$white, $black], $game->clans_at_accept) as $pubkey => $clan) {
+            if ($clan !== null) {
+                $tags[] = ['clan', $pubkey, $clan];
+            }
+        }
+
+        array_push($tags, ...$this->tournamentTags($game->tournament_match_id));
+
+        if ($block !== null) {
+            $tags[] = $block;
+        }
+
+        $tags[] = ['alt', "Esports league attestation: match #{$game->number}, {$game->game} {$game->mode} {$game->result}"];
+
+        return $tags;
+    }
+
+    /**
      * A Parameter Change (`2158`) of the live season by a board admin: in
      * force for every attestation from `effective` on, never before (NIP
      * "Parameter changes"; the core refuses an `effective` at or before the
@@ -447,17 +630,11 @@ final class SeasonChains
         $current = $season->chainParameters()->inForceAt(CarbonImmutable::now());
         $registry = app(GameRegistry::class);
         $isShareKey = fn (mixed $key): bool => is_string($key) && (isset($current->groups[$key]) || ($registry->find($key) !== null && $current->shareKey($key) === $key));
-        // Board games mine nothing before P6 of plan "Mühle und Dame": no weight, share or daily limit for one.
-        $isBoard = fn (mixed $key): bool => $registry->isBoard(explode('/', (string) $key, 2)[0]);
         $ok = true;
 
         foreach ((array) ($changes['weights'] ?? []) as $key => $milli) {
             [$game, $mode] = array_pad(explode('/', (string) $key, 2), 2, '');
             $ok = $ok && $registry->mode($game, $mode) !== null && $in($milli, 'weight', 0);
-        }
-
-        foreach (['weights', 'shares', 'daily'] as $parameter) {
-            $ok = $ok && array_filter(array_keys((array) ($changes[$parameter] ?? [])), $isBoard) === [];
         }
 
         foreach ((array) ($changes['shares'] ?? []) as $key => $percent) {

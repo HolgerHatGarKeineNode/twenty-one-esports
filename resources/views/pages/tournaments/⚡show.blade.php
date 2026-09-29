@@ -451,9 +451,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ['shield-check', __('Results'), $tournament->results_mode->label(), 'results'],
         ['ladder', __('Rated'), match (true) {
             $status === TournamentStatus::Draft => __('decided when it is published'),
-            $profile->isBoard() => __('no: board games play casual until they join the season'),
             $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
-            ! $chess && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
+            // A board game (plan "Mühle und Dame", P6) is rated like chess when played here.
+            $profile->isBoard() && $tournament->isDirectorMode() => __('no: a board game result the directors enter was not played on the league server'),
+            ! $chess && ! $profile->isBoard() && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
             default => __('yes, on its ladder while that is open and the trust gate passes'),
         }, 'rated'],
         ['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding'],

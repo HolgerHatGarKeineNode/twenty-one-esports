@@ -2,7 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
-use App\Games\GameKind;
+use App\Games\BoardGame;
 use App\Games\GameRegistry;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
@@ -55,7 +55,9 @@ final class ChainDraft
     ];
 
     /**
-     * config/season.php, the Pre-Season length in weeks.
+     * config/season.php, the Pre-Season length in weeks. The share group of
+     * the board games (plan "Mühle und Dame", P6) is left out while none of
+     * them is switched on: nothing of a game that is on no page is signed.
      *
      * @return Chain
      */
@@ -63,6 +65,9 @@ final class ChainDraft
     {
         /** @var array{supply: int, subsidy: int, weights: array<string, int>, groups: array<string, list<string>>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, weeks: int, halving_days: int, claim_days: int} $chain */
         $chain = config('season.chain');
+        $registry = app(GameRegistry::class);
+        $off = fn (string $game): bool => in_array($game, BoardGame::RESERVED_SLUGS, true) && ! $registry->isBoard($game);
+        $chain['groups'] = array_filter($chain['groups'], fn (array $games): bool => ! array_all($games, $off));
 
         return [
             'block0_at' => null,
@@ -98,9 +103,12 @@ final class ChainDraft
         }
 
         $chain = $attributes->get(self::MEMO);
+        $defaults = self::defaults();
 
+        // The share groups are config's, never the board's: fromInput() always writes them, so a
+        // draft saved before a group existed (the board games, P6) gets it too, without a weight.
         /** @var Chain|null */
-        return is_array($chain) ? [...self::defaults(), ...$chain] : null;
+        return is_array($chain) ? [...$defaults, ...$chain, 'groups' => $defaults['groups']] : null;
     }
 
     /**
@@ -167,8 +175,9 @@ final class ChainDraft
 
     /**
      * Every share key of the registry with its games and their modes: a
-     * share group (both EA Sports FC editions) is one row with every game it
-     * counts, every other game its own row. The draft's table follows this.
+     * share group (both EA Sports FC editions, the board games) is one row
+     * with every game it counts, every other game its own row. The draft's
+     * table follows this.
      *
      * @param  Chain  $chain
      * @return array<string, list<string>> share key => `<game>/<mode>` keys
@@ -178,12 +187,8 @@ final class ChainDraft
         $parameters = new ConsensusParameters([], groups: $chain['groups']);
         $rows = [];
 
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6).
         foreach (app(GameRegistry::class)->all() as $game) {
-            // Board games mine nothing before P6 of plan "Mühle und Dame": no row, no share.
-            if ($game->kind() === GameKind::Board) {
-                continue;
-            }
-
             foreach (array_keys($game->modes()) as $mode) {
                 $rows[$parameters->shareKey($game->slug())][] = $game->slug().'/'.$mode;
             }
@@ -192,7 +197,10 @@ final class ChainDraft
         return $rows;
     }
 
-    /** "Chess", "EA Sports FC" for the share group of both editions. */
+    /**
+     * "Chess", "EA Sports FC" for the share group of both editions, "Board
+     * games" for the share group of nine men's morris and checkers.
+     */
     public static function shareLabel(string $shareKey): string
     {
         /** @var array<string, list<string>> $groups */
@@ -200,6 +208,11 @@ final class ChainDraft
 
         if (! isset($groups[$shareKey])) {
             return GameNames::game($shareKey);
+        }
+
+        // A group whose games share no name (plan "Mühle und Dame", P6) is named for what they are.
+        if ($shareKey === 'board-games') {
+            return __('Board games');
         }
 
         // The words the games of the group share: "EA Sports FC 26" and "EA Sports FC 27" are "EA Sports FC".
@@ -215,6 +228,69 @@ final class ChainDraft
         }
 
         return $common === [] ? $shareKey : implode(' ', $common);
+    }
+
+    /**
+     * What the admin season page proposes for the board games (plan "Mühle
+     * und Dame", P6) on top of this draft, or null while no board game is
+     * switched on or they mine already: the weight of every board game and
+     * mode, the share and daily limit of their share key
+     * (`season.chain.board_games_proposal`), and the shares of the other
+     * keys shrunk in proportion so that all of them add up to at most 100 %
+     * (largest remainder; a tie goes to the larger share). Nothing is saved:
+     * the board fills it into the form and saves it, or not.
+     *
+     * @param  Chain  $chain
+     * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
+     */
+    public static function boardGamesProposal(array $chain): ?array
+    {
+        /** @var array{weights: array<string, int>, share: int, daily: int} $proposal */
+        $proposal = config('season.chain.board_games_proposal');
+        $registry = app(GameRegistry::class);
+        $keys = [];
+
+        foreach (self::table($chain) as $shareKey => $weightKeys) {
+            foreach ($weightKeys as $key) {
+                if ($registry->isBoard(explode('/', $key, 2)[0])) {
+                    $keys[$shareKey][] = $key;
+                }
+            }
+        }
+
+        if ($keys === [] || array_any(array_merge(...array_values($keys)), fn (string $key): bool => isset($chain['weights'][$key]))) {
+            return null;
+        }
+
+        $weights = [];
+
+        foreach (array_merge(...array_values($keys)) as $key) {
+            $weights[$key] = (int) ($proposal['weights'][$key] ?? 1000);
+        }
+
+        $boardShares = array_fill_keys(array_keys($keys), (int) $proposal['share']);
+        $others = array_diff_key($chain['shares'], $boardShares);
+        $room = 100 - array_sum($boardShares);
+        $shares = $others;
+
+        if (array_sum($others) > $room) {
+            // Largest remainder: each share scaled to the room, the seats left over to the largest remainders.
+            $total = array_sum($others);
+            $exact = array_map(fn (int $share): float => $share * $room / $total, $others);
+            $shares = array_map(fn (float $share): int => (int) floor($share), $exact);
+            $order = array_keys($exact);
+            usort($order, fn (string $a, string $b): int => [($exact[$b] - floor($exact[$b])), $others[$b]] <=> [($exact[$a] - floor($exact[$a])), $others[$a]]);
+
+            foreach (array_slice($order, 0, $room - array_sum($shares)) as $key) {
+                $shares[$key]++;
+            }
+        }
+
+        return [
+            'weights' => $weights,
+            'shares' => $shares + $boardShares,
+            'daily' => array_fill_keys(array_keys($keys), (int) $proposal['daily']),
+        ];
     }
 
     /**
@@ -320,7 +396,7 @@ final class ChainDraft
             'daily' => $daily,
             'pairlimit' => [$number($input['pair_day'], 'pairlimit.day', __('Blocks per pairing a day')), $number($input['pair_season'], 'pairlimit.season', __('Blocks per pairing a season'))],
             'subtree' => $number($input['subtree'], 'subtree', __('Same trust circle from % (101 = off)')),
-            'moves' => $number($input['moves'], 'moves', __('Minimum chess moves')),
+            'moves' => $number($input['moves'], 'moves', __('Minimum moves (chess, board games)')),
         ];
 
         if ($chain['halving_days'] > self::weeks($chain) * 7) {

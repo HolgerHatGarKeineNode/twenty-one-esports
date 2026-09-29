@@ -2,6 +2,7 @@
 
 namespace App\Support\Engagement;
 
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\RatingChange;
 use App\Models\SeriesMatch;
@@ -46,8 +47,9 @@ final class ResultEngagement
      *
      * - chess: the player; for the clan when the rated game pinned their clan
      *   at the pairing (it counts for the clan's hashrate).
-     * - a board game other than chess (plan "Mühle und Dame", P5): the
-     *   player; never for a clan (board games are casual until P6).
+     * - a board game other than chess (plan "Mühle und Dame"): the player;
+     *   for the clan when the rated game pinned their clan at the pairing
+     *   (P6), as chess.
      * - a series: the roster the result counts for this side, else the
      *   lineup's active seats, else the roster side's players; for the clan
      *   when the side is a clan lineup.
@@ -59,7 +61,16 @@ final class ResultEngagement
         $rating = $change->rating;
 
         if ($change->source === RatingChange::BOARD) {
-            return [$rating->user_id === null ? [] : [$rating->user_id], []];
+            $game = BoardGame::query()->find($change->source_id);
+            $user = $rating->user_id === null ? null : User::query()->find($rating->user_id);
+
+            if ($user === null) {
+                return [[], []];
+            }
+
+            $inClan = $game !== null && $game->rated && isset(($game->clans_at_accept ?? [])[$user->pubkey]);
+
+            return [[$user->id], $inClan ? [$user->id] : []];
         }
 
         if ($change->source === RatingChange::CHESS) {

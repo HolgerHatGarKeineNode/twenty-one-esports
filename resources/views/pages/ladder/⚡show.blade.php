@@ -3,6 +3,7 @@
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Rating;
+use App\Support\Board\RatedBoard;
 use App\Support\PageMeta;
 use App\Support\Rating\LadderBoard;
 use App\Support\Rating\Ratings;
@@ -77,13 +78,14 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
 
     /**
      * A board game other than chess (plan "Mühle und Dame", P5) has its
-     * casual ladder only, until it joins the season chain (P6): no Rated
-     * choice and no note about a rated ladder that does not exist.
+     * casual ladder only while its rated queue is not offered (P6,
+     * RatedBoard::offered()): no Rated choice and no note about a rated
+     * ladder nobody can play on. Offered, it is a ladder like chess.
      */
     #[Computed]
     public function casualOnly(): bool
     {
-        return app(GameRegistry::class)->isBoard($this->game);
+        return app(GameRegistry::class)->isBoard($this->game) && ! RatedBoard::offered();
     }
 
     public function pickView(string $view): void

@@ -124,9 +124,19 @@ return [
     | game and mode without a weight does not mine. Shares are per share key
     | and era in percent, daily limits per winning player, share key and UTC
     | day. A share group (`groups`, NIP `group`) counts its games as one for
-    | both: the two EA Sports FC editions share one share and one daily limit.
-    | `pairlimit` is [per UTC day, per season]; `subtree` 101 switches rule 7
-    | off. The length is in weeks, eras last `halving_days`.
+    | both: the two EA Sports FC editions share one share and one daily limit,
+    | and so do the board games nine men's morris and checkers (`board-games`,
+    | plan "Mühle und Dame", P6; user decision 2026-09-29). `pairlimit` is
+    | [per UTC day, per season]; `subtree` 101 switches rule 7 off; `moves`
+    | counts for chess and the board games. The length is in weeks, eras last
+    | `halving_days`.
+    |
+    | board_games_proposal: what the admin season page proposes for the board
+    | games (P6), never part of a draft on its own: a weight per mode, the
+    | share of their group and its daily limit. The shares of the other games
+    | are the board's decision of 2026-09-28 and stay; filling in the proposal
+    | shrinks them in proportion to make room (35/40/25 become 32/36/22 next
+    | to 10), and the board saves that or not (plan: no silent redistribution).
     |
     */
 
@@ -146,6 +156,7 @@ return [
         ],
         'groups' => [
             'ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'],
+            'board-games' => ['nine-mens-morris', 'checkers'],
         ],
         'shares' => [
             'chess' => 35,
@@ -156,6 +167,14 @@ return [
             'chess' => 5,
             'rocket-league' => 5,
             'ea-sports-fc' => 5,
+        ],
+        'board_games_proposal' => [
+            'weights' => [
+                'nine-mens-morris/blitz' => 1000,
+                'checkers/blitz' => 1000,
+            ],
+            'share' => 10,
+            'daily' => 5,
         ],
         'pairlimit' => [1, 3],
         'subtree' => 90,

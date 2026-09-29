@@ -3,7 +3,7 @@
 
     /*
      * The tournament's own deadlines (P18): the first-move window of a chess
-     * game, and the no-show wait, report deadline and response deadline of a
+     * game or a board game (plan "Mühle und Dame"), and the no-show wait, report deadline and response deadline of a
      * series. Empty = the league default, shown as the placeholder. Shared by
      * pages::admin.tournament-create and pages::admin.tournament-edit (state:
      * App\Livewire\TournamentFormatChooser); saved with the page's button.
@@ -23,7 +23,7 @@
     }
     $deadlineField = 'h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink';
     $deadlines = [
-        ['checkinMinutes', 'checkin_minutes', __('Chess: first move within (minutes)'), __('A player who misses it loses by forfeit.')],
+        ['checkinMinutes', 'checkin_minutes', __('Chess and board games: first move within (minutes)'), __('A player who misses it loses by forfeit.')],
         ['noshowMinutes', 'noshow_minutes', __('Series: no-show report after (minutes)'), __('From the start until a captain can report the other side missing.')],
         ['reportHours', 'report_hours', __('Series: result due (hours after the start)'), __('Nobody reported by then: the match goes to the admin queue.')],
         ['responseMinutes', 'response_minutes', __('Series: answer within (minutes)'), __('An unanswered result is confirmed unrated; an unanswered no-show is a forfeit.')],

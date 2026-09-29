@@ -50,12 +50,8 @@ new #[Title('Weekly events')] #[Layout('layouts::app', ['section' => 'admin'])] 
     {
         $ladders = [];
 
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6).
         foreach (app(GameRegistry::class)->all() as $game) {
-            // A board game's ladder opens in P5 of plan "Mühle und Dame"; no event is played on it before.
-            if (app(GameRegistry::class)->isBoard($game->slug())) {
-                continue;
-            }
-
             foreach ($game->modes() as $mode) {
                 $ladders[$game->slug().'/'.$mode->slug] = __($game->name()).' · '.__($mode->name);
             }

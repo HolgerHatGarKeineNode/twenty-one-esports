@@ -32,8 +32,13 @@ use Illuminate\Support\Facades\DB;
  *
  * One intent at a time: searching here ends a search for chess, for another
  * board game and for a casual 1v1, and withdraws the casual invite sent; a
- * player in any live game cannot search. Casual only: board games have no
- * rated queue before they mine (P6).
+ * player in any live game cannot search.
+ *
+ * Rated (P6, RatedBoard): a rated search is refused while rated play of the
+ * board game is closed for the player, pairs only with another rated search
+ * of the same game and mode, by the rated rating of that game, and only when
+ * the trust gate passes for the two (both Trusted, listing each other); the
+ * gate is pinned with the game. Rated and casual searches never pair.
  */
 final class BoardQueue
 {
@@ -42,6 +47,7 @@ final class BoardQueue
         private BoardInvites $invites,
         private GameRegistry $registry,
         private CasualInvites $casualInvites,
+        private RatedBoard $ratedBoard,
     ) {}
 
     /**
@@ -49,7 +55,7 @@ final class BoardQueue
      *
      * @throws BoardRuleViolation for a board game that is not switched on, or a player already in a live game
      */
-    public function join(User $user, string $slug, string $mode = 'blitz'): ?BoardGame
+    public function join(User $user, string $slug, string $mode = 'blitz', bool $rated = false): ?BoardGame
     {
         $definition = $this->registry->find($slug);
 
@@ -59,6 +65,13 @@ final class BoardQueue
 
         self::assertFree($this->games, $user);
 
+        // Rated (P6): only while the season is live, the rated queue is offered and the player is Trusted.
+        $refusal = $rated ? $this->ratedBoard->refusal($user, $slug, $mode) : null;
+
+        if ($refusal !== null) {
+            throw new BoardRuleViolation('rated_not_open', $refusal);
+        }
+
         // One intent at a time: searching here ends every other search and the casual invite sent.
         ChessQueueEntry::query()->where('user_id', $user->id)->delete();
         SeriesQueueEntry::query()->where('user_id', $user->id)->delete();
@@ -66,7 +79,8 @@ final class BoardQueue
         $this->casualInvites->withdrawOutgoing($user);
         $this->invites->withdrawOutgoing($user);
 
-        $invited = $this->fromOpenInvite($user, $slug, $mode);
+        // An open invite is casual: it pairs a casual search only.
+        $invited = $rated ? null : $this->fromOpenInvite($user, $slug, $mode);
 
         if ($invited !== null) {
             return $invited;
@@ -75,7 +89,8 @@ final class BoardQueue
         BoardQueueEntry::query()->firstOrCreate(['user_id' => $user->id], [
             'game' => $slug,
             'mode' => $mode,
-            'rating' => Ratings::forUsers([$user->id], $slug, $mode, Rating::CASUAL)[$user->id]['rating'],
+            'rated' => $rated,
+            'rating' => Ratings::forUsers([$user->id], $slug, $mode, Ratings::pool($rated))[$user->id]['rating'],
             'joined_at' => now(),
         ]);
 
@@ -159,6 +174,7 @@ final class BoardQueue
                 ->where('user_id', '!=', $user->id)
                 ->where('game', $entry->game)
                 ->where('mode', $entry->mode)
+                ->where('rated', $entry->rated)
                 ->orderBy('joined_at')
                 ->lockForUpdate()
                 ->with('user')
@@ -173,8 +189,15 @@ final class BoardQueue
 
                 [$white, $black] = random_int(0, 1) === 0 ? [$user, $candidate->user] : [$candidate->user, $user];
 
+                // Rated (P6): the pairing is the accept; its trust gate is pinned with the game.
+                $gate = $entry->rated ? $this->ratedBoard->pin($white, $black) : null;
+
+                if ($entry->rated && $gate === null) {
+                    continue;
+                }
+
                 try {
-                    return $this->games->start($entry->game, $white, $black, $entry->mode);
+                    return $this->games->start($entry->game, $white, $black, $entry->mode, ratedGate: $gate);
                 } catch (BoardRuleViolation) {
                     // That player plays elsewhere by now: they stop searching here.
                     $candidate->delete();

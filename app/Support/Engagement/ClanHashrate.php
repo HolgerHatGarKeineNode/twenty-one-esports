@@ -149,6 +149,29 @@ final class ClanHashrate
             }
         }
 
+        // A rated board game (plan "Mühle und Dame", P6) gives its two players the game result, as a chess game.
+        foreach ($sources->where('source', RatingChange::BOARD)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
+            $games = DB::table('board_games')->whereIn('id', $ids->all())->get(['id', 'white_id', 'black_id', 'clans_at_accept']);
+            $pubkeys = DB::table('users')->whereIn('id', $games->pluck('white_id')->merge($games->pluck('black_id'))->filter()->unique()->values()->all())->pluck('pubkey', 'id');
+
+            foreach ($games as $game) {
+                $atAccept = self::json($game->clans_at_accept);
+                [$white, $black] = match ($scores['board:'.$game->id] ?? null) {
+                    1.0 => [0, 2],
+                    0.0 => [2, 0],
+                    default => [1, 1],
+                };
+
+                foreach ([[$game->white_id, $white], [$game->black_id, $black]] as [$userId, $slot]) {
+                    $pubkey = $userId === null ? null : ($pubkeys[$userId] ?? null);
+
+                    if (is_string($pubkey)) {
+                        $add($atAccept[$pubkey] ?? null, $pubkey, $slot, false, isset($recent['board:'.$game->id]));
+                    }
+                }
+            }
+        }
+
         foreach ($sources->where('source', RatingChange::SERIES)->pluck('source_id')->chunk(self::CHUNK) as $ids) {
             $matches = DB::table('series_matches')->whereIn('id', $ids->all())
                 ->get(['id', 'winner', 'resolved_roster', 'clans_at_accept', 'challenger_lineup_id', 'challenged_lineup_id']);

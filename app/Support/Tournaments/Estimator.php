@@ -259,12 +259,17 @@ final class Estimator
     public function disabledReason(TournamentFormat $format, GameProfile $profile, int $n): ?string
     {
         return match (true) {
-            $format === TournamentFormat::FreeForAll => $profile->isChess()
-                ? 'Needs 3 or more players in one match. Chess is always one player against one.'
-                : 'Needs 3 or more players in one match. A series is always one side against the other.',
-            $format === TournamentFormat::Leaderboard => $profile->isChess()
-                ? 'Needs a game with a score or time you play alone, like a time trial. Chess games are won against an opponent.'
-                : 'Needs a game with a score or time you play alone, like a time trial. A series is won against another side.',
+            $format === TournamentFormat::FreeForAll => match (true) {
+                $profile->isChess() => 'Needs 3 or more players in one match. Chess is always one player against one.',
+                // Nine men's morris and checkers (plan "Mühle und Dame", P6).
+                $profile->isBoard() => 'Needs 3 or more players in one match. A board game is always one player against one.',
+                default => 'Needs 3 or more players in one match. A series is always one side against the other.',
+            },
+            $format === TournamentFormat::Leaderboard => match (true) {
+                $profile->isChess() => 'Needs a game with a score or time you play alone, like a time trial. Chess games are won against an opponent.',
+                $profile->isBoard() => 'Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.',
+                default => 'Needs a game with a score or time you play alone, like a time trial. A series is won against another side.',
+            },
             $format === TournamentFormat::Swiss && $n < 4 => 'Needs at least 4 players.',
             $format === TournamentFormat::TwoStage && $n < 6 => 'Needs at least 6 players for two groups.',
             $format === TournamentFormat::DoubleElimination && $n < 3 => 'Needs at least 3 players.',

@@ -8,6 +8,7 @@ use App\Enums\NotificationKind;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -129,7 +130,7 @@ final class TournamentControl
                 throw new TournamentRuleViolation('payouts_approved', __('The payouts of this tournament are approved, so its results can no longer change: the places they were paid for are final. Correct it with the league directly if a payout was wrong.'));
             }
 
-            $match = TournamentMatch::query()->where('tournament_id', $locked->id)->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])
+            $match = TournamentMatch::query()->where('tournament_id', $locked->id)->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])
                 ->lockForUpdate()->findOrFail($matchId);
 
             if ($match->bracket === 'bye' || count($match->slots) !== 2 || $match->slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
@@ -154,9 +155,11 @@ final class TournamentControl
             $who = ['user_id' => $actor->id, 'name' => $actor->displayName(), 'at' => $now->toIso8601String()];
             $series = $this->current($match, $match->seriesMatch);
             $game = $this->current($match, $match->chessGame);
-            $number = $series->number ?? $game->number ?? ($previous['number'] ?? null);
+            // A finished board game (plan "Mühle und Dame", P6) is corrected as a finished chess game is.
+            $board = $this->current($match, $match->boardGame);
+            $number = $series->number ?? $game->number ?? $board->number ?? ($previous['number'] ?? null);
             // A played result that moved rated Elo: revert it, rate the correction (inside this transaction).
-            [$played, $score, $swap] = $this->eloSubject($match, $series, $game, $result);
+            [$played, $score, $swap] = $this->eloSubject($match, $series, $game ?? $board, $result);
             $elo = self::inSlotOrder($played === null ? null : $this->ratings->correct($played, $score), $swap);
             // A correction of a correction with the same outcome moves nothing new; the Elo stays corrected.
             $standing = $elo ?? ($played !== null && ($previous['winner'] ?? false) === $result['winner'] && (bool) ($previous['forfeit'] ?? false) === (bool) $result['forfeit'] ? ($previous['elo'] ?? null) : null);
@@ -218,7 +221,7 @@ final class TournamentControl
      */
     public function eloPreview(Tournament $tournament, int $matchId, array $input): ?array
     {
-        $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->with(['slots.participant', 'seriesMatch', 'chessGame'])->find($matchId);
+        $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->with(['slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->find($matchId);
 
         if ($match === null || count($match->slots) !== 2) {
             return null;
@@ -230,7 +233,7 @@ final class TournamentControl
             return null;
         }
 
-        [$played, $score, $swap] = $this->eloSubject($match, $this->current($match, $match->seriesMatch), $this->current($match, $match->chessGame), $result);
+        [$played, $score, $swap] = $this->eloSubject($match, $this->current($match, $match->seriesMatch), $this->current($match, $match->chessGame) ?? $this->current($match, $match->boardGame), $result);
 
         return self::inSlotOrder($played === null ? null : $this->ratings->correction($played, $score), $swap);
     }
@@ -255,7 +258,7 @@ final class TournamentControl
     }
 
     /**
-     * The played series or chess game whose Elo a result set here corrects,
+     * The played series, chess game or board game (P6) whose Elo a result set here corrects,
      * and the corrected score (the challenger's, White's; null for a
      * forfeit), and whether its challenger (White) sits in the second slot:
      * only one that is over, never one still being played (that one is
@@ -263,9 +266,9 @@ final class TournamentControl
      * White's side cannot be told (fail closed: no Elo moves).
      *
      * @param  array<string, mixed>  $result
-     * @return array{0: SeriesMatch|ChessGame|null, 1: float|null, 2: bool}
+     * @return array{0: SeriesMatch|ChessGame|BoardGame|null, 1: float|null, 2: bool}
      */
-    private function eloSubject(TournamentMatch $match, ?SeriesMatch $series, ?ChessGame $game, array $result): array
+    private function eloSubject(TournamentMatch $match, ?SeriesMatch $series, ChessGame|BoardGame|null $game, array $result): array
     {
         $winner = $result['winner'];
         $forfeit = (bool) ($result['forfeit'] ?? false);
@@ -274,7 +277,7 @@ final class TournamentControl
             return [$series, $forfeit ? null : ($winner === 0 ? 1.0 : 0.0), false];
         }
 
-        if ($game === null || $game->status !== ChessGameStatus::Finished) {
+        if ($game === null || $game->status !== ($game instanceof BoardGame ? BoardGameStatus::Finished : ChessGameStatus::Finished)) {
             return [null, null, false];
         }
 
@@ -534,12 +537,12 @@ final class TournamentControl
      * The series or game of a match that still counts: not voided or
      * superseded by the league.
      *
-     * @template T of SeriesMatch|ChessGame
+     * @template T of SeriesMatch|ChessGame|BoardGame
      *
      * @param  T|null  $played
      * @return T|null
      */
-    private function current(TournamentMatch $match, SeriesMatch|ChessGame|null $played): SeriesMatch|ChessGame|null
+    private function current(TournamentMatch $match, SeriesMatch|ChessGame|BoardGame|null $played): SeriesMatch|ChessGame|BoardGame|null
     {
         return $played === null || $match->isReplaced($played->id) ? null : $played;
     }

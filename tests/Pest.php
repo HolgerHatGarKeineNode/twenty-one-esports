@@ -6,6 +6,8 @@ use App\Models\SeasonSettingChange;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\ChainDraft;
+use App\Support\SeasonChain\LadderEvents;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\SeasonChain\SeasonChains;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -147,6 +149,16 @@ function openSeason(array $attributes = []): Season
     $season->save();
 
     return $season;
+}
+
+/**
+ * The first version of every ladder of the season, as Block 0 publishes
+ * them (a throwaway trust key): a board game's ladder opens only with it
+ * (Ladders::address(), plan "Mühle und Dame", P6).
+ */
+function publishLadders(Season $season): void
+{
+    app(LadderEvents::class)->publish($season, LeagueKey::required(), (new TestSigner)->pubkey);
 }
 
 /**

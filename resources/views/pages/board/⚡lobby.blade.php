@@ -12,15 +12,20 @@ use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardInvites;
 use App\Support\Board\BoardQueue;
 use App\Support\Board\BoardRuleViolation;
+use App\Support\Board\RatedBoard;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\GameNames;
 use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
+use App\Support\SeasonChain\Opponents;
+use App\Support\SeasonChain\Seasons;
+use App\Support\Series\Ladders;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /*
@@ -37,6 +42,15 @@ use Livewire\Component;
  * few seconds (wire:poll): a widening range may pair, an invite may have
  * been accepted. A pairing also arrives by push (`board.game-started` on
  * the player's own channel), which moves the page to the board at once.
+ *
+ * Rated (P6): while the rated queue of the board games is offered
+ * (RatedBoard::offered()) a second button searches a rated game; it is
+ * disabled with the reason while rated play is closed for this player
+ * (RatedBoard::refusal: season live, trust ranks computed, a Trusted
+ * account) or they list each other with nobody. While searching rated, the
+ * P57 notice says in counts only how many others search rated and whether
+ * any of them list each other with this player, with the fix next to it.
+ * Off, the page is as before: casual only.
  *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a board game whose own switch is off is a 404.
@@ -61,9 +75,103 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
         app(PageMeta::class)->describe($name, __('Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.', ['game' => $name]));
     }
 
-    public function findOpponent(): void
+    public function findOpponent(bool $rated = false): void
     {
-        $this->attempt(fn (User $user) => $this->goTo(app(BoardQueue::class)->join($user, $this->slug)));
+        $this->attempt(function (User $user) use ($rated): void {
+            $refusal = $rated ? $this->ratedRefusal : null;
+
+            if ($refusal !== null) {
+                throw new BoardRuleViolation('rated_not_open', $refusal);
+            }
+
+            $this->goTo(app(BoardQueue::class)->join($user, $this->slug, rated: $rated));
+        });
+    }
+
+    /** Whether the page offers a rated search at all (the rated queue switch, P6). */
+    #[Computed]
+    public function ratedOffered(): bool
+    {
+        return RatedBoard::offered();
+    }
+
+    /**
+     * Why this player cannot search a rated game of this board game now, or
+     * null. The queue pairs two rated players only if they list each other,
+     * so a player who lists nobody back would wait forever: refused here.
+     */
+    #[Computed]
+    public function ratedRefusal(): ?string
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            return Ladders::isOpen($this->slug, 'blitz') ? __('Log in to play rated games.') : Seasons::restMessage();
+        }
+
+        $refusal = app(RatedBoard::class)->refusal($user, $this->slug, 'blitz');
+
+        if ($refusal !== null) {
+            return $refusal;
+        }
+
+        return $this->mutualOpponents === 0
+            ? __('Rated play needs a player you list each other with. Add opponents on their player pages; they add you back.')
+            : null;
+    }
+
+    /** How many players this one lists each other with (the rated queue pairs only those). */
+    #[Computed]
+    public function mutualOpponents(): int
+    {
+        $user = auth()->user();
+
+        return $user instanceof User ? count(app(Opponents::class)->mutual($user)) : 0;
+    }
+
+    /**
+     * P57, as in the chess lobby: while searching rated, how many others
+     * search this board game rated, how many of them list each other with
+     * this player, and how many list this player without being on their
+     * list. Counts only: who searches right now is live presence.
+     *
+     * @return array{others: int, mutual: int, asking: int}
+     */
+    #[Computed]
+    public function ratedQueue(): array
+    {
+        $user = auth()->user();
+        $entry = $this->entry;
+
+        if (! $user instanceof User || $entry === null || ! $entry->rated) {
+            return ['others' => 0, 'mutual' => 0, 'asking' => 0];
+        }
+
+        $opponents = app(Opponents::class);
+        $others = BoardQueueEntry::query()->where('rated', true)->where('game', $entry->game)->where('mode', $entry->mode)->where('user_id', '!=', $user->id)
+            ->join('users', 'users.id', '=', 'board_queue_entries.user_id')->pluck('users.pubkey');
+        $mine = $opponents->entries($user);
+        $listingMe = $opponents->listedBy($user);
+
+        return [
+            'others' => $others->count(),
+            'mutual' => $others->filter(fn (string $other): bool => in_array($other, $mine, true) && in_array($other, $listingMe, true))->count(),
+            'asking' => $others->filter(fn (string $other): bool => ! in_array($other, $mine, true) && in_array($other, $listingMe, true))->count(),
+        ];
+    }
+
+    /** P57: leave the rated search and search casual, which pairs with anyone. */
+    public function searchCasualInstead(): void
+    {
+        $this->attempt(fn (User $user) => app(BoardQueue::class)->leave($user));
+        $this->findOpponent(false);
+    }
+
+    /** P57: an accept from the searching card; the next poll can pair the two. */
+    #[On('opponent-list-changed')]
+    public function opponentListChanged(): void
+    {
+        unset($this->ratedQueue, $this->mutualOpponents, $this->ratedRefusal);
     }
 
     public function cancelSearch(): void
@@ -256,7 +364,7 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
                 'invite_closed' => __('That invite is no longer open.'),
                 'opponent_playing' => __('That player is already in another live game, so the invite is closed.'),
                 'invite_self' => __('You cannot invite yourself.'),
-                'not_looking' => $violation->getMessage(),
+                'not_looking', 'rated_not_open' => $violation->getMessage(),
                 default => __('That did not work, please try again.'),
             };
         }
@@ -333,13 +441,27 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
                 <p class="m-0 text-[13px] text-ink-2">{{ __('You are in a live game.') }}</p>
                 <div><x-button :href="route('board.show', $active)" icon="play" data-test="lobby-active">{{ __('Back to your game') }}</x-button></div>
             @elseif ($entry)
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-test="lobby-searching">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-test="lobby-searching" data-rated="{{ $entry->rated ? 'true' : 'false' }}">
                     <span class="flex items-center gap-3 text-[13px]">
                         <span class="size-2 animate-live rounded-full bg-btc-hi"></span>
-                        {{ __('Finding an opponent for :game …', ['game' => $name]) }}
+                        {{ $entry->rated ? __('Finding a rated opponent for :game …', ['game' => $name]) : __('Finding an opponent for :game …', ['game' => $name]) }}
                     </span>
                     <x-button variant="secondary" wire:click="cancelSearch" data-test="cancel-search">{{ __('Cancel') }}</x-button>
                 </div>
+                {{-- P57: the rated queue skips players who do not list each other; say so in counts (nobody is named: presence), and offer the fix. --}}
+                @php($ratedQueue = $this->ratedQueue)
+                @if ($entry->rated && $ratedQueue['others'] > 0 && $ratedQueue['mutual'] === 0)
+                    <x-opponents.needs-mutual class="text-left"
+                        :heading="trans_choice(':count other player searches rated right now, but you do not list each other, so the queue cannot pair you.|:count other players search rated right now, but you list each other with none of them, so the queue cannot pair you.', $ratedQueue['others'])"
+                        :note="$ratedQueue['asking'] > 0
+                            ? trans_choice(':count player in the queue lists you. Accept the request on your Opponents page and the queue can pair you.|:count players in the queue list you. Accept their requests on your Opponents page and the queue can pair you.', $ratedQueue['asking'])
+                            : __('A rated game needs both of you to add the other as an opponent. Casual pairs you with anyone.')">
+                        @if ($ratedQueue['asking'] > 0)
+                            <x-button :href="route('settings.opponents').'#requests'" data-test="needs-mutual-requests">{{ __('Open your requests') }}</x-button>
+                        @endif
+                        <x-button variant="quiet" wire:click="searchCasualInstead" data-test="needs-mutual-casual">{{ __('Search casual instead') }}</x-button>
+                    </x-opponents.needs-mutual>
+                @endif
             @elseif ($outgoing)
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" data-test="lobby-invited">
                     <span class="text-[13px]">{{ __('Invite sent. Waiting for :name to accept.', ['name' => $outgoing->invitee->displayName()]) }}</span>
@@ -350,6 +472,14 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
                     <x-button icon="bolt" wire:click="findOpponent" data-test="find-opponent">{{ __('Find opponent') }}</x-button>
                     <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · paired by rating') }}</span>
                 </div>
+                {{-- Rated (P6): only while the rated queue is offered; disabled with the reason while it is closed for this player. --}}
+                @if ($this->ratedOffered)
+                    @php($ratedRefusal = $this->ratedRefusal)
+                    <div class="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:gap-3" data-test="rated-search" data-rated-open="{{ $ratedRefusal === null ? 'true' : 'false' }}">
+                        <x-button variant="secondary" icon="shield-check" wire:click="findOpponent(true)" :disabled="$ratedRefusal !== null" class="disabled:cursor-not-allowed disabled:opacity-50" data-test="find-rated-opponent">{{ __('Find rated opponent') }}</x-button>
+                        <span class="max-w-[60ch] text-xs text-ink-2" data-test="rated-why">{{ $ratedRefusal ?? trans_choice('Rated pairs you only with a Trusted player you list each other with (you have :count). A win can mine a season block.|Rated pairs you only with Trusted players you list each other with (you have :count). A win can mine a season block.', $this->mutualOpponents) }}</span>
+                    </div>
+                @endif
             @endif
 
             @if ($user)

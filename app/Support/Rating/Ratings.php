@@ -187,17 +187,19 @@ final class Ratings
     }
 
     /**
-     * Both players of a board game other than chess on the casual ladder of
-     * that board game (plan "Mühle und Dame", P5), with this game's change
-     * once it moved their rating (`delta` null otherwise).
+     * Both players of a board game other than chess on the ladder of that
+     * board game the game counts on (plan "Mühle und Dame": casual, P5; the
+     * season's for a rated game, P6), with this game's change once it moved
+     * their rating (`delta` null otherwise).
      *
      * @return array{w: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}, b: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}}
      */
     public static function forBoardGame(BoardGame $game): array
     {
-        $now = self::forUsers(array_values(array_filter([$game->white_id, $game->black_id], fn (?int $id): bool => $id !== null)), $game->game, $game->mode, Rating::CASUAL);
+        $pool = self::pool($game->rated);
+        $now = self::forUsers(array_values(array_filter([$game->white_id, $game->black_id], fn (?int $id): bool => $id !== null)), $game->game, $game->mode, $pool);
         $changes = self::changesOf(RatingChange::BOARD, $game->id);
-        $side = fn (?int $userId): array => ($userId !== null && isset($now[$userId]) ? $now[$userId] : self::summary(null, Rating::CASUAL)) + [
+        $side = fn (?int $userId): array => ($userId !== null && isset($now[$userId]) ? $now[$userId] : self::summary(null, $pool)) + [
             'before' => $userId === null ? null : ($changes['user:'.$userId] ?? null)?->before,
             'delta' => $userId === null ? null : ($changes['user:'.$userId] ?? null)?->delta,
         ];

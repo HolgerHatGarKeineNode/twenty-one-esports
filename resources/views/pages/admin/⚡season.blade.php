@@ -176,6 +176,36 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
         ];
     }
 
+    /**
+     * Fill the board games' proposal into the draft form (plan "Mühle und
+     * Dame", P6): their weights, share and daily limit, and the other
+     * shares shrunk in proportion. Nothing is saved; the board saves it.
+     */
+    public function fillBoardGamesProposal(): void
+    {
+        Gate::authorize('admin');
+
+        $proposal = ChainDraft::boardGamesProposal(ChainDraft::current());
+
+        if ($proposal === null) {
+            return;
+        }
+
+        foreach ($proposal['weights'] as $key => $milli) {
+            $this->draftWeights[$key] = SeasonRelease::factor($milli);
+        }
+
+        foreach ($proposal['shares'] as $key => $share) {
+            $this->draftShares[$key] = (string) $share;
+        }
+
+        foreach ($proposal['daily'] as $key => $blocks) {
+            $this->draftDaily[$key] = (string) $blocks;
+        }
+
+        $this->notice = __('The board games\' proposal is filled in. Check it and save the draft.');
+    }
+
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
     public function saveDraft(): void
     {
@@ -411,7 +441,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             'chain.message' => __('Genesis message'),
             'chain.pairlimit' => __('Blocks per pairing a day / a season'),
             'chain.subtree' => __('Same trust circle from % (101 = off)'),
-            'chain.moves' => __('Minimum chess moves'),
+            'chain.moves' => __('Minimum moves (chess, board games)'),
         ];
         $parts = explode('.', $path, 3);
 
@@ -842,7 +872,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 </label>
                 <fieldset class="m-0 flex min-w-0 flex-col gap-2 border-0 p-0" data-test="draft-fields-games" @disabled($draftLocked)>
                     <legend class="mb-2 text-xs font-bold text-ink">{{ __('Games and modes') }}</legend>
-                    <p class="m-0 text-xs text-ink-2">{{ __('Weight per winning player, :min to 10 with at most three decimals; empty = does not mine. Share: the part of each era budget the game can mine, 1 to 100 %, together at most 100 %. A day: blocks per player a day, 1 to 100. A game that mines needs both. Both EA Sports FC editions share one share and one daily limit.', ['min' => '0.001']) }}</p>
+                    <p class="m-0 text-xs text-ink-2">{{ __('Weight per winning player, :min to 10 with at most three decimals; empty = does not mine. Share: the part of each era budget the game can mine, 1 to 100 %, together at most 100 %. A day: blocks per player a day, 1 to 100. A game that mines needs both. Both EA Sports FC editions share one share and one daily limit, and so do the board games.', ['min' => '0.001']) }}</p>
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[520px] border-collapse text-left text-xs" data-test="draft-table">
                             <thead class="text-ink-2">
@@ -871,13 +901,25 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             </tbody>
                         </table>
                     </div>
+                    {{-- Board games (plan "Mühle und Dame", P6): a proposal the board fills in and saves, never a silent change. --}}
+                    @if (! $draftLocked && ($proposal = ChainDraft::boardGamesProposal($draftChain)) !== null)
+                        <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="board-games-proposal">
+                            <p class="m-0 text-xs text-ink-2">{{ __('Board games do not mine in this draft. Proposal: weight :weight per mode, :share % share and :daily a day for the board games; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.', [
+                                'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                                'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                                'daily' => (int) collect($proposal['daily'])->first(),
+                                'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                            ]) }}</p>
+                            <span><button type="button" wire:click="fillBoardGamesProposal" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-board-games-proposal">{{ __('Fill in the proposal') }}</button></span>
+                        </div>
+                    @endif
                 </fieldset>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" data-test="draft-fields-rules" @disabled($draftLocked)>
                     <legend class="mb-2 text-xs font-bold text-ink">{{ __('Consensus rules 4, 8, 7 and 2') }}</legend>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a day') }}<input type="text" inputmode="numeric" wire:model="draft.pair_day" class="{{ $input }}"><span class="text-ink-3">{{ $range('pairlimit.day') }}</span></label>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a season') }}<input type="text" inputmode="numeric" wire:model="draft.pair_season" class="{{ $input }}"><span class="text-ink-3">{{ $range('pairlimit.season') }}</span></label>
                     <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Same trust circle from % (101 = off)') }}<input type="text" inputmode="numeric" wire:model="draft.subtree" class="{{ $input }}"><span class="text-ink-3">{{ $range('subtree') }}</span></label>
-                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Minimum chess moves') }}<input type="text" inputmode="numeric" wire:model="draft.moves" class="{{ $input }}"><span class="text-ink-3">{{ $range('moves') }}</span></label>
+                    <label class="flex min-w-0 flex-col gap-1 text-xs text-ink-2">{{ __('Minimum moves (chess, board games)') }}<input type="text" inputmode="numeric" wire:model="draft.moves" class="{{ $input }}"><span class="text-ink-3">{{ $range('moves') }}</span></label>
                 </fieldset>
                 @unless ($draftLocked)
                     <span class="flex flex-wrap items-center gap-3">
@@ -974,8 +1016,12 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 </tbody>
             </table>
         </div>
-        @unless (collect(array_keys($chain['rewards_now']))->every(fn (string $key): bool => ChainOverview::mines($key)))
+        @unless (collect(array_keys($chain['rewards_now']))->filter(fn (string $key): bool => str_starts_with($key, 'chess/'))->every(fn (string $key): bool => ChainOverview::mines($key)))
             <p class="m-0 text-xs text-ink-2" data-test="rated-chess-not-open">{{ __('Rated chess is not open yet (ESPORTS_RATED_CHESS), so chess wins do not mine and the estimator leaves chess out. The chess weights apply from the day rated blitz opens.') }}</p>
+        @endunless
+        {{-- Board games (P6): their weights apply once their rated queue opens. --}}
+        @unless (collect(array_keys($chain['rewards_now']))->reject(fn (string $key): bool => str_starts_with($key, 'chess/'))->every(fn (string $key): bool => ChainOverview::mines($key)))
+            <p class="m-0 text-xs text-ink-2" data-test="rated-board-not-open">{{ __('Rated board games are not open yet (ESPORTS_RATED_BOARD_GAMES), so board game wins do not mine and the estimator leaves them out. Their weights apply from the day their rated queue opens.') }}</p>
         @endunless
     </section>
 
@@ -1081,10 +1127,10 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
                     <legend class="mb-2 text-xs text-ink-2">{{ __('Share cap per era (1 to 100 %) and blocks per player a day (1 to 100)') }}</legend>
                     @foreach ($shares as $game => $value)
-                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game share %', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="shares.{{ $game }}" class="{{ $input }}"></label>
+                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game share %', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="shares.{{ $game }}" class="{{ $input }}" data-test="change-share-{{ $game }}"></label>
                     @endforeach
                     @foreach ($daily as $game => $value)
-                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game a day', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="daily.{{ $game }}" class="{{ $input }}"></label>
+                        <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __(':game a day', ['game' => ChainOverview::gameLabel($game)]) }}<input type="text" inputmode="numeric" wire:model="daily.{{ $game }}" class="{{ $input }}" data-test="change-daily-{{ $game }}"></label>
                     @endforeach
                 </fieldset>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" @disabled(! $this->isBoard)>
@@ -1092,7 +1138,7 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a day') }}<input type="text" inputmode="numeric" wire:model="pairDay" class="{{ $input }}"></label>
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Blocks per pairing a season') }}<input type="text" inputmode="numeric" wire:model="pairSeason" class="{{ $input }}"></label>
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Same trust circle from % (101 = off)') }}<input type="text" inputmode="numeric" wire:model="subtree" class="{{ $input }}"></label>
-                    <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Minimum chess moves') }}<input type="text" inputmode="numeric" wire:model="moves" class="{{ $input }}"></label>
+                    <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Minimum moves (chess, board games)') }}<input type="text" inputmode="numeric" wire:model="moves" class="{{ $input }}"></label>
                 </fieldset>
                 <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Why are you changing it? Shown in the public change log') }}
                     <input type="text" wire:model="reason" maxlength="{{ SeasonRelease::MESSAGE_MAX }}" class="{{ $input }}" @disabled(! $this->isBoard) data-test="change-reason">

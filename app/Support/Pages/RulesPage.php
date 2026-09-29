@@ -148,7 +148,7 @@ final class RulesPage
 
         $facts[] = [__('Reward per win in era 1, at weight 1'), __(':sats sats', ['sats' => PreSeason::formatSats($subsidy)])];
         $facts[] = [__('Era length'), trans_choice(':count day|:count days', $days)];
-        $facts[] = [__('Minimum chess moves'), (string) $rules->moves];
+        $facts[] = [__('Minimum moves (chess, board games)'), (string) $rules->moves];
         $rows = [];
 
         foreach ($rules->weights as $key => $milli) {
@@ -166,7 +166,7 @@ final class RulesPage
             'table' => ['head' => [__('Game and mode'), __('Weight'), __('Share of an era'), __('Blocks per player a day')], 'rows' => $rows],
             'items' => [
                 __('Rewards halve every era. The sats are paid once, after the season review, to the Lightning address of each player.'),
-                __('A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit.'),
+                __("A game and mode without a weight does not mine. Both EA Sports FC editions share one share and one daily limit, and so do the board games nine men's morris and checkers."),
                 __('The board can change weights, shares and limits during a season; a change only counts for blocks after it.'),
             ],
             'links' => [[__('The season and mining'), route('mining')]],

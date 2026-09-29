@@ -197,7 +197,12 @@ return [
     | the casual queue of each board game, paired by the casual rating of
     | that game within a range that widens while a player waits (as
     | `chess.queue.range`). invite_seconds (P5): how long an invite to a
-    | player stays open.
+    | player stays open. rated_queue (P6, App\Support\Board\RatedBoard): whether
+    | the rated queue of the board games is offered (`ESPORTS_RATED_BOARD_GAMES`,
+    | off by default, as `chess.rated_queue`). Off, no board game win can mine,
+    | and /mining and AdminSeason show board game rewards as not open. On, a
+    | rated game still needs a live season and two Trusted players who list
+    | each other.
     |
     */
 
@@ -208,6 +213,7 @@ return [
             'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],
         ],
         'invite_seconds' => 120,
+        'rated_queue' => (bool) env('ESPORTS_RATED_BOARD_GAMES', false),
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => Checkers::class],

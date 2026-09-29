@@ -16,11 +16,15 @@ use App\Models\BoardMove;
 use App\Models\BoardQueueEntry;
 use App\Models\ChessQueueEntry;
 use App\Models\SeriesQueueEntry;
+use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Rating\RatingService;
+use App\Support\SeasonChain\GatePin;
+use App\Support\SeasonChain\SeasonChains;
 use App\Support\Series\CasualMatches;
+use App\Support\Series\Ladders;
 use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +64,14 @@ use Illuminate\Support\Facades\DB;
  * forfeit (a White who misses it aborts the game, and the tournament
  * restarts it or applies the double no-show rule).
  *
- * Not yet here (later phases of the plan): mining (P6), a record of the game.
+ * Rated (P6): a game the rated queue paired, or a rated tournament's game,
+ * comes with the trust gate the league pinned at the pairing (RatedBoard)
+ * and is pinned to the ladder open then; it rates the rated ladder of its
+ * board game while that ladder is still open and is attested in the live
+ * season (SeasonChains::attestBoardGame()), in the transaction that ends
+ * it. Without a gate the game is casual, as before.
+ *
+ * Not yet here (later phases of the plan): a record of the game.
  */
 final class BoardGameService
 {
@@ -69,10 +80,13 @@ final class BoardGameService
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
     /**
+     * A rated game comes with the trust gate the league pinned at the pairing
+     * (RatedBoard, P6); without one the game is casual.
+     *
      * @throws BoardRuleViolation for a game that is no switched-on board game,
      *                            a mode without a clock, or a player already in a live game
      */
-    public function start(string $slug, User $white, User $black, string $mode = 'blitz', ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null): BoardGame
+    public function start(string $slug, User $white, User $black, string $mode = 'blitz', ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null, ?GatePin $ratedGate = null): BoardGame
     {
         if ($white->is($black)) {
             throw new BoardRuleViolation('same_player');
@@ -82,8 +96,14 @@ final class BoardGameService
         [$initialMs, $incrementMs] = $this->timeControl($definition, $mode);
         $rules = $definition->rules();
         $start = $rules->start();
+        // A rated game is pinned to the ladder open when it starts (a tournament's frozen ladder), and
+        // counts only while that ladder is still open (NIP rule 16): never on a later season's. No ladder, no rating.
+        $ladder = $ratedGate === null ? null : ($tournamentMatchId === null
+            ? Ladders::address($slug, $mode)
+            : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
+        $ratedGate = $ladder === null ? null : $ratedGate;
 
-        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds): BoardGame {
+        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds, $ratedGate, $ladder): BoardGame {
             foreach ([$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new BoardRuleViolation('already_playing', "{$player->id} already plays a live board game.");
@@ -124,6 +144,10 @@ final class BoardGameService
                 'first_move_seconds' => $firstMoveSeconds,
                 'tournament_match_id' => $tournamentMatchId,
                 'tournament_game' => $tournamentGame,
+                'rated' => $ratedGate !== null,
+                'ladder_address' => $ladder,
+                'gate_at_accept' => $ratedGate?->toArray(),
+                'clans_at_accept' => $ratedGate === null ? null : RatedBoard::clans($white, $black),
             ]);
         });
 
@@ -553,9 +577,14 @@ final class BoardGameService
             'ended_at' => now(),
         ]);
 
-        // In the transaction that ends the game: its rating change commits with the result or not at all.
-        if ($status === BoardGameStatus::Finished && $reason !== BoardEndReason::Forfeit->value) {
-            app(RatingService::class)->applyBoardGame($game);
+        // In the transaction that ends the game: its rating change and, for a rated game in a live
+        // season, its league attestation commit with the result or not at all. A forfeit rates nothing.
+        if ($status === BoardGameStatus::Finished) {
+            if ($reason !== BoardEndReason::Forfeit->value) {
+                app(RatingService::class)->applyBoardGame($game);
+            }
+
+            app(SeasonChains::class)->attestBoardGame($game);
         }
 
         if ($game->tournament_match_id !== null) {

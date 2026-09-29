@@ -2,16 +2,20 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\IncomingPaymentStatus;
 use App\Enums\SeriesStatus;
+use App\Games\BoardGame;
 use App\Games\GameRegistry;
+use App\Models\BoardGame as BoardGameModel;
 use App\Models\ChessGame;
 use App\Models\IncomingPayment;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Board\RatedBoard;
 use App\Support\Chess\RatedChess;
 use Carbon\CarbonImmutable;
 
@@ -45,10 +49,18 @@ final class ChainOverview
     /**
      * Whether wins of this `<game>/<mode>` can mine now, so a view may show
      * its reward as achievable: chess only while rated chess is offered
-     * (RatedChess::offered()), every other game while it has rated play.
+     * (RatedChess::offered()), a board game other than chess only while it
+     * is switched on and its rated queue is offered (RatedBoard::offered(),
+     * plan "Mühle und Dame", P6), every other game while it has rated play.
      */
     public static function mines(string $key): bool
     {
+        $game = explode('/', $key, 2)[0];
+
+        if (in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game)) {
+            return app(GameRegistry::class)->isBoard($game) && RatedBoard::offered();
+        }
+
         return ! str_starts_with($key, 'chess/') || RatedChess::offered();
     }
 
@@ -398,6 +410,15 @@ final class ChainOverview
             ->where('updated_at', '>=', $from)->where('updated_at', '<', $to)
             ->selectRaw('mode, count(*) as total')->groupBy('mode')->pluck('total', 'mode')
             ->mapWithKeys(fn (mixed $total, string $mode): array => ['chess/'.$mode => (int) $total])->all();
+
+        // Board games (P6): their decisive finished games, casual included, as chess.
+        $boards = BoardGameModel::query()->where('status', BoardGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])
+            ->where('updated_at', '>=', $from)->where('updated_at', '<', $to)
+            ->selectRaw('game, mode, count(*) as total')->groupBy('game', 'mode')->get();
+
+        foreach ($boards as $row) {
+            $counts[$row->game.'/'.$row->mode] = (int) $row->getAttribute('total');
+        }
 
         $series = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->whereIn('winner', SeriesMatch::SIDES)
             ->where('finished_at', '>=', $from)->where('finished_at', '<', $to)

@@ -5,8 +5,9 @@
 | queue and invites of each board game, one live game at a time across
 | chess, the board games and the casual 1v1, the casual Elo of each board
 | game (chess ratings untouched), casual cups and tournaments that play a
-| board game on the board game core, and still no mining before P6. With the
-| switch off none of it has a route or a place in the navigation.
+| board game on the board game core; a casual game never mines (rated play
+| and mining: tests/Feature/BoardMiningTest.php, P6). With the switch off
+| none of it has a route or a place in the navigation.
 */
 
 use App\Enums\BoardGameStatus;
@@ -238,14 +239,25 @@ test('an aborted board game rates nothing', function () {
     expect(RatingChange::query()->count())->toBe(0)->and(Rating::query()->count())->toBe(0);
 });
 
-/* ---------- No mining before P6 ----------------------------------------------------------------------------- */
+/* ---------- Casual games never mine (P6 opened the ladders) ------------------------------------------------ */
 
-test('a board game mines nothing yet: no attestation, no ladder event, no season event while a season is live', function () {
+test('a casual board game mines nothing: no attestation and no rated Elo, while its season ladder is open and published (P6)', function () {
     $season = openSeason();
     $trust = new TestSigner;
     config(['esports.trust.nsec' => $trust->secret]);
-    $events = NostrEvent::query()->count();
 
+    // Live, but not published yet: a board game's ladder opens with its first version.
+    expect(Ladders::isOpen(NineMensMorris::SLUG, 'blitz'))->toBeFalse();
+
+    app(LadderEvents::class)->publish($season, LeagueKey::required(), $trust->pubkey);
+
+    expect(Ladders::isOpen(NineMensMorris::SLUG, 'blitz'))->toBeTrue()
+        ->and(Ladders::isOpen(Checkers::SLUG, 'blitz'))->toBeTrue()
+        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => NineMensMorris::SLUG.'/blitz/'.$season->slug])->count())->toBe(1)
+        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => Checkers::SLUG.'/blitz/'.$season->slug])->count())->toBe(1)
+        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/'.$season->slug])->count())->toBe(1);
+
+    $events = NostrEvent::query()->count();
     [$white, $black] = User::factory()->count(2)->create();
     $service = app(BoardGameService::class);
     $service->resign($service->start(NineMensMorris::SLUG, $white, $black), $white);
@@ -253,14 +265,9 @@ test('a board game mines nothing yet: no attestation, no ladder event, no season
 
     expect(SeasonAttestation::query()->count())->toBe(0)
         ->and(NostrEvent::query()->count())->toBe($events)
-        ->and(Ladders::isOpen(NineMensMorris::SLUG, 'blitz'))->toBeFalse()
-        ->and(Ladders::isOpen(Checkers::SLUG, 'blitz'))->toBeFalse()
-        ->and(Rating::query()->where('pool', Rating::RATED)->count())->toBe(0);
-
-    app(LadderEvents::class)->publish($season, LeagueKey::required(), $trust->pubkey);
-
-    expect(NostrEvent::query()->where('kind', Ladders::KIND)->where(fn ($query) => $query->where('d', 'like', NineMensMorris::SLUG.'/%')->orWhere('d', 'like', Checkers::SLUG.'/%'))->count())->toBe(0)
-        ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/'.$season->slug])->count())->toBe(1);
+        ->and(Rating::query()->where('pool', Rating::RATED)->count())->toBe(0)
+        ->and(Rating::query()->where('pool', Rating::CASUAL)->where('game', NineMensMorris::SLUG)->count())->toBe(2)
+        ->and(BoardGame::query()->where('rated', true)->count())->toBe(0);
 });
 
 /* ---------- Tournaments and cups ---------------------------------------------------------------------------- */

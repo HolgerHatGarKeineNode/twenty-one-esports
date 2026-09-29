@@ -330,8 +330,10 @@ final class TournamentMatchMaker
         [$white, $black] = $swap ? [$second, $first] : [$first, $second];
 
         try {
+            // Rated as a tournament chess game is (P6): the frozen ladder still open and the trust gate passing at the pairing.
             $game = $this->boards->start($tournament->game, $white, $black, $tournament->mode, $match->id,
-                BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament));
+                BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament),
+                $this->chessPin($tournament, $white, $black));
         } catch (BoardRuleViolation) {
             // Busy in another live game, or the board game is switched off: the next run tries again.
             return null;
@@ -403,8 +405,8 @@ final class TournamentMatchMaker
     }
 
     /**
-     * The gate of a rated tournament game: open ladder, trust ranks, both at
-     * or above the minimum. Null = casual.
+     * The gate of a rated tournament game, chess or a board game (P6): open
+     * ladder, trust ranks, both at or above the minimum. Null = casual.
      */
     public function chessPin(Tournament $tournament, User $white, User $black): ?GatePin
     {
