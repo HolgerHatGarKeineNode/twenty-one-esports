@@ -72,7 +72,18 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
 
     public function pickPool(string $pool): void
     {
-        $this->pool = $pool === Rating::CASUAL ? Rating::CASUAL : Rating::RATED;
+        $this->pool = $pool === Rating::CASUAL || $this->casualOnly ? Rating::CASUAL : Rating::RATED;
+    }
+
+    /**
+     * A board game other than chess (plan "Mühle und Dame", P5) has its
+     * casual ladder only, until it joins the season chain (P6): no Rated
+     * choice and no note about a rated ladder that does not exist.
+     */
+    #[Computed]
+    public function casualOnly(): bool
+    {
+        return app(GameRegistry::class)->isBoard($this->game);
     }
 
     public function pickView(string $view): void
@@ -93,6 +104,10 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
     #[Computed]
     public function activePool(): string
     {
+        if ($this->casualOnly) {
+            return Rating::CASUAL;
+        }
+
         if ($this->pool !== '') {
             return $this->pool;
         }
@@ -231,17 +246,19 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
                        @class([$tab, 'border-l border-edge' => ! $loop->first, 'bg-btc font-bold text-on-btc hover:text-on-btc' => $slug === $mode, 'bg-ground text-ink-2 hover:text-ink' => $slug !== $mode])>{{ $label }}</a>
                 @endforeach
             </nav>
-            <div role="group" aria-label="{{ __('Ladder') }}" class="flex overflow-hidden rounded-md border border-edge">
-                @foreach (['rated' => __('Rated'), 'casual' => __('Casual')] as $key => $label)
-                    <button type="button" wire:click="pickPool('{{ $key }}')" aria-pressed="{{ $active === $key ? 'true' : 'false' }}" data-test="pool-{{ $key }}"
-                            @class([$tab, 'border-l border-edge' => $key === 'casual', 'bg-raised font-bold text-ink' => $active === $key, 'bg-ground text-ink-2' => $active !== $key])>{{ $label }}</button>
-                @endforeach
-            </div>
+            @unless ($this->casualOnly)
+                <div role="group" aria-label="{{ __('Ladder') }}" class="flex overflow-hidden rounded-md border border-edge">
+                    @foreach (['rated' => __('Rated'), 'casual' => __('Casual')] as $key => $label)
+                        <button type="button" wire:click="pickPool('{{ $key }}')" aria-pressed="{{ $active === $key ? 'true' : 'false' }}" data-test="pool-{{ $key }}"
+                                @class([$tab, 'border-l border-edge' => $key === 'casual', 'bg-raised font-bold text-ink' => $active === $key, 'bg-ground text-ink-2' => $active !== $key])>{{ $label }}</button>
+                    @endforeach
+                </div>
+            @endunless
         </div>
     </div>
 
     {{-- Casual on screen because the rated ladder has no row yet: say why, and link it. --}}
-    @if (! $rated && ! $this->ratedHasRows)
+    @if (! $rated && ! $this->ratedHasRows && ! $this->casualOnly)
         @php
             $locked = $this->ratedSeason === null;
         @endphp

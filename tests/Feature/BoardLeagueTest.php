@@ -383,7 +383,13 @@ test('the match dock carries a live board game and a board invite, and leaves ou
 
 test('the board games have their own lobby, ladder and context bar while on', function () {
     $this->get(route('board.lobby', NineMensMorris::SLUG))->assertOk()->assertSee("Nine Men's Morris");
-    $this->get(route('ladder.show', [Checkers::SLUG, 'blitz']))->assertOk();
+    // Casual only until P6: no Rated choice, no note about a rated ladder; a finished game fills it.
+    [$winner, $loser] = User::factory()->count(2)->create();
+    app(BoardGameService::class)->resign(app(BoardGameService::class)->start(Checkers::SLUG, $winner, $loser), $loser);
+    $this->get(route('ladder.show', [Checkers::SLUG, 'blitz']))->assertOk()
+        ->assertDontSee('data-test="pool-rated"', false)
+        ->assertDontSee('data-test="ladder-rated-note"', false)
+        ->assertSee($winner->displayName());
 
     $player = User::factory()->create();
     $game = app(BoardGameService::class)->start(NineMensMorris::SLUG, $player, User::factory()->create());
