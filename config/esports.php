@@ -189,12 +189,15 @@ return [
     | game, keyed by its reserved slug (BoardGame::RESERVED_SLUGS; nine men's
     | morris is never `mill`), each with its own switch and its class. The
     | classes come with P3 (nine men's morris) and P4 (checkers); an entry
-    | without a class stays off.
+    | without a class stays off. first_move_seconds (P2): before both sides
+    | made their first move no clock runs; the side to move has this long for
+    | it or the game is aborted (as `chess.first_move_seconds`).
     |
     */
 
     'board_games' => [
         'enabled' => (bool) env('ESPORTS_BOARD_GAMES', false),
+        'first_move_seconds' => 30,
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => null],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => null],

@@ -12,6 +12,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/js/echo.js',
                 'resources/js/chess.js',
+                'resources/js/boardGame.js',
                 'resources/js/push.js',
                 'resources/js/matchRoom.js',
                 'resources/js/liveChat.js',

@@ -5400,5 +5400,7 @@
     "Lift the hold on :name?": "Sperre auf :name aufheben?",
     "This name was given up recently and is held until :date.": "Dieser Name wurde vor Kurzem freigegeben und ist bis :date gesperrt.",
     "This browser's push service cannot be reached from here: its address must be https on a public host.": "Der Push-Dienst dieses Browsers ist von hier aus nicht erreichbar: seine Adresse muss https auf einem öffentlichen Host sein.",
-    "Search a held name": "Gesperrten Namen suchen"
+    "Search a held name": "Gesperrten Namen suchen",
+    ":game: :white vs :black": ":game: :white gegen :black",
+    "Game board": "Spielbrett"
 }

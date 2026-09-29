@@ -105,6 +105,10 @@ Route::livewire('chess', 'pages::chess.lobby')->name('chess.lobby');
 // Every live chess game, for guests too (P10, spectating).
 Route::livewire('games', 'pages::games.index')->name('games.index');
 Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name('games.show');
+// A board game next to chess (plan "Mühle und Dame", P2): no route at all while the switch is off.
+if (config('esports.board_games.enabled')) {
+    require __DIR__.'/board.php';
+}
 // The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
 Route::livewire('live', 'pages::live')->name('live');
 // Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.

@@ -1,9 +1,12 @@
 <?php
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Jobs\NotifyBlockZero;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
 use App\Support\Engagement\WeeklySlots;
@@ -52,6 +55,28 @@ Artisan::command('chess:check-clocks', function (ChessGameService $games) {
 })->purpose('End live chess games whose clock ran out');
 
 Schedule::command('chess:check-clocks')->everyTenSeconds()->withoutOverlapping();
+
+/*
+ * The same safety net for the board games next to chess (plan "Mühle und
+ * Dame", P2): every live board game whose deadline passed is checked, in
+ * case the delayed App\Jobs\CheckBoardClock did not run. Only the server
+ * clock decides, so running it often is harmless. It needs no rules, so it
+ * also ends a game whose board game was switched off meanwhile.
+ */
+Artisan::command('board:check-clocks', function (BoardGameService $games) {
+    $due = BoardGame::query()
+        ->where('status', BoardGameStatus::Active)
+        ->where('deadline_ms', '<=', (int) now()->getTimestampMs())
+        ->get();
+
+    foreach ($due as $game) {
+        $games->checkClock($game);
+    }
+
+    $this->info("Checked {$due->count()} game(s).");
+})->purpose('End live board games whose clock ran out');
+
+Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping();
 
 /*
  * Daily chess deadline reminders (ChessSettings "Remind me when … are left").

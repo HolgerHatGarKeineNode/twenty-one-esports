@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Nostr\PlayerProfile;
@@ -28,6 +29,15 @@ Broadcast::channel('game.{game}.players', function (User $user, ChessGame $game)
     $color = $game->colorOf($user);
 
     return $color === null ? false : ['id' => $user->id, 'color' => $color];
+});
+
+/*
+ * A live board game's player channel (nine men's morris, checkers; plan
+ * "Mühle und Dame", P2). Spectators listen on the public `board.{id}.watch`
+ * channel instead (App\Events\BoardGameUpdated sends both).
+ */
+Broadcast::channel('board.{boardGame}', function (User $user, BoardGame $boardGame) {
+    return $boardGame->colorOf($user) !== null;
 });
 
 /*

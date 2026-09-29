@@ -3,12 +3,13 @@
 namespace App\Games;
 
 use App\Games\Contracts\Game;
+use App\Support\Board\BoardRules;
 
 /**
  * A board game other than chess, played move by move on our server (plan
- * "Mühle und Dame": nine men's morris, checkers). The board game core
- * (rules, moves, clock) comes in P2; here it only names its kind, so every
- * switch in the league tells it from chess and from a series.
+ * "Mühle und Dame": nine men's morris, checkers). It names its kind, so
+ * every switch in the league tells it from chess and from a series, and its
+ * rules, which the board game core (App\Support\Board, P2) plays by.
  *
  * A board game is registered through `config('esports.board_games')`, never
  * through `esports.games`, so the switch there keeps it off the site.
@@ -31,4 +32,12 @@ abstract class BoardGame implements Game
     {
         return $this->modes()[$slug] ?? null;
     }
+
+    /**
+     * The game's rules, which the board game core (App\Support\Board\BoardGameService)
+     * asks about every move (P2).
+     *
+     * @return BoardRules<mixed>
+     */
+    abstract public function rules(): BoardRules;
 }
