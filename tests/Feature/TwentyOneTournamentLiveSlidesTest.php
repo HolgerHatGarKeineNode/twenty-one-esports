@@ -234,7 +234,8 @@ test('every live tournament slide renders a running and a finished tournament wi
         // How it runs in a sign-up round: where to sign up and the time to the close, never a round in play.
         ->and($upcomingHow)->toContain('How it runs', 'Sign up', 'esports.einundzwanzig.space/tournaments/'.$next->id, $upcoming[0]['countdown'])->not->toContain('Now:')
         // Never a fee, a hashtag or a Lightning address.
-        ->and(mb_strtolower($all))->not->toContain('fee')->not->toContain('lnurl')->not->toContain('#bitcoin');
+        // "fee" as a word: a factory name like "isabel.feeney" is no fee (it failed the suite once the order changed).
+        ->and(mb_strtolower($all))->not->toMatch('/\bfees?\b/')->not->toContain('lnurl')->not->toContain('#bitcoin');
 });
 
 /** An admin who may disqualify, pause and link accounts. */
