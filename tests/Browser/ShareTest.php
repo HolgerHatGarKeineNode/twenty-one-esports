@@ -3,6 +3,7 @@
 use App\Enums\ChessEndReason;
 use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
+use App\Models\InviteLink;
 use App\Models\NostrEvent;
 use App\Models\PlacementReveal;
 use App\Models\Rating;
@@ -414,7 +415,7 @@ test('P46: every moment offers its own post where it happens, shows the note fir
         ->and($win['content'])->toContain('/cards/de/page/game/'.$game->id.'.png?v=')
         ->and($in)->not->toBeNull()
         ->and(collect($in['tags'])->firstWhere(0, 'q')[1])->toBe($tournament->refresh()->address())
-        ->and($in['content'])->toContain('/tournaments/'.$tournament->id)
+        ->and($in['content'])->toContain('/i/'.InviteLink::query()->where('tournament_id', $tournament->id)->value('code'))
         ->and($notes->flatMap(fn (array $note) => collect($note['tags'])->where(0, 't'))->all())->toBe([])
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($signup->evaluate('() => window.__errors'))->toBe([])
