@@ -6,7 +6,8 @@
     $count = fn () => [
         'players' => \App\Models\User::query()->count(),
         'clans' => \App\Models\Clan::query()->count(),
-        'games' => \App\Models\ChessGame::query()->where('status', \App\Enums\ChessGameStatus::Finished)->count(),
+        // Every game the league plays, in one query: the stream's own count (StreamStats), so the two never disagree.
+        'games' => \App\Support\TwentyOne\Stream\StreamStats::played(),
     ];
 
     try {

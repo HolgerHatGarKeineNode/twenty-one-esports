@@ -19,6 +19,7 @@ use App\Support\Rating\Ratings;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -135,12 +136,13 @@ class StreamStats
     /**
      * Games played (since `$since`): finished chess games, finished board
      * games of a board game that is switched on, and series with a result
-     * that was not voided.
+     * that was not voided. One query, whatever the tables hold: the site
+     * footer counts with it too, so the two numbers never disagree.
      */
-    private function played(?CarbonInterface $since = null): int
+    public static function played(?CarbonInterface $since = null): int
     {
         $chess = ChessGame::query()->where('status', ChessGameStatus::Finished);
-        $boards = $this->boardGames()->where('status', BoardGameStatus::Finished);
+        $boards = self::boardGames()->where('status', BoardGameStatus::Finished);
         $series = self::decidedSeries();
 
         if ($since !== null) {
@@ -149,7 +151,13 @@ class StreamStats
             $series->where('finished_at', '>=', $since);
         }
 
-        return $chess->count() + $boards->count() + $series->count();
+        $row = DB::query()
+            ->selectSub($chess->toBase()->selectRaw('count(*)'), 'chess')
+            ->selectSub($boards->toBase()->selectRaw('count(*)'), 'boards')
+            ->selectSub($series->toBase()->selectRaw('count(*)'), 'series')
+            ->first();
+
+        return (int) ($row->chess ?? 0) + (int) ($row->boards ?? 0) + (int) ($row->series ?? 0);
     }
 
     /**
@@ -168,7 +176,7 @@ class StreamStats
      *
      * @return Builder<BoardGame>
      */
-    private function boardGames(): Builder
+    private static function boardGames(): Builder
     {
         $slugs = array_keys(app(GameRegistry::class)->boards());
 
