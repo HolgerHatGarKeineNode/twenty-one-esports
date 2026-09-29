@@ -10,7 +10,7 @@ namespace App\Support\TwentyOne\Stream;
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
  * the same look when two or more games run, then the EVERY_ROUND teasers
- * (sats to win, casual cups, a player's pride moment), then TEASERS from the pool of eleven,
+ * (sats to win, casual cups, a player's pride moment), then TEASERS from the pool of twelve,
  * continuing where the last round stopped. Without games a round is the
  * teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
@@ -68,7 +68,8 @@ final class RotationPlanner
 
     public const LOOKS = ['a', 'b', 'c'];
 
-    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4'];
+    /** The pool, in turn; m1 (last, so the first rounds keep their order) is the mempool of every game (MempoolSlides). */
+    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4', 'm1'];
 
     /**
      * Teasers in every round, before the pool's: one of each group, the groups
@@ -101,6 +102,7 @@ final class RotationPlanner
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
         'd5' => 'stream.rotation.d5-board',
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
+        'm1' => 'stream.rotation.m1-mempool',
     ];
 
     /**

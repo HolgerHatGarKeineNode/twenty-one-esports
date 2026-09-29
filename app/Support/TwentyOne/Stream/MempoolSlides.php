@@ -1,0 +1,314 @@
+<?php
+
+namespace App\Support\TwentyOne\Stream;
+
+use App\Enums\SeriesResolution;
+use App\Games\GameRegistry;
+use App\Models\Clan;
+use App\Models\FairPlayVoid;
+use App\Models\SeasonAttestation;
+use App\Models\SeasonBlockVoid;
+use App\Models\SeriesMatch;
+use App\Models\User;
+use App\Support\Badges\BadgeCopy;
+use App\Support\GameNames;
+use App\Support\Matches\MatchBlocks;
+use App\Support\Matches\MempoolStrip;
+use App\Support\PreSeason;
+use App\Support\SeasonChain\Seasons;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Cache;
+use Throwable;
+
+/**
+ * The data of the mempool slide (m1), read from the same sources as the
+ * mempool strip on /matches: MempoolStrip::build() for the cubes (every
+ * game, casual and rated, played and running), the season chain's
+ * attestations for the blocks. The app classes in App\Support\Matches are
+ * read, never changed; this class only reshapes their output for a 1280x720
+ * still.
+ *
+ * Two versions, switched by the chain alone (Seasons::live()):
+ *
+ * - `casual` while no season runs: the latest played games on the left, the
+ *   running and scheduled ones on the right, at most COLUMNS cubes.
+ * - `season` while a season runs: the latest mined blocks of the live
+ *   season (SeasonAttestation with a height, oldest left, the tip next to
+ *   the divider) with the block's reward in sats and who mined it, then the
+ *   running games as the pending mempool.
+ *
+ * A voided result is never shown as a win: a series the league voided, and a
+ * block the season review voided (SeasonBlockVoid) or whose match a fair
+ * play link voided (FairPlayVoid), stay out. The board games (nine men's
+ * morris, checkers) only while they are switched on and routed
+ * (MempoolStrip::boardSlugs()), their blocks too.
+ *
+ * Read once per cache period (`twentyone.stream.stats.cache_seconds`, like
+ * StreamStats and PrideSlides), with a fixed number of queries for any number
+ * of matches and blocks; frame() turns the picture refs into data URIs from
+ * the daemon's memory. Texts are English whatever the application locale:
+ * the stream is.
+ */
+class MempoolSlides
+{
+    public const CACHE_KEY = 'twentyone.stream.mempool';
+
+    /** The slide's scene id (RotationPlanner::VIEWS). */
+    public const SCENE = 'm1';
+
+    /** Cubes on the slide at most (blocks and games together). */
+    public const COLUMNS = 5;
+
+    /** Places the running side keeps while there are that many running games. */
+    public const RUNNING = 2;
+
+    public function __construct(private StreamImages $images) {}
+
+    /**
+     * The scene data of m1: the slide, the ticker counts and the brand backdrop.
+     *
+     * @param  array<string, mixed>  $stats  StreamStats::all()
+     * @return array<string, mixed>
+     */
+    public function scene(array $stats): array
+    {
+        return ['mempool' => $this->all(), 'stats' => $stats, 'backdrop' => $this->images->backdrop(StreamImages::BRAND)];
+    }
+
+    /**
+     * The slide as the view reads it, cached like StreamStats.
+     *
+     * @return array<string, mixed>
+     */
+    public function all(): array
+    {
+        $seconds = max(1, (int) config('twentyone.stream.stats.cache_seconds', 15));
+
+        try {
+            $data = Cache::remember(self::CACHE_KEY, $seconds, fn (): array => $this->read());
+        } catch (Throwable $e) {
+            report($e);
+
+            $data = $this->read();
+        }
+
+        return $this->framed($data);
+    }
+
+    /**
+     * The slide from the database, with picture refs instead of pictures
+     * (plain arrays, so a cache can hold them).
+     *
+     * `mode` is `season` while a season runs, else `casual`; `rest` tells a
+     * casual slide whether a season was ever released (`pre-launch`) or the
+     * last one ended (`between`). `finished` (casual only) and `running` are
+     * cubes, `blocks` (season only) the mined blocks, oldest first; together
+     * at most COLUMNS.
+     *
+     * @return array{mode: string, rest: string, season: string|null, finished: list<array<string, mixed>>, running: list<array<string, mixed>>, blocks: list<array<string, mixed>>}
+     */
+    public function read(): array
+    {
+        $locale = App::getLocale();
+        App::setLocale('en');
+
+        try {
+            $strip = MempoolStrip::build();
+            $season = Seasons::live();
+            $voided = $this->voidedSeries($strip['finished']);
+            $finished = array_values(array_filter($strip['finished'], fn (array $cube): bool => ! in_array($cube['key'], $voided, true)));
+            $blocks = $season === null ? [] : $this->blocks($season->id);
+            $left = $season === null ? count($finished) : count($blocks);
+            // The running side keeps RUNNING places; what the other side leaves free it may use too.
+            $running = array_slice($strip['running'], 0, max(self::RUNNING, self::COLUMNS - $left));
+            // Without a running game the right side is one open cube (MempoolLayout), so it keeps a place too.
+            $keep = self::COLUMNS - max(1, count($running));
+
+            return [
+                'mode' => $season === null ? 'casual' : 'season',
+                'rest' => $season === null ? Seasons::state() : 'live',
+                'season' => $season === null ? null : BadgeCopy::season($season->slug),
+                'finished' => $season === null ? array_map($this->cube(...), array_slice($finished, max(0, count($finished) - $keep))) : [],
+                'running' => array_map($this->cube(...), $running),
+                'blocks' => array_slice($blocks, max(0, count($blocks) - $keep)),
+            ];
+        } finally {
+            App::setLocale($locale);
+        }
+    }
+
+    /**
+     * read()'s data with every picture ref turned into a data URI.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function framed(array $data): array
+    {
+        foreach (['finished', 'running', 'blocks'] as $list) {
+            foreach ((array) ($data[$list] ?? []) as $i => $item) {
+                foreach ((array) ($item['sides'] ?? []) as $j => $side) {
+                    $data[$list][$i]['sides'][$j]['avatar'] = $this->images->avatar(self::avatarRef($side['ref'] ?? null));
+                    $data[$list][$i]['sides'][$j]['logo'] = $this->images->logo(is_string($side['logoRef'] ?? null) ? $side['logoRef'] : null);
+                    unset($data[$list][$i]['sides'][$j]['ref'], $data[$list][$i]['sides'][$j]['logoRef']);
+                }
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * A picture ref as avatarRef() wrote it into the cache, null for anything else.
+     *
+     * @return array{id: int, pubkey: string, source: string|null}|null
+     */
+    private static function avatarRef(mixed $ref): ?array
+    {
+        if (! is_array($ref) || ! is_int($ref['id'] ?? null) || ! is_string($ref['pubkey'] ?? null)) {
+            return null;
+        }
+
+        $source = $ref['source'] ?? null;
+
+        return ['id' => $ref['id'], 'pubkey' => $ref['pubkey'], 'source' => is_string($source) ? $source : null];
+    }
+
+    /**
+     * The keys of the finished series the league voided: a void is no result,
+     * so it is no cube on the stream at all.
+     *
+     * @param  list<array<string, mixed>>  $finished
+     * @return list<string>
+     */
+    private function voidedSeries(array $finished): array
+    {
+        $ids = [];
+
+        foreach ($finished as $cube) {
+            if (str_starts_with((string) $cube['key'], 'series-')) {
+                $ids[] = (int) substr((string) $cube['key'], 7);
+            }
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return array_values(SeriesMatch::query()->whereIn('id', $ids)->where('resolution', SeriesResolution::Void)->pluck('id')
+            ->map(fn (mixed $id): string => 'series-'.$id)->all());
+    }
+
+    /**
+     * The latest mined blocks of the season, oldest first: never a voided one,
+     * never a board game while it is switched off. The reward is the
+     * attestation's (the sats /mining lists for the block); winners by the
+     * pubkeys the league attested.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function blocks(int $seasonId): array
+    {
+        $boards = MempoolStrip::boardSlugs();
+
+        $rows = SeasonAttestation::query()
+            ->where('season_id', $seasonId)
+            ->whereNotNull('height')
+            ->whereNotIn('id', SeasonBlockVoid::query()->select('season_attestation_id'))
+            ->whereNotExists(fn (Builder $query) => $query->selectRaw('1')->from((new FairPlayVoid)->getTable())
+                ->whereColumn('fair_play_voids.source', 'season_attestations.source')
+                ->whereColumn('fair_play_voids.source_id', 'season_attestations.source_id'))
+            ->where(fn ($query) => $boards === []
+                ? $query->where('source', '!=', SeasonAttestation::BOARD)
+                : $query->where('source', '!=', SeasonAttestation::BOARD)->orWhereIn('game', $boards))
+            ->orderByDesc('height')
+            ->limit(self::COLUMNS)
+            ->get(['id', 'source', 'source_id', 'game', 'mode', 'height', 'reward', 'reward_per_player', 'candidate', 'attested_at']);
+
+        $pubkeys = $rows->flatMap(fn (SeasonAttestation $row): array => $row->winners())->unique()->values()->all();
+        $users = $pubkeys === [] ? collect() : User::query()->whereIn('pubkey', $pubkeys)->get()->keyBy('pubkey');
+
+        return array_values($rows->reverse()->map(function (SeasonAttestation $row) use ($users): array {
+            $family = MatchBlocks::family($row->game);
+            $winners = array_map(function (string $pubkey) use ($users): array {
+                $user = $users->get($pubkey);
+
+                return ['name' => PublicName::clean($user instanceof User ? $user->displayName() : substr($pubkey, 0, 8)), 'won' => true, 'tag' => '', 'ref' => StreamImages::avatarRef($user instanceof User ? $user : null), 'logoRef' => null];
+            }, $row->winners());
+
+            return [
+                'game' => $family,
+                'slug' => $row->game,
+                'name' => GameNames::game($row->game),
+                'icon' => app(GameRegistry::class)->find($row->game)?->assets()->icon ?? 'trophy',
+                'mode' => self::modeLabel($row->game, $row->mode),
+                'height' => (int) $row->height,
+                'reward' => max(0, (int) $row->reward),
+                'when' => $row->attested_at->diffForHumans(['short' => true]),
+                'sides' => $winners,
+            ];
+        })->all());
+    }
+
+    /** "Blitz 5+3", "Daily", "RL 3v3": the mode line of a block, as the strip's cubes name it. */
+    private static function modeLabel(string $game, string $mode): string
+    {
+        $registry = app(GameRegistry::class);
+
+        if ($registry->isSeries($game)) {
+            return ($registry->find($game)?->assets()->shortLabel ?? $game).' '.$mode;
+        }
+
+        return $mode === 'correspondence' ? 'Daily' : __($registry->mode($game, $mode)->name ?? $mode);
+    }
+
+    /**
+     * One cube of MempoolStrip as plain data: no models, picture refs only.
+     *
+     * @param  array<string, mixed>  $cube  MatchBlocks::shape()
+     * @return array<string, mixed>
+     */
+    private function cube(array $cube): array
+    {
+        $sides = [];
+
+        foreach ((array) $cube['sides'] as $side) {
+            $user = $side['user'] ?? null;
+            $clan = $side['clan'] ?? null;
+            $sides[] = [
+                // A clan lineup is its clan's name on the stream; the strip's tag is too short to be proud of.
+                'name' => PublicName::clean($clan instanceof Clan ? (string) $clan->name : (string) $side['name']),
+                'tag' => (string) ($clan instanceof Clan ? $side['name'] : ''),
+                'won' => (bool) $side['won'],
+                'ref' => StreamImages::avatarRef($user instanceof User ? $user : null),
+                'logoRef' => StreamImages::logoRef($clan instanceof Clan ? $clan : null),
+            ];
+        }
+
+        // Only a block of the season /mining shows: an older season's "Block 3" would read as this one's.
+        $chain = is_array($cube['chain'] ?? null) && ($cube['chain']['state'] ?? null) === 'mined' && ($cube['chain']['note'] ?? null) === null ? $cube['chain'] : null;
+        $when = (string) $cube['when'];
+
+        // A scheduled series names its time ("20:00", the cube is narrow) and on the stream in which zone.
+        if ($cube['state'] === 'next' && $when !== '') {
+            $when = preg_replace('/^at\s+/', '', $when).' '.now()->timezone(PreSeason::timezoneFor(null))->format('T');
+        }
+
+        return [
+            'game' => (string) $cube['game'],
+            'slug' => (string) $cube['slug'],
+            'name' => GameNames::game((string) $cube['slug']),
+            'icon' => (string) $cube['icon'],
+            'mode' => (string) $cube['mode'],
+            'score' => (string) $cube['score'],
+            'word' => (bool) $cube['word'],
+            'when' => $when,
+            'state' => (string) $cube['state'],
+            'casual' => (bool) $cube['casual'],
+            'level' => (int) $cube['level'],
+            'block' => $chain === null ? null : (int) $chain['height'],
+            'sides' => $sides,
+        ];
+    }
+}

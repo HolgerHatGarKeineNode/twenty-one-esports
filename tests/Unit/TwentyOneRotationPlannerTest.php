@@ -139,3 +139,10 @@ test('a tournament that closes ends its slide at once and its bracket is skipped
         '88 teaser e4', '100 teaser d2', '112 teaser e2', '124 teaser a4', '136 teaser a5', '148 teaser b3', '160 loop -',
     ]);
 });
+
+test('the mempool slide (m1) takes its turn in the teaser pool, after the eleven before it', function () {
+    $log = rotation(planner(), 4 * 132, fn () => [['id' => 7, 'blitz' => true]]);
+
+    expect(array_slice($log, 21))->toBe(['396 match a1 #7', '456 teaser e4', '468 teaser d2', '480 teaser e1', '492 teaser d3', '504 teaser d4', '516 teaser m1'])
+        ->and(RotationPlanner::VIEWS['m1'])->toBe('stream.rotation.m1-mempool');
+});

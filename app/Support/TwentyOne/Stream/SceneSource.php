@@ -49,6 +49,7 @@ class SceneSource
         private PrideSlides $pride,
         // Optional, so a caller that builds the source with the four above keeps working (the stream tests do).
         private ?BoardScene $board = null,
+        private ?MempoolSlides $mempool = null,
     ) {}
 
     /**
@@ -125,7 +126,8 @@ class SceneSource
      * every upcoming tournament (d1 their pots, d2 the casual cups) or the
      * site's QR code (d3 with the top inviters), the pride slides (e*)
      * PrideSlides::all(), the board scene (d5) a live board game or the board
-     * games' teaser (BoardScene).
+     * games' teaser (BoardScene), the mempool slide (m1) the games of every
+     * game and, while a season runs, its latest blocks (MempoolSlides).
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
@@ -138,6 +140,11 @@ class SceneSource
         // The board games next to chess (plan "Mühle und Dame", P7): a live board game, else the teaser.
         if ($scene === RotationPlanner::BOARD_SCENE) {
             return ($this->board ??= app(BoardScene::class))->data($nowMs, $stats);
+        }
+
+        // The mempool of every game, and the season chain's blocks while a season runs (MempoolSlides).
+        if ($scene === MempoolSlides::SCENE) {
+            return ($this->mempool ??= app(MempoolSlides::class))->scene($stats);
         }
 
         if (in_array($scene, RotationPlanner::PRIDE_SCENES, true)) {

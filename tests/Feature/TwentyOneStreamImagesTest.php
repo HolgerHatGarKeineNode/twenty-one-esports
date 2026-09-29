@@ -441,6 +441,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'd5' => $brandBackdrop,
             // The pride slides of plan "Stream-Slides: alle Spiele, Stolz-Momente" (P3): the brand, as e1-e4.
             'e5' => $brandBackdrop, 'e6' => $brandBackdrop, 'e7' => $brandBackdrop, 'e8' => $brandBackdrop, 'e9' => $brandBackdrop,
+            // The mempool slide (plan "Stream-Slides", P7): the brand.
+            'm1' => $brandBackdrop,
         ])
         // The fallback scene (gallery or single game) too.
         ->and($source->gallery($games, $more, $now)['backdrop'])->toBe($chessBackdrop)
