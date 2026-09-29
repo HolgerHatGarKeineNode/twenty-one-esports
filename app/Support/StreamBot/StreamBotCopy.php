@@ -167,6 +167,11 @@ final class StreamBotCopy
             ['💰 :pot sats in the pot for :name', '🥇 :places', '🎁 :sponsors', '👉 :url'],
             ['⚡ :pot sats up for grabs: :name', '🥇 :places', '🎁 :sponsors', '👉 Sign up: :url'],
         ],
+        // A won series (Rocket League, EA Sports FC 1v1), in place of pride_note_win: the match page, not a game to watch.
+        'pride_note_series_win' => [
+            ['⚡ :winner takes the series over :loser (:mode)', '📈 :elo', '👉 See the match: :url'],
+            ['🏆 :winner wins the series against :loser in :mode', '📈 :elo', '🎉 Well played to both', '👉 See the match: :url'],
+        ],
         // A board game that won its winner a knockout tournament in its final (plan "Mühle und Dame", P7), in place of pride_note_win.
         'pride_note_tournament_win' => [
             ['🏆 :winner wins :tournament', '⚔️ Deciding game over :loser (:mode)', '📈 :elo', '👉 See the tournament: :url'],

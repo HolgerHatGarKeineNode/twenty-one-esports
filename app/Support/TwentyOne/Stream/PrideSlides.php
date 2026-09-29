@@ -388,13 +388,13 @@ class PrideSlides
 
         $ids = $rows->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
         $users = User::query()->whereIn('id', $ids)->get()->keyBy('id');
-        // The games each climb came from, most results first.
+        // The ladders each climb came from, most results first (the games for the slide, the ladders for the note's link).
         $from = RatingChange::query()->where('rating_changes.created_at', '>=', now()->subDays(self::DAYS))
             ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
             ->whereIn('ratings.user_id', $ids)
-            ->groupBy('ratings.user_id', 'ratings.game')
-            ->selectRaw('ratings.user_id as user_id, ratings.game as game, count(*) as results')
-            ->orderByDesc('results')->orderBy('ratings.game')->toBase()->get()
+            ->groupBy('ratings.user_id', 'ratings.game', 'ratings.mode')
+            ->selectRaw('ratings.user_id as user_id, ratings.game as game, ratings.mode as mode, count(*) as results')
+            ->orderByDesc('results')->orderBy('ratings.game')->orderBy('ratings.mode')->toBase()->get()
             ->groupBy('user_id');
         $climbers = [];
 
@@ -406,7 +406,8 @@ class PrideSlides
                 $climbers[] = [
                     'name' => PublicName::clean($user->displayName()), 'ref' => StreamImages::avatarRef($user),
                     'gain' => (int) $row->getAttribute('gain'), 'games' => (int) $row->getAttribute('games'),
-                    'from' => array_values(array_map(fn ($entry): string => $this->games->name((string) $entry->game), ($from->get($userId) ?? collect())->all())),
+                    'from' => array_values(array_unique(array_map(fn ($entry): string => $this->games->name((string) $entry->game), ($from->get($userId) ?? collect())->all()))),
+                    'ladders' => array_values(array_map(fn ($entry): string => $entry->game.'/'.$entry->mode, ($from->get($userId) ?? collect())->all())),
                 ];
             }
         }

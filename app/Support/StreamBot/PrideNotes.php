@@ -144,6 +144,9 @@ class PrideNotes
         // "deciding game" only after a knockout's final; a name that cleans to nothing keeps the plain win.
         if ($name === 'win' && StreamBotCopy::clean((string) ($data['win']['tournament'] ?? ''), 80) !== '') {
             $template = ($data['win']['final'] ?? false) === true ? 'pride_note_tournament_win' : 'pride_note_tournament_table_win';
+        } elseif ($name === 'win' && ($data['win']['kind'] ?? null) === 'series') {
+            // A Rocket League / EA FC series (PrideSlides): no game to watch, the match page instead.
+            $template = 'pride_note_series_win';
         }
         $tags = [];
         $mention = function (?array $ref) use (&$tags): ?string {
@@ -205,7 +208,8 @@ class PrideNotes
         return [
             'winner' => $winner,
             'loser' => StreamBotCopy::clean((string) ($win['loser'] ?? ''), 40),
-            'mode' => strtolower((string) ($win['mode'] ?? 'chess')),
+            // "blitz chess"; a series keeps its game's name as written ("Rocket League 1v1").
+            'mode' => ($win['kind'] ?? null) === 'series' ? (string) ($win['mode'] ?? '') : strtolower((string) ($win['mode'] ?? 'chess')),
             'elo' => is_int($delta) && $delta > 0 ? '+'.$delta.' casual Elo' : null,
             'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
             // The game's page (a chess game, a board game) or the tournament a board game won (PrideSlides).
@@ -232,8 +236,39 @@ class PrideNotes
         return $parts === [] ? null : [
             'players' => implode(' · ', $parts),
             'days' => (string) PrideSlides::DAYS,
-            'url' => route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']),
+            'url' => $this->climbersUrl($climbers),
         ];
+    }
+
+    /**
+     * Where the gains came from: the one game's ladder (the top climber's
+     * busiest ladder of it), or the cross-game Strongest list when the
+     * climbs span several games. Data cached before the ladders were read
+     * (just after a deploy) falls back to the chess blitz ladder.
+     *
+     * @param  list<array<string, mixed>>  $climbers
+     */
+    private function climbersUrl(array $climbers): string
+    {
+        $ladders = [];
+
+        foreach ($climbers as $climber) {
+            foreach (is_array($climber['ladders'] ?? null) ? $climber['ladders'] : [] as $ladder) {
+                if (is_string($ladder) && preg_match('#^[a-z0-9-]+/[a-z0-9-]+$#', $ladder) === 1) {
+                    $ladders[] = $ladder;
+                }
+            }
+        }
+
+        $games = array_unique(array_map(fn (string $ladder): string => explode('/', $ladder)[0], $ladders));
+
+        if (count($games) > 1) {
+            return route('ladder.strongest');
+        }
+
+        [$game, $mode] = $ladders === [] ? ['chess', 'blitz'] : explode('/', $ladders[0]);
+
+        return route('ladder.show', ['game' => $game, 'mode' => $mode]);
     }
 
     /**

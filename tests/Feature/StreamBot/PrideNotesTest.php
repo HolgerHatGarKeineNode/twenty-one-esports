@@ -1,7 +1,13 @@
 <?php
 
+use App\Enums\SeriesStatus;
 use App\Models\BotPost;
 use App\Models\ChessGame;
+use App\Models\Clan;
+use App\Models\Lineup;
+use App\Models\Rating;
+use App\Models\RatingChange;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
@@ -129,4 +135,36 @@ test('the biggest pot\'s prizes go out in the US evening slot with the tournamen
         ->and($this->published)->toHaveCount(1)
         ->and($this->published[0]->content)->toContain('21,000', 'Sats Cup', '10,395 / 6,237 / 4,158 sats', route('tournaments.show', $pot))
         ->and(collect($this->published[0]->tags)->where(0, 'p')->all())->toBe([]);
+});
+
+test('a won 1v1 series is told as a series and links its match page, not a game to watch', function () {
+    $lineup = fn (User $user) => Lineup::factory()->game('rocket-league', '1v1')->create(['clan_id' => Clan::factory()->create(['owner_id' => $user->id])->id]);
+    $match = SeriesMatch::factory()->create(['challenger_lineup_id' => $lineup($this->winner)->id, 'challenged_lineup_id' => $lineup($this->loser)->id,
+        'status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'finished_at' => now()->subMinutes(5),
+        'result_games' => [['winner' => 'challenger'], ['winner' => 'challenger']],
+        'resolved_roster' => [
+            ['user_id' => $this->winner->id, 'pubkey' => $this->winner->pubkey, 'name' => 'Mx12art', 'side' => 'challenger', 'role' => 'player'],
+            ['user_id' => $this->loser->id, 'pubkey' => $this->loser->pubkey, 'name' => 'LightningInTheAlps', 'side' => 'challenged', 'role' => 'player'],
+        ]]);
+
+    $bodies = app(PrideNotes::class)->compose(1, 0)['bodies'];
+
+    expect($bodies)->toHaveCount(2)
+        ->and(implode("\n", $bodies))->toContain('See the match: '.route('matches.show', $match), 'nostr:'.NostrKeys::hexToNpub($this->winner->pubkey), 'LightningInTheAlps', 'Rocket League 1v1')
+        ->and(implode("\n", $bodies))->not->toContain('Watch', route('games.show', $match->id));
+});
+
+test('the climbers note links the ladder the gains came from, the Strongest list when they span several games', function () {
+    $climb = function (User $user, string $game, string $mode, int $delta): void {
+        $rating = Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => $game, 'mode' => $mode, 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1000 + $delta, 'results' => 1, 'wins' => 1]);
+        RatingChange::query()->create(['rating_id' => $rating->id, 'source' => RatingChange::SERIES, 'source_id' => $rating->id, 'score' => 1, 'before' => 1000, 'after' => 1000 + $delta, 'delta' => $delta, 'results_before' => 0]);
+    };
+    $climb($this->winner, 'rocket-league', '1v1', 30);
+    $one = app(PrideNotes::class)->compose(2, 0)['body'];
+    $climb($this->loser, 'chess', 'blitz', 20);
+    $two = app(PrideNotes::class)->compose(2, 0)['body'];
+
+    expect($one)->toContain(route('ladder.show', ['game' => 'rocket-league', 'mode' => '1v1']))
+        ->and($one)->not->toContain(route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']))
+        ->and($two)->toContain(route('ladder.strongest'));
 });
