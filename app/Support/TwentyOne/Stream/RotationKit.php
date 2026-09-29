@@ -1388,4 +1388,470 @@ final class RotationKit
 
         return $slots;
     }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Tournaments past sign-up (TournamentLiveSlides; views t{a,b,c}{3..7}): the live bracket, tables and groups laid out
+    // without a browser, and the lines the pride and next-tournament slides print. Every reader tolerates a missing or
+    // mistyped key: the scene test renders every view with a sign-up frame too.
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * A bracket board (kind 'bracket') laid out in ($x, $y, $w, $h): one column per round, a header line of $headH on
+     * top, every match a box of two rows. The row pitch is the largest <= $maxPitch at which the fullest column fits
+     * (never below $minPitch). The first column stacks from the top; a later box sits at the middle of the boxes that
+     * feed it (by `from`, else by position), never overlapping the one above. `links` are the lines from each shown
+     * feeder to its box (elbows in the gap between columns), `live` when the box they lead to is live.
+     *
+     * @param  array<string, mixed>|null  $board
+     * @return array{columns: list<array{x: float, w: float, label: string, current: bool, note: string, boxes: list<array{x: float, y: float, w: float, h: float, state: string, rows: list<array{name: string, known: bool, score: ?string, won: bool, face: array{uri: ?string, tag: ?string, fit: string}, y: float, top: float}>}>}>, links: list<array{d: string, live: bool}>, pitch: float, size: float, fd: float, pad: float, top: float}
+     */
+    public static function bracketLayout(?array $board, float $x, float $y, float $w, float $h, float $headH = 30, float $maxPitch = 40, float $minPitch = 28, float $gapX = 32, bool $clan = false): array
+    {
+        $out = ['columns' => [], 'links' => [], 'pitch' => $maxPitch, 'size' => 16.0, 'fd' => 0.0, 'pad' => 4.0, 'top' => $y];
+        $columns = ($board['kind'] ?? null) === 'bracket' && is_array($board['columns'] ?? null) ? array_values(array_filter($board['columns'], is_array(...))) : [];
+        $columns = array_values(array_filter($columns, fn (array $c): bool => is_array($c['matches'] ?? null) && $c['matches'] !== []));
+
+        if ($columns === []) {
+            return $out;
+        }
+
+        $pad = 4.0;
+        $gap = 10.0;
+        $most = max(array_map(fn (array $c): int => count($c['matches']), $columns));
+        $pitch = floor(min($maxPitch, max($minPitch, ($h - $headH - ($most - 1) * $gap - $most * 2 * $pad) / (2 * $most))));
+        $boxH = 2 * $pitch + 2 * $pad;
+        $colW = ($w - (count($columns) - 1) * $gapX) / count($columns);
+        $fd = floor($pitch - 6);
+        $size = floor(min(18, $pitch * 0.56));
+        $prev = [];
+
+        foreach ($columns as $ci => $column) {
+            $cx = round($x + $ci * ($colW + $gapX), 1);
+            $boxes = [];
+            $count = count($column['matches']);
+            $lastBottom = -INF;
+
+            foreach (array_values($column['matches']) as $mi => $match) {
+                $feeders = [];
+
+                if ($ci > 0) {
+                    foreach ((array) ($match['from'] ?? []) as $key) {
+                        if (is_string($key) && isset($prev[$key])) {
+                            $feeders[] = $prev[$key];
+                        }
+                    }
+
+                    if ($feeders === [] && $prev !== []) {
+                        // By position: the boxes of the previous column that share this box's share of it.
+                        $keys = array_keys($prev);
+                        $per = count($keys) / $count;
+                        foreach (array_slice($keys, (int) floor($mi * $per), max(1, (int) round($per))) as $key) {
+                            $feeders[] = $prev[$key];
+                        }
+                    }
+                }
+
+                $center = $feeders === [] ? $y + $headH + $mi * ($boxH + $gap) + $boxH / 2 : array_sum(array_column($feeders, 'cy')) / count($feeders);
+                $top = max($center - $boxH / 2, $lastBottom + $gap, $y + $headH);
+                $top = min($top, $y + $h - $boxH);
+                $lastBottom = $top + $boxH;
+                $rows = [];
+
+                foreach (array_slice(array_values(is_array($match['sides'] ?? null) ? $match['sides'] : []), 0, 2) as $si => $side) {
+                    $side = is_array($side) ? $side : [];
+                    $rowTop = $top + $pad + $si * $pitch;
+                    $rows[] = [
+                        'name' => self::clean(is_string($side['name'] ?? null) ? $side['name'] : ''),
+                        'known' => ($side['known'] ?? false) === true,
+                        'score' => is_string($side['score'] ?? null) ? self::clean($side['score']) : null,
+                        'won' => ($side['won'] ?? false) === true,
+                        'face' => self::face($side, $clan),
+                        'top' => round($rowTop + ($pitch - $fd) / 2, 1),
+                        'y' => round($rowTop + $pitch / 2 + $size * 0.36, 1),
+                    ];
+                }
+
+                $state = in_array($match['state'] ?? null, ['live', 'done', 'waiting', 'bye'], true) ? $match['state'] : 'waiting';
+                $boxes[] = ['x' => $cx, 'y' => round($top, 1), 'w' => round($colW, 1), 'h' => $boxH, 'state' => $state, 'rows' => $rows];
+
+                foreach ($feeders as $feeder) {
+                    $x1 = $feeder['x'] + $feeder['w'];
+                    $xm = round($x1 + $gapX / 2, 1);
+                    $out['links'][] = ['d' => 'M'.round($x1, 1).' '.round($feeder['cy'], 1).'H'.$xm.'V'.round($top + $boxH / 2, 1).'H'.$cx, 'live' => $state === 'live'];
+                }
+            }
+
+            $prev = [];
+            foreach (array_values($column['matches']) as $mi => $match) {
+                $key = is_string($match['key'] ?? null) ? $match['key'] : 'm'.$ci.'-'.$mi;
+                $prev[$key] = ['x' => $boxes[$mi]['x'], 'w' => $boxes[$mi]['w'], 'cy' => $boxes[$mi]['y'] + $boxH / 2];
+            }
+
+            $total = is_int($column['total'] ?? null) ? $column['total'] : $count;
+            $from = is_int($column['from'] ?? null) ? $column['from'] : 0;
+            $out['columns'][] = [
+                'x' => $cx, 'w' => round($colW, 1),
+                'label' => self::clean(is_string($column['label'] ?? null) ? $column['label'] : ''),
+                'current' => ($column['current'] ?? false) === true,
+                // A cropped round says which part of it shows.
+                'note' => $total > $count ? 'Matches '.($from + 1).'-'.($from + $count).' of '.$total : '',
+                'boxes' => $boxes,
+            ];
+        }
+
+        return ['columns' => $out['columns'], 'links' => $out['links'], 'pitch' => $pitch, 'size' => $size, 'fd' => $fd, 'pad' => $pad, 'top' => $y];
+    }
+
+    /**
+     * A groups board (kind 'groups') as boxes in a grid of $cols columns: a title line and one row per table row
+     * (rank, face, name, points), `through` marking the places that go on.
+     *
+     * @param  array<string, mixed>|null  $board
+     * @return array{boxes: list<array{x: float, y: float, w: float, h: float, title: string, titleY: float, rows: list<array{rank: int, name: string, points: string, through: bool, face: array{uri: ?string, tag: ?string, fit: string}, y: float, top: float}>}>, pitch: float, size: float, fd: float, hidden: int}
+     */
+    public static function groupsLayout(?array $board, float $x, float $y, float $w, float $h, int $cols, float $gap = 16, float $titleH = 30, float $maxPitch = 36, float $minPitch = 24, bool $clan = false): array
+    {
+        $groups = ($board['kind'] ?? null) === 'groups' && is_array($board['groups'] ?? null) ? array_values(array_filter($board['groups'], is_array(...))) : [];
+        $out = ['boxes' => [], 'pitch' => $maxPitch, 'size' => 16.0, 'fd' => 0.0, 'hidden' => 0];
+
+        if ($groups === []) {
+            return $out;
+        }
+
+        $cols = max(1, min($cols, count($groups)));
+        $maxRows = max(1, ...array_map(fn (array $g): int => count(is_array($g['rows'] ?? null) ? $g['rows'] : []), $groups));
+        $gridRows = (int) ceil(count($groups) / $cols);
+        $pad = 10.0;
+        $pitch = floor(min($maxPitch, ($h - ($gridRows - 1) * $gap - $gridRows * ($titleH + 2 * $pad)) / ($gridRows * $maxRows)));
+
+        // Too many groups for the room: whole grid rows go, counted in `hidden`.
+        while ($pitch < $minPitch && $gridRows > 1) {
+            $gridRows--;
+            $pitch = floor(min($maxPitch, ($h - ($gridRows - 1) * $gap - $gridRows * ($titleH + 2 * $pad)) / ($gridRows * $maxRows)));
+        }
+
+        $pitch = max($minPitch, $pitch);
+        $shown = array_slice($groups, 0, $gridRows * $cols);
+        $bw = ($w - ($cols - 1) * $gap) / $cols;
+        $bh = $titleH + 2 * $pad + $maxRows * $pitch;
+        $fd = floor($pitch - 8);
+        $size = floor(min(18, $pitch * 0.56));
+
+        foreach ($shown as $i => $group) {
+            $bx = round($x + ($i % $cols) * ($bw + $gap), 1);
+            $by = round($y + intdiv($i, $cols) * ($bh + $gap), 1);
+            $rows = [];
+
+            foreach (array_values(is_array($group['rows'] ?? null) ? $group['rows'] : []) as $ri => $row) {
+                $row = is_array($row) ? $row : [];
+                $rowTop = $by + $pad + $titleH + $ri * $pitch;
+                $rows[] = [
+                    'rank' => is_int($row['rank'] ?? null) ? $row['rank'] : $ri + 1,
+                    'name' => self::clean(is_string($row['name'] ?? null) ? $row['name'] : ''),
+                    'points' => self::clean(is_string($row['points'] ?? null) ? $row['points'] : ''),
+                    'through' => ($row['through'] ?? false) === true,
+                    'face' => self::face($row, $clan),
+                    'top' => round($rowTop + ($pitch - $fd) / 2, 1),
+                    'y' => round($rowTop + $pitch / 2 + $size * 0.36, 1),
+                ];
+            }
+
+            $boxes[] = ['x' => $bx, 'y' => $by, 'w' => round($bw, 1), 'h' => round($bh, 1), 'title' => self::clean(is_string($group['title'] ?? null) ? $group['title'] : ''),
+                'titleY' => round($by + $pad + $titleH * 0.62, 1), 'rows' => $rows];
+        }
+
+        return ['boxes' => $boxes ?? [], 'pitch' => $pitch, 'size' => $size, 'fd' => $fd, 'hidden' => count($groups) - count($shown)];
+    }
+
+    /**
+     * The rows of a table board (kind 'table'): rank, face, name, record, points, at most $limit, each at $pitch from $y.
+     *
+     * @param  array<string, mixed>|null  $board
+     * @return list<array{rank: int, name: string, points: string, record: string, through: bool, face: array{uri: ?string, tag: ?string, fit: string}, y: float, top: float}>
+     */
+    public static function tableRows(?array $board, float $y, float $pitch, float $fd, float $size, int $limit, bool $clan = false): array
+    {
+        $rows = [];
+
+        foreach (array_slice(array_values(($board['kind'] ?? null) === 'table' && is_array($board['rows'] ?? null) ? $board['rows'] : []), 0, $limit) as $i => $row) {
+            $row = is_array($row) ? $row : [];
+            $rowTop = $y + $i * $pitch;
+            $rows[] = [
+                'rank' => is_int($row['rank'] ?? null) ? $row['rank'] : $i + 1,
+                'name' => self::clean(is_string($row['name'] ?? null) ? $row['name'] : ''),
+                'points' => self::clean(is_string($row['points'] ?? null) ? $row['points'] : ''),
+                'record' => self::clean(is_string($row['record'] ?? null) ? $row['record'] : ''),
+                'through' => ($row['through'] ?? false) === true,
+                'face' => self::face($row, $clan),
+                'top' => round($rowTop + ($pitch - $fd) / 2, 1),
+                'y' => round($rowTop + $pitch / 2 + $size * 0.36, 1),
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The pairings of a table board's current round (or a spotlight list), as two names and a score each:
+     * "Hal 1-0 Adam", a live one "Hal vs Adam".
+     *
+     * @return list<array{a: string, b: string, score: string, live: bool, faces: list<array{uri: ?string, tag: ?string, fit: string}>}>
+     */
+    public static function pairings(mixed $matches, int $limit, bool $clan = false): array
+    {
+        $out = [];
+
+        foreach (array_slice(array_values(is_array($matches) ? $matches : []), 0, $limit) as $match) {
+            $sides = is_array($match['sides'] ?? null) ? array_values($match['sides']) : [];
+
+            if (count($sides) < 2 || ! is_array($sides[0]) || ! is_array($sides[1])) {
+                continue;
+            }
+
+            $a = self::clean(is_string($sides[0]['name'] ?? null) ? $sides[0]['name'] : '');
+            $b = self::clean(is_string($sides[1]['name'] ?? null) ? $sides[1]['name'] : '');
+            $sa = is_string($sides[0]['score'] ?? null) ? self::clean($sides[0]['score']) : '';
+            $sb = is_string($sides[1]['score'] ?? null) ? self::clean($sides[1]['score']) : '';
+            $state = $match['state'] ?? 'live';
+            $out[] = ['a' => $a === '' ? 'Player' : $a, 'b' => $b === '' ? 'Player' : $b, 'score' => $sa !== '' && $sb !== '' && $state === 'done' ? $sa.'-'.$sb : 'vs',
+                'live' => $state === 'live' || ! isset($match['state']), 'faces' => [self::face($sides[0], $clan), self::face($sides[1], $clan)]];
+        }
+
+        return $out;
+    }
+
+    /** "The final two", "The final four", "The last eight", "12 still standing"; '' without a count. */
+    public static function standingHeadline(mixed $count): string
+    {
+        return match (true) {
+            ! is_int($count) || $count < 1 => '',
+            $count === 1 => 'One left standing',
+            $count === 2 => 'The final two',
+            $count <= 4 => 'The final '.['', '', '', 'three', 'four'][$count],
+            $count <= 8 => 'The last '.['', '', '', '', '', 'five', 'six', 'seven', 'eight'][$count],
+            default => $count.' still standing',
+        };
+    }
+
+    /**
+     * "Made the top 8" for a field cut to 8, 4 or 2 (the places are then theirs at worst), '' otherwise. A field of 8
+     * or fewer at the start has not made a cut yet.
+     */
+    public static function cutLine(mixed $count, mixed $of): string
+    {
+        if (! is_int($count) || ! is_int($of) || $count >= $of) {
+            return '';
+        }
+
+        foreach ([2, 4, 8] as $cut) {
+            if ($count <= $cut && $of > $cut) {
+                return 'Made the top '.$cut;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * A result as a line: "Hal beat Adam 2-1", a draw "Hal and Adam drew 1-1"; '' when the result is unreadable.
+     *
+     * @param  mixed  $result  TournamentLiveSlides result {winner, loser, label, draw}
+     */
+    public static function resultLine(mixed $result, string $font, float $size, float $maxPx): string
+    {
+        if (! is_array($result) || ! is_array($result['winner'] ?? null) || ! is_array($result['loser'] ?? null)) {
+            return '';
+        }
+
+        $winner = self::clean(is_string($result['winner']['name'] ?? null) ? $result['winner']['name'] : '');
+        $loser = self::clean(is_string($result['loser']['name'] ?? null) ? $result['loser']['name'] : '');
+
+        if ($winner === '' || $loser === '') {
+            return '';
+        }
+
+        $score = is_string($result['label'] ?? null) ? ' '.str_replace('–', '-', self::clean($result['label'])) : '';
+        $verb = ($result['draw'] ?? false) === true ? ' and ' : ' beat ';
+        $tail = (($result['draw'] ?? false) === true ? ' drew' : '').$score;
+        // Both names share what the line leaves them, the longer one gives first.
+        $room = $maxPx - self::width($verb.$tail, $font, $size) * ($font === self::MONO ? 1.0 : 1.04);
+        $half = $room / 2;
+        $w = self::width($winner, $font, $size);
+        $l = self::width($loser, $font, $size);
+        $winnerRoom = $w + $l <= $room ? $w + 1 : max($half, $room - min($l, $half));
+
+        return self::fit($winner, $font, $size, $winnerRoom).$verb.self::fit($loser, $font, $size, $room - min($w, $winnerRoom)).$tail;
+    }
+
+    /**
+     * "Seed 7 beat seed 2" for an upset; '' without seeds.
+     *
+     * @param  mixed  $upset  TournamentLiveSlides upset
+     */
+    public static function upsetLine(mixed $upset): string
+    {
+        $w = is_array($upset) && is_array($upset['winner'] ?? null) ? ($upset['winner']['seed'] ?? null) : null;
+        $l = is_array($upset) && is_array($upset['loser'] ?? null) ? ($upset['loser']['seed'] ?? null) : null;
+
+        return is_int($w) && is_int($l) ? 'Seed '.$w.' beat seed '.$l : '';
+    }
+
+    /**
+     * The facts of "how it runs" that are set, as [label, value] (Matches, Show up, Starts, Ends).
+     *
+     * @param  mixed  $how  TournamentPlaybook::of()
+     * @return list<array{0: string, 1: string}>
+     */
+    public static function howFacts(mixed $how): array
+    {
+        $facts = [];
+
+        foreach (['matches' => 'Matches', 'showUp' => 'Show up', 'starts' => 'Starts', 'ends' => 'Ends'] as $key => $label) {
+            $value = is_array($how) && is_string($how[$key] ?? null) ? self::clean($how[$key]) : '';
+
+            if ($value !== '') {
+                $facts[] = [$label, $value];
+            }
+        }
+
+        return $facts;
+    }
+
+    /**
+     * The stages of "how it runs", numbered in play order.
+     *
+     * @param  mixed  $how  TournamentPlaybook::of()
+     * @return list<array{n: int, title: string, line: string}>
+     */
+    public static function howSteps(mixed $how, int $limit = 3): array
+    {
+        $steps = [];
+
+        foreach (array_slice(array_values(is_array($how) && is_array($how['steps'] ?? null) ? $how['steps'] : []), 0, $limit) as $step) {
+            $title = is_array($step) && is_string($step['title'] ?? null) ? self::clean($step['title']) : '';
+            $line = is_array($step) && is_string($step['line'] ?? null) ? self::clean($step['line']) : '';
+
+            if ($title !== '' || $line !== '') {
+                $steps[] = ['n' => count($steps) + 1, 'title' => $title, 'line' => $line];
+            }
+        }
+
+        return $steps;
+    }
+
+    /**
+     * The line that ties the next-tournament slide to the one on show: "Halving Cup is live right now." by phase.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    public static function nextContext(array $t, string $font, float $size, float $maxPx): string
+    {
+        $tail = match ($t['phase'] ?? null) {
+            'finished' => ' has its champion.',
+            'drawing' => ' is about to start.',
+            default => ' is live right now.',
+        };
+        $name = self::fit(self::text($t, 'name', 'This tournament'), $font, $size, $maxPx - self::width($tail, $font, $size) * ($font === self::MONO ? 1.0 : 1.04));
+
+        return ($name === '' ? 'This tournament' : $name).$tail;
+    }
+
+    /**
+     * face() of every entry of a list (standing, podium, field), in order, with its name and seed.
+     *
+     * @return list<array{name: string, seed: ?int, place: ?int, face: array{uri: ?string, tag: ?string, fit: string}}>
+     */
+    public static function entryFaces(mixed $entries, int $limit, bool $clan = false): array
+    {
+        $out = [];
+
+        foreach (array_slice(array_values(is_array($entries) ? $entries : []), 0, $limit) as $entry) {
+            if (! is_array($entry)) {
+                continue;
+            }
+
+            $out[] = [
+                'name' => self::clean(is_string($entry['name'] ?? null) ? $entry['name'] : ''),
+                'seed' => is_int($entry['seed'] ?? null) ? $entry['seed'] : null,
+                'place' => is_int($entry['place'] ?? null) ? $entry['place'] : null,
+                'face' => self::face($entry, $clan),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * A tournament address in two lines for a narrow column: the host, then the path ("/tournaments/12").
+     *
+     * @param  array<string, mixed>  $t
+     * @return array{0: string, 1: string}
+     */
+    public static function urlLines(array $t): array
+    {
+        $url = self::tournamentUrl($t);
+        $slash = strpos($url, '/');
+
+        return $slash === false ? [$url, ''] : [substr($url, 0, $slash), substr($url, $slash)];
+    }
+
+    /**
+     * Who the pride slide (t?5) puts on show, with its headline and the line under it, by phase and board:
+     * - finished: the podium ("They made it count"), each with its place;
+     * - running, a bracket: who is still standing ("The last eight"), and "Made the top 8" once a cut is made;
+     * - running, a table: its top rows with their points ("Top of the table");
+     * - running, groups: who goes through as it stands, each with its group rank ("Through, as it stands").
+     * Empty faces when there is nobody to show yet.
+     *
+     * @param  array<string, mixed>  $t
+     * @return array{headline: string, sub: string, faces: list<array{name: string, seed: ?int, place: ?int, note: string, face: array{uri: ?string, tag: ?string, fit: string}}>, more: int}
+     */
+    public static function prideFaces(array $t, int $limit): array
+    {
+        $clan = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
+        $board = is_array($t['board'] ?? null) ? $t['board'] : null;
+        $kind = $board['kind'] ?? null;
+
+        if (($t['phase'] ?? null) === 'finished') {
+            $faces = array_map(fn (array $f): array => $f + ['note' => $f['place'] === null ? '' : self::ordinal($f['place'])], self::entryFaces($t['podium'] ?? [], $limit, $clan));
+
+            return ['headline' => $faces === [] ? 'The results are in' : 'They made it count', 'sub' => self::text($t, 'name'), 'faces' => $faces, 'more' => 0];
+        }
+
+        if ($kind === 'table') {
+            $faces = [];
+            foreach (self::tableRows($board, 0, 1, 1, 1, $limit, $clan) as $row) {
+                $faces[] = ['name' => $row['name'], 'seed' => null, 'place' => $row['rank'], 'note' => $row['points'].' '.($row['points'] === '1' ? 'point' : 'points'), 'face' => $row['face']];
+            }
+
+            return ['headline' => 'Top of the table', 'sub' => self::text($t, 'now'), 'faces' => $faces, 'more' => 0];
+        }
+
+        if ($kind === 'groups') {
+            $faces = [];
+            foreach ((array) ($board['groups'] ?? []) as $group) {
+                foreach ((array) (is_array($group) ? ($group['rows'] ?? []) : []) as $row) {
+                    if (is_array($row) && ($row['through'] ?? false) === true && count($faces) < $limit) {
+                        $faces[] = ['name' => self::clean(is_string($row['name'] ?? null) ? $row['name'] : ''), 'seed' => null, 'place' => null,
+                            'note' => self::clean(is_string($group['title'] ?? null) ? $group['title'] : '').', '.self::ordinal(is_int($row['rank'] ?? null) ? $row['rank'] : 1), 'face' => self::face($row, $clan)];
+                    }
+                }
+            }
+
+            return ['headline' => 'Through, as it stands', 'sub' => self::text($t, 'now'), 'faces' => $faces, 'more' => 0];
+        }
+
+        $standing = is_array($t['standing'] ?? null) ? $t['standing'] : [];
+        $count = is_int($standing['count'] ?? null) ? $standing['count'] : null;
+        $of = is_int($standing['of'] ?? null) ? $standing['of'] : null;
+        $faces = array_map(fn (array $f): array => $f + ['note' => $f['seed'] === null ? '' : 'Seed '.$f['seed']], self::entryFaces($standing['faces'] ?? [], $limit, $clan));
+        $cut = self::cutLine($count, $of);
+
+        return [
+            'headline' => self::standingHeadline($count),
+            'sub' => $cut !== '' ? $cut : ($of !== null ? 'of '.$of.' who started' : ''),
+            'faces' => $faces,
+            'more' => $count === null ? 0 : max(0, $count - count($faces)),
+        ];
+    }
 }

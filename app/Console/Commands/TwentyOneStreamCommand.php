@@ -23,6 +23,7 @@ use App\Support\TwentyOne\Stream\StreamCover;
 use App\Support\TwentyOne\Stream\StreamSession;
 use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\StreamTexts;
+use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use App\Support\TwentyOne\Stream\ViewerFeed;
 use App\Support\TwentyOne\TwentyOneSigner;
@@ -141,6 +142,11 @@ class TwentyOneStreamCommand extends Command
     /** Whether the tournament slides could not be built on the last frame (logged once per series). */
     private bool $tournamentFramesFailing = false;
 
+    /** Whether the tournaments past sign-up could not be read on the last poll, or not framed (logged once per series each). */
+    private bool $liveTournamentsFailing = false;
+
+    private bool $liveFramesFailing = false;
+
     /** Whether the announced state could not be cached last time (logged once per series). */
     private bool $announceCacheFailing = false;
 
@@ -202,6 +208,8 @@ class TwentyOneStreamCommand extends Command
         $this->rotationFailing = false;
         $this->tournamentsFailing = false;
         $this->tournamentFramesFailing = false;
+        $this->liveTournamentsFailing = false;
+        $this->liveFramesFailing = false;
         $this->announceCacheFailing = false;
         $this->cachedAnnouncement = null;
         $this->announcementCachedAt = 0.0;
@@ -270,6 +278,10 @@ class TwentyOneStreamCommand extends Command
         $stats = [];
         /** @var list<array<string, mixed>> $tournamentSnapshots the last upcoming tournaments that could be read */
         $tournamentSnapshots = [];
+        // The tournaments past sign-up (drawing, running, just finished), read and kept like the upcoming ones.
+        $liveSlides = app(TournamentLiveSlides::class);
+        /** @var list<array<string, mixed>> $liveSnapshots */
+        $liveSnapshots = [];
         $slotKey = null;
         /** @var array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null $frame */
         $frame = null;
@@ -337,18 +349,20 @@ class TwentyOneStreamCommand extends Command
                 // Upcoming tournaments (cached like the counts); their countdown ticks with this poll.
                 $tournamentSnapshots = $this->readTournaments($slides, $tournamentSnapshots, $pollFailures === 0);
                 $tournaments = $this->tournamentFrames($slides, $tournamentSnapshots, (int) ($now * 1000));
+                $liveSnapshots = $this->readLiveTournaments($liveSlides, $liveSnapshots, $pollFailures === 0);
+                $liveFrames = $this->liveFrames($liveSlides, $liveSnapshots, (int) ($now * 1000));
 
                 if ($cover->due($now)) {
                     $stats = $this->readStats($counts, $stats, $pollFailures === 0);
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards);
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments));
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
                     $stats = $this->readStats($counts, $stats, $pollFailures === 0);
-                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame, $tournaments, $viewerCount);
+                    $frame = $this->frameFor($source, $slot, $sceneGames, $sceneMore, (int) ($now * 1000), $stats, $frame, $tournaments, $viewerCount, $liveFrames);
                 }
 
                 $key = $slot['kind'].':'.$slot['scene'].':'.$slot['gameId'].':'.$slot['tournamentId'].':'.$slot['until'];
@@ -593,12 +607,14 @@ class TwentyOneStreamCommand extends Command
      * @param  array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null  $previous
      * @param  list<array<string, mixed>>  $tournaments  TournamentSlides::frames() of this poll
      * @param  int|null  $viewers  the live viewer count every scene gets as `viewers` (null: not counted)
+     * @param  list<array<string, mixed>>  $live  TournamentLiveSlides::frames() of this poll
      * @return array{view: view-string, data: array<string, mixed>, fallback: array<string, mixed>|null, label: string, announce: bool}|null
      */
-    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = [], ?int $viewers = null): ?array
+    private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = [], ?int $viewers = null, array $live = []): ?array
     {
         $scene = (string) $slot['scene'];
-        $tournament = collect($tournaments)->firstWhere('id', $slot['tournamentId']);
+        // A slide past sign-up takes its tournament from the live frames, an upcoming one from the sign-up frames.
+        $tournament = collect(in_array($scene, RotationPlanner::LIVE_TOURNAMENT_SCENES, true) ? $live : $tournaments)->firstWhere('id', $slot['tournamentId']);
 
         try {
             return [
@@ -710,6 +726,58 @@ class TwentyOneStreamCommand extends Command
             }
 
             return $last;
+        }
+    }
+
+    /**
+     * The snapshots of the tournaments past sign-up (TournamentLiveSlides,
+     * cached); the last ones while the database fails.
+     *
+     * @param  list<array<string, mixed>>  $last
+     * @return list<array<string, mixed>>
+     */
+    private function readLiveTournaments(TournamentLiveSlides $slides, array $last, bool $databaseUp): array
+    {
+        if (! $databaseUp) {
+            return $last;
+        }
+
+        try {
+            $snapshots = $slides->snapshots();
+            $this->liveTournamentsFailing = false;
+
+            return $snapshots;
+        } catch (Throwable $e) {
+            if (! $this->liveTournamentsFailing) {
+                $this->log('live tournaments not read, keeping the last '.count($last).': '.$this->describe($e));
+                $this->liveTournamentsFailing = true;
+            }
+
+            return $last;
+        }
+    }
+
+    /**
+     * The live tournament slides' data at `$nowMs`; none when it cannot be
+     * built, so the rotation goes on without them.
+     *
+     * @param  list<array<string, mixed>>  $snapshots
+     * @return list<array<string, mixed>>
+     */
+    private function liveFrames(TournamentLiveSlides $slides, array $snapshots, int $nowMs): array
+    {
+        try {
+            $frames = $slides->frames($snapshots, $nowMs);
+            $this->liveFramesFailing = false;
+
+            return $frames;
+        } catch (Throwable $e) {
+            if (! $this->liveFramesFailing) {
+                $this->log('live tournament slides not built, the rotation goes on without them: '.$this->describe($e));
+                $this->liveFramesFailing = true;
+            }
+
+            return [];
         }
     }
 

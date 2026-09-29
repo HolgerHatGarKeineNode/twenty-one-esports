@@ -57,14 +57,16 @@ class TournamentSlides
 
     /**
      * Tournaments open for sign-up, soonest sign-up close first
-     * (the query of pages::tournaments.index `next()`).
+     * (the query of pages::tournaments.index `next()`), of games switched on.
      *
      * @return Collection<int, Tournament>
      */
     public function upcoming(): Collection
     {
+        // A game the league switched off (the board games while they are off) is unknown to the registry: no slides.
         return Tournament::query()->where('status', TournamentStatus::Signup)->where('signup_closes_at', '>', now())
-            ->orderBy('signup_closes_at')->orderBy('id')->get();
+            ->orderBy('signup_closes_at')->orderBy('id')->get()
+            ->filter(fn (Tournament $tournament): bool => $this->games->find($tournament->game) !== null)->values();
     }
 
     /**
@@ -236,6 +238,8 @@ class TournamentSlides
             'solos' => $solos,
             'openSpots' => $open,
             'preview' => $this->preview($landing->projection(), $names),
+            // How it runs (TournamentPlaybook), for the places it was set up for; the next-tournament slide (t?7) reads it.
+            'howItRuns' => TournamentPlaybook::of($tournament, $places['places'], $timezone),
             'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
             'deadlineMs' => $countdown['ms'] ?? null,
             'closesMs' => $tournament->signup_closes_at?->getTimestampMs(),

@@ -199,6 +199,8 @@ return [
             'loop_every_rounds' => 3,
             'loop_fallback_seconds' => 60,
             'tournament_seconds' => 15,
+            // A finished tournament keeps its champion and final bracket on the stream this long after its last result (TournamentLiveSlides).
+            'finished_tournament_hours' => 48,
         ],
 
         /*

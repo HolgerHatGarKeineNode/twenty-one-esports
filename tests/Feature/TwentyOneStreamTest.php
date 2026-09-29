@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\TournamentFormat;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Models\ChessGame;
@@ -615,6 +616,26 @@ test('an open tournament brings its slides into the rotation, and their countdow
         // A render per second while the slide is on: the countdown moves.
         ->and(count($countdowns))->toBeGreaterThanOrEqual(2)
         ->and($countdowns[0])->toMatch('/^23:59:\d\d$/');
+});
+
+test('a running tournament brings its live bracket and who is still standing into the rotation, then the call to sign up for the next one', function () {
+    config(['esports.league.nsec' => (new TestSigner)->secret]);
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    config(['twentyone.stream.rotation.tournament_seconds' => 1.5]);
+    $running = runningChess(TournamentFormat::SingleElimination, 4);
+    $next = openTournament();
+
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 7]);
+    $output = Artisan::output();
+
+    expect($output)->toContain('rotation: ta4 tournament '.$running->id.', rendered in', 'rotation: ta5 tournament '.$running->id.', rendered in', 'rotation: ta7 tournament '.$running->id.', rendered in')
+        ->and(strpos($output, 'rotation: ta4 tournament'))->toBeLessThan(strpos($output, 'rotation: ta5 tournament'))
+        ->and(strpos($output, 'rotation: ta5 tournament'))->toBeLessThan(strpos($output, 'rotation: ta7 tournament'))
+        ->and($output)->not->toContain('not built')->not->toContain('failed')
+        ->and($output)->not->toContain('tournament '.$next->id.',');
 });
 
 test('upcoming tournaments that cannot be read leave the rotation to the teasers, logged once', function () {

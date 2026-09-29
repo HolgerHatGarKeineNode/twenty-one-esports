@@ -120,7 +120,8 @@ class SceneSource
      * a match (x1) gets its game with the last moves, a gallery (x2) the
      * cards, the teasers the counts, the zap and scan scenes their QR code,
      * B3 the daily game on show (if any), a tournament slide (t*) its
-     * tournament as TournamentSlides builds it, the feature slides (d*)
+     * tournament as TournamentSlides builds it (past sign-up: TournamentLiveSlides;
+     * the next-tournament slide t?7 also `next`, the upcoming one it points to), the feature slides (d*)
      * every upcoming tournament (d1 their pots, d2 the casual cups) or the
      * site's QR code (d3 with the top inviters), the pride slides (e*)
      * PrideSlides::all(), the board scene (d5) a live board game or the board
@@ -163,7 +164,10 @@ class SceneSource
             $backdrop = $tournament['backdrop'] ?? null;
             unset($tournament['backdrop']);
 
-            return ['tournament' => $tournament, 'stats' => $stats, 'backdrop' => is_string($backdrop) ? $backdrop : null];
+            $data = ['tournament' => $tournament, 'stats' => $stats, 'backdrop' => is_string($backdrop) ? $backdrop : null];
+
+            // The call to sign up for the next tournament (t?7): the one TournamentLiveSlides::next() picks, or none.
+            return str_ends_with($scene, (string) RotationPlanner::NEXT_PART) ? [...$data, 'next' => TournamentLiveSlides::next($tournament, $upcoming)] : $data;
         }
 
         if (str_ends_with($scene, '1')) {

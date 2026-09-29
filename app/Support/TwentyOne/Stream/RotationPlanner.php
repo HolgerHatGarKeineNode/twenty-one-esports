@@ -23,6 +23,16 @@ namespace App\Support\TwentyOne\Stream;
  * hero and bracket, the EVERY_ROUND teasers and one teaser. Several
  * tournaments take turns, one per round.
  *
+ * Tournaments past their sign-up (TournamentLiveSlides: running, drawing,
+ * finished within its window; the caller orders them so) take the same turns,
+ * before the upcoming ones: one tournament per round across both lists, so
+ * several tournaments share the rounds fairly. Their slides, in the round's
+ * look: a running tournament its live bracket (4), then in turn who is still
+ * standing (5) or how it runs (3); a drawing one how it runs (3); a finished
+ * one its champion (6), then in turn the final bracket (4) or its pride (5).
+ * Each is followed by the call to sign up for the next tournament (7) while
+ * one is open (the caller says so per tournament: `fomo`).
+ *
  * Games have priority: a game that appears during a round without games
  * takes over at the end of the current teaser, and ends the loop at once.
  * A match whose game is gone, a gallery with fewer than two games, or a
@@ -84,19 +94,42 @@ final class RotationPlanner
         'ta1' => 'stream.rotation.ta1-hero', 'ta2' => 'stream.rotation.ta2-bracket',
         'tb1' => 'stream.rotation.tb1-hero', 'tb2' => 'stream.rotation.tb2-bracket',
         'tc1' => 'stream.rotation.tc1-hero', 'tc2' => 'stream.rotation.tc2-bracket',
+        'ta3' => 'stream.rotation.ta3-how', 'ta4' => 'stream.rotation.ta4-live', 'ta5' => 'stream.rotation.ta5-standing', 'ta6' => 'stream.rotation.ta6-champion', 'ta7' => 'stream.rotation.ta7-next',
+        'tb3' => 'stream.rotation.tb3-how', 'tb4' => 'stream.rotation.tb4-live', 'tb5' => 'stream.rotation.tb5-standing', 'tb6' => 'stream.rotation.tb6-champion', 'tb7' => 'stream.rotation.tb7-next',
+        'tc3' => 'stream.rotation.tc3-how', 'tc4' => 'stream.rotation.tc4-live', 'tc5' => 'stream.rotation.tc5-standing', 'tc6' => 'stream.rotation.tc6-champion', 'tc7' => 'stream.rotation.tc7-next',
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
         'd5' => 'stream.rotation.d5-board',
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
     ];
 
-    /** The tournament slides' scene ids, one pair per look: hero (1), bracket preview (2). */
-    public const TOURNAMENT_SCENES = ['ta1', 'ta2', 'tb1', 'tb2', 'tc1', 'tc2'];
+    /**
+     * The tournament slides' scene ids per look: hero (1) and bracket preview (2) while sign-up is open, and past
+     * sign-up (LIVE_TOURNAMENT_SCENES) how it runs (3), the live bracket (4), still standing (5), the champion (6),
+     * the next tournament to sign up for (7).
+     */
+    public const TOURNAMENT_SCENES = ['ta1', 'ta2', 'tb1', 'tb2', 'tc1', 'tc2',
+        'ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7'];
+
+    /** The slides of a tournament past its sign-up (TournamentLiveSlides), by look. */
+    public const LIVE_TOURNAMENT_SCENES = ['ta3', 'ta4', 'ta5', 'ta6', 'ta7', 'tb3', 'tb4', 'tb5', 'tb6', 'tb7', 'tc3', 'tc4', 'tc5', 'tc6', 'tc7'];
+
+    /**
+     * The slide parts of each phase past sign-up: the first every round, then one of the second group in turn
+     * (per tournament), then the call to sign up for the next one (7) while one is open.
+     */
+    public const PHASE_PARTS = ['running' => [4, [5, 3]], 'drawing' => [3, []], 'finished' => [6, [4, 5]]];
+
+    /** The part that points the audience to the next tournament's sign-up. */
+    public const NEXT_PART = 7;
 
     /** @var array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}|null */
     private ?array $slot = null;
 
-    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string}> the rest of the current round */
+    /** "phase:id" of the tournament slide on show, null for any other slot. */
+    private ?string $slotTournament = null;
+
+    /** @var list<array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string}> the rest of the current round */
     private array $queue = [];
 
     private bool $roundWithGames = false;
@@ -114,6 +147,12 @@ final class RotationPlanner
 
     /** Rounds that took their EVERY_ROUND teasers (each group takes turns by it). */
     private int $everyRoundTurn = 0;
+
+    /** @var array<string, bool> "phase:id" of every tournament slide that may show now => its next-tournament call applies */
+    private array $tournamentKeys = [];
+
+    /** @var array<int, int> tournament id => its turns past sign-up so far (the second part takes turns by it) */
+    private array $liveTurns = [];
 
     /** BoardScene::OFF, IDLE or LIVE, as the last call to at() reported it. */
     private string $boards = BoardScene::OFF;
@@ -152,12 +191,27 @@ final class RotationPlanner
      * @param  list<array{id: int, blitz: bool}>  $games  the games on show, in display order
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
      * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
+     * @param  list<array{id: int, phase: string, fomo: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
      */
-    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = []): array
     {
         $ids = array_column($games, 'id');
         $this->boards = $boards;
+        $this->tournamentKeys = [];
+
+        foreach ($live as $entry) {
+            if (isset(self::PHASE_PARTS[$entry['phase']])) {
+                $this->tournamentKeys[$entry['phase'].':'.$entry['id']] = $entry['fomo'];
+            }
+        }
+
+        foreach ($tournaments as $id) {
+            $this->tournamentKeys['signup:'.$id] = false;
+        }
+
+        // One list for the turns: past sign-up first, then the upcoming ones.
+        $tournaments = array_keys($this->tournamentKeys);
 
         if ($this->slot === null || $now >= $this->slot['until'] || $this->endsEarly($ids, $tournaments)) {
             $this->advance($now, $games, $tournaments);
@@ -170,7 +224,7 @@ final class RotationPlanner
 
     /**
      * @param  list<int>  $ids
-     * @param  list<int>  $tournaments
+     * @param  list<string>  $tournaments  "phase:id" of every tournament in turn
      */
     private function endsEarly(array $ids, array $tournaments): bool
     {
@@ -181,14 +235,15 @@ final class RotationPlanner
             self::LOOP => $ids !== [],
             self::MATCH => ! in_array($this->slot['gameId'], $ids, true),
             self::GALLERY => count($ids) < 2,
-            self::TOURNAMENT => ! in_array($this->slot['tournamentId'], $tournaments, true),
+            // Gone, or in another phase now (its slides would show the wrong one).
+            self::TOURNAMENT => ! in_array($this->slotTournament, $tournaments, true),
             default => false,
         };
     }
 
     /**
      * @param  list<array{id: int, blitz: bool}>  $games
-     * @param  list<int>  $tournaments
+     * @param  list<string>  $tournaments
      */
     private function advance(float $now, array $games, array $tournaments): void
     {
@@ -218,7 +273,7 @@ final class RotationPlanner
 
     /**
      * @param  list<array{id: int, blitz: bool}>  $games
-     * @param  list<int>  $tournaments
+     * @param  list<string>  $tournaments
      */
     private function plan(array $games, array $tournaments): void
     {
@@ -294,25 +349,39 @@ final class RotationPlanner
     }
 
     /**
-     * This round's tournament (in turn) as hero and bracket preview.
+     * This round's tournament (in turn): an upcoming one as hero and bracket
+     * preview, one past sign-up as its phase's parts (PHASE_PARTS) and the call
+     * to sign up for the next one.
      *
-     * @param  list<int>  $tournaments
-     * @return list<array{kind: string, look: string, tournamentId: int, part: int}>
+     * @param  list<string>  $tournaments  "phase:id"
+     * @return list<array{kind: string, look: string, tournamentId: int, part: int, key: string}>
      */
     private function tournamentSlides(string $look, array $tournaments): array
     {
-        $id = $tournaments[$this->tournamentTurn++ % count($tournaments)];
+        $key = $tournaments[$this->tournamentTurn++ % count($tournaments)];
+        [$phase, $id] = explode(':', $key);
+        $id = (int) $id;
+        $entry = fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => $part, 'key' => $key];
+
+        if (! isset(self::PHASE_PARTS[$phase])) {
+            return [$entry(1), $entry(2)];
+        }
+
+        [$first, $turns] = self::PHASE_PARTS[$phase];
+        $turn = $this->liveTurns[$id] = ($this->liveTurns[$id] ?? -1) + 1;
 
         return [
-            ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => 1],
-            ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => 2],
+            $entry($first),
+            ...($turns === [] ? [] : [$entry($turns[$turn % count($turns)])]),
+            // Skipped when no next tournament is open by then (slotFor()).
+            $entry(self::NEXT_PART),
         ];
     }
 
     /**
-     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string}  $entry
+     * @param  array{kind: string, look?: string, gameId?: int, tournamentId?: int, part?: int, scene?: string, key?: string}  $entry
      * @param  list<array{id: int, blitz: bool}>  $games
-     * @param  list<int>  $tournaments
+     * @param  list<string>  $tournaments
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}|null null when it no longer applies
      */
     private function slotFor(array $entry, array $games, array $tournaments, float $start): ?array
@@ -325,9 +394,17 @@ final class RotationPlanner
             case self::GALLERY:
                 return count($games) < 2 ? null : $this->slot(self::GALLERY, ($entry['look'] ?? 'a').'2', null, $start + $this->gallerySeconds);
             case self::TOURNAMENT:
-                $id = $entry['tournamentId'] ?? null;
+                $key = $entry['key'] ?? '';
+                $part = $entry['part'] ?? 1;
 
-                return ! in_array($id, $tournaments, true) ? null : $this->slot(self::TOURNAMENT, 't'.($entry['look'] ?? 'a').($entry['part'] ?? 1), null, $start + $this->tournamentSeconds, $id);
+                if (! in_array($key, $tournaments, true) || ($part === self::NEXT_PART && ! ($this->tournamentKeys[$key] ?? false))) {
+                    return null;
+                }
+
+                $slot = $this->slot(self::TOURNAMENT, 't'.($entry['look'] ?? 'a').$part, null, $start + $this->tournamentSeconds, $entry['tournamentId'] ?? null);
+                $this->slotTournament = $key;
+
+                return $slot;
             case self::LOOP:
                 return $this->slot(self::LOOP, null, null, $start + $this->loopSeconds);
             case self::BOARD:
