@@ -133,7 +133,9 @@ final class PageCard
             'player' => ($user = User::query()->where('npub', $key)->first()) !== null ? self::player($user) : null,
             'clan' => ($clan = Clan::query()->where('slug', $key)->first()) !== null ? self::clan($clan) : null,
             'series' => ctype_digit($key) && ($match = SeriesMatch::query()->where('number', (int) $key)->first()) !== null ? self::series($match) : null,
-            'ladder' => str_contains($key, '.') && app(GameRegistry::class)->mode(...explode('.', $key, 2)) !== null ? self::ladder(...explode('.', $key, 2)) : null,
+            // A board game's ladder opens in P5 of plan "Mühle und Dame", its card with it.
+            'ladder' => str_contains($key, '.') && app(GameRegistry::class)->mode(...explode('.', $key, 2)) !== null && ! app(GameRegistry::class)->isBoard(explode('.', $key, 2)[0])
+                ? self::ladder(...explode('.', $key, 2)) : null,
             'page' => in_array($key, self::PAGES, true) || (str_starts_with($key, 'hub.') && app(GameRegistry::class)->isSeries(substr($key, 4)))
                 ? self::page($key) : null,
             default => null,

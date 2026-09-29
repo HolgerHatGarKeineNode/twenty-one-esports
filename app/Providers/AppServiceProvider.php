@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Games\BoardGame;
 use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -38,9 +40,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry(
-            array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
-        ));
+        $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry([
+            ...array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
+            ...$this->boardGames(),
+        ]));
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).
         $this->app->singleton(StreamImages::class);
@@ -144,6 +147,43 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Configure default behaviors for production-ready applications.
      */
+    /**
+     * The board games switched on in `esports.board_games` (plan "Mühle und
+     * Dame"): none while the switch is off, which is the default. An entry
+     * whose class is missing, is no BoardGame or names another slug stays off
+     * and is logged: a wrong line there must never take chess down with it.
+     *
+     * @return list<BoardGame>
+     */
+    private function boardGames(): array
+    {
+        if (! config('esports.board_games.enabled')) {
+            return [];
+        }
+
+        $games = [];
+
+        foreach ((array) config('esports.board_games.games', []) as $slug => $entry) {
+            $class = $entry['class'] ?? null;
+
+            if (! ($entry['enabled'] ?? false) || $class === null) {
+                continue;
+            }
+
+            $game = is_string($class) && is_a($class, BoardGame::class, true) ? $this->app->make($class) : null;
+
+            if (! $game instanceof BoardGame || $game->slug() !== $slug) {
+                Log::warning('Board game entry left off: its class is no board game of this slug.', ['slug' => $slug, 'class' => $class]);
+
+                continue;
+            }
+
+            $games[] = $game;
+        }
+
+        return $games;
+    }
+
     protected function configureDefaults(): void
     {
         Date::use(CarbonImmutable::class);

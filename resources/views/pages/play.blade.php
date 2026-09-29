@@ -24,7 +24,7 @@
         return implode(', ', $facts);
     };
     app(\App\Support\PageMeta::class)
-        ->describe(__('All games and modes'), __('Every game of the TWENTY ONE esports league with its modes: :games. What each one is, how it is rated and where to play it.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys($registry->all())))]))
+        ->describe(__('All games and modes'), __('Every game of the TWENTY ONE esports league with its modes: :games. What each one is, how it is rated and where to play it.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys(array_diff_key($registry->all(), $registry->boards()))))]))
         ->card(fn () => \App\Support\Cards\PageCard::page('play'));
 @endphp
 <x-layouts::app :title="__('All games and modes')">

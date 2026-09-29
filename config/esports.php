@@ -179,6 +179,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Board games (plan "Mühle und Dame")
+    |--------------------------------------------------------------------------
+    |
+    | Board games other than chess (App\Games\BoardGame), played on our own
+    | board game core next to chess. enabled: the switch for all of them
+    | (`ESPORTS_BOARD_GAMES`, off by default); off, no board game is in the
+    | registry: no route, no navigation, no cup. games: one entry per board
+    | game, keyed by its reserved slug (BoardGame::RESERVED_SLUGS; nine men's
+    | morris is never `mill`), each with its own switch and its class. The
+    | classes come with P3 (nine men's morris) and P4 (checkers); an entry
+    | without a class stays off.
+    |
+    */
+
+    'board_games' => [
+        'enabled' => (bool) env('ESPORTS_BOARD_GAMES', false),
+        'games' => [
+            'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => null],
+            'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => null],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Live chess (P5)
     |--------------------------------------------------------------------------
     |

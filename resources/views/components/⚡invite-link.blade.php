@@ -83,6 +83,11 @@ new class extends Component
     {
         $user = Auth::user();
 
+        // A board game gets its own invite links in P5 of plan "Mühle und Dame", never a chess daily link.
+        if (app(GameRegistry::class)->isBoard($this->game)) {
+            return 'hidden';
+        }
+
         if (! $user instanceof User) {
             return $this->clanId !== null ? 'hidden' : 'guest';
         }

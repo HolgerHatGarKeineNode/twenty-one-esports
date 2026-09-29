@@ -5,6 +5,7 @@ namespace App\Support\Engagement;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -184,7 +185,8 @@ final class HomeHub
         foreach ($registry->all() as $game) {
             $mode = array_key_first($game->modes());
 
-            if ($mode !== null) {
+            // Board games open their ladders in P5 of plan "Mühle und Dame".
+            if ($mode !== null && $game->kind() !== GameKind::Board) {
                 $ladders[] = ['game' => $game->slug(), 'mode' => (string) $mode, 'season' => Ratings::season(Rating::RATED, $game->slug(), (string) $mode)];
             }
         }

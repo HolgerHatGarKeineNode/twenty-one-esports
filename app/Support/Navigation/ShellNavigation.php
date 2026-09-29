@@ -5,6 +5,7 @@ namespace App\Support\Navigation;
 use App\Enums\InviteStatus;
 use App\Enums\TournamentStatus;
 use App\Games\Contracts\Game;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\ClanInvite;
@@ -88,6 +89,11 @@ final class ShellNavigation
         $games = [];
 
         foreach (array_values($this->registry->all()) as $index => $game) {
+            // Board games join the navigation with their pages (plan "Mühle und Dame", P5).
+            if ($game->kind() === GameKind::Board) {
+                continue;
+            }
+
             $games[] = [$game, $lastPlayed[$game->slug()] ?? null, $index];
         }
 
@@ -159,7 +165,7 @@ final class ShellNavigation
         $request = $this->request;
         $route = $request->route();
         $name = is_object($route) ? $route->getName() : null;
-        $known = fn (mixed $slug): ?string => is_string($slug) && $this->registry->find($slug) !== null ? $slug : null;
+        $known = fn (mixed $slug): ?string => is_string($slug) && $this->registry->find($slug) !== null && ! $this->registry->isBoard($slug) ? $slug : null;
 
         return $this->pageGame = match (true) {
             $name === null => null,

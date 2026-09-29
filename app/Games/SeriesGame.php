@@ -27,6 +27,11 @@ abstract class SeriesGame implements Game
      */
     abstract public function flags(): array;
 
+    final public function kind(): GameKind
+    {
+        return GameKind::Series;
+    }
+
     public function mode(string $slug): ?GameMode
     {
         return $this->modes()[$slug] ?? null;

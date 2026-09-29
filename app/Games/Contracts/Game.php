@@ -3,6 +3,7 @@
 namespace App\Games\Contracts;
 
 use App\Games\GameAssets;
+use App\Games\GameKind;
 use App\Games\GameMode;
 
 /**
@@ -23,6 +24,12 @@ interface Game
     public function slug(): string;
 
     public function name(): string;
+
+    /**
+     * How the game is played: chess, a best-of series or a further board
+     * game. Switches between the kinds ask this, never "is it chess".
+     */
+    public function kind(): GameKind;
 
     /**
      * @return array<string, GameMode> keyed by mode slug, in display order

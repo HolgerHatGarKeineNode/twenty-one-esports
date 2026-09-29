@@ -3,6 +3,7 @@
 namespace App\Support\Pages;
 
 use App\Enums\TournamentFormat;
+use App\Games\GameKind;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
@@ -178,6 +179,11 @@ final class RulesPage
         $covers = [];
 
         foreach (app(GameRegistry::class)->all() as $game) {
+            // A board game is in the rules once it is playable (plan "Mühle und Dame", P3/P4).
+            if ($game->kind() === GameKind::Board) {
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 /** @var GameMode $mode */
                 $covers[] = $game->slug();

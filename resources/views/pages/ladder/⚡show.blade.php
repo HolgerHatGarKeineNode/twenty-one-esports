@@ -50,6 +50,8 @@ new #[Layout('layouts::app', ['section' => 'ladder'])] class extends Component
     public function mount(string $game, string $mode): void
     {
         abort_if(app(GameRegistry::class)->mode($game, $mode) === null, 404);
+        // A board game's ladder opens in P5 of plan "Mühle und Dame".
+        abort_if(app(GameRegistry::class)->isBoard($game), 404);
 
         $this->game = $game;
         $this->mode = $mode;

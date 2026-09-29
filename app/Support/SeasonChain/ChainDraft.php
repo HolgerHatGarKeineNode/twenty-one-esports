@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\SeasonSettingChange;
 use App\Models\User;
@@ -178,6 +179,11 @@ final class ChainDraft
         $rows = [];
 
         foreach (app(GameRegistry::class)->all() as $game) {
+            // Board games mine nothing before P6 of plan "Mühle und Dame": no row, no share.
+            if ($game->kind() === GameKind::Board) {
+                continue;
+            }
+
             foreach (array_keys($game->modes()) as $mode) {
                 $rows[$parameters->shareKey($game->slug())][] = $game->slug().'/'.$mode;
             }

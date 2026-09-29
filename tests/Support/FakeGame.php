@@ -4,6 +4,7 @@ namespace Tests\Support;
 
 use App\Games\Contracts\Game;
 use App\Games\GameAssets;
+use App\Games\GameKind;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 
@@ -45,6 +46,15 @@ final class FakeGame implements Game
     public function name(): string
     {
         return $this->name;
+    }
+
+    /**
+     * Stands in for a future series game; it is no SeriesGame, so the shell
+     * still gives it the one-link hub of a game without pages of its own.
+     */
+    public function kind(): GameKind
+    {
+        return GameKind::Series;
     }
 
     public function modes(): array

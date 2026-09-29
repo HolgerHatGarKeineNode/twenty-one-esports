@@ -68,6 +68,24 @@ final class GameRegistry
     }
 
     /**
+     * The board games other than chess (nine men's morris, checkers), in
+     * display order. Registered only while `esports.board_games` has them on;
+     * every switch between chess and the series leaves these out until their
+     * phase opens the feature.
+     *
+     * @return array<string, Game>
+     */
+    public function boards(): array
+    {
+        return array_filter($this->games, fn (Game $game): bool => $game->kind() === GameKind::Board);
+    }
+
+    public function isBoard(string $slug): bool
+    {
+        return $this->find($slug)?->kind() === GameKind::Board;
+    }
+
+    /**
      * Display name of a game; the slug itself for a game no longer registered.
      */
     public function name(string $slug): string

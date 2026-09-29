@@ -8,6 +8,7 @@ use App\Enums\SeriesResolution;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\SeriesMatch;
@@ -91,7 +92,8 @@ final class CasualCups
     /* ---------- Configuration --------------------------------------------------------------------------------- */
 
     /**
-     * The games whose cup series runs, each with a known cup setup.
+     * The games whose cup series runs, each with a known cup setup. A board
+     * game gets its cups in P5 of plan "Mühle und Dame", not before.
      *
      * @return list<string>
      */
@@ -99,7 +101,7 @@ final class CasualCups
     {
         $games = (array) config('esports.casual_cups.games', []);
 
-        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])), fn (string $game): bool => isset($games[$game])));
+        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])), fn (string $game): bool => isset($games[$game]) && ! app(GameRegistry::class)->isBoard($game)));
     }
 
     /**

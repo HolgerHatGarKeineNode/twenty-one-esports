@@ -5,6 +5,7 @@ namespace App\Support\Seo;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -107,6 +108,11 @@ final class Sitemap
         $urls = array_values(array_unique($urls));
 
         foreach (app(GameRegistry::class)->all() as $game) {
+            // Board games open their ladders in P5 of plan "Mühle und Dame".
+            if ($game->kind() === GameKind::Board) {
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $urls[] = route('ladder.show', [$game->slug(), $mode->slug]);
             }

@@ -32,10 +32,16 @@ final class GameNames
 
     /**
      * The page of a game: the chess lobby, or the overview of a series game.
-     * Chess is the one game that is not played as a series.
+     * Chess is the one game that is not played as a series. A board game has
+     * no page of its own before P5 of plan "Mühle und Dame": the list of all
+     * games, never the chess lobby.
      */
     public static function page(string $game): string
     {
+        if (app(GameRegistry::class)->isBoard($game)) {
+            return route('play');
+        }
+
         return app(GameRegistry::class)->isSeries($game) ? route('games.series', $game) : route('chess.lobby');
     }
 }

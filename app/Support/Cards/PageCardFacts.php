@@ -452,6 +452,8 @@ final class PageCardFacts
     private static function countPage(string $page): array
     {
         $registry = app(GameRegistry::class);
+        // The games the site offers: a board game is counted once it is playable (plan "Mühle und Dame", P5).
+        $offered = array_diff_key($registry->all(), $registry->boards());
         $liveGames = fn (): int => ChessGame::query()->where('status', ChessGameStatus::Active)->count();
         $players = fn (): int => User::query()->count();
         $next = fn (): ?Tournament => Tournament::query()->special()->whereNotNull('published_at')->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])
@@ -463,7 +465,7 @@ final class PageCardFacts
             'matches' => [['series-played', SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'games', 'chess' => [['live-games', $liveGames()], ['daily-games', ChessGame::query()->daily()->where('status', ChessGameStatus::Active)->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->where('status', TournamentStatus::Finished)->count()]],
-            'play', 'rules' => [['games', count($registry->all())], ['modes', array_sum(array_map(fn ($game): int => count($game->modes()), $registry->all()))]],
+            'play', 'rules' => [['games', count($offered)], ['modes', array_sum(array_map(fn ($game): int => count($game->modes()), $offered))]],
             // Without configured relays there is nothing to count; the figure is left out rather than drawn as 0.
             'protocol' => count((array) config('esports.relays', [])) > 0 ? [['relays', count((array) config('esports.relays', []))]] : [],
             default => [],
@@ -478,7 +480,7 @@ final class PageCardFacts
             'page' => $page,
             'figures' => $figures,
             'next' => $upcoming === null ? null : ['name' => $upcoming->name, 'game' => $upcoming->game, 'starts_utc' => $upcoming->starts_at->copy()->utc()->format('Y-m-d H:i')],
-            'games' => $page === 'play' ? array_keys($registry->all()) : [],
+            'games' => $page === 'play' ? array_keys($offered) : [],
             // The page's own picture: the newest live board (chess pages), the biggest clans (clan list).
             'board' => $board === null ? null : [
                 'fen' => $board->fen,

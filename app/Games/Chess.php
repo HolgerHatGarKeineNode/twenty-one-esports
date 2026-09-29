@@ -27,6 +27,11 @@ final class Chess implements Game
         return 'Chess';
     }
 
+    public function kind(): GameKind
+    {
+        return GameKind::Chess;
+    }
+
     public function modes(): array
     {
         return [

@@ -447,11 +447,17 @@ final class SeasonChains
         $current = $season->chainParameters()->inForceAt(CarbonImmutable::now());
         $registry = app(GameRegistry::class);
         $isShareKey = fn (mixed $key): bool => is_string($key) && (isset($current->groups[$key]) || ($registry->find($key) !== null && $current->shareKey($key) === $key));
+        // Board games mine nothing before P6 of plan "Mühle und Dame": no weight, share or daily limit for one.
+        $isBoard = fn (mixed $key): bool => $registry->isBoard(explode('/', (string) $key, 2)[0]);
         $ok = true;
 
         foreach ((array) ($changes['weights'] ?? []) as $key => $milli) {
             [$game, $mode] = array_pad(explode('/', (string) $key, 2), 2, '');
             $ok = $ok && $registry->mode($game, $mode) !== null && $in($milli, 'weight', 0);
+        }
+
+        foreach (['weights', 'shares', 'daily'] as $parameter) {
+            $ok = $ok && array_filter(array_keys((array) ($changes[$parameter] ?? [])), $isBoard) === [];
         }
 
         foreach ((array) ($changes['shares'] ?? []) as $key => $percent) {

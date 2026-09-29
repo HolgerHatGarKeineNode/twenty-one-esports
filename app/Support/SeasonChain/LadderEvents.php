@@ -2,6 +2,7 @@
 
 namespace App\Support\SeasonChain;
 
+use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
@@ -57,6 +58,11 @@ final class LadderEvents
         $events = [];
 
         foreach ($this->games->all() as $game) {
+            // Board games get no ladder until they are rated (plan "Mühle und Dame", P5) and mine nothing until P6.
+            if ($game->kind() === GameKind::Board) {
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $events[] = $this->publishOne($season, $league, $trustKey, $game->slug(), $mode->slug, $content);
             }

@@ -57,9 +57,20 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         return $this->clan === '' ? null : Clan::query()->where('slug', $this->clan)->first();
     }
 
+    /**
+     * A board game has no matches here before P5 of plan "Mühle und Dame":
+     * its filter from the address shows all games, never the chess list.
+     */
+    public function mount(): void
+    {
+        if (app(GameRegistry::class)->isBoard($this->game)) {
+            $this->game = 'all';
+        }
+    }
+
     public function pickGame(string $game): void
     {
-        $this->game = $game === 'all' || app(GameRegistry::class)->find($game) !== null ? $game : 'all';
+        $this->game = $game === 'all' || (app(GameRegistry::class)->find($game) !== null && ! app(GameRegistry::class)->isBoard($game)) ? $game : 'all';
         $this->resetPage();
     }
 
@@ -249,14 +260,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <select id="f-game-select" wire:change="pickGame($event.target.value)" data-test="game-filter-select"
                             class="h-11 w-[200px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden">
                         <option value="all" @selected($game === 'all')>{{ __('All') }}</option>
-                        @foreach (app(GameRegistry::class)->all() as $key => $option)
+                        @foreach (array_diff_key(app(GameRegistry::class)->all(), app(GameRegistry::class)->boards()) as $key => $option)
                             <option value="{{ $key }}" @selected($game === $key)>{{ GameNames::game($key) }}</option>
                         @endforeach
                     </select>
                     <div role="group" aria-labelledby="f-game" class="flex max-w-full overflow-hidden rounded-md border border-line max-sm:hidden">
                         <button type="button" wire:click="pickGame('all')" aria-pressed="{{ $game === 'all' ? 'true' : 'false' }}" data-test="game-all"
                                 @class([$filterBtn, 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
-                        @foreach (app(GameRegistry::class)->all() as $key => $option)
+                        @foreach (array_diff_key(app(GameRegistry::class)->all(), app(GameRegistry::class)->boards()) as $key => $option)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}" aria-label="{{ GameNames::game($key) }}"
                                     @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-sm:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
                         @endforeach
