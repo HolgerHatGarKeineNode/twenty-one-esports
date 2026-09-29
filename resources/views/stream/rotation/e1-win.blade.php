@@ -5,7 +5,8 @@
 
     Data contract:
       $pride     array{win: array{winner: string, winnerAvatar: ?string, loser: string, loserAvatar: ?string,
-                 mode: string, delta: ?int, ago: ?string}|null, …} (PrideSlides::all())
+                 mode: string, delta: ?int, ago: ?string, tournament?: ?string}|null, …} (PrideSlides::all());
+                 `tournament`: the tournament a board game won its winner, in the label instead of "LATEST WIN"
       $stats     array: the ticker counts (b-chrome)
       $backdrop  ?string, optional: the brand backdrop, as in a1-match
 --}}
@@ -17,6 +18,8 @@
         $beat = K::fit('beat '.K::clean($win['loser'] ?? ''), K::MONO, 30, 740);
         $when = K::fit(implode(' · ', array_filter([K::clean($win['mode'] ?? ''), K::clean($win['ago'] ?? '')])), K::MONO, 24, 740);
         $delta = is_int($win['delta'] ?? null) && $win['delta'] > 0 ? '+'.$win['delta'].' casual Elo' : null;
+        // A board game that won its winner a tournament (PrideSlides, plan "Mühle und Dame", P7) names it.
+        $label = K::clean($win['tournament'] ?? '') !== '' ? K::fit('TOURNAMENT WIN · '.mb_strtoupper(K::clean($win['tournament'])), K::MONO, 26, 780) : 'LATEST WIN · GG';
     }
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
@@ -28,7 +31,7 @@
 <radialGradient id="win-glow"><stop offset="0.5" stop-color="#F7931A" stop-opacity="0.5"/><stop offset="1" stop-color="#F7931A" stop-opacity="0"/></radialGradient>
 <circle cx="230" cy="380" r="230" fill="url(#win-glow)"/>
 @include('stream.rotation.partials.face', ['face' => ['uri' => $win['winnerAvatar'] ?? null, 'tag' => null], 'x' => 80, 'y' => 230, 'd' => 300, 'id' => 'winner', 'fUnit' => 'winner-face', 'fRing' => '#F7931A', 'fCrown' => '#F7931A'])
-<text x="460" y="220" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#F7931A">LATEST WIN · GG</text>
+<text data-unit="winner-label" data-box="459 196 1240 226" x="460" y="220" font-family="JetBrains Mono" font-weight="700" font-size="26" fill="#F7931A">{{ $label }}</text>
 <text data-unit="winner-name" data-box="459 250 1240 318" x="460" y="304" font-family="{{ $name['font'] }}" font-weight="800" font-size="64" fill="#FFFFFF">{{ $name['text'] }}</text>
 <text data-unit="winner-beat" data-box="459 336 1240 372" x="460" y="364" font-family="JetBrains Mono" font-weight="700" font-size="30" fill="#FFFFFF">{{ $beat }}</text>
 @if ($when !== '')<text data-unit="winner-when" data-box="459 390 1240 420" x="460" y="414" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#ADADB0">{{ $when }}</text>@endif

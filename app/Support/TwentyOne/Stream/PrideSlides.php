@@ -2,9 +2,11 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -12,7 +14,9 @@ use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Prizes\PrizePool;
+use App\Support\Tournaments\TournamentChampion;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Throwable;
 
 /**
@@ -20,8 +24,11 @@ use Throwable;
  * what they did, and the sats a tournament pays. Everything is read as the
  * site shows it, nothing is estimated; a slide without data says so.
  *
- * - `win`: the latest decided chess game of the last week (else the latest
- *   ever): winner, loser, blitz or daily, the winner's casual Elo change.
+ * - `win`: the latest decided game of the last week (else the latest ever),
+ *   chess or a board game that is switched on (plan "Mühle und Dame", P7):
+ *   winner, loser, blitz or daily chess or the board game, the winner's
+ *   casual Elo change and the game's page (`url`); a board game that won
+ *   its winner a finished tournament names it (`tournament`) and links it.
  * - `climbers`: the three biggest casual chess Elo gains of the last seven
  *   days (sum of the live rating changes, gains only).
  * - `signups`: the six newest sign-ups of tournaments open for sign-up
@@ -75,6 +82,11 @@ class PrideSlides
         $decided = fn () => ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])
             ->whereNotNull('white_id')->whereNotNull('black_id')->with(['white', 'black'])->latest('ended_at')->latest('id');
         $game = $decided()->where('ended_at', '>=', now()->subDays(self::DAYS))->first() ?? $decided()->first();
+        $board = $this->boardWin($game);
+
+        if ($board !== null) {
+            return $board;
+        }
 
         if ($game === null) {
             return null;
@@ -94,7 +106,83 @@ class PrideSlides
             'mode' => $game->isCorrespondence() ? 'Daily chess' : 'Blitz chess',
             'delta' => is_numeric($delta) ? (int) $delta : null,
             'ago' => $game->ended_at?->diffForHumans(),
+            'url' => route('games.show', $game),
         ];
+    }
+
+    /**
+     * The latest decided board game when it wins over the chess game `win()`
+     * found: a recent one (DAYS) beats an older chess win, and between two
+     * recent (or two older) games the later end wins. Null while no board
+     * game is switched on, its page is not routed, or chess is later.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function boardWin(?ChessGame $chess): ?array
+    {
+        $slugs = array_keys($this->games->boards());
+
+        if ($slugs === [] || ! Route::has('board.show')) {
+            return null;
+        }
+
+        $decided = fn () => BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])->whereIn('game', $slugs)
+            ->whereNotNull('white_id')->whereNotNull('black_id')->whereNotNull('ended_at')->with(['white', 'black'])->latest('ended_at')->latest('id');
+        $since = now()->subDays(self::DAYS);
+        $game = $decided()->where('ended_at', '>=', $since)->first() ?? $decided()->first();
+
+        if ($game === null || $game->ended_at === null) {
+            return null;
+        }
+
+        if ($chess !== null && $chess->ended_at !== null) {
+            $boardRecent = $game->ended_at->gte($since);
+            $chessRecent = $chess->ended_at->gte($since);
+
+            if ($chessRecent && ! $boardRecent || $chessRecent === $boardRecent && $chess->ended_at->gte($game->ended_at)) {
+                return null;
+            }
+        }
+
+        [$winner, $loser] = $game->result === '1-0' ? [$game->white, $game->black] : [$game->black, $game->white];
+        $delta = RatingChange::query()->where(['source' => RatingChange::BOARD, 'source_id' => $game->id])
+            ->whereHas('rating', fn ($rating) => $rating->where(['user_id' => $winner->id, 'pool' => Rating::CASUAL]))
+            ->value('delta');
+        $tournament = $this->wonTournament($game, $winner);
+
+        return [
+            'gameId' => $game->id,
+            'winner' => PublicName::clean($winner->displayName()),
+            'winnerRef' => StreamImages::avatarRef($winner),
+            'loser' => PublicName::clean($loser->displayName()),
+            'loserRef' => StreamImages::avatarRef($loser),
+            // "Checkers blitz 5+3", as "Blitz chess" for chess: the pride note writes it in lower case.
+            'mode' => $this->games->name($game->game).' '.mb_strtolower($this->games->mode($game->game, $game->mode)->name ?? $game->mode),
+            'delta' => is_numeric($delta) ? (int) $delta : null,
+            'ago' => $game->ended_at->diffForHumans(),
+            'tournament' => $tournament === null ? null : PublicName::clean($tournament->name),
+            'url' => $tournament === null ? route('board.show', $game) : route('tournaments.show', $tournament),
+        ];
+    }
+
+    /**
+     * The tournament this board game won its winner: a finished tournament
+     * whose champion (TournamentChampion) the winner is, and this game their
+     * last in it. Null for a casual game and every other tournament game.
+     */
+    private function wonTournament(BoardGame $game, User $winner): ?Tournament
+    {
+        $tournament = $game->tournamentMatch?->tournament;
+
+        if ($tournament === null || $tournament->status !== TournamentStatus::Finished) {
+            return null;
+        }
+
+        $last = BoardGame::query()->whereIn('tournament_match_id', $tournament->matches()->select('id'))->playedBy($winner)
+            ->whereNotNull('ended_at')->latest('ended_at')->latest('id')->value('id');
+        $champion = app(TournamentChampion::class)->of($tournament);
+
+        return $last === $game->id && $champion !== null && in_array($winner->id, $champion->memberIds(), true) ? $tournament : null;
     }
 
     /**

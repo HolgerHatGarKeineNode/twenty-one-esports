@@ -47,6 +47,7 @@ class SceneSource
         private GameRegistry $games,
         private StreamImages $images,
         private PrideSlides $pride,
+        private BoardScene $board,
     ) {}
 
     /**
@@ -120,7 +121,8 @@ class SceneSource
      * B3 the daily game on show (if any), a tournament slide (t*) its
      * tournament as TournamentSlides builds it, the feature slides (d*)
      * every upcoming tournament (d1 their pots, d2 the casual cups) or the
-     * site's QR code.
+     * site's QR code, the board scene (d5) a live board game or the board
+     * games' teaser (BoardScene).
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
@@ -130,6 +132,11 @@ class SceneSource
      */
     public function rotation(string $scene, ?int $gameId, array $games, int $more, int $nowMs, array $stats, ?array $tournament = null, array $upcoming = []): array
     {
+        // The board games next to chess (plan "Mühle und Dame", P7): a live board game, else the teaser.
+        if ($scene === RotationPlanner::BOARD_SCENE) {
+            return $this->board->data($nowMs, $stats);
+        }
+
         if (in_array($scene, RotationPlanner::PRIDE_SCENES, true)) {
             return ['pride' => $this->pride->all(), 'stats' => $stats, 'backdrop' => $this->images->backdrop(StreamImages::BRAND)];
         }

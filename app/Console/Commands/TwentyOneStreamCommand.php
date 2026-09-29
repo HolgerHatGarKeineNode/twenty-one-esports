@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
+use App\Support\TwentyOne\Stream\BoardScene;
 use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\EncoderRun;
 use App\Support\TwentyOne\Stream\FfmpegCommands;
@@ -235,6 +236,7 @@ class TwentyOneStreamCommand extends Command
     private function supervise(EventBuilder $builder, RelayPublisher $publisher, SceneSource $source, StreamStats $counts, TournamentSlides $slides, PublicPlaylist $public, string $hlsDir, string $prepared): void
     {
         $renderer = SceneRenderer::fromConfig();
+        $boardScene = app(BoardScene::class);
         // Games that ended within this window stay on show with their result.
         $hysteresis = (int) config('twentyone.stream.scene.hysteresis_seconds', 60);
         // The planner decides scene or loop; the machine only keeps a failed scene off.
@@ -261,6 +263,8 @@ class TwentyOneStreamCommand extends Command
         /** @var list<ChessGame> $sceneGames */
         $sceneGames = [];
         $sceneMore = 0;
+        // The board games next to chess (BoardScene::state()), read with the games; `off` while the poll fails.
+        $boards = BoardScene::OFF;
         /** @var array<string, mixed> $stats the last counts that could be read */
         $stats = [];
         /** @var list<array<string, mixed>> $tournamentSnapshots the last upcoming tournaments that could be read */
@@ -293,6 +297,7 @@ class TwentyOneStreamCommand extends Command
 
                 try {
                     ['games' => $sceneGames, 'more' => $sceneMore] = $source->sceneGames($hysteresis);
+                    $boards = $boardScene->state();
 
                     if ($pollFailures > 0) {
                         $this->log('database poll recovered after '.$pollFailures.' failed polls');
@@ -304,6 +309,7 @@ class TwentyOneStreamCommand extends Command
                     }
 
                     [$sceneGames, $sceneMore] = [[], 0];
+                    $boards = BoardScene::OFF;
                     $pollFailures++;
 
                     if ($pollFailures >= self::POLL_FAILURES_FOR_LOOP && $modes->mode() === ModeMachine::SCENE) {
@@ -320,7 +326,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments));
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {

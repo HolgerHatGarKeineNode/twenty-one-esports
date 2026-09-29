@@ -24,7 +24,8 @@ use Throwable;
  * (`p` and `nostr:npub1…` in the text) and congratulated.
  *
  * Four types, each at most once a day at its own slot, spread for EU and
- * US (`esports.stream_bot.pride_notes.slots`): the latest win (e1), the
+ * US (`esports.stream_bot.pride_notes.slots`): the latest win (e1; chess or
+ * a board game, a board game's tournament win as such), the
  * climbers of the week (e2), who just signed up (e3), the biggest pot's
  * prizes (e4). A type posts only when it has data and its text differs from
  * its last note, so a quiet day posts nothing.
@@ -138,6 +139,11 @@ class PrideNotes
     {
         [$name, , $template] = self::TYPES[$type];
         $data = $this->pride->read();
+
+        // A board game that won its winner a tournament is told as the tournament win (plan "Mühle und Dame", P7).
+        if ($name === 'win' && is_string($data['win']['tournament'] ?? null) && $data['win']['tournament'] !== '') {
+            $template = 'pride_note_tournament_win';
+        }
         $tags = [];
         $mention = function (?array $ref) use (&$tags): ?string {
             $pubkey = is_array($ref) ? (string) ($ref['pubkey'] ?? '') : '';
@@ -200,7 +206,9 @@ class PrideNotes
             'loser' => StreamBotCopy::clean((string) ($win['loser'] ?? ''), 40),
             'mode' => strtolower((string) ($win['mode'] ?? 'chess')),
             'elo' => is_int($delta) && $delta > 0 ? '+'.$delta.' casual Elo' : null,
-            'url' => route('games.show', (int) $win['gameId']),
+            'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
+            // The game's page (a chess game, a board game) or the tournament a board game won (PrideSlides).
+            'url' => is_string($win['url'] ?? null) && $win['url'] !== '' ? $win['url'] : route('games.show', (int) $win['gameId']),
         ];
     }
 

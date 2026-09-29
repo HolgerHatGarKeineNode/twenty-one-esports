@@ -27,6 +27,13 @@ namespace App\Support\TwentyOne\Stream;
  * takes over at the end of the current teaser, and ends the loop at once.
  * A match whose game is gone, a gallery with fewer than two games, or a
  * tournament slide whose tournament closed or went away, ends early too.
+ *
+ * The board games next to chess (plan "Mühle und Dame", P7) have one scene,
+ * BOARD (d5), as the caller reports them (BoardScene::state()): while a
+ * board game is live it comes in every round, for `matchSeconds`, right
+ * after match and gallery (first in a round without games); while board
+ * games are switched on but none runs, every BOARD_IDLE_EVERY-th round
+ * shows it as a teaser; switched off, never. The loop is not cut short for it.
  */
 final class RotationPlanner
 {
@@ -39,6 +46,15 @@ final class RotationPlanner
     public const LOOP = 'loop';
 
     public const TOURNAMENT = 'tournament';
+
+    /** A board game live, or the board games' teaser (BoardScene). */
+    public const BOARD = 'board';
+
+    /** The scene of BOARD. */
+    public const BOARD_SCENE = 'd5';
+
+    /** Without a live board game, the board teaser comes every this many rounds. */
+    public const BOARD_IDLE_EVERY = 3;
 
     public const LOOKS = ['a', 'b', 'c'];
 
@@ -68,6 +84,7 @@ final class RotationPlanner
         'tc1' => 'stream.rotation.tc1-hero', 'tc2' => 'stream.rotation.tc2-bracket',
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
+        'd5' => 'stream.rotation.d5-board',
     ];
 
     /** The tournament slides' scene ids, one pair per look: hero (1), bracket preview (2). */
@@ -94,6 +111,12 @@ final class RotationPlanner
 
     /** Rounds that took their EVERY_ROUND teasers (each group takes turns by it). */
     private int $everyRoundTurn = 0;
+
+    /** BoardScene::OFF, IDLE or LIVE, as the last call to at() reported it. */
+    private string $boards = BoardScene::OFF;
+
+    /** Rounds planned while board games were switched on (the idle teaser counts them). */
+    private int $boardRounds = 0;
 
     public function __construct(
         private float $matchSeconds = 45,
@@ -125,11 +148,13 @@ final class RotationPlanner
      *
      * @param  list<array{id: int, blitz: bool}>  $games  the games on show, in display order
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
+     * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
      */
-    public function at(float $now, array $games, array $tournaments = []): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF): array
     {
         $ids = array_column($games, 'id');
+        $this->boards = $boards;
 
         if ($this->slot === null || $now >= $this->slot['until'] || $this->endsEarly($ids, $tournaments)) {
             $this->advance($now, $games, $tournaments);
@@ -202,9 +227,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ['kind' => self::TEASER]];
+                $this->queue = [...$this->board(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ['kind' => self::TEASER]];
             } else {
-                $this->queue = [...$this->everyRound(), ...$teasers];
+                $this->queue = [...$this->board(), ...$this->everyRound(), ...$teasers];
             }
 
             return;
@@ -217,6 +242,7 @@ final class RotationPlanner
             ['kind' => self::MATCH, 'look' => $look, 'gameId' => $game['id']],
             // Skipped when fewer than two games are on show by then (slotFor()).
             ['kind' => self::GALLERY, 'look' => $look],
+            ...$this->board(),
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
             ...$this->everyRound(),
             ...$teasers,
@@ -239,6 +265,24 @@ final class RotationPlanner
         $this->everyRoundTurn++;
 
         return $entries;
+    }
+
+    /**
+     * This round's board scene: every round while a board game is live, every
+     * BOARD_IDLE_EVERY-th round (the first included) while none runs, never
+     * while board games are switched off.
+     *
+     * @return list<array{kind: string}>
+     */
+    private function board(): array
+    {
+        if ($this->boards === BoardScene::OFF) {
+            return [];
+        }
+
+        $turn = $this->boardRounds++;
+
+        return $this->boards === BoardScene::LIVE || $turn % self::BOARD_IDLE_EVERY === 0 ? [['kind' => self::BOARD]] : [];
     }
 
     private function nextLook(): string
@@ -283,6 +327,10 @@ final class RotationPlanner
                 return ! in_array($id, $tournaments, true) ? null : $this->slot(self::TOURNAMENT, 't'.($entry['look'] ?? 'a').($entry['part'] ?? 1), null, $start + $this->tournamentSeconds, $id);
             case self::LOOP:
                 return $this->slot(self::LOOP, null, null, $start + $this->loopSeconds);
+            case self::BOARD:
+                // Switched off since the round was planned: skipped.
+                return $this->boards === BoardScene::OFF ? null
+                    : $this->slot(self::BOARD, self::BOARD_SCENE, null, $start + ($this->boards === BoardScene::LIVE ? $this->matchSeconds : $this->teaserSeconds));
             default:
                 $scene = $entry['scene'] ?? self::TEASERS[$this->teaser++ % count(self::TEASERS)];
 
