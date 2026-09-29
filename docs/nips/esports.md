@@ -38,15 +38,18 @@ won game or series and "I'm in", which mention the opponents and quote the leagu
 DM relay list; a Nostr bar on every page with a Nostr object, follows written by the player's own client,
 direct messages between players;
 **revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
-RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data). Not
+RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data;
+**revision 9.11** (2026-09-29): a player's personal tournament invite link and its referral, "your follows here" and invite
+DMs, zaps to the winner of a game, series or tournament, NIP-05 names on the league's domain). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9 and 9.10 (see [Open points](#open-points)).
-Revision 9.10 needs none: it adds no event and no tag.
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10 and 9.11 (see [Open points](#open-points)).
+Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
+request it describes is plain NIP-57.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -81,7 +84,38 @@ the day a league adopts revision 9.7. The rules marked "rev. 9.8" concern notifi
 and direct messages only; no event of the league changes. The rules marked "rev. 9.9" concern
 comments, likes and RSVPs only; no ladder and no league state depends on them, and they apply from
 the day a league adopts revision 9.9. The rules marked "rev. 9.10" concern opponent requests and their notification only; they change no
-event and no gate, and apply from the day a league adopts revision 9.10.
+event and no gate, and apply from the day a league adopts revision 9.10. The rules marked "rev. 9.11" concern invite links,
+follows, direct messages, zaps between players and NIP-05 names; no league event, no ladder and no league state depends on
+them, and they apply from the day a league adopts revision 9.11 (an "I'm in" post signed earlier keeps the page link it carries).
+
+### Changelog of revision 9.11 (2026-09-29)
+
+Invites, zaps and names ([Invite links](#invite-links), [Share posts](#share-posts-rev-8),
+[Follows](#follows-rev-98), [Zaps to a winner](#zaps-to-a-winner-rev-911),
+[NIP-05 names](#nip-05-names-rev-911)). No new kind and no new tag; nothing here is signed by the league.
+
+- **A personal tournament link.** Every player has one invite link per tournament
+  (`https://<league>/i/<code>`), open until sign-up closes. It opens the tournament page; when the
+  invited player then signs up (their own Tournament Consent, `22150`), the league credits the
+  inviter with a referral, once per invited player. Referrals stay league data and count for nothing
+  but cosmetic perks.
+- **"I'm in" carries it.** The share post of a sign-up (rev. 9.7) links the entrant's personal link
+  instead of the tournament page, as the invite and as its `r`. Rule 37 is unchanged.
+- **Your follows here.** The app reads the player's kind `3` in the browser (read-only, a partial
+  read shown as partial) and asks the league which of the followed keys have an account; the league
+  matches them and keeps nothing. Accounts not here yet can get an invite: one direct message per
+  person (rev. 9.8: NIP-17, NIP-04 only after a yes for that person) with the player's personal link,
+  signed on a click after the preview. The league sees neither the list beyond the keys it matches
+  nor the text.
+- **Zaps to a winner.** Under a finished game, series or tournament the app offers a zap (NIP-57) to
+  each winner whose profile has a Lightning address, never to the viewer themselves: the player signs
+  a zap request (`9734`) for the winner, and the league fetches the invoice from the winner's LNURL
+  server and checks that it commits to exactly that request. A tip between players: no fee, the league
+  keeps and stores nothing, the receipt (`9735`) is the winner's wallet's. Without a signer the page
+  shows the winner's LNURL as a QR code; a Lightning address is never shown as text.
+- **NIP-05 names.** A player may claim `name@<league domain>`; the league's `/.well-known/nostr.json`
+  answers it with the player's key and the league's relays. The league never writes the player's
+  kind `0`: the player puts the name there in their own client.
 
 ### Changelog of revision 9.10 (2026-09-29)
 
@@ -2523,8 +2557,10 @@ drawn from one version or one attestation, so a posted card keeps showing what h
   author. A casual game or series has no league record and quotes nothing. Still no `e` and no `a`:
   a share post is never a reply.
 - **"I'm in"** (rev. 9.7). The tournament's page follows the sentence as the invite (it is also the
-  `r`), then the card, then the quoted `31923`; anyone who opens the link can sign up there. The league
-  has no personal invite link for tournaments; the page link is the same for every entrant.
+  `r`), then the card, then the quoted `31923`; anyone who opens the link can sign up there. Rev. 9.11:
+  the invite is the entrant's personal tournament link ([Invite links](#invite-links)) instead of the
+  page, the same in every post of that entrant; it opens the tournament page and credits the entrant
+  when someone signs up through it.
 - **Preview first** (rev. 9.7). The app shows the exact note (text, card, whom it mentions, what it
   quotes) before the signer is asked, and signs only after a click. If the note changes between the
   preview and the click (a new card version, a renamed player), the app shows it again instead of signing.
@@ -3180,6 +3216,13 @@ player's signer on click. A kind `3` replaces the whole list, so the app fails c
 
 The league never writes a kind `3` and does not store follows.
 
+**Your follows here** (rev. 9.11). To show which followed accounts play in the league, the app reads
+the player's newest valid kind `3` from their write relays and the configured relays, read-only: a read
+that not every relay answered is shown as partial, not refused, because nothing is written. It sends
+the followed keys (at most 5000) to the league, which answers with those that have an account and
+stores none of them; the page offers its own challenge for each (a daily chess game, a casual 1v1) and
+an invite DM for the others ([Invite links](#invite-links)).
+
 ### Lobby and account cards (rev. 9.2)
 
 Casual 1v1 matches (Rocket League, EA Sports FC 26 and 27) have no lobby form on the server. What one
@@ -3763,12 +3806,66 @@ link leads to is ordinary protocol data once it happens.
   league record; a player may post it (`64`).
 - **Clan links send a join request**, never a membership (see [Clan](#clan-32150), "Join
   requests"). Named invitations (the owner lists one player) stay direct.
+- **Tournament links** (rev. 9.11) are personal: one per player and tournament, open until sign-up
+  closes, for as many people as open it. Opening one shows the tournament page and nothing else; the
+  referral is credited when the invited player signs up with their own Tournament Consent (`22150`),
+  once per invited player and link, never for the link's owner. A sign-up cannot happen on the
+  inviter's click, so a tournament link starts nothing by itself.
+- **Invite DMs** (rev. 9.11). A player may send a personal link to people they follow who have no
+  account yet, as a direct message ([Direct messages](#direct-messages-rev-98)) from their own client:
+  the league makes the link on the player's click and never sees the message.
 - **Referrals** (who invited whom, and whether the account is new) are kept by the league for
   cosmetic perks later. They never count toward ratings, trust, blocks, rewards or any attested
   number: a link is the easiest thing to farm.
 - **Previews.** The landing page carries a title, a description and a preview image in plain HTML for
   messengers and Nostr clients, and asks search engines not to index it. The image is drawn by the
   league from its own assets; it fetches no picture from a URL a player chose.
+
+## Zaps to a winner (rev. 9.11)
+
+Under a finished chess game, a series whose result stands and a finished tournament, anyone may tip
+the winners ([NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md)). It is a tip between
+players, never a fee: the sats go from the zapper's wallet to the winner's Lightning address, and the
+league neither keeps nor stores anything of it.
+
+- **Who can be zapped.** The player who won the game, the players of the winning side of the series
+  (at most five, as the share post names them), the members of the tournament's winner; only those
+  whose Nostr profile names a Lightning address (`lud16`), and never the viewer themselves.
+- **No address as text.** The page shows the winner's LNURL (LUD-01) only as a QR code, and a signed
+  zap's invoice only as a QR code and an "open in wallet" link.
+- **The zap request** (`9734`) is signed by the zapper after a preview: `relays` (the configured
+  profile and chat relays, where the receipt should go), `amount` in millisats, `lnurl` (the winner's),
+  `p` (the winner), and what was won when the league has an event for it: `e` the league's record
+  (`64`) of a rated game or the challenge (`2150`) of a series, or `e` the current version and `a` the
+  address of the tournament's `31923`; `k` its kind. A casual game or series has no league event and
+  the request names only `p`. `content` is the zapper's optional comment.
+- **The invoice.** The league asks the winner's LNURL server (`allowsNostr` true and a `nostrPubkey`,
+  else no zap is possible and the QR code remains) with the amount, the signed request as `nostr` and
+  the `lnurl`, and passes the invoice on only if its amount is the one asked for and its description
+  hash is the SHA-256 of exactly that request. It checks the request against the one it prepared
+  (kind, author, tags, content, `created_at` window, signature) first, and limits invoice requests per
+  player and hour: each one is a request to a stranger's server.
+- **The receipt** (`9735`) is signed by the winner's LNURL server and published to the request's
+  `relays`; the league does not count it anywhere.
+
+## NIP-05 names (rev. 9.11)
+
+A player may claim a name on the league's domain, `name@<league domain>`
+([NIP-05](https://github.com/nostr-protocol/nips/blob/master/05.md)); it is opt-in.
+
+- **Names.** `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or digit, 3 to 30 characters,
+  case-insensitive (stored and answered lowercase), unique. The league reserves names (its own NIP-05
+  name, its Lightning address names, role and support names) and every name an admin revoked while that
+  account exists. A name changes at most once per change period (30 days by default); the first claim
+  is free, a claim after giving a name up counts as a change.
+- **The document.** `/.well-known/nostr.json?name=<name>` answers `{"names":{"<name>":"<hex key>"},
+  "relays":{"<hex key>":[<league relays>]}}`: the league's relays, where it sends the player's signed
+  league events, not the player's own NIP-65 relays, which the league does not keep. Without a name, or
+  for an unknown one, it answers `{"names":{}}`; it never lists every player.
+- **Not written for the player.** The league never signs or publishes a kind `0` for a player: the
+  player puts the address into their own profile, and clients check it against the document as usual.
+- **End.** Deleting the account releases the name at once. An admin can revoke a name (impersonation,
+  a rule broken): it stops answering at once and cannot be claimed again while the account exists.
 
 ## What is not on Nostr
 
@@ -3802,7 +3899,9 @@ These stay on the league server, on purpose:
 | the anomaly review: analysis, evidence, admin deliberation | may show private data and game patterns; the result is public as `void-block` labels with reasons |
 | the pot ledger (double entry), NWC secrets, the players' Lightning addresses | operational; credits and debits are checkable from receipts and payouts ([Pots and zap targets](#pots-and-zap-targets-rev-5)) |
 | season drafts before they are scheduled; estimator inputs | admin working state; the scheduled season is the announcement, the released one the genesis |
-| invite links, their codes and uses, referrals | a link is a secret to share, not a statement; what it leads to (a game note, an owner's listing, a membership) is public when it happens ([Invite links](#invite-links)) |
+| invite links, their codes and uses, referrals | a link is a secret to share, not a statement; what it leads to (a game note, an owner's listing, a membership) is public when it happens ([Invite links](#invite-links)); rev. 9.11: also the personal tournament links and their referrals |
+| the follows a player's app matched, invite DMs, zaps between players (rev. 9.11) | matched and forgotten; the DM goes from the player's client to the recipient's relays; a zap's request and receipt are the players' and the winner's wallet's, not the league's ([Zaps to a winner](#zaps-to-a-winner-rev-911)) |
+| NIP-05 names (rev. 9.11) | answered by the league's `nostr.json`; the name is the player's to put into their own kind `0` ([NIP-05 names](#nip-05-names-rev-911)) |
 | clan join requests and a captain's approval | only the owner's key lists players; the approval is an instruction to the owner, not a listing ([Clan](#clan-32150)) |
 
 **Implication for publishing.** In the planned flow the client signs, the league validates and then
@@ -3817,7 +3916,8 @@ wanted protected player events would have to accept them from their authenticate
 | NIP | use |
 |---|---|
 | 01 | event model, kind classes, `e`/`p`/`a`/`d` tags, filters |
-| 02 | kind `3` read: opponent suggestions and mutual contacts, never counted; rev. 9.8: written only by the player's own client when they follow someone from the app, never by the league (see [Follows](#follows-rev-98)) |
+| 02 | kind `3` read: opponent suggestions and mutual contacts, never counted; rev. 9.8: written only by the player's own client when they follow someone from the app, never by the league (see [Follows](#follows-rev-98)); rev. 9.11: read in the browser to show which followed accounts play here |
+| 05 | rev. 9.11: the league's `nostr.json` answers its own name and the names players claimed on its domain (see [NIP-05 names](#nip-05-names-rev-911)) |
 | 03 | optional: OpenTimestamps proof (kind `1040`) that a tournament draw existed before its block |
 | 07, 46, 55 | signing on the client (browser extension, remote signer, Android signer); a Google login through nostr-mill is a NIP-46 bunker (pomegranate) |
 | 09 | deletion requests are accepted by relays but do not change league state |
@@ -3839,7 +3939,7 @@ wanted protected player events would have to accept them from their authenticate
 | 52 | tournaments as time-based calendar events (`31923`) in the league calendar (`31924`); rev. 5 also bounties (`d` = `bounty/<slug>`) and season announcements (`d` = `season/<season>`); no calendar event per match (the answer's `start` already is the schedule); rev. 9.9: a player's RSVP (`31925`) to a tournament, `d` its address, never a sign-up |
 | 64 | chess game records (kind `64`, PGN): rev. 9.4 signed by the league, and a player's own post of a game; before, by a player, and correspondence moves |
 | 18 | rev. 9.4: a player's post of a game quotes the league's record with `q` |
-| 57 | zaps into the league's pots (receipts from the league's own LNURL endpoint); rev. 9.1: never into a tournament's pot, whose top-ups are plain invoices from its own wallet without receipts (see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
+| 57 | rev. 9.11: a player's zap to the winner of a game, series or tournament, request signed by the player, invoice checked by the league, receipt from the winner's wallet (see [Zaps to a winner](#zaps-to-a-winner-rev-911)); zaps into the league's pots (receipts from the league's own LNURL endpoint); rev. 9.1: never into a tournament's pot, whose top-ups are plain invoices from its own wallet without receipts (see [Prize pool funding](#prize-pool-funding)); optional for prize payouts. A tournament prize is split among the players who played and paid to each player's own `lud16` (rev. 9: among the side's roster, see [the split](#prize-pool-funding)). Only if that player's LNURL server supports NIP-57 (`allowsNostr`) can the payment be a zap: the league key signs the zap request (`9734`), and the zap receipt (`9735`) is signed by the recipient's LNURL server, not by the league. Otherwise the payout is a plain Lightning payment. Revision 5: every payout, zap or not, is also a Payout (`2157`) with invoice and preimage; zaps go to every pot (see [Pots and zap targets](#pots-and-zap-targets-rev-5)), and the fees of a match target its challenge. A payout without a zap receipt is a normal case, not an error |
 | 58 | rank badges (rev. 5): one `30009` definition per player, game and mode, replaced on every rank change, one `8` award, listed by the player in `10008`; signed by the badge key, see [Rank badges](#rank-badges-rev-5) |
 | 65 | the league key publishes a relay list (`10002`) so clients find the ladder |
 | 75 | rev. 5: the league reserve is a zap goal (`9041`), the zap target of the reserve pot; tournaments still use no goal |
