@@ -4,6 +4,7 @@ namespace App\Support\Lightning;
 
 use App\Support\Nostr\HostResolver;
 use App\Support\Nostr\Nip05Verifier;
+use App\Support\Nostr\PinnedFetch;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -16,7 +17,8 @@ use Throwable;
  * The address comes from a player's own Nostr profile, so both requests go
  * to hosts a stranger chooses. As in {@see Nip05Verifier}: plain DNS names
  * only, every resolved address public, the connection pinned to the checked
- * address, https only, no redirects, short timeouts, at most 64 KB read. The
+ * address, https only, no redirects, at most 64 KB read, and a total deadline
+ * per request and per invoice (P47 audit F1/F3: on curl, {@see PinnedFetch}). The
  * callback's host is checked the same way. `esports.wallet.lnurl_insecure_hosts`
  * (the integration suite's local fake, empty in production) lifts the
  * public-address rule and allows plain http for exactly those `host:port`s.
@@ -31,6 +33,15 @@ class LightningAddress
 {
     public const MAX_BYTES = 65536;
 
+    /**
+     * One request at most this long, connect included (P47 audit F1: a total
+     * deadline, not an idle time per read); `esports.wallet.lnurl_request_seconds`.
+     */
+    public const REQUEST_SECONDS = 8;
+
+    /** Both requests of one invoice (the payRequest and its callback) together; `esports.wallet.lnurl_budget_seconds`. */
+    public const BUDGET_SECONDS = 12;
+
     public function __construct(private Factory $http, private HostResolver $resolver) {}
 
     /**
@@ -39,7 +50,8 @@ class LightningAddress
     public function invoice(string $lud16, int $amountSats): Bolt11
     {
         $target = self::target($lud16) ?? throw new LightningAddressFailure('lnurl_invalid', 'not a Lightning address');
-        $document = $this->getJson($target['base'].'/.well-known/lnurlp/'.$target['name']);
+        $deadline = microtime(true) + (float) config('esports.wallet.lnurl_budget_seconds', self::BUDGET_SECONDS);
+        $document = $this->getJson($this->base($target).'/.well-known/lnurlp/'.$target['name'], $deadline);
 
         $callback = $document['callback'] ?? null;
         $metadata = $document['metadata'] ?? null;
@@ -57,7 +69,7 @@ class LightningAddress
         }
 
         $separator = str_contains($callback, '?') ? '&' : '?';
-        $answer = $this->getJson($callback.$separator.http_build_query(['amount' => $msats]));
+        $answer = $this->getJson($callback.$separator.http_build_query(['amount' => $msats]), $deadline);
 
         if (($answer['status'] ?? null) === 'ERROR' || ! is_string($answer['pr'] ?? null)) {
             throw new LightningAddressFailure('lnurl_invalid', 'the callback returned no invoice');
@@ -91,7 +103,8 @@ class LightningAddress
     public function zapInvoice(string $lud16, int $amountSats, string $zapRequestJson, string $lnurl): Bolt11
     {
         $target = self::target($lud16) ?? throw new LightningAddressFailure('lnurl_invalid', 'not a Lightning address');
-        $document = $this->getJson($target['base'].'/.well-known/lnurlp/'.$target['name']);
+        $deadline = microtime(true) + (float) config('esports.wallet.lnurl_budget_seconds', self::BUDGET_SECONDS);
+        $document = $this->getJson($this->base($target).'/.well-known/lnurlp/'.$target['name'], $deadline);
 
         $callback = $document['callback'] ?? null;
         $min = $document['minSendable'] ?? null;
@@ -112,7 +125,7 @@ class LightningAddress
         }
 
         $separator = str_contains($callback, '?') ? '&' : '?';
-        $answer = $this->getJson($callback.$separator.http_build_query(['amount' => $msats, 'nostr' => $zapRequestJson, 'lnurl' => $lnurl]));
+        $answer = $this->getJson($callback.$separator.http_build_query(['amount' => $msats, 'nostr' => $zapRequestJson, 'lnurl' => $lnurl]), $deadline);
 
         if (($answer['status'] ?? null) === 'ERROR' || ! is_string($answer['pr'] ?? null)) {
             throw new LightningAddressFailure('lnurl_invalid', 'the callback returned no invoice');
@@ -162,7 +175,7 @@ class LightningAddress
      *
      * @throws LightningAddressFailure
      */
-    private function getJson(string $url): array
+    private function getJson(string $url, float $deadline): array
     {
         $parts = parse_url($url);
         $scheme = $parts['scheme'] ?? '';
@@ -173,34 +186,36 @@ class LightningAddress
             throw new LightningAddressFailure('lnurl_invalid', 'bad URL');
         }
 
-        $options = ['stream' => true];
+        $address = null;
 
         if (in_array($hostPort, (array) config('esports.wallet.lnurl_insecure_hosts', []), true)) {
             if (! in_array($scheme, ['http', 'https'], true)) {
                 throw new LightningAddressFailure('lnurl_invalid', 'bad URL');
             }
         } else {
-            if ($scheme !== 'https' || isset($parts['port']) || Nip05Verifier::target('x@'.$host) === null) {
+            if ($scheme !== 'https' || (isset($parts['port']) && $parts['port'] !== $this->port()) || Nip05Verifier::target('x@'.$host) === null) {
                 throw new LightningAddressFailure('lnurl_invalid', 'only https on a DNS name');
             }
 
             $address = $this->publicAddress($host) ?? throw new LightningAddressFailure('lnurl_unreachable', 'the host does not resolve to a public address');
-            $options['curl'] = [CURLOPT_RESOLVE => [$host.':443:'.(str_contains($address, ':') ? '['.$address.']' : $address)]];
+        }
+
+        $left = min((float) config('esports.wallet.lnurl_request_seconds', self::REQUEST_SECONDS), $deadline - microtime(true));
+
+        if ($left < 0.2) {
+            throw new LightningAddressFailure('lnurl_unreachable', 'no time left');
         }
 
         try {
-            $response = $this->http->acceptJson()->connectTimeout(3)->timeout(8)->withoutRedirecting()->withOptions($options)->get($url);
+            // The curl handler (PinnedFetch): the pin holds and the timeout is a total deadline; the progress callback aborts past MAX_BYTES.
+            $response = $this->http->setHandler(PinnedFetch::handler())->acceptJson()->connectTimeout(min(3, $left))->timeout($left)->withoutRedirecting()
+                ->withOptions([...PinnedFetch::options($host, $address, $this->port(), self::MAX_BYTES), ...($address === null ? [] : $this->extraOptions())])->get($url);
 
             if ($response->status() !== 200) {
                 throw new LightningAddressFailure('lnurl_unreachable', 'HTTP '.$response->status());
             }
 
-            $body = $response->toPsrResponse()->getBody();
-            $json = '';
-
-            while (! $body->eof() && strlen($json) <= self::MAX_BYTES) {
-                $json .= $body->read(8192);
-            }
+            $json = $response->body();
         } catch (LightningAddressFailure $failure) {
             throw $failure;
         } catch (Throwable $exception) {
@@ -218,12 +233,44 @@ class LightningAddress
         return $document;
     }
 
+    /**
+     * The base URL of a target: `https://host`, with the port only where it is not 443 (a test hook).
+     *
+     * @param  array{name: string, host: string, base: string}  $target
+     */
+    private function base(array $target): string
+    {
+        return str_starts_with($target['base'], 'https://') && $this->port() !== 443 ? $target['base'].':'.$this->port() : $target['base'];
+    }
+
+    /** The only port a Lightning address is fetched from (a test hook: the local HTTPS server's port). */
+    protected function port(): int
+    {
+        return 443;
+    }
+
+    /** Whether an address may be connected to at all (a test hook: loopback for the local server). */
+    protected function isAllowedAddress(string $address): bool
+    {
+        return Nip05Verifier::isPublicAddress($address);
+    }
+
+    /**
+     * Further request options (a test hook: `verify` with the local server's CA file).
+     *
+     * @return array<string, mixed>
+     */
+    protected function extraOptions(): array
+    {
+        return [];
+    }
+
     private function publicAddress(string $host): ?string
     {
         $addresses = $this->resolver->addresses($host);
 
         foreach ($addresses as $address) {
-            if (! Nip05Verifier::isPublicAddress($address)) {
+            if (! $this->isAllowedAddress($address)) {
                 return null;
             }
         }

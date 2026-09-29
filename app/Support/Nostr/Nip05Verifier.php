@@ -23,7 +23,8 @@ use Throwable;
  *   - the connection is pinned to the address that was checked
  *     (CURLOPT_RESOLVE), so a second DNS answer cannot swap in 127.0.0.1;
  *   - https only, redirects are not followed (NIP-05 says fetchers MUST
- *     ignore them), short timeouts, at most 64 KB are read.
+ *     ignore them), a 4 s total deadline, at most 64 KB are read; all on the
+ *     curl handler ({@see PinnedFetch}), where the pin and the deadline hold.
  */
 class Nip05Verifier
 {
@@ -69,6 +70,7 @@ class Nip05Verifier
         }
 
         $address = $this->publicAddress($target['host']);
+        $port = $this->port();
 
         if ($address === null) {
             Log::info('NIP-05 refused: domain does not resolve to a public address', ['host' => $target['host']]);
@@ -77,27 +79,22 @@ class Nip05Verifier
         }
 
         try {
+            // The curl handler (PinnedFetch, P47 audit F3): the stream handler ignored the pin and
+            // treated the timeout as an idle time per read; curl keeps both, 4 s in total.
             $response = $this->http
+                ->setHandler(PinnedFetch::handler())
                 ->acceptJson()
                 ->connectTimeout(2)
                 ->timeout(4)
                 ->withoutRedirecting()
-                ->withOptions([
-                    'stream' => true,
-                    'curl' => [CURLOPT_RESOLVE => [$target['host'].':443:'.(str_contains($address, ':') ? '['.$address.']' : $address)]],
-                ])
-                ->get('https://'.$target['host'].'/.well-known/nostr.json', ['name' => $target['local']]);
+                ->withOptions([...PinnedFetch::options($target['host'], $address, $port, self::MAX_BYTES), ...$this->extraOptions()])
+                ->get('https://'.$target['host'].($port === 443 ? '' : ':'.$port).'/.well-known/nostr.json', ['name' => $target['local']]);
 
             if ($response->status() !== 200) {
                 return false;
             }
 
-            $body = $response->toPsrResponse()->getBody();
-            $json = '';
-
-            while (! $body->eof() && strlen($json) <= self::MAX_BYTES) {
-                $json .= $body->read(8192);
-            }
+            $json = $response->body();
 
             if (strlen($json) > self::MAX_BYTES) {
                 return false;
@@ -162,12 +159,34 @@ class Nip05Verifier
         }
 
         foreach ($addresses as $address) {
-            if (! self::isPublicAddress($address)) {
+            if (! $this->isAllowedAddress($address)) {
                 return null;
             }
         }
 
         return $addresses[0];
+    }
+
+    /** The only port a NIP-05 document comes from (a test hook: the local HTTPS server's port). */
+    protected function port(): int
+    {
+        return 443;
+    }
+
+    /** Whether an address may be connected to at all (a test hook: loopback for the local server). */
+    protected function isAllowedAddress(string $address): bool
+    {
+        return self::isPublicAddress($address);
+    }
+
+    /**
+     * Further request options (a test hook: `verify` with the local server's CA file).
+     *
+     * @return array<string, mixed>
+     */
+    protected function extraOptions(): array
+    {
+        return [];
     }
 
     public static function isPublicAddress(string $address): bool
