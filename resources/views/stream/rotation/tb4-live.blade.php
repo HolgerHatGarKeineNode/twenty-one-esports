@@ -15,7 +15,7 @@
     $clanSeats = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
     $played = is_array($t['progress'] ?? null) && is_int($t['progress']['played'] ?? null) ? $t['progress']['played'] : null;
     $total = is_array($t['progress'] ?? null) && is_int($t['progress']['total'] ?? null) ? $t['progress']['total'] : null;
-    $progress = $played !== null && $total !== null ? $played.' of '.$total.' played' : '';
+    $progress = $played !== null && $total !== null ? $played.' of '.$total.' decided' : '';
     $standing = $kind === 'bracket' && ! $finished && is_array($t['standing'] ?? null) && is_int($t['standing']['count'] ?? null) ? $t['standing']['count'].' still standing' : '';
     $right = implode(', ', array_filter([$standing, $progress]));
     $rightW = K::width($right, K::MONO, 18);

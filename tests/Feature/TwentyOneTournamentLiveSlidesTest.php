@@ -9,6 +9,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
+use App\Support\TwentyOne\Stream\RotationKit;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
@@ -296,7 +297,11 @@ test('a voided match keeps its place but feeds no result, upset or path; the voi
         ->and($frame['upset'])->toBeNull()
         ->and($frame['path'])->toBe([])
         ->and(array_values(array_unique(array_column(array_merge(...array_column($frame['board']['columns'], 'matches')), 'state'))))->toBe(['void'])
-        ->and(collect($frame['board']['columns'])->flatMap(fn (array $c): array => $c['matches'])->flatMap(fn (array $m): array => $m['sides'])->where('won', true)->all())->toBe([]);
+        ->and(collect($frame['board']['columns'])->flatMap(fn (array $c): array => $c['matches'])->flatMap(fn (array $m): array => $m['sides'])->where('won', true)->all())->toBe([])
+        // Drawn as voided (dimmed, marked), never as a match still to play; the count says decided, not played.
+        ->and(collect(RotationKit::bracketLayout($frame['board'], 40, 180, 872, 470)['columns'])->flatMap(fn (array $c): array => $c['boxes'])->pluck('state')->unique()->values()->all())->toBe(['void'])
+        ->and(array_values(array_filter(liveUnits($frame, 'tc4'), fn (string $key): bool => str_ends_with($key, '-void'), ARRAY_FILTER_USE_KEY)))->toBe(['voided', 'voided', 'voided'])
+        ->and(liveUnits($frame, 'ta4')['played-label'])->toBe('Matches decided');
 });
 
 test('a paused tournament says so and lists no match as on now; a double elimination names its finals', function () {

@@ -15,7 +15,7 @@
     $clanSeats = is_int($t['teamSize'] ?? null) && $t['teamSize'] > 1;
     $played = is_array($t['progress'] ?? null) && is_int($t['progress']['played'] ?? null) ? $t['progress']['played'] : null;
     $total = is_array($t['progress'] ?? null) && is_int($t['progress']['total'] ?? null) ? $t['progress']['total'] : null;
-    $progress = $played !== null && $total !== null ? $played.'/'.$total.' played' : '';
+    $progress = $played !== null && $total !== null ? $played.'/'.$total.' decided' : '';
     $title = K::fit(K::text($t, 'name', 'Tournament'), K::MONO, 26, 1200 - K::width($progress, K::MONO, 18) - 32);
     $line = K::fit(K::text($t, 'status', 'Live now').': '.($finished ? ($kind === 'bracket' ? 'final bracket' : 'final standings') : K::text($t, 'now', K::text($t, 'format'))), K::MONO, 18, 1200);
 @endphp

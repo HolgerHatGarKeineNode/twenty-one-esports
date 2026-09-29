@@ -49,7 +49,7 @@
     'panel' => '#16161A', 'rule' => '#2A2A30', 'accent' => '#F7931A', 'nameFill' => '#FFFFFF', 'muted' => '#8B8B90', 'chipInk' => '#17120A', 'bShape' => 'round', 'bId' => 'ta4'])
 
 @if ($played !== null && $total !== null)
-<text data-unit="played-label" x="976" y="150" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Matches played</text>
+<text data-unit="played-label" x="976" y="150" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">Matches decided</text>
 <text data-unit="played" data-box="975 164 1249 204" x="976" y="196" font-family="Unbounded" font-weight="800" font-size="32" fill="#17120A">{{ K::fit($played.' of '.$total, K::DISPLAY, 32, 264) }}</text>
 <rect x="976" y="214" width="264" height="10" fill="none" stroke="#17120A" stroke-width="2"/>
 @if ($share > 0)<rect x="976" y="214" width="{{ round(264 * $share, 1) }}" height="10" fill="#17120A"/>@endif

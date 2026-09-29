@@ -1471,7 +1471,8 @@ final class RotationKit
                     ];
                 }
 
-                $state = in_array($match['state'] ?? null, ['live', 'done', 'waiting', 'bye'], true) ? $match['state'] : 'waiting';
+                // 'void': a voided match (FairPlay) keeps its place, dimmed and marked, never as one still to play.
+                $state = in_array($match['state'] ?? null, ['live', 'done', 'waiting', 'bye', 'void'], true) ? $match['state'] : 'waiting';
                 $boxes[] = ['x' => $cx, 'y' => round($top, 1), 'w' => round($colW, 1), 'h' => $boxH, 'state' => $state, 'rows' => $rows];
 
                 foreach ($feeders as $feeder) {
