@@ -44,7 +44,7 @@ test('every logged-in page is on the online presence channel, guests get no webs
     $user = User::factory()->create();
 
     $this->actingAs($user)->get(route('clans.index'))->assertOk()
-        ->assertSee('<meta name="presence-user" content="'.$user->id.'">', false)
+        ->assertSee('<meta name="presence-user" content="'.$user->id.'" data-ping="'.route('presence.ping').'">', false)
         ->assertSee('/build/assets/echo-', false);
 
     auth()->logout();

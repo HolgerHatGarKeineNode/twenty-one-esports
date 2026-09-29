@@ -1,6 +1,7 @@
 import Echo from 'laravel-echo';
 
 import { startAlerts } from './alerts.js';
+import { startOnSitePing } from './onSite.js';
 
 import Pusher from 'pusher-js';
 window.Pusher = Pusher;
@@ -101,3 +102,5 @@ if (window.Echo && presenceUser) {
 
 // Notifications on every logged-in page (P5c): toast, sound, tab title, desktop notification.
 startAlerts();
+// While a page is visible, push and DM wait (App\Support\Notifications\OnSite).
+startOnSitePing();

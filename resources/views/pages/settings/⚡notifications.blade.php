@@ -23,9 +23,12 @@ use Livewire\Component;
  * no toast, no push, no DM). Every change is saved at once; the values live
  * in ChessSettings, as before the split.
  *
- * Nostr DM (ChessSettings::dmFor): shown on unless switched off. A player who
- * never touched it gets DMs only for what needs them (NotificationKind::
- * dmByDefault()); switched on here, every notification that leaves the page.
+ * Nostr DM (ChessSettings::dmFor): shown on unless switched off. On, it
+ * covers only the kinds that need a player while they are away
+ * (NotificationKind::dmAllowed()); push and DM wait while the player is on
+ * the site (OnSite). The switches come in four groups
+ * (NotificationKind::group()), each row saying where it can reach the
+ * player; the page-only kinds of a live game have no switch.
  */
 new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources/js/push.js']])] class extends Component {
     public bool $saved = false;
@@ -40,7 +43,7 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
 
     public function toggleTrigger(string $trigger): void
     {
-        abort_unless(in_array($trigger, ChessSettings::triggers(), true), 422);
+        abort_unless(in_array($trigger, ChessSettings::triggers(), true) && ! NotificationKind::from($trigger)->pageOnly(), 422);
 
         $settings = $this->settings()->toArray();
         $settings['triggers'][$trigger] = ! $settings['triggers'][$trigger];
@@ -212,8 +215,7 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
 
                 @php($dmHint = match (true) {
                     ! $dmReady => __('to your Nostr inbox · not set up on this server yet'),
-                    $settings->dm === null => __('on by default for what needs you: challenges, your daily move, reminders, clan join requests'),
-                    $settings->dm => __('every notification below that leaves this page'),
+                    $settings->dmOn() => __('only for what needs you while you are away: challenges, requests, deadline reminders, tournament news'),
                     default => __('off · the league sends you no DM'),
                 })
                 @include('pages.settings.partials.switch', ['label' => __('Notifications by Nostr DM'), 'hint' => $dmHint, 'on' => $settings->dmOn(), 'action' => "toggle('dm')", 'test' => 'dm'])
@@ -259,7 +261,7 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
                         @endforeach
                     </select>
                 </div>
-                <span class="border-t border-hairline pt-3 text-xs leading-normal text-ink-3" data-test="channels-explained">{{ __('Each shows in the bell and on the page you are on. Daily-chess, clan and match challenge notifications also go out by browser push and Nostr DM, as switched on above. Blitz notifications stay in the app: a live game sends no push and no DM.') }}</span>
+                <span class="border-t border-hairline pt-3 text-xs leading-normal text-ink-3" data-test="channels-explained">{{ __('Each shows in the bell and on the page you are on. Push and DM reach you only while you are not on the site, and only where the list says so. A live game sends neither: you are at the board.') }}</span>
                 <span class="pt-2 text-xs leading-normal text-ink-3" data-test="dm-explained">{{ __('Nostr DMs come from the league\'s own notification key, never from another player. They are on by default for what needs you while you are away. Turn them off with the switch above, or with the link at the end of every DM, no login needed.') }}</span>
         </section>
 
@@ -286,10 +288,22 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
 
             <section aria-labelledby="nf-h" class="flex flex-col self-start rounded-lg bg-card px-4 py-5 lg:px-6" data-test="notify-about">
                 <h2 id="nf-h" class="m-0 mb-1 text-[15px] font-bold">{{ __('Notify me about') }}</h2>
-                @foreach (NotificationKind::cases() as $kind)
-                    @php([$label, $hint] = $kind->setting())
-                    @include('pages.settings.partials.switch', ['label' => __($label), 'hint' => __($hint, ['hours' => $settings->remindHours]), 'on' => $settings->wants($kind->value), 'action' => "toggleTrigger('{$kind->value}')", 'test' => 'trigger-'.$kind->value])
+                @foreach (['correspondence' => __('Correspondence games'), 'play' => __('Live games and 1v1'), 'community' => __('Clans and tournaments'), 'league' => __('League')] as $group => $heading)
+                    <h3 class="m-0 mt-4 text-xs font-bold tracking-wide text-ink-2 uppercase" data-test="notify-group-{{ $group }}">{{ $heading }}</h3>
+                    @foreach (NotificationKind::cases() as $kind)
+                        @continue($kind->group() !== $group)
+                        @php([$label, $hint] = $kind->setting())
+                        @include('pages.settings.partials.switch', [
+                            'label' => __($label),
+                            'hint' => __($hint, ['hours' => $settings->remindHours]),
+                            'reach' => $kind->dmAllowed() ? __('bell, push and DM') : __('bell and push'),
+                            'on' => $settings->wants($kind->value),
+                            'action' => "toggleTrigger('{$kind->value}')",
+                            'test' => 'trigger-'.$kind->value,
+                        ])
+                    @endforeach
                 @endforeach
+                <p class="m-0 mt-4 text-xs leading-normal text-ink-3" data-test="page-only-kinds">{{ __('Always on this page only, never sent: opponent found, invites to a live game or 1v1, your opponent joined your lobby. You are at the board for these.') }}</p>
             </section>
     </div>
 </div>

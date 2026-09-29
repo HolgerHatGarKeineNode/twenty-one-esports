@@ -5554,5 +5554,13 @@
     "Chain": "Chain",
     "Casual matches of every game, played and waiting. They move the casual rating and mine no blocks.": "Casual-Partien aller Spiele, gespielt und wartend. Sie bewegen das Casual-Rating und minen keine Blöcke.",
     "Rated matches of every game, played and waiting. A fair rated win mines a block of the season chain.": "Gewertete Partien aller Spiele, gespielt und wartend. Ein fairer gewerteter Sieg mint einen Block der Season-Chain.",
-    "Rated matches of every game, played and waiting. Rated wins mine blocks only while a season runs.": "Gewertete Partien aller Spiele, gespielt und wartend. Gewertete Siege minen Blöcke nur, solange eine Season läuft."
+    "Rated matches of every game, played and waiting. Rated wins mine blocks only while a season runs.": "Gewertete Partien aller Spiele, gespielt und wartend. Gewertete Siege minen Blöcke nur, solange eine Season läuft.",
+    "Only while you are away, at most once an hour.": "Nur wenn du nicht hier bist, höchstens einmal pro Stunde.",
+    "only for what needs you while you are away: challenges, requests, deadline reminders, tournament news": "nur für das, was dich braucht, wenn du nicht hier bist: Herausforderungen, Anfragen, Fristerinnerungen, Turnier-News",
+    "Each shows in the bell and on the page you are on. Push and DM reach you only while you are not on the site, and only where the list says so. A live game sends neither: you are at the board.": "Alles erscheint in der Glocke und auf der Seite, auf der du gerade bist. Push und DM erreichen dich nur, wenn du nicht auf der Seite bist, und nur, wo die Liste es sagt. Eine Live-Partie schickt keins von beiden: Du sitzt ja am Brett.",
+    "Live games and 1v1": "Live-Partien und 1v1",
+    "Clans and tournaments": "Clans und Turniere",
+    "bell, push and DM": "Glocke, Push und DM",
+    "bell and push": "Glocke und Push",
+    "Always on this page only, never sent: opponent found, invites to a live game or 1v1, your opponent joined your lobby. You are at the board for these.": "Immer nur hier auf der Seite, nie verschickt: Gegner gefunden, Einladungen zu Live-Partie oder 1v1, dein Gegner ist deiner Lobby beigetreten. Dabei sitzt du ohnehin am Brett."
 }

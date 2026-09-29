@@ -54,7 +54,7 @@ function notified(): array
     ];
 }
 
-test('each trigger notifies the right player on both channels', function (string $trigger) {
+test('each trigger notifies the right player on the channels its kind allows', function (string $trigger) {
     $anna = notifiedPlayer();
     $bert = notifiedPlayer();
     $games = app(ChessGameService::class);
@@ -63,19 +63,22 @@ test('each trigger notifies the right player on both channels', function (string
         'challenge received' => (function () use ($anna, $bert) {
             app(DailyChallenges::class)->challenge($anna, $bert, 'white', 'rematch?');
 
-            return [$bert->id];
+            return ['push' => [$bert->id], 'dm' => [$bert->id]];
         })(),
         'your move' => (function () use ($anna, $bert, $games) {
             $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
             $games->move($game, $anna, 'e2e4');
             $games->move($game->refresh(), $bert, 'e7e5');
+            // Bert is away from the board for two hours: his push comes (YourMoveThrottle).
+            $this->travel(2)->hours();
             Bus::fake([SendWebPush::class, SendNostrDm::class, PublishNostrEvent::class]);
             $games->move($game->refresh(), $anna, 'g1f3');
 
             // The notice names the move just played, not the first one.
-            expect(Bus::dispatched(SendNostrDm::class)->sole()->text)->toContain('Nf3')->not->toMatch('/\be4\b/'); // a whole-word e4: the DM's random hex fragment may contain "e4"
+            expect(Bus::dispatched(SendWebPush::class)->sole()->payload['body'])->toContain('Nf3')->not->toContain('e4');
 
-            return [$bert->id];
+            // Never a DM (user decision 2026-09-30).
+            return ['push' => [$bert->id], 'dm' => []];
         })(),
         'deadline reminder' => (function () use ($anna, $bert, $games) {
             $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
@@ -87,7 +90,7 @@ test('each trigger notifies the right player on both channels', function (string
             $this->artisan('chess:daily-reminders')->assertSuccessful();
             $this->artisan('chess:daily-reminders')->assertSuccessful();
 
-            return [$anna->id];
+            return ['push' => [$anna->id], 'dm' => [$anna->id]];
         })(),
         'game over' => (function () use ($anna, $bert, $games) {
             $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
@@ -95,11 +98,12 @@ test('each trigger notifies the right player on both channels', function (string
             Bus::fake([SendWebPush::class, SendNostrDm::class, PublishNostrEvent::class]);
             $games->resign($game->refresh(), $bert);
 
-            return [$anna->id, $bert->id];
+            // News, not a task: push, no DM.
+            return ['push' => [$anna->id, $bert->id], 'dm' => []];
         })(),
     };
 
-    expect(notified())->toBe(['push' => $expected, 'dm' => $expected]);
+    expect(notified())->toBe($expected);
 })->with(['challenge received', 'your move', 'deadline reminder', 'game over']);
 
 test('a switched-off trigger, a per-game choice and a live game decide what goes out', function () {
@@ -110,6 +114,7 @@ test('a switched-off trigger, a per-game choice and a live game decide what goes
 
     app(DailyChallenges::class)->challenge($anna, $quiet);
 
+    // A per-game `dm` from before counts as "only here": the player never chose push.
     $daily = $games->start($anna, $dmOnly, ChessGame::CORRESPONDENCE);
     $daily->forceFill(['black_notify' => 'dm'])->save();
     $games->move($daily, $anna, 'e2e4');
@@ -118,5 +123,6 @@ test('a switched-off trigger, a per-game choice and a live game decide what goes
     $blitz = $games->start($anna, notifiedPlayer());
     $games->move($blitz, $anna, 'e2e4');
 
-    expect(notified())->toBe(['push' => [], 'dm' => [$dmOnly->id]]);
+    expect(notified())->toBe(['push' => [], 'dm' => []])
+        ->and($dmOnly->notifications()->where('type', 'your_move')->count())->toBe(1);
 });

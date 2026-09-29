@@ -2,6 +2,9 @@
 
 namespace App\Enums;
 
+use App\Models\BoardGame;
+use App\Models\ChessGame;
+
 /**
  * Every event the league tells a player about (P5c). Adding a case here is
  * the whole registration: the settings page lists it as a switch
@@ -53,14 +56,111 @@ enum NotificationKind: string
     }
 
     /**
-     * Goes out by Nostr DM for a player who never chose the DM channel
-     * (ChessSettings::$dm null): the events an offline player has to act
-     * on. A player who switched DMs on gets every kind that goes out
-     * remotely, one who switched them off gets none.
+     * Where each kind may reach the player (audit of 2026-09-30, after "viel
+     * zu viele" DMs). The bell and the page get every kind the player keeps
+     * switched on; this decides only what leaves the site. The Notifier
+     * enforces it, whatever the DM switch, the digest or a game's own choice
+     * say (a stored per-kind value that asks for more is ignored, not deleted).
+     *
+     * A Nostr DM only for what a player has to act on while away, with hours
+     * or days to do it: DMs arrive too slowly for anything live. Browser push
+     * where seconds matter or where it is plain news; never for a live event
+     * the player is already at. Both only while the player is not on the site
+     * (OnSite), except the correspondence deadline reminder.
+     *
+     * | kind                     | fires when                                         | player is      | reach                 |
+     * |--------------------------|----------------------------------------------------|----------------|-----------------------|
+     * | match_found              | blitz queue paired (live, seconds)                 | in the queue   | page only             |
+     * | invite                   | blitz invite from a friend (live, 120 s)           | on the site    | page only             |
+     * | invite_accepted          | a blitz invite (link) was taken, board open        | anywhere       | push (seconds count)  |
+     * | challenge                | correspondence / clan match challenge (48 h, days) | away           | push, DM              |
+     * | game_started             | correspondence challenge accepted                  | away           | push; live: page only |
+     * | your_move                | correspondence opponent moved (24 h a move)        | away           | push, never a DM (1)  |
+     * | reminder                 | correspondence move due in 2/6/12 h                | away           | push, DM, even on site|
+     * | opponent_resigned        | a game ended by resignation                        | away / at board| push if correspondence|
+     * | game_over                | a game ended                                       | away / at board| push if correspondence|
+     * | clan_join_request        | a player asks to join your clan (async)            | away           | push, DM              |
+     * | clan_join_answer         | your join request was answered (news)              | away           | push                  |
+     * | invite_link_taken        | your challenge link was taken (news)               | away           | push                  |
+     * | tournament_entry_removed | an organizer removed your entry (news)             | away           | push                  |
+     * | tournament_news          | paused, resumed, called off, organizer message     | away           | push, DM              |
+     * | casual_match_found       | 1v1 queue paired, Ready within 60 s                | in the queue   | page only             |
+     * | casual_invite            | 1v1 invite (live, 120 s)                           | on the site    | page only             |
+     * | casual_lobby_shared      | host shared the lobby, join within 10 min          | match room     | push                  |
+     * | casual_noshow            | no-show claimed, contest within 5 min              | away           | push (minutes)        |
+     * | casual_report            | result reported, answer within 30 min              | just played    | push (minutes)        |
+     * | casual_result            | a 1v1 ended, maybe decided by the league           | anywhere       | push                  |
+     * | casual_opponent_joined   | guest joined the host's lobby                      | in the game    | page only             |
+     * | casual_challenge         | scheduled 1v1 challenge (reply in days)            | away           | push, DM              |
+     * | casual_challenge_answer  | your challenge accepted, declined, expired         | away           | push                  |
+     * | casual_reminder          | scheduled 1v1 starts in 15 min, forfeit at stake   | away           | push, DM (2)          |
+     * | casual_checkin           | check-in open, 10 min after the reminder           | away           | push                  |
+     * | tournament_reminder      | league decides the match in 30 / 5 min             | away           | push, DM (2)          |
+     * | block0                   | Block 0 date and release, asked for                | away           | push, DM              |
+     * | season_payout            | season sats wait for a Lightning address (days)    | away           | push, DM              |
+     * | opponent_request         | a player listed you as an opponent (accept)        | away           | push, DM              |
+     *
+     * (1) User decision 2026-09-30: "IMMER sinnlos". Push at most once per game
+     * and hour, and not while the player is at the board (YourMoveThrottle).
+     * (2) Minutes, not hours, but a game is forfeited: the one reminder that
+     * has to reach a player who is not there. A decision to confirm.
      */
-    public function dmByDefault(): bool
+    public function dmAllowed(): bool
     {
-        return in_array($this, [self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualNoShow, self::CasualReport, self::CasualChallenge, self::CasualReminder, self::TournamentReminder, self::BlockZero, self::SeasonPayout, self::OpponentRequest], true);
+        return in_array($this, [self::Challenge, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualChallenge, self::CasualReminder, self::TournamentReminder, self::BlockZero, self::SeasonPayout, self::OpponentRequest], true);
+    }
+
+    /**
+     * Browser push (see dmAllowed() for the table). A kind that covers live
+     * and correspondence games decides by the game; without one it stays on
+     * the page.
+     */
+    public function pushAllowed(ChessGame|BoardGame|null $game = null): bool
+    {
+        return match (true) {
+            $this->pageOnly() => false,
+            in_array($this, [self::GameStarted, self::YourMove, self::OpponentResigned, self::GameOver], true) => $game !== null && $game->isCorrespondence(),
+            default => true,
+        };
+    }
+
+    /**
+     * Only on the page, never out: no switch on the settings page, and a
+     * stored "off" is ignored (it would silence a live game's own call).
+     */
+    public function pageOnly(): bool
+    {
+        return $this->group() === null;
+    }
+
+    /**
+     * Its group on the settings page: `correspondence`, `play` (live games
+     * and 1v1), `community` (clans and tournaments) or `league`; null for a
+     * page-only kind, which has no switch.
+     *
+     * @return 'correspondence'|'play'|'community'|'league'|null
+     */
+    public function group(): ?string
+    {
+        return match ($this) {
+            self::MatchFound, self::Invite, self::CasualMatchFound, self::CasualInvite, self::CasualOpponentJoined => null,
+            self::Challenge, self::GameStarted, self::YourMove, self::Reminder, self::OpponentResigned, self::GameOver => 'correspondence',
+            self::InviteAccepted, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport, self::CasualResult,
+            self::CasualChallenge, self::CasualChallengeAnswer, self::CasualReminder, self::CasualCheckIn => 'play',
+            self::ClanJoinRequest, self::ClanJoinAnswer, self::InviteLinkTaken, self::TournamentEntryRemoved, self::TournamentNews, self::TournamentReminder => 'community',
+            self::BlockZero, self::SeasonPayout, self::OpponentRequest => 'league',
+        };
+    }
+
+    /**
+     * Goes out by push and DM even while the player is on the site: the
+     * correspondence deadline reminder, where hours and the game are at
+     * stake, and an open tab left behind on another device still counts as
+     * on the site.
+     */
+    public function remoteWhileOnSite(): bool
+    {
+        return $this === self::Reminder;
     }
 
     /**

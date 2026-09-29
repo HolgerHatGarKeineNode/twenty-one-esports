@@ -38,7 +38,7 @@
     </nav>
 
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <h1 class="m-0 font-display text-[28px] font-bold lg:text-[32px]" data-test="settings-heading">{{ $tabs[$current][1] }}</h1>
+        <h1 class="m-0 min-w-0 font-display text-[28px] font-bold break-words hyphens-auto lg:text-[32px]" data-test="settings-heading">{{ $tabs[$current][1] }}</h1>
         {{ $slot }}
     </div>
 </div>

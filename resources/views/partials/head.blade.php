@@ -91,7 +91,7 @@
     @php($reverb = config('broadcasting.connections.reverb'))
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @auth
-        <meta name="presence-user" content="{{ auth()->id() }}">
+        <meta name="presence-user" content="{{ auth()->id() }}" data-ping="{{ route('presence.ping') }}">
         <meta name="board-theme" content="{{ auth()->user()->chessSettings()->board }}" data-coordinates="{{ auth()->user()->chessSettings()->coordinates ? '1' : '0' }}">
     @endauth
     {{-- Notifications and sounds (P5c, resources/js/alerts.js and sounds.js). --}}

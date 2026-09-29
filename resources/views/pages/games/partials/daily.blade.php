@@ -297,12 +297,13 @@
         <section aria-labelledby="nt-h" class="hidden flex-wrap items-center gap-6 rounded-lg bg-card px-6 py-4 lg:flex">
             <span class="flex items-center gap-2.5 text-ink-2"><x-icon name="bell" :size="16" /><span id="nt-h" class="text-[15px] font-bold text-ink">{{ __('Tell me when :name moves', ['name' => $opponentName]) }}</span></span>
             <div role="radiogroup" aria-labelledby="nt-h" class="flex gap-2">
-                @foreach (['dm' => __('Nostr DM'), 'push' => __('Browser push'), 'here' => __('Only here')] as $value => $label)
+                @foreach (['push' => __('Browser push'), 'here' => __('Only here')] as $value => $label)
                     <button type="button" role="radio" :aria-checked="notify === '{{ $value }}' ? 'true' : 'false'" x-on:click="setNotify('{{ $value }}')" data-test="notify-{{ $value }}"
                             class="h-11 cursor-pointer rounded-md border border-line bg-transparent px-3.5 text-[13px] whitespace-nowrap text-ink-2 aria-checked:bg-raised aria-checked:text-btc aria-checked:shadow-[inset_0_-2px_0_#F7931A]">{{ $label }}</button>
                 @endforeach
             </div>
             <span class="text-xs text-ink-3" x-show="notify === null">{{ __('Now: your settings (:summary)', ['summary' => $channelSummary]) }}</span>
+            <span class="text-xs text-ink-3" x-show="notify !== 'here'" data-test="notify-away-only">{{ __('Only while you are away, at most once an hour.') }}</span>
             <span class="grow"></span>
             <label class="flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px]">
                 <input type="checkbox" :checked="remind" x-on:change="toggleRemind()" class="m-0 size-5 accent-btc" data-test="remind-toggle">

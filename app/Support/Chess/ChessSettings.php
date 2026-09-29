@@ -14,15 +14,16 @@ use App\Enums\NotificationKind;
  * or off; `remindHours` is how long before a daily-move deadline the reminder
  * goes out.
  *
- * `dm` has three states: true (every notification that goes out remotely is
- * also a DM), false (none is), and null for a player who never chose. Null
- * sends a DM only for the kinds an offline player has to act on
- * (NotificationKind::dmByDefault()), so a challenged player who never opened
- * this page still hears about it. A stored false is never overridden.
+ * `dm` has three states: true (on), false (off), and null for a player who
+ * never chose, which counts as on. On, a DM goes out only for the kinds
+ * NotificationKind::dmAllowed() names (audit 2026-09-30); before, a switched-on
+ * DM covered every kind, live ones included. A stored false is never overridden.
  *
  * Triggers (P5c): one switch per NotificationKind. Off means nothing at all
  * for that event: no bell entry, no toast, no push, no DM. A kind added
- * later is on until the player turns it off.
+ * later is on until the player turns it off. A page-only kind
+ * (NotificationKind::pageOnly(): a live game calling its player) has no
+ * switch and is always on; a stored off from before is ignored.
  *
  * Digest (P45): `digest` names the kinds whose Nostr DM waits for the daily
  * digest (App\Support\Notifications\DmDigest); a kind not named goes out at once.
@@ -128,12 +129,12 @@ final readonly class ChessSettings
     }
 
     /**
-     * Whether this trigger goes out by Nostr DM: the player's choice, or the
-     * kind's default when they never made one.
+     * Whether this trigger goes out by Nostr DM: a kind that may
+     * (NotificationKind::dmAllowed()), with the DM switch on.
      */
     public function dmFor(string $trigger): bool
     {
-        return $this->dm ?? (NotificationKind::tryFrom($trigger)?->dmByDefault() ?? false);
+        return (NotificationKind::tryFrom($trigger)?->dmAllowed() ?? false) && $this->dmOn();
     }
 
     /**
@@ -154,6 +155,10 @@ final readonly class ChessSettings
 
     public function wants(string $trigger): bool
     {
+        if (NotificationKind::tryFrom($trigger)?->pageOnly() === true) {
+            return true;
+        }
+
         // Unknown to the stored row (a kind added later): on, like the default.
         return $this->triggers[$trigger] ?? in_array($trigger, self::triggers(), true);
     }

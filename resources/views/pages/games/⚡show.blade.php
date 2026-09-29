@@ -271,12 +271,14 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
     }
 
     /**
-     * "Tell me when … moves": dm, push, or here (only on this page).
+     * "Tell me when … moves": push, or here (only on this page). Never a Nostr
+     * DM (NotificationKind::dmAllowed()); a stored `dm` from before shows and
+     * counts as here.
      */
     #[Json]
     public function setNotify(string $choice): bool
     {
-        return $this->setPreference('notify', in_array($choice, ['dm', 'push', 'here'], true) ? $choice : null);
+        return $this->setPreference('notify', in_array($choice, ['push', 'here'], true) ? $choice : null);
     }
 
     #[Json]
@@ -491,6 +493,8 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         $color = $this->game->colorOf($viewer);
         $settings = $viewer instanceof User ? $viewer->chessSettings() : null;
         $opponent = $this->game->opponentOf($viewer);
+        // A stored `dm` from before "your move" lost its DM: only here (Notifier).
+        $notify = $color === null ? null : ($color === 'w' ? $this->game->white_notify : $this->game->black_notify);
 
         return [
             'state' => app(ChessGameService::class)->snapshot($this->game),
@@ -501,7 +505,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             'alwaysQueen' => $settings->alwaysQueen ?? false,
             'coordinates' => $settings->coordinates ?? true,
             'remindHours' => $settings->remindHours ?? 6,
-            'notify' => $color === null ? null : ($color === 'w' ? $this->game->white_notify : $this->game->black_notify),
+            'notify' => $notify === 'dm' ? 'here' : $notify,
             'remind' => $color === null ? false : ($color === 'w' ? $this->game->white_remind : $this->game->black_remind),
             'labels' => [
                 ...$this->labels(),

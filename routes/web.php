@@ -9,6 +9,7 @@ use App\Http\Controllers\LnurlPayController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
+use App\Http\Controllers\OnSitePingController;
 use App\Http\Controllers\PageCardController;
 use App\Http\Controllers\PlayerController;
 use App\Http\Controllers\PlayerSearchController;
@@ -57,6 +58,8 @@ Route::middleware('auth')->group(function () {
     Route::livewire('me', 'pages::me.hub')->name('dashboard');
     Route::post('logout', Logout::class)->name('logout');
     Route::post('notify/block0', NotifyAtBlockZeroController::class)->name('notify.block0');
+    // A visible page, once a minute: no push or DM while the player is on the site (OnSite).
+    Route::post('presence/ping', OnSitePingController::class)->middleware('throttle:10,1')->name('presence.ping');
 });
 
 /*

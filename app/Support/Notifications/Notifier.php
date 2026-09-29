@@ -24,21 +24,29 @@ use Throwable;
  * service or relay never holds up a move.
  *
  * Per daily game a player can override the channel for "the opponent moved"
- * (`dm`, `push`, or `here` = only on the page) and switch off the deadline
+ * (`push`, or `here` = only on the page) and switch off the deadline
  * reminder (ChessCorrespondence, "Tell me when …" / "Remind me when …").
+ * A stored `dm` from before "your move" lost its DM counts as `here`: the
+ * player never chose push.
  *
  * In the app (P5c): every notification the player has switched on is also
  * stored for the bell and pushed to their open pages (UserNotified), once the
  * surrounding transaction commits. `remote: false` keeps an event in the app
- * only: live events (opponent found, blitz invite) mean nothing an hour later
- * in an inbox. Storing and pushing fail open: a broken notification never
- * undoes the game that caused it.
+ * only. Storing and pushing fail open: a broken notification never undoes
+ * the game that caused it.
  *
- * Nostr DM (ChessSettings::dmFor): on by default for the kinds an offline
- * player has to act on. Every DM ends with a signed one-click opt-out link
- * (NotificationDmOptOut), because the recipient may never have logged in.
- * Never a DM: "your move" outside a daily game (a live game's players are at
- * the board), and anything from a sender the recipient muted (ChatMute).
+ * Off the site, in this order (audit 2026-09-30, "viel zu viele" DMs):
+ * - the kind decides what may go out at all (NotificationKind::pushAllowed(),
+ *   dmAllowed()), whatever the switches, the digest or a game's choice say:
+ *   no DM for anything live, and "your move" never by DM;
+ * - a player on the site gets the bell and the toast only (OnSite), except
+ *   for the correspondence deadline reminder;
+ * - "your move" not while the player is at the board, and at most once per
+ *   game and hour (YourMoveThrottle).
+ *
+ * Nostr DM (ChessSettings::dmFor): every DM ends with a signed one-click
+ * opt-out link (NotificationDmOptOut), because the recipient may never have
+ * logged in. Never a DM from a sender the recipient muted (ChatMute).
  *
  * A correspondence board game (plan "Mühle und Dame", P8) counts as a daily
  * game for "your move"; it has no per-game channel or reminder switch, so
@@ -74,22 +82,24 @@ final class Notifier
         if ($game instanceof ChessGame && ($color = $game->colorOf($user)) !== null) {
             $choice = $color === 'w' ? $game->white_notify : $game->black_notify;
 
-            if ($trigger === 'your_move' && $choice !== null) {
-                $channels = match ($choice) {
-                    'dm' => ['dm'],
-                    'push' => ['push'],
-                    default => [],
-                };
+            if ($kind === NotificationKind::YourMove && $choice !== null) {
+                $channels = $choice === 'push' ? ['push'] : [];
             }
         }
 
-        // Fail closed: "your move" is a DM only in a daily game, whatever was chosen.
-        if ($kind === NotificationKind::YourMove && ($game === null || ! $game->isCorrespondence())) {
-            $channels = array_values(array_diff($channels, ['dm']));
-        }
+        // A DM only where the kind allows one (ChessSettings::dmFor, NotificationKind::dmAllowed()); push likewise.
+        $channels = array_values(array_filter($channels, fn (string $channel): bool => $channel !== 'push' || $kind->pushAllowed($game)));
 
         if ($sender !== null && ChatMute::query()->where('user_id', $user->id)->where('muted_pubkey', $sender->pubkey)->exists()) {
             $channels = array_values(array_diff($channels, ['dm']));
+        }
+
+        if ($channels !== [] && ! $kind->remoteWhileOnSite() && app(OnSite::class)->isOnSite($user)) {
+            return [];
+        }
+
+        if ($kind === NotificationKind::YourMove && $game !== null && $channels !== [] && ! app(YourMoveThrottle::class)->allowsRemote($user, $game)) {
+            return [];
         }
 
         $sent = [];

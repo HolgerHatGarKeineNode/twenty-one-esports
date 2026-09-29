@@ -102,7 +102,7 @@ test('the guest may claim a no-show once the host let the lobby deadline pass, a
         ->and(casualRefusal(fn () => $matches->claimNoShow($match, $guest)))->toBe('noshow_once');
 });
 
-test('an uncontested no-show claim is forfeited to the claimer after five minutes, with a DM to both', function () {
+test('an uncontested no-show claim is forfeited to the claimer after five minutes, with no DM to either', function () {
     Queue::fake([SendNostrDm::class, PublishNostrEvent::class]);
     config(['esports.notifications.nsec' => bin2hex(random_bytes(32))]);
     [$match, $host, $guest] = casualStarted();
@@ -125,9 +125,9 @@ test('an uncontested no-show claim is forfeited to the claimer after five minute
         ->and($match->winner)->toBe(casualSideOf($match, $guest))
         ->and(app(CasualScheduler::class)->tick()['forfeited'])->toBe(0);
 
-    // The claim is a DM by default (an offline player has to act); the result goes out as the player chose.
+    // Five minutes to contest is too short for a DM (NotificationKind::dmAllowed()): push and the bell only; the result is news.
     $dmsTo = fn (User $user) => Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($user))->count();
-    expect($dmsTo($host))->toBe(1)
+    expect($dmsTo($host))->toBe(0)
         ->and($dmsTo($guest))->toBe(0);
 });
 

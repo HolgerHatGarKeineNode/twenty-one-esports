@@ -16,8 +16,8 @@ use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 /*
- * Nostr DMs by default for what needs an offline player (challenge,
- * daily move, reminder, clan join request), the signed
+ * Nostr DMs for what needs an offline player (challenge, deadline
+ * reminder, clan join request; NotificationKind::dmAllowed()), the signed
  * opt-out at the end of every DM, and the brakes on the challenger's side.
  */
 
@@ -69,15 +69,15 @@ test('a player who never chose gets a DM for a challenge, one who switched DMs o
         ->and(dmsTo($off))->toBe([]);
 });
 
-test('the default covers only the kinds that need the player, an explicit on covers every remote one', function () {
+test('the default and an explicit on cover the same kinds: only those that need the player while away', function () {
     $fresh = User::factory()->create();
     $on = User::factory()->create(['chess_settings' => ['dm' => true]]);
+    $needed = ['challenge', 'reminder', 'clan_join_request', 'tournament_news', 'casual_challenge', 'casual_reminder', 'tournament_reminder', 'block0', 'season_payout', 'opponent_request'];
 
-    expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())
-        ->toBe(['challenge', 'your_move', 'reminder', 'clan_join_request', 'tournament_news', 'casual_noshow', 'casual_report', 'casual_challenge', 'casual_reminder', 'tournament_reminder', 'block0', 'season_payout', 'opponent_request'])
-        ->and(collect(ChessSettings::triggers())->every(fn (string $trigger) => $on->chessSettings()->dmFor($trigger)))->toBeTrue();
+    expect(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $fresh->chessSettings()->dmFor($trigger))->values()->all())->toBe($needed)
+        ->and(collect(ChessSettings::triggers())->filter(fn (string $trigger) => $on->chessSettings()->dmFor($trigger))->values()->all())->toBe($needed);
 
-    // A daily game over is remote, but not in the default set.
+    // A daily game over is news, not a task: no DM, whatever the switch (audit 2026-09-30).
     $games = app(ChessGameService::class);
     $game = $games->start($fresh, $on, ChessGame::CORRESPONDENCE);
     $games->move($game, $fresh, 'e2e4');
@@ -85,7 +85,7 @@ test('the default covers only the kinds that need the player, an explicit on cov
     $games->resign($game->refresh(), $on);
 
     expect(dmsTo($fresh))->toBe([])
-        ->and(dmsTo($on))->toHaveCount(1);
+        ->and(dmsTo($on))->toBe([]);
 });
 
 test('the settings switch shows a default DM as on and its first tap stores off', function () {
@@ -163,9 +163,12 @@ test('the challenge-only opt-out stops challenge DMs and keeps the rest', functi
     app(DailyChallenges::class)->challenge($anna, $bert);
     expect(dmsTo($bert))->toBe([]);
 
+    // The deadline reminder still comes by DM.
     $games = app(ChessGameService::class);
     $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
     $games->move($game, $anna, 'e2e4');
+    $this->travel(18 * 60 + 1)->minutes();
+    $this->artisan('chess:daily-reminders')->assertSuccessful();
 
     expect(dmsTo($bert))->toHaveCount(1);
 });
@@ -183,12 +186,12 @@ test('a blitz "your move" never becomes a DM, whatever the player chose', functi
 
     expect(dmsTo($bert))->toBe([]);
 
-    // The same call for a daily game does send one: the guard is what stops it.
+    // A daily game neither (user decision 2026-09-30): "your move" is never a DM.
     $daily = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
     $daily->forceFill(['black_notify' => 'dm'])->save();
     $games->move($daily, $anna, 'e2e4');
 
-    expect(dmsTo($bert))->toHaveCount(1);
+    expect(dmsTo($bert))->toBe([]);
 });
 
 test('a blitz pairing and a blitz invite stay in the app: no DM, even with DMs switched on', function () {

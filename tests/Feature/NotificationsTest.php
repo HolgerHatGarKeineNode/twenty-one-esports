@@ -155,7 +155,8 @@ test('a page carries one bell with its count, and the list only once the panel o
         ->assertSee($title);
 });
 
-test('a switched-off event is not stored, not broadcast and not pushed', function () {
+test('a switched-off event is not stored, not broadcast and not pushed; a live game\'s own call cannot be switched off', function () {
+    // match_found is page-only (NotificationKind::pageOnly()): a stored "off" from before is ignored.
     $quiet = User::factory()->create(['chess_settings' => ['triggers' => ['match_found' => false, 'challenge' => false]]]);
     $anna = User::factory()->create();
     $queue = app(ChessQueue::class);
@@ -164,8 +165,8 @@ test('a switched-off event is not stored, not broadcast and not pushed', functio
     $queue->join($anna);
     app(DailyChallenges::class)->challenge($anna, $quiet);
 
-    expect(broadcastAlerts())->toBe([[$anna->id, 'match_found']])
-        ->and($quiet->notifications()->count())->toBe(0);
+    expect(collect(broadcastAlerts())->sortBy(0)->values()->all())->toBe(collect([[$quiet->id, 'match_found'], [$anna->id, 'match_found']])->sortBy(0)->values()->all())
+        ->and($quiet->notifications()->pluck('type')->all())->toBe(['match_found']);
 });
 
 test('a broken notification store never undoes the pairing', function () {
@@ -190,8 +191,10 @@ test('sound and volume are saved from the chess settings, every notification swi
         ->assertStatus(422);
 
     Livewire::actingAs($user)->test('pages::settings.notifications')
-        ->call('toggleTrigger', 'match_found')
+        ->call('toggleTrigger', 'game_over')
         ->assertSet('saved', true);
+    // A page-only kind has no switch.
+    Livewire::actingAs($user)->test('pages::settings.notifications')->call('toggleTrigger', 'match_found')->assertStatus(422);
 
     // Each page takes only its own switches.
     expect(fn () => Livewire::actingAs($user)->test('pages::settings.chess')->call('toggleTrigger', 'match_found'))->toThrow(MethodNotFoundException::class);
@@ -201,6 +204,7 @@ test('sound and volume are saved from the chess settings, every notification swi
     $settings = $user->refresh()->chessSettings();
     expect($settings->sound)->toBeFalse()
         ->and($settings->volume)->toBe(35)
-        ->and($settings->wants('match_found'))->toBeFalse()
+        ->and($settings->wants('game_over'))->toBeFalse()
+        ->and($settings->wants('match_found'))->toBeTrue()
         ->and($settings->wants('clan_join_request'))->toBeTrue();
 });

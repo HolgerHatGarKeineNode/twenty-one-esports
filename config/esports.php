@@ -850,6 +850,20 @@ return [
     |   `.env`; generate a pair with `php artisan esports:vapid-keys`. Without
     |   keys the settings page offers no push. Keys are never committed.
     |
+    | Which kind may go out by push or DM at all: NotificationKind::dmAllowed()
+    | and pushAllowed() (the audit table is there).
+    |
+    | on_site_seconds (App\Support\Notifications\OnSite): a player whose
+    | page was visible this recently is on the site; push and DM wait, the
+    | bell and the toast reach them. Pages ping once a minute while visible.
+    |
+    | your_move (App\Support\Notifications\YourMoveThrottle): "your move" in a
+    | correspondence game is never a DM, and a push only while the player is
+    | not playing. at_board_minutes: none if the player made their own
+    | previous move in that game less than this long ago. per_game_minutes:
+    | at most one per player and game in this span. The bell gets every move.
+    | 0 switches a rule off.
+    |
     */
 
     'notifications' => [
@@ -857,6 +871,11 @@ return [
         'name' => 'TWENTY ONE esports notifications',
         // P5c: seconds an "Opponent found" toast counts down before it opens the game.
         'countdown_seconds' => 5,
+        'on_site_seconds' => (int) env('ESPORTS_ON_SITE_SECONDS', 180),
+        'your_move' => [
+            'at_board_minutes' => (int) env('ESPORTS_YOUR_MOVE_AT_BOARD_MINUTES', 15),
+            'per_game_minutes' => (int) env('ESPORTS_YOUR_MOVE_PER_GAME_MINUTES', 60),
+        ],
     ],
 
     /*

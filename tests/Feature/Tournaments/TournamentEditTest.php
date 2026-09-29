@@ -145,7 +145,7 @@ test('after the draw the format and game are locked, only name and start change'
 test('removing a sign-up frees its place, keeps the consent, notifies the player and is logged', function () {
     $tournament = openTournament(['capacity' => 2]);
     [$ana, $anaKey] = keyedPlayer();
-    // A DM only for a player who switched DMs on: a removal asks nothing of the player (NotificationKind::dmByDefault).
+    // No DM even with DMs switched on: a removal is news, it asks nothing of the player (NotificationKind::dmAllowed()).
     $ana->forceFill(['chess_settings' => ['dm' => true]])->save();
     [$bob, $bobKey] = keyedPlayer();
     [$cleo] = keyedPlayer();
@@ -182,8 +182,7 @@ test('removing a sign-up frees its place, keeps the consent, notifies the player
         ->toBe(['action' => 'removed', 'subject' => $removed->name, 'reason' => 'No-show at the last two events'])
         // Only the tournament's 31923 of its publish: the removal signed and published nothing.
         ->and(NostrEvent::query()->where('kind', '!=', TournamentSignups::CONSENT)->count())->toBe(1);
-    Queue::assertPushed(SendNostrDm::class, 1);
-    Queue::assertPushed(SendNostrDm::class, fn (SendNostrDm $job) => $job->user->is($ana));
+    Queue::assertNotPushed(SendNostrDm::class);
 });
 
 test('a blocked player cannot sign up again until unblocked', function () {

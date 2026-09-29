@@ -65,7 +65,7 @@ function expectCleanDm(string $text): void
         ->and(collect($urls[0])->every(fn (string $url) => str_starts_with($url, rtrim((string) config('app.url'), '/').'/')))->toBeTrue();
 }
 
-test('the payload in a player name stays out of challenge, your-move and game-started DMs', function () {
+test('the payload in a player name stays out of challenge DMs; your move and game started send none', function () {
     $eve = User::factory()->create(['name' => DM_SAFETY_PAYLOAD, 'chess_settings' => ['dm' => true]]);
     $bert = User::factory()->create(['chess_settings' => ['dm' => true]]);
     $challenges = app(DailyChallenges::class);
@@ -82,7 +82,8 @@ test('the payload in a player name stays out of challenge, your-move and game-st
 
     $dms = Queue::pushed(SendNostrDm::class)->map(fn (SendNostrDm $job) => $job->text)->values()->all();
 
-    expect(count($dms))->toBeGreaterThanOrEqual(3);
+    // Two challenges; "your move" and "accepted your challenge" are no DMs (NotificationKind::dmAllowed()).
+    expect(count($dms))->toBe(2);
 
     foreach ($dms as $text) {
         expectCleanDm($text);

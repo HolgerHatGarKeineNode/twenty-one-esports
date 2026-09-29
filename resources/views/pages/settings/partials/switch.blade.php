@@ -1,10 +1,11 @@
 {{--
     One settings row with a switch (ChessSettings.dc.html): label, hint, the
     "on"/"off" word and the pill switch. `action` is the Livewire call; null
-    renders a switch that cannot be changed yet.
+    renders a switch that cannot be changed yet. `reach` (optional): where it
+    can reach the player, under the hint.
 --}}
 <div class="flex min-h-[61px] items-center gap-4 border-b border-hairline py-2 last:border-0">
-    <span class="flex min-w-0 grow flex-col gap-0.5"><span class="text-sm">{{ $label }}</span><span class="text-xs text-ink-2">{{ $hint }}</span></span>
+    <span class="flex min-w-0 grow flex-col gap-0.5"><span class="text-sm">{{ $label }}</span><span class="text-xs text-ink-2">{{ $hint }}</span>@isset($reach)<span class="text-xs text-ink-3" data-test="reach">{{ $reach }}</span>@endisset</span>
     <span class="text-xs {{ $on ? 'text-ink' : 'text-ink-3' }}">{{ $on ? __('on') : __('off') }}</span>
     <button type="button" role="switch" aria-checked="{{ $on ? 'true' : 'false' }}" aria-label="{{ $label }}" data-test="switch-{{ $test }}"
             @if ($action) wire:click="{{ $action }}" @else disabled @endif

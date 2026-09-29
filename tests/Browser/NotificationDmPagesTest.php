@@ -1,6 +1,9 @@
 <?php
 
+use App\Models\ChessGame;
 use App\Models\User;
+use App\Support\Chess\ChessGameService;
+use App\Support\Notifications\OnSite;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
@@ -109,6 +112,11 @@ function dmPagesMeasure(Page $page, string $selector, string $label, int $width)
     $layout = $page->evaluate(DM_PAGES_LAYOUT, $selector);
     fwrite(STDERR, "\n[dm-pages] {$label} {$width}px: ".json_encode($layout)."\n");
 
+    if ($layout['scrollWidth'] > $layout['clientWidth']) {
+        // Name what sticks out, so a failure says where to look.
+        fwrite(STDERR, '[dm-pages] wider than the viewport: '.json_encode($page->evaluate('() => [...document.querySelectorAll("body *")].filter((el) => el.getBoundingClientRect().right > innerWidth + 0.5 && el.getClientRects().length > 0).slice(0, 8).map((el) => el.tagName + "." + [...el.classList].slice(0, 4).join(".") + " " + Math.round(el.getBoundingClientRect().right) + " " + (el.textContent || "").trim().slice(0, 40))'))."\n");
+    }
+
     expect($layout['scrollWidth'])->toBeLessThanOrEqual($layout['clientWidth'])
         ->and($layout['left'])->toBeGreaterThanOrEqual(0)
         ->and($layout['right'])->toBeLessThanOrEqual($width);
@@ -179,4 +187,133 @@ test('the collector sees a thrown error and a failed request (positive control)'
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control")) && window.__errors.some((e) => e.startsWith("403 "))', 5_000);
 
     expect($page->evaluate('() => window.__errors.length'))->toBe(2);
+});
+
+/*
+ * Audit 2026-09-30: the switches in four groups, each row saying how far it
+ * reaches, no switch for a live game's own calls; and the page, like every
+ * logged-in page, telling the server that the player is here (OnSite).
+ * Measured at 320, 375 and 1280 px in English and German: nothing wider than
+ * the viewport, nothing of the card sticking out, no text cut off.
+ */
+const DM_PAGES_CLIPPED = <<<'JS'
+    (selector) => {
+        const card = document.querySelector(selector).getBoundingClientRect();
+        return [...document.querySelectorAll(selector + ' *')]
+            .filter((el) => el.getClientRects().length > 0)
+            .filter((el) => { const r = el.getBoundingClientRect(); return r.left < card.left - 0.5 || r.right > card.right + 0.5 || (el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflowX !== 'visible'); })
+            .map((el) => (el.dataset.test || el.tagName) + ': ' + el.textContent.trim().slice(0, 40));
+    }
+    JS;
+
+/**
+ * Waits for the page's first on-site ping (onSite.js, 2 s after load), so it
+ * is not in flight while the test clicks.
+ */
+function dmPagesPinged(Page $page): void
+{
+    BrowserWait::until($page, '() => performance.getEntriesByType("resource").some((e) => e.name.endsWith("/presence/ping"))', 10_000);
+}
+
+test('the notification settings group the switches, show how far each reaches and fit 320, 375 and 1280 px in English and German', function () {
+    foreach (['en', 'de'] as $locale) {
+        foreach ([320, 375, 1280] as $width) {
+            $anna = User::factory()->create(['locale' => $locale, 'chess_settings' => ['triggers' => ['match_found' => false]]]);
+
+            $page = dmPagesOpen(route('settings.notifications', absolute: false), $width, $anna);
+            BrowserWait::until($page, '() => document.querySelector("[data-test=page-only-kinds]") !== null && document.readyState === "complete"', 10_000);
+            dmPagesPinged($page);
+
+            dmPagesMeasure($page, '[data-test=notify-about]', "notify-about {$locale}", $width);
+            dmPagesMeasure($page, '#notifications', "channels {$locale}", $width);
+
+            $shape = $page->evaluate('() => ({
+                groups: [...document.querySelectorAll("[data-test^=notify-group-]")].map((h) => h.dataset.test),
+                switches: document.querySelectorAll("[data-test=notify-about] [data-test^=switch-trigger-]").length,
+                pageOnly: ["match_found", "invite", "casual_match_found", "casual_invite", "casual_opponent_joined"].filter((k) => document.querySelector("[data-test=switch-trigger-" + k + "]")),
+                reachDm: [...document.querySelectorAll("[data-test=notify-about] [data-test=reach]")].filter((r) => r.textContent.includes("DM")).length,
+            })');
+
+            expect($shape)->toBe([
+                'groups' => ['notify-group-correspondence', 'notify-group-play', 'notify-group-community', 'notify-group-league'],
+                'switches' => 24,
+                'pageOnly' => [],
+                'reachDm' => 10,
+            ])
+                ->and($page->evaluate(DM_PAGES_CLIPPED, '[data-test=notify-about]'))->toBe([])
+                ->and($page->evaluate(DM_PAGES_CLIPPED, '#notifications'))->toBe([]);
+
+            // A Livewire roundtrip on a grouped switch.
+            $page->locator('[data-test=switch-trigger-game_over]')->click();
+            BrowserWait::until($page, '() => document.querySelector("[data-test=switch-trigger-game_over]").getAttribute("aria-checked") === "false"', 10_000);
+
+            expect($anna->refresh()->chessSettings()->wants('game_over'))->toBeFalse()
+                // The stored "off" of a page-only kind from before no longer counts.
+                ->and($anna->chessSettings()->wants('match_found'))->toBeTrue();
+
+            dmPagesShot($page, "settings-notify-about-{$locale}-{$width}");
+            dmPagesClean($page);
+        }
+    }
+});
+
+test('a visible logged-in page tells the server the player is on the site', function () {
+    $anna = User::factory()->create(['locale' => 'en']);
+
+    expect(app(OnSite::class)->isOnSite($anna))->toBeFalse();
+
+    $page = dmPagesOpen(route('settings.notifications', absolute: false), 1280, $anna);
+    dmPagesPinged($page);
+
+    // The ping's answer is in: the server marked her (it runs in this process, so no polling here).
+    expect(app(OnSite::class)->isOnSite($anna))->toBeTrue();
+
+    dmPagesClean($page);
+});
+
+test('a daily game offers push or only here for the opponent\'s move, never a DM, and the row fits in English and German', function () {
+    foreach (['en', 'de'] as $locale) {
+        $anna = User::factory()->create(['locale' => $locale, 'name' => 'Anna Satoshi-Nakamoto the Third']);
+        $bert = User::factory()->create(['locale' => $locale, 'name' => 'Bert Hal-Finney-Szabo the Second']);
+        $game = app(ChessGameService::class)->start($anna, $bert, ChessGame::CORRESPONDENCE);
+        // A per-game DM stored before the DM was dropped shows as "only here".
+        $game->forceFill(['white_notify' => 'dm'])->save();
+
+        foreach ([320, 375, 1024, 1280] as $width) {
+            $page = dmPagesOpen(route('games.show', $game, absolute: false), $width, $anna);
+            BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=daily-bottom-bar]") !== null', 10_000);
+            dmPagesPinged($page);
+
+            if ($width < 1024) {
+                dmPagesMeasure($page, '[data-test=daily-bottom-bar]', "daily bar {$locale}", $width);
+                expect($page->evaluate(DM_PAGES_CLIPPED, '[data-test=daily-bottom-bar]'))->toBe([]);
+                dmPagesShot($page, "daily-bar-{$locale}-{$width}");
+                dmPagesClean($page);
+
+                continue;
+            }
+
+            dmPagesMeasure($page, 'section[aria-labelledby=nt-h]', "notify row {$locale}", $width);
+            $row = $page->evaluate('() => ({
+                buttons: [...document.querySelectorAll("[role=radiogroup][aria-labelledby=nt-h] [data-test^=notify-]")].map((b) => b.dataset.test),
+                checked: document.querySelector("[role=radiogroup][aria-labelledby=nt-h] [aria-checked=true]")?.dataset.test ?? null,
+                awayLine: document.querySelector("[data-test=notify-away-only]").offsetParent !== null,
+            })');
+
+            expect($row)->toBe(['buttons' => ['notify-push', 'notify-here'], 'checked' => 'notify-here', 'awayLine' => false])
+                ->and($page->evaluate(DM_PAGES_CLIPPED, 'section[aria-labelledby=nt-h]'))->toBe([]);
+
+            // Push chosen: stored, and the line on how often shows.
+            $page->locator('[data-test=notify-push]')->click();
+            BrowserWait::until($page, '() => document.querySelector("[data-test=notify-away-only]").offsetParent !== null', 5_000);
+            BrowserWait::until($page, '() => performance.getEntriesByType("resource").some((e) => e.name.includes("/livewire") && e.name.endsWith("/update") && e.responseEnd > 0)', 10_000);
+            expect($game->refresh()->white_notify)->toBe('push');
+            expect($page->evaluate(DM_PAGES_CLIPPED, 'section[aria-labelledby=nt-h]'))->toBe([]);
+            dmPagesMeasure($page, 'section[aria-labelledby=nt-h]', "notify row push {$locale}", $width);
+            dmPagesShot($page, "daily-notify-{$locale}-{$width}");
+            dmPagesClean($page);
+
+            $game->forceFill(['white_notify' => 'dm'])->save();
+        }
+    }
 });
