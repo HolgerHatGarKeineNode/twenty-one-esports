@@ -62,6 +62,9 @@ test('/play shows the board games as one group right after chess, and as tiles t
 test('without board games /play keeps its list and the casual block has no board tiles', function () {
     $html = $this->get(route('play'))->assertOk()->getContent();
 
+    // Without board games a player still reads the old line: their games do come first.
+    $this->actingAs(User::factory()->create())->get(route('play'))->assertOk()->assertSee('Your games come first, the one you played last on top.');
+
     expect(boardHooks($html, 'play-game-'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'])
         ->and($html)->not->toContain('data-test="play-board-games"')
         ->and($html)->not->toContain('data-test="casual-boards"');
@@ -78,7 +81,10 @@ test('a player who played a board game after chess finds the group where that ga
     $html = $this->actingAs($player)->get(route('play'))->assertOk()->getContent();
 
     // Checkers first (played last), nine men's morris with it; chess next; the rest in registry order.
-    expect(boardHooks($html, 'play-game-'))->toBe(['checkers', 'nine-mens-morris', 'chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
+    expect(boardHooks($html, 'play-game-'))->toBe(['checkers', 'nine-mens-morris', 'chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'])
+        // The line above the list says how it is sorted, board games included, not "your games come first".
+        ->and($html)->toContain('Sorted by what you played, the latest on top; the board games always stand next to chess.')
+        ->and($html)->not->toContain('Your games come first');
 });
 
 test('home and the phone game chips put the board games next to chess; the desktop tabs keep their order', function () {

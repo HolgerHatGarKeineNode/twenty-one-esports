@@ -23,7 +23,8 @@
         <div class="flex max-w-[60ch] flex-col gap-2">
             <h1 class="m-0 font-display text-[28px] leading-[1.1] font-bold lg:text-4xl">{{ __('All games and modes') }}</h1>
             <p class="m-0 text-[13px] leading-normal text-ink-2">
-                {{ $user ? __('Your games come first, the one you played last on top.') : __('Every game of the league. Log in with Nostr or Google to play, challenge and climb a ladder.') }}
+                {{-- With board games the order is playOrder(): by what the player played, the board games moved next to chess. --}}
+                {{ $user ? ($boards === [] ? __('Your games come first, the one you played last on top.') : __('Sorted by what you played, the latest on top; the board games always stand next to chess.')) : __('Every game of the league. Log in with Nostr or Google to play, challenge and climb a ladder.') }}
             </p>
         </div>
 
