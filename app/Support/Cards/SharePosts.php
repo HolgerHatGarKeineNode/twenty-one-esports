@@ -15,6 +15,8 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Badges\BadgeCopy;
+use App\Support\Invites\InviteLinkRefused;
+use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignedEventGate;
@@ -41,8 +43,9 @@ use Illuminate\Support\Facades\RateLimiter;
  *   record of the result quoted (`nostr:nevent…` and `q`, NIP-18) when there
  *   is one; a tournament win also quotes the tournament's `31923`;
  * - "I'm in" (P46): the player's entry in a tournament that is open for
- *   sign-up or waits for its draw, with the tournament's invite card, its
- *   page (the invite) and its `31923` quoted.
+ *   sign-up or waits for its draw, with the tournament's invite card, the
+ *   player's personal tournament link (P47, the invite that credits them)
+ *   and the tournament's `31923` quoted.
  *
  * At most `esports.badges.shares_per_hour` per player: the league relays carry them.
  */
@@ -328,7 +331,7 @@ final class SharePosts
      *
      * @return list<int>
      */
-    private function playersOf(SeriesMatch $match, string $side): array
+    public function playersOf(SeriesMatch $match, string $side): array
     {
         $played = array_map(intval(...), $match->rosters[$side] ?? []);
 
@@ -355,8 +358,9 @@ final class SharePosts
 
     /**
      * "I'm in": the player's entry in a published tournament that is open
-     * for sign-up or waits for its draw. The invite card, the tournament's
-     * page as the invite under the sentence, its `31923` quoted.
+     * for sign-up or waits for its draw. The invite card, the player's
+     * personal tournament link (P47) as the invite under the sentence, its
+     * `31923` quoted.
      */
     private function signup(User $user, string $id): ?SharePost
     {
@@ -376,13 +380,20 @@ final class SharePosts
 
         $card = ShareCard::tournamentInvite($tournament);
 
+        // P47: the entrant's personal tournament link, the same for every post and DM, so friends who sign up through it credit them.
+        try {
+            $invite = app(InviteLinks::class)->forTournament($user, $tournament);
+        } catch (InviteLinkRefused) {
+            return null;
+        }
+
         return new SharePost(
             type: 'signup',
             sentence: __('I’m in :tournament on TWENTY ONE Esports (:game). Join me:', ['tournament' => $tournament->name, 'game' => BadgeCopy::ladder($tournament->game, $tournament->mode)]),
             cardUrl: $card->url(self::FORMAT),
             dimensions: ShareCard::FORMATS[self::FORMAT],
             storyPath: $card->path('story'),
-            link: self::absolute(route('tournaments.show', $tournament, false)),
+            link: self::absolute(route('invites.link', $invite, false)),
             quote: $quote,
             linkInSentence: true,
         );

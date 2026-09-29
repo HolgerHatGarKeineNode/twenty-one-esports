@@ -46,6 +46,7 @@ final class InviteCopy
             InviteLinkType::Daily => __(':name challenges you to daily chess', ['name' => $this->inviterName()]),
             InviteLinkType::Series => __(':clan challenges your team to :game', ['clan' => $this->clanName(), 'game' => $this->seriesGame()]),
             InviteLinkType::Clan => __(':name invites you to join :clan', ['name' => $this->inviterName(), 'clan' => $this->clanName()]),
+            InviteLinkType::Tournament => __(':name invites you to :tournament', ['name' => $this->inviterName(), 'tournament' => $this->tournamentName()]),
         };
     }
 
@@ -58,6 +59,7 @@ final class InviteCopy
             InviteLinkType::Clan => filled($this->link->clan?->description)
                 ? (string) $this->link->clan->description
                 : __('Ask to join the roster. A captain of :clan confirms.', ['clan' => $this->clanName()]),
+            InviteLinkType::Tournament => __('A tournament on TWENTY ONE Esports. Sign up on its page.'),
         };
     }
 
@@ -69,6 +71,7 @@ final class InviteCopy
             InviteLinkType::Daily => __('Daily chess, 1 move a day'),
             InviteLinkType::Series => __(':game, :mode', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode')]),
             InviteLinkType::Clan => __('Clan invite'),
+            InviteLinkType::Tournament => $this->link->tournament === null ? __('Tournament') : GameNames::full($this->link->tournament->game, $this->link->tournament->mode),
         };
     }
 
@@ -80,6 +83,7 @@ final class InviteCopy
             InviteLinkType::Daily => __('Your move?'),
             InviteLinkType::Series => __('Take on :clan?', ['clan' => $this->clanName()]),
             InviteLinkType::Clan => __('Join :clan?', ['clan' => $this->clanName()]),
+            InviteLinkType::Tournament => __('Join me in :tournament?', ['tournament' => $this->tournamentName()]),
         };
     }
 
@@ -90,7 +94,14 @@ final class InviteCopy
             InviteLinkType::Daily => __('Daily chess, one move a day, casual.'),
             InviteLinkType::Series => __(':game :mode, best of :bo.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join. A captain confirms.'),
+            InviteLinkType::Tournament => __('Sign up on the tournament page.'),
         };
+    }
+
+    /** The tournament of a tournament link (P47). */
+    private function tournamentName(): string
+    {
+        return (string) $this->link->tournament?->name;
     }
 
     /** The game of a series link ("Rocket League", "EA Sports FC 27"). */
@@ -113,6 +124,7 @@ final class InviteCopy
             InviteLinkType::Daily => __('Daily chess, one move a day, casual. Log in with Google or Nostr and you land right in the game.'),
             InviteLinkType::Series => __(':game :mode, best of :bo, casual. Take the challenge with your team.', ['game' => $this->seriesGame(), 'mode' => (string) $this->link->option('mode'), 'bo' => (int) $this->link->option('best_of')]),
             InviteLinkType::Clan => __('Ask to join :clan on TWENTY ONE esports. A captain confirms your request.', ['clan' => $this->clanName()]),
+            InviteLinkType::Tournament => __('A tournament on TWENTY ONE Esports. Sign up on its page.'),
         };
     }
 

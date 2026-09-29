@@ -4,6 +4,7 @@ namespace App\Support\Invites;
 
 use App\Enums\InviteLinkType;
 use App\Enums\NotificationKind;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -13,6 +14,7 @@ use App\Models\InviteLink;
 use App\Models\InviteLinkUse;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
@@ -29,6 +31,7 @@ use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Invite deep links `/i/{code}` (P6b, plan "Einladungs-Deep-Links"):
@@ -51,6 +54,13 @@ use Illuminate\Database\Eloquent\Model;
  *
  * Every link game is casual and a referral never counts toward ratings,
  * blocks or rewards: links are the easiest thing to farm.
+ *
+ * A tournament link (P47) is different: every player has at most one per
+ * tournament ({@see forTournament()}), it is never "taken" on the landing
+ * (the landing opens the tournament page and remembers the link), and the
+ * referral is credited only when the invited player signs up
+ * ({@see creditTournamentSignup()}), because a sign-up is signed by the
+ * player (NIP rev. 7, 22150) and cannot happen on someone else's click.
  */
 final class InviteLinks
 {
@@ -75,7 +85,13 @@ final class InviteLinks
      */
     public function create(User $inviter, InviteLinkType $type, array $options = []): InviteLink
     {
-        $open = InviteLink::query()->where('inviter_id', $inviter->id)->whereNull('revoked_at')->where('expires_at', '>', now())->count();
+        if ($type === InviteLinkType::Tournament) {
+            throw new InviteLinkRefused('tournament', __('A tournament link comes from the tournament page.'));
+        }
+
+        // Tournament links are one per tournament (forTournament()) and do not count against the cap.
+        $open = InviteLink::query()->where('inviter_id', $inviter->id)->where('type', '!=', InviteLinkType::Tournament)
+            ->whereNull('revoked_at')->where('expires_at', '>', now())->count();
 
         if ($open >= self::MAX_OPEN_PER_INVITER) {
             throw new InviteLinkRefused('too_many', __('You have :n open invite links. Cancel one before you make another.', ['n' => $open]));
@@ -191,6 +207,112 @@ final class InviteLinks
         ], now()->setTimestamp($respondBy)];
     }
 
+    /**
+     * The player's personal link to a tournament (P47): one per player and
+     * tournament, made on first use and the same ever after, so the "I'm in"
+     * post and every invite DM carry the same link. Open until sign-up
+     * closes; offered while sign-up is open or the draw waits, for a
+     * published tournament everyone can see.
+     *
+     * @throws InviteLinkRefused
+     */
+    public function forTournament(User $inviter, Tournament $tournament): InviteLink
+    {
+        if ($tournament->published_at === null || ! $tournament->isVisibleTo(null)
+            || ! in_array($tournament->status, [TournamentStatus::Signup, TournamentStatus::Drawing], true)) {
+            throw new InviteLinkRefused('tournament_closed', __('Sign-up for this tournament is not open.'));
+        }
+
+        $closes = $tournament->signup_closes_at ?? $tournament->starts_at;
+
+        // One row per (inviter, tournament): two first uses at once meet the unique index, and the loser reads the winner's row.
+        $link = InviteLink::query()->createOrFirst(
+            ['inviter_id' => $inviter->id, 'tournament_id' => $tournament->id],
+            ['code' => InviteLink::newCode(), 'type' => InviteLinkType::Tournament, 'options' => [], 'max_uses' => null, 'expires_at' => $closes],
+        );
+
+        // Sign-up was extended (a casual cup's one extension): the link follows it.
+        if (! $link->wasRecentlyCreated && ! $link->expires_at->equalTo($closes)) {
+            $link->forceFill(['expires_at' => $closes])->save();
+        }
+
+        return $link;
+    }
+
+    /**
+     * The viewer's personal tournament link, or null for a guest or while
+     * the tournament takes no sign-ups (then the page link is the invite).
+     */
+    public function tournamentUrlFor(?User $viewer, Tournament $tournament): ?string
+    {
+        if ($viewer === null) {
+            return null;
+        }
+
+        try {
+            return $this->forTournament($viewer, $tournament)->url();
+        } catch (InviteLinkRefused) {
+            return null;
+        }
+    }
+
+    /**
+     * What the tournament landing remembers of a tournament link for the
+     * sign-up that credits it. Nothing for the inviter's own link.
+     *
+     * @return array{code: string, tournament_id: int, seen_at: int}|null
+     */
+    public function rememberTournamentLink(InviteLink $link, ?User $viewer): ?array
+    {
+        if ($link->type !== InviteLinkType::Tournament || $link->tournament_id === null || ($viewer !== null && $viewer->id === $link->inviter_id)) {
+            return null;
+        }
+
+        return ['code' => $link->code, 'tournament_id' => $link->tournament_id, 'seen_at' => now()->getTimestamp()];
+    }
+
+    /**
+     * Credit the referral of a tournament link once the invited player is in:
+     * the use (inviter, player, whether the account is new) and the "Brought
+     * a friend" frame for both, as for every other link. Only for an open
+     * link of this tournament that is not the player's own, and once per
+     * player and link (the unique use). Returns the new use, or null when
+     * nothing was credited.
+     *
+     * @param  array<string, mixed>|null  $remembered  what {@see rememberTournamentLink()} returned
+     */
+    public function creditTournamentSignup(Tournament $tournament, User $user, ?array $remembered): ?InviteLinkUse
+    {
+        if ($remembered === null || (int) ($remembered['tournament_id'] ?? 0) !== $tournament->id || ! is_string($remembered['code'] ?? null)) {
+            return null;
+        }
+
+        $link = InviteLink::query()->where('code', $remembered['code'])->where('type', InviteLinkType::Tournament)
+            ->where('tournament_id', $tournament->id)->first();
+
+        if ($link === null || $link->inviter_id === $user->id || $link->isRevoked() || $link->isExpired()) {
+            return null;
+        }
+
+        $wasNew = $user->created_at !== null && $user->created_at->getTimestamp() >= (int) ($remembered['seen_at'] ?? PHP_INT_MAX);
+
+        return DB::transaction(function () use ($link, $user, $wasNew): ?InviteLinkUse {
+            $use = InviteLinkUse::query()->createOrFirst(
+                ['invite_link_id' => $link->id, 'user_id' => $user->id],
+                ['inviter_id' => $link->inviter_id, 'was_new' => $wasNew],
+            );
+
+            if (! $use->wasRecentlyCreated) {
+                return null;
+            }
+
+            InviteLink::query()->whereKey($link->id)->increment('uses');
+            app(Cosmetics::class)->creditInvite($use);
+
+            return $use;
+        });
+    }
+
     public function revoke(InviteLink $link, User $user): void
     {
         if ($link->inviter_id !== $user->id) {
@@ -273,6 +395,8 @@ final class InviteLinks
                     InviteLinkType::Blitz, InviteLinkType::Daily => $this->startGame($link, $user),
                     InviteLinkType::Series => $this->startSeries($link, $user, $choice),
                     InviteLinkType::Clan => $this->requestJoin($link, $user),
+                    // Credited at sign-up (creditTournamentSignup()); the landing only opens the tournament.
+                    InviteLinkType::Tournament => throw new InviteLinkRefused('tournament', __('Sign up on the tournament page to take this invite.')),
                 };
 
                 $use->chess_game_id = $made instanceof ChessGame ? $made->id : null;

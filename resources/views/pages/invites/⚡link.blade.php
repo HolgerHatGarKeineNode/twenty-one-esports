@@ -53,6 +53,20 @@ new #[Layout('layouts::app')] class extends Component {
         $this->linkId = $link->id;
         $user = auth()->user();
 
+        // A personal tournament link (P47) opens the tournament page, where the invited player signs up;
+        // the link is remembered for that sign-up, which credits the inviter (InviteLinks::creditTournamentSignup()).
+        if ($link->type === InviteLinkType::Tournament && $link->tournament_id !== null) {
+            $remembered = app(InviteLinks::class)->rememberTournamentLink($link, $user instanceof User ? $user : null);
+
+            if ($remembered !== null) {
+                session()->put('invite.tournament', $remembered);
+            }
+
+            $this->redirectRoute('tournaments.show', $link->tournament_id);
+
+            return;
+        }
+
         if ($user instanceof User) {
             $this->lineupId = $this->myLineups->first()?->id;
             $this->start = $this->proposals()[0] ?? null;

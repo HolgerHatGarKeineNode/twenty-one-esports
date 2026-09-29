@@ -5,6 +5,7 @@ use App\Models\LineupSeat;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\RejectedEvent;
 use App\Support\Nostr\SignerMessages;
 use App\Support\Tournaments\TournamentRuleViolation;
@@ -106,6 +107,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function enterSolo(string $signed): void
     {
         $this->justEntered = $this->attempt(fn () => app(TournamentSignups::class)->enterSolo($this->tournament, $this->user(), $this->decode($signed))) !== null;
+        $this->creditInvite();
     }
 
     /** @return list<array<string, mixed>>|null */
@@ -117,6 +119,23 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function enterLineup(string $signed): void
     {
         $this->justEntered = $this->attempt(fn () => app(TournamentSignups::class)->enterLineup($this->tournament, $this->user(), (int) $this->lineupId, $this->members, $this->decode($signed))) !== null;
+        $this->creditInvite();
+    }
+
+    /**
+     * The player came through someone's personal tournament link (P47): the
+     * sign-up credits that player as the referrer, once.
+     */
+    private function creditInvite(): void
+    {
+        $remembered = session('invite.tournament');
+
+        if (! $this->justEntered || ! is_array($remembered) || (int) ($remembered['tournament_id'] ?? 0) !== $this->tournament->id) {
+            return;
+        }
+
+        session()->forget('invite.tournament');
+        app(InviteLinks::class)->creditTournamentSignup($this->tournament, $this->user(), $remembered);
     }
 
     /** @return list<array<string, mixed>>|null */

@@ -5297,5 +5297,12 @@
     "No relay list of yours (NIP-65, kind 10002) was found, so it is unknown where your badge list lives. Nothing was changed. Publish a relay list in your Nostr app first.": "Es wurde keine Relay-Liste von dir gefunden (NIP-65, Kind 10002), daher ist unklar, wo deine Badge-Liste liegt. Nichts wurde geändert. Veröffentliche zuerst in deiner Nostr-App eine Relay-Liste.",
     "We found no follow list of yours on the relays we read. Following here starts a NEW list with only this person. If you already follow people, follow from your usual client instead.": "Wir haben auf den gelesenen Relays keine Folgeliste von dir gefunden. Folgst du hier, beginnt eine NEUE Liste nur mit dieser Person. Wenn du schon Leuten folgst, folge lieber aus deinem gewohnten Client.",
     "Start a new list": "Neue Liste beginnen",
-    "We found no badge list of yours on the relays we read. Adding the badge here starts a NEW list with only this badge. If you already show badges on your profile, add it from your usual client instead.": "Wir haben auf den gelesenen Relays keine Badge-Liste von dir gefunden. Fügst du das Badge hier hinzu, beginnt eine NEUE Liste nur mit diesem Badge. Wenn dein Profil schon Badges zeigt, füge es lieber in deinem gewohnten Client hinzu."
+    "We found no badge list of yours on the relays we read. Adding the badge here starts a NEW list with only this badge. If you already show badges on your profile, add it from your usual client instead.": "Wir haben auf den gelesenen Relays keine Badge-Liste von dir gefunden. Fügst du das Badge hier hinzu, beginnt eine NEUE Liste nur mit diesem Badge. Wenn dein Profil schon Badges zeigt, füge es lieber in deinem gewohnten Client hinzu.",
+    "A tournament link comes from the tournament page.": "Einen Turnier-Link gibt es auf der Turnierseite.",
+    "Sign-up for this tournament is not open.": "Die Anmeldung für dieses Turnier ist nicht offen.",
+    "Sign up on the tournament page to take this invite.": "Melde dich auf der Turnierseite an, um diese Einladung anzunehmen.",
+    ":name invites you to :tournament": ":name lädt dich zu :tournament ein",
+    "A tournament on TWENTY ONE Esports. Sign up on its page.": "Ein Turnier bei TWENTY ONE Esports. Melde dich auf seiner Seite an.",
+    "Join me in :tournament?": "Spielst du mit mir bei :tournament?",
+    "Sign up on the tournament page.": "Melde dich auf der Turnierseite an."
 }

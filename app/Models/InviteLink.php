@@ -13,14 +13,16 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 /**
- * A shareable invite `/i/{code}` (P6b): a game challenge anyone may take, or
- * a clan link that sends a join request. League data only.
+ * A shareable invite `/i/{code}` (P6b): a game challenge anyone may take, a
+ * clan link that sends a join request, or a player's personal link to a
+ * tournament (P47). League data only.
  *
  * @property int $id
  * @property string $code
  * @property InviteLinkType $type
  * @property int $inviter_id
  * @property int|null $clan_id
+ * @property int|null $tournament_id type `tournament` only (P47): one link per inviter and tournament
  * @property array<string, mixed>|null $options
  * @property int|null $max_uses 1 = one-time, null = several times
  * @property int $uses
@@ -30,8 +32,9 @@ use Illuminate\Support\Str;
  * @property Carbon|null $updated_at
  * @property-read User $inviter
  * @property-read Clan|null $clan
+ * @property-read Tournament|null $tournament
  */
-#[Fillable(['code', 'type', 'inviter_id', 'clan_id', 'options', 'max_uses', 'uses', 'expires_at', 'revoked_at'])]
+#[Fillable(['code', 'type', 'inviter_id', 'clan_id', 'tournament_id', 'options', 'max_uses', 'uses', 'expires_at', 'revoked_at'])]
 class InviteLink extends Model
 {
     /** @use HasFactory<InviteLinkFactory> */
@@ -79,6 +82,14 @@ class InviteLink extends Model
     public function clan(): BelongsTo
     {
         return $this->belongsTo(Clan::class);
+    }
+
+    /**
+     * @return BelongsTo<Tournament, $this>
+     */
+    public function tournament(): BelongsTo
+    {
+        return $this->belongsTo(Tournament::class);
     }
 
     /**

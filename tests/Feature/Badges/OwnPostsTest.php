@@ -4,6 +4,7 @@ use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
+use App\Models\InviteLink;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\SeriesReport;
@@ -146,7 +147,7 @@ test('a tournament win quotes the tournament\'s calendar event by its address', 
     expect(app(SharePosts::class)->submit($anna, 'tournament', (string) $tournament->id, ownSign($annaKey, $template))->kind)->toBe(1);
 });
 
-test('"I\'m in": the invite card, the tournament page as the invite, the calendar event quoted; only for an entry', function () {
+test('"I\'m in": the invite card, the personal tournament link as the invite, the calendar event quoted; only for an entry', function () {
     Queue::fake();
     config(['esports.league.nsec' => (new TestSigner)->secret]);
     $tournament = openTournament(['name' => 'Testnet Cup']);
@@ -156,7 +157,8 @@ test('"I\'m in": the invite card, the tournament page as the invite, the calenda
 
     $posts = app(SharePosts::class);
     $template = $posts->prepare($anna, 'signup', (string) $tournament->id);
-    $page = 'https://esports.example/tournaments/'.$tournament->id;
+    // P47: the entrant's personal tournament link, not the public page.
+    $page = 'https://esports.example/i/'.InviteLink::query()->where(['inviter_id' => $anna->id, 'tournament_id' => $tournament->id])->sole()->code;
     $naddr = NostrKeys::naddr(31923, $tournament->event->pubkey, $tournament->slug, 'wss://league.example');
 
     expect($template['content'])->toStartWith("I’m in Testnet Cup on TWENTY ONE Esports (Chess blitz). Join me:\n{$page}\n\nhttps://esports.example/cards/en/tournament-invite/{$tournament->id}-wide.png?v=")

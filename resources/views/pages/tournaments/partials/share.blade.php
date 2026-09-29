@@ -5,8 +5,10 @@
     The invite-link share pattern of pages::invites.link.
 
     $tournament; $label: the line above the buttons; $text: the message.
+    P47: for a signed-in player the link is their personal tournament link
+    (InviteLinks::forTournament()), which credits them when a friend signs up.
 --}}
-@php($pageUrl = route('tournaments.show', $tournament))
+@php($pageUrl = app(\App\Support\Invites\InviteLinks::class)->tournamentUrlFor(auth()->user(), $tournament) ?? route('tournaments.show', $tournament))
 <div class="flex flex-col gap-2" data-test="tournament-share"
      x-data="{ copied: false, hint: '', canShare: typeof navigator.share === 'function', url: @js($pageUrl), text: @js($text),
                async copy(hint = '') { try { await navigator.clipboard.writeText(this.url); this.copied = true; this.hint = hint; setTimeout(() => { this.copied = false; this.hint = ''; }, 2500); } catch (e) { this.hint = @js(__('Copy did not work here. Select the link and copy it.')); } },

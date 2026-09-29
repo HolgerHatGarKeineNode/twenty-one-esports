@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\InviteLinkType;
 use App\Models\InviteLink;
 use App\Support\Invites\InviteCard;
 use Illuminate\Http\Response;
@@ -17,7 +18,8 @@ class InviteCardController extends Controller
 {
     public function __invoke(string $code, string $format): Response
     {
-        $link = InviteLink::query()->with(['inviter', 'clan'])->where('code', $code)->firstOrFail();
+        // A tournament link (P47) has no card of its own: its landing opens the tournament page, which has one.
+        $link = InviteLink::query()->with(['inviter', 'clan'])->where('code', $code)->where('type', '!=', InviteLinkType::Tournament)->firstOrFail();
 
         $locale = $link->inviter->locale;
 
