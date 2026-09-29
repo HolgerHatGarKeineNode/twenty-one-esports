@@ -183,8 +183,10 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 @php
     $config = $this->config();
     // A guest has the "New here?" strip above the page (P5, from the P2 review): the board gives up what the first
-    // viewport lacks, so the lower player card stays in view at 1440 x 900; players and logged-in spectators keep 560 px.
-    $boardColumn = auth()->guest() ? 'lg:grid-cols-[minmax(0,min(560px,calc(100dvh-340px)))_minmax(0,1fr)]' : 'lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]';
+    // viewport lacks, so the lower player card stays in view (1440 x 900, measured: board top 335, then 12 px, the
+    // 48 px card and 16 px air = 411; the card ended at 955 with 560 px). From ~970 px of height it is 560 again;
+    // players and logged-in spectators keep 560 px (their card ends at 886).
+    $boardColumn = auth()->guest() ? 'lg:grid-cols-[minmax(0,min(560px,calc(100dvh-411px)))_minmax(0,1fr)]' : 'lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]';
 @endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
