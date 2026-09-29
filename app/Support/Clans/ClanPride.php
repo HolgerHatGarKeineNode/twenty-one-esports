@@ -2,7 +2,9 @@
 
 namespace App\Support\Clans;
 
+use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
 use App\Models\ChessGame;
@@ -215,6 +217,8 @@ final class ClanPride
         $matches = SeriesMatch::query()
             ->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
             ->whereIn('winner', SeriesMatch::SIDES)
+            // A win by forfeit (a no-show) is no moment to be proud of: skipped, never told as "Beat X 0:0".
+            ->where(fn ($query) => $query->whereNull('resolution')->orWhere('resolution', '!=', SeriesResolution::Forfeit))
             ->where(fn ($query) => $query->where('finished_at', '>=', $since)->orWhere(fn ($query) => $query->whereNull('finished_at')->where('updated_at', '>=', $since)))
             ->orderByDesc('finished_at')->orderByDesc('id')
             ->get(['id', 'number', 'mode', 'winner', 'challenger_lineup_id', 'challenged_lineup_id', 'challenger_name', 'challenged_name', 'challenger_tag', 'challenged_tag', 'result_games', 'finished_at', 'updated_at']);
@@ -266,6 +270,8 @@ final class ClanPride
         $games = ChessGame::query()
             ->where('status', ChessGameStatus::Finished)
             ->whereIn('result', ['1-0', '0-1', '1/2-1/2'])
+            // A game decided by forfeit (a missed first move, a withdrawal) is skipped: no streak link, no week's win.
+            ->where(fn ($query) => $query->whereNull('end_reason')->orWhere('end_reason', '!=', ChessEndReason::Forfeit))
             ->where('ended_at', '>=', now()->subDays(self::DAYS))
             ->where(fn ($query) => $query->whereIn('white_id', $ids)->orWhereIn('black_id', $ids))
             ->orderByDesc('ended_at')->orderByDesc('id')

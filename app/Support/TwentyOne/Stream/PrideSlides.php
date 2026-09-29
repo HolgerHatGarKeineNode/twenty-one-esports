@@ -3,6 +3,7 @@
 namespace App\Support\TwentyOne\Stream;
 
 use App\Enums\BoardGameStatus;
+use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
@@ -182,7 +183,7 @@ class PrideSlides
      */
     private function latestChess(CarbonInterface $since): ?array
     {
-        $decided = fn () => ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])
+        $decided = fn () => ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])->where($this->notForfeited(...))
             ->whereNotNull('white_id')->whereNotNull('black_id')->whereNotNull('ended_at')->with(['white', 'black'])->latest('ended_at')->latest('id');
         $game = $decided()->where('ended_at', '>=', $since)->first() ?? $decided()->first();
 
@@ -203,7 +204,7 @@ class PrideSlides
         }
 
         $since = now()->subDays(self::DAYS);
-        $decided = fn () => BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])->whereIn('game', $slugs)
+        $decided = fn () => BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])->where($this->notForfeited(...))->whereIn('game', $slugs)
             ->whereNotNull('white_id')->whereNotNull('black_id')->whereNotNull('ended_at')->with(['white', 'black'])->latest('ended_at')->latest('id');
         $game = $decided()->where('ended_at', '>=', $since)->first() ?? $decided()->first();
 
@@ -416,6 +417,18 @@ class PrideSlides
     }
 
     /**
+     * A chess or board game not decided by forfeit (a missed first move, a
+     * withdrawal: ChessEndReason / BoardEndReason `forfeit`): a result, but
+     * no win to be proud of, and no link in a streak either.
+     *
+     * @param  Builder<ChessGame>|Builder<BoardGame>  $query
+     */
+    private function notForfeited(Builder $query): void
+    {
+        $query->whereNull('end_reason')->orWhere('end_reason', '!=', ChessEndReason::Forfeit->value);
+    }
+
+    /**
      * The live rating changes of the last DAYS days on the player ladders of
      * the registered games (a board game switched off is not one), without
      * the results a fair play link voided: AccountLinks keeps the casual Elo
@@ -622,10 +635,10 @@ class PrideSlides
     {
         $since = now()->subDays(self::STREAK_DAYS);
         $columns = ['white_id', 'black_id', 'result', 'ended_at'];
-        $chess = ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1', '1/2-1/2'])->where('ended_at', '>=', $since)
+        $chess = ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1', '1/2-1/2'])->where($this->notForfeited(...))->where('ended_at', '>=', $since)
             ->orderByDesc('ended_at')->orderByDesc('id')->limit(self::STREAK_GAMES)->toBase()->get([...$columns]);
         $slugs = array_keys($this->games->boards());
-        $boards = $slugs === [] ? collect() : BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('game', $slugs)->whereIn('result', ['1-0', '0-1', '1/2-1/2'])
+        $boards = $slugs === [] ? collect() : BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('game', $slugs)->whereIn('result', ['1-0', '0-1', '1/2-1/2'])->where($this->notForfeited(...))
             ->where('ended_at', '>=', $since)->orderByDesc('ended_at')->orderByDesc('id')->limit(self::STREAK_GAMES)->toBase()->get([...$columns, 'game']);
         $games = $chess->concat($boards)->sortByDesc(fn ($game): string => (string) $game->ended_at)->values();
         /** @var array<int, array{run: int, open: bool, at: string, games: array<string, true>}> $streaks */

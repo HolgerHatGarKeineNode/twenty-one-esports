@@ -1,10 +1,13 @@
 <?php
 
+use App\Enums\BoardEndReason;
+use App\Enums\ChessEndReason;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
 use App\Models\Admin;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\InviteLink;
@@ -240,6 +243,22 @@ test('a series won by a no-show is no pride moment, on the slide or in the note'
         ->and(app(PrideNotes::class)->compose(1, 0))->toBeNull()
         // Still a game played wherever the league counts.
         ->and(app(StreamStats::class)->count()['gamesPlayed'])->toBe(1);
+});
+
+test('a chess or board game won by forfeit is no latest win and no streak link', function () {
+    CheckersGame::play();
+    $player = User::factory()->create(['name' => 'Forfeiter']);
+    $real = ChessGame::factory()->finished('1-0')->create(['white_id' => User::factory()->create(['name' => 'Real'])->id, 'black_id' => User::factory()->create()->id, 'ended_at' => now()->subDays(2)]);
+    foreach ([1, 2, 3] as $hours) {
+        ChessGame::factory()->finished('1-0', ChessEndReason::Forfeit)->create(['white_id' => $player->id, 'black_id' => User::factory()->create()->id, 'ended_at' => now()->subHours($hours)]);
+    }
+    BoardGame::query()->create(['game' => 'checkers', 'mode' => 'blitz', 'white_id' => $player->id, 'black_id' => User::factory()->create()->id, 'status' => 'finished', 'result' => '1-0', 'end_reason' => BoardEndReason::Forfeit->value,
+        'position' => '-', 'turn' => 'w', 'ply' => 0, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 1, 'black_ms' => 1, 'turn_started_ms' => 0, 'ended_at' => now()->subMinutes(5)]);
+
+    $pride = app(PrideSlides::class)->read();
+
+    expect($pride['win'])->toMatchArray(['kind' => 'chess', 'gameId' => $real->id, 'winner' => 'Real'])
+        ->and($pride['streaks'])->toBe([]);
 });
 
 test('a rank-up a correction took back leaves the slide', function () {

@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\ChessEndReason;
 use App\Enums\ClanRole;
+use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Models\ChessGame;
@@ -179,4 +181,20 @@ test('/clans reads the same number of queries for 2 and for 12 clans with player
 
     expect(Clan::query()->count())->toBe(12)
         ->and($queries())->toBe($small);
+});
+
+test('a series or chess game won by forfeit is no moment: no "Beat X 0:0", no streak link, no week\'s win', function () {
+    $winner = Lineup::factory()->mode('3v3')->ready()->create();
+    $loser = Lineup::factory()->mode('3v3')->ready()->create();
+    Clan::query()->whereKey([$winner->clan_id, $loser->clan_id])->update(['created_at' => now()->subDays(60)]);
+    ClanMember::query()->update(['joined_at' => now()->subDays(60)]);
+    SeriesMatch::factory()->create(['challenger_lineup_id' => $winner->id, 'challenged_lineup_id' => $loser->id, 'status' => SeriesStatus::Resolved,
+        'resolution' => SeriesResolution::Forfeit, 'winner' => 'challenger', 'result_games' => [], 'finished_at' => now()->subDay()]);
+    $clan = prideQuietClan();
+    $player = prideJoin($clan);
+    foreach ([1, 2, 3] as $hours) {
+        ChessGame::factory()->finished('1-0', ChessEndReason::Forfeit)->create(['white_id' => $player->id, 'black_id' => User::factory()->create()->id, 'ended_at' => now()->subHours($hours)]);
+    }
+
+    expect(app(ClanPride::class)->read())->toBe([]);
 });
