@@ -66,7 +66,14 @@ export function pushToggle(config) {
             const subscription = (await registration.pushManager.getSubscription())
                 ?? (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(config.vapidKey) }));
 
-            await this.$wire.savePushSubscription(JSON.stringify(subscription.toJSON()));
+            // Null when saved; otherwise the reason the server refused it (an endpoint not on a public host).
+            const refused = await this.$wire.savePushSubscription(JSON.stringify(subscription.toJSON()));
+            if (refused) {
+                await subscription.unsubscribe();
+                this.here = false;
+                this.error = refused;
+                return;
+            }
             this.here = true;
             this.on = true;
         },

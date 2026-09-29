@@ -122,9 +122,11 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
     }
 
     /**
-     * This browser's push subscription (PushSubscription.toJSON()).
+     * This browser's push subscription (PushSubscription.toJSON()). Null when
+     * it is saved, else why not: an endpoint that is not https on a public
+     * host is refused here already ({@see WebPush::endpointTarget()}).
      */
-    public function savePushSubscription(string $json): bool
+    public function savePushSubscription(string $json): ?string
     {
         $data = json_decode($json, true);
         $endpoint = is_array($data) ? ($data['endpoint'] ?? null) : null;
@@ -134,13 +136,17 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
         if (! is_string($endpoint) || ! str_starts_with($endpoint, 'https://') || strlen($endpoint) > 500
             || ! is_string($key) || strlen(WebPush::base64UrlDecode($key)) !== 65
             || ! is_string($auth) || strlen(WebPush::base64UrlDecode($auth)) !== 16) {
-            return false;
+            return __('That did not work. Please try again.');
+        }
+
+        if (WebPush::fromConfig()->endpointTarget($endpoint) === null) {
+            return __('This browser\'s push service cannot be reached from here: its address must be https on a public host.');
         }
 
         PushSubscription::query()->updateOrCreate(['endpoint' => $endpoint], ['user_id' => $this->user()->id, 'public_key' => $key, 'auth_token' => $auth]);
         $this->setPush(true);
 
-        return true;
+        return null;
     }
 
     public function removePushSubscription(string $endpoint): void

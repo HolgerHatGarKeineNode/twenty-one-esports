@@ -3,7 +3,11 @@
 namespace App\Support\Notifications;
 
 use App\Models\PushSubscription;
+use App\Support\Nostr\HostResolver;
+use App\Support\Nostr\Nip05Verifier;
+use App\Support\Nostr\PinnedFetch;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -18,13 +22,27 @@ use Throwable;
  * the private key as the 32-byte scalar, both base64url (as browsers and
  * other Web Push libraries print them). `php artisan esports:vapid-keys`
  * makes a pair; the keys live in `.env` only.
+ *
+ * A push endpoint is a URL a player's browser hands in, so it is untrusted
+ * input that makes the server send a POST (P47 audit follow-up: before, any
+ * `https://` URL was posted to, `https://localhost:…` included, and a
+ * redirect was followed). The rule is the one of the NIP-05 and Lightning
+ * address fetches ({@see endpointTarget()}): `https` on port 443 of a DNS
+ * name, every resolved address public, the connection pinned to the checked
+ * address on curl ({@see PinnedFetch}), no redirect, one total deadline for
+ * the lookup and the request, nothing inflated, and curl aborts a response
+ * past MAX_RESPONSE_BYTES. The same rule refuses such an endpoint when a
+ * browser subscribes.
  */
-final class WebPush
+class WebPush
 {
     /** DER prefix of a P-256 SubjectPublicKeyInfo; the 65-byte point follows. */
     private const SPKI_PREFIX = '3059301306072a8648ce3d020106082a8648ce3d030107034200';
 
     private const RECORD_SIZE = 4096;
+
+    /** Bytes of a push service's answer taken at most: only its status counts. */
+    public const MAX_RESPONSE_BYTES = 8192;
 
     public function __construct(
         private ?string $publicKey,
@@ -32,6 +50,7 @@ final class WebPush
         private ?string $subject,
         private int $ttlSeconds = 86400,
         private int $timeoutSeconds = 5,
+        private ?HostResolver $resolver = null,
     ) {}
 
     public static function fromConfig(): self
@@ -42,6 +61,7 @@ final class WebPush
             config('esports.webpush.subject') ?: null,
             (int) config('esports.webpush.ttl_seconds', 86400),
             (int) config('esports.webpush.timeout_seconds', 5),
+            app(HostResolver::class),
         );
     }
 
@@ -57,14 +77,30 @@ final class WebPush
 
     /**
      * Encrypt and send one payload. Returns the push service's status code
-     * (0 if it could not be reached). A subscription the push service no
-     * longer knows (404, 410) is deleted.
+     * (0 if it could not be reached or may not be). A subscription the push
+     * service no longer knows (404, 410) is deleted.
      *
      * @param  array<string, mixed>  $payload
      */
     public function send(PushSubscription $subscription, array $payload): int
     {
         if (! $this->isConfigured()) {
+            return 0;
+        }
+
+        // One deadline for the lookup and the request; the lookup takes at most half of it.
+        $deadline = microtime(true) + $this->timeoutSeconds;
+        $target = $this->endpointTarget($subscription->endpoint, min(2.0, $this->timeoutSeconds / 2));
+
+        if ($target === null) {
+            Log::info('Web push refused: the endpoint is not https on a public host', ['host' => parse_url($subscription->endpoint, PHP_URL_HOST)]);
+
+            return 0;
+        }
+
+        $left = $deadline - microtime(true);
+
+        if ($left < 0.2) {
             return 0;
         }
 
@@ -75,7 +111,11 @@ final class WebPush
                 self::base64UrlDecode($subscription->auth_token),
             );
 
-            $response = Http::timeout($this->timeoutSeconds)
+            $response = Http::setHandler(PinnedFetch::handler())
+                ->connectTimeout(min(3, $left))
+                ->timeout($left)
+                ->withoutRedirecting()
+                ->withOptions([...PinnedFetch::options($target['host'], $target['address'], $target['port'], self::MAX_RESPONSE_BYTES), ...$this->extraOptions()])
                 ->withHeaders([
                     'Authorization' => $this->vapidHeader($subscription->endpoint),
                     'Content-Encoding' => 'aes128gcm',
@@ -95,6 +135,67 @@ final class WebPush
         }
 
         return $response->status();
+    }
+
+    /**
+     * Where a push endpoint may be reached: its host, port and the checked
+     * address the connection is pinned to; null when the endpoint is refused
+     * (not `https`, user info, a port but 443, an IP literal or `localhost`,
+     * no DNS answer within `$lookupSeconds`, or any address not public).
+     *
+     * @return array{host: string, port: int, address: string}|null
+     */
+    public function endpointTarget(string $endpoint, float $lookupSeconds = 2.0): ?array
+    {
+        $parts = parse_url($endpoint);
+
+        if (! is_array($parts) || strtolower($parts['scheme'] ?? '') !== 'https' || isset($parts['user']) || isset($parts['pass'])
+            || ! isset($parts['host']) || preg_match('/\s/', $endpoint) === 1) {
+            return null;
+        }
+
+        $host = strtolower($parts['host']);
+        $port = $parts['port'] ?? 443;
+
+        if ($port !== $this->port() || Nip05Verifier::target('x@'.$host) === null) {
+            return null;
+        }
+
+        $addresses = ($this->resolver ?? app(HostResolver::class))->addressesWithin($host, $lookupSeconds);
+
+        if ($addresses === []) {
+            return null;
+        }
+
+        foreach ($addresses as $address) {
+            if (! $this->isAllowedAddress($address)) {
+                return null;
+            }
+        }
+
+        return ['host' => $host, 'port' => $port, 'address' => $addresses[0]];
+    }
+
+    /** The only port a push endpoint may name (a test hook: the local HTTPS server's port). */
+    protected function port(): int
+    {
+        return 443;
+    }
+
+    /** Whether an address may be connected to at all (a test hook: loopback for the local server). */
+    protected function isAllowedAddress(string $address): bool
+    {
+        return Nip05Verifier::isPublicAddress($address);
+    }
+
+    /**
+     * Further request options (a test hook: `verify` with the local server's CA file).
+     *
+     * @return array<string, mixed>
+     */
+    protected function extraOptions(): array
+    {
+        return [];
     }
 
     /**
