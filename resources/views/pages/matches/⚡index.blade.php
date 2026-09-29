@@ -7,6 +7,7 @@ use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
 use App\Support\GameNames;
+use App\Support\Matches\MempoolStrip;
 use App\Support\PageMeta;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
@@ -218,22 +219,15 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     }
 
     /**
-     * The block strip: finished series left (newest at the divider), running
-     * and scheduled right (next first).
+     * The mempool strip: the matches of every game, played left (newest at
+     * the divider), running and scheduled right (App\Support\Matches\MempoolStrip).
      *
      * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>}
      */
     #[Computed]
     public function strip(): array
     {
-        $viewer = auth()->user();
-        $finished = SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->orderByDesc('finished_at')->limit(5)->get()->reverse()->values();
-        $running = SeriesMatch::query()->with('latestReport')->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])->orderBy('start_at')->limit(5)->get();
-
-        return [
-            'finished' => $finished->map(fn (SeriesMatch $match, int $index) => SeriesPresenter::block($match, $index === $finished->count() - 1, $viewer))->all(),
-            'running' => $running->map(fn (SeriesMatch $match) => SeriesPresenter::block($match, false, $viewer))->all(),
-        ];
+        return MempoolStrip::build(auth()->user());
     }
 }; ?>
 
@@ -246,7 +240,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
     @if ($strip['finished'] !== [] || $strip['running'] !== [])
-        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" focus="rl" />
+        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')"
+                       :lead="__('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.')" />
     @endif
 
     <div class="flex flex-col gap-5 px-4 lg:px-12">

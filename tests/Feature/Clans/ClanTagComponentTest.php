@@ -88,7 +88,8 @@ test('the match list reads the clans of its rows in one query, however many rows
 
     SeriesMatch::factory()->accepted()->count(4)->create();
 
-    expect($few)->toBe(2)
+    // One per side for the table, and one per side for the mempool strip's running series (plan "Mempool-Streifen").
+    expect($few)->toBe(4)
         ->and($clanQueries())->toBe($few);
 });
 

@@ -5524,5 +5524,14 @@
     "You and :name do not list each other as opponents yet, so this challenge cannot be rated.": "Du und :name führt euch noch nicht gegenseitig als Gegner, deshalb kann diese Herausforderung nicht gewertet sein.",
     "Challenge casual instead": "Stattdessen ungewertet herausfordern",
     "The other player has :hours h to accept. You can withdraw the challenge while it is open.": "Der andere Spieler hat :hours h zum Annehmen. Solange sie offen ist, kannst du die Herausforderung zurückziehen.",
-    "Board games by correspondence": "Brettspiel-Fernpartien"
+    "Board games by correspondence": "Brettspiel-Fernpartien",
+    "Mempool": "Mempool",
+    "Matches of every game, played and waiting. A fair rated win mines a block of the season chain.": "Partien aller Spiele, gespielt und wartend. Ein fairer gewerteter Sieg mint einen Block der Season-Chain.",
+    "Matches of every game, finished on the left, running and next on the right": "Partien aller Spiele, beendete links, laufende und kommende rechts",
+    "Rated wins mine a block of the season chain": "Gewertete Siege minen einen Block der Season-Chain",
+    "Mined as block :height of the season chain": "Als Block :height der Season-Chain gemint",
+    "no block": "kein Block",
+    "No block: :reason": "Kein Block: :reason",
+    "no result": "kein Ergebnis",
+    "Daily game": "Fernpartie"
 }

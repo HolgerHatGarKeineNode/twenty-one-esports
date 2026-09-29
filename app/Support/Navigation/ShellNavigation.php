@@ -18,6 +18,7 @@ use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 /**
  * Every list of the shell navigation (header concept B, "game tabs"), built
@@ -386,7 +387,8 @@ final class ShellNavigation
             return array_values(array_filter([
                 self::link('play', GameNames::page($slug), __('Play blitz'), 'bolt', null, null, __('Play'), 'play'),
                 // Correspondence (P8): one move a day, on its own page, for a board game that has the mode.
-                $game->mode('correspondence') !== null ? self::link('daily', route('board.correspondence', $slug), __('Correspondence'), 'calendar') : null,
+                // Only while the page is routed: a route table cached with the switch off has none, and every page would answer 500.
+                $game->mode('correspondence') !== null && Route::has('board.correspondence') ? self::link('daily', route('board.correspondence', $slug), __('Correspondence'), 'calendar') : null,
                 self::link('ladder', route('ladder.show', [$slug, array_key_first($game->modes())]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
                 self::strongest(),

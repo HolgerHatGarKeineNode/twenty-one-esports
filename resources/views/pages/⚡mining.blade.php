@@ -304,7 +304,8 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
             <section aria-labelledby="latest-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:col-span-8 lg:px-6" data-test="mining-latest">
                 <h2 id="latest-h" class="m-0 text-[15px] font-bold">{{ __('Latest blocks') }} <span class="font-normal text-ink-3">{{ __('mined, pending the season review') }}</span></h2>
                 @forelse ($chain['latest'] as $block)
-                    <div class="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline py-2.5 text-[13px] last:border-0">
+                    {{-- Anchored by height: the mempool strip on /matches links a mined match here. --}}
+                    <div id="block-{{ $block['height'] }}" class="grid scroll-mt-24 grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline py-2.5 text-[13px] last:border-0 target:bg-btc-chip">
                         <b class="font-display text-base">{{ $block['height'] }}</b>
                         <span class="flex min-w-0 flex-col gap-0.5">
                             <span class="truncate">{{ $block['label'] }} · {{ ChainOverview::keyLabel($block['key']) }}</span>

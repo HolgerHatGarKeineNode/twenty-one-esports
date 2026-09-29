@@ -103,7 +103,23 @@
     --color-rl-deep: #C2410C;
     --color-rl-deep-2: #9D174D;
     --color-fc: #22C55E;
+    --color-fc-2: #16A34A;
     --color-fc-deep: #15803D;
+    --color-fc-deep-2: #14532D;
+    /*
+     * Board games (mempool strip): nine men's morris is the oak of its board,
+     * checkers a blue no other game or signal holds (violet is Proof, yellow
+     * the bolt, red the stream). On-btc text on the light ends: 9.8 / 4.9 and
+     * 7.3 / 5.1 : 1; white on the deep ends 8.0 and 8.7 : 1.
+     */
+    --color-morris: #D9B77E;
+    --color-morris-2: #A87A42;
+    --color-morris-deep: #6B4A22;
+    --color-morris-deep-2: #4A3318;
+    --color-checkers: #60A5FA;
+    --color-checkers-2: #3B82F6;
+    --color-checkers-deep: #1E40AF;
+    --color-checkers-deep-2: #1E3A8A;
 
     /* Flux accent mapped onto the brand orange */
     --color-accent: #F7931A;
@@ -683,6 +699,32 @@ select:focus[data-flux-control] {
         align-items: flex-end;
     }
 
+    /* Mempool strip: a name and one line above it (the strip is matches, the chain is /mining) */
+    .bs-head {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .bs-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 18px;
+        line-height: 24px;
+        color: var(--color-ink);
+    }
+
+    .bs-lead {
+        margin: 0;
+        max-width: 72ch;
+        font-size: 13px;
+        line-height: 20px;
+        color: var(--color-ink-2);
+    }
+
+    /* The match number: quiet, mono, never the orange of a block height */
     .bs-h {
         box-sizing: border-box;
         width: var(--b);
@@ -691,15 +733,11 @@ select:focus[data-flux-control] {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
         align-items: center;
-        font-family: var(--font-display);
-        font-weight: 700;
-        font-size: 14px;
+        font-family: var(--font-mono);
+        font-weight: 500;
+        font-size: 12px;
         line-height: 24px;
-        color: var(--color-btc);
-    }
-
-    .bs-h--next {
-        color: var(--color-ink-2);
+        color: var(--color-ink-3);
     }
 
     .bs-h > .bs-num {
@@ -797,19 +835,6 @@ select:focus[data-flux-control] {
         display: block;
     }
 
-    .bs-slot {
-        box-sizing: border-box;
-        border: 1px dashed currentColor;
-        border-radius: 2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 7px;
-        line-height: 1;
-        font-weight: 700;
-        letter-spacing: 0;
-    }
-
     .bs-score {
         align-self: center;
         font-family: var(--font-display);
@@ -863,11 +888,108 @@ select:focus[data-flux-control] {
         color: var(--color-ink-2);
     }
 
-    .bs-cap > span {
+    /* The two sides: a face (player) or clan logo, then the name; the winner in white */
+    .bs-side {
         max-width: 100%;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
+
+    .bs-side.is-won {
+        color: var(--color-ink);
+        font-weight: 700;
+    }
+
+    .bs-vs {
+        flex-shrink: 0;
+        color: var(--color-ink-3);
+        font-weight: 400;
+    }
+
+    .bs-face {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+    }
+
+    .bs-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* The season chain under a finished rated match: its block, the one orange text of the strip */
+    .bs-chain {
+        box-sizing: border-box;
+        width: var(--b);
+        height: 32px;
+        padding-top: 4px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .bs-stamp {
+        box-sizing: border-box;
+        max-width: 100%;
+        height: 28px;
+        padding: 0 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: var(--radius-tag);
+        background: var(--color-btc-chip);
+        box-shadow: inset 0 0 0 1px var(--color-btc-ring);
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 12px;
+        line-height: 16px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: var(--color-btc);
+        text-decoration: none;
+    }
+
+    a.bs-stamp:hover {
+        background: var(--color-btc-tint);
+        color: var(--color-btc-hi);
+    }
+
+    .bs-stamp.is-void {
+        background: transparent;
+        box-shadow: inset 0 0 0 1px var(--color-line);
+        color: var(--color-ink-3);
+        text-decoration: line-through;
+    }
+
+    .bs-stamp.is-none {
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        font-weight: 500;
+        font-size: 11px;
+        color: var(--color-ink-3);
+    }
+
+    .bs--sm .bs-stamp {
+        padding: 0 6px;
+        font-size: 11px;
+    }
+
+    /* A mined block in miniature: orange with its lit lid */
+    .bs-mini {
+        width: 10px;
+        height: 10px;
+        flex-shrink: 0;
+        border-radius: 1px;
+        background: linear-gradient(180deg, var(--color-btc-hi) 0 30%, var(--color-btc) 30%);
+    }
+
+    .bs-stamp.is-void .bs-mini {
+        background: var(--color-edge);
     }
 
     .bs-div {
@@ -893,6 +1015,35 @@ select:focus[data-flux-control] {
         background: linear-gradient(180deg, var(--color-rl), var(--color-rl-2));
         --top: #FDBA74;
         --side: linear-gradient(180deg, #C2410C, #9D174D);
+    }
+
+    a.bs-cube.is-fin.g-fc {
+        background: linear-gradient(180deg, var(--color-fc), var(--color-fc-2));
+        --top: #86EFAC;
+        --side: linear-gradient(180deg, #15803D, #14532D);
+    }
+
+    a.bs-cube.is-fin.g-morris {
+        background: linear-gradient(180deg, var(--color-morris), var(--color-morris-2));
+        --top: #EBD3A8;
+        --side: linear-gradient(180deg, #6B4A22, #4A3318);
+    }
+
+    a.bs-cube.is-fin.g-checkers {
+        background: linear-gradient(180deg, var(--color-checkers), var(--color-checkers-2));
+        --top: #93C5FD;
+        --side: linear-gradient(180deg, #1E40AF, #1E3A8A);
+    }
+
+    a.bs-cube.is-fin.g-other {
+        background: linear-gradient(180deg, var(--color-ink-2), var(--color-ink-3));
+        --top: #D4D4D6;
+        --side: linear-gradient(180deg, #3A3A42, #2A2A30);
+    }
+
+    /* mined in the season chain: the lid turns orange, the block under the cube says which */
+    a.bs-cube.is-fin.is-mined {
+        --top: var(--color-btc);
     }
 
     /* live: dark block, deep game gradient rises from the bottom to --lvl, white text */
@@ -927,6 +1078,34 @@ select:focus[data-flux-control] {
         --side: linear-gradient(0deg, #6B1035 var(--lvl), #16161A var(--lvl));
     }
 
+    a.bs-cube.is-live.g-fc .bs-fill {
+        background: linear-gradient(180deg, var(--color-fc-deep), var(--color-fc-deep-2));
+    }
+
+    a.bs-cube.is-live.g-fc {
+        --side: linear-gradient(0deg, #0F3D22 var(--lvl), #16161A var(--lvl));
+    }
+
+    a.bs-cube.is-live.g-morris .bs-fill {
+        background: linear-gradient(180deg, var(--color-morris-deep), var(--color-morris-deep-2));
+    }
+
+    a.bs-cube.is-live.g-morris {
+        --side: linear-gradient(0deg, #3A2812 var(--lvl), #16161A var(--lvl));
+    }
+
+    a.bs-cube.is-live.g-checkers .bs-fill {
+        background: linear-gradient(180deg, var(--color-checkers-deep), var(--color-checkers-deep-2));
+    }
+
+    a.bs-cube.is-live.g-checkers {
+        --side: linear-gradient(0deg, #172B66 var(--lvl), #16161A var(--lvl));
+    }
+
+    a.bs-cube.is-live.g-other .bs-fill {
+        background: linear-gradient(180deg, #3A3A42, #2A2A30);
+    }
+
     /* scheduled: hollow block, game-coloured edge that breathes */
     a.bs-cube.is-next {
         background: var(--color-ground);
@@ -952,6 +1131,20 @@ select:focus[data-flux-control] {
         --glow: rgba(249, 115, 22, 0.5);
         --top: rgba(249, 115, 22, 0.16);
         --side: rgba(236, 72, 153, 0.22);
+    }
+
+    a.bs-cube.is-next.g-fc {
+        --edge: #22C55E;
+        --glow: rgba(34, 197, 94, 0.45);
+        --top: rgba(34, 197, 94, 0.16);
+        --side: rgba(22, 163, 74, 0.22);
+    }
+
+    a.bs-cube.is-next.g-other {
+        --edge: #ADADB0;
+        --glow: rgba(173, 173, 176, 0.35);
+        --top: rgba(173, 173, 176, 0.14);
+        --side: rgba(139, 139, 144, 0.2);
     }
 
     /* casual: same family, desaturated; the label row carries the word */
@@ -1034,6 +1227,43 @@ select:focus[data-flux-control] {
         border-radius: 2px;
         flex-shrink: 0;
     }
+
+    /* Legend: each game on screen with its colour and logo */
+    .bs-key-logo {
+        display: flex;
+    }
+
+    .bs-key.g-chess .bs-chip--game { background: linear-gradient(180deg, var(--color-chess), var(--color-chess-2)); }
+    .bs-key.g-chess .bs-key-logo { color: var(--color-chess); }
+    .bs-key.g-rl .bs-chip--game { background: linear-gradient(180deg, var(--color-rl), var(--color-rl-2)); }
+    .bs-key.g-rl .bs-key-logo { color: var(--color-rl); }
+    .bs-key.g-fc .bs-chip--game { background: linear-gradient(180deg, var(--color-fc), var(--color-fc-2)); }
+    .bs-key.g-fc .bs-key-logo { color: var(--color-fc); }
+    .bs-key.g-morris .bs-chip--game { background: linear-gradient(180deg, var(--color-morris), var(--color-morris-2)); }
+    .bs-key.g-morris .bs-key-logo { color: var(--color-morris); }
+    .bs-key.g-checkers .bs-chip--game { background: linear-gradient(180deg, var(--color-checkers), var(--color-checkers-2)); }
+    .bs-key.g-checkers .bs-key-logo { color: var(--color-checkers); }
+    .bs-key.g-other .bs-chip--game { background: linear-gradient(180deg, var(--color-ink-2), var(--color-ink-3)); }
+    .bs-key.g-other .bs-key-logo { color: var(--color-ink-2); }
+
+    /* Phones: the cubes spell out their state (live, move 12, at 21:13); the legend keeps the games and the chain */
+    @media (max-width: 639.98px) {
+        .bs-key--state {
+            display: none;
+        }
+    }
+
+    /* The legend's way to the chain: a link, so it keeps a 24 px target */
+    a.bs-key--chain {
+        min-height: 24px;
+        color: var(--color-btc);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+
+    a.bs-key--chain:hover {
+        color: var(--color-btc-hi);
+    }
 }
 
 /* Mobile strip (MobileHome.dc.html): 100 px cubes, 16 px apart, scrolls sideways. */
@@ -1070,6 +1300,11 @@ select:focus[data-flux-control] {
     .bs--auto a.bs-cube {
         padding: 8px 6px;
         row-gap: 2px;
+    }
+
+    .bs--auto .bs-stamp {
+        padding: 0 6px;
+        font-size: 11px;
     }
 
     .bs--auto .bs-score {

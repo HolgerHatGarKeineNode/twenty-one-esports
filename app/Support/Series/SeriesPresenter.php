@@ -9,6 +9,7 @@ use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Matches\MatchBlocks;
 use App\Support\Nostr\NostrKeys;
 use App\Support\PreSeason;
 use App\Support\Rating\Ratings;
@@ -242,22 +243,40 @@ final class SeriesPresenter
     }
 
     /**
-     * One cube of the global block strip (components/block-strip).
+     * Where a series stands in the mempool strip: finished (a result), next
+     * (accepted, not started) or live (everything in between).
      *
-     * @return array{height: string, game: string, mode: string, score: string, word: bool, who: string, when: string, a: string, b: string, href: string, aria: string, level: string, casual: bool, state: string, dot: bool, newest: bool}
+     * @return 'fin'|'next'|'live'
      */
-    public static function block(SeriesMatch $match, bool $newest = false, ?User $viewer = null): array
+    public static function blockState(SeriesMatch $match): string
     {
-        $score = self::score($match);
-        $wins = SeriesMatch::seriesScore($match->currentGames());
-        $state = match (true) {
+        return match (true) {
             $match->status->hasResult() => 'fin',
             $match->status === SeriesStatus::Accepted && $match->start_at?->isFuture() => 'next',
             default => 'live',
         };
+    }
+
+    /**
+     * One cube of the mempool strip (components/block-strip): a match, never a
+     * block. `chain` is the match's place in the season chain
+     * (App\Support\Matches\ChainStamps), null while it has none.
+     *
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
+     * @return array<string, mixed> the shape of App\Support\Matches\MatchBlocks::shape()
+     */
+    public static function block(SeriesMatch $match, bool $newest = false, ?User $viewer = null, ?array $chain = null): array
+    {
+        $score = self::score($match);
+        $wins = SeriesMatch::seriesScore($match->currentGames());
+        $state = self::blockState($match);
         $leader = $wins['challenger'] === $wins['challenged'] ? null : ($wins['challenger'] > $wins['challenged'] ? 'challenger' : 'challenged');
+        // A finished series without a winner is void or a draw, never "playing" (#40 read "läuft" once it was annulled).
         $who = match (true) {
             $match->winner === 'challenger' || $match->winner === 'challenged' => $match->sideName($match->winner),
+            $state === 'fin' && $match->resolution === SeriesResolution::Void => __('void'),
+            $state === 'fin' && $match->winner === 'none' => __('Draw'),
+            $state === 'fin' => __('no result'),
             $state === 'next' => $match->rated ? __('Ladder') : __('Casual'),
             $leader !== null => $match->sideName($leader),
             default => __('playing'),
@@ -273,28 +292,33 @@ final class SeriesPresenter
         };
         $played = count($match->currentGames());
         $short = app(GameRegistry::class)->find($match->game)?->assets()->shortLabel ?? $match->game;
-
-        return [
-            'height' => $match->label(),
-            'game' => 'rl',
-            'slot' => mb_substr($short, 0, 2),
-            'mode' => $short.' '.$match->mode,
-            'score' => $state === 'next' ? 'BO'.$match->best_of : $score['text'],
-            'word' => false,
-            'who' => $who,
-            'when' => $when,
-            'a' => $match->challenger_tag,
-            'b' => __('vs :name', ['name' => $match->challenged_tag]),
-            'href' => route('matches.show', $match),
-            'aria' => __(':number, :game :mode best of :bo, :status, :a vs :b', [
-                'number' => $match->label(), 'game' => GameNames::game($match->game), 'mode' => $match->mode, 'bo' => $match->best_of,
-                'status' => self::chip($match)['label'], 'a' => $match->challenger_name, 'b' => $match->challenged_name,
-            ]),
-            'level' => $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%'),
-            'casual' => ! $match->rated,
-            'state' => $state,
-            'dot' => $state === 'live' && $match->status === SeriesStatus::Accepted,
-            'newest' => $newest,
+        $side = fn (string $side): array => [
+            'name' => $match->sideTag($side),
+            'user' => null,
+            'clan' => $match->sideClan($side),
+            'won' => $match->winner === $side,
         ];
+
+        return MatchBlocks::shape(
+            key: 'series-'.$match->id,
+            number: $match->label(),
+            slug: $match->game,
+            mode: $short.' '.$match->mode,
+            score: $state === 'next' ? 'BO'.$match->best_of : $score['text'],
+            who: $who,
+            when: $when,
+            sides: [$side('challenger'), $side('challenged')],
+            href: route('matches.show', $match),
+            aria: __(':number, :game :mode best of :bo, :status, :a vs :b', [
+                'number' => $match->label(), 'game' => GameNames::game($match->game), 'mode' => $match->mode, 'bo' => $match->best_of,
+                'status' => $state === 'fin' ? $who : self::chip($match)['label'], 'a' => $match->challenger_name, 'b' => $match->challenged_name,
+            ]).($chain === null ? '' : ', '.$chain['text']),
+            state: $state,
+            level: $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%'),
+            casual: ! $match->rated,
+            dot: $state === 'live' && $match->status === SeriesStatus::Accepted,
+            newest: $newest,
+            chain: $chain,
+        );
     }
 }
