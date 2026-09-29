@@ -37,6 +37,7 @@ export function shellHeader() {
         init() {
             window.addEventListener('keydown', (event) => this.hotkey(event));
             window.addEventListener('nav-sheet', (event) => event.detail !== 'hub' && this.closeHub(false));
+            window.addEventListener('matches-filter', (event) => this.followMatchesFilter(event.detail));
             this.$nextTick(() => this.revealActiveChip());
         },
 
@@ -50,6 +51,33 @@ export function shellHeader() {
             this.closeHub(false);
             this.search = true;
             this.$nextTick(() => field.focus());
+        },
+
+        /**
+         * Close the search row. Esc gives the focus back to the search button, as the hub and the More sheet
+         * give it back to their opener, when it sat in the row (or nowhere, once the row is hidden).
+         */
+        closeSearch() {
+            if (!this.search) return;
+            const row = document.getElementById('mobile-search');
+            const inRow = row?.contains(document.activeElement) || document.activeElement === document.body;
+            this.search = false;
+            if (inRow) {
+                const ticket = ++this.focusTicket;
+                this.$nextTick(() => { if (this.focusTicket === ticket) this.$refs.searchToggle?.focus({ preventScroll: true }); });
+            }
+        },
+
+        /**
+         * /matches (plan "Mempool-Streifen", P4): the Chain and Game filters change the page without a reload, so the
+         * chain rail and the phone's sheet move their aria-current along (the rule of ShellNavigation::chain()).
+         */
+        followMatchesFilter(detail) {
+            const current = { mempool: detail?.chain === 'all' && detail?.game === 'all', casual: detail?.chain === 'casual' && detail?.game === 'all' };
+            for (const link of document.querySelectorAll('[data-chain-key]')) {
+                if (current[link.dataset.chainKey]) link.setAttribute('aria-current', 'page');
+                else link.removeAttribute('aria-current');
+            }
         },
 
         toggleHub(button) {

@@ -107,7 +107,12 @@ const SHELL_ROW1 = <<<'JS'
             return `${name(el)} ${left}-${right}`;
         });
         const text = (sel) => { const el = document.querySelector(sel); return el && vis(el) ? el.innerText.trim() : null; };
-        return { items: out, problems, count: text('[data-test=mempool-count]'), tag: text('[data-test=season-tag]'), casual: text('[data-test=nav-casual]') };
+        // Any two items overlapping, not only neighbours (the LIVE badge ran under the search button once).
+        const rects = items.map((el) => [name(el), el.getBoundingClientRect()]);
+        rects.forEach(([a, ra], i) => rects.slice(i + 1).forEach(([b, rb]) => { const h = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left); if (h > 0.5) problems.push(`${a} overlaps ${b} by ${Math.round(h)}`); }));
+        const admin = document.querySelector('[data-test=admin-count]');
+        return { items: out, problems, count: text('[data-test=mempool-count]'), tag: text('[data-test=season-tag]'), casual: text('[data-test=nav-casual]'),
+            admin: admin && vis(admin) ? [...admin.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join('') : null };
     }
     JS;
 

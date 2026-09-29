@@ -85,6 +85,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $this->chain = array_key_exists($chain, MempoolStrip::CHAINS) ? $chain : 'all';
         unset($this->strip);
         $this->resetPage();
+        $this->dispatchFilter();
     }
 
 
@@ -92,6 +93,13 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     {
         $this->game = $this->listable($game) ? $game : 'all';
         $this->resetPage();
+        $this->dispatchFilter();
+    }
+
+    /** The header's chain rail marks the view on screen (resources/js/shellNav.js `followMatchesFilter`). */
+    private function dispatchFilter(): void
+    {
+        $this->dispatch('matches-filter', chain: $this->chain, game: $this->game);
     }
 
     /**

@@ -333,7 +333,7 @@ test('the Chain filter narrows strip, table and status counts to the rated or th
         ->assertSet('chain', 'casual')
         ->assertSeeHtml('data-test="status-live"')
         ->tap(fn ($component) => expect($component->instance()->counts['live'])->toBe(2))
-        ->call('pickChain', 'season')->assertSet('chain', 'season')
+        ->call('pickChain', 'season')->assertSet('chain', 'season')->assertDispatched('matches-filter', chain: 'season', game: 'all')
         ->tap(fn ($component) => expect($component->instance()->counts['live'])->toBe(0))
         ->call('pickChain', 'all')->assertSet('chain', 'all');
 });

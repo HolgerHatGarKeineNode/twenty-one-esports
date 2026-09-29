@@ -102,7 +102,7 @@
                     <li class="min-w-0">
                         {{-- The chain rail's links keep their glyph colours here (app.css `.chain-link--*`, `.chain-glyph`). --}}
                         <a href="{{ $link['href'] }}" @class([$row, 'chain-link--'.$link['key'] => isset($link['name'])]) @if ($link['current'] ?? $section === $link['key']) aria-current="page" @endif
-                           @isset($link['name']) aria-label="{{ $link['name'] }}" @endisset data-test="{{ $link['test'] }}">
+                           @isset($link['name']) aria-label="{{ $link['name'] }}" data-chain-key="{{ $link['key'] }}" @endisset data-test="{{ $link['test'] }}">
                             <x-icon :name="$link['icon']" :size="18" :class="isset($link['name']) ? 'chain-glyph' : 'text-ink-3'" />
                             {{-- The Block 0 tag goes under the label: next to it, "Season" broke into "Sea son" at 375 px. --}}
                             <span class="flex min-w-0 flex-col items-start gap-1 leading-tight break-words">

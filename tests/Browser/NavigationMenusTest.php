@@ -211,6 +211,12 @@ test('the header search: type and press Enter at 375 and 1440 px, results for a 
         }
         BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility()', 5_000);
 
+        // Esc closes the row and gives the focus back to the search button, on a phone and on desktop, as the hub and the More sheet do.
+        $page->locator('#site-search')->press('Escape');
+        BrowserWait::until($page, '() => !document.getElementById("site-search").checkVisibility() && document.activeElement?.dataset.test === "mobile-search-toggle"', 5_000);
+        $page->locator('[data-test=mobile-search-toggle]')->click();
+        BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility() && document.activeElement?.id === "site-search"', 5_000);
+
         $page->locator($field)->fill('mempool');
         $page->locator($field)->press('Enter');
         BrowserWait::until($page, '() => location.pathname === "/search" && document.readyState === "complete"', 10_000);

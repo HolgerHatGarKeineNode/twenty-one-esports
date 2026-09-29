@@ -33,7 +33,7 @@
 
 {{-- An open notification panel or game hub lifts the header above the toast stack (z-50) and the match dock (z-35). --}}
 <header class="relative z-30 shrink-0 bg-bar" x-data="shellHeader" x-bind:style="(bell || hub) ? 'z-index: 55' : ''"
-        x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="search = false; closeHub()">
+        x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="closeSearch(); closeHub()">
     {{--
         Row 1. Below lg it is the phone's only top bar (56 px: logo, game chips, search, bell or
         "Log in"); from lg the desktop bar (64 px): logo, game tabs, the hub, Tournaments,
@@ -105,12 +105,13 @@
                 The chain rail (plan "Mempool-Streifen", P4): the mempool of every game's matches with how many
                 wait in it, the season chain their rated wins mine, and the casual matches that never mine.
                 One frame, because they are one story; the glyph says which is which (dashed cube: waiting,
-                orange blocks: mined, grey blocks: not mined), the label says it in words.
+                orange blocks: mined, grey cube: never mined), the label says it in words. On /matches the
+                marked link follows the Chain and Game filters (`matches-filter`, resources/js/shellNav.js).
             --}}
             <div role="group" aria-label="{{ __('Mempool and chains') }}" class="chain-rail self-center" data-test="chain-rail">
                 @foreach ($chain as $link)
                     <a href="{{ $link['href'] }}" @if ($link['current']) aria-current="page" @endif aria-label="{{ $link['name'] }}" title="{{ $link['name'] }}"
-                       class="chain-link chain-link--{{ $link['key'] }}" data-test="nav-{{ $link['key'] }}">
+                       class="chain-link chain-link--{{ $link['key'] }}" data-chain-key="{{ $link['key'] }}" data-test="nav-{{ $link['key'] }}">
                         <x-icon :name="$link['icon']" :size="16" class="chain-glyph" />
                         <span>{{ $link['label'] }}</span>
                         @if ($link['count'] !== null)
@@ -138,16 +139,21 @@
         --}}
         <button type="button" class="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] text-ink-2 hover:text-ink aria-expanded:bg-raised aria-expanded:text-btc-hi lg:px-0"
                 aria-controls="mobile-search" x-bind:aria-expanded="search.toString()" aria-expanded="false" aria-keyshortcuts="/" title="{{ __('Search') }} (/)"
-                x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.searchField.focus())" data-test="mobile-search-toggle">
+                x-ref="searchToggle" x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.searchField.focus())" data-test="mobile-search-toggle">
             <x-icon name="search" :size="20" />
             <span class="max-[359px]:sr-only lg:sr-only">{{ __('Search') }}</span>
         </button>
 
         @if ($user)
             @if ($admin)
-                <a href="{{ $admin['href'] }}" @if ($section === 'admin') aria-current="page" @endif class="nav-link hidden lg:flex" data-test="account-admin">
+                {{--
+                    Below 120rem the word goes to screen readers and the tooltip, the shield and the count stay: with the
+                    chain rail an English admin's row 1 with 12 open cases and 1234 waiting matches ran 35 px past its box
+                    at 1280 px and 3 px at 1680 px (plan "Mempool-Streifen", P4).
+                --}}
+                <a href="{{ $admin['href'] }}" @if ($section === 'admin') aria-current="page" @endif class="nav-link hidden lg:flex" title="{{ __('Admin') }}" data-test="account-admin">
                     <x-icon name="shield-check" :size="18" class="text-ink-3" />
-                    {{ __('Admin') }}
+                    <span class="max-[120rem]:sr-only">{{ __('Admin') }}</span>
                     @if ($admin['count'] > 0)
                         <span class="nav-count" data-test="admin-count"><span class="sr-only">, </span>{{ $admin['count'] }}<span class="sr-only"> {{ trans_choice('open case|open cases', $admin['count']) }}</span></span>
                     @endif

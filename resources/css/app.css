@@ -2225,7 +2225,7 @@ select:focus[data-flux-control] {
      * Casual in one frame, split by hairlines like the strip's divider. The
      * glyph carries the state the strip uses: the mempool cube dashed
      * (waiting, not in a block), the season blocks orange (mined), the
-     * casual blocks grey (never mined). Links as `.nav-link`, 8 px narrower
+     * casual cube grey and solid (a match that never mines a block). Links as `.nav-link`, 8 px narrower
      * below 100rem.
      */
     .chain-rail {

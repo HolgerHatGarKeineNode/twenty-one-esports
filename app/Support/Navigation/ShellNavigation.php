@@ -223,7 +223,8 @@ final class ShellNavigation
             // A board game's lobby and its games (plan "Mühle und Dame", P5): their own context bar, never chess's.
             $name === 'board.lobby', $name === 'board.correspondence' => $known($route->parameter('board')),
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
-            // The match list files no board game (it lists chess games and series): all games.
+            // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
+            // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
             $name === 'challenges.create' => $known($request->query('game')) ?? array_key_first($this->registry->series()),
             in_array($name, ['matches.show', 'matches.room'], true) => $this->gameOfMatch($route->parameter('match')),
@@ -268,7 +269,7 @@ final class ShellNavigation
         return [
             [
                 'key' => 'mempool', 'href' => route('matches.index'), 'label' => __('Mempool'),
-                'name' => $waiting > 0 ? __('Mempool').', '.trans_choice(':count match playing or up next|:count matches playing or up next', $waiting) : __('Mempool'),
+                'name' => $waiting > 0 ? __('Mempool').', '.trans_choice(':count match waiting|:count matches waiting', $waiting) : __('Mempool'),
                 'icon' => 'matches', 'current' => $onMatches && $chain === null && ! $filtered, 'count' => $waiting > 0 ? $waiting : null, 'tag' => null,
             ],
             [
@@ -277,7 +278,8 @@ final class ShellNavigation
             ],
             [
                 'key' => 'casual', 'href' => route('matches.index', ['chain' => 'casual']), 'label' => __('Casual'), 'name' => __('Casual chain'),
-                'icon' => 'mining', 'current' => $chain === 'casual' && ! $filtered, 'count' => null, 'tag' => null,
+                // A plain match cube in grey, not the season's blocks: a casual match never mines one.
+                'icon' => 'matches', 'current' => $chain === 'casual' && ! $filtered, 'count' => null, 'tag' => null,
             ],
         ];
     }

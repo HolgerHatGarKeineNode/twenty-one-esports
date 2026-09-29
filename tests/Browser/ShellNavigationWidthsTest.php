@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\SeriesStatus;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Support\Navigation\ShellNavigation;
 use App\Support\TwentyOne\LiveStatus;
@@ -82,10 +84,12 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('row 1 fits Tournaments with its sign-up count, the chain rail with a three-digit mempool count and the LIVE badge with a three-digit count at 1024, 1280, 1440, 1600, 1680 and 1920 px, in English and German, for a guest and an admin', function () {
+test('row 1 fits its widest real state: Tournaments with its sign-up count, a four-digit mempool count, 12 open cases on Admin and the LIVE badge with a three-digit count, at 1024, 1280, 1440, 1600, 1680 and 1920 px, in English and German, for a guest and an admin', function () {
     Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDays(2)]);
-    // The widest mempool count the rail must hold (plan "Mempool-Streifen", P4): three digits, cached as the header reads it.
-    Cache::put(ShellNavigation::MEMPOOL_KEY, 128, 3600);
+    // The widest counts row 1 must hold (plan "Mempool-Streifen", P4): four digits in the mempool, cached as the header
+    // reads it, and two on Admin (12 disputed series). Without the cases an admin's row 1 looked 35 px roomier than it is.
+    Cache::put(ShellNavigation::MEMPOOL_KEY, 1234, 3600);
+    SeriesMatch::factory()->accepted()->count(12)->create(['status' => SeriesStatus::Disputed]);
     $admin = shellAdmin();
     $problems = [];
     $failures = [];
@@ -117,7 +121,7 @@ test('row 1 fits Tournaments with its sign-up count, the chain rail with a three
                 $sizes[$key] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge, 'live' => $live, 'row' => $row];
                 fwrite(STDERR, "\n[shell-row1] {$key}: ".json_encode($row));
                 // The rail: the count and Casual at every width; the Block 0 tag from 96rem.
-                $rail = $row['count'] === '128' && $row['casual'] !== null && ($row['tag'] !== null) === ($width >= 1536);
+                $rail = $row['count'] === '1234' && $row['admin'] === ($role === 'admin' ? '12' : null) && $row['casual'] !== null && ($row['tag'] !== null) === ($width >= 1536);
                 if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $row['problems'] !== [] || ! $rail || $badge === null || $badge[2] !== '2' || $live === null || $live[2] !== true) {
                     $failures[] = "{$key}: ".json_encode($sizes[$key]);
                 }

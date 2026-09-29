@@ -3,6 +3,7 @@
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Games\Checkers;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Models\ChessGame;
@@ -16,6 +17,7 @@ use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Tests\Support\CheckersGame;
 use Tests\Support\FakeGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -106,7 +108,7 @@ test('row 1 and the phone\'s More sheet link the mempool with how many matches o
     $html = $this->get('/rules')->assertOk()->getContent();
 
     expect($html)->toContain('aria-label="Mempool and chains"')
-        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"\s+aria-label="Mempool, 6 matches playing or up next"[^>]*data-test="nav-mempool"/')
+        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"\s+aria-label="Mempool, 6 matches waiting"[^>]*data-test="nav-mempool"/')
         ->toMatch('/data-test="mempool-count">6</')
         ->toMatch('/href="'.preg_quote(route('mining'), '/').'"\s+aria-label="Season chain, Block 0 soon"[^>]*data-test="nav-mining"/')
         ->toMatch('/href="'.preg_quote(route('matches.index', ['chain' => 'casual']), '/').'"\s+aria-label="Casual chain"[^>]*data-test="nav-casual"/')
@@ -155,7 +157,22 @@ test('the mempool count leaves out the board games while they are switched off o
     app('router')->setRoutes($kept);
     expect(Route::has('board.show'))->toBeFalse()
         ->and(MempoolStrip::waiting())->toBe(1);
-    $this->get('/rules')->assertOk()->assertSee('aria-label="Mempool, 1 match playing or up next"', false);
+    $this->get('/rules')->assertOk()->assertSee('aria-label="Mempool, 1 match waiting"', false);
+});
+
+test('the mempool count follows each board game\'s own switch: one on, one off', function () {
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    mempoolBoard(NineMensMorris::SLUG);
+    mempoolBoard(Checkers::SLUG);
+    mempoolBoard(Checkers::SLUG);
+    expect(MempoolStrip::waiting())->toBe(3);
+
+    // Checkers off, nine men's morris on: the checkers games stay in the table, but out of the count.
+    config(['esports.board_games.games.'.Checkers::SLUG.'.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    expect(MempoolStrip::boardSlugs())->toBe([NineMensMorris::SLUG])
+        ->and(MempoolStrip::waiting())->toBe(1);
 });
 
 test('the mempool count costs the same queries for 1, 5 and 25 waiting matches of every kind', function () {
