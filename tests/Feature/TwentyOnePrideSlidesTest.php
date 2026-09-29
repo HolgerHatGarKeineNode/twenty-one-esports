@@ -1,8 +1,17 @@
 <?php
 
+use App\Enums\PayoutStatus;
+use App\Enums\SeriesResolution;
+use App\Enums\SeriesStatus;
 use App\Models\ChessGame;
+use App\Models\InviteLink;
+use App\Models\InviteLinkUse;
 use App\Models\Rating;
 use App\Models\RatingChange;
+use App\Models\SeasonAttestation;
+use App\Models\SeasonBlockVoid;
+use App\Models\SeasonPayout;
+use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\TwentyOne\Stream\PrideSlides;
@@ -11,6 +20,7 @@ use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
+use Tests\Support\CheckersGame;
 use Tests\Support\TestSigner;
 
 /**
@@ -18,10 +28,10 @@ use Tests\Support\TestSigner;
  *
  * @param  list<int>  $deltas
  */
-function prideRating(User $user, array $deltas, ?int $gameId = null, string $pool = Rating::CASUAL): void
+function prideRating(User $user, array $deltas, ?int $gameId = null, string $pool = Rating::CASUAL, string $game = 'chess'): void
 {
     $row = Rating::query()->create([
-        'pool' => $pool, 'season' => $pool === Rating::RATED ? 'season-1' : '', 'game' => 'chess', 'mode' => 'blitz',
+        'pool' => $pool, 'season' => $pool === Rating::RATED ? 'season-1' : '', 'game' => $game, 'mode' => 'blitz',
         'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1000 + array_sum($deltas), 'results' => count($deltas),
         'wins' => 0, 'draws' => 0, 'losses' => 0,
     ]);
@@ -44,8 +54,10 @@ test('the pride slides name the latest winner, the week\'s climbers, new sign-up
     prideRating($ben, [10, 16], $latest->id);
     prideRating($zoe, [-16]);
     prideRating($kai, [30, 25]);
-    // Rated changes are not casual climbs.
+    // Every ladder counts: a rated climb, and a climb in another game.
     prideRating($zoe, [99], pool: Rating::RATED);
+    CheckersGame::play();
+    prideRating($kai, [5], game: 'checkers');
 
     $cup = openTournament(['name' => 'Cup <script>']);
     [$player, $signer] = keyedPlayer();
@@ -56,8 +68,9 @@ test('the pride slides name the latest winner, the week\'s climbers, new sign-up
     $pride = app(PrideSlides::class)->all();
 
     expect($pride['win'])->toMatchArray(['winner' => 'Ben', 'loser' => 'Zoe <b>', 'mode' => 'Blitz chess', 'delta' => 16])
-        ->and(array_column($pride['climbers'], 'gain'))->toBe([55, 26])
-        ->and(array_column($pride['climbers'], 'name'))->toBe(['Kai', 'Ben'])
+        ->and(array_column($pride['climbers'], 'gain'))->toBe([83, 60, 26])
+        ->and(array_column($pride['climbers'], 'name'))->toBe(['Zoe <b>', 'Kai', 'Ben'])
+        ->and($pride['climbers'][1]['from'])->toBe(['Chess', 'Checkers'])
         ->and($pride['signups'])->toHaveCount(1)
         ->and($pride['signups'][0])->toMatchArray(['tournament' => 'Cup <script>', 'pot' => null])
         ->and($pride['prizes'])->toMatchArray(['name' => 'Sats Cup', 'pot' => 21000])
@@ -73,7 +86,7 @@ test('the pride slides name the latest winner, the week\'s climbers, new sign-up
     }
 
     expect($svgs['e1'])->toContain('>Ben<', 'beat Zoe &lt;b&gt;', '+16 casual Elo')
-        ->and($svgs['e2'])->toContain('+55 Elo', '+26 Elo')
+        ->and($svgs['e2'])->toContain('+83 Elo', '+60 Elo', '+26 Elo', '3 results in Chess and Checkers')
         ->and($svgs['e3'])->toContain('Cup &lt;script&gt;')
         ->and($svgs['e4'])->toContain('10,395 sats', '6,237 sats', '4,158 sats')
         ->and(implode('', $svgs))->not->toContain('<script>', '<b>');
@@ -84,11 +97,87 @@ test('without games, climbs, sign-ups or pots every pride slide says so instead 
     $renderer = SceneRenderer::fromConfig();
     $svg = fn (string $scene): string => $renderer->svg(['pride' => $pride, 'stats' => [], 'backdrop' => null, 'viewers' => null], RotationPlanner::VIEWS[$scene]);
 
-    expect($pride)->toBe(['win' => null, 'climbers' => [], 'signups' => [], 'prizes' => null])
+    expect($pride)->toBe(['win' => null, 'climbers' => [], 'signups' => [], 'prizes' => null, 'block' => null, 'strongest' => null, 'rankUps' => [], 'streaks' => [], 'payouts' => null, 'inviters' => []])
         ->and($svg('e1'))->toContain('No winner yet.')
         ->and($svg('e2'))->toContain('Nobody has climbed this week yet.')
         ->and($svg('e3'))->toContain('No sign-ups yet.')
-        ->and($svg('e4'))->toContain('No pot open right now.');
+        ->and($svg('e4'))->toContain('No pot open right now.')
+        ->and($svg('e5'))->toContain('No block mined yet.')
+        ->and($svg('e6'))->toContain('Opens with the season.')
+        ->and($svg('e7'))->toContain('No rank-up this week.')
+        ->and($svg('e8'))->toContain('No streak running.')
+        ->and($svg('e9'))->toContain('No season paid out yet.');
+});
+
+test('the latest win can be a series, with its score and the block it mined, and a voided series never is', function () {
+    $season = openSeason();
+    ChessGame::factory()->finished()->create(['ended_at' => now()->subHours(2)]);
+    $won = SeriesMatch::factory()->create(['status' => SeriesStatus::Confirmed, 'winner' => 'challenged', 'finished_at' => now()->subHour(),
+        'result_games' => [['winner' => 'challenged'], ['winner' => 'challenger'], ['winner' => 'challenged'], ['winner' => 'challenged']]]);
+    $won->challengedLineup->clan->forceFill(['name' => 'Orange <Pill>'])->save();
+    $won->forceFill(['challenged_name' => 'Orange <Pill>'])->save();
+    $block = shareBlock($season, 7, User::factory()->create(), User::factory()->create());
+    $block->forceFill(['source' => SeasonAttestation::SERIES, 'source_id' => $won->id])->save();
+    // Two accounts of one person: voided by the league, later than the real win.
+    SeriesMatch::factory()->create(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Void, 'winner' => 'challenger', 'finished_at' => now()->subMinutes(5)]);
+
+    $pride = app(PrideSlides::class)->all();
+    $e1 = SceneRenderer::fromConfig()->svg(['pride' => $pride, 'stats' => [], 'backdrop' => null, 'viewers' => null], RotationPlanner::VIEWS['e1']);
+
+    expect($pride['win'])->toMatchArray(['kind' => 'series', 'gameId' => $won->id, 'winner' => 'Orange <Pill>', 'score' => '3-1', 'block' => 7, 'mode' => 'Rocket League 3v3'])
+        // A team's win tags no single player in the pride note.
+        ->and($pride['win'])->not->toHaveKey('winnerRef')
+        ->and($e1)->toContain('Orange &lt;Pill&gt;', ' 3-1<', 'Mined block 7')
+        ->and($e1)->not->toContain('<Pill>');
+});
+
+test('the season chain, the strongest, rank-ups, streaks, payouts and inviters name their players, and a voided block never shows', function () {
+    $season = openSeason();
+    $miner = User::factory()->create(['name' => 'Mia <i>']);
+    $hal = User::factory()->create(['name' => 'Hal']);
+    $ben = User::factory()->create(['name' => 'Ben']);
+    // Mia: a rank-up (Silver III to Gold II), blocks 1 and 2, the strongest; block 3 is Hal's but voided.
+    shareMoments($miner, $season);
+    $voided = shareBlock($season, 3, $hal, $ben);
+    SeasonBlockVoid::query()->create(['season_id' => $season->id, 'height' => 3, 'season_attestation_id' => $voided->id, 'reason' => 'Linked accounts', 'voided_by_pubkey' => $hal->pubkey]);
+    // Hal: three chess wins in a row, the latest game; Ben: a win, then a draw ends it.
+    foreach (range(1, 3) as $i) {
+        ChessGame::factory()->finished('1-0')->create(['white_id' => $hal->id, 'black_id' => $miner->id, 'ended_at' => now()->subMinutes(30 - $i)]);
+    }
+    ChessGame::factory()->finished('1-0')->create(['white_id' => $ben->id, 'black_id' => $miner->id, 'ended_at' => now()->subMinutes(20)]);
+    ChessGame::factory()->finished('1/2-1/2')->create(['white_id' => $ben->id, 'black_id' => $miner->id, 'ended_at' => now()->subMinutes(10)]);
+    foreach ([[$hal, 21000, PayoutStatus::Paid], [$ben, 9000, PayoutStatus::Open]] as $i => [$user, $sats, $status]) {
+        SeasonPayout::query()->forceCreate(['season_id' => $season->id, 'user_id' => $user->id, 'pubkey' => $user->pubkey, 'name' => $user->displayName(), 'blocks' => 3,
+            'heights' => [1, 2, 3], 'amount_sats' => $sats, 'idempotency_key' => 'pride-'.$i, 'status' => $status, 'paid_at' => $status === PayoutStatus::Paid ? now() : null]);
+    }
+    // Two new players through Mia's link, three who already played through Ben's.
+    foreach ([[$miner, 2, true], [$ben, 3, false]] as [$inviter, $n, $new]) {
+        $link = InviteLink::factory()->multiUse()->create(['inviter_id' => $inviter->id]);
+        foreach (range(1, $n) as $j) {
+            InviteLinkUse::query()->create(['invite_link_id' => $link->id, 'inviter_id' => $inviter->id, 'user_id' => User::factory()->create()->id, 'was_new' => $new]);
+        }
+    }
+
+    $pride = app(PrideSlides::class)->all();
+    $renderer = SceneRenderer::fromConfig();
+    $source = app(SceneSource::class);
+    $svg = fn (string $scene): string => $renderer->svg([...$source->rotation($scene, null, [], 0, 0, []), 'viewers' => null], RotationPlanner::VIEWS[$scene]);
+
+    expect($pride['block'])->toMatchArray(['height' => 2, 'reward' => 5000, 'seasonBlocks' => 2, 'minerBlocks' => 2])
+        ->and(array_column($pride['block']['miners'], 'name'))->toBe(['Mia <i>'])
+        ->and($pride['strongest']['rows'][0])->toMatchArray(['place' => 1, 'name' => 'Mia <i>'])
+        ->and($pride['rankUps'][0])->toMatchArray(['name' => 'Mia <i>', 'tier' => 'Gold II', 'previous' => 'Silver III', 'ladder' => 'Chess blitz'])
+        ->and(array_column($pride['streaks'], 'name'))->toBe(['Hal'])
+        ->and($pride['streaks'][0])->toMatchArray(['wins' => 3, 'games' => ['Chess']])
+        ->and($pride['payouts'])->toMatchArray(['total' => 21000, 'players' => 1])
+        ->and(array_column($pride['inviters'], 'brought'))->toBe([2])
+        ->and($svg('e5'))->toContain('>2<', 'Mia &lt;i&gt;', '+5,000 sats', '2nd block this season')
+        ->and($svg('e6'))->toContain('Mia &lt;i&gt;', 'Global Rating')
+        ->and($svg('e7'))->toContain('Gold II', 'up from Silver III')
+        ->and($svg('e8'))->toContain('>3<', '>Hal<', 'in Chess')
+        ->and($svg('e9'))->toContain('21,000', '>Hal<')
+        ->and($svg('d3'))->toContain('Mia &lt;i&gt;', 'brought 2 new players in 30 days')
+        ->and($svg('e5').$svg('e6').$svg('e7').$svg('d3'))->not->toContain('<i>');
 });
 
 test('a styled name keeps its letters on the stream instead of losing them', function () {

@@ -64,12 +64,14 @@ final class RotationPlanner
      * Teasers in every round, before the pool's: one of each group, the groups
      * taking turns from round to round: the sats to win (all pots d1, the
      * biggest pot's prizes e4), the casual cups (d2), a player named for what
-     * they did (latest win e1, climbers e2, new sign-ups e3).
+     * they did (latest win e1, climbers e2, new sign-ups e3, the block a win
+     * mined e5, the strongest across all games e6, rank-ups e7, win streaks
+     * e8, the season's payouts e9).
      */
-    public const EVERY_ROUND = [['d1', 'e4'], ['d2'], ['e1', 'e2', 'e3']];
+    public const EVERY_ROUND = [['d1', 'e4'], ['d2'], ['e1', 'e2', 'e3', 'e5', 'e6', 'e7', 'e8', 'e9']];
 
-    /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes. */
-    public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4'];
+    /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes, block mined, strongest, rank-ups, streaks, payouts. */
+    public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9'];
 
     /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4). */
     public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4'];
@@ -85,6 +87,7 @@ final class RotationPlanner
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
         'd5' => 'stream.rotation.d5-board',
+        'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
     ];
 
     /** The tournament slides' scene ids, one pair per look: hero (1), bracket preview (2). */

@@ -273,7 +273,7 @@ test('a board game that won its winner a tournament is the tournament win on the
 
     expect($tournament->status)->toBe(TournamentStatus::Finished)
         ->and($win)->toMatchArray(['gameId' => $board->id, 'winner' => $winner->displayName(), 'tournament' => 'Brett Cup', 'url' => route('tournaments.show', $tournament)])
-        ->and($svg)->toContain('TOURNAMENT WIN · BRETT CUP')->not->toContain('LATEST WIN');
+        ->and($svg)->toContain('Tournament win: Brett Cup')->not->toContain('Latest win');
 
     foreach ([0, 1] as $variant) {
         $note = app(PrideNotes::class)->compose(1, $variant);
