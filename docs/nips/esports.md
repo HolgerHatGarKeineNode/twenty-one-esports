@@ -43,17 +43,22 @@ RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (
 DMs, zaps to the winner of a game, series or tournament, NIP-05 names on the league's domain;
 **revision 9.12** (2026-09-29): nine men's morris and checkers in the game registry as board games,
 casual on the league's own server with a casual rating each, in casual cups and tournaments, without
-a ladder until they join the season chain). Not
+a ladder until they join the season chain; **revision 9.13** (2026-09-29): the board games in the
+season chain: rated games from each board game's rated queue and in rated tournaments, a ladder per
+board game, their attestations and blocks, one share group `board-games`, and consensus rule 2 for
+board games). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11 and 9.12 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12 and 9.13 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
-names the game and mode, and a board game has no ladder yet.
+names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
+board games (their ladders, attestations and blocks), of the same shape as a rated chess game's, but
+prints none of them yet.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -94,6 +99,48 @@ them, and they apply from the day a league adopts revision 9.11 (an "I'm in" pos
 The rules marked "rev. 9.12" add two games; no existing ladder, event or rule changes. They apply to every tournament of
 a board game whose first `31923` version the league signs after it adopts revision 9.12; a board game gets a ladder
 only with a later revision that brings it into the season chain.
+The rules marked "rev. 9.13" are that revision: they bring the board games into the season chain. A board game's
+ladder opens with its first version, which the league signs at Block 0 of every season it releases after adopting
+revision 9.13 (with every other ladder), and in a season already live then with the first parameter change after it
+(which signs a new version of every ladder); until its ladder exists, no game of it is rated. A genesis signed before
+revision 9.13 has no `board-games` group and no row for a board game, so in that season a parameter change adds each
+board game as its own share key. Rule 2's move count holds for every board game candidate attested after the league
+adopts revision 9.13; no chess, Rocket League or EA Sports FC rule, ladder or event changes.
+
+### Changelog of revision 9.13 (2026-09-29)
+
+Board games in the season chain ([Board games](#board-games-rev-912),
+[Consensus rules](#consensus-rules-season-chain-v1), [Season Genesis](#season-genesis-2156)). No new kind and
+no new tag.
+
+- **Rated board games.** Besides its casual queue each board game has a rated queue, open while the
+  season is live and the board game's ladder exists: it pairs two Trusted players who list each other, and
+  the pairing is the accept, so the trust gate and each player's clan are read and pinned then (as rated
+  blitz). A board game in a rated tournament is rated the same way (the tournament's frozen ladder, the gate
+  at the pairing); a casual cup stays casual. Casual board games stay as in revision 9.12.
+- **A ladder per board game.** `32152` with `d` = `<board game>/blitz/<season>` (`nine-mens-morris`,
+  `checkers`), `rates` `player`, `time_control` `300+3`, no `variant`, with every other frozen tag of a
+  ladder; the league signs it at Block 0 and again after every parameter change, as every ladder.
+- **Attestations.** Every finished rated board game is attested (`2154`) on its ladder, signed by the league:
+  `a` ladder, `p` challenger (White) and challenged (Black), one `board` row
+  `["board", "1", <White>, <Black>, <result>]`, `resolution` `admin` (`forfeit` for a Black who missed the
+  first move of a tournament game after White's), `winner`, `elo` for both players (none for a forfeit),
+  `prev`, `match`, `trust` and `gate` rows pinned at the pairing, `clan` rows, the tournament `a` for a
+  tournament game, `block`, `alt`. A board game has no challenge, answer or game record, so the attestation
+  carries no `e`; `content` says the game was played on the league server, which checked every move.
+- **Blocks.** A decisive rated board game outside a tournament is a block candidate with the `weight` of its
+  board game and mode; a draw is not, and a tournament game never mines (rev. 7). **Consensus rule 2** now
+  counts a board game's full moves too: fewer than `moves` (the league's own count of the game, as for
+  chess) do not mine.
+- **One share group.** The league's draft for the next genesis groups the two board games as
+  `["group", "board-games", "nine-mens-morris", "checkers"]`: one share cap and one daily limit for both.
+  Rules 4 and 8 (the pairing limits) count per game, so the same two players can take a block in each
+  board game on a day, within their daily limit of the group. The draft proposes weight 1 each, a share
+  of 10 % and 5 blocks a day; the league's board adopts these or others before Block 0 (league behaviour,
+  no event).
+- **Corrections.** The tournament control corrects the Elo of a rated board game as a chess game's
+  ([Elo of a corrected result](#elo-of-a-corrected-result-league-server)); a tournament game has no block
+  to take back.
 
 ### Changelog of revision 9.12 (2026-09-29)
 
@@ -918,17 +965,24 @@ their own tables, next to chess and not built on it:
 | field | nine men's morris | checkers |
 |---|---|---|
 | game, mode | `nine-mens-morris`: `blitz` | `checkers`: `blitz` |
-| rated entity | `player` (casual rating only) | `player` (casual rating only) |
+| rated entity | `rates` `player` (rev. 9.13; before, casual rating only) | `player` (rev. 9.13) |
 | time control | `300+3` | `300+3` |
 | rules | nine men per side, flying with three, a mill removes one man (from a mill only when all stand in mills); two men or no move loses; threefold position or 50 moves each without a mill is a draw | German rules on 8 x 8: men move forward and capture both ways, compulsory capture as a whole chain with free choice between chains, a flying king that lands right behind the captured man, a man crowned mid-chain ends the move; no man or no move loses; threefold position or 25 moves each without a capture or a man moving is a draw |
-| rated | no: no ladder, no attestation, no block (see the changelog of revision 9.12) | no |
+| rated | rev. 9.13: yes, from the rated queue and in rated tournaments, on the ladder `nine-mens-morris/blitz/<season>`; casual games stay off it. Revision 9.12: no | as nine men's morris, ladder `checkers/blitz/<season>` |
 | match size | one game; a knockout draw is replayed with the colours swapped | as nine men's morris |
 | draws | yes | yes |
 | moves on Nostr | none | none |
 
 A board game's casual rating is league data under the same Elo parameters as every casual ladder.
-Its tournaments are ordinary tournaments (a `31923` whose summary names the game and mode, with no
-ladder `a`); their matches are never rated. A player plays one live game at a time across chess, the board games and the casual 1v1.
+Its tournaments are ordinary tournaments (a `31923` whose summary names the game and mode). Revision
+9.12: with no ladder `a`, their matches never rated. Revision 9.13: a tournament published while the
+board game's ladder is open names it and is rated like a chess tournament (a directors' result of a
+board game is not played on the league server and rates nothing). A player plays one live game at a time across chess, the board games and the casual 1v1.
+
+**Rated (rev. 9.13).** A rated board game is attested like a solo chess game on the ladder of its board
+game (see the changelog of revision 9.13 for the tags), without an `e`: it has no challenge, answer or
+game record. The two board games form the share group `board-games` in a genesis the league signs after
+adopting revision 9.13.
 
 ### Rocket League 1v1 (rev. 7.1)
 
@@ -2288,7 +2342,8 @@ the first rule it fails, in this order.
    also where the trust gate does not need it.
 2. **A real game.** `resolution` `confirmed` or `admin`; a forfeit never mines. Chess: the counted
    game record has at least `moves` full moves (default 20: the last move number is 20 or more), which
-   also excludes a resignation before move 10. Rocket League: a complete series, which the report rules guarantee.
+   also excludes a resignation before move 10. Board games (rev. 9.13): the game the league played has at
+   least `moves` full moves too, counted the same way (a player's move and the answer to it are one). Rocket League: a complete series, which the report rules guarantee.
 3. **Not the same clan**: no winning and losing player share a `clan` row value.
 4. **Blocks per pairing and day.** Fewer earlier blocks of the same pairing on the same UTC day of
    `created_at` than the first value of `pairlimit` (default 1). The pairing is the two rated entities: two players, or two lineups in a series.
