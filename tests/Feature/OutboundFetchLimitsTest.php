@@ -217,3 +217,115 @@ test('F3: a NIP-05 check connects to the address the guard checked', function ()
     expect(localNip05Verifier($port, $dir.'/ca.pem')->check('anna@pinned.invalid', str_repeat('a', 64)))->toBeFalse()
         ->and(stopOutboundServer($server, $dir))->toBe(['pinned.invalid:'.$port.' /.well-known/nostr.json?name=anna']);
 });
+
+/**
+ * Every outbound request's `decode_content` from now on, as the HTTP client hands it to the handler:
+ * anything but false lets curl inflate the body (into its sink, uncounted by any progress callback).
+ *
+ * @return ArrayObject<int, mixed>
+ */
+function decodeContentSeen(): ArrayObject
+{
+    $seen = new ArrayObject;
+    Http::globalMiddleware(fn (callable $handler): Closure => function ($request, array $options) use ($handler, $seen) {
+        $seen[] = $options['decode_content'] ?? 'default';
+
+        return $handler($request, $options);
+    });
+
+    return $seen;
+}
+
+/**
+ * Run `$call` and measure it: [what it returned or threw, seconds, MB the peak memory grew by].
+ *
+ * @return array{0: mixed, 1: float, 2: float}
+ */
+function outboundMeasure(Closure $call): array
+{
+    gc_collect_cycles();
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+    $started = microtime(true);
+
+    try {
+        $result = $call();
+    } catch (Throwable $e) {
+        $result = $e;
+    }
+
+    return [$result, microtime(true) - $started, (memory_get_peak_usage() - $before) / 1048576];
+}
+
+test('N1: a stacked gzip bomb is refused as it came, never inflated: zap, payout invoice and NIP-05 check', function () {
+    outboundHosts(['bomb.invalid' => ['127.0.0.1']]);
+    $decode = decodeContentSeen();
+
+    foreach (['zap', 'invoice', 'nip05'] as $path) {
+        // 256 MB of zeros, gzipped twice: a few hundred bytes on the wire.
+        [$server, $port, $dir] = outboundServer('gzip2:256', 'bomb.invalid');
+        [$result, $seconds, $grewMb] = outboundMeasure(fn () => match ($path) {
+            'zap' => localLightningAddress($port, $dir.'/ca.pem')->zapInvoice('tips@bomb.invalid', 21, '{}', 'lnurl1x'),
+            'invoice' => localLightningAddress($port, $dir.'/ca.pem')->invoice('tips@bomb.invalid', 21),
+            'nip05' => localNip05Verifier($port, $dir.'/ca.pem')->check('anna@bomb.invalid', str_repeat('a', 64)),
+        });
+        $seen = stopOutboundServer($server, $dir);
+        fwrite(STDERR, sprintf("\n[outbound] gzip bomb %s: %s after %.2f s, peak +%.1f MB\n", $path, $result instanceof Throwable ? $result->getMessage() : var_export($result, true), $seconds, $grewMb));
+
+        expect($seen)->toHaveCount(1)
+            // Refused for its encoding, before any attempt to read it as JSON.
+            ->and($path === 'nip05' ? $result : ($result instanceof LightningAddressFailure ? $result->reason.': '.$result->getMessage() : $result))
+            ->toBe($path === 'nip05' ? false : 'lnurl_invalid: encoded or too large')
+            ->and($grewMb)->toBeLessThan(16.0)
+            ->and($seconds)->toBeLessThan(2.0);
+    }
+
+    // Never asked to inflate: every request went out with decode_content false.
+    expect($decode->getArrayCopy())->toBe([false, false, false]);
+});
+
+test('N2: the DNS lookup of the callback host counts against the budget', function () {
+    config(['esports.wallet.lnurl_request_seconds' => 2, 'esports.wallet.lnurl_budget_seconds' => 3]);
+    // tips@lookup.invalid answers at once; its callback host "slowdns.invalid" has a DNS server that never answers:
+    // the system resolver gives up after 10 s, a lookup bounded to its budget after timeout x 2 queries.
+    $resolver = new class extends HostResolver
+    {
+        /** @var list<float> */
+        public array $budgets = [];
+
+        public function addresses(string $host): array
+        {
+            if ($host === 'slowdns.invalid') {
+                sleep(10);
+
+                return [];
+            }
+
+            return ['127.0.0.1'];
+        }
+
+        public function addressesWithin(string $host, float $seconds): array
+        {
+            $this->budgets[] = round($seconds, 1);
+
+            if ($host === 'slowdns.invalid') {
+                usleep((int) (min(10, 2 * max(1, (int) floor($seconds / 2))) * 1_000_000));
+
+                return [];
+            }
+
+            return ['127.0.0.1'];
+        }
+    };
+    app()->instance(HostResolver::class, $resolver);
+    [$server, $port, $dir] = outboundServer('lnurl:slowdns.invalid', 'lookup.invalid');
+
+    [$result, $seconds] = outboundMeasure(fn () => localLightningAddress($port, $dir.'/ca.pem')->zapInvoice('tips@lookup.invalid', 21, '{}', 'lnurl1x'));
+    stopOutboundServer($server, $dir);
+    fwrite(STDERR, sprintf("\n[outbound] slow DNS: %s after %.2f s, lookup budgets %s\n", $result instanceof Throwable ? $result->getMessage() : 'no failure', $seconds, json_encode($resolver->budgets)));
+
+    expect($result)->toBeInstanceOf(LightningAddressFailure::class)
+        ->and(count($resolver->budgets))->toBe(2)
+        ->and($resolver->budgets[1])->toBeLessThanOrEqual(3.0)
+        ->and($seconds)->toBeLessThan(3.5);
+});

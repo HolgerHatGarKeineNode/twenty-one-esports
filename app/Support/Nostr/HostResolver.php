@@ -33,4 +33,27 @@ class HostResolver
 
         return $addresses;
     }
+
+    /**
+     * {@see addresses()} within about `$seconds` (P47 re-audit N2): the
+     * resolver's own timeout is set for this lookup only (glibc reads
+     * `RES_OPTIONS` at every lookup): one attempt per query, the A and the
+     * AAAA query each at most half the time, in whole seconds, at least one.
+     * Measured with a DNS server that never answers: 10.01 s by default,
+     * 1.00 s with `timeout:1 attempts:1`.
+     *
+     * @return list<string>
+     */
+    public function addressesWithin(string $host, float $seconds): array
+    {
+        $previous = getenv('RES_OPTIONS');
+        $timeout = max(1, (int) floor($seconds / 2));
+        putenv('RES_OPTIONS='.trim(($previous === false ? '' : $previous).' timeout:'.$timeout.' attempts:1'));
+
+        try {
+            return $this->addresses($host);
+        } finally {
+            putenv($previous === false ? 'RES_OPTIONS' : 'RES_OPTIONS='.$previous);
+        }
+    }
 }

@@ -32,6 +32,8 @@ use Throwable;
  *     (CURLOPT_TIMEOUT_MS of what is left), so a server that trickles bytes
  *     or a chain of slow redirects cannot hold the run; curl aborts past
  *     `max_bytes` (progress callback) and the body is checked again after;
+ *   - nothing is inflated (`decode_content` false) and an encoded body is
+ *     refused: curl would otherwise write a gzip bomb out uncounted;
  *   - the answer must be a 200 with an `image/*` content type.
  *
  * Every refusal throws StreamImageFailed with a reason that names the host,
@@ -75,7 +77,8 @@ class ImageFetcher
                     ->connectTimeout(min(3000, $leftMs) / 1000)
                     ->timeout($leftMs / 1000)
                     ->withoutRedirecting()
-                    ->withOptions(['curl' => $this->curlOptions($host, $address, $leftMs, $maxBytes)])
+                    // Nothing inflated (P47 re-audit N1: a stacked gzip of 6 KB became 4 GB in the temp file).
+                    ->withOptions(['decode_content' => false, 'curl' => $this->curlOptions($host, $address, $leftMs, $maxBytes)])
                     ->get($url);
             } catch (Throwable $e) {
                 throw new StreamImageFailed('request failed ('.self::withoutQuery($e->getMessage()).')', previous: $e);
@@ -100,6 +103,12 @@ class ImageFetcher
 
         if (! str_starts_with($type, 'image/')) {
             throw new StreamImageFailed('content type "'.substr($type, 0, 60).'" is not an image');
+        }
+
+        $encoding = strtolower(trim($response->header('Content-Encoding')));
+
+        if ($encoding !== '' && $encoding !== 'identity') {
+            throw new StreamImageFailed('content encoding "'.substr($encoding, 0, 30).'" refused');
         }
 
         $length = $response->header('Content-Length');

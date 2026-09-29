@@ -678,6 +678,34 @@ test('a 3 MB picture that announces no length loads, and curl itself stops one o
     stopHttpsImageServer($server, $dir);
 });
 
+test('a gzip bomb picture is refused as it came, never inflated (P47 re-audit N1)', function () {
+    Http::preventStrayRequests(false);
+    streamImageHosts(['bomb.invalid' => ['127.0.0.1']]);
+    // 256 MB of zeros, gzipped twice: a few hundred bytes on the wire.
+    [$server, $port, $dir] = httpsImageServer('gzip2:256', 'bomb.invalid');
+    $decode = [];
+    Http::globalMiddleware(function (callable $handler) use (&$decode): Closure {
+        return function ($request, array $options) use ($handler, &$decode) {
+            $decode[] = $options['decode_content'] ?? 'default';
+
+            return $handler($request, $options);
+        };
+    });
+    gc_collect_cycles();
+    memory_reset_peak_usage();
+    $before = memory_get_usage();
+    $started = microtime(true);
+
+    $fetch = fn () => localImageFetcher($port, $dir.'/ca.pem')->fetch("https://bomb.invalid:{$port}/me.png");
+
+    expect($fetch)->toThrow(StreamImageFailed::class, 'content encoding "gzip, gzip" refused')
+        ->and((memory_get_peak_usage() - $before) / 1048576)->toBeLessThan(16.0)
+        ->and(microtime(true) - $started)->toBeLessThan(2.0)
+        // Never asked to inflate (curl would write it into its temp sink, uncounted).
+        ->and($decode)->toBe([false]);
+    stopHttpsImageServer($server, $dir);
+});
+
 /**
  * The requests a fake-https-image server saw: "<Host> <path>" each.
  *

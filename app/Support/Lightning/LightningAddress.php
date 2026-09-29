@@ -197,7 +197,14 @@ class LightningAddress
                 throw new LightningAddressFailure('lnurl_invalid', 'only https on a DNS name');
             }
 
-            $address = $this->publicAddress($host) ?? throw new LightningAddressFailure('lnurl_unreachable', 'the host does not resolve to a public address');
+            // The lookup counts against the budget too (re-audit N2: a silent DNS server added 10 s).
+            $lookup = $deadline - microtime(true);
+
+            if ($lookup < 1) {
+                throw new LightningAddressFailure('lnurl_unreachable', 'no time left');
+            }
+
+            $address = $this->publicAddress($host, $lookup) ?? throw new LightningAddressFailure('lnurl_unreachable', 'the host does not resolve to a public address');
         }
 
         $left = min((float) config('esports.wallet.lnurl_request_seconds', self::REQUEST_SECONDS), $deadline - microtime(true));
@@ -207,7 +214,7 @@ class LightningAddress
         }
 
         try {
-            // The curl handler (PinnedFetch): the pin holds and the timeout is a total deadline; the progress callback aborts past MAX_BYTES.
+            // The curl handler (PinnedFetch): the pin holds, the timeout is a total deadline, nothing is inflated, and curl aborts past MAX_BYTES.
             $response = $this->http->setHandler(PinnedFetch::handler())->acceptJson()->connectTimeout(min(3, $left))->timeout($left)->withoutRedirecting()
                 ->withOptions([...PinnedFetch::options($host, $address, $this->port(), self::MAX_BYTES), ...($address === null ? [] : $this->extraOptions())])->get($url);
 
@@ -215,7 +222,7 @@ class LightningAddress
                 throw new LightningAddressFailure('lnurl_unreachable', 'HTTP '.$response->status());
             }
 
-            $json = $response->body();
+            $json = PinnedFetch::body($response, self::MAX_BYTES) ?? throw new LightningAddressFailure('lnurl_invalid', 'encoded or too large');
         } catch (LightningAddressFailure $failure) {
             throw $failure;
         } catch (Throwable $exception) {
@@ -224,7 +231,7 @@ class LightningAddress
             throw new LightningAddressFailure('lnurl_unreachable', 'no answer');
         }
 
-        $document = strlen($json) > self::MAX_BYTES ? null : json_decode($json, true);
+        $document = json_decode($json, true);
 
         if (! is_array($document)) {
             throw new LightningAddressFailure('lnurl_invalid', 'not JSON');
@@ -265,9 +272,9 @@ class LightningAddress
         return [];
     }
 
-    private function publicAddress(string $host): ?string
+    private function publicAddress(string $host, float $seconds): ?string
     {
-        $addresses = $this->resolver->addresses($host);
+        $addresses = $this->resolver->addressesWithin($host, $seconds);
 
         foreach ($addresses as $address) {
             if (! $this->isAllowedAddress($address)) {

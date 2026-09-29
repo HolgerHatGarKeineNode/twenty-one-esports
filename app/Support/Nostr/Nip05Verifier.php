@@ -94,9 +94,10 @@ class Nip05Verifier
                 return false;
             }
 
-            $json = $response->body();
+            // Never inflated (re-audit N1): an encoded or oversized body is refused as it came.
+            $json = PinnedFetch::body($response, self::MAX_BYTES);
 
-            if (strlen($json) > self::MAX_BYTES) {
+            if ($json === null) {
                 return false;
             }
         } catch (Throwable $exception) {
@@ -152,7 +153,8 @@ class Nip05Verifier
      */
     private function publicAddress(string $host): ?string
     {
-        $addresses = $this->resolver->addresses($host);
+        // At most 2 of the check's seconds for DNS (re-audit N2).
+        $addresses = $this->resolver->addressesWithin($host, 2);
 
         if ($addresses === []) {
             return null;
