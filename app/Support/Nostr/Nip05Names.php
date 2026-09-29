@@ -35,6 +35,9 @@ use Illuminate\Support\Str;
  *   `esports.nip05.change_days` against every other key, and only the key
  *   that held it may take it back meanwhile; a hold covers every name with
  *   the same skeleton (`odell` also `o.dell`, `0dell`, `odel1`);
+ * - one given-up name per key (P47 audit follow-up): each new release ends
+ *   the key's older release hold, so claim, delete the account, log in again
+ *   and claim anew parks one name, not one per round; revoked holds stay;
  * - a change (a new name, or a claim after a release or a revocation) at most
  *   once in `esports.nip05.change_days`; the first claim is free.
  *
@@ -313,8 +316,17 @@ final class Nip05Names
         return User::query()->where('nip05_name', $name)->first();
     }
 
+    /**
+     * Hold a given-up name, and end this key's older release hold: a key
+     * parks at most one name (the account deletion and the fresh account's
+     * free first claim made one more per round, each held 30 days). Ended by
+     * its end date, not as lifted: `lifted_*` is an admin's act. Revoked holds
+     * are never touched here.
+     */
     private function holdReleased(string $name, User $user): void
     {
+        Nip05Hold::query()->active()->where('reason', Nip05Hold::RELEASED)->where('pubkey', $user->pubkey)->update(['held_until' => now()]);
+
         Nip05Hold::query()->create([
             'name' => $name,
             'skeleton' => self::skeleton($name),

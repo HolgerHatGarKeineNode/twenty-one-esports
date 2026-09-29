@@ -116,6 +116,46 @@ test('audit F2: a name given up is held for the change period against other keys
     expect($names->claim($ben, 'satsqueen'))->toBeNull();
 });
 
+test('one key holds at most one given-up name: each new release ends its older release hold, never a revoked one', function () {
+    $admin = User::factory()->create();
+    $names = app(Nip05Names::class);
+    $key = new TestSigner;
+    $other = User::factory()->create();
+
+    // An earlier name of the key, revoked by an admin: that hold is never ended by the key's own releases.
+    $first = User::factory()->withPubkey($key->pubkey)->create();
+    $names->claim($first, 'satoshi');
+    $names->revoke($first, $admin);
+    app(DeleteAccount::class)($first);
+
+    // Park by deletion: claim, delete the account, log in again (a fresh account's first claim is free), claim, delete.
+    $jack = User::factory()->withPubkey($key->pubkey)->create();
+    expect($names->claim($jack, 'jack'))->toBeNull();
+    app(DeleteAccount::class)($jack);
+
+    $odell = User::factory()->withPubkey($key->pubkey)->create();
+    expect($names->claim($odell, 'odell'))->toBeNull();
+    app(DeleteAccount::class)($odell);
+
+    expect($names->claim($other, 'odell'))->toStartWith('This name was given up recently')
+        ->and($names->claim($other, 'jack'))->toBeNull()
+        ->and($names->claim(User::factory()->create(), 'satoshi'))->toBe('This name is reserved.')
+        ->and(Nip05Hold::query()->active()->where('pubkey', $key->pubkey)->orderBy('name')->pluck('reason', 'name')->all())
+        ->toBe(['odell' => Nip05Hold::RELEASED, 'satoshi' => Nip05Hold::REVOKED]);
+
+    // Another key's hold is untouched by this key's release.
+    $ben = User::factory()->create();
+    $names->claim($ben, 'benny');
+    $names->release($ben);
+    $again = User::factory()->withPubkey($key->pubkey)->create();
+    $names->claim($again, 'kate');
+    $names->release($again);
+
+    expect($names->claim(User::factory()->create(), 'benny'))->toStartWith('This name was given up recently')
+        ->and($names->claim(User::factory()->create(), 'odell'))->toBeNull()
+        ->and($names->claim(User::factory()->create(), 'kate'))->toStartWith('This name was given up recently');
+});
+
 test('deleting the account ends the name at once; another key gets it after the change period', function () {
     $anna = User::factory()->create();
     app(Nip05Names::class)->claim($anna, 'anna');
