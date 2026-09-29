@@ -32,11 +32,14 @@
         $fy += 26 + count($lines) * 26 + 22;
     }
     $drawing = ($t['phase'] ?? null) === 'drawing';
+    // A sign-up frame (TournamentSlides: no phase) shows where to sign up and the time to the close.
+    $signup = ! isset($t['phase']);
     $block = is_int($t['drawBlock'] ?? null) ? $t['drawBlock'] : null;
     $nowLine = $drawing ? ($block !== null ? 'Bitcoin block '.number_format($block).' draws the bracket' : 'The draw is on') : K::text($t, 'now');
-    $cd = $drawing ? K::countdownParts($t['countdown'] ?? null) : null;
+    $cd = $drawing || $signup ? K::countdownParts($t['countdown'] ?? null) : null;
+    $cdWord = $signup ? 'Closes in ' : 'Starts in ';
     $cdText = $cd ? ($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'] : '';
-    $nowText = K::fit(($drawing ? '' : 'Now: ').($nowLine === '' ? K::tournamentUrl($t) : $nowLine), K::MONO, 22, 1168 - ($cdText === '' ? 0 : K::width('Starts in '.$cdText, K::MONO, 22) + 24));
+    $nowText = K::fit(($drawing ? '' : ($signup ? 'Sign up: ' : 'Now: ')).($nowLine === '' ? K::tournamentUrl($t) : $nowLine), K::MONO, 22, 1168 - ($cdText === '' ? 0 : K::width($cdWord.$cdText, K::MONO, 22) + 24));
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
@@ -75,6 +78,6 @@
 @endforeach
 
 <rect x="40" y="560" width="1200" height="48" fill="#F7931A"/>
-<text data-unit="now" data-box="55 568 {{ 1225 - ($cdText === '' ? 0 : K::width('Starts in '.$cdText, K::MONO, 22) + 23) }} 600" x="56" y="592" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">{{ $nowText }}</text>
-@if ($cdText !== '')<g data-countdown="{{ $t['countdown'] }}"><text data-unit="cd" x="1224" y="592" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A" text-anchor="end">Starts in {{ $cdText }}</text></g>@endif
+<text data-unit="now" data-box="55 568 {{ 1225 - ($cdText === '' ? 0 : K::width($cdWord.$cdText, K::MONO, 22) + 23) }} 600" x="56" y="592" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A">{{ $nowText }}</text>
+@if ($cdText !== '')<g data-countdown="{{ $t['countdown'] }}"><text data-unit="cd" x="1224" y="592" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#17120A" text-anchor="end">{{ $cdWord.$cdText }}</text></g>@endif
 </svg>

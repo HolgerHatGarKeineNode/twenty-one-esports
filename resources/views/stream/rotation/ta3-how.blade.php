@@ -36,10 +36,13 @@
         $fy += 30 + count($lines) * 32 + 22;
     }
     $drawing = ($t['phase'] ?? null) === 'drawing';
+    // A sign-up frame (TournamentSlides: no phase) shows where to sign up and the time to the close.
+    $signup = ! isset($t['phase']);
     $block = is_int($t['drawBlock'] ?? null) ? $t['drawBlock'] : null;
     $nowLine = $drawing ? ($block !== null ? 'Bitcoin block '.number_format($block).' draws the bracket' : 'The draw is on') : K::text($t, 'now');
     $nowText = K::wrap($nowLine, K::DISPLAY, 26, 504, 2);
-    $cd = $drawing ? K::countdownParts($t['countdown'] ?? null) : null;
+    $cd = $drawing || $signup ? K::countdownParts($t['countdown'] ?? null) : null;
+    $cdLabel = $signup ? K::fit(K::text($t, 'countdownLabel', 'Sign-up closes in'), K::MONO, 18, 300) : 'Starts in';
     $url = K::tournamentUrl($t);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
@@ -91,12 +94,12 @@
 <text data-unit="now-{{ $i }}" data-box="703 {{ ($cd ? 560 : 596) + $i * 32 }} 1209 {{ ($cd ? 592 : 628) + $i * 32 }}" x="704" y="{{ ($cd ? 586 : 622) + $i * 32 }}" font-family="Unbounded" font-weight="800" font-size="26" fill="#F7931A">{{ $line }}</text>
 @endforeach
 @else
-<text data-unit="now-label" x="704" y="588" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">Everything about it</text>
-<text data-unit="url" data-box="703 604 1209 632" x="704" y="626" font-family="JetBrains Mono" font-weight="700" font-size="{{ K::monoSize($url, 20, 504) }}" fill="#FFFFFF">{{ $url }}</text>
+<text data-unit="now-label" x="704" y="{{ $cd ? 552 : 588 }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $signup ? 'Sign up at' : 'Everything about it' }}</text>
+<text data-unit="url" data-box="703 {{ $cd ? 568 : 604 }} 1209 {{ $cd ? 596 : 632 }}" x="704" y="{{ $cd ? 590 : 626 }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ K::monoSize($url, 20, 504) }}" fill="#FFFFFF">{{ $url }}</text>
 @endif
 @if ($cd)
 <g data-countdown="{{ $t['countdown'] }}">
-<text data-unit="cd-label" x="704" y="660" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">Starts in</text>
+<text data-unit="cd-label" x="704" y="660" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $cdLabel }}</text>
 <text data-unit="cd" x="1208" y="662" font-family="JetBrains Mono" font-weight="700" font-size="28" fill="#FFFFFF" text-anchor="end">{{ ($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'] }}</text>
 </g>
 @endif

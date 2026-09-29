@@ -613,8 +613,11 @@ class TwentyOneStreamCommand extends Command
     private function frameFor(SceneSource $source, array $slot, array $games, int $more, int $nowMs, array $stats, ?array $previous, array $tournaments = [], ?int $viewers = null, array $live = []): ?array
     {
         $scene = (string) $slot['scene'];
-        // A slide past sign-up takes its tournament from the live frames, an upcoming one from the sign-up frames.
-        $tournament = collect(in_array($scene, RotationPlanner::LIVE_TOURNAMENT_SCENES, true) ? $live : $tournaments)->firstWhere('id', $slot['tournamentId']);
+        // A slide past sign-up takes its tournament from the live frames, an upcoming one from the sign-up frames; how it
+        // runs (t?3) shows both, and a tournament is in one list only.
+        $tournament = in_array($scene, RotationPlanner::LIVE_TOURNAMENT_SCENES, true)
+            ? collect($live)->firstWhere('id', $slot['tournamentId']) ?? collect($tournaments)->firstWhere('id', $slot['tournamentId'])
+            : collect($tournaments)->firstWhere('id', $slot['tournamentId']);
 
         try {
             return [

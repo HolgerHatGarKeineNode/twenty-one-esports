@@ -62,12 +62,12 @@ test('a finished tournament shows its champion, then the final bracket and its p
 });
 
 test('tournaments past sign-up and upcoming ones take turns, one per round, the live ones first', function () {
-    $log = liveRotation(30 + 93 + 78 + 30 + 60, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]], fn () => [9]);
+    $log = liveRotation(30 + 78 + 93 + 30 + 60, fn () => [['id' => 5, 'phase' => 'running', 'fomo' => false]], fn () => [9]);
 
     expect($log)->toBe([
         '30 ta4 @5', '45 ta5 @5',
-        '108 tb1 @9', '123 tb2 @9',
-        '216 tc4 @5', '231 tc3 @5',
+        '108 tb1 @9', '123 tb2 @9', '138 tb3 @9',
+        '231 tc4 @5', '246 tc3 @5',
     ]);
 });
 

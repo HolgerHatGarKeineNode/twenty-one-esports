@@ -605,13 +605,15 @@ test('an open tournament brings its slides into the rotation, and their countdow
     config(['twentyone.stream.rotation.tournament_seconds' => 2.5]);
     $tournament = openTournament();
 
-    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 7.5]);
+    Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 10]);
     $output = Artisan::output();
     $countdowns = array_values(array_unique(file($this->dir.'/countdowns', FILE_IGNORE_NEW_LINES) ?: []));
 
-    expect($output)->toContain('rotation: promo loop', 'rotation: ta1 tournament '.$tournament->id.', rendered in', 'rotation: ta2 tournament '.$tournament->id.', rendered in', 'rotation: d1 teaser')
+    // Hero, bracket preview, how it runs (with the sign-up countdown), then the teasers.
+    expect($output)->toContain('rotation: promo loop', 'rotation: ta1 tournament '.$tournament->id.', rendered in', 'rotation: ta2 tournament '.$tournament->id.', rendered in', 'rotation: ta3 tournament '.$tournament->id.', rendered in', 'rotation: d1 teaser')
         ->and(strpos($output, 'rotation: ta1 tournament'))->toBeLessThan(strpos($output, 'rotation: ta2 tournament'))
-        ->and(strpos($output, 'rotation: ta2 tournament'))->toBeLessThan(strpos($output, 'rotation: d1 teaser'))
+        ->and(strpos($output, 'rotation: ta2 tournament'))->toBeLessThan(strpos($output, 'rotation: ta3 tournament'))
+        ->and(strpos($output, 'rotation: ta3 tournament'))->toBeLessThan(strpos($output, 'rotation: d1 teaser'))
         ->and($output)->not->toContain('not built')
         // A render per second while the slide is on: the countdown moves.
         ->and(count($countdowns))->toBeGreaterThanOrEqual(2)

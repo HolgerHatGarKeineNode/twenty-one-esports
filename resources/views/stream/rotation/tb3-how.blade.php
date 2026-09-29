@@ -34,10 +34,12 @@
         $fy += 28 + count($lines) * 28 + 24;
     }
     $drawing = ($t['phase'] ?? null) === 'drawing';
+    // A sign-up frame (TournamentSlides: no phase) shows where to sign up and the time to the close.
+    $signup = ! isset($t['phase']);
     $block = is_int($t['drawBlock'] ?? null) ? $t['drawBlock'] : null;
     $nowLine = $drawing ? ($block !== null ? 'Bitcoin block '.number_format($block).' draws the bracket' : 'The draw is on') : K::text($t, 'now');
-    $cd = $drawing ? K::countdownParts($t['countdown'] ?? null) : null;
-    $cdText = $cd ? 'Starts in '.($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'] : '';
+    $cd = $drawing || $signup ? K::countdownParts($t['countdown'] ?? null) : null;
+    $cdText = $cd ? ($signup ? 'Closes in ' : 'Starts in ').($cd['days'] > 0 ? $cd['days'].'d ' : '').$cd['hms'] : '';
     $nowText = K::fit($nowLine === '' ? K::tournamentUrl($t) : $nowLine, K::DISPLAY, 26, 1152 - ($cdText === '' ? 0 : K::width($cdText, K::MONO, 20) + 32));
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
@@ -84,7 +86,7 @@
 @endforeach
 
 <rect x="40" y="584" width="1200" height="64" fill="#F7931A"/>
-<text data-unit="now-label" x="64" y="606" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#17120A">{{ $drawing ? 'Draw pending' : ($nowLine === '' ? 'Everything about it' : 'Now') }}</text>
+<text data-unit="now-label" x="64" y="606" font-family="JetBrains Mono" font-weight="700" font-size="14" fill="#17120A">{{ $drawing ? 'Draw pending' : ($signup ? 'Sign up at' : ($nowLine === '' ? 'Everything about it' : 'Now')) }}</text>
 <text data-unit="now" data-box="63 606 {{ 1217 - ($cdText === '' ? 0 : K::width($cdText, K::MONO, 20) + 31) }} 642" x="64" y="636" font-family="Unbounded" font-weight="800" font-size="26" fill="#17120A">{{ $nowText }}</text>
 @if ($cdText !== '')<g data-countdown="{{ $t['countdown'] }}"><text data-unit="cd" x="1216" y="626" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#17120A" text-anchor="end">{{ $cdText }}</text></g>@endif
 </svg>

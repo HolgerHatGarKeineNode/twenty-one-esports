@@ -18,9 +18,9 @@ namespace App\Support\TwentyOne\Stream;
  * Upcoming tournaments (open for sign-up, soonest close first, as the
  * caller orders them; the caller leaves the casual cups out, d2 shows them)
  * come in every round while there is one: a round with games is MATCH,
- * GALLERY, then TOURNAMENT hero and bracket in the round's look, then the
- * teasers; a round without games that is not the loop is the tournament's
- * hero and bracket, the EVERY_ROUND teasers and one teaser. Several
+ * GALLERY, then TOURNAMENT hero, bracket preview and how it runs in the
+ * round's look, then the teasers; a round without games that is not the loop
+ * is those three, the EVERY_ROUND teasers and one teaser. Several
  * tournaments take turns, one per round.
  *
  * Tournaments past their sign-up (TournamentLiveSlides: running, drawing,
@@ -349,8 +349,8 @@ final class RotationPlanner
     }
 
     /**
-     * This round's tournament (in turn): an upcoming one as hero and bracket
-     * preview, one past sign-up as its phase's parts (PHASE_PARTS) and the call
+     * This round's tournament (in turn): an upcoming one as hero, bracket
+     * preview and how it runs, one past sign-up as its phase's parts (PHASE_PARTS) and the call
      * to sign up for the next one.
      *
      * @param  list<string>  $tournaments  "phase:id"
@@ -364,7 +364,8 @@ final class RotationPlanner
         $entry = fn (int $part): array => ['kind' => self::TOURNAMENT, 'look' => $look, 'tournamentId' => $id, 'part' => $part, 'key' => $key];
 
         if (! isset(self::PHASE_PARTS[$phase])) {
-            return [$entry(1), $entry(2)];
+            // Sign-up open: the hero, the bracket preview and how it runs (the user asked for the run of an upcoming one too).
+            return [$entry(1), $entry(2), $entry(3)];
         }
 
         [$first, $turns] = self::PHASE_PARTS[$phase];

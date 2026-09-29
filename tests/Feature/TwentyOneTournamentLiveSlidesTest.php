@@ -212,6 +212,10 @@ test('every live tournament slide renders a running and a finished tournament wi
         }
     }
     $all = implode('', $svgs);
+    $upcomingHow = '';
+    foreach (['ta3', 'tb3', 'tc3'] as $scene) {
+        $upcomingHow .= $renderer->svg([...$source->rotation($scene, null, [], 0, $now, $stats, $upcoming[0], $upcoming), 'viewers' => null], RotationPlanner::VIEWS[$scene]);
+    }
 
     expect($svgs)->toHaveCount(30)
         ->and(array_filter($svgs, fn (string $svg): bool => ! str_contains($svg, 'width="1280" height="720"')))->toBe([])
@@ -223,6 +227,8 @@ test('every live tournament slide renders a running and a finished tournament wi
         ->and($svgs['running-ta7'].$svgs['running-tb7'].$svgs['running-tc7'])->toContain('Next &lt;i&gt;Open', "Don't watch", 'Play it.', 'esports.einundzwanzig.space/tournaments/'.$next->id)
         ->and($svgs['running-ta3'])->toContain('How it runs', 'Upper bracket')
         ->and($svgs['running-ta4'])->toContain('Still standing')
+        // How it runs in a sign-up round: where to sign up and the time to the close, never a round in play.
+        ->and($upcomingHow)->toContain('How it runs', 'Sign up', 'esports.einundzwanzig.space/tournaments/'.$next->id, $upcoming[0]['countdown'])->not->toContain('Now:')
         // Never a fee, a hashtag or a Lightning address.
         ->and(mb_strtolower($all))->not->toContain('fee')->not->toContain('lnurl')->not->toContain('#bitcoin');
 });

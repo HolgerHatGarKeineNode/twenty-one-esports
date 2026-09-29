@@ -92,41 +92,41 @@ test('a gallery that has fewer than two games left ends early', function () {
     expect(array_slice($log, 0, 3))->toBe(['0 match a1 #1', '60 gallery a2', '70 teaser d1']);
 });
 
-test('an upcoming tournament comes in every round with games: its hero and bracket after match and gallery, in the round\'s look', function () {
+test('an upcoming tournament comes in every round with games: its hero, bracket and how it runs after match and gallery, in the round\'s look', function () {
     $games = [['id' => 1, 'blitz' => true], ['id' => 2, 'blitz' => true]];
 
-    $log = rotation(planner(), 182 + 182 + 1, fn () => $games, fn () => [9]);
+    $log = rotation(planner(), 197 + 197 + 1, fn () => $games, fn () => [9]);
 
     expect($log)->toBe([
-        '0 match a1 #1', '60 gallery a2', '80 tournament ta1 @9', '95 tournament ta2 @9',
-        '110 teaser d1', '122 teaser d2', '134 teaser e1', '146 teaser a3', '158 teaser a4', '170 teaser a5',
-        '182 match b1 #2', '242 gallery b2', '262 tournament tb1 @9', '277 tournament tb2 @9',
-        '292 teaser e4', '304 teaser d2', '316 teaser e2', '328 teaser b3', '340 teaser b4', '352 teaser b5',
-        '364 match c1 #1',
+        '0 match a1 #1', '60 gallery a2', '80 tournament ta1 @9', '95 tournament ta2 @9', '110 tournament ta3 @9',
+        '125 teaser d1', '137 teaser d2', '149 teaser e1', '161 teaser a3', '173 teaser a4', '185 teaser a5',
+        '197 match b1 #2', '257 gallery b2', '277 tournament tb1 @9', '292 tournament tb2 @9', '307 tournament tb3 @9',
+        '322 teaser e4', '334 teaser d2', '346 teaser e2', '358 teaser b3', '370 teaser b4', '382 teaser b5',
+        '394 match c1 #1',
     ]);
 });
 
-test('without games a tournament round is hero, bracket, pots, cups and one teaser, and the loop keeps every third round', function () {
-    $log = rotation(planner(30), 30 + 78 + 78 + 30 + 78 + 1, fn () => [], fn () => [9]);
+test('without games a tournament round is hero, bracket, how it runs, pots, cups and one teaser, and the loop keeps every third round', function () {
+    $log = rotation(planner(30), 30 + 93 + 93 + 30 + 93 + 1, fn () => [], fn () => [9]);
 
     expect($log)->toBe([
         '0 loop -',
-        '30 tournament ta1 @9', '45 tournament ta2 @9', '60 teaser d1', '72 teaser d2', '84 teaser e1', '96 teaser a3',
-        '108 tournament tb1 @9', '123 tournament tb2 @9', '138 teaser e4', '150 teaser d2', '162 teaser e2', '174 teaser a4',
-        '186 loop -',
-        '216 tournament tc1 @9', '231 tournament tc2 @9', '246 teaser d1', '258 teaser d2', '270 teaser e3', '282 teaser a5',
-        '294 tournament ta1 @9',
+        '30 tournament ta1 @9', '45 tournament ta2 @9', '60 tournament ta3 @9', '75 teaser d1', '87 teaser d2', '99 teaser e1', '111 teaser a3',
+        '123 tournament tb1 @9', '138 tournament tb2 @9', '153 tournament tb3 @9', '168 teaser e4', '180 teaser d2', '192 teaser e2', '204 teaser a4',
+        '216 loop -',
+        '246 tournament tc1 @9', '261 tournament tc2 @9', '276 tournament tc3 @9', '291 teaser d1', '303 teaser d2', '315 teaser e3', '327 teaser a5',
+        '339 tournament ta1 @9',
     ]);
 });
 
 test('two tournaments take turns, one per round, soonest sign-up close first', function () {
-    $log = rotation(planner(30), 30 + 78 + 78 + 30 + 78 + 1, fn () => [], fn () => [4, 9]);
+    $log = rotation(planner(30), 30 + 93 + 93 + 30 + 93 + 1, fn () => [], fn () => [4, 9]);
 
     expect(array_values(array_filter($log, fn (string $line): bool => str_contains($line, 'tournament'))))->toBe([
-        '30 tournament ta1 @4', '45 tournament ta2 @4',
-        '108 tournament tb1 @9', '123 tournament tb2 @9',
-        '216 tournament tc1 @4', '231 tournament tc2 @4',
-        '294 tournament ta1 @9',
+        '30 tournament ta1 @4', '45 tournament ta2 @4', '60 tournament ta3 @4',
+        '123 tournament tb1 @9', '138 tournament tb2 @9', '153 tournament tb3 @9',
+        '246 tournament tc1 @4', '261 tournament tc2 @4', '276 tournament tc3 @4',
+        '339 tournament ta1 @9',
     ]);
 });
 
