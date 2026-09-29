@@ -101,9 +101,11 @@ return [
     | served from /.well-known/nostr.json. `change_days`: a claimed name
     | changes (or is claimed again after a release) at most once in this
     | many days, and a name given up is held that long against other keys.
-    | `reserved`: words nobody claims, on top of the league's own NIP-05 name
-    | and the Lightning address of the pool (both from config), also as a part
-    | of a name and in look-alike spelling (Nip05Names::isReserved()).
+    | `reserved`: names nobody claims, on top of the league's own NIP-05 name
+    | and the Lightning address of the pool (both from config), also in
+    | look-alike spelling; generic words among them stay free inside a longer
+    | name. `staff_words`: words no name may contain at all, in any spelling
+    | that reads like them (Nip05Names::isReserved(), P47 re-audit N3).
     |
     */
 
@@ -117,7 +119,9 @@ return [
             'official', 'offiziell', 'mod', 'moderator', 'moderation', 'e21', 'security', 'abuse', 'postmaster', 'webmaster', 'hostmaster',
             'noreply', 'no-reply', 'bot', 'stream', 'live', 'news', 'nostr', 'pool', 'wallet', 'payout', 'payouts',
             'www', 'mail', 'api', 'relay', 'tournament', 'tournaments', 'director', 'organizer', 'null', 'undefined',
+            'helpdesk',
         ],
+        'staff_words' => ['admin', 'support', 'official', 'moderator', 'einundzwanzig', 'twentyone', 'staff', 'helpdesk'],
     ],
 
     /*

@@ -27,22 +27,22 @@ beforeEach(function () {
 test('a claimed name answers in nostr.json with the pubkey and the league relays, case-insensitively', function () {
     $anna = User::factory()->create();
 
-    expect(app(Nip05Names::class)->claim($anna, '  Anna.Sats_42-x '))->toBeNull()
-        ->and($anna->nip05_name)->toBe('anna.sats_42-x')
-        ->and(Nip05Names::address($anna))->toBe('anna.sats_42-x@esports.example');
+    expect(app(Nip05Names::class)->claim($anna, '  Anna.Sats_21-x '))->toBeNull()
+        ->and($anna->nip05_name)->toBe('anna.sats_21-x')
+        ->and(Nip05Names::address($anna))->toBe('anna.sats_21-x@esports.example');
 
     // NIP-05: {"names": {name: hex pubkey}, "relays": {hex pubkey: [urls]}}; only wss relays go out.
-    $this->get(route('nostr.nip05', ['name' => 'ANNA.sats_42-X']))
+    $this->get(route('nostr.nip05', ['name' => 'ANNA.sats_21-X']))
         ->assertOk()
         ->assertHeader('Access-Control-Allow-Origin', '*')
         ->assertExactJson([
-            'names' => ['anna.sats_42-x' => $anna->pubkey],
+            'names' => ['anna.sats_21-x' => $anna->pubkey],
             'relays' => [$anna->pubkey => ['wss://league-one.example', 'wss://league-two.example']],
         ]);
 
     // Without league relays the document names the key alone.
     config(['esports.relays' => []]);
-    $this->get(route('nostr.nip05', ['name' => 'anna.sats_42-x']))->assertExactJson(['names' => ['anna.sats_42-x' => $anna->pubkey]]);
+    $this->get(route('nostr.nip05', ['name' => 'anna.sats_21-x']))->assertExactJson(['names' => ['anna.sats_21-x' => $anna->pubkey]]);
 
     // No name, an unknown name, an invalid one: no names (the document never lists every player).
     foreach ([[], ['name' => ''], ['name' => 'nobody'], ['name' => '../etc'], ['name' => str_repeat('a', 200)]] as $query) {
@@ -189,25 +189,55 @@ test('audit F2: a revoked name stays held through deleting the account, logging 
         ->and($names->claim(User::factory()->create(), 'nakamoto'))->toBe('This name is reserved.');
 });
 
-test('audit F4: a reserved word is refused as a part of a name, as a longer word and in look-alike spelling', function () {
+test('re-audit N3: a name that reads as a reserved word or contains a staff word is refused; generic words stay free in a longer name', function () {
     $names = app(Nip05Names::class);
     $player = User::factory()->create();
-    $variants = ['support', 'admin', 'support-team', 'admin.team', 'einundzwanzig-esports', 'twentyone.official', 'official-support',
-        'league.admin', 'mod-team', 'esports-support', 'moderation', 'administrators', 'e21', 'twentyone-esports'];
 
-    foreach ($variants as $name) {
-        expect([$name, $names->problem($name, $player)])->toBe([$name, 'This name is reserved.']);
-    }
+    // Plausible player names the first rule refused (29 of 35 measured): all free now.
+    $plausible = ['satoshi_21', 'hodl-21', 'stacker.21', 'nostrich', 'nostrich21', 'nostr-pleb', 'streamer', 'leaguefan', 'team-rocket', 'bot-hunter',
+        'the_pool_shark', 'live.laugh', 'news.junkie', 'root-beer', 'null-pointer', 'api-guy', 'directory', 'systematic', 'securitybrian', 'relayrunner',
+        'anna.sats_21-x', 'satoshi', 'hodl-hanna', 'laser_eyes', 'chessmaster'];
 
-    // Look-alikes: 0 for o, rn for m, 3 for e, 5 for s, 1 for l; longer words that start with one; more staff words.
-    foreach (['supp0rt', 'adrnin', 'm0d-team', '0fficial', 'tw3ntyone', 'e5ports', 'wa11et', 'help.desk', 'security-team', 'staff', 'supporter', 'officialsats'] as $name) {
-        expect([$name, $names->problem($name, $player)])->toBe([$name, 'This name is reserved.']);
-    }
-
-    // Ordinary names stay free.
-    foreach (['satoshi', 'anna.sats', 'hodl-hanna', 'laser_eyes', 'chessmaster'] as $name) {
+    foreach ($plausible as $name) {
         expect([$name, $names->problem($name, $player)])->toBe([$name, null]);
     }
+
+    // The bypasses the re-audit found, and the first audit's variants that impersonate staff or the league.
+    $refused = ['adm1n', 'off1cial', 'e1nundzwanzig', 'l1ga', 'theadmin', 'realadmin', 'teamsupport', 'helpdesk', 'e21admin', '21admin', 'admln', 'offlcial', 'suport',
+        'suppoort', 'moderat0r', 'the.admin', 'adminx', 'mysupport', 'staffmember', 'memberstaff', 'einundzwanzigteam', 'teameinundzwanzig',
+        'support', 'admin', 'support-team', 'admin.team', 'einundzwanzig-esports', 'twentyone.official', 'official-support', 'league.admin',
+        'esports-support', 'moderation', 'administrators', 'e21', 'twentyone-esports', 'adrnin', 'tw3ntyone', 'help.desk', 'wa11et', 'po0l', 'l.i.g.a'];
+
+    foreach ($refused as $name) {
+        expect([$name, $names->problem($name, $player)])->toBe([$name, 'This name is reserved.']);
+    }
+
+    // Generic words are only reserved as the whole name.
+    foreach (['team', 'league', 'stream', 'pool', 'relay', 'bot', 'security', 'news', 'api', 'root', 'null', 'system'] as $name) {
+        expect([$name, $names->problem($name, $player)])->toBe([$name, 'This name is reserved.'])
+            ->and([$name.'-fan', $names->problem($name.'-fan', $player)])->toBe([$name.'-fan', null]);
+    }
+});
+
+test('re-audit N3: a hold covers every spelling that reads the same, for other keys', function () {
+    $names = app(Nip05Names::class);
+    $odell = User::factory()->create();
+    $names->claim($odell, 'odell');
+    $names->revoke($odell);
+    $other = User::factory()->create();
+
+    foreach (['odell', 'ODELL', ' Odell ', 'odell_', 'odell-', 'odell.', 'o.dell', 'o_dell', '0dell', 'odel1', 'odelll'] as $name) {
+        expect([$name, $names->problem($name, $other)])->toBe([$name, 'This name is reserved.']);
+    }
+
+    // A name given up is held the same way against others, and stays its own key's.
+    $hanna = User::factory()->create();
+    $names->claim($hanna, 'hanna');
+    $names->release($hanna);
+
+    expect($names->problem('h.anna', $other))->toStartWith('This name was given up recently')
+        ->and($names->problem('hana', $other))->toStartWith('This name was given up recently')
+        ->and($names->problem('hannah', $other))->toBeNull();
 });
 
 test('the settings page claims, shows the next step, and gives the name up after a confirmation', function () {
