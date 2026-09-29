@@ -1,14 +1,17 @@
 <?php
 
 use App\Games\GameRegistry;
+use App\Games\NineMensMorris;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\Stream\Backoff;
+use App\Support\TwentyOne\Stream\BoardScene;
 use App\Support\TwentyOne\Stream\PrideSlides;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneSource;
@@ -24,8 +27,10 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\View;
 use swentel\nostr\Key\Key;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
 pest()->group('nostr');
@@ -1128,4 +1133,52 @@ test('a failing cache store does not stop the stream, and is logged once', funct
     expect($exit)->toBe(0)
         ->and(substr_count($output, 'announced state not cached: RuntimeException'))->toBe(1)
         ->and($output)->toContain('ffmpeg started');
+});
+
+/* ---------- The board scene (plan "Mühle und Dame", P7) --------------------------------------------------------- */
+
+test('a failing board read drops only the board scene: the chess games stay on show and it is no poll failure', function () {
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    app()->instance(BoardScene::class, new class extends BoardScene
+    {
+        public function __construct() {}
+
+        public function state(): string
+        {
+            throw new PDOException('SQLSTATE[HY000]: General error: 1 no such table: board_games');
+        }
+    });
+    $blitz = ChessGame::factory()->create();
+    ChessGame::factory()->daily()->create();
+
+    $exitCode = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 5.5]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('rotation: a1 match game '.$blitz->id.', rendered in', 'rotation: a2 gallery, rendered in')
+        // Logged once for the series, not on every poll; never counted as a failed database poll.
+        ->and(substr_count($output, 'board poll failed, showing no board scene: PDOException'))->toBe(1)
+        ->and($output)->not->toContain('database poll failed')
+        ->and($output)->not->toContain('ffmpeg started mode=loop')
+        ->and($output)->not->toContain('d5 board');
+});
+
+test('a live board game without chess brings the board scene into the rotation', function () {
+    Queue::fake();
+    File::put(config('twentyone.stream.prepared'), 'fake');
+    fakeEncoder($this->dir);
+    fakeRenderer($this->dir);
+    shortRotation();
+    NineMensMorrisOn::play();
+    app(BoardGameService::class)->start(NineMensMorris::SLUG, User::factory()->create(), User::factory()->create());
+
+    $exitCode = Artisan::call('twentyone:stream', ['--no-publish' => true, '--stop-after' => 6.5]);
+    $output = Artisan::output();
+
+    expect($exitCode)->toBe(0)
+        ->and($output)->toContain('rotation: d5 board, rendered in')
+        ->and($output)->not->toContain('board poll failed');
 });

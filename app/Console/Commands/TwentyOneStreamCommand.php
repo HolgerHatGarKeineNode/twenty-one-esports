@@ -263,8 +263,9 @@ class TwentyOneStreamCommand extends Command
         /** @var list<ChessGame> $sceneGames */
         $sceneGames = [];
         $sceneMore = 0;
-        // The board games next to chess (BoardScene::state()), read with the games; `off` while the poll fails.
+        // The board games next to chess (BoardScene::state()), read after the games; `off` while either read fails.
         $boards = BoardScene::OFF;
+        $boardPollFailing = false;
         /** @var array<string, mixed> $stats the last counts that could be read */
         $stats = [];
         /** @var list<array<string, mixed>> $tournamentSnapshots the last upcoming tournaments that could be read */
@@ -297,7 +298,6 @@ class TwentyOneStreamCommand extends Command
 
                 try {
                     ['games' => $sceneGames, 'more' => $sceneMore] = $source->sceneGames($hysteresis);
-                    $boards = $boardScene->state();
 
                     if ($pollFailures > 0) {
                         $this->log('database poll recovered after '.$pollFailures.' failed polls');
@@ -309,12 +309,29 @@ class TwentyOneStreamCommand extends Command
                     }
 
                     [$sceneGames, $sceneMore] = [[], 0];
-                    $boards = BoardScene::OFF;
                     $pollFailures++;
 
                     if ($pollFailures >= self::POLL_FAILURES_FOR_LOOP && $modes->mode() === ModeMachine::SCENE) {
                         $modes->forceLoop((int) $now + self::SCENE_BLOCK_SECONDS);
                     }
+                }
+
+                // The board games on their own (BoardScene): a failing board read only drops the board scene; it is no
+                // poll failure and leaves the chess games on show. Logged once per series of failures.
+                try {
+                    $boards = $pollFailures === 0 ? $boardScene->state() : BoardScene::OFF;
+
+                    if ($boardPollFailing && $pollFailures === 0) {
+                        $this->log('board poll recovered');
+                        $boardPollFailing = false;
+                    }
+                } catch (Throwable $e) {
+                    if (! $boardPollFailing) {
+                        $this->log('board poll failed, showing no board scene: '.$this->describe($e));
+                        $boardPollFailing = true;
+                    }
+
+                    $boards = BoardScene::OFF;
                 }
 
                 // Upcoming tournaments (cached like the counts); their countdown ticks with this poll.
