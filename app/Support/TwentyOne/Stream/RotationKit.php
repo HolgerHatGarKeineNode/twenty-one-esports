@@ -1210,4 +1210,182 @@ final class RotationKit
             return $cup;
         }, $cups)), 0, $limit);
     }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Every game's ladders and the pride slides (a3, b3, c3, b4, d2, d3, e1-e9, plan "Stream-Slides: alle Spiele,
+    // Stolz-Momente"): the readers tolerate a missing or mistyped key, as the tournament readers above.
+    // ---------------------------------------------------------------------------------------------------------------
+
+    /**
+     * StreamStats' `boards` that can be drawn: a game name and at least one row with a name and an Elo. Every row
+     * keeps name, elo, games, w/d/l, avatar (a data URI, a lineup row its clan's logo) and tag (a lineup row's clan tag).
+     *
+     * @param  array<string, mixed>  $stats
+     * @return list<array{game: string, mode: string, title: string, gameName: string, modeName: string, rated: bool, rows: list<array{rank: int, name: string, elo: int, games: ?int, w: ?int, d: ?int, l: ?int, avatar: ?string, tag: ?string}>}>
+     */
+    public static function ladderBoards(array $stats): array
+    {
+        $boards = [];
+
+        foreach (is_array($stats['boards'] ?? null) ? $stats['boards'] : [] as $board) {
+            if (! is_array($board) || self::text($board, 'gameName') === '') {
+                continue;
+            }
+
+            $rows = [];
+            foreach (is_array($board['rows'] ?? null) ? $board['rows'] : [] as $row) {
+                if (! is_array($row) || ! is_int($row['elo'] ?? null) || self::clean($row['name'] ?? '') === '') {
+                    continue;
+                }
+                $rows[] = [
+                    'rank' => count($rows) + 1, 'name' => (string) $row['name'], 'elo' => $row['elo'], 'games' => self::whole($row, 'games'),
+                    'w' => self::whole($row, 'wins'), 'd' => self::whole($row, 'draws'), 'l' => self::whole($row, 'losses'),
+                    'avatar' => self::avatarUri($row['avatar'] ?? null),
+                    'tag' => is_string($row['tag'] ?? null) ? $row['tag'] : null,
+                ];
+            }
+
+            if ($rows === []) {
+                continue;
+            }
+
+            $gameName = self::text($board, 'gameName');
+            $modeName = self::text($board, 'modeName');
+            $boards[] = [
+                'game' => self::text($board, 'game'), 'mode' => self::text($board, 'mode'),
+                'title' => $modeName === '' ? $gameName : $gameName.' '.$modeName, 'gameName' => $gameName, 'modeName' => $modeName,
+                'rated' => ($board['pool'] ?? null) === 'rated', 'rows' => $rows,
+            ];
+        }
+
+        return $boards;
+    }
+
+    /**
+     * Two ladders for a3's split field, taking turns: the boards in pairs, pair `$turn` modulo their number. One
+     * board alone comes with nothing beside it; without boards the list is empty.
+     *
+     * @param  array<string, mixed>  $stats
+     * @return list<array<string, mixed>>
+     */
+    public static function ladderPair(array $stats, int $turn): array
+    {
+        $pairs = array_chunk(self::ladderBoards($stats), 2);
+
+        return $pairs === [] ? [] : $pairs[max(0, $turn) % count($pairs)];
+    }
+
+    /**
+     * The correspondence ladders of ladderBoards() (chess daily, a board game's correspondence), leaders only.
+     *
+     * @param  array<string, mixed>  $stats
+     * @return list<array{game: string, title: string, row: array<string, mixed>}>
+     */
+    public static function dailyLeaders(array $stats, int $limit): array
+    {
+        $out = [];
+
+        foreach (self::ladderBoards($stats) as $board) {
+            if ($board['mode'] === 'correspondence') {
+                $out[] = ['game' => $board['gameName'], 'title' => $board['gameName'], 'row' => $board['rows'][0]];
+            }
+        }
+
+        return array_slice($out, 0, $limit);
+    }
+
+    /**
+     * Up to `$limit` names joined for a line: "Chess", "Chess and Checkers", "Chess, Checkers and Rocket League".
+     *
+     * @param  mixed  $names  a list of strings; anything else counts as none
+     */
+    public static function listing(mixed $names, int $limit = 3): string
+    {
+        $clean = [];
+        foreach (is_array($names) ? $names : [] as $name) {
+            $name = is_string($name) ? self::clean($name) : '';
+            if ($name !== '' && ! in_array($name, $clean, true)) {
+                $clean[] = $name;
+            }
+        }
+        $clean = array_slice($clean, 0, max(1, $limit));
+        $last = array_pop($clean);
+
+        return $last === null ? '' : ($clean === [] ? $last : implode(', ', $clean).' and '.$last);
+    }
+
+    /** "1st", "2nd", "3rd", "4th" … "11th", "12th", "13th", "21st". */
+    public static function ordinal(int $n): string
+    {
+        $suffix = in_array($n % 100, [11, 12, 13], true) ? 'th' : (['th', 'st', 'nd', 'rd'][$n % 10] ?? 'th');
+
+        return $n.$suffix;
+    }
+
+    /**
+     * A pride row's face: its `avatar` checked (avatarUri), else a neutral placeholder.
+     *
+     * @return array{uri: ?string, tag: ?string, fit: string}
+     */
+    public static function prideFace(mixed $row): array
+    {
+        return ['uri' => is_array($row) ? self::avatarUri($row['avatar'] ?? null) : null, 'tag' => null, 'fit' => 'slice'];
+    }
+
+    /**
+     * The rows of a pride list that have a name, at most `$limit`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function prideRows(mixed $rows, int $limit): array
+    {
+        $out = [];
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            if (is_array($row) && self::clean(is_string($row['name'] ?? null) ? $row['name'] : '') !== '') {
+                $out[] = $row;
+            }
+        }
+
+        return array_slice($out, 0, max(0, $limit));
+    }
+
+    /**
+     * The chain strip of e5: the heights up to `$height` (at most `$count`, never below 1), oldest first.
+     *
+     * @return list<int>
+     */
+    public static function chainHeights(int $height, int $count): array
+    {
+        return $height < 1 ? [] : range(max(1, $height - $count + 1), $height);
+    }
+
+    /**
+     * A hex colour (#RRGGBB) or the fallback: a tier colour from the data never reaches an attribute unchecked.
+     */
+    public static function colour(mixed $hex, string $fallback): string
+    {
+        return is_string($hex) && preg_match('/^#[0-9A-Fa-f]{6}$/', $hex) === 1 ? $hex : $fallback;
+    }
+
+    /**
+     * The casual cup slots of `esports.casual_cups.regions`: "EU Saturdays 20:00 Berlin time", one per region.
+     *
+     * @return list<string>
+     */
+    public static function cupSlots(): array
+    {
+        $slots = [];
+
+        foreach ((array) config('esports.casual_cups.regions', []) as $region) {
+            if (! is_array($region) || ! is_string($region['label'] ?? null) || ! is_string($region['weekday'] ?? null) || ! is_string($region['time'] ?? null)) {
+                continue;
+            }
+
+            $zone = is_string($region['timezone'] ?? null) ? $region['timezone'] : 'UTC';
+            $city = str_replace('_', ' ', (string) (explode('/', $zone)[1] ?? $zone));
+            $slots[] = self::clean($region['label']).' '.ucfirst(self::clean($region['weekday'])).'s '.self::clean($region['time']).' '.$city.' time';
+        }
+
+        return $slots;
+    }
 }

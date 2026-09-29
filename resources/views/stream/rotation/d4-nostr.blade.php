@@ -1,7 +1,8 @@
 {{--
-    D4 · Terminal ticker · the league on Nostr. Header line and stats bar as c4-scan; the site's QR code on the left,
-    the claim and three facts on the right (calendar event, the stream bot's note, the .ics download), then the login
-    line. Without a QR code the text moves left.
+    D4 · Terminal ticker · the league on Nostr: your name, your rank and your wins travel with your key. Header line
+    and stats bar as c4-scan; the site's QR code on the left, the claim and four facts on the right (a name on the
+    league's domain, the rank badge, comments and likes, the calendar event), then the login line. Without a QR code
+    the text moves left. No address is written out: name@domain reads like a Lightning address (c5-zap).
 
     Data contract:
       $siteQrSvg  string: QR of https://esports.einundzwanzig.space as SVG (as c4-scan); empty = no code shown
@@ -12,13 +13,15 @@
 @php
     $hasQr = trim((string) ($siteQrSvg ?? '')) !== '';
     $tx = $hasQr ? 504 : 40;
-    // COPY-CHECK: every published tournament is a NIP-52 calendar event (31923) and the stream bot posts it as a note
-    // (c28adbb, ESPORTS_STREAM_BOT_ENABLED on in prod, 6 notes on 2026-09-28); the tournament page offers the .ics
-    // download (pages/tournaments/partials/when.blade.php, data-test="when-calendar"); login with Nostr (a4-join).
+    // COPY-CHECK: a player may claim a NIP-05 name on the league's domain (App\Support\Nostr\Nip05Names, P47, opt-in in
+    // the settings); a rank badge is a NIP-58 badge awarded to the player's key (App\Support\Badges\RankBadges); players
+    // comment on and like tournaments, rated games and rated series (NIP-22 / NIP-25, App\Support\Comments\NostrComments,
+    // P48); every published tournament is a NIP-52 calendar event (31923) the stream bot posts as a note (c28adbb).
     $facts = [
-        ['Calendar', 'Every tournament is a Nostr calendar event.'],
-        ['Notes', 'The stream bot posts each one as a note.'],
-        ['.ics', 'One tap puts it in your own calendar.'],
+        ['Name', 'Claim your name on the league\'s domain.'],
+        ['Rank', 'Your rank badge lands on your Nostr key.'],
+        ['Talk', 'Comment on and like games and tournaments.'],
+        ['Dates', 'Every tournament is a calendar event.'],
     ];
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
@@ -29,13 +32,13 @@
 @if ($hasQr)
 @include('stream.rotation.partials.qr', ['qr' => $siteQrSvg, 'modules' => $siteQrModules ?? null, 'x' => 40, 'y' => 148, 'size' => 400])
 @endif
-<text x="{{ $tx }}" y="206" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">Never miss</text>
-<text x="{{ $tx }}" y="258" font-family="Unbounded" font-weight="800" font-size="40" fill="#F7931A">a tournament.</text>
-<rect x="{{ $tx }}" y="296" width="{{ 1240 - $tx }}" height="1" fill="#2A2A30"/>
+<text x="{{ $tx }}" y="190" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">Your rank goes</text>
+<text x="{{ $tx }}" y="242" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">wherever you go.</text>
+<rect x="{{ $tx }}" y="276" width="{{ 1240 - $tx }}" height="4" fill="#F7931A"/>
 @foreach ($facts as $i => [$label, $fact])
-<text x="{{ $tx }}" y="{{ 340 + $i * 62 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A">{{ $label }}</text>
-<text data-unit="fact-{{ $i }}" data-box="{{ $tx + 139 }} {{ 318 + $i * 62 }} 1240 {{ 346 + $i * 62 }}" x="{{ $tx + 140 }}" y="{{ 340 + $i * 62 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ K::fit($fact, K::MONO, 20, 1100 - $tx) }}</text>
-<rect x="{{ $tx }}" y="{{ 362 + $i * 62 }}" width="{{ 1240 - $tx }}" height="1" fill="#2A2A30"/>
+<text x="{{ $tx }}" y="{{ 322 + $i * 58 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A">{{ $label }}</text>
+<text data-unit="fact-{{ $i }}" data-box="{{ $tx + 99 }} {{ 300 + $i * 58 }} 1240 {{ 328 + $i * 58 }}" x="{{ $tx + 100 }}" y="{{ 322 + $i * 58 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ K::fit($fact, K::MONO, 20, 1140 - $tx) }}</text>
+<rect x="{{ $tx }}" y="{{ 342 + $i * 58 }}" width="{{ 1240 - $tx }}" height="1" fill="#2A2A30"/>
 @endforeach
-<text data-unit="login" data-box="{{ $tx - 1 }} 538 1240 566" x="{{ $tx }}" y="560" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#ADADB0">Log in with Nostr, follow the league.</text>
+<text data-unit="login" data-box="{{ $tx - 1 }} 552 1240 580" x="{{ $tx }}" y="574" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#ADADB0">Log in with Nostr, follow the league.</text>
 </svg>

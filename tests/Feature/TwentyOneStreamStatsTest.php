@@ -2,14 +2,22 @@
 
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Enums\SeriesResolution;
+use App\Enums\SeriesStatus;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
+use App\Models\Lineup;
 use App\Models\Rating;
+use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\TwentyOne\Stream\RotationPlanner;
+use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Carbon;
+use Tests\Support\CheckersGame;
 
 /**
  * A casual chess rating row as the rating service writes it.
@@ -85,7 +93,9 @@ test('the clan spotlight counts members and their games, and takes turns', funct
 
     [$shown, $other] = $turn === 0 ? [$spotlight, $next] : [$next, $spotlight];
 
-    expect($shown)->toBe(['name' => 'Satoshis Hodlers', 'tag' => $older->clantag, 'members' => 1, 'games' => 2, 'founded' => 'Sep 20, 2026', 'logoUrl' => 'https://example.com/logo.png', 'logoRef' => null])
+    expect(array_diff_key($shown, ['pride' => true, 'faceRefs' => true]))->toBe(['name' => 'Satoshis Hodlers', 'tag' => $older->clantag, 'members' => 1, 'games' => 2, 'founded' => 'Sep 20, 2026', 'logoUrl' => 'https://example.com/logo.png', 'logoRef' => null])
+        // The owner's face, the one member.
+        ->and($shown['faceRefs'])->toHaveCount(1)
         ->and($other['name'])->toBe($newer->name)
         ->and($other['logoUrl'])->toBeNull();
 });
@@ -139,4 +149,50 @@ test('changed numbers reach the teaser data once the cache period passed, not be
         ->and(array_column($after['ladders']['blitz'], 'name'))->toBe(['Bob', 'Alice'])
         ->and(array_column($after['ladders']['blitz'], 'elo'))->toBe([1200, 1100])
         ->and($alice->id)->toBeInt();
+});
+
+test('with the board games switched off their old ladders and games stay off the stream', function () {
+    casualRating(null, 'blitz', 1111, 3)->forceFill(['game' => 'checkers'])->save();
+    BoardGame::query()->create(['game' => 'checkers', 'mode' => 'blitz', 'white_id' => User::factory()->create()->id, 'black_id' => User::factory()->create()->id, 'status' => 'finished', 'result' => '1-0',
+        'position' => '-', 'turn' => 'w', 'ply' => 9, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 1, 'black_ms' => 1, 'turn_started_ms' => 0, 'ended_at' => now()]);
+    $source = app(SceneSource::class);
+    $renderer = SceneRenderer::fromConfig();
+    $stats = app(StreamStats::class)->all();
+
+    expect($stats['boards'])->toBe([])
+        ->and($stats['gamesPlayed'])->toBe(0)
+        ->and($renderer->svg($source->rotation('b3', null, [], 0, 0, $stats), RotationPlanner::VIEWS['b3']))->toContain('Chess, up to 24 hours for each move.')->not->toContain('Checkers')
+        ->and($renderer->svg($source->rotation('c3', null, [], 0, 0, $stats), RotationPlanner::VIEWS['c3']))->toContain('Every game has a ladder.')->not->toContain('Checkers');
+});
+
+test('every game reaches the stream: its ladders (the season ladder first, a lineup under its clan) and its games, a voided series never', function () {
+    CheckersGame::play();
+    $season = openSeason();
+    $alice = User::factory()->create(['name' => 'Alice']);
+    casualRating($alice, 'blitz', 1300, 4);
+    casualRating($alice, 'blitz', 1050, 2, pool: Rating::RATED)->forceFill(['season' => $season->slug])->save();
+    casualRating(null, 'blitz', 1111, 3)->forceFill(['game' => 'checkers'])->save();
+    $lineup = Lineup::factory()->create(['clan_id' => Clan::factory()->create(['name' => 'Rocket <Pack>'])->id]);
+    Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => 'rocket-league', 'mode' => '3v3', 'subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1020, 'results' => 1, 'wins' => 1]);
+    ChessGame::factory()->finished()->create();
+    BoardGame::query()->create(['game' => 'checkers', 'mode' => 'blitz', 'white_id' => $alice->id, 'black_id' => User::factory()->create()->id, 'status' => 'finished', 'result' => '1-0',
+        'position' => '-', 'turn' => 'w', 'ply' => 9, 'initial_ms' => 300000, 'increment_ms' => 3000, 'white_ms' => 1, 'black_ms' => 1, 'turn_started_ms' => 0, 'ended_at' => now()]);
+    SeriesMatch::factory()->create(['status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'finished_at' => now()]);
+    // Two accounts of one person played each other: the league voided it.
+    SeriesMatch::factory()->create(['status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Void, 'winner' => 'challenger', 'finished_at' => now()]);
+
+    $stats = app(StreamStats::class)->count();
+    $boards = collect($stats['boards'])->keyBy(fn (array $board): string => $board['game'].'/'.$board['mode']);
+    $c3 = SceneRenderer::fromConfig()->svg(app(SceneSource::class)->rotation('c3', null, [], 0, 0, app(StreamStats::class)->all()), RotationPlanner::VIEWS['c3']);
+
+    expect($stats['gamesPlayed'])->toBe(3)
+        ->and($stats['gamesToday'])->toBe(3)
+        ->and($boards->keys()->all())->toBe(['chess/blitz', 'rocket-league/3v3', 'checkers/blitz'])
+        // The season ladder has rows, so it is the one shown.
+        ->and($boards['chess/blitz']['pool'])->toBe(Rating::RATED)
+        ->and(array_column($boards['chess/blitz']['rows'], 'elo'))->toBe([1050])
+        ->and($boards['rocket-league/3v3']['rows'][0])->toMatchArray(['name' => 'Rocket <Pack>', 'tag' => $lineup->clan->clantag, 'avatarRef' => null])
+        ->and($boards['checkers/blitz'])->toMatchArray(['gameName' => 'Checkers', 'modeName' => 'Blitz 5+3', 'pool' => Rating::CASUAL])
+        ->and($c3)->toContain('Chess Blitz 5+3', 'Rocket League 3v3', 'Checkers Blitz 5+3', 'Rocket &lt;Pack&gt;', '>season<')
+        ->and($c3)->not->toContain('<Pack>');
 });

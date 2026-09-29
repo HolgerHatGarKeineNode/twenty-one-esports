@@ -1,5 +1,6 @@
 {{--
-    D2 · Broadcast desk · casual cups. Channel frame over the brand backdrop; the pitch on top, then one tile per game
+    D2 · Broadcast desk · casual cups. Channel frame over the brand backdrop; the title with each region's fixed slot
+    beside it (RotationKit::cupSlots, from esports.casual_cups.regions), the pitch, then one tile per game
     with an open casual cup (at most four, soonest close first): the game's cover, its name, then one row per region's
     cup (EU and US, user 2026-09-28): the region, the places taken with a fill bar, and when the sign-up closes.
     Without an open cup the tiles give way to one line.
@@ -42,6 +43,10 @@
 @include('stream.rotation.partials.b-chrome', ['stats' => $stats ?? [], 'bugNote' => 'casual cups'])
 
 <text x="40" y="158" font-family="Unbounded" font-weight="800" font-size="48" fill="#FFFFFF">Casual cups</text>
+{{-- The regions' slots (esports.casual_cups.regions, user 2026-09-28): every cup starts on its region's weekday and time. --}}
+@foreach (array_slice(K::cupSlots(), 0, 2) as $si => $slot)
+<text data-unit="cup-slot-{{ $si }}" data-box="700 {{ 114 + $si * 30 }} 1241 {{ 138 + $si * 30 }}" x="1240" y="{{ 132 + $si * 30 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A" text-anchor="end">{{ K::fit($slot, K::MONO, 20, 520) }}</text>
+@endforeach
 @if ($tiles !== [])
 <text data-unit="pitch" data-box="39 182 1240 210" x="40" y="204" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#ADADB0">{{ $pitch }}</text>
 @foreach ($tiles as $i => $t)

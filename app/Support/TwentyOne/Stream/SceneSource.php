@@ -122,7 +122,8 @@ class SceneSource
      * B3 the daily game on show (if any), a tournament slide (t*) its
      * tournament as TournamentSlides builds it, the feature slides (d*)
      * every upcoming tournament (d1 their pots, d2 the casual cups) or the
-     * site's QR code, the board scene (d5) a live board game or the board
+     * site's QR code (d3 with the top inviters), the pride slides (e*)
+     * PrideSlides::all(), the board scene (d5) a live board game or the board
      * games' teaser (BoardScene).
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
@@ -147,6 +148,8 @@ class SceneSource
 
             return match ($scene) {
                 'd1', 'd2' => ['upcoming' => $upcoming, 'stats' => $stats, 'backdrop' => $brand],
+                // The invite slide names who brought the most new players (PrideSlides `inviters`).
+                'd3' => ['siteQrSvg' => $this->qr('site'), 'pride' => $this->pride->all(), 'stats' => $stats, 'backdrop' => $brand],
                 default => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
             };
         }
@@ -182,7 +185,8 @@ class SceneSource
         return match ($scene) {
             'a5', 'c5' => ['qrSvg' => $this->qr('lnurl'), 'stats' => $stats, 'backdrop' => $brand],
             'c4' => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
-            'b3' => ['stats' => $stats, 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $this->images->backdrop(StreamImages::CHESS)],
+            // The games with a daily mode: chess, and the board games that are switched on (plan "Mühle und Dame", P8).
+            'b3' => ['stats' => $stats, 'dailyGames' => ['Chess', ...array_values(array_map(fn ($game): string => $game->name(), $this->games->boards()))], 'dailyGame' => ($daily = collect($games)->first(fn (ChessGame $game): bool => $game->isCorrespondence() && $game->isActive())) === null ? null : $this->card($daily, $nowMs), 'backdrop' => $this->images->backdrop(StreamImages::CHESS)],
             default => ['stats' => $stats, 'backdrop' => $brand],
         };
     }
