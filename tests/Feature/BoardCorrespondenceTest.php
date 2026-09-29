@@ -439,6 +439,9 @@ test('the correspondence page sends a challenge, and the other player accepts it
 
     $this->actingAs($anna)->get(route('board.show', $game))->assertOk()->assertSee('data-mode="correspondence"', false);
     $this->actingAs($anna)->get(route('board.correspondence', Checkers::SLUG))->assertOk()->assertSeeHtml('data-mine="true"');
+    // "Your daily games" lists it too, leading to its board; Bert's challenge notice led to the correspondence page, where he answered.
+    $this->actingAs($anna)->get(route('me.correspondence'))->assertOk()->assertSeeHtml('data-test="board-correspondence-game"')->assertSee(route('board.show', $game), false);
+    expect($bert->notifications()->where('type', 'challenge')->sole()->data['url'])->toBe(route('board.correspondence', Checkers::SLUG));
     // The dock: White's move, on White's side.
     expect(app(OpenMatches::class)->for($anna)->firstWhere('key', 'board-'.$game->id)?->phase)->toBe('your_move');
     auth()->logout();

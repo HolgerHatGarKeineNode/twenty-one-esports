@@ -1058,7 +1058,7 @@
     "Solo": "Solo",
     "Solo Elo": "Solo-Elo",
     "some tournaments pay their sats to members only. Everyone can still play them.": "manche Turniere zahlen ihre Sats nur an Mitglieder. Mitspielen können trotzdem alle.",
-    "someone challenged you to daily chess or your clan to a match": "jemand hat dich zu Fernschach oder deinen Clan zu einem Match herausgefordert",
+    "someone challenged you to daily chess, a board game by correspondence, or your clan to a match": "jemand hat dich zu Fernschach, zu einer Brettspiel-Fernpartie oder deinen Clan zu einem Match herausgefordert",
     "Something broke on our side": "Bei uns ist etwas kaputtgegangen",
     "soon": "bald",
     "Sounds": "Sounds",
@@ -5522,5 +5522,6 @@
     "Rated needs a Trusted player you list each other with. A win can mine a season block.": "Gewertet braucht einen Trusted-Spieler, mit dem ihr euch gegenseitig als Gegner führt. Ein Sieg kann einen Season-Block schürfen.",
     "You and :name do not list each other as opponents yet, so this challenge cannot be rated.": "Du und :name führt euch noch nicht gegenseitig als Gegner, deshalb kann diese Herausforderung nicht gewertet sein.",
     "Challenge casual instead": "Stattdessen ungewertet herausfordern",
-    "The other player has :hours h to accept. You can withdraw the challenge while it is open.": "Der andere Spieler hat :hours h zum Annehmen. Solange sie offen ist, kannst du die Herausforderung zurückziehen."
+    "The other player has :hours h to accept. You can withdraw the challenge while it is open.": "Der andere Spieler hat :hours h zum Annehmen. Solange sie offen ist, kannst du die Herausforderung zurückziehen.",
+    "Board games by correspondence": "Brettspiel-Fernpartien"
 }

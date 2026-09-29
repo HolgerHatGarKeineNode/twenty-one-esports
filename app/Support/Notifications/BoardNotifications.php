@@ -10,6 +10,7 @@ use App\Models\BoardGame;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Route;
 
 /**
  * The notifications of correspondence board games (plan "Mühle und Dame",
@@ -21,6 +22,10 @@ use Illuminate\Support\Carbon;
  * - challenge: someone challenged you to a correspondence game
  * - game_started: your correspondence challenge was accepted
  * - opponent_resigned / game_over: a correspondence game ended
+ *
+ * The links do not need the board game routes: routes/board.php is loaded
+ * only while the board games are switched on at boot, and the clock sweep
+ * still ends (and reports) the games of a board game switched off since.
  *
  * Live board games notify nothing: their players are at the board. The
  * notice carries no match number: a board game's id is no league number
@@ -49,7 +54,7 @@ final class BoardNotifications
                 'move' => $last === null ? '' : $last->ply.'. '.$last->notation,
                 'deadline' => $this->deadline($game, $player),
             ], $locale),
-            route('board.show', $game),
+            self::gameUrl($game),
             null,
             __('Play your move', [], $locale),
         ), $game);
@@ -72,7 +77,7 @@ final class BoardNotifications
                 'name' => $game->opponentOf($player)?->displayName() ?? '',
                 'deadline' => $this->deadline($game, $player),
             ], $locale),
-            route('board.show', $game),
+            self::gameUrl($game),
         ), $game);
     }
 
@@ -99,7 +104,7 @@ final class BoardNotifications
             $message !== ''
                 ? __('":message" · :kind, you play :color.', ['message' => $message, 'kind' => $kind, 'color' => $color], $locale)
                 : __(':kind, you play :color. Open for :hours hours.', ['kind' => $kind, 'color' => $color, 'hours' => (int) config('esports.board_games.correspondence.challenge_hours')], $locale),
-            route('board.lobby', $challenge->game),
+            self::correspondenceUrl($challenge->game),
             null,
             __('Answer', [], $locale),
         ), remote: $remote, sender: $challenge->challenger);
@@ -118,7 +123,7 @@ final class BoardNotifications
             $white
                 ? __(':game correspondence · you play White, your move.', ['game' => $this->name($game, $locale)], $locale)
                 : __(':game correspondence · you play Black, their move.', ['game' => $this->name($game, $locale)], $locale),
-            route('board.show', $game),
+            self::gameUrl($game),
             null,
             __('Open game', [], $locale),
         ), $game);
@@ -145,7 +150,7 @@ final class BoardNotifications
                 $won => 'win',
                 default => 'loss',
             };
-            $url = route('board.show', $game);
+            $url = self::gameUrl($game);
             $name = $this->name($game, $locale);
 
             if ($won && $game->end_reason === BoardEndReason::Resignation->value) {
@@ -176,6 +181,18 @@ final class BoardNotifications
                 $outcome === 'aborted' ? 'ping' : $outcome,
             ), $game);
         }
+    }
+
+    /** The board page of this game, as routes/board.php names it (`board/{boardGame}`), registered or not. */
+    public static function gameUrl(BoardGame $game): string
+    {
+        return Route::has('board.show') ? route('board.show', $game) : url('board/'.$game->id);
+    }
+
+    /** The correspondence page of a board game (`games/{board}/correspondence`), registered or not. */
+    public static function correspondenceUrl(string $slug): string
+    {
+        return Route::has('board.correspondence') ? route('board.correspondence', $slug) : url('games/'.$slug.'/correspondence');
     }
 
     private function name(BoardGame $game, string $locale): string

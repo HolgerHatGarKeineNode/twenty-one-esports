@@ -19,6 +19,10 @@ use Livewire\Component;
  * games where it is your move and where it is theirs, the finished ones.
  * Open challenges (ChessOverlays "Daily challenge received") sit above the
  * games; the list design has no place for them.
+ *
+ * The player's correspondence board games (plan "Mühle und Dame", P8) are
+ * listed below, each leading to its board, with the board challenges to
+ * answer; they are played and answered on the board games' own pages.
  */
 new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scripts' => ['resources/js/chess.js']])] class extends Component {
     public string $error = '';
@@ -77,6 +81,34 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     public function outgoing(): Collection
     {
         return app(DailyChallenges::class)->outgoing($this->user());
+    }
+
+    /**
+     * The running correspondence board games of this player (P8), theirs to
+     * move first, and how many board challenges wait per board game; empty
+     * while the board games are off.
+     *
+     * @return array{games: Collection<int, \App\Models\BoardGame>, challenges: array<string, int>}
+     */
+    #[Computed]
+    public function boardCorrespondence(): array
+    {
+        $user = $this->user();
+
+        if (! \Illuminate\Support\Facades\Route::has('board.correspondence')) {
+            return ['games' => collect(), 'challenges' => []];
+        }
+
+        $registry = app(\App\Games\GameRegistry::class);
+        $games = \App\Models\BoardGame::query()->correspondence()->playedBy($user)->where('status', \App\Enums\BoardGameStatus::Active)
+            ->with(['white', 'black'])->orderBy('deadline_ms')->get()
+            ->filter(fn (\App\Models\BoardGame $game): bool => $registry->isBoard($game->game))
+            ->sortBy(fn (\App\Models\BoardGame $game): int => $game->turn === $game->colorOf($user) ? 0 : 1)->values();
+        $challenges = app(\App\Support\Board\BoardChallenges::class)->incoming($user)
+            ->filter(fn (\App\Models\BoardChallenge $challenge): bool => $registry->isBoard($challenge->game))
+            ->countBy('game')->all();
+
+        return ['games' => $games, 'challenges' => $challenges];
     }
 
     public function withdrawChallenge(int $id): void
@@ -245,7 +277,7 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
         </section>
     @endforeach
 
-    @if ($cards->isEmpty() && $finished->isEmpty() && $this->incoming->isEmpty() && $this->outgoing->isEmpty())
+    @if ($cards->isEmpty() && $finished->isEmpty() && $this->incoming->isEmpty() && $this->outgoing->isEmpty() && $this->boardCorrespondence['games']->isEmpty())
         <section class="flex flex-col items-start gap-3 rounded-lg bg-card px-4 py-6 lg:px-6" data-test="correspondence-empty">
             <b class="font-display text-lg">{{ __('No daily games yet') }}</b>
             <span class="text-[13px] leading-normal text-ink-2">{{ __('Challenge someone: one move a day, at your pace, casual until Block 0.') }}</span>
@@ -335,4 +367,30 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     <div class="flex flex-wrap items-center gap-3">
         <x-button icon="pawn" :href="route('chess.challenge')" data-test="new-challenge">{{ __('Challenge a player') }}</x-button>
     </div>
+
+    {{-- Board games by correspondence (P8): played and answered on their own pages, listed here so this page has every daily game. --}}
+    {{-- Inline @php only: a block @php after the page's inline ones would be compiled from the first of them on. --}}
+    @php($boards = $this->boardCorrespondence)
+    @if ($boards['games']->isNotEmpty() || $boards['challenges'] !== [])
+        <section aria-labelledby="board-corr-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5" data-test="board-correspondence-games">
+            <h2 id="board-corr-h" class="m-0 text-[15px] font-bold">{{ __('Board games by correspondence') }}</h2>
+            @foreach ($boards['challenges'] as $slug => $count)
+                <a wire:key="bc-{{ $slug }}" href="{{ route('board.correspondence', $slug) }}" class="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-md bg-btc-press px-3 text-[13px] text-ink hover:text-ink" data-test="board-correspondence-challenges">
+                    <span class="truncate">{{ __(':game correspondence', ['game' => \App\Support\GameNames::game($slug)]) }}</span>
+                    <span class="shrink-0 font-bold text-btc-hi">{{ trans_choice(':count challenge to answer|:count challenges to answer', $count) }}</span>
+                </a>
+            @endforeach
+            @foreach ($boards['games'] as $boardGame)
+                @php($boardMine = $boardGame->turn === $boardGame->colorOf($user))
+                @php($boardLeft = intdiv(max(0, (int) $boardGame->deadline_ms - (int) now()->getTimestampMs()), 60_000))
+                <a wire:key="bg-{{ $boardGame->id }}" href="{{ route('board.show', $boardGame) }}" data-test="board-correspondence-game" data-mine="{{ $boardMine ? 'true' : 'false' }}"
+                   @class(['flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-md px-3 text-[13px] text-ink hover:text-ink', 'bg-btc-press' => $boardMine, 'bg-well' => ! $boardMine])>
+                    <span class="min-w-0 truncate">{{ \App\Support\GameNames::game($boardGame->game) }} · {{ $boardGame->opponentOf($user)?->displayName() ?? __('Deleted player') }}</span>
+                    <span @class(['shrink-0 tabular-nums', 'font-bold text-btc-hi' => $boardMine, 'text-ink-2' => ! $boardMine])>
+                        {{ $boardMine ? __('Your move · :h h :m min left', ['h' => intdiv($boardLeft, 60), 'm' => $boardLeft % 60]) : __('Their move · move :n', ['n' => intdiv($boardGame->ply, 2) + 1]) }}
+                    </span>
+                </a>
+            @endforeach
+        </section>
+    @endif
 </div>

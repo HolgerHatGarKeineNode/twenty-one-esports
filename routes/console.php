@@ -2,6 +2,7 @@
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Games\GameRegistry;
 use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
@@ -105,7 +106,8 @@ Artisan::command('board:daily-reminders', function (BoardNotifications $notifica
     foreach ($candidates as $game) {
         $player = $game->player($game->turn);
 
-        if ($player === null || (int) $game->deadline_ms - $now > $player->chessSettings()->remindHours * 3_600_000) {
+        // A board game switched off meanwhile has no page to move on: no reminder (its clock still runs out).
+        if ($player === null || ! app(GameRegistry::class)->isBoard($game->game) || (int) $game->deadline_ms - $now > $player->chessSettings()->remindHours * 3_600_000) {
             continue;
         }
 

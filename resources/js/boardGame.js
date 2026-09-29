@@ -39,12 +39,12 @@ export function formatClock(ms) {
     return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
 }
 
-/** A correspondence clock: "23 h 05 min" while an hour or more is left, then minutes and seconds. */
+/** A correspondence clock: "23 h 05" (hours and minutes, as the dock) while an hour or more is left, then minutes and seconds. */
 export function formatDeadline(ms) {
     const minutes = Math.max(0, Math.floor(ms / 60000));
     if (minutes < 60) return formatClock(ms);
 
-    return Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0') + ' min';
+    return Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0');
 }
 
 /**

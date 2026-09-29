@@ -222,7 +222,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             <div class="flex min-w-0 flex-col gap-3">
                 <div class="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2" data-test="player-top">
                     <span class="min-w-0 truncate text-sm" x-text="sideName(topSide)"></span>
-                    <span role="timer" class="font-display text-2xl font-bold tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(topSide)" data-test="clock-top"></span>
+                    <span role="timer" class="shrink-0 font-display text-2xl font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === topSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(topSide)" data-test="clock-top"></span>
                 </div>
                 {{-- Black sees the board from its own side: its name and clock sit below it. --}}
                 <svg x-ref="board" viewBox="0 0 {{ $config['layout']['width'] ?? 100 }} {{ $config['layout']['height'] ?? 100 }}"
@@ -232,7 +232,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                      class="block aspect-square w-full touch-manipulation rounded-lg bg-well select-none" data-test="board"></svg>
                 <div class="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2" data-test="player-bottom">
                     <span class="min-w-0 truncate text-sm" x-text="sideName(bottomSide)"></span>
-                    <span role="timer" class="font-display text-2xl font-bold tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span>
+                    <span role="timer" class="shrink-0 font-display text-2xl font-bold whitespace-nowrap tabular-nums" :class="state.clock.running === bottomSide ? 'text-btc-hi' : 'text-ink-2'" x-text="clock(bottomSide)" data-test="clock-bottom"></span>
                 </div>
             </div>
 

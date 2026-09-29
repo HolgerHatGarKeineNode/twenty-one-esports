@@ -102,7 +102,9 @@ function correspondenceMove(Page $mover, array $pages, string $move, int $ply): 
 test('a correspondence game of nine men\'s morris and of checkers starts from a challenge and is played a few moves, measured clean', function (int $width, int $height, string $locale) {
     expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
 
-    [$anna, $bert] = User::factory()->count(2)->create();
+    // Names of 15 characters with a dot, as players pick them: the player bars must hold them next to the clock.
+    $anna = User::factory()->create(['name' => 'octavia.dickens']);
+    $bert = User::factory()->create(['name' => 'bertram.hansen1']);
     $games = [NineMensMorris::SLUG => ['d2', 'd6', 'b2'], Checkers::SLUG => ['c3-d4', 'f6-g5', 'b2-c3']];
     $measured = [];
     $firstPage = null;
@@ -153,7 +155,12 @@ test('a correspondence game of nine men\'s morris and of checkers starts from a 
         $deadline = (string) $challenged->evaluate('() => document.querySelector("[data-test=deadline]").innerText');
         $status = (string) $challenged->evaluate('() => document.querySelector("[data-test=status-line]").innerText');
 
-        expect($clock)->toMatch('/^2[34] h \d\d min$/')
+        // Both player bars at their 48 px: the clock on one line, the name and colour not cut short.
+        $bars = $challenged->evaluate('() => ["top", "bottom"].map((side) => { const bar = document.querySelector("[data-test=player-" + side + "]"); const label = bar.querySelector("span"); const clock = bar.querySelector("[role=timer]"); return { bar: Math.round(bar.getBoundingClientRect().height), lines: Math.round(clock.getBoundingClientRect().height / parseFloat(getComputedStyle(clock).lineHeight)), cut: label.scrollWidth > label.clientWidth }; })');
+        $measured["{$slug}-bars"] = $bars;
+
+        expect($bars)->toBe([['bar' => 48, 'lines' => 1, 'cut' => false], ['bar' => 48, 'lines' => 1, 'cut' => false]])
+            ->and($clock)->toMatch('/^2[34] h \d\d$/')
             ->and($deadline)->not->toBe('')
             ->and($status)->toContain($locale === 'de' ? 'Fernpartie' : 'Correspondence');
 
@@ -186,7 +193,7 @@ test('a correspondence game of nine men\'s morris and of checkers starts from a 
 
     fwrite(STDERR, "board correspondence {$locale} {$width}x{$height}: ".json_encode($measured).PHP_EOL);
 
-    foreach ($measured as $where => $m) {
+    foreach (array_filter($measured, fn (array $m): bool => isset($m['lang'])) as $where => $m) {
         expect($m['lang'])->toBe($locale, $where)
             ->and($m['scroll'])->toBeLessThanOrEqual($m['client'], $where)
             ->and($m['errors'])->toBe([], $where)
