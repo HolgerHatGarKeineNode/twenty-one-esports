@@ -105,7 +105,7 @@ test('a player with something in every part: needs, running and upcoming, rating
     $phone = meHubGeometry($narrow);
     meHubShot($narrow, 'me-375');
 
-    expect($order)->toBe(['me-needs', 'me-going', 'me-ratings', 'me-results', 'me-clan', 'me-looking', 'me-settings', 'invite-module'])
+    expect($order)->toBe(['me-needs', 'me-going', 'me-ratings', 'me-results', 'follows-here', 'me-clan', 'me-looking', 'me-settings', 'invite-module'])
         ->and($desk)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'chainRows' => 1, 'chainScrolls' => false])
         ->and($phone)->toMatchArray(['overflow' => 0, 'inside' => true, 'small' => [], 'clipped' => [], 'chainRows' => 1, 'chainScrolls' => true])
         // Every block of the chain the same height; the one card that needs the player at most 160 px.

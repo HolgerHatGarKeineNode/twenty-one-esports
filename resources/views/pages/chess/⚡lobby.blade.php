@@ -579,6 +579,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
             @include('pages.chess.partials.lobby-ladder')
         </div>
 
+        {{-- P47: who of the player's Nostr follows plays here, to challenge; an invite DM for the others --}}
+        <livewire:follows-here context="chess" />
+
         {{-- The global chat of chess (P21): a NIP-28 channel with polls, under the lobby, above the weekly events. --}}
         <livewire:game-channel game="chess" />
 

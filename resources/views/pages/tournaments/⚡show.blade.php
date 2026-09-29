@@ -652,6 +652,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::tournament($tournament)" class="mx-4 lg:mx-12" />
     @endif
 
+    {{-- P47: who of the player's Nostr follows plays here; while sign-up is open, an invite DM with the personal tournament link --}}
+    @if ($published && $status === TournamentStatus::Signup)
+        <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:follows-here context="tournament" :subject="(string) $tournament->id" :wire:key="'follows-here-t-'.$tournament->id" /></div>
+    @endif
+
     @if ($champion)
         {{-- The result (P11): the winner, the share card, and for the winners the share button. --}}
         <section aria-labelledby="tw-h" class="mx-4 flex flex-col gap-4 rounded-card bg-card px-4 py-5 shadow-[inset_0_0_0_1px_#F7931A] sm:flex-row sm:items-center lg:mx-12 lg:px-6" data-test="tournament-winner">

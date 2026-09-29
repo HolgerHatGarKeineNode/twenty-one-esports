@@ -228,6 +228,9 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
         @endif
     </section>
 
+    {{-- P47: who of the player's Nostr follows plays here, to challenge; an invite DM for the others --}}
+    <livewire:follows-here context="me" />
+
     <div class="grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-6">
         {{-- Clan and lineups --}}
         <section aria-labelledby="me-clan-h" class="flex min-w-0 flex-col gap-4" data-test="me-clan">

@@ -455,6 +455,9 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
             @if (\App\Support\GameChat\GameChannels::has($slug))
                 <livewire:game-channel :game="$slug" />
             @endif
+
+            {{-- P47: who of the player's Nostr follows plays here, with a 1v1 where the game has one --}}
+            <livewire:follows-here context="series" :subject="$slug" :wire:key="'follows-here-'.$slug" />
         </div>
 
         <div class="flex min-w-0 flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-start-3">

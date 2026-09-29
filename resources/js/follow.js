@@ -85,6 +85,11 @@ function followed(list) {
     return (list?.tags ?? []).filter((tag) => tag[0] === 'p' && HEX_PUBKEY.test(tag[1] ?? '')).map((tag) => tag[1]);
 }
 
+/** The hex pubkeys a kind 3 follows, in list order (P47: "Your follows here" reads them). */
+export function followedPubkeys(list) {
+    return followed(list);
+}
+
 /**
  * What the click changes, for the preview. `fresh`: no follow list was found
  * on any relay, so the new list holds this one player only.
