@@ -101,3 +101,14 @@ test('home and the phone game chips put the board games next to chess; the deskt
         ->and(boardHooks($html, 'game-tab-'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27'])
         ->and(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'nine-mens-morris', 'checkers']);
 });
+
+test('the board game tiles on home link their correspondence games next to "Play blitz", like chess', function () {
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+
+    $html = $this->actingAs(User::factory()->create())->withSession(['locale' => 'de'])->get(route('home'))->assertOk()->getContent();
+
+    foreach ([NineMensMorris::SLUG, Checkers::SLUG] as $slug) {
+        expect($html)->toMatch('~data-game="'.$slug.'".*?<a href="'.preg_quote(route('board.correspondence', $slug), '~').'"[^>]*data-test="play-daily">Fernpartie</a>~s');
+    }
+});

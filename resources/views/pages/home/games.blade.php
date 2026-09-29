@@ -24,7 +24,7 @@
             @php
                 $challenge = collect($game['actions'])->firstWhere('key', 'challenge');
                 $primary = $game['slug'] !== 'chess' && $challenge !== null ? $challenge : $game['actions'][0];
-                $daily = $game['slug'] === 'chess' ? collect($game['actions'])->firstWhere('key', 'daily') : null;
+                $daily = collect($game['actions'])->firstWhere('key', 'daily');
             @endphp
             <li class="hh-tile flex min-w-0 flex-col overflow-hidden rounded-card bg-card" style="--game: {{ $game['colour'] }}" data-test="play-tile" data-game="{{ $game['slug'] }}">
                 <a href="{{ $game['page'] }}" class="group flex flex-col text-ink hover:text-ink">
@@ -41,7 +41,7 @@
                         <x-icon :name="$primary['icon']" :size="16" class="shrink-0" /><span class="truncate sm:hidden">{{ $primary['short'] }}</span><span class="truncate max-sm:hidden">{{ $primary['label'] }}</span>
                     </a>
                     @if ($daily)
-                        <a href="{{ $daily['href'] }}" class="inline-flex min-h-11 items-center text-[13px] max-lg:hidden">{{ $daily['short'] }}</a>
+                        <a href="{{ $daily['href'] }}" class="inline-flex min-h-11 items-center text-[13px] max-lg:hidden" data-test="play-daily">{{ $daily['short'] }}</a>
                     @endif
                 </span>
             </li>
