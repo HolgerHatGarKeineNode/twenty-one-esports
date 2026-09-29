@@ -106,7 +106,7 @@ final class DmDigest
 
         foreach ($shown->take(self::MAX_ITEMS) as $item) {
             $lines[] = '';
-            $lines[] = '• '.PlainText::line($item->title.': '.$item->body);
+            $lines[] = '• '.PlainText::line($item->title.': '.$item->body, names: true);
             $lines[] = Notice::onApp($item->url);
         }
 

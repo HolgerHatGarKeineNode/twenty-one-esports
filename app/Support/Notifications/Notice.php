@@ -48,7 +48,7 @@ final readonly class Notice
      */
     public function toDmText(?string $optOut = null): string
     {
-        return PlainText::line($this->title)."\n".PlainText::line($this->body)."\n".self::onApp($this->url).($optOut === null ? '' : "\n\n".$optOut);
+        return PlainText::line($this->title, names: true)."\n".PlainText::line($this->body, names: true)."\n".self::onApp($this->url).($optOut === null ? '' : "\n\n".$optOut);
     }
 
     /**
