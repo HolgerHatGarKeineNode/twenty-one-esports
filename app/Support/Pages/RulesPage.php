@@ -8,6 +8,7 @@ use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
 use App\Models\Tournament;
+use App\Support\Board\CheckersRules;
 use App\Support\Board\NineMensMorrisRules;
 use App\Support\FairPlay\FairPlay;
 use App\Support\GameNames;
@@ -52,6 +53,7 @@ final class RulesPage
             self::casual(),
             self::chess(),
             ...self::nineMensMorris(),
+            ...self::checkers(),
             self::series(),
             self::tournaments(),
             self::cups(),
@@ -275,6 +277,41 @@ final class RulesPage
             ],
             'links' => [[__('Chess'), route('chess.lobby')]],
         ];
+    }
+
+    /**
+     * Checkers by German rules (plan "Mühle und Dame", P4), once it is
+     * playable: the variant chosen where German rule texts differ is in
+     * App\Support\Board\CheckersRules.
+     *
+     * @return list<Section>
+     */
+    private static function checkers(): array
+    {
+        if (app(GameRegistry::class)->find('checkers') === null) {
+            return [];
+        }
+
+        return [[
+            'id' => 'checkers',
+            'title' => __('Checkers'),
+            'lead' => __('German rules on 8 × 8: men step diagonally forward, kings fly.'),
+            'facts' => [
+                [__('Time control'), __('Blitz 5+3')],
+                [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+            ],
+            'items' => [
+                __('White moves first. Men step one square diagonally forward and capture forward and backward.'),
+                __('Capturing is compulsory. A capture goes on as long as the piece can capture again, and the whole chain is one move.'),
+                __('With several ways to capture you choose freely: neither the most pieces nor a king comes first.'),
+                __('A man that reaches the far rank becomes a king. Reaching it by a capture ends the move there.'),
+                __('A king moves any distance along a diagonal. It captures a single piece from any distance and lands on the square directly behind it.'),
+                __('Captured pieces leave the board after the move, so no piece is jumped twice.'),
+                __('You lose when you have no piece or no move left.'),
+                __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side with only kings moving and nothing captured.', ['moves' => intdiv(CheckersRules::QUIET_PLY_LIMIT, 2)]),
+                __('Squares are named as in chess, a1 in White\'s bottom left corner. A step reads c3-d4, a capture c3xe5xc7.'),
+            ],
+        ]];
     }
 
     /**

@@ -5416,5 +5416,19 @@
     "Three men of one side on a line are a mill. Closing a mill removes one man of the other side, from a mill only when all its men stand in mills. Closing two mills at once removes one man.": "Drei Steine einer Seite auf einer Linie sind eine Mühle. Wer eine Mühle schließt, nimmt einen Stein der Gegenseite, aus einer Mühle nur, wenn alle ihre Steine in Mühlen stehen. Wer zwei Mühlen auf einmal schließt, nimmt einen Stein.",
     "A side left with two men loses, and so does a side that cannot move.": "Wer nur noch zwei Steine hat, verliert, ebenso wer nicht mehr ziehen kann.",
     "The same position a third time is a draw, and so are :moves moves each without a mill.": "Dieselbe Stellung zum dritten Mal ist Remis, ebenso :moves Züge je Seite ohne Mühle.",
-    "To move, click your man and then the point. After a mill, click the man you remove.": "Zum Ziehen erst den eigenen Stein, dann den Punkt anklicken. Nach einer Mühle den Stein anklicken, den du nimmst."
+    "To move, click your man and then the point. After a mill, click the man you remove.": "Zum Ziehen erst den eigenen Stein, dann den Punkt anklicken. Nach einer Mühle den Stein anklicken, den du nimmst.",
+    "Checkers": "Dame",
+    "German rules on 8 × 8: men step diagonally forward, kings fly.": "Deutsche Regeln auf 8 × 8: Steine ziehen schräg vorwärts, Damen fliegen.",
+    "White moves first. Men step one square diagonally forward and capture forward and backward.": "Weiß beginnt. Steine ziehen ein Feld schräg vorwärts und schlagen vorwärts wie rückwärts.",
+    "Capturing is compulsory. A capture goes on as long as the piece can capture again, and the whole chain is one move.": "Es herrscht Schlagzwang. Ein Schlag geht weiter, solange der Stein erneut schlagen kann, und die ganze Kette ist ein Zug.",
+    "With several ways to capture you choose freely: neither the most pieces nor a king comes first.": "Bei mehreren Schlagmöglichkeiten wählst du frei: weder die meisten Steine noch eine Dame haben Vorrang.",
+    "A man that reaches the far rank becomes a king. Reaching it by a capture ends the move there.": "Ein Stein, der die gegnerische Grundreihe erreicht, wird zur Dame. Erreicht er sie beim Schlagen, endet der Zug dort.",
+    "A king moves any distance along a diagonal. It captures a single piece from any distance and lands on the square directly behind it.": "Eine Dame zieht beliebig weit auf einer Diagonale. Sie schlägt einen einzeln stehenden Stein aus beliebiger Entfernung und setzt direkt dahinter auf.",
+    "Captured pieces leave the board after the move, so no piece is jumped twice.": "Geschlagene Steine verlassen das Brett erst nach dem Zug, so wird kein Stein zweimal übersprungen.",
+    "You lose when you have no piece or no move left.": "Du verlierst, wenn du keinen Stein oder keinen Zug mehr hast.",
+    "A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side with only kings moving and nothing captured.": "Remis durch Vereinbarung, wenn dieselbe Stellung mit derselben Seite am Zug zum dritten Mal entsteht, oder nach :moves Zügen jeder Seite, in denen nur Damen gezogen und nichts geschlagen wurde.",
+    "Squares are named as in chess, a1 in White's bottom left corner. A step reads c3-d4, a capture c3xe5xc7.": "Die Felder heißen wie im Schach, a1 liegt in der Ecke links vor Weiß. Ein Zug lautet c3-d4, ein Schlag c3xe5xc7.",
+    "No pieces left": "Keine Steine mehr",
+    "Same position three times": "Dreimal dieselbe Stellung",
+    "25 moves without a capture or a man moving": "25 Züge ohne Schlag und ohne Steinzug"
 }
