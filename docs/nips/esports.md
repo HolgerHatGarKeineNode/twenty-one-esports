@@ -40,16 +40,20 @@ direct messages between players;
 **revision 9.9** (2026-09-29): comments and likes on a tournament, a rated game and a rated series, and
 RSVPs to a tournament, each signed by the player on a click; **revision 9.10** (2026-09-29): opponent requests, their notification, and decline as league data;
 **revision 9.11** (2026-09-29): a player's personal tournament invite link and its referral, "your follows here" and invite
-DMs, zaps to the winner of a game, series or tournament, NIP-05 names on the league's domain). Not
+DMs, zaps to the winner of a game, series or tournament, NIP-05 names on the league's domain;
+**revision 9.12** (2026-09-29): nine men's morris and checkers in the game registry as board games,
+casual on the league's own server with a casual rating each, in casual cups and tournaments, without
+a ladder until they join the season chain). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10 and 9.11 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11 and 9.12 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
-request it describes is plain NIP-57.
+request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
+names the game and mode, and a board game has no ladder yet.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -87,6 +91,34 @@ the day a league adopts revision 9.9. The rules marked "rev. 9.10" concern oppon
 event and no gate, and apply from the day a league adopts revision 9.10. The rules marked "rev. 9.11" concern invite links,
 follows, direct messages, zaps between players and NIP-05 names; no league event, no ladder and no league state depends on
 them, and they apply from the day a league adopts revision 9.11 (an "I'm in" post signed earlier keeps the page link it carries).
+The rules marked "rev. 9.12" add two games; no existing ladder, event or rule changes. They apply to every tournament of
+a board game whose first `31923` version the league signs after it adopts revision 9.12; a board game gets a ladder
+only with a later revision that brings it into the season chain.
+
+### Changelog of revision 9.12 (2026-09-29)
+
+Board games ([Game registry](#game-registry), [Board games](#board-games-rev-912)). No new kind and no
+new tag.
+
+- **Two more games.** `nine-mens-morris` (nine men's morris, "Mühle"; never `mill`, which the app
+  already uses for its remote-signer login) and `checkers` (German checkers on 8 x 8: men capture
+  backwards too, captures are compulsory and completed as a chain, a flying king). Each has one mode,
+  `blitz`, time control `300+3`, played live on the league's own server, where every move is checked;
+  moves are no events, as for chess (rev. 9.4).
+- **Casual only, a rating each.** A finished game moves the two players' casual rating of that game
+  and mode (league data, as every casual rating); chess ratings never move. There is no rated pool, no
+  ladder (`32152`), no attestation (`2154`), no game record and no block for a board game: the league
+  signs nothing for it but the calendar events of its tournaments. A later revision may bring board
+  games into the season chain with their own weights, share and daily limit.
+- **Casual cups and tournaments.** A board game runs casual cups like chess (EU and US, round windows,
+  "Play your cup match", the league's auto slot, the same decisions at a deadline) and tournaments
+  whose players play here: each match is one game, a knockout draw is replayed with the colours
+  swapped up to the tournament's drawn replays and then the higher seed advances (no Armageddon); a
+  White who misses the first move aborts the game (restarted, then the double no-show rule), a Black
+  who misses it after White's loses by forfeit. The `31923` summary names the game and mode and says the
+  matches are unrated; it names no ladder.
+- **One live game at a time** across chess, the board games and the casual 1v1: a player in a live
+  game of one of them starts none of the others (league behaviour, no event).
 
 ### Changelog of revision 9.11 (2026-09-29)
 
@@ -877,6 +909,26 @@ describes itself.
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
 games never produce match-flow events and get no league record (rev. 9.4); a player may post the
 finished game to their own profile as a plain NIP-64 note.
+
+### Board games (rev. 9.12)
+
+Besides chess the league plays **board games** on its own server, with their own rules code and
+their own tables, next to chess and not built on it:
+
+| field | nine men's morris | checkers |
+|---|---|---|
+| game, mode | `nine-mens-morris`: `blitz` | `checkers`: `blitz` |
+| rated entity | `player` (casual rating only) | `player` (casual rating only) |
+| time control | `300+3` | `300+3` |
+| rules | nine men per side, flying with three, a mill removes one man (from a mill only when all stand in mills); two men or no move loses; threefold position or 50 moves each without a mill is a draw | German rules on 8 x 8: men move forward and capture both ways, compulsory capture as a whole chain with free choice between chains, a flying king that lands right behind the captured man, a man crowned mid-chain ends the move; no man or no move loses; threefold position or 25 moves each without a capture or a man moving is a draw |
+| rated | no: no ladder, no attestation, no block (see the changelog of revision 9.12) | no |
+| match size | one game; a knockout draw is replayed with the colours swapped | as nine men's morris |
+| draws | yes | yes |
+| moves on Nostr | none | none |
+
+A board game's casual rating is league data under the same Elo parameters as every casual ladder.
+Its tournaments are ordinary tournaments (a `31923` whose summary names the game and mode, with no
+ladder `a`); their matches are never rated. A player plays one live game at a time across chess, the board games and the casual 1v1.
 
 ### Rocket League 1v1 (rev. 7.1)
 
