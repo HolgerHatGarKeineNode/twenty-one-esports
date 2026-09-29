@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
@@ -124,7 +125,7 @@ test('the browser rewrites a start to a real zone of its own, never to a spoofed
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/cupBoard.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 4')->toContain('ℹ fail 0');
+        ->and($run->output())->toContain('ℹ pass 5')->toContain('ℹ fail 0');
 });
 
 /*
@@ -167,13 +168,15 @@ test('with a cup open for sign-up the head says tournament and what a cup is, an
 
     // Chess EU and US and the other games all start Saturday 20:00 on their clock: Berlin's is the earliest.
     expect($head)->toContain('data-tournament="'.$next->id.'"', 'data-test="cup-next-name">'.$next->name.'</a>')
-        ->toContain('Chess Blitz 5+3 tournament, Double Elimination, 4 places')
+        // No format before the close: CasualCups::formatFor() picks it by the field, and 4 places never play the stored double elimination.
+        ->toContain('Chess Blitz 5+3 tournament, 4 places', 'The format is set at the start, by how many play.')
         ->toContain('role="timer"', 'data-test="cup-next-countdown">5 days 08:00:00</span>')
         ->toContain('href="'.route('login').'"')
         ->and(substr_count($head, 'data-test="cup-next-face"'))->toBe(3)
         ->and($head)->toContain('title="cup_player_'.$next->id.'_1"')
         // The board says tournament too, and every row shows who is in.
-        ->and($html)->toContain('Blitz 5+3 tournament, Double Elimination')
+        ->and($html)->toContain('Blitz 5+3 tournament</span>')
+        ->and(str($html)->after('data-test="cup-hall"')->before('id="formats-h"')->toString())->not->toContain('Double Elimination', 'data-test="cup-format"')
         ->and(substr_count($html, 'data-test="cup-faces"'))->toBe(1)
         // No cup has ended yet: no winner, and no line about the next cup.
         ->and($head)->not->toContain('data-test="cup-winner"', 'data-test="cup-none"');
@@ -198,25 +201,40 @@ test('in German the head says Turnier and Casual-Elo', function () {
     $head = cupHead(Blade::render('<x-tournaments.cup-mentions heading filters />'));
     app()->setLocale('en');
 
-    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier Schach Blitz 5+3, Double Elimination, 4 Plätze', 'Anmeldung offen');
+    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier Schach Blitz 5+3, 4 Plätze', 'Das Format steht zum Start fest, je nachdem, wie viele spielen.', 'Anmeldung offen');
 });
 
-test('when every cup is running the head has no next cup, and the board shows them running', function () {
+test('when every cup is running the head has no next cup, and each running row shows the format its field got', function () {
     Tournament::query()->casualCup()->update(['status' => TournamentStatus::Running]);
+    // Four players at the close: a round robin evening (CasualCups::formatFor()).
+    Tournament::query()->where('cup_open_series', 'chess-eu')->update(['format' => TournamentFormat::RoundRobin]);
 
     $html = $this->get(route('tournaments.index'))->assertOk()->getContent();
 
     expect(cupHead($html))->toContain('data-test="cup-explainer"')->not->toContain('data-test="cup-next"', 'data-test="cup-none"')
         ->and(substr_count($html, 'data-test="cup-status"'))->toBe(6)
-        ->and($html)->toContain('data-test="cup-filters"');
+        ->and(substr_count($html, 'data-test="cup-format"'))->toBe(6)
+        ->and($html)->toContain('data-test="cup-format">Round Robin</span>', 'data-test="cup-filters"');
 });
 
-test('with no cup on the head stays, says so, and shows the last cup\'s winner', function () {
+test('a cup whose start has passed is not the next cup, even before the league\'s clock closes it; the head switches at zero', function () {
+    $html = $this->get(route('tournaments.index'))->assertOk()->getContent();
+    // The countdown's zero event hides the button and says sign-up closed (resources/js/tournamentLanding.js).
+    expect(cupHead($html))->toContain('x-on:countdown-zero="started = true"', 'data-test="cup-next-closed"', 'x-show="! started"');
+
+    // Past every start (Saturday 20:00 New York is the last), no tick: every cup still says sign-up in the table.
+    $this->travelTo(CarbonImmutable::parse('2026-10-11 02:00:00', 'UTC'));
+    $late = $this->get(route('tournaments.index'))->assertOk()->getContent();
+
+    expect(Tournament::query()->casualCup()->where('status', TournamentStatus::Signup)->count())->toBe(6)
+        ->and(cupHead($late))->not->toContain('data-test="cup-next"');
+});
+
+test('with no cup on the head stays, names the league\'s gap, and shows the last cup\'s winner', function () {
     Tournament::query()->casualCup()->delete();
-    config(['esports.casual_cups.enabled' => []]);
 
     $html = $this->get(route('tournaments.index'))->assertOk()->getContent();
-    expect($html)->toContain('data-test="cup-hall"', 'data-test="cup-none"', 'No cup takes players right now.')
+    expect($html)->toContain('data-test="cup-hall"', 'data-test="cup-none"', 'No cup takes players right now. The next one opens 1 day after the last cup’s final or call-off.')
         ->not->toContain('data-test="cup-filters"', 'data-test="cup-next"', 'data-test="cup-winner"', 'data-test="cup-group"');
 
     $winner = User::factory()->create(['name' => 'satoshi_rook']);
@@ -225,6 +243,17 @@ test('with no cup on the head stays, says so, and shows the last cup\'s winner',
 
     expect($head)->toContain('data-test="cup-winner"', 'Won the last cup', 'data-test="cup-winner-name">satoshi_rook</span>', 'data-test="cup-winner-cup">Chess Casual Cup EU #7</span>', 'href="'.route('tournaments.show', $cup).'"')
         ->not->toContain('hal_finney');
+});
+
+test('with the cups switched off or no league key, no head promises a cup', function () {
+    Tournament::query()->casualCup()->delete();
+    wonCasualCup(User::factory()->create(), User::factory()->create());
+
+    config(['esports.casual_cups.enabled' => []]);
+    expect($this->get(route('tournaments.index'))->assertOk()->getContent())->not->toContain('data-test="cup-hall"', 'data-test="cup-mentions"');
+
+    config(['esports.casual_cups.enabled' => ['chess'], 'esports.league.nsec' => null]);
+    expect($this->get(route('tournaments.index'))->assertOk()->getContent())->not->toContain('data-test="cup-hall"', 'data-test="cup-mentions"');
 });
 
 test('home and the game pages keep the side mention without the head', function () {

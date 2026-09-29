@@ -46,7 +46,8 @@
     $cupSingle = $game !== null;
     $cupFilters = $filters && ! $cupSingle && ! $compact && $cupGroups !== [];
     // The tournaments page: the cups' head with what a cup is, its proud moment and the next cup to sign up for.
-    $cupHall = $heading && $filters && ! $cupSingle && ! $compact;
+    // Not when the cups are switched off or the league has no key to open one: then no cup is coming, and the head would say one is.
+    $cupHall = $heading && $filters && ! $cupSingle && ! $compact && CasualCups::enabledGames() !== [] && \App\Support\SeasonChain\LeagueKey::fromConfig() !== null;
     $cupWinner = $cupHall ? $cupBoard->lastWinner() : null;
     $cupNext = $cupHall ? CupBoard::next($cupGroups) : null;
     $cupRegions = CasualCups::regions();
@@ -174,7 +175,7 @@
                         </a>
                         <h3 class="m-0 flex min-w-0 flex-col text-[13px] leading-tight font-bold lg:pt-1">
                             <a href="{{ GameNames::page($groupGame) }}" class="truncate text-ink hover:text-btc-hi">{{ GameNames::game($groupGame) }}</a>
-                            <span class="font-normal text-ink-2" data-test="cup-group-kind">{{ __(':mode tournament, :format', ['mode' => $groupMode, 'format' => $group['cups'][0]['tournament']->format->label()]) }}</span>
+                            <span class="font-normal text-ink-2" data-test="cup-group-kind">{{ __(':mode tournament', ['mode' => $groupMode]) }}</span>
                         </h3>
                     @endunless
                     <ul @class(['m-0 grid list-none gap-1 p-0', 'col-span-2 lg:col-span-1' => ! $cupSingle, 'lg:grid-cols-2' => $cupSingle])>
@@ -220,6 +221,10 @@
                                         <x-icon :name="$running ? 'play' : 'clock'" :size="14" :class="$running ? 'text-win' : 'text-btc-hi'" />
                                         {{ $cupRow->status->label() }}
                                     </span>
+                                    @if ($running)
+                                        {{-- Set at the close by the field (CasualCups::formatFor()); before it, the stored format is a placeholder. --}}
+                                        <span class="text-ink-2" data-test="cup-format">{{ $cupRow->format->label() }}</span>
+                                    @endif
                                 </a>
                             </li>
                         @endforeach

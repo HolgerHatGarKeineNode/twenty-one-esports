@@ -4,7 +4,9 @@
  *   countdown({ at, days }) — ticks down to `at` (ms since the epoch) once a
  *     second as "2 days 04:13:22"; `days` is the translated ":count day|:count
  *     days" pair. The server draws the first frame, so nothing jumps. At zero
- *     the page is refreshed from the server, which knows what comes next.
+ *     the page is refreshed from the server, which knows what comes next,
+ *     and a bubbling `countdown-zero` event tells what the refresh cannot
+ *     reach (the cup board's head sits in wire:ignore).
  *   countUp(value) — counts a number up from 0 once, on load. With reduced
  *     motion the server's number simply stays.
  */
@@ -36,6 +38,8 @@ export function countdown({ at, days = ':count day|:count days' } = {}) {
 
             if (seconds === 0) {
                 clearInterval(this.timer);
+                // Parts of the page the refresh does not reach (wire:ignore) switch on this themselves.
+                this.$el.dispatchEvent(new CustomEvent('countdown-zero', { bubbles: true }));
                 this.$wire?.$refresh();
             }
         },

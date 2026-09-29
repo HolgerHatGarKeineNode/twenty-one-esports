@@ -5537,9 +5537,10 @@
     "The first game opens the list.": "Die erste Partie eröffnet die Liste.",
     "Block :height of :season": "Block :height der :season",
     "Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.": "Partien aller Spiele, gespielt und wartend. Gewertete Siege minen Blöcke nur, solange eine Season läuft.",
-    ":mode tournament, :format": "Turnier :mode, :format",
     "The league opens a cup for every game and region on its own. Its games are casual and move only your casual Elo.": "Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.",
     "Won the last cup": "Hat den letzten Cup gewonnen",
-    ":mode tournament, :format, :places places": "Turnier :mode, :format, :places Plätze",
-    "No cup takes players right now. The league opens the next one on its own once the last one has ended.": "Gerade nimmt kein Cup Spieler an. Die Liga eröffnet den nächsten selbst, sobald der letzte zu Ende ist."
+    ":mode tournament": "Turnier :mode",
+    ":mode tournament, :places places": "Turnier :mode, :places Plätze",
+    "The format is set at the start, by how many play.": "Das Format steht zum Start fest, je nachdem, wie viele spielen.",
+    "No cup takes players right now. The next one opens :gap after the last cup’s final or call-off.": "Gerade nimmt kein Cup Spieler an. Der nächste öffnet :gap nach dem Finale oder der Absage des letzten Cups."
 }

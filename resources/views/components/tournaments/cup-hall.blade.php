@@ -17,12 +17,16 @@
       name, mode, format and places, the seats with the faces of who is in
       (the first open seat is the way in, as on a game page's poster), a live
       countdown to the start (countdown() in resources/js/tournamentLanding.js)
-      and the button. Without one, a line says when the next cup comes.
+      and the button. Without one, a line says when the next cup comes (the
+      league's gap after a final or a call-off). No format before sign-up
+      closes: CasualCups::formatFor() picks it by the field (review of P3).
+      At zero the countdown says sign-up closed instead of a dead button.
 
     $winner: CupBoard::lastWinner(). $next: a CupBoard row or null. $empty: no cup is open or running.
 --}}
 @php
     use App\Support\GameNames;
+    use App\Support\Pages\RulesPage;
 
     if ($next !== null) {
         $nextCup = $next['tournament'];
@@ -53,7 +57,7 @@
         </div>
 
         @if ($winner !== null)
-            <a href="{{ route('tournaments.show', $winner['cup']) }}" class="flex min-h-11 min-w-0 shrink-0 items-center gap-3 self-start rounded-md bg-btc-chip py-2 pr-4 pl-2 hover:bg-raised lg:max-w-[22rem]" data-test="cup-winner">
+            <a href="{{ route('tournaments.show', $winner['cup']) }}" class="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-md bg-btc-chip py-2 pr-4 pl-2 hover:bg-raised lg:w-auto lg:max-w-[22rem] lg:shrink-0 lg:self-start" data-test="cup-winner">
                 @if ($winner['user'] !== null)
                     <x-avatar :user="$winner['user']" :size="44" class="rounded-tag" />
                 @else
@@ -61,8 +65,8 @@
                 @endif
                 <span class="flex min-w-0 flex-col gap-0.5">
                     <span class="inline-flex items-center gap-1.5 text-xs text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Won the last cup') }}</span>
-                    <span class="font-display text-[15px] leading-tight font-bold break-words text-ink" data-test="cup-winner-name">{{ $winner['name'] }}</span>
-                    <span class="text-xs break-words text-ink-2" data-test="cup-winner-cup">{{ $winner['cup']->name }}</span>
+                    <span class="font-display text-[15px] leading-tight font-bold [overflow-wrap:anywhere] text-ink" data-test="cup-winner-name">{{ $winner['name'] }}</span>
+                    <span class="text-xs [overflow-wrap:anywhere] text-ink-2" data-test="cup-winner-cup">{{ $winner['cup']->name }}</span>
                 </span>
             </a>
         @endif
@@ -70,7 +74,8 @@
 
     @if ($next !== null)
         <article class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-x-3 gap-y-4 border-t border-hairline pt-4 sm:grid-cols-[160px_minmax(0,1fr)] sm:gap-x-4 lg:grid-cols-[200px_minmax(0,1fr)_minmax(0,16rem)] lg:items-center lg:gap-x-6 lg:pt-5"
-                 aria-labelledby="cup-next-h" data-test="cup-next" data-tournament="{{ $nextCup->id }}">
+                 aria-labelledby="cup-next-h" data-test="cup-next" data-tournament="{{ $nextCup->id }}"
+                 x-data="{ started: false }" x-on:countdown-zero="started = true">
             <a href="{{ $nextShow }}" class="block" tabindex="-1" aria-hidden="true">
                 <x-game-cover :game="$nextCup->game" size="card" class="w-full rounded-xs" data-test="cup-next-cover" />
             </a>
@@ -81,7 +86,9 @@
                     <h3 id="cup-next-h" class="m-0 font-display text-lg leading-tight font-bold break-words lg:text-xl">
                         <a href="{{ $nextShow }}" class="text-ink hover:text-btc-hi" data-test="cup-next-name">{{ $nextCup->name }}</a>
                     </h3>
-                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :format, :places places', ['mode' => GameNames::full($nextCup->game, $nextCup->mode), 'format' => $nextCup->format->label(), 'places' => $next['places']]) }}</p>
+                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :places places', ['mode' => GameNames::full($nextCup->game, $nextCup->mode), 'places' => $next['places']]) }}</p>
+                    {{-- The format is not known before the close: CasualCups::formatFor() picks it by how many signed up. --}}
+                    <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ __('The format is set at the start, by how many play.') }}</p>
                 </div>
 
                 {{-- As many columns as seats up to eight, each at most 48 px: four seats are four real faces, not half a row. --}}
@@ -94,7 +101,7 @@
                     @for ($seat = 0; $seat < $open; $seat++)
                         <li class="hh-seat is-open">
                             @if ($seat === 0 && ! $nextIn)
-                                <a href="{{ $nextHref }}" class="flex size-full items-center justify-center text-ink-2 hover:text-btc-hi" aria-label="{{ __('Take your seat') }}"><x-icon name="user" :size="16" /></a>
+                                <a href="{{ $nextHref }}" x-show="! started" class="flex size-full items-center justify-center text-ink-2 hover:text-btc-hi" aria-label="{{ __('Take your seat') }}"><x-icon name="user" :size="16" /></a>
                             @endif
                         </li>
                     @endfor
@@ -111,7 +118,9 @@
                     <time datetime="{{ $nextCup->starts_at->copy()->utc()->format('Y-m-d\TH:i:s\Z') }}" class="text-xs text-ink-2" data-test="cup-next-start"
                           @unless ($next['fixedZone']) x-data="cupStart({ at: {{ (int) $nextCup->starts_at->getTimestampMs() }}, zone: @js($next['zone']) })" @endunless><span @unless ($next['fixedZone']) x-text="day || @js($next['day'])" @endunless>{{ $next['day'] }}</span>, <span @unless ($next['fixedZone']) x-text="clock || @js($next['clock'])" @endunless>{{ $next['clock'] }}</span>, <span class="text-ink-3" @unless ($next['fixedZone']) x-text="city || @js($next['city'])" @endunless>{{ $next['city'] }}</span></time>
                 </div>
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {{-- At zero the countdown says so (countdown-zero): sign-up has closed, the button goes, the cup's page tells how it goes on. --}}
+                <p x-show="started" x-cloak class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-closed">{{ __('Sign-up closed') }}. <a href="{{ $nextShow }}" class="inline-flex min-h-11 items-center text-btc-hi hover:text-btc">{{ __('See the tournament') }}</a></p>
+                <div x-show="! started" class="flex flex-wrap items-center gap-x-4 gap-y-2" data-test="cup-next-action">
                     @if ($nextIn)
                         <a href="{{ $nextShow }}" class="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-md bg-win-tint px-[18px] text-[13px] font-bold text-win shadow-ring-win hover:text-win" data-test="cup-next-cta"><x-icon name="check" :size="18" />{{ __('You’re in') }}</a>
                     @else
@@ -122,6 +131,6 @@
             </div>
         </article>
     @elseif ($empty)
-        <p class="m-0 border-t border-hairline pt-4 text-[13px] leading-normal text-ink-2" data-test="cup-none">{{ __('No cup takes players right now. The league opens the next one on its own once the last one has ended.') }}</p>
+        <p class="m-0 border-t border-hairline pt-4 text-[13px] leading-normal text-ink-2" data-test="cup-none">{{ __('No cup takes players right now. The next one opens :gap after the last cup’s final or call-off.', ['gap' => RulesPage::minutes((int) config('esports.casual_cups.gap_hours', 24) * 60)]) }}</p>
     @endif
 </div>

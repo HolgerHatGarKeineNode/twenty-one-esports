@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { boardStart, cupStart, SPOOFED_ZONES } from '../../resources/js/tournamentLanding.js';
+import { boardStart, countdown, cupStart, SPOOFED_ZONES } from '../../resources/js/tournamentLanding.js';
 
 // Saturday 10 October 2026, 18:00 UTC: 20:00 in Berlin, 14:00 in New York.
 const at = Date.UTC(2026, 9, 10, 18, 0);
@@ -52,4 +52,21 @@ test('a real zone on another offset rewrites the row; one on the same offset kee
 test('a spoofed zone keeps the region clock the server wrote (the "GMT+0" of 2026-09-28)', () => {
     assert.deepEqual(rewrite('Atlantic/Reykjavik', 'Europe/Berlin'), { day: '', clock: '', city: '' });
     assert.deepEqual(rewrite('UTC', 'America/New_York'), { day: '', clock: '', city: '' });
+});
+
+test('the countdown at zero tells the page around it once, then asks the server', () => {
+    const events = [];
+    let refreshed = 0;
+    globalThis.CustomEvent ??= class extends Event { constructor(type, init) { super(type, init); this.detail = init?.detail; } };
+    const clock = countdown({ at: Date.now() - 1000 });
+    Object.assign(clock, {
+        $el: { textContent: '00:00:01', dispatchEvent: (event) => events.push([event.type, event.bubbles]) },
+        $wire: { $refresh: () => { refreshed += 1; } },
+    });
+    clock.init();
+    clock.destroy();
+
+    assert.equal(clock.text, '00:00:00');
+    assert.deepEqual(events, [['countdown-zero', true]]);
+    assert.equal(refreshed, 1);
 });

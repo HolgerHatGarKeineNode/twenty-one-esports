@@ -397,7 +397,8 @@ const CUP_HEAD_STATE = <<<'JS'
 
 test('the cups\' head says tournament and brings the winner and the next cup under the organizers\' tournaments, at 320, 375 and 1280 in English and German', function () {
     config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
-    wonCasualCup(User::factory()->create(['name' => 'satoshi_nakamoto_21']), User::factory()->create(['name' => 'hal_finney']));
+    // 39 characters without a break (review of P3: a long name widened the page from 21 characters at 320 px).
+    wonCasualCup(User::factory()->create(['name' => 'SatoshiNakamotoTheFirstMinerOfBlockZero']), User::factory()->create(['name' => 'hal_finney']));
     app(CasualCups::class)->tick();
     cupSignups(openCup(), 3);
     $now = CarbonImmutable::now();
@@ -431,7 +432,7 @@ test('the cups\' head says tournament and brings the winner and the next cup und
 
         expect([$width, $lang, $state['lang'], $state['overflow'], $state['cut']])->toBe([$width, $lang, $lang, 0, []])
             ->and([$state['kind'], $state['explainer']])->toBe($words[$lang])
-            ->and($state['winner'])->toBe('satoshi_nakamoto_21')
+            ->and($state['winner'])->toBe('SatoshiNakamotoTheFirstMinerOfBlockZero')
             // The organizers first and larger: their block ends before the head, their hero's name and cover are bigger.
             ->and($state['organizers']['bottom'])->toBeLessThan($state['hall']['top'])
             ->and($state['heroName'])->toBeGreaterThan($state['nextName'])
@@ -447,6 +448,12 @@ test('the cups\' head says tournament and brings the winner and the next cup und
 
         // The countdown ticks in the browser.
         BrowserWait::until($page, '() => document.querySelector("[data-test=cup-next-countdown]").innerText.trim() !== '.json_encode($state['countdown']), 3_000);
+
+        // At zero (the event the countdown sends) the button goes and the head says sign-up closed.
+        $page->evaluate('() => document.querySelector("[data-test=cup-next-countdown]").dispatchEvent(new CustomEvent("countdown-zero", { bubbles: true }))');
+        BrowserWait::until($page, '() => document.querySelector("[data-test=cup-next-closed]").checkVisibility() && !document.querySelector("[data-test=cup-next-cta]").checkVisibility()', 3_000);
+        expect($page->evaluate(CUP_HEAD_STATE)['overflow'])->toBe(0)
+            ->and($page->evaluate(CUP_HEAD_STATE)['cut'])->toBe([]);
 
         // A Livewire round trip on the page: the head stays, the console and the answers stay clean.
         $page->evaluate('() => window.Livewire.find(document.querySelector("[data-test=tournaments-index]").closest("[wire\\\\:id]").getAttribute("wire:id")).$refresh()');

@@ -68,15 +68,13 @@ final class CupBoard
     }
 
     /**
-     * One cup as its row shows it. `$signups`: its active sign-ups with their players, when the caller read them for
-     * several cups at once; null reads them here.
+     * One cup as its row shows it, from its active sign-ups with their players (read for every cup at once).
      *
-     * @param  list<TournamentSignup>|null  $signups
+     * @param  list<TournamentSignup>  $signups
      * @return array{tournament: Tournament, region: ?string, regionLabel: ?string, taken: int, places: int, free: bool, faces: list<User>, entered: bool, zone: string, fixedZone: bool, day: string, clock: string, city: string}
      */
-    public function row(Tournament $cup, ?string $viewerZone = null, ?array $signups = null, ?int $viewerId = null): array
+    private function row(Tournament $cup, ?string $viewerZone, array $signups, ?int $viewerId): array
     {
-        $signups ??= TournamentSignup::query()->where('tournament_id', $cup->id)->active()->with('user')->orderBy('id')->get()->all();
         $size = $cup->teamSize();
         $lineups = count(array_filter($signups, fn (TournamentSignup $signup): bool => $signup->lineup_id !== null));
         $taken = $lineups * $size + (count($signups) - $lineups);
@@ -102,7 +100,8 @@ final class CupBoard
 
     /**
      * The cup to sign up for next: of the board's rows, the one open for sign-up with a free place that starts
-     * first (the board's order breaks a tie). Null when no cup takes players now.
+     * first (the board's order breaks a tie). Not one whose start has passed: sign-up closes at the start, even
+     * before the league's clock moves it on. Null when no cup takes players now.
      *
      * @param  list<array{game: string, cups: list<array<string, mixed>>}>  $groups
      * @return array<string, mixed>|null
@@ -113,7 +112,7 @@ final class CupBoard
 
         foreach ($groups as $group) {
             foreach ($group['cups'] as $cup) {
-                if ($cup['free'] && ($next === null || $cup['tournament']->starts_at->lt($next['tournament']->starts_at))) {
+                if ($cup['free'] && $cup['tournament']->starts_at->isFuture() && ($next === null || $cup['tournament']->starts_at->lt($next['tournament']->starts_at))) {
                     $next = $cup;
                 }
             }
