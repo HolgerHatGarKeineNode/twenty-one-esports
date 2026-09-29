@@ -74,6 +74,18 @@ class User extends Authenticatable
     protected $rememberTokenName = '';
 
     /**
+     * A deleted account's NIP-05 name is held for the change period (P47
+     * security audit F2): the key may take it back after logging in again,
+     * nobody else meanwhile.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            app(Nip05Names::class)->releaseForDeletion($user);
+        });
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

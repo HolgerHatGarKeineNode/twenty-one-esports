@@ -5327,7 +5327,7 @@
     "Give it up": "Freigeben",
     ":address was revoked.": ":address wurde zurückgenommen.",
     "Nostr addresses": "Nostr-Adressen",
-    "Names players claimed on :domain. Revoke one that impersonates someone or breaks the rules: it stops answering at once and nobody can claim it again.": "Namen, die sich Spieler auf :domain gesichert haben. Nimm einen zurück, der sich als jemand anderes ausgibt oder gegen die Regeln verstößt: Er antwortet sofort nicht mehr, und niemand kann ihn wieder sichern.",
+    "Names players claimed on :domain. Revoke one that impersonates someone or breaks the rules: it stops answering at once and stays held until you lift the hold below.": "Namen, die sich Spieler auf :domain gesichert haben. Nimm einen zurück, der sich als jemand anderes ausgibt oder gegen die Regeln verstößt: Er antwortet sofort nicht mehr und bleibt gesperrt, bis du die Sperre unten aufhebst.",
     "Claimed names": "Gesicherte Namen",
     ":count name|:count names": ":count Name|:count Namen",
     "Search a name": "Namen suchen",
@@ -5390,5 +5390,13 @@
     "Skip": "Überspringen",
     "Encrypted and signed by your own signer, one message per person, sent from this browser to their relays (NIP-17, or NIP-04 only if you say yes for that person). The league does not store it.": "Verschlüsselt und signiert von deinem eigenen Signer, eine Nachricht pro Person, von diesem Browser an ihre Relays gesendet (NIP-17, oder NIP-04 nur, wenn du für diese Person zustimmst). Die Liga speichert sie nicht.",
     "Sign and send :count": "Signieren und :count senden",
-    "Invite the others from your page": "Lade die anderen von deiner Seite aus ein"
+    "Invite the others from your page": "Lade die anderen von deiner Seite aus ein",
+    "The hold on :name was lifted.": "Die Sperre auf :name wurde aufgehoben.",
+    "Held names": "Gesperrte Namen",
+    "Nobody can claim these. A revoked name stays held until you lift the hold; a name given up is held for :days days against other keys.": "Diese Namen kann niemand sichern. Ein zurückgenommener Name bleibt gesperrt, bis du die Sperre aufhebst; ein freigegebener Name ist :days Tage lang für andere Schlüssel gesperrt.",
+    "No name is held.": "Kein Name ist gesperrt.",
+    "Revoked, held until lifted": "Zurückgenommen, gesperrt bis zur Aufhebung",
+    "Given up, held until :date": "Freigegeben, gesperrt bis :date",
+    "Lift the hold on :name?": "Sperre auf :name aufheben?",
+    "This name was given up recently and is held until :date.": "Dieser Name wurde vor Kurzem freigegeben und ist bis :date gesperrt."
 }

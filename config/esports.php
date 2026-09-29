@@ -100,8 +100,10 @@ return [
     | A player may claim `name@<app host>` (App\Support\Nostr\Nip05Names),
     | served from /.well-known/nostr.json. `change_days`: a claimed name
     | changes (or is claimed again after a release) at most once in this
-    | many days. `reserved`: names nobody claims, on top of the league's own
-    | NIP-05 name and the Lightning address of the pool (both from config).
+    | many days, and a name given up is held that long against other keys.
+    | `reserved`: words nobody claims, on top of the league's own NIP-05 name
+    | and the Lightning address of the pool (both from config), also as a part
+    | of a name and in look-alike spelling (Nip05Names::isReserved()).
     |
     */
 
@@ -112,7 +114,7 @@ return [
         'reserved' => [
             'admin', 'administrator', 'root', 'system', 'league', 'liga', 'twentyone', 'twenty-one', 'twenty_one', '21',
             'einundzwanzig', 'verein', 'esports', 'support', 'help', 'hilfe', 'info', 'contact', 'kontakt', 'team', 'staff',
-            'official', 'offiziell', 'mod', 'moderator', 'security', 'abuse', 'postmaster', 'webmaster', 'hostmaster',
+            'official', 'offiziell', 'mod', 'moderator', 'moderation', 'e21', 'security', 'abuse', 'postmaster', 'webmaster', 'hostmaster',
             'noreply', 'no-reply', 'bot', 'stream', 'live', 'news', 'nostr', 'pool', 'wallet', 'payout', 'payouts',
             'www', 'mail', 'api', 'relay', 'tournament', 'tournaments', 'director', 'organizer', 'null', 'undefined',
         ],
@@ -664,7 +666,10 @@ return [
     | addresses (`bc` mainnet; tests use `bcrt`). `lnurl_insecure_hosts`:
     | `host:port` pairs whose Lightning addresses are fetched over plain
     | http without the public-address check; empty everywhere but the
-    | integration suite's local fake. `nwc_insecure_relays`: the same for
+    | integration suite's local fake. `lnurl_request_seconds` and
+    | `lnurl_budget_seconds`: the total deadline of one request to a Lightning
+    | address, and of both requests of one invoice together (P47 audit F1).
+    | `nwc_insecure_relays`: the same for
     | NIP-47 relays (`host:port` reached over ws:// without the check);
     | ignored in production. Every other NWC relay is wss:// on port 443 of a
     | DNS name whose addresses are all public, and the socket is pinned to
@@ -692,6 +697,8 @@ return [
         'invoice_expiry_seconds' => 900,
         'invoice_networks' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_INVOICE_NETWORKS', 'bc'))))),
         'lnurl_insecure_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_LNURL_INSECURE_HOSTS', ''))))),
+        'lnurl_request_seconds' => 8,
+        'lnurl_budget_seconds' => 12,
         'nwc_insecure_relays' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_NWC_INSECURE_RELAYS', ''))))),
         // How long one payout attempt may hold a payout (Lightning address, invoice, payment).
         'payout_lease_seconds' => 180,

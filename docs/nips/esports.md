@@ -3842,7 +3842,10 @@ league neither keeps nor stores anything of it.
 - **The invoice.** The league asks the winner's LNURL server (`allowsNostr` true and a `nostrPubkey`,
   else no zap is possible and the QR code remains) with the amount, the signed request as `nostr` and
   the `lnurl`, and passes the invoice on only if its amount is the one asked for and its description
-  hash is the SHA-256 of exactly that request. It checks the request against the one it prepared
+  hash is the SHA-256 of exactly that request. Both requests go to the address the league checked (a
+  public one, pinned for the connection), each within a total deadline and both together within one
+  budget, at most 64 KB each: a server that answers slowly or endlessly ends the attempt, not the
+  league's patience. It checks the request against the one it prepared
   (kind, author, tags, content, `created_at` window, signature) first, and limits invoice requests per
   player and hour: each one is a request to a stranger's server.
 - **The receipt** (`9735`) is signed by the winner's LNURL server and published to the request's
@@ -3854,18 +3857,27 @@ A player may claim a name on the league's domain, `name@<league domain>`
 ([NIP-05](https://github.com/nostr-protocol/nips/blob/master/05.md)); it is opt-in.
 
 - **Names.** `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or digit, 3 to 30 characters,
-  case-insensitive (stored and answered lowercase), unique. The league reserves names (its own NIP-05
-  name, its Lightning address names, role and support names) and every name an admin revoked while that
-  account exists. A name changes at most once per change period (30 days by default); the first claim
-  is free, a claim after giving a name up counts as a change.
+  case-insensitive (stored and answered lowercase), unique. The league reserves words (its own NIP-05
+  name, its Lightning address names, role, staff and support words), also as a part of a name between
+  `.`, `_` and `-`, with a plural `s`, as the start of a longer part (for words of five letters or
+  more) and in look-alike spelling (`0`, `1`, `3`, `5` read as `o`, `l`, `e`, `s`; `rn` as `m`), so
+  `support-team`, `administrators` and `supp0rt` are refused. A name changes at most once per change
+  period (30 days by default); the first claim is free, a claim after giving a name up counts as a
+  change.
+- **Holds.** A hold on a name is league data independent of any account. A name an admin revoked is
+  held until an admin lifts the hold, whatever happens to the account (deleting it and logging in
+  again changes nothing), and every revocation is its own hold. A name given up, changed or gone with
+  a deleted account is held for the change period against every other key, so nobody takes over a
+  name others still know; the key that held it may take it back meanwhile.
 - **The document.** `/.well-known/nostr.json?name=<name>` answers `{"names":{"<name>":"<hex key>"},
   "relays":{"<hex key>":[<league relays>]}}`: the league's relays, where it sends the player's signed
   league events, not the player's own NIP-65 relays, which the league does not keep. Without a name, or
   for an unknown one, it answers `{"names":{}}`; it never lists every player.
 - **Not written for the player.** The league never signs or publishes a kind `0` for a player: the
   player puts the address into their own profile, and clients check it against the document as usual.
-- **End.** Deleting the account releases the name at once. An admin can revoke a name (impersonation,
-  a rule broken): it stops answering at once and cannot be claimed again while the account exists.
+- **End.** Deleting the account ends the name at once (then held as above). An admin can revoke a name
+  (impersonation, a rule broken): it stops answering at once and stays held until an admin lifts the
+  hold.
 
 ## What is not on Nostr
 
