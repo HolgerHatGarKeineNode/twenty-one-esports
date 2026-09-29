@@ -36,6 +36,7 @@ use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -281,8 +282,56 @@ test('a board game that won its winner a tournament is the tournament win on the
             ->and(StreamBotCopy::violations($note['body'], $note['tags']))->toBe([]);
     }
 
+    // A knockout's final decided it: the note says so.
+    expect(app(PrideNotes::class)->compose(1, 0)['body'])->toContain('⚔️ Deciding game over Seed')
+        ->and(app(PrideNotes::class)->compose(1, 1)['body'])->toContain('⚔️ Beat Seed');
+
     // A casual game won later is a plain win again.
     $casual = app(BoardGameService::class)->start(Checkers::SLUG, $winner, User::factory()->create());
     app(BoardGameService::class)->resign($casual, $casual->black);
     expect(app(PrideSlides::class)->read()['win'])->toMatchArray(['gameId' => $casual->id, 'tournament' => null]);
+});
+
+test('a table tournament (Swiss) won with a board game is a tournament win, but its last game is not called the deciding one', function () {
+    CheckersGame::play();
+    [$tournament, , $winner] = boardStreamTournamentWon(Checkers::SLUG);
+    $winner->forceFill(['pubkey' => str_repeat('cd', 32)])->save();
+    $tournament->forceFill(['format' => TournamentFormat::Swiss])->save();
+
+    expect(app(PrideSlides::class)->read()['win'])->toMatchArray(['tournament' => 'Brett Cup', 'final' => false]);
+
+    foreach ([0, 1] as $variant) {
+        $note = app(PrideNotes::class)->compose(1, $variant);
+
+        expect($note['body'])->toContain('Brett Cup', 'nostr:npub1', route('tournaments.show', $tournament))
+            ->not->toContain('Deciding')->not->toContain('Beat ')
+            ->and(StreamBotCopy::violations($note['body'], $note['tags']))->toBe([]);
+    }
+});
+
+test('a tournament whose name cleans to nothing keeps the plain win note', function () {
+    CheckersGame::play();
+    [$tournament, , $winner] = boardStreamTournamentWon(Checkers::SLUG);
+    $winner->forceFill(['pubkey' => str_repeat('ef', 32)])->save();
+    $tournament->forceFill(['name' => '###'])->save();
+
+    $note = app(PrideNotes::class)->compose(1, 0);
+
+    expect($note['body'])->toContain('takes the win over', '(checkers blitz 5+3)', route('tournaments.show', $tournament))
+        ->not->toContain(' wins ')
+        ->and(StreamBotCopy::violations($note['body'], $note['tags']))->toBe([]);
+});
+
+test('with the board game tables gone the pride slides still read, with the chess win', function () {
+    CheckersGame::play();
+    $chess = ChessGame::factory()->finished('1-0')->create(['ended_at' => now()->subHour()]);
+    Schema::disableForeignKeyConstraints();
+    Schema::drop('board_moves');
+    Schema::drop('board_games');
+    Schema::enableForeignKeyConstraints();
+
+    $pride = app(PrideSlides::class)->read();
+
+    expect($pride['win'])->toMatchArray(['gameId' => $chess->id, 'mode' => 'Blitz chess'])
+        ->and($pride)->toHaveKeys(['climbers', 'signups', 'prizes']);
 });

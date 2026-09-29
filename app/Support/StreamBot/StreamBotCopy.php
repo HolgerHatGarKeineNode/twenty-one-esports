@@ -167,10 +167,15 @@ final class StreamBotCopy
             ['💰 :pot sats in the pot for :name', '🥇 :places', '🎁 :sponsors', '👉 :url'],
             ['⚡ :pot sats up for grabs: :name', '🥇 :places', '🎁 :sponsors', '👉 Sign up: :url'],
         ],
-        // A board game that won its winner a tournament (plan "Mühle und Dame", P7), in place of pride_note_win.
+        // A board game that won its winner a knockout tournament in its final (plan "Mühle und Dame", P7), in place of pride_note_win.
         'pride_note_tournament_win' => [
             ['🏆 :winner wins :tournament', '⚔️ Deciding game over :loser (:mode)', '📈 :elo', '👉 See the tournament: :url'],
             ['🥇 :tournament goes to :winner', '⚔️ Beat :loser in :mode', '🎉 Well played to both', '👉 :url'],
+        ],
+        // The same for a table (Swiss, round robin): the last game decided nothing on its own.
+        'pride_note_tournament_table_win' => [
+            ['🏆 :winner wins :tournament (:mode)', '📈 :elo', '👉 See the tournament: :url'],
+            ['🥇 :tournament goes to :winner', '🎉 Well played, everyone', '👉 :url'],
         ],
     ];
 

@@ -28,7 +28,8 @@ use Throwable;
  *   chess or a board game that is switched on (plan "Mühle und Dame", P7):
  *   winner, loser, blitz or daily chess or the board game, the winner's
  *   casual Elo change and the game's page (`url`); a board game that won
- *   its winner a finished tournament names it (`tournament`) and links it.
+ *   its winner a finished tournament names it (`tournament`, `final` when a
+ *   knockout's final decided it) and links it.
  * - `climbers`: the three biggest casual chess Elo gains of the last seven
  *   days (sum of the live rating changes, gains only).
  * - `signups`: the six newest sign-ups of tournaments open for sign-up
@@ -82,7 +83,13 @@ class PrideSlides
         $decided = fn () => ChessGame::query()->where('status', ChessGameStatus::Finished)->whereIn('result', ['1-0', '0-1'])
             ->whereNotNull('white_id')->whereNotNull('black_id')->with(['white', 'black'])->latest('ended_at')->latest('id');
         $game = $decided()->where('ended_at', '>=', now()->subDays(self::DAYS))->first() ?? $decided()->first();
-        $board = $this->boardWin($game);
+        // A failing board game read (its tables, its tournament) costs the board win only, never the pride slides.
+        try {
+            $board = $this->boardWin($game);
+        } catch (Throwable $e) {
+            report($e);
+            $board = null;
+        }
 
         if ($board !== null) {
             return $board;
@@ -161,6 +168,8 @@ class PrideSlides
             'delta' => is_numeric($delta) ? (int) $delta : null,
             'ago' => $game->ended_at->diffForHumans(),
             'tournament' => $tournament === null ? null : PublicName::clean($tournament->name),
+            // Won in a final (a knockout): this game decided it. A table (Swiss, round robin) was only its last game.
+            'final' => $tournament !== null && $tournament->format->hasFinal(),
             'url' => $tournament === null ? route('board.show', $game) : route('tournaments.show', $tournament),
         ];
     }

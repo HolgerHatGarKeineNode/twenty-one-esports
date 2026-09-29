@@ -140,9 +140,10 @@ class PrideNotes
         [$name, , $template] = self::TYPES[$type];
         $data = $this->pride->read();
 
-        // A board game that won its winner a tournament is told as the tournament win (plan "Mühle und Dame", P7).
-        if ($name === 'win' && is_string($data['win']['tournament'] ?? null) && $data['win']['tournament'] !== '') {
-            $template = 'pride_note_tournament_win';
+        // A board game that won its winner a tournament is told as the tournament win (plan "Mühle und Dame", P7):
+        // "deciding game" only after a knockout's final; a name that cleans to nothing keeps the plain win.
+        if ($name === 'win' && StreamBotCopy::clean((string) ($data['win']['tournament'] ?? ''), 80) !== '') {
+            $template = ($data['win']['final'] ?? false) === true ? 'pride_note_tournament_win' : 'pride_note_tournament_table_win';
         }
         $tags = [];
         $mention = function (?array $ref) use (&$tags): ?string {
