@@ -1,10 +1,12 @@
-@props(['active', 'games' => [], 'community' => [], 'tournaments' => null,'seasonTag' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null])
+@props(['active', 'games' => [], 'community' => [], 'chain' => [], 'tournaments' => null, 'admin' => null, 'account' => [], 'section' => null, 'user' => null])
 
 {{--
     Phones and tablets (below lg, header concept B): the tab bar of the active
     game at the bottom edge (Play, Matches, Ladder, then Tournaments and More)
     and the More sheet above it. More holds the account, the pages of every
-    game (Clans, Season, Watch live, Rules, Live stream, Admin) and the other games. The
+    game (Clans, the chain rail's Mempool, Season and Casual, Watch live, Rules,
+    Live stream, Admin) and the other games. The tab bar's Matches is the
+    active game's list; Mempool is every game's, the same page unfiltered. The
     links are the header's own lists (App\Support\Navigation\ShellNavigation),
     so no page is desktop-only (P16). The tab bar reserves its height in
     --tabbar-h (app.css): the page, the match dock and bottom bars of a page
@@ -27,9 +29,11 @@
         'dot' => $open > 0, 'name' => $open > 0 ? __('Tournaments').', '.$open.' '.trans_choice('open for sign-up|open for sign-up', $open) : null];
     $profile = $account[0] ?? null;
     $accountLinks = array_slice($account, 1);
+    $chainTests = ['mempool' => 'mobile-mempool', 'mining' => 'mobile-season', 'casual' => 'mobile-casual'];
     $everywhere = [
         [...$community[0], 'icon' => 'clans', 'test' => 'mobile-clans'],
-        [...$community[1], 'icon' => 'mining', 'test' => 'mobile-season'],
+        // The chain rail of row 1 (plan "Mempool-Streifen", P4), in its order.
+        ...array_map(fn (array $link): array => [...$link, 'test' => $chainTests[$link['key']]], $chain),
         // The strongest players across every game (P40): one page for all games, so here and not in the tab bar.
         ['key' => 'strongest', 'href' => route('ladder.strongest'), 'label' => __('Strongest players'), 'icon' => 'award', 'test' => 'mobile-strongest'],
         ['key' => 'watch', 'href' => route('games.index'), 'label' => __('Watch live'), 'icon' => 'eye', 'test' => 'mobile-live-games'],
@@ -96,13 +100,18 @@
             <ul class="m-0 grid list-none grid-cols-2 gap-1 p-0">
                 @foreach ($everywhere as $link)
                     <li class="min-w-0">
-                        <a href="{{ $link['href'] }}" class="{{ $row }}" @if ($section === $link['key']) aria-current="page" @endif data-test="{{ $link['test'] }}">
-                            <x-icon :name="$link['icon']" :size="18" class="text-ink-3" />
+                        {{-- The chain rail's links keep their glyph colours here (app.css `.chain-link--*`, `.chain-glyph`). --}}
+                        <a href="{{ $link['href'] }}" @class([$row, 'chain-link--'.$link['key'] => isset($link['name'])]) @if ($link['current'] ?? $section === $link['key']) aria-current="page" @endif
+                           @isset($link['name']) aria-label="{{ $link['name'] }}" @endisset data-test="{{ $link['test'] }}">
+                            <x-icon :name="$link['icon']" :size="18" :class="isset($link['name']) ? 'chain-glyph' : 'text-ink-3'" />
                             {{-- The Block 0 tag goes under the label: next to it, "Season" broke into "Sea son" at 375 px. --}}
                             <span class="flex min-w-0 flex-col items-start gap-1 leading-tight break-words">
                                 {{ $link['label'] }}
-                                @if ($link['key'] === 'mining' && $seasonTag)
-                                    <span class="nav-tag">{{ $seasonTag }}</span>
+                                @if (($link['tag'] ?? null) !== null)
+                                    <span class="nav-tag">{{ $link['tag'] }}</span>
+                                @endif
+                                @if (($link['count'] ?? null) !== null)
+                                    <span class="nav-count" aria-hidden="true" data-test="mobile-mempool-count">{{ $link['count'] }}</span>
                                 @endif
                                 @if ($link['key'] === 'live')
                                     {{-- On air or not follows the page's live feed (P20b), with the count when the stream shares one. --}}

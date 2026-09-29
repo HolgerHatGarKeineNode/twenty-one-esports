@@ -5,6 +5,7 @@ use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Navigation\ShellNavigation;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
@@ -45,6 +46,8 @@ function countQueries(array $queries, string $needle): int
 
 test('the footer counters are counted once and then served from the cache', function () {
     User::factory()->count(2)->create();
+    // The Mempool count of row 1 asks chess_games by status too, in its own cache (tests/Feature/ShellNavigationTest.php): served here, so only the footer counts.
+    Cache::put(ShellNavigation::MEMPOOL_KEY, 0, 60);
     $counters = fn (array $queries) => countQueries($queries, 'count(*) as "aggregate" from "users"')
         + countQueries($queries, 'count(*) as "aggregate" from "clans"')
         + countQueries($queries, 'from "chess_games" where "status" = ?');

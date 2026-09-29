@@ -54,7 +54,8 @@ const SHELL_MEASURE = <<<'JS'
             }
         }
         const nav = document.querySelector('[data-test=game-tabs]');
-        const search = document.querySelector('[data-test=site-search-form]');
+        // The search button, first after the nav since the search field left row 1 (plan "Mempool-Streifen", P4).
+        const search = document.querySelector('[data-test=mobile-search-toggle]');
         if (nav && search && nav.checkVisibility() && search.checkVisibility()) {
             const last = [...nav.children].filter((el) => el.checkVisibility()).pop();
             if (last && last.getBoundingClientRect().right > search.getBoundingClientRect().left) squeezed.push(`row 1 runs under the search: ${Math.round(last.getBoundingClientRect().right)} > ${Math.round(search.getBoundingClientRect().left)}`);
@@ -71,6 +72,42 @@ const SHELL_MEASURE = <<<'JS'
             small,
             lang: document.documentElement.lang,
         };
+    }
+    JS;
+
+/**
+ * Every visible item of desktop row 1, the game tabs and the chain rail's
+ * links one by one (plan "Mempool-Streifen", P4): `name left-right`, and
+ * what is wrong with them. An item is cut when its content is wider than its
+ * box, overlaps when it starts before the previous one ends, and is out when
+ * it leaves the viewport.
+ */
+const SHELL_ROW1 = <<<'JS'
+    () => {
+        const vis = (el) => el.checkVisibility({ checkVisibilityCSS: true }) && el.getBoundingClientRect().width > 0;
+        const row = document.querySelector('body > header > div');
+        const items = [];
+        const walk = (el) => {
+            if (!vis(el)) return;
+            if (el.matches('[data-test=game-tabs], [data-test=chain-rail]')) { [...el.children].forEach(walk); return; }
+            if (el.matches('span.grow, #game-chips')) return;
+            items.push(el);
+        };
+        [...row.children].forEach(walk);
+        const name = (el) => el.dataset.test || el.getAttribute('aria-label') || el.tagName.toLowerCase();
+        const problems = [];
+        let previous = null;
+        const out = items.map((el) => {
+            const r = el.getBoundingClientRect();
+            const [left, right] = [Math.round(r.left), Math.round(r.right)];
+            if (el.scrollWidth > el.clientWidth + 1) problems.push(`${name(el)} cut ${el.scrollWidth}>${el.clientWidth}`);
+            if (previous !== null && left < previous[1] - 0.5) problems.push(`${name(el)} ${left} overlaps ${previous[0]} ${previous[1]}`);
+            if (left < 0 || right > window.innerWidth) problems.push(`${name(el)} ${left}-${right} out of ${window.innerWidth}`);
+            previous = [name(el), right];
+            return `${name(el)} ${left}-${right}`;
+        });
+        const text = (sel) => { const el = document.querySelector(sel); return el && vis(el) ? el.innerText.trim() : null; };
+        return { items: out, problems, count: text('[data-test=mempool-count]'), tag: text('[data-test=season-tag]'), casual: text('[data-test=nav-casual]') };
     }
     JS;
 

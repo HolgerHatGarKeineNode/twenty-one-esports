@@ -2040,11 +2040,13 @@ select:focus[data-flux-control] {
  * Shell navigation, header concept B "game tabs" (components/shell/). Row 1
  * carries up to three game tabs, fewer at narrower widths so 1024 px never
  * overflows: none at lg (row 2 names the game), one from xl, two from 90rem,
- * three from 100rem, all with short labels. Tournaments (with its sign-up
- * count) and a LIVE badge beside Season share the row since 2026-09-27: the
- * hub says "All 4" and Season drops its tag below 80rem, links are 8 px
- * narrower below 100rem, the word mark waits for 120rem. The active game's
- * tab and its tab bar marker take the game's colour (--game, set per element).
+ * three from 105rem, all with short labels. Tournaments (with its sign-up
+ * count) and a LIVE badge share the row since 2026-09-27, the chain rail
+ * (Mempool, Season, Casual) since 2026-09-29: the hub says "All 4", the
+ * search is a button, Season shows its tag from 96rem, links are 8 px
+ * narrower below 100rem and 12 px below 80rem, the word mark waits for
+ * 120rem. The active game's tab and its tab bar marker take the game's
+ * colour (--game, set per element).
  */
 :root {
     --tabbar-h: calc(4rem + env(safe-area-inset-bottom));
@@ -2161,7 +2163,8 @@ select:focus[data-flux-control] {
         }
     }
 
-    @media (width >= 100rem) {
+    /* From 105rem, not 100: with the chain rail (P4 of plan "Mempool-Streifen") an English admin's row 1 ran 34 px past its box at 1600 px with three tabs. */
+    @media (width >= 105rem) {
         .gtab-2 {
             display: flex;
         }
@@ -2215,6 +2218,91 @@ select:focus[data-flux-control] {
         font-weight: 700;
         line-height: 20px;
         text-align: center;
+    }
+
+    /*
+     * The chain rail of row 1 (plan "Mempool-Streifen", P4): Mempool, Season,
+     * Casual in one frame, split by hairlines like the strip's divider. The
+     * glyph carries the state the strip uses: the mempool cube dashed
+     * (waiting, not in a block), the season blocks orange (mined), the
+     * casual blocks grey (never mined). Links as `.nav-link`, 8 px narrower
+     * below 100rem.
+     */
+    .chain-rail {
+        display: flex;
+        flex-shrink: 0;
+        height: 44px;
+        border: 1px solid var(--color-line);
+        border-radius: var(--radius-control);
+    }
+
+    .chain-link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        color: var(--color-ink-2);
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+
+    .chain-link + .chain-link {
+        border-left: 1px solid var(--color-line);
+    }
+
+    .chain-link:first-child {
+        border-radius: 5px 0 0 5px;
+    }
+
+    .chain-link:last-child {
+        border-radius: 0 5px 5px 0;
+    }
+
+    @media (width < 100rem) {
+        .chain-link {
+            padding: 0 8px;
+        }
+    }
+
+    /*
+     * The narrowest desktop tier, where row 1 has no game tab: Mempool keeps
+     * its cube and count, Season and Casual their labels without the blocks,
+     * links 6 px a side; the row's gap is 4 px and the hub has no chevron
+     * below xl (header.blade.php). With all three glyphs an English admin's
+     * row 1 ran 28 px past its box at 1024 px, and every page of row 1 has
+     * to stay in it at every width (tests/Browser/NavigationMenusTest.php).
+     */
+    @media (width < 80rem) {
+        .chain-rail > .chain-link--mining .chain-glyph,
+        .chain-rail > .chain-link--casual .chain-glyph {
+            display: none;
+        }
+
+        .chain-link,
+        .nav-link {
+            padding: 0 6px;
+        }
+    }
+
+    .chain-link:hover,
+    .chain-link[aria-current] {
+        color: var(--color-ink);
+        background: var(--color-row-hover);
+    }
+
+    .chain-glyph {
+        flex-shrink: 0;
+        color: var(--color-ink-3);
+    }
+
+    .chain-link--mempool .chain-glyph {
+        color: var(--color-btc-hi);
+        stroke-dasharray: 3 2.5;
+    }
+
+    .chain-link--mining .chain-glyph {
+        color: var(--color-btc);
     }
 
     .gchip {

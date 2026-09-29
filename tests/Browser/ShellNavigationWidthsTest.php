@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Tournament;
+use App\Support\Navigation\ShellNavigation;
 use App\Support\TwentyOne\LiveStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
@@ -81,8 +82,10 @@ test('row 1 and row 2 fit 1024, 1280 and 1440 px and the phone bars fit 320, 375
     expect($failures)->toBe([])->and($problems)->toBe([]);
 });
 
-test('row 1 fits Tournaments with its sign-up count and the LIVE badge with a three-digit count at 1024, 1280, 1440, 1680 and 1920 px, in English and German', function () {
+test('row 1 fits Tournaments with its sign-up count, the chain rail with a three-digit mempool count and the LIVE badge with a three-digit count at 1024, 1280, 1440, 1600, 1680 and 1920 px, in English and German, for a guest and an admin', function () {
     Tournament::factory()->signup()->count(2)->create(['signup_closes_at' => now()->addDays(2)]);
+    // The widest mempool count the rail must hold (plan "Mempool-Streifen", P4): three digits, cached as the header reads it.
+    Cache::put(ShellNavigation::MEMPOOL_KEY, 128, 3600);
     $admin = shellAdmin();
     $problems = [];
     $failures = [];
@@ -98,23 +101,29 @@ test('row 1 fits Tournaments with its sign-up count and the LIVE badge with a th
     };
     $liveBadge = '() => { const b = [...document.querySelectorAll("[data-test=live-badge]")].find((el) => el.checkVisibility()); if (!b) return null; const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), !!b.closest("[data-test=game-tabs]")]; }';
 
-    foreach (['en', 'de'] as $locale) {
-        foreach ([1024 => 768, 1280 => 800, 1440 => 900, 1680 => 1050, 1920 => 1080] as $width => $height) {
-            $onAir();
-            $page = shellPage($admin, $width, $height);
-            if ($locale === 'de') {
-                $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
-            }
-            shellOpen($page, '/rules', $problems);
-            $m = $page->evaluate(SHELL_MEASURE);
-            $live = $page->evaluate($liveBadge);
-            $badge = $page->evaluate('() => { const el = document.querySelector("[data-test=tournaments-open]"); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("")]; }');
-            $sizes["{$locale}@{$width}"] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge, 'live' => $live];
-            if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $badge === null || $badge[2] !== '2' || $live === null || $live[2] !== true) {
-                $failures[] = "{$locale} @{$width}: ".json_encode($sizes["{$locale}@{$width}"]);
-            }
-            if ($locale === 'en' && in_array($width, [1024, 1440], true)) {
-                shellShot($page, "shell-admin-{$width}-tournaments");
+    // The guest first: the pages of one test share their cookies, so a guest after the login would not be one.
+    foreach (['guest' => null, 'admin' => $admin] as $role => $user) {
+        foreach (['en', 'de'] as $locale) {
+            foreach ([1024 => 768, 1280 => 800, 1440 => 900, 1600 => 900, 1680 => 1050, 1920 => 1080] as $width => $height) {
+                $onAir();
+                $page = shellPage($user, $width, $height);
+                $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+                shellOpen($page, '/rules', $problems);
+                $m = $page->evaluate(SHELL_MEASURE);
+                $row = $page->evaluate(SHELL_ROW1);
+                $live = $page->evaluate($liveBadge);
+                $badge = $page->evaluate('() => { const el = document.querySelector("[data-test=tournaments-open]"); if (!el || !el.checkVisibility()) return null; const r = el.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join("")]; }');
+                $key = "{$role} {$locale}@{$width}";
+                $sizes[$key] = ['squeezed' => $m['squeezed'], 'scroll' => $m['scroll'], 'client' => $m['client'], 'badge' => $badge, 'live' => $live, 'row' => $row];
+                fwrite(STDERR, "\n[shell-row1] {$key}: ".json_encode($row));
+                // The rail: the count and Casual at every width; the Block 0 tag from 96rem.
+                $rail = $row['count'] === '128' && $row['casual'] !== null && ($row['tag'] !== null) === ($width >= 1536);
+                if ($m['lang'] !== $locale || $m['scroll'] > $m['client'] || $m['squeezed'] !== [] || $row['problems'] !== [] || ! $rail || $badge === null || $badge[2] !== '2' || $live === null || $live[2] !== true) {
+                    $failures[] = "{$key}: ".json_encode($sizes[$key]);
+                }
+                if ($locale === 'en' && $role === 'admin' && in_array($width, [1024, 1440], true)) {
+                    shellShot($page, "shell-admin-{$width}-tournaments");
+                }
             }
         }
     }

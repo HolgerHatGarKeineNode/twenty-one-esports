@@ -6,7 +6,7 @@
  * The hub and the More sheet close each other (a `nav-sheet` window event),
  * trap the focus while open (Alpine's x-trap) and give it back to the button
  * that opened them on Esc. "/" focuses the site search from anywhere except
- * a field.
+ * a field, opening the search row under the header first.
  */
 
 const STEPS_KEY = 'twentyone.firstSteps';
@@ -42,11 +42,14 @@ export function shellHeader() {
 
         hotkey(event) {
             if (event.key !== '/' || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || typing(event)) return;
-            const field = document.getElementById('site-search');
-            if (!field || !field.checkVisibility()) return;
+            const field = this.$refs.searchField;
+            if (!field) return;
             event.preventDefault();
             this.focusTicket++;
-            field.focus();
+            // The field sits in the search row under the header (plan "Mempool-Streifen", P4): open it first.
+            this.closeHub(false);
+            this.search = true;
+            this.$nextTick(() => field.focus());
         },
 
         toggleHub(button) {

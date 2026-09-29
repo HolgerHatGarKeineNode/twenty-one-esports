@@ -14,6 +14,7 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\GameNames;
+use App\Support\Matches\MempoolStrip;
 use App\Support\SeasonChain\Seasons;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -47,6 +48,9 @@ final class ShellNavigation
     /** Cache key of the open-for-sign-up count behind the Tournaments badge. */
     public const OPEN_TOURNAMENTS_KEY = 'shell:tournaments-open';
 
+    /** Cache key of the waiting count behind the Mempool badge. */
+    public const MEMPOOL_KEY = 'shell:mempool-waiting';
+
     public readonly bool $isAdmin;
 
     public readonly bool $isOrganizer;
@@ -57,6 +61,10 @@ final class ShellNavigation
     private ?string $pageGame = null;
 
     private bool $pageGameResolved = false;
+
+    private ?string $seasonTag = null;
+
+    private bool $seasonTagResolved = false;
 
     public function __construct(
         public readonly ?User $user,
@@ -225,7 +233,7 @@ final class ShellNavigation
     }
 
     /**
-     * Cross-game destinations of row 1: Clans and Season.
+     * Cross-game destinations of row 1 besides the chain rail: Clans.
      *
      * @return list<array{key: string, href: string, label: string}>
      */
@@ -233,7 +241,44 @@ final class ShellNavigation
     {
         return [
             ['key' => 'clans', 'href' => route('clans.index'), 'label' => __('Clans')],
-            ['key' => 'mining', 'href' => route('mining'), 'label' => __('Season')],
+        ];
+    }
+
+    /**
+     * The chain rail of row 1 (plan "Mempool-Streifen", P4) and its links
+     * under Everywhere on phones: the mempool (/matches, the matches of every
+     * game), the season chain (/mining, where rated wins mine blocks) and
+     * the casual matches (/matches?chain=casual), which never mine. The
+     * mempool carries how many matches wait in it, one cached count like
+     * the Tournaments badge: it runs on every page.
+     *
+     * `name` is the accessible name (it holds the visible `label`),
+     * `current` whether the link is the page on screen.
+     *
+     * @return list<array{key: string, href: string, label: string, name: string, icon: string, current: bool, count: int|null, tag: string|null}>
+     */
+    public function chain(?string $section = null): array
+    {
+        $waiting = (int) Cache::remember(self::MEMPOOL_KEY, 60, fn (): int => MempoolStrip::waiting());
+        $onMatches = $this->request->routeIs('matches.index');
+        $chain = $onMatches ? $this->request->query('chain') : null;
+        $filtered = $onMatches && $this->request->query('game') !== null;
+        $tag = $this->seasonTag();
+
+        return [
+            [
+                'key' => 'mempool', 'href' => route('matches.index'), 'label' => __('Mempool'),
+                'name' => $waiting > 0 ? __('Mempool').', '.trans_choice(':count match playing or up next|:count matches playing or up next', $waiting) : __('Mempool'),
+                'icon' => 'matches', 'current' => $onMatches && $chain === null && ! $filtered, 'count' => $waiting > 0 ? $waiting : null, 'tag' => null,
+            ],
+            [
+                'key' => 'mining', 'href' => route('mining'), 'label' => __('Season'), 'name' => $tag === null ? __('Season chain') : __('Season chain').', '.$tag,
+                'icon' => 'mining', 'current' => $section === 'mining', 'count' => null, 'tag' => $tag,
+            ],
+            [
+                'key' => 'casual', 'href' => route('matches.index', ['chain' => 'casual']), 'label' => __('Casual'), 'name' => __('Casual chain'),
+                'icon' => 'mining', 'current' => $chain === 'casual' && ! $filtered, 'count' => null, 'tag' => null,
+            ],
         ];
     }
 
@@ -254,16 +299,25 @@ final class ShellNavigation
         return ['href' => route('tournaments.index'), 'label' => __('Tournaments'), 'open' => $open];
     }
 
-    /** "Block 0 soon" before the first season, "Live now" while one runs, nothing between seasons. */
+    /**
+     * "Block 0 soon" before the first season, "Live now" while one runs,
+     * nothing between seasons. Asked once per page: the chain rail and the
+     * phone's sheet both show it, and the state is a query.
+     */
     public function seasonTag(): ?string
     {
+        if ($this->seasonTagResolved) {
+            return $this->seasonTag;
+        }
+
+        $this->seasonTagResolved = true;
         $state = Seasons::state();
 
         if ($state === 'between') {
-            return null;
+            return $this->seasonTag = null;
         }
 
-        return $state === 'live' ? __('Live now') : __('Block 0 soon');
+        return $this->seasonTag = $state === 'live' ? __('Live now') : __('Block 0 soon');
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Models\SeasonAttestation;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Matches\MempoolStrip;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
@@ -99,6 +100,9 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
 
     $viewer = User::factory()->create();
     $shots = getenv('MEMPOOL_SHOTS');
+    $casual = MempoolStrip::build(null, 'casual');
+    $casualCubes = count($casual['finished']) + count($casual['running']);
+    expect($casualCubes)->toBeGreaterThan(0)->toBeLessThan(9);
 
     foreach (['en', 'de'] as $locale) {
         foreach ([320, 375, 1280] as $width) {
@@ -127,6 +131,12 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
             // A Livewire round trip (the status filter), then the same channels again.
             $page->locator('[data-test=status-done]')->click();
             BrowserWait::until($page, '() => document.querySelector("[data-test=status-done]").getAttribute("aria-pressed") === "true"', 10_000);
+
+            // The Chain filter (P4): a second round trip narrows the strip to the casual matches; its buttons are never cut.
+            $page->locator('[data-test=chain-casual]')->click();
+            BrowserWait::until($page, '() => document.querySelector("[data-test=chain-casual]").getAttribute("aria-pressed") === "true"', 10_000);
+            $chain = $page->evaluate('() => ({ cubes: document.querySelectorAll("[data-test=strip-cube]").length, cut: [...document.querySelectorAll("[data-test=chain-filter], [data-test=chain-filter] button")].filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.dataset.test || el.innerText), url: location.search })');
+            expect($chain)->toBe(['cubes' => $casualCubes, 'cut' => [], 'url' => '?status=done&chain=casual'], "{$where}: casual chain");
 
             expect($page->evaluate('() => window.__errors'))->toBe([], "{$where}: console")
                 ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$where}: responses")

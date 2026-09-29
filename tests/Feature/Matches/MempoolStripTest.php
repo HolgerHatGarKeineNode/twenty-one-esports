@@ -30,6 +30,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Livewire\Livewire;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 
@@ -290,4 +291,70 @@ test('/matches asks the same number of queries for 1, 5 and 25 matches of every 
         ->and($twentyFive)->toBe($five)
         ->and(SeriesMatch::query()->count())->toBe(50)
         ->and(BoardGame::query()->count())->toBe(50);
+});
+
+/*
+| The Chain filter (P4): `?chain=season` keeps the rated matches, whose wins
+| mine the season chain, `?chain=casual` the casual ones, in strip and table.
+| Row 1 of the header links the casual view (tests/Feature/ShellNavigationTest.php).
+*/
+
+test('the Chain filter narrows strip, table and status counts to the rated or the casual matches of every game', function () {
+    NineMensMorrisOn::play();
+    $this->freezeTime();
+    $ratedSeries = mempoolSeries(['rated' => true, 'finished_at' => now()->subMinutes(50)]);
+    $casualSeries = mempoolSeries(['rated' => false, 'finished_at' => now()->subMinutes(40)]);
+    $ratedChess = ChessGame::factory()->rated()->finished()->create(['ended_at' => now()->subMinutes(30)]);
+    $casualChess = ChessGame::factory()->create(['ply' => 3]);
+    $casualBoard = mempoolBoard(NineMensMorris::SLUG, ['ply' => 5]);
+    $ratedBoard = mempoolBoard(NineMensMorris::SLUG, ['status' => BoardGameStatus::Finished, 'result' => '1-0', 'ended_at' => now()->subMinutes(20), 'rated' => true]);
+
+    $all = $this->get(route('matches.index'))->assertOk()->getContent();
+    $season = $this->get(route('matches.index', ['chain' => 'season']))->assertOk()->getContent();
+    $casual = $this->get(route('matches.index', ['chain' => 'casual']))->assertOk()->getContent();
+
+    expect(stripCubes($all))->toBe(['rocket-league:fin', 'rocket-league:fin', 'chess:fin', NineMensMorris::SLUG.':fin', 'chess:live', NineMensMorris::SLUG.':live'])
+        ->and(stripCubes($season))->toBe(['rocket-league:fin', 'chess:fin', NineMensMorris::SLUG.':fin'])
+        ->and(stripCubes($casual))->toBe(['rocket-league:fin', 'chess:live', NineMensMorris::SLUG.':live'])
+        // The table follows the strip: the rated rows only under Season, the casual rows only under Casual.
+        ->and($season)->toContain('href="'.route('matches.show', $ratedSeries).'"')->not->toContain('href="'.route('matches.show', $casualSeries).'"')
+        ->toContain('href="'.route('games.show', $ratedChess).'"')->not->toContain('href="'.route('games.show', $casualChess).'"')
+        ->toContain('href="'.route('board.show', $ratedBoard).'"')->not->toContain('href="'.route('board.show', $casualBoard).'"')
+        ->and($casual)->toContain('href="'.route('matches.show', $casualSeries).'"')->not->toContain('href="'.route('matches.show', $ratedSeries).'"')
+        ->toContain('href="'.route('board.show', $casualBoard).'"')->not->toContain('href="'.route('board.show', $ratedBoard).'"')
+        // Each view says what it is; the casual one never promises mining.
+        ->and($casual)->toContain('They move the casual rating and mine no blocks.')->not->toContain('mines a block')
+        ->and($season)->toContain('Rated matches of every game, played and waiting.')
+        ->and($casual)->toMatch('/aria-pressed="true" data-test="chain-casual"/')
+        ->and($all)->toMatch('/aria-pressed="true" data-test="chain-all"/');
+
+    // The status counts follow the chain: one casual game playing, none rated.
+    Livewire::withQueryParams(['chain' => 'casual'])->test('pages::matches.index')
+        ->assertSet('chain', 'casual')
+        ->assertSeeHtml('data-test="status-live"')
+        ->tap(fn ($component) => expect($component->instance()->counts['live'])->toBe(2))
+        ->call('pickChain', 'season')->assertSet('chain', 'season')
+        ->tap(fn ($component) => expect($component->instance()->counts['live'])->toBe(0))
+        ->call('pickChain', 'all')->assertSet('chain', 'all');
+});
+
+test('an unknown chain in the address shows every match, and the filter still works with the board games switched off', function () {
+    ChessGame::factory()->rated()->finished()->create();
+    ChessGame::factory()->create();
+
+    Livewire::withQueryParams(['chain' => 'lightning'])->test('pages::matches.index')
+        ->assertSet('chain', 'all')
+        ->call('pickChain', 'mainnet')->assertSet('chain', 'all')
+        ->call('pickChain', 'casual')->assertSet('chain', 'casual')->assertOk();
+
+    // Board games off, and on without their route: the casual view answers and lists no board game.
+    expect(MempoolStrip::boardSlugs())->toBe([]);
+    config(['esports.board_games.enabled' => true, 'esports.board_games.games.'.NineMensMorris::SLUG.'.enabled' => true]);
+    app()->forgetInstance(GameRegistry::class);
+    mempoolBoard(NineMensMorris::SLUG);
+
+    $html = $this->get(route('matches.index', ['chain' => 'casual']))->assertOk()->getContent();
+    expect(Route::has('board.show'))->toBeFalse()
+        ->and(stripCubes($html))->toBe(['chess:live'])
+        ->and($html)->not->toContain('data-test="board-row"');
 });

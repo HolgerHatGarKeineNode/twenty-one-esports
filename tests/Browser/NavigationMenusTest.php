@@ -193,14 +193,23 @@ test('the header search: type and press Enter at 375 and 1440 px, results for a 
     $series = SeriesMatch::factory()->create();
     $problems = [];
 
-    foreach ([375 => '#site-search-mobile', 1440 => '#site-search'] as $width => $field) {
+    // One field at every width, in the search row under the header (plan "Mempool-Streifen", P4): the button opens it on a phone, "/" on desktop.
+    foreach ([375 => '#site-search', 1440 => '#site-search'] as $width => $field) {
         $page = navPage(null, $width);
         navOpen($page, '/rules', $problems);
 
         if ($width === 375) {
             $page->locator('[aria-controls=mobile-search]')->click();
-            BrowserWait::until($page, '() => document.getElementById("site-search-mobile").checkVisibility()', 5_000);
+        } else {
+            $page->evaluate('() => document.activeElement.blur()');
+            $page->locator('body')->press('/');
+            BrowserWait::until($page, '() => document.activeElement?.id === "site-search"', 5_000);
+            // The row opens under the header, its field at the end of row 1 (same 32 px inset), below the button.
+            $row = $page->evaluate('() => { const f = document.getElementById("site-search").getBoundingClientRect(), b = document.querySelector("[data-test=mobile-search-toggle]").getBoundingClientRect(), r = document.querySelector("body > header > div").getBoundingClientRect(); return [Math.round(f.width), Math.round(r.right - f.right), f.top >= b.bottom]; }');
+            fwrite(STDERR, "\n[nav-search] 1440px field width, inset from the right, below the button: ".json_encode($row));
+            expect($row)->toBe([384, 32, true]);
         }
+        BrowserWait::until($page, '() => document.getElementById("site-search").checkVisibility()', 5_000);
 
         $page->locator($field)->fill('mempool');
         $page->locator($field)->press('Enter');

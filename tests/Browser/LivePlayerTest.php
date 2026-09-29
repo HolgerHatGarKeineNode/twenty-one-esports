@@ -385,7 +385,8 @@ test('on air, the badge fits the shell at 320 to 1440 px in English and German, 
                         const r = a.getBoundingClientRect(), row = document.querySelector('body > header > div').getBoundingClientRect();
                         const chips = document.getElementById('game-chips');
                         const c = chips && chips.checkVisibility() ? chips.getBoundingClientRect() : null;
-                        const search = document.querySelector('[data-test=site-search-form]');
+                        // The search button of row 1 (the field moved to the search row, plan "Mempool-Streifen", P4).
+                        const search = document.querySelector('[data-test=mobile-search-toggle]');
                         const s = search && search.checkVisibility() ? search.getBoundingClientRect() : null;
                         return { rect: [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)], inRow: r.left >= row.left && r.right <= row.right + 0.5 && r.top >= row.top && r.bottom <= row.bottom + 0.5,
                             clearOfChips: !c || r.left >= c.right - 0.5, clearOfSearch: !s || r.right <= s.left + 0.5, chipsWidth: c ? Math.round(c.width) : null };

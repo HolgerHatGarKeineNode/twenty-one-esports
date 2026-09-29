@@ -18,8 +18,8 @@
     $active = $nav->activeGame();
     $onGamePage = $nav->onGamePage();
     $community = $nav->community();
+    $chain = $nav->chain($section);
     $tournaments = $nav->tournaments();
-    $seasonTag = $nav->seasonTag();
     $admin = $nav->admin();
     $account = $nav->account();
     $played = array_values(array_filter($games, fn (array $game): bool => $game['played']));
@@ -36,11 +36,12 @@
         x-on:bell-toggle="bell = $event.detail" x-on:keydown.escape.window="search = false; closeHub()">
     {{--
         Row 1. Below lg it is the phone's only top bar (56 px: logo, game chips, search, bell or
-        "Log in"); from lg the desktop bar (64 px): logo, game tabs, the hub,
-        Clans, Season, search, then the account side. How many game tabs show
-        depends on the width (app.css `.gtab`), so 1024 px never overflows.
+        "Log in"); from lg the desktop bar (64 px): logo, game tabs, the hub, Tournaments,
+        Clans, the chain rail (Mempool, Season, Casual), search, then the account side. How
+        many game tabs show depends on the width (app.css `.gtab`), so 1024 px never
+        overflows. The search is a button that opens the search row under the header.
     --}}
-    <div class="flex h-14 items-center gap-1 border-b border-hairline pr-2 pl-4 lg:h-16 lg:gap-2 lg:px-6 xl:px-8">
+    <div class="flex h-14 items-center gap-1 border-b border-hairline pr-2 pl-4 lg:h-16 lg:px-6 xl:gap-2 xl:px-8">
         <a href="{{ route('home') }}" class="flex min-h-11 min-w-11 shrink-0 items-center gap-2.5 text-ink hover:text-ink" aria-label="{{ __('TWENTY ONE esports, home') }}">
             <x-logo :size="32" class="shadow-none lg:hidden" />
             <x-logo :size="36" class="max-lg:hidden" />
@@ -85,9 +86,9 @@
             <button type="button" class="gtab gtab-hub" aria-controls="game-hub" x-bind:aria-expanded="hub.toString()" aria-expanded="false" aria-haspopup="dialog"
                     x-on:click="toggleHub($el)" aria-label="{{ $allGames }}" data-test="games-menu">
                 <x-icon name="grid" :size="18" />
-                {{-- "All 4" below 100rem, where Tournaments needs the room: the button keeps "All 4 games" as its name. --}}
-                <span aria-hidden="true" class="max-[100rem]:hidden">{{ $allGames }}</span><span aria-hidden="true" class="min-[100rem]:hidden">{{ __('All :count', ['count' => count($games)]) }}</span>
-                <x-icon name="chevron-down" :size="16" class="gtab-chevron" />
+                {{-- "All 4" at every width, where Tournaments and the chain rail need the room: the button keeps "All 4 games" as its name. --}}
+                <span aria-hidden="true">{{ __('All :count', ['count' => count($games)]) }}</span>
+                <x-icon name="chevron-down" :size="16" class="gtab-chevron max-xl:hidden" />
             </button>
             <span class="grow"></span>
             {{-- Tournaments, cross-game like Clans and Season, with how many are open for sign-up now. --}}
@@ -98,14 +99,30 @@
                 @endif
             </a>
             @foreach ($community as $link)
-                <a href="{{ $link['href'] }}" @if ($section === $link['key']) aria-current="page" @endif class="nav-link self-center" data-test="nav-{{ $link['key'] }}">
-                    {{ $link['label'] }}
-                    @if ($link['key'] === 'mining' && $seasonTag)
-                        {{-- Below 80rem the tag gives its room to Tournaments; the Season page says the same. --}}
-                        <span class="nav-tag max-[80rem]:hidden" data-test="season-tag">{{ $seasonTag }}</span>
-                    @endif
-                </a>
+                <a href="{{ $link['href'] }}" @if ($section === $link['key']) aria-current="page" @endif class="nav-link self-center" data-test="nav-{{ $link['key'] }}">{{ $link['label'] }}</a>
             @endforeach
+            {{--
+                The chain rail (plan "Mempool-Streifen", P4): the mempool of every game's matches with how many
+                wait in it, the season chain their rated wins mine, and the casual matches that never mine.
+                One frame, because they are one story; the glyph says which is which (dashed cube: waiting,
+                orange blocks: mined, grey blocks: not mined), the label says it in words.
+            --}}
+            <div role="group" aria-label="{{ __('Mempool and chains') }}" class="chain-rail self-center" data-test="chain-rail">
+                @foreach ($chain as $link)
+                    <a href="{{ $link['href'] }}" @if ($link['current']) aria-current="page" @endif aria-label="{{ $link['name'] }}" title="{{ $link['name'] }}"
+                       class="chain-link chain-link--{{ $link['key'] }}" data-test="nav-{{ $link['key'] }}">
+                        <x-icon :name="$link['icon']" :size="16" class="chain-glyph" />
+                        <span>{{ $link['label'] }}</span>
+                        @if ($link['count'] !== null)
+                            <span class="nav-count" aria-hidden="true" data-test="mempool-count">{{ $link['count'] }}</span>
+                        @endif
+                        @if ($link['tag'] !== null)
+                            {{-- From 2xl (96rem): at 1440 px it ran an English admin's row 1 47 px past its box; the Season page says the same. --}}
+                            <span class="nav-tag max-2xl:hidden" data-test="season-tag">{{ $link['tag'] }}</span>
+                        @endif
+                    </a>
+                @endforeach
+            </div>
             {{-- The stream (P20): its LIVE badge on air, a quiet "Live" link like its neighbours off air. --}}
             <x-live-badge class="flex self-center" off-air />
         </nav>
@@ -113,23 +130,17 @@
         {{-- The live stream's tally light (P20) on a tablet; from lg it sits next to Season, on phones in More (the top bar has no room: the game chips). --}}
         <x-live-badge class="hidden md:flex lg:hidden" />
 
-        {{-- The site search (P16, SearchController): Enter opens the results, a match number the match. "/" focuses it. --}}
-        <form method="GET" action="{{ route('search') }}" role="search" class="hidden w-40 shrink-0 lg:block xl:w-44" data-test="site-search-form">
-            <label for="site-search" class="sr-only">{{ __('Search') }}</label>
-            <span class="relative block">
-                <x-icon name="search" :size="16" class="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-3" />
-                <input id="site-search" name="q" type="search" value="{{ $searchTerm }}" maxlength="200" enterkeyhint="search" placeholder="{{ __('Search') }}"
-                       aria-keyshortcuts="/" class="h-11 w-full rounded-md border border-line bg-ground pr-9 pl-9 text-[13px] text-ink placeholder:text-ink-3">
-                <kbd aria-hidden="true" class="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-xs border border-line bg-well px-1.5 text-[11px] leading-5 text-ink-2">/</kbd>
-            </span>
-        </form>
-
-        {{-- Below 360 px the label goes to screen readers only: at 320 px in German "Suche" left the chip row 67 px, narrower than the "Schach" chip (73 px). --}}
-        <button type="button" class="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] text-ink-2 hover:text-ink lg:hidden"
-                aria-controls="mobile-search" x-bind:aria-expanded="search.toString()" aria-expanded="false"
-                x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.mobileSearch.focus())" data-test="mobile-search-toggle">
+        {{--
+            The site search (P16, SearchController): this button opens the search row under the header, "/" does
+            the same from anywhere but a field; Enter opens the results, a match number the match.
+            Below 360 px the label goes to screen readers only: at 320 px in German "Suche" left the chip row 67 px, narrower than the "Schach" chip (73 px).
+            From lg the button is the icon alone: the 176 px field of row 1 went to the chain rail (plan "Mempool-Streifen", P4).
+        --}}
+        <button type="button" class="relative flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-2.5 text-[13px] text-ink-2 hover:text-ink aria-expanded:bg-raised aria-expanded:text-btc-hi lg:px-0"
+                aria-controls="mobile-search" x-bind:aria-expanded="search.toString()" aria-expanded="false" aria-keyshortcuts="/" title="{{ __('Search') }} (/)"
+                x-on:click="search = ! search; closeHub(false); search && $nextTick(() => $refs.searchField.focus())" data-test="mobile-search-toggle">
             <x-icon name="search" :size="20" />
-            <span class="max-[359px]:sr-only">{{ __('Search') }}</span>
+            <span class="max-[359px]:sr-only lg:sr-only">{{ __('Search') }}</span>
         </button>
 
         @if ($user)
@@ -198,13 +209,14 @@
         @endforeach
     </nav>
 
-    <div id="mobile-search" class="border-b border-hairline px-4 py-3 lg:hidden" x-show="search" x-cloak
+    {{-- The search row, at every width: full width on phones, from lg a 384 px field at the end of row 1. --}}
+    <div id="mobile-search" class="border-b border-hairline px-4 py-3 lg:flex lg:justify-end lg:px-6 xl:px-8" x-show="search" x-cloak
          x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="-translate-y-2 opacity-0"
          x-transition:leave="transition duration-150 ease-in" x-transition:leave-end="opacity-0">
-        <form method="GET" action="{{ route('search') }}" role="search">
-            <label for="site-search-mobile" class="sr-only">{{ __('Search') }}</label>
-            <input id="site-search-mobile" name="q" x-ref="mobileSearch" type="search" value="{{ $searchTerm }}" maxlength="200" enterkeyhint="search" placeholder="{{ __('Search players, clans or match #') }}"
-                   class="h-11 w-full rounded-md border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
+        <form method="GET" action="{{ route('search') }}" role="search" class="lg:w-96">
+            <label for="site-search" class="sr-only">{{ __('Search') }}</label>
+            <input id="site-search" name="q" x-ref="searchField" type="search" value="{{ $searchTerm }}" maxlength="200" enterkeyhint="search" placeholder="{{ __('Search players, clans or match #') }}"
+                   aria-keyshortcuts="/" class="h-11 w-full rounded-md border border-edge bg-ground px-3.5 text-[13px] text-ink placeholder:text-ink-3">
         </form>
     </div>
 
@@ -216,4 +228,4 @@
     <x-shell.game-hub :played="$played" :unplayed="$unplayed" :count="count($games)" />
 </header>
 
-<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :tournaments="$tournaments":season-tag="$seasonTag" :admin="$admin" :account="$account" :section="$section" :user="$user" />
+<x-shell.mobile-nav :active="$active" :games="$games" :community="$community" :chain="$chain" :tournaments="$tournaments" :admin="$admin" :account="$account" :section="$section" :user="$user" />

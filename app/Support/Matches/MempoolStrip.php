@@ -14,6 +14,9 @@ use App\Models\User;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -33,10 +36,21 @@ use Illuminate\Support\Facades\Route;
  * the ones switched on, and a route table cached with the switch off has no
  * board page to link. A fixed number of queries for any number of matches
  * (tests/Feature/Matches/MempoolStripTest.php).
+ *
+ * `chain` narrows the strip to one side of the league (plan
+ * "Mempool-Streifen", P4): `season` keeps the rated matches, whose wins
+ * mine the season chain; `casual` keeps the casual ones, which never mine.
+ * Row 1 of the header links both, next to the whole mempool.
  */
 final class MempoolStrip
 {
     public const SIDE = 5;
+
+    /** The `chain` filter values of /matches, with whether they keep rated matches. */
+    public const CHAINS = ['season' => true, 'casual' => false];
+
+    /** Series states the waiting side shows: scheduled or playing, reported, disputed. */
+    public const WAITING_SERIES = [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed];
 
     /**
      * `live`: whether a season runs now, so the strip's copy promises mining
@@ -44,7 +58,7 @@ final class MempoolStrip
      *
      * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}
      */
-    public static function build(?User $viewer = null): array
+    public static function build(?User $viewer = null, ?string $chain = null): array
     {
         $boards = self::boardSlugs();
         $sides = ['challengerLineup.clan', 'challengedLineup.clan'];
@@ -52,25 +66,25 @@ final class MempoolStrip
 
         /** @var list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame, at: int}> $finished */
         $finished = [
-            ...SeriesMatch::query()->with($sides)->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
+            ...self::onChain(SeriesMatch::query(), $chain)->with($sides)->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])
                 ->orderByDesc('finished_at')->limit(self::SIDE)->get()
                 ->map(fn (SeriesMatch $match): array => self::item('series', $match, $match->finished_at))->all(),
-            ...ChessGame::query()->with($players)->where('status', ChessGameStatus::Finished)
+            ...self::onChain(ChessGame::query(), $chain)->with($players)->where('status', ChessGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->ended_at))->all(),
-            ...($boards === [] ? [] : BoardGame::query()->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
+            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
         ];
 
         $running = [
-            ...SeriesMatch::query()->with(['latestReport', ...$sides])->whereIn('status', [SeriesStatus::Accepted, SeriesStatus::Reported, SeriesStatus::Disputed])
+            ...self::onChain(SeriesMatch::query(), $chain)->with(['latestReport', ...$sides])->whereIn('status', self::WAITING_SERIES)
                 ->orderBy('start_at')->limit(self::SIDE)->get()
                 ->map(fn (SeriesMatch $match): array => self::item('series', $match, $match->start_at ?? $match->created_at))->all(),
-            ...ChessGame::query()->with($players)->where('status', ChessGameStatus::Active)
+            ...self::onChain(ChessGame::query(), $chain)->with($players)->where('status', ChessGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (ChessGame $game): array => self::item('chess', $game, $game->updated_at))->all(),
-            ...($boards === [] ? [] : BoardGame::query()->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
+            ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
         ];
@@ -91,6 +105,42 @@ final class MempoolStrip
             'running' => array_map(fn (array $item): array => self::present($item, false, $viewer, []), $running),
             'live' => Seasons::isLive(),
         ];
+    }
+
+    /**
+     * How many matches wait in the mempool: the waiting side of the strip
+     * uncut, every game, casual and rated (scheduled and playing series,
+     * reported and disputed ones, running chess and board games). One query
+     * for any number of matches, a count per kind as its columns; row 1 of
+     * the header caches it (App\Support\Navigation\ShellNavigation::chain()).
+     */
+    public static function waiting(): int
+    {
+        $boards = self::boardSlugs();
+        $counts = DB::query()
+            ->selectSub(SeriesMatch::query()->whereIn('status', self::WAITING_SERIES)->selectRaw('count(*)'), 'series')
+            ->selectSub(ChessGame::query()->where('status', ChessGameStatus::Active)->selectRaw('count(*)'), 'chess')
+            ->when($boards !== [], fn ($query) => $query->selectSub(BoardGame::query()->whereIn('game', $boards)->where('status', BoardGameStatus::Active)->selectRaw('count(*)'), 'boards'))
+            ->first();
+
+        return array_sum(array_map('intval', (array) $counts));
+    }
+
+    /**
+     * A query of any kind narrowed to a `chain`: the rated matches for
+     * `season`, the casual ones for `casual`, untouched for anything else.
+     * The strip and the table of /matches share it.
+     *
+     * @template TModel of Model
+     *
+     * @param  Builder<TModel>  $query
+     * @return Builder<TModel>
+     */
+    public static function onChain(Builder $query, ?string $chain): Builder
+    {
+        $rated = self::CHAINS[$chain ?? ''] ?? null;
+
+        return $rated === null ? $query : $query->where('rated', $rated);
     }
 
     /**

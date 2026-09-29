@@ -30,7 +30,10 @@ use Livewire\WithPagination;
  * share the table; the Game filter narrows it. Chess and board games only
  * know "live" and "done" (they start when they are created). Series, chess
  * and rated board games carry their league match number, one sequence
- * (P7b); a casual board game has none.
+ * (P7b); a casual board game has none. The Chain filter (`?chain=season`
+ * or `casual`, P4 of plan "Mempool-Streifen") narrows strip and table to
+ * the rated matches, whose wins mine the season chain, or the casual ones;
+ * row 1 of the header links the casual view.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -50,6 +53,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
     #[Url(except: 'all')]
     public string $status = 'all';
+
+    #[Url(except: 'all')]
+    public string $chain = 'all';
 
     public function updatedClan(): void
     {
@@ -71,7 +77,16 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     public function mount(): void
     {
         $this->game = $this->listable($this->game) ? $this->game : 'all';
+        $this->chain = array_key_exists($this->chain, MempoolStrip::CHAINS) ? $this->chain : 'all';
     }
+
+    public function pickChain(string $chain): void
+    {
+        $this->chain = array_key_exists($chain, MempoolStrip::CHAINS) ? $chain : 'all';
+        unset($this->strip);
+        $this->resetPage();
+    }
+
 
     public function pickGame(string $game): void
     {
@@ -129,7 +144,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $statuses = $this->statusFilters()[$status] ?? [];
         $clan = $this->selectedClan;
 
-        return $query
+        return MempoolStrip::onChain($query, $this->chain)
             ->when($this->game !== 'all', fn (Builder $query) => $query->where('game', $this->game))
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereIn('challenger_lineup_id', $clan->lineups()->select('id'))
@@ -148,7 +163,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $clan = $this->selectedClan;
         $statuses = $this->chessStatuses($status);
 
-        return $query
+        return MempoolStrip::onChain($query, $this->chain)
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereHas('white.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))
                 ->orWhereHas('black.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))))
@@ -214,7 +229,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             default => null,
         };
 
-        return $query
+        return MempoolStrip::onChain($query, $this->chain)
             ->whereIn('game', $this->listedBoards())
             ->when($clan !== null, fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->whereHas('white.clanMember', fn (Builder $query) => $query->where('clan_id', $clan->id))
@@ -297,7 +312,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     #[Computed]
     public function strip(): array
     {
-        return MempoolStrip::build(auth()->user());
+        return MempoolStrip::build(auth()->user(), $this->chain);
     }
 }; ?>
 
@@ -307,13 +322,20 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $strip = $this->strip;
     $filterBtn = 'h-[42px] shrink-0 cursor-pointer border-0 px-3.5 text-[13px] whitespace-nowrap';
     $gameFilters = array_intersect_key(app(GameRegistry::class)->all(), array_flip($this->gameFilters()));
+    // The strip's one line says what the chosen chain is; casual matches never mine, so their line never promises it.
+    $lead = match (true) {
+        $chain === 'casual' => __('Casual matches of every game, played and waiting. They move the casual rating and mine no blocks.'),
+        $chain === 'season' => $strip['live'] ? __('Rated matches of every game, played and waiting. A fair rated win mines a block of the season chain.') : __('Rated matches of every game, played and waiting. Rated wins mine blocks only while a season runs.'),
+        $strip['live'] => __('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.'),
+        default => __('Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.'),
+    };
+    $chains = ['all' => __('All'), 'season' => __('Season'), 'casual' => __('Casual')];
 @endphp
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
     @if ($strip['finished'] !== [] || $strip['running'] !== [])
         {{-- The copy promises mining only while a season runs: before Block 0 and between seasons no win mines. --}}
-        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')" :chain-live="$strip['live']"
-                       :lead="$strip['live'] ? __('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.') : __('Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.')" />
+        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')" :chain-live="$strip['live']" :lead="$lead" />
     @endif
 
     <div class="flex flex-col gap-5 px-4 lg:px-12">
@@ -337,6 +359,16 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                         @foreach ($gameFilters as $key => $option)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}" aria-label="{{ GameNames::game($key) }}"
                                     @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-xl:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
+                        @endforeach
+                    </div>
+                </div>
+                {{-- Season: the rated matches, whose wins mine the season chain; Casual: the ones that never mine. Narrows strip and table. --}}
+                <div class="flex items-center gap-2">
+                    <span id="f-chain" class="text-xs text-ink-3">{{ __('Chain') }}</span>
+                    <div role="group" aria-labelledby="f-chain" class="flex max-w-full overflow-hidden rounded-md border border-line" data-test="chain-filter">
+                        @foreach ($chains as $key => $option)
+                            <button type="button" wire:click="pickChain('{{ $key }}')" aria-pressed="{{ $chain === $key ? 'true' : 'false' }}" data-test="chain-{{ $key }}"
+                                    @class([$filterBtn, 'border-l border-line' => ! $loop->first, 'bg-btc font-bold text-on-btc' => $chain === $key, 'bg-ground text-ink-2 hover:text-ink' => $chain !== $key])>{{ $option }}</button>
                         @endforeach
                     </div>
                 </div>

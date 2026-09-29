@@ -1,14 +1,23 @@
 <?php
 
+use App\Enums\BoardGameStatus;
+use App\Enums\ChessGameStatus;
+use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
+use App\Games\NineMensMorris;
 use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Matches\MempoolStrip;
 use App\Support\Navigation\ShellNavigation;
+use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Tests\Support\FakeGame;
+use Tests\Support\NineMensMorrisOn;
 
 /*
 | The lists behind the shell navigation (header concept B): "your games"
@@ -70,6 +79,129 @@ test('a match page belongs to the game of its match', function () {
 test('the Season item carries the Block 0 tag before the first season', function () {
     $this->get('/rules')->assertOk()
         ->assertSeeInOrder(['data-test="nav-mining"', 'Season', 'data-test="season-tag"', 'Block 0 soon'], false);
+});
+
+/*
+| The chain rail of row 1 (plan "Mempool-Streifen", P4): Mempool with how many
+| matches wait in it, the season chain, the casual matches. Measured at every
+| width in tests/Browser/ShellNavigationWidthsTest.php.
+*/
+
+test('row 1 and the phone\'s More sheet link the mempool with how many matches of every game wait in it, the season chain and the casual matches', function () {
+    NineMensMorrisOn::play();
+    // Waiting: scheduled or playing, reported and disputed series; running chess and board games.
+    SeriesMatch::factory()->accepted()->create(['start_at' => now()->addHour()]);
+    SeriesMatch::factory()->accepted()->create(['start_at' => now()->subMinutes(5)]);
+    SeriesMatch::factory()->accepted()->create(['status' => SeriesStatus::Reported]);
+    SeriesMatch::factory()->accepted()->create(['status' => SeriesStatus::Disputed]);
+    ChessGame::factory()->create();
+    mempoolBoard(NineMensMorris::SLUG, ['ply' => 4]);
+    // Not waiting: an open challenge, a finished series, finished and aborted games.
+    SeriesMatch::factory()->create();
+    mempoolSeries();
+    ChessGame::factory()->finished()->create();
+    ChessGame::factory()->create(['status' => ChessGameStatus::Aborted]);
+    mempoolBoard(NineMensMorris::SLUG, ['status' => BoardGameStatus::Finished, 'result' => '1-0', 'ended_at' => now()]);
+
+    $html = $this->get('/rules')->assertOk()->getContent();
+
+    expect($html)->toContain('aria-label="Mempool and chains"')
+        ->toMatch('/href="'.preg_quote(route('matches.index'), '/').'"\s+aria-label="Mempool, 6 matches playing or up next"[^>]*data-test="nav-mempool"/')
+        ->toMatch('/data-test="mempool-count">6</')
+        ->toMatch('/href="'.preg_quote(route('mining'), '/').'"\s+aria-label="Season chain, Block 0 soon"[^>]*data-test="nav-mining"/')
+        ->toMatch('/href="'.preg_quote(route('matches.index', ['chain' => 'casual']), '/').'"\s+aria-label="Casual chain"[^>]*data-test="nav-casual"/')
+        // The same three under Everywhere on phones, in the same order after Clans.
+        ->and(str($html)->after('data-test="more-sheet"')->toString())->toMatch('/data-test="mobile-clans".*data-test="mobile-mempool".*data-test="mobile-season".*data-test="mobile-casual"/s')
+        ->toMatch('/data-test="mobile-mempool-count">6</')
+        ->and(ShellNavigation::current()->chain()[0]['count'])->toBe(6)
+        ->and(MempoolStrip::waiting())->toBe(6);
+});
+
+test('the mempool count is cached for a minute like the Tournaments badge, and shows no badge at zero', function () {
+    $html = $this->get('/rules')->assertOk()->getContent();
+    expect($html)->toContain('aria-label="Mempool"')->not->toContain('data-test="mempool-count"')->not->toContain('data-test="mobile-mempool-count"');
+
+    // A new game shows once the cached count runs out, not before.
+    ChessGame::factory()->count(2)->create();
+    expect($this->get('/rules')->assertOk()->getContent())->not->toContain('data-test="mempool-count"')
+        ->and(Cache::get(ShellNavigation::MEMPOOL_KEY))->toBe(0);
+
+    $this->travel(61)->seconds();
+    expect($this->get('/rules')->assertOk()->getContent())->toMatch('/data-test="mempool-count">2</');
+});
+
+test('the mempool count leaves out the board games while they are switched off or their route is missing', function () {
+    ChessGame::factory()->create();
+    NineMensMorrisOn::play();
+    mempoolBoard(NineMensMorris::SLUG);
+    expect(MempoolStrip::waiting())->toBe(2);
+
+    // Switched off: the registry has no board game.
+    config(['esports.board_games.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    expect(MempoolStrip::waiting())->toBe(1);
+
+    // Switched on, but routed nowhere (a route table cached with the switch off): still left out.
+    config(['esports.board_games.enabled' => true]);
+    app()->forgetInstance(GameRegistry::class);
+    expect(MempoolStrip::waiting())->toBe(2);
+    $routes = app('router')->getRoutes();
+    $kept = new RouteCollection;
+    foreach ($routes->getRoutes() as $route) {
+        if (! str_starts_with((string) $route->getName(), 'board.')) {
+            $kept->add($route);
+        }
+    }
+    app('router')->setRoutes($kept);
+    expect(Route::has('board.show'))->toBeFalse()
+        ->and(MempoolStrip::waiting())->toBe(1);
+    $this->get('/rules')->assertOk()->assertSee('aria-label="Mempool, 1 match playing or up next"', false);
+});
+
+test('the mempool count costs the same queries for 1, 5 and 25 waiting matches of every kind', function () {
+    NineMensMorrisOn::play();
+    $seed = function (int $count): void {
+        SeriesMatch::factory()->accepted()->count($count)->create();
+        ChessGame::factory()->count($count)->create();
+        foreach (range(1, $count) as $i) {
+            mempoolBoard(NineMensMorris::SLUG, ['ply' => $i]);
+        }
+    };
+    $count = function (): array {
+        Cache::forget(ShellNavigation::MEMPOOL_KEY);
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $waiting = ShellNavigation::current()->chain()[0]['count'];
+        DB::disableQueryLog();
+
+        return [$waiting, count(DB::getQueryLog())];
+    };
+
+    $seed(1);
+    [$one, $queriesOne] = $count();
+    $seed(4);
+    [$five, $queriesFive] = $count();
+    $seed(20);
+    [$twentyFive, $queriesTwentyFive] = $count();
+
+    // One count per kind (series, chess, board games), and the season state for the Season tag.
+    expect([$one, $five, $twentyFive])->toBe([3, 15, 75])
+        ->and($queriesFive)->toBe($queriesOne)
+        ->and($queriesTwentyFive)->toBe($queriesOne)
+        ->and($queriesOne)->toBeLessThanOrEqual(5);
+});
+
+test('the rail marks the page on screen: Mempool on /matches, Casual on the casual view, Season on /mining, none on a game\'s own list', function () {
+    $current = fn (string $uri): array => array_values(array_filter(
+        ['mempool', 'mining', 'casual'],
+        fn (string $key): bool => (bool) preg_match('/aria-current="page"[^>]*data-test="nav-'.$key.'"/', $this->get($uri)->assertOk()->getContent()),
+    ));
+
+    expect($current(route('matches.index')))->toBe(['mempool'])
+        ->and($current(route('matches.index', ['chain' => 'casual'])))->toBe(['casual'])
+        ->and($current(route('mining')))->toBe(['mining'])
+        ->and($current(route('matches.index', ['game' => 'chess'])))->toBe([])
+        ->and($current('/rules'))->toBe([]);
 });
 
 test('/play lists every registered game with its modes, public, with "Log in to play" only for guests', function () {

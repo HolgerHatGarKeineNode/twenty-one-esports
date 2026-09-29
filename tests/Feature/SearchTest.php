@@ -72,10 +72,13 @@ test('the empty query shows what can be searched, and the page is noindex', func
 });
 
 test('the header search field submits to the search, and keeps the term on the results page', function () {
-    $this->get(route('rules'))->assertOk()
+    // One field at every width, in the search row the header's search button opens (plan "Mempool-Streifen", P4).
+    $html = $this->get(route('rules'))->assertOk()
         ->assertSee('action="'.route('search').'"', false)
         ->assertSee('id="site-search" name="q"', false)
-        ->assertSee('id="site-search-mobile" name="q"', false);
+        ->assertSee('aria-controls="mobile-search"', false)
+        ->getContent();
+    expect(substr_count($html, 'name="q"'))->toBe(1);
 
     $this->get(route('search', ['q' => 'satoshi']))->assertOk()->assertSee('value="satoshi"', false);
 });
