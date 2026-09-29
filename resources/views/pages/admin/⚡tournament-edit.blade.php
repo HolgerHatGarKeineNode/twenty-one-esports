@@ -416,7 +416,7 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         'results_mode' => __('Results'), 'directors' => __('Tournament directors'), 'game' => __('Game'), 'mode' => __('Mode'),
         'format' => __('Format'), 'options' => __('Format options'), 'time_window' => __('Time you have'), 'on_site' => __('On site'),
         'stations' => __('Stations'), 'times' => __('Planning times'), 'ladder' => __('Ladder'),
-        'checkin_minutes' => __('Chess: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
+        'checkin_minutes' => __('Chess and board games: first move within (minutes)'), 'noshow_minutes' => __('Series: no-show report after (minutes)'),
         'report_hours' => __('Series: result due (hours after the start)'), 'response_minutes' => __('Series: answer within (minutes)'),
         'result' => __('Result'), 'elo' => __('Elo'), 'voided' => __('Voided and paired again'), 'held' => __('On hold'), 'forfeited' => __('Lost by forfeit'),
     ];

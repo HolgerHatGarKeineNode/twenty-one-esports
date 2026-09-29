@@ -5439,7 +5439,6 @@
     ":name invites you to a game of :game": ":name lädt dich zu einer Partie :game ein",
     "A tournament game cannot be aborted.": "Eine Turnierpartie kann nicht abgebrochen werden.",
     "Back to the tournament": "Zurück zum Turnier",
-    "no: board games play casual until they join the season": "nein: Brettspiele laufen casual, bis sie in die Season kommen",
     "Finish your board game first.": "Beende zuerst deine Brettspiel-Partie.",
     "Play :game blitz 5+3 live against Bitcoiners: find an opponent, invite a player and climb the casual ladder. The server checks every move.": ":game Blitz 5+3 live gegen Bitcoiner: Gegner finden, Spieler einladen und in der Casual-Ladder aufsteigen. Der Server prüft jeden Zug.",
     "You are in a live chess game. One live game at a time: finish it first.": "Du spielst gerade eine Live-Schachpartie. Eine Live-Partie zur Zeit: beende sie zuerst.",
@@ -5472,5 +5471,6 @@
     "Needs 3 or more players in one match. A board game is always one player against one.": "Braucht 3 oder mehr Spieler in einem Match. Ein Brettspiel ist immer einer gegen einen.",
     "Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.": "Braucht ein Spiel mit Punkten oder Zeit, das man allein spielt, etwa ein Zeitfahren. Brettspiele gewinnt man gegen einen Gegner.",
     "Board games mine, so they need a share and a daily limit in the same change.": "Brettspiele schürfen, brauchen also in derselben Änderung einen Anteil und ein Tageslimit.",
-    "Board games mine, so they need a share and a daily limit.": "Brettspiele schürfen, brauchen also einen Anteil und ein Tageslimit."
+    "Board games mine, so they need a share and a daily limit.": "Brettspiele schürfen, brauchen also einen Anteil und ein Tageslimit.",
+    "no: a board game result the directors enter was not played on the league server": "nein: ein Brettspiel-Ergebnis, das die Turnierleitung einträgt, wurde nicht auf dem Liga-Server gespielt"
 }
