@@ -47,7 +47,8 @@ class SceneSource
         private GameRegistry $games,
         private StreamImages $images,
         private PrideSlides $pride,
-        private BoardScene $board,
+        // Optional, so a caller that builds the source with the four above keeps working (the stream tests do).
+        private ?BoardScene $board = null,
     ) {}
 
     /**
@@ -134,7 +135,7 @@ class SceneSource
     {
         // The board games next to chess (plan "Mühle und Dame", P7): a live board game, else the teaser.
         if ($scene === RotationPlanner::BOARD_SCENE) {
-            return $this->board->data($nowMs, $stats);
+            return ($this->board ??= app(BoardScene::class))->data($nowMs, $stats);
         }
 
         if (in_array($scene, RotationPlanner::PRIDE_SCENES, true)) {
