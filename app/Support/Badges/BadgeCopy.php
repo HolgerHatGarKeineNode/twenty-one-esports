@@ -18,6 +18,8 @@ final class BadgeCopy
         return match ($game.'/'.$mode) {
             'chess/blitz' => __('Chess blitz'),
             'chess/correspondence' => __('Chess daily'),
+            // A board game's correspondence mode (plan "Mühle und Dame", P8).
+            'nine-mens-morris/correspondence', 'checkers/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
             default => app(GameRegistry::class)->name($game).' '.$mode,
         };
     }

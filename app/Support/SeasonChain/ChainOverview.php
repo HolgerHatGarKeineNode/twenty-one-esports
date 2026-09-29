@@ -42,6 +42,8 @@ final class ChainOverview
         return match ($key) {
             'chess/blitz' => __('Chess blitz'),
             'chess/correspondence' => __('Chess daily'),
+            // A board game's correspondence mode (plan "Mühle und Dame", P8), as the board game's pages name it.
+            'nine-mens-morris/correspondence', 'checkers/correspondence' => __(':game correspondence', ['game' => __(app(GameRegistry::class)->name($game))]),
             default => $mode !== null && app(GameRegistry::class)->find($game) !== null ? app(GameRegistry::class)->name($game).' '.$mode : $key,
         };
     }

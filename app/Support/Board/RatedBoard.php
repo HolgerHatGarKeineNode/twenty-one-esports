@@ -94,6 +94,23 @@ final class RatedBoard
     }
 
     /**
+     * Why these two cannot play a rated game against each other now, as a
+     * RatedTrustGate code (NOT_CONNECTED: they do not list each other, the
+     * P57 notice), or null. For a correspondence challenge (P8), which asks
+     * before the accept that pin() then reads again.
+     *
+     * @return RatedTrustGate::NOT_COMPUTED|RatedTrustGate::NOT_TRUSTED|RatedTrustGate::NOT_CONNECTED|RatedTrustGate::FAIR_PLAY|null
+     */
+    public function pairRefusal(User $white, User $black): ?string
+    {
+        if (! self::offered()) {
+            return RatedTrustGate::NOT_COMPUTED;
+        }
+
+        return $this->gate->refusal([$white->pubkey, $black->pubkey], [$white->pubkey, $black->pubkey]);
+    }
+
+    /**
      * Each player's clan at the pairing (pubkey => clan address), for
      * consensus rule 3 and the `2154` `clan` rows: the same reading as a
      * rated chess game's.

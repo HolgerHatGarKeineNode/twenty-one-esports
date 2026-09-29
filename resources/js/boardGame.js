@@ -11,6 +11,17 @@
  * `board.{id}` channel and spectators on the public `board.{id}.watch`
  * channel; a heartbeat asks the server anyway, and without a websocket the
  * page polls.
+ *
+ * Correspondence (P8): the same board with a day per move. The side to
+ * move's "clock" is the time left until its deadline, shown in hours; the
+ * deadline itself is written out below the board.
+ *
+ * History (P8, as chess P55): every move carries the pieces after it, so the
+ * board steps back through the game without rules of its own. `viewIndex`
+ * null follows the game; a number pins the board to the position after that
+ * many plies (0 = the start), where no move can be made. Arrow keys, the
+ * buttons under the board and a click on a move browse; stepping onto the
+ * newest position follows the game again.
  */
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -26,6 +37,14 @@ export function formatClock(ms) {
     const total = Math.max(0, Math.ceil(ms / 1000));
 
     return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+}
+
+/** A correspondence clock: "23 h 05 min" while an hour or more is left, then minutes and seconds. */
+export function formatDeadline(ms) {
+    const minutes = Math.max(0, Math.floor(ms / 60000));
+    if (minutes < 60) return formatClock(ms);
+
+    return Math.floor(minutes / 60) + ' h ' + String(minutes % 60).padStart(2, '0') + ' min';
 }
 
 /**
@@ -85,6 +104,8 @@ document.addEventListener('alpine:init', () => {
         lastSyncAt: 0,
         syncing: false,
         clockCheckSent: 0,
+        startPieces: config.startPieces ?? {},
+        viewIndex: null,
 
         init() {
             this.ticker = setInterval(() => this.tick(), 200);
@@ -125,7 +146,43 @@ document.addEventListener('alpine:init', () => {
         },
 
         get canMove() {
-            return this.myTurn && !this.pending;
+            return this.myTurn && !this.pending && this.viewIndex === null;
+        },
+
+        /* ---- history ---------------------------------------------------------------------------------- */
+
+        /** The ply the board shows: the newest while following the game. */
+        get shownPly() {
+            return this.viewIndex ?? this.state.moves.length;
+        },
+
+        /** The pieces after `index` plies; the newest are the live state's. */
+        piecesAt(index) {
+            if (index >= this.state.moves.length) return this.state.pieces;
+            if (index <= 0) return this.startPieces;
+
+            return this.state.moves[index - 1].pieces ?? this.state.pieces;
+        },
+
+        browse(index) {
+            const newest = this.state.moves.length;
+            const target = Math.max(0, Math.min(newest, index));
+            this.viewIndex = target >= newest ? null : target;
+            this.clicks = [];
+            this.render();
+        },
+
+        browseKey(event) {
+            if (event.target.closest?.('input, textarea, select')) return;
+            const steps = { ArrowLeft: this.shownPly - 1, ArrowRight: this.shownPly + 1, Home: 0, End: this.state.moves.length };
+            if (!(event.key in steps)) return;
+            event.preventDefault();
+            this.browse(steps[event.key]);
+        },
+
+        /** Moves made since the board was pinned to an earlier position. */
+        get newMoves() {
+            return this.viewIndex === null ? 0 : this.state.moves.length - this.viewIndex;
         },
 
         /** The points a click may go to next: the start of a move, or the next step of one begun. */
@@ -143,13 +200,15 @@ document.addEventListener('alpine:init', () => {
             svg.replaceChildren();
             const r = this.radius;
             const targets = new Set(this.targets);
-            const last = new Set(this.state.lastMove?.path ?? []);
+            const shown = this.shownPly;
+            const pieces = this.piecesAt(shown);
+            const last = new Set((shown > 0 ? this.state.moves[shown - 1]?.path : null) ?? (this.viewIndex === null ? (this.state.lastMove?.path ?? []) : []));
 
             this.layout.cells.forEach((cell) => svg.append(svgElement('rect', { x: cell.x, y: cell.y, width: cell.size, height: cell.size, fill: '#3F3F46' })));
             this.layout.lines.forEach(([x1, y1, x2, y2]) => svg.append(svgElement('line', { x1, y1, x2, y2, stroke: '#52525B', 'stroke-width': Math.max(2, r * 0.12), 'stroke-linecap': 'round' })));
 
             this.layout.points.forEach((point) => {
-                const piece = this.state.pieces[point.id] ?? null;
+                const piece = pieces[point.id] ?? null;
                 const clicked = this.clicks.includes(point.id);
                 const group = svgElement('g', {
                     'data-point': point.id,
@@ -266,7 +325,15 @@ document.addEventListener('alpine:init', () => {
         },
 
         clock(side) {
-            return formatClock(this.remaining(side));
+            return this.state.daily ? formatDeadline(this.remaining(side)) : formatClock(this.remaining(side));
+        },
+
+        /** Correspondence: when the side to move's move is due, in the page's language. */
+        get deadlineLine() {
+            if (!this.state.daily || this.state.status !== 'active' || !this.state.deadline) return '';
+            const due = new Date(this.state.deadline).toLocaleString(document.documentElement.lang || undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+            return this.t.deadline.replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black).replace(':time', due);
         },
 
         get topSide() {
@@ -285,7 +352,7 @@ document.addEventListener('alpine:init', () => {
             if (this.state.status === 'aborted') return this.t.status.aborted;
             if (this.state.status !== 'active') return this.t.status.over;
 
-            return this.t.status.live.replace(':move', this.state.ply + 1).replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black);
+            return (this.state.daily ? this.t.status.daily : this.t.status.live).replace(':move', this.state.ply + 1).replace(':side', this.state.turn === 'w' ? this.t.white : this.t.black);
         },
 
         get firstMoveLine() {

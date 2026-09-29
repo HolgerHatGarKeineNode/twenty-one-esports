@@ -6,8 +6,9 @@ use App\Support\Board\BoardRules;
 use App\Support\Board\NineMensMorrisRules;
 
 /**
- * Nine men's morris ("Mühle"), blitz 5+3, played move by move on the board
- * game core (plan "Mühle und Dame", P3). The rules are NineMensMorrisRules.
+ * Nine men's morris ("Mühle"), blitz 5+3 and correspondence (one move a
+ * day, P8), played move by move on the board game core (plan "Mühle und
+ * Dame", P3). The rules are NineMensMorrisRules.
  * The slug is `nine-mens-morris`, never `mill` (BoardGame::RESERVED_SLUGS).
  */
 final class NineMensMorris extends BoardGame
@@ -28,7 +29,11 @@ final class NineMensMorris extends BoardGame
 
     public function modes(): array
     {
-        return ['blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3')];
+        return [
+            'blitz' => new GameMode('blitz', 'Blitz 5+3', 1, [], [], 'player', true, '300+3'),
+            // Correspondence (P8): one move per day, as daily chess; the rules end every game (no endless draws).
+            'correspondence' => new GameMode('correspondence', 'Correspondence', 1, [], [], 'player', true, '1/86400'),
+        ];
     }
 
     public function resultSchema(GameMode $mode): array

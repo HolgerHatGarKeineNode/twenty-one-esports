@@ -20,6 +20,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
+use App\Support\Notifications\BoardNotifications;
 use App\Support\Rating\RatingService;
 use App\Support\SeasonChain\GatePin;
 use App\Support\SeasonChain\SeasonChains;
@@ -71,11 +72,24 @@ use Illuminate\Support\Facades\DB;
  * season (SeasonChains::attestBoardGame()), in the transaction that ends
  * it. Without a gate the game is casual, as before.
  *
+ * Correspondence (P8, mode `correspondence`): as daily chess, one move per
+ * day on the same tables and rules. No clock runs; the side to move has one
+ * day (`initial_ms`, from the mode's PGN TimeControl `1/86400`) and
+ * `deadline_ms` is "now plus one day" after every move. A missed deadline
+ * before both first moves aborts the game, later it loses on time, exactly
+ * like a flag, through the same delayed CheckBoardClock and the
+ * `board:check-clocks` sweep. A correspondence game is no live game: a
+ * player plays any number of them next to one live game, and starting one
+ * takes nobody out of a queue. Its players are told of the opponent's move
+ * and of the end (BoardNotifications); `board:daily-reminders` reminds them
+ * before a deadline. Every game ends by the rules on their own: both rule
+ * sets draw after a run of quiet moves, and progress is finite.
+ *
  * Not yet here (later phases of the plan): a record of the game.
  */
 final class BoardGameService
 {
-    public function __construct(private GameRegistry $games) {}
+    public function __construct(private GameRegistry $games, private BoardNotifications $notifications) {}
 
     /* ---------- Start --------------------------------------------------------------------------------------- */
 
@@ -94,6 +108,7 @@ final class BoardGameService
 
         $definition = $this->definition($slug);
         [$initialMs, $incrementMs] = $this->timeControl($definition, $mode);
+        $daily = $mode === BoardGame::CORRESPONDENCE;
         $rules = $definition->rules();
         $start = $rules->start();
         // A rated game is pinned to the ladder open when it starts (a tournament's frozen ladder), and
@@ -103,8 +118,9 @@ final class BoardGameService
             : TournamentMatch::query()->with('tournament')->find($tournamentMatchId)?->tournament->openLadder());
         $ratedGate = $ladder === null ? null : $ratedGate;
 
-        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds, $ratedGate, $ladder): BoardGame {
-            foreach ([$white, $black] as $player) {
+        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds, $ratedGate, $ladder, $daily): BoardGame {
+            // A correspondence game (P8) is no live game: it neither waits for one to end nor ends a search.
+            foreach ($daily ? [] : [$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new BoardRuleViolation('already_playing', "{$player->id} already plays a live board game.");
                 }
@@ -119,12 +135,14 @@ final class BoardGameService
             $players = [$white->id, $black->id];
 
             // One intent at a time: both stop searching anywhere, and their open board invites are withdrawn.
-            BoardQueueEntry::query()->whereIn('user_id', $players)->delete();
-            ChessQueueEntry::query()->whereIn('user_id', $players)->delete();
-            SeriesQueueEntry::query()->whereIn('user_id', $players)->delete();
-            BoardInvite::query()->where('status', BoardInviteStatus::Pending)
-                ->where(fn ($query) => $query->whereIn('inviter_id', $players)->orWhereIn('invitee_id', $players))
-                ->update(['status' => BoardInviteStatus::Withdrawn, 'updated_at' => now()]);
+            if (! $daily) {
+                BoardQueueEntry::query()->whereIn('user_id', $players)->delete();
+                ChessQueueEntry::query()->whereIn('user_id', $players)->delete();
+                SeriesQueueEntry::query()->whereIn('user_id', $players)->delete();
+                BoardInvite::query()->where('status', BoardInviteStatus::Pending)
+                    ->where(fn ($query) => $query->whereIn('inviter_id', $players)->orWhereIn('invitee_id', $players))
+                    ->update(['status' => BoardInviteStatus::Withdrawn, 'updated_at' => now()]);
+            }
 
             return BoardGame::query()->create([
                 'game' => $slug,
@@ -140,7 +158,7 @@ final class BoardGameService
                 'white_ms' => $initialMs,
                 'black_ms' => $initialMs,
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + ($firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : $this->firstMoveMs()),
+                'deadline_ms' => $now + ($firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : ($daily ? $initialMs : $this->firstMoveMs())),
                 'first_move_seconds' => $firstMoveSeconds,
                 'tournament_match_id' => $tournamentMatchId,
                 'tournament_game' => $tournamentGame,
@@ -151,18 +169,23 @@ final class BoardGameService
             ]);
         });
 
-        Broadcasts::send(new BoardGameStarted($game->id, route('board.show', $game), [$white->id, $black->id]));
+        // A correspondence game does not pull anyone off the page they are on.
+        if (! $daily) {
+            Broadcasts::send(new BoardGameStarted($game->id, route('board.show', $game), [$white->id, $black->id]));
+        }
+
         $this->scheduleClockCheck($game);
 
         return $game;
     }
 
     /**
-     * The live board game this player is in, if any.
+     * The live board game this player is in, if any. Correspondence games do not count.
      */
     public function activeGameOf(User $user): ?BoardGame
     {
         return BoardGame::query()
+            ->live()
             ->where('status', BoardGameStatus::Active)
             ->playedBy($user)
             ->latest('id')
@@ -206,7 +229,10 @@ final class BoardGameService
             $clockKey = $color === 'w' ? 'white_ms' : 'black_ms';
             $clock = $game->{$clockKey};
 
-            if ($game->clocksRunning()) {
+            if ($game->isCorrespondence()) {
+                // No clock runs in correspondence: every move has the same day.
+                $clock = $game->initial_ms;
+            } elseif ($game->clocksRunning()) {
                 $clock = $clock - $spent + $game->increment_ms;
             }
 
@@ -232,9 +258,11 @@ final class BoardGameService
                 'draw_offer' => $game->draw_offer === $color ? $color : null,
             ]);
 
-            $game->deadline_ms = $game->clocksRunning()
-                ? $now + ($game->turn === 'w' ? $game->white_ms : $game->black_ms)
-                : $now + $this->firstMoveMs($game);
+            $game->deadline_ms = match (true) {
+                $game->isCorrespondence() => $now + $game->initial_ms,
+                $game->clocksRunning() => $now + ($game->turn === 'w' ? $game->white_ms : $game->black_ms),
+                default => $now + $this->firstMoveMs($game),
+            };
 
             $history = [$rules->serialize($rules->start()), ...$game->moves()->pluck('position')->all()];
             $outcome = $rules->outcome($next, array_values(array_map(strval(...), $history)));
@@ -365,6 +393,7 @@ final class BoardGameService
 
         if ($ended !== null) {
             $this->announce($ended);
+            $this->notify($ended, moved: false);
 
             return $ended;
         }
@@ -381,6 +410,15 @@ final class BoardGameService
     public function clocks(BoardGame $game, int $nowMs): array
     {
         $clocks = ['w' => $game->white_ms, 'b' => $game->black_ms];
+
+        // Correspondence (P8): the side to move has what is left of its day, the other side a full one.
+        if ($game->isCorrespondence()) {
+            if ($game->isActive() && $game->deadline_ms !== null) {
+                $clocks[$game->turn] = max(0, $game->deadline_ms - $nowMs);
+            }
+
+            return $clocks;
+        }
 
         if ($game->isActive() && $game->clocksRunning()) {
             $clocks[$game->turn] = max(0, $clocks[$game->turn] - max(0, $nowMs - $game->turn_started_ms));
@@ -416,13 +454,15 @@ final class BoardGameService
             'reason' => $game->end_reason,
             'ply' => $game->ply,
             'turn' => $game->turn,
+            'daily' => $game->isCorrespondence(),
             'clock' => [
                 ...$this->clocks($game, $now),
-                'running' => $game->isActive() && $game->clocksRunning() ? $game->turn : null,
+                // In correspondence the side to move's day runs from the first move on.
+                'running' => $game->isActive() && ($game->clocksRunning() || $game->isCorrespondence()) ? $game->turn : null,
                 'serverNow' => $now,
             ],
             'deadline' => $game->isActive() ? $game->deadline_ms : null,
-            'firstMoveDeadline' => $game->isActive() && ! $game->clocksRunning() ? $game->deadline_ms : null,
+            'firstMoveDeadline' => $game->isActive() && ! $game->clocksRunning() && ! $game->isCorrespondence() ? $game->deadline_ms : null,
             'drawOffer' => $game->draw_offer,
             'pieces' => $rules === null ? [] : $rules->view($position)['pieces'],
             'legal' => array_map(fn (string $move): array => ['move' => $move, 'path' => $rules?->path($move) ?? []], $legal),
@@ -457,8 +497,12 @@ final class BoardGameService
     }
 
     /**
+     * One move for the board, with the pieces after it, so the board can
+     * step back through the game (P8, browsing like chess P55) without rules
+     * of its own.
+     *
      * @param  BoardRules<mixed>|null  $rules
-     * @return array{ply: int, move: string, notation: string, path: list<string>, spent: int, at: int|null}
+     * @return array{ply: int, move: string, notation: string, path: list<string>, spent: int, at: int|null, pieces: array<string, mixed>}
      */
     private function moveState(BoardMove $move, ?BoardRules $rules): array
     {
@@ -469,6 +513,7 @@ final class BoardGameService
             'path' => $rules?->path($move->move) ?? [],
             'spent' => $move->spent_ms,
             'at' => $move->created_at?->getTimestampMs(),
+            'pieces' => $rules === null ? [] : $rules->view($rules->deserialize($move->position))['pieces'],
         ];
     }
 
@@ -487,8 +532,9 @@ final class BoardGameService
     {
         $over = false;
         $changed = false;
+        $plyBefore = null;
 
-        $game = DB::transaction(function () use ($game, $change, &$over, &$changed): BoardGame {
+        $game = DB::transaction(function () use ($game, $change, &$over, &$changed, &$plyBefore): BoardGame {
             $locked = $this->lock($game);
             $now = $this->nowMs();
 
@@ -504,6 +550,7 @@ final class BoardGameService
                 return $locked;
             }
 
+            $plyBefore = $locked->ply;
             $change($locked, $now);
             $locked->version++;
             $locked->save();
@@ -514,6 +561,7 @@ final class BoardGameService
 
         if ($changed) {
             $this->announce($game);
+            $this->notify($game, moved: $plyBefore !== null && $game->ply > $plyBefore);
         }
 
         if ($over) {
@@ -600,6 +648,24 @@ final class BoardGameService
         Broadcasts::send(new BoardGameUpdated($game->id, $this->snapshot($game, withMoves: false)));
     }
 
+    /**
+     * Correspondence games notify (P8, as daily chess): the player to move
+     * after a move, both players when the game ends. A live game's players
+     * are at the board.
+     */
+    private function notify(BoardGame $game, bool $moved): void
+    {
+        if (! $game->isCorrespondence()) {
+            return;
+        }
+
+        if (! $game->isActive()) {
+            $this->notifications->gameOver($game);
+        } elseif ($moved) {
+            $this->notifications->yourMove($game);
+        }
+    }
+
     private function scheduleClockCheck(BoardGame $game): void
     {
         if ($game->deadline_ms === null) {
@@ -658,7 +724,8 @@ final class BoardGameService
     }
 
     /**
-     * @return array{0: int, 1: int} initial and increment in milliseconds, from the mode's PGN TimeControl (`300+3`)
+     * @return array{0: int, 1: int} initial and increment in milliseconds, from the mode's PGN TimeControl
+     *                               (`300+3`), or `1/86400` in correspondence: one move per 86400 s, no increment
      *
      * @throws BoardRuleViolation for a mode without such a clock
      */
@@ -668,6 +735,11 @@ final class BoardGameService
 
         if (preg_match('/^(\d+)\+(\d+)$/', $timeControl, $parts) === 1) {
             return [(int) $parts[1] * 1000, (int) $parts[2] * 1000];
+        }
+
+        // Correspondence (P8): one move per so many seconds (`1/86400`), no increment.
+        if ($mode === BoardGame::CORRESPONDENCE && preg_match('#^1/(\d+)$#', $timeControl, $parts) === 1) {
+            return [(int) $parts[1] * 1000, 0];
         }
 
         throw new BoardRuleViolation('unsupported_mode', "{$definition->slug()} mode {$mode} has no supported time control.");

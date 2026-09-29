@@ -132,8 +132,9 @@ return [
     | `halving_days`.
     |
     | board_games_proposal: what the admin season page proposes for the board
-    | games (P6), never part of a draft on its own: a weight per mode, the
-    | share of their group and its daily limit. The shares of the other games
+    | games (P6), never part of a draft on its own: a weight per mode (the
+    | correspondence mode of P8 at twice blitz, as chess daily), the share of
+    | their group and its daily limit. The shares of the other games
     | are the board's decision of 2026-09-28 and stay; filling in the proposal
     | shrinks them in proportion to make room (35/40/25 become 32/36/22 next
     | to 10), and the board saves that or not (plan: no silent redistribution).
@@ -171,7 +172,9 @@ return [
         'board_games_proposal' => [
             'weights' => [
                 'nine-mens-morris/blitz' => 1000,
+                'nine-mens-morris/correspondence' => 2000,
                 'checkers/blitz' => 1000,
+                'checkers/correspondence' => 2000,
             ],
             'share' => 10,
             'daily' => 5,

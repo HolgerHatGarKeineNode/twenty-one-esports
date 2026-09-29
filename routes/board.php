@@ -19,3 +19,7 @@ Route::livewire('board/{boardGame}', 'pages::board.show')->whereNumber('boardGam
 // route with the same URI string would replace theirs. The page answers 404 for a slug that is no board game
 // switched on (App\Games\BoardGame::RESERVED_SLUGS are the real ones).
 Route::livewire('games/{board}', 'pages::board.lobby')->where('board', '[a-z][a-z0-9-]*')->name('board.lobby');
+
+// Correspondence (P8): one move a day. The challenges received and sent, the player's correspondence games of this
+// board game, and the challenge form; guests see what it is and the login.
+Route::livewire('games/{board}/correspondence', 'pages::board.correspondence')->where('board', '[a-z][a-z0-9-]*')->name('board.correspondence');

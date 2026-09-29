@@ -3,6 +3,7 @@
 namespace App\Support\Dock;
 
 use App\Games\GameRegistry;
+use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\BoardInvite;
 use App\Models\ChessChallenge;
@@ -53,7 +54,7 @@ final readonly class DockItem
         public ?string $action,
         public ?int $deadlineMs,
         public ?array $tick,
-        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite $model,
+        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite|BoardChallenge $model,
         public ?Clan $clan = null,
     ) {}
 
@@ -68,7 +69,7 @@ final readonly class DockItem
      */
     public function boardIcon(): ?string
     {
-        $game = $this->model instanceof BoardGame || $this->model instanceof BoardInvite ? $this->model->game : null;
+        $game = $this->model instanceof BoardGame || $this->model instanceof BoardInvite || $this->model instanceof BoardChallenge ? $this->model->game : null;
 
         return $game === null ? null : (app(GameRegistry::class)->find($game)?->assets()->icon ?? 'grid');
     }

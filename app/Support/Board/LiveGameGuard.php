@@ -22,6 +22,8 @@ use App\Support\Chess\ChessRuleViolation;
  *   message, the tournament matchmaker tries again on its next run);
  * - a player in a live board game does not join the blitz queue.
  *
+ * A correspondence board game (P8) is no live game and blocks neither.
+ *
  * A board game that starts takes its players out of the chess queue
  * (BoardGameService::start()), so a waiting chess player is never paired
  * with someone who plays a board game by now. While the board games are
@@ -53,7 +55,7 @@ final class LiveGameGuard
             return;
         }
 
-        $busy = BoardGame::query()->where('status', BoardGameStatus::Active)
+        $busy = BoardGame::query()->live()->where('status', BoardGameStatus::Active)
             ->where(fn ($query) => $query->whereIn('white_id', $userIds)->orWhereIn('black_id', $userIds))
             ->exists();
 

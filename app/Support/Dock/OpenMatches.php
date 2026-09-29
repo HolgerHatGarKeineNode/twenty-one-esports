@@ -10,6 +10,7 @@ use App\Enums\InviteStatus;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardChallenge;
 use App\Models\BoardGame;
 use App\Models\BoardInvite;
 use App\Models\ChessChallenge;
@@ -80,6 +81,7 @@ final class OpenMatches
             ->concat($this->games($user, $excludeGame, $nowMs))
             ->concat($this->boardGames($user, $excludeBoard, $nowMs))
             ->concat($this->boardInvites($user))
+            ->concat($this->boardChallenges($user))
             ->concat($this->blitzInvites($user))
             ->concat($this->dailyChallenges($user))
             ->concat($this->clanInvites($user))
@@ -353,6 +355,10 @@ final class OpenMatches
             ->with(['white', 'black'])->latest('id')->limit(self::KIND_LIMIT)->get();
 
         return array_values($games->map(function (BoardGame $game) use ($user, $nowMs): DockItem {
+            if ($game->isCorrespondence()) {
+                return $this->boardCorrespondence($game, $user, $nowMs);
+            }
+
             $color = (string) $game->colorOf($user);
             $opponent = $game->opponentOf($user);
             $mine = $game->turn === $color;
@@ -389,6 +395,46 @@ final class OpenMatches
                 model: $game,
             );
         })->all());
+    }
+
+    /**
+     * A correspondence board game (plan "Mühle und Dame", P8), as a daily
+     * chess game: "your move" with the time left for it needs the player,
+     * "their move" waits.
+     */
+    private function boardCorrespondence(BoardGame $game, User $user, int $nowMs): DockItem
+    {
+        $opponent = $game->opponentOf($user);
+        $mine = $game->turn === $game->colorOf($user);
+        $deadline = $game->deadline_ms;
+        $name = $opponent?->displayName() ?? '';
+        $title = __(':game correspondence', ['game' => GameNames::game($game->game)]);
+        $left = $mine && $deadline !== null ? self::format($deadline - $nowMs, 'hm') : null;
+        $state = $mine ? __('Your move') : __('Their move');
+
+        return new DockItem(
+            key: 'board-'.$game->id,
+            kind: 'board',
+            group: $mine ? 'need' : 'wait',
+            phase: $mine ? 'your_move' : 'their_move',
+            needsYou: $mine,
+            name: $name,
+            face: $opponent,
+            tag: null,
+            number: '',
+            href: route('board.show', $game),
+            title: $title,
+            state: $state,
+            trailing: $left ?? __('move :n', ['n' => intdiv($game->ply, 2) + 1]),
+            line: __(':game, :state', ['game' => $title, 'state' => mb_strtolower($state)]),
+            sentence: $left === null
+                ? __(':game against :name, :state', ['game' => $title, 'name' => $name, 'state' => mb_strtolower($state)])
+                : __(':game against :name, :state, :left left', ['game' => $title, 'name' => $name, 'state' => mb_strtolower($state), 'left' => $left]),
+            action: $mine ? self::text('Play') : null,
+            deadlineMs: $deadline,
+            tick: $left === null ? null : ['endsAt' => $deadline, 'format' => 'hm', 'total' => max(1, $game->initial_ms), 'redUnder' => self::DAILY_RED_MS],
+            model: $game,
+        );
     }
 
     /**
@@ -432,6 +478,52 @@ final class OpenMatches
                 deadlineMs: $endsAt,
                 tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $total), 'redUnder' => self::BLITZ_RED_MS],
                 model: $invite,
+            );
+        })->all());
+    }
+
+    /**
+     * Correspondence challenges to a board game this player has to answer
+     * (plan "Mühle und Dame", P8), as a daily chess challenge; they lead to
+     * the board game's correspondence page.
+     *
+     * @return list<DockItem>
+     */
+    private function boardChallenges(User $user): array
+    {
+        if (app(GameRegistry::class)->boards() === [] || ! Route::has('board.correspondence')) {
+            return [];
+        }
+
+        $challenges = BoardChallenge::query()->where('challenged_id', $user->id)->where('status', BoardInviteStatus::Pending)
+            ->where('expires_at', '>', now())->with('challenger')->latest('id')->limit(self::KIND_LIMIT)->get();
+
+        return array_values($challenges->map(function (BoardChallenge $challenge): DockItem {
+            $endsAt = (int) $challenge->expires_at->getTimestampMs();
+            $name = $challenge->challenger->displayName();
+            $title = __(':game correspondence', ['game' => GameNames::game($challenge->game)]);
+            $left = self::format($endsAt - (int) now()->getTimestampMs(), 'hm');
+
+            return new DockItem(
+                key: 'board-challenge-'.$challenge->id,
+                kind: 'board_invite',
+                group: 'need',
+                phase: 'answer',
+                needsYou: true,
+                name: $name,
+                face: $challenge->challenger,
+                tag: null,
+                number: '',
+                href: route('board.correspondence', $challenge->game),
+                title: $title,
+                state: __('Answer'),
+                trailing: $left,
+                line: __(':game, answer within :left', ['game' => $title, 'left' => $left]),
+                sentence: __(':name challenges you to :game, :left left to answer', ['name' => $name, 'game' => $title, 'left' => $left]),
+                action: __('Answer'),
+                deadlineMs: $endsAt,
+                tick: ['endsAt' => $endsAt, 'format' => 'hm', 'total' => max(1, (int) config('esports.board_games.correspondence.challenge_hours', 48) * 3_600_000), 'redUnder' => self::DAILY_RED_MS],
+                model: $challenge,
             );
         })->all());
     }

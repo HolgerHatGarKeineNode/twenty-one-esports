@@ -296,6 +296,7 @@ final class RulesPage
             'facts' => [
                 [__('Time control'), __('Blitz 5+3')],
                 [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+                [__('Correspondence'), __('1 move a day')],
             ],
             'items' => [
                 __('White moves first. Men step one square diagonally forward and capture forward and backward.'),
@@ -307,6 +308,8 @@ final class RulesPage
                 __('You lose when you have no piece or no move left.'),
                 __('A draw by agreement, by the same position with the same side to move for the third time, or after :moves moves of each side with only kings moving and nothing captured.', ['moves' => intdiv(CheckersRules::QUIET_PLY_LIMIT, 2)]),
                 __('Squares are named as in chess, a1 in White\'s bottom left corner. A step reads c3-d4, a capture c3xe5xc7.'),
+                self::correspondence(),
+                __('Every game ends: men only step forward and every capture takes pieces off, so the quiet moves above run out.'),
             ],
         ]];
     }
@@ -332,6 +335,7 @@ final class RulesPage
                 [__('Flying with'), (string) NineMensMorrisRules::FLYING_MEN],
                 [__('Moves each without a mill to a draw'), (string) intdiv(NineMensMorrisRules::QUIET_PLY_LIMIT, 2)],
                 [__('First move'), self::seconds((int) config('esports.board_games.first_move_seconds'))],
+                [__('Correspondence'), __('1 move a day')],
             ],
             'items' => [
                 __('White places first. Each side places its :men men one by one on empty points, then moves a man along a line to a neighbouring empty point.', ['men' => NineMensMorrisRules::MEN]),
@@ -340,8 +344,21 @@ final class RulesPage
                 __('A side left with two men loses, and so does a side that cannot move.'),
                 __('The same position a third time is a draw, and so are :moves moves each without a mill.', ['moves' => intdiv(NineMensMorrisRules::QUIET_PLY_LIMIT, 2)]),
                 __('To move, click your man and then the point. After a mill, click the man you remove.'),
+                self::correspondence(),
+                __('Every game ends: once all men are placed, every mill takes a man off, and the moves without a mill above run out.'),
             ],
         ]];
+    }
+
+    /**
+     * The correspondence line of a board game (plan "Mühle und Dame", P8).
+     */
+    private static function correspondence(): string
+    {
+        return __('Correspondence: each move has :hours h, and a reminder comes before the deadline. A missed deadline loses the game, or aborts it before both first moves. A challenge stays open for :open h.', [
+            'hours' => 24,
+            'open' => (int) config('esports.board_games.correspondence.challenge_hours'),
+        ]);
     }
 
     /**

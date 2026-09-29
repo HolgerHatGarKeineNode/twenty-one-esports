@@ -51,6 +51,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $ladder_address the ladder open at the start; null for a casual game
  * @property array<string, mixed>|null $gate_at_accept App\Support\SeasonChain\GatePin of a rated game
  * @property array<string, string>|null $clans_at_accept pubkey => clan address at the pairing, for a rated game
+ * @property int|null $reminded_ply the ply whose deadline reminder went out (correspondence, P8)
  * @property Carbon|null $ended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -61,9 +62,15 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['game', 'mode', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'position', 'turn', 'ply', 'initial_ms', 'increment_ms',
     'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at', 'tournament_match_id', 'tournament_game', 'first_move_seconds',
-    'number', 'rated', 'ladder_address', 'gate_at_accept', 'clans_at_accept'])]
+    'number', 'rated', 'ladder_address', 'gate_at_accept', 'clans_at_accept', 'reminded_ply'])]
 class BoardGame extends Model
 {
+    /**
+     * The correspondence mode (plan "Mühle und Dame", P8): one move per day,
+     * a deadline per move, no running clock; as daily chess.
+     */
+    public const CORRESPONDENCE = 'correspondence';
+
     /**
      * A rated game takes the next league match number when it is created
      * (plan "Mühle und Dame", P6), as every chess game does, recorded as used
@@ -97,6 +104,7 @@ class BoardGame extends Model
             'version' => 'integer',
             'tournament_game' => 'integer',
             'first_move_seconds' => 'integer',
+            'reminded_ply' => 'integer',
             'ended_at' => 'datetime',
         ];
     }
@@ -142,6 +150,34 @@ class BoardGame extends Model
     protected function playedBy(Builder $query, User $user): void
     {
         $query->where(fn (Builder $query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id));
+    }
+
+    /**
+     * Live games only (blitz): a player is in at most one of them at a time.
+     * Correspondence games run for weeks next to them.
+     *
+     * @param  Builder<BoardGame>  $query
+     */
+    #[Scope]
+    protected function live(Builder $query): void
+    {
+        $query->where('mode', '!=', self::CORRESPONDENCE);
+    }
+
+    /**
+     * Correspondence games only (P8).
+     *
+     * @param  Builder<BoardGame>  $query
+     */
+    #[Scope]
+    protected function correspondence(Builder $query): void
+    {
+        $query->where('mode', self::CORRESPONDENCE);
+    }
+
+    public function isCorrespondence(): bool
+    {
+        return $this->mode === self::CORRESPONDENCE;
     }
 
     public function isActive(): bool

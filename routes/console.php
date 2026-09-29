@@ -14,6 +14,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayPublisher;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Notifications\BlockZeroNotifications;
+use App\Support\Notifications\BoardNotifications;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\DmDigest;
 use App\Support\Notifications\NotificationDm;
@@ -77,6 +78,53 @@ Artisan::command('board:check-clocks', function (BoardGameService $games) {
 })->purpose('End live board games whose clock ran out');
 
 Schedule::command('board:check-clocks')->everyTenSeconds()->withoutOverlapping();
+
+/*
+ * Correspondence board game deadline reminders (plan "Mühle und Dame", P8),
+ * as `chess:daily-reminders`: the player to move is reminded when their
+ * "Remind me when … are left" window (ChessSettings, one setting for daily
+ * chess and the board games) is reached. Each turn gets at most one: the
+ * game's `reminded_ply` is claimed with a conditional update first, so two
+ * sweeps running at once send it once.
+ */
+Artisan::command('board:daily-reminders', function (BoardNotifications $notifications) {
+    $now = (int) now()->getTimestampMs();
+    $widest = max(ChessSettings::REMIND_HOURS) * 3_600_000;
+
+    $candidates = BoardGame::query()
+        ->correspondence()
+        ->where('status', BoardGameStatus::Active)
+        ->where('deadline_ms', '>', $now)
+        ->where('deadline_ms', '<=', $now + $widest)
+        ->where(fn ($query) => $query->whereNull('reminded_ply')->orWhereColumn('reminded_ply', '!=', 'ply'))
+        ->with(['white', 'black'])
+        ->get();
+
+    $sent = 0;
+
+    foreach ($candidates as $game) {
+        $player = $game->player($game->turn);
+
+        if ($player === null || (int) $game->deadline_ms - $now > $player->chessSettings()->remindHours * 3_600_000) {
+            continue;
+        }
+
+        $claimed = BoardGame::query()
+            ->whereKey($game->id)
+            ->where('ply', $game->ply)
+            ->where(fn ($query) => $query->whereNull('reminded_ply')->orWhere('reminded_ply', '!=', $game->ply))
+            ->update(['reminded_ply' => $game->ply]);
+
+        if ($claimed === 1) {
+            $notifications->reminder($game);
+            $sent++;
+        }
+    }
+
+    $this->info("Sent {$sent} reminder(s).");
+})->purpose('Remind players whose correspondence board game move is due soon');
+
+Schedule::command('board:daily-reminders')->everyFiveMinutes()->withoutOverlapping();
 
 /*
  * Daily chess deadline reminders (ChessSettings "Remind me when … are left").

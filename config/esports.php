@@ -202,7 +202,13 @@ return [
     | off by default, as `chess.rated_queue`). Off, no board game win can mine,
     | and /mining and AdminSeason show board game rewards as not open. On, a
     | rated game still needs a live season and two Trusted players who list
-    | each other.
+    | each other. correspondence (P8, App\Support\Board\BoardChallenges):
+    | the challenges to a correspondence game (one move a day, as daily
+    | chess): how long one stays open, and how many a player may send in 24
+    | hours, in total and to the same player (as `chess.challenge_hours`,
+    | `chess.challenges_per_day`, `chess.challenges_per_recipient_per_day`).
+    | Challenge notifications off the page share the recipient's daily cap
+    | with daily chess (`chess.challenge_dms_per_recipient_per_day`).
     |
     */
 
@@ -214,6 +220,11 @@ return [
         ],
         'invite_seconds' => 120,
         'rated_queue' => (bool) env('ESPORTS_RATED_BOARD_GAMES', false),
+        'correspondence' => [
+            'challenge_hours' => 48,
+            'challenges_per_day' => (int) env('ESPORTS_BOARD_CHALLENGES_PER_DAY', 20),
+            'challenges_per_recipient_per_day' => (int) env('ESPORTS_BOARD_CHALLENGES_PER_RECIPIENT_PER_DAY', 3),
+        ],
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => Checkers::class],

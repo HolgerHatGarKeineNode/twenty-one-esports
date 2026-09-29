@@ -23,6 +23,10 @@ use Livewire\Component;
  * `board.{id}.watch`) over Reverb; without a websocket the page polls
  * fetchState().
  *
+ * Correspondence (P8): the same page with a day per move; the deadline is
+ * written out and the lobby link leads to the correspondence page. Every
+ * game can be stepped back through, move by move (boardGame.js, history).
+ *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a game whose own board game is switched off is a 404.
  */
@@ -150,11 +154,14 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
     public function config(): array
     {
         $games = app(BoardGameService::class);
-        $reasons = $games->rulesOf($this->boardGame)?->reasons() ?? [];
+        $rules = $games->rulesOf($this->boardGame);
+        $reasons = $rules?->reasons() ?? [];
 
         return [
             'state' => $games->snapshot($this->boardGame),
             'layout' => $games->layout($this->boardGame),
+            // The position before the first move, for browsing back to it (P8).
+            'startPieces' => $rules === null ? [] : $rules->view($rules->start())['pieces'],
             'color' => $this->boardGame->colorOf(auth()->user()),
             'labels' => [
                 'white' => __('White'),
@@ -162,7 +169,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 'names' => ['w' => $this->name('w'), 'b' => $this->name('b')],
                 'firstMove' => __(':side: first move within :s s'),
                 'drawOffer' => __(':name offers a draw', ['name' => $this->name($this->boardGame->colorOf(auth()->user()) === 'w' ? 'b' : 'w')]),
-                'status' => ['live' => __('Live · move :move · :side to move'), 'over' => __('Game over'), 'aborted' => __('Aborted')],
+                'status' => ['live' => __('Live · move :move · :side to move'), 'daily' => __('Correspondence · move :move · :side to move'), 'over' => __('Game over'), 'aborted' => __('Aborted')],
+                'deadline' => __(':side moves by :time, or loses on time.'),
                 'connection' => ['connected' => __('Connected'), 'connecting' => __('Connecting …'), 'polling' => __('Live via server')],
                 'outcome' => ['wins' => __(':name wins'), 'draw' => __('Draw'), 'aborted' => __('Game aborted')],
                 'reasons' => [
@@ -190,13 +198,16 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 @endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
-    <div wire:ignore x-data="boardGame(@js($config))" class="mx-auto flex w-full max-w-[1000px] flex-col gap-4 lg:gap-5" data-test="board-game">
+    <div wire:ignore x-data="boardGame(@js($config))" x-on:keydown.window="browseKey($event)" class="mx-auto flex w-full max-w-[1000px] flex-col gap-4 lg:gap-5" data-test="board-game" data-mode="{{ $boardGame->mode }}">
 
         {{-- Title row --}}
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ GameNames::game($boardGame->game) }}</h1>
             {{-- The lobby of this board game (P5): the next opponent, the ladder. --}}
             <a href="{{ route('board.lobby', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-lobby-link">{{ __('Lobby') }}</a>
+            @if ($boardGame->isCorrespondence())
+                <a href="{{ route('board.correspondence', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-correspondence-link">{{ __('Correspondence games') }}</a>
+            @endif
             <span class="grow"></span>
             <span role="status" class="flex h-[34px] items-center gap-2 rounded-md px-3 text-[13px]"
                   :class="connection === 'connected' ? 'bg-[#122016] text-win' : 'bg-[#241D10] text-btc-hi'">
@@ -228,6 +239,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             {{-- Status, actions, moves --}}
             <div class="flex min-w-0 flex-col gap-3">
                 <p class="m-0 text-[13px] text-ink-2" x-show="firstMoveLine" x-text="firstMoveLine" data-test="first-move"></p>
+                <p class="m-0 text-[13px] text-ink-2" x-show="deadlineLine" x-text="deadlineLine" data-test="deadline"></p>
                 <p role="alert" class="m-0 text-[13px] text-loss" x-show="error" x-text="error" data-test="board-error"></p>
 
                 <template x-if="state.status !== 'active'">
@@ -271,10 +283,24 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 </template>
 
                 <div class="flex flex-col gap-2 rounded-lg bg-card p-4">
-                    <h2 class="m-0 text-sm font-bold">{{ __('Moves') }}</h2>
-                    <ol class="m-0 flex list-none flex-wrap gap-x-3 gap-y-1 p-0 text-[13px] tabular-nums" data-test="moves">
+                    <div class="flex items-center justify-between gap-2">
+                        <h2 class="m-0 text-sm font-bold">{{ __('Moves') }}</h2>
+                        {{-- Browse the game (P8): start, back, forward, newest; the arrow keys do the same. --}}
+                        <div class="flex items-center gap-1" data-test="history-nav">
+                            @foreach ([['0', 'first', '«', __('First position')], ['shownPly - 1', 'back', '‹', __('Previous move')], ['shownPly + 1', 'forward', '›', __('Next move')], ['state.moves.length', 'last', '»', __('Latest move')]] as [$target, $key, $glyph, $label])
+                                <button type="button" x-on:click="browse({{ $target }})" aria-label="{{ $label }}" title="{{ $label }}" data-test="history-{{ $key }}"
+                                        class="inline-flex size-11 cursor-pointer items-center justify-center rounded-md bg-well text-base text-ink hover:bg-row-hover lg:size-9">{{ $glyph }}</button>
+                            @endforeach
+                        </div>
+                    </div>
+                    <p class="m-0 flex flex-wrap items-center gap-2 text-xs text-btc-hi" x-show="viewIndex !== null" data-test="history-pinned">
+                        <span x-text="@js(__('Showing move :n of :total')).replace(':n', shownPly).replace(':total', state.moves.length)"></span>
+                        <button type="button" class="cursor-pointer text-ink underline decoration-edge underline-offset-4" x-on:click="browse(state.moves.length)" data-test="history-back-to-game">{{ __('Back to the game') }}</button>
+                    </p>
+                    <ol class="m-0 flex list-none flex-wrap gap-x-1 gap-y-1 p-0 text-[13px] tabular-nums" data-test="moves">
                         <template x-for="m in state.moves" :key="m.ply">
-                            <li><span class="text-ink-3" x-text="m.ply + '.'"></span> <span x-text="m.notation"></span></li>
+                            <li><button type="button" x-on:click="browse(m.ply)" :aria-current="shownPly === m.ply ? 'step' : null" data-test="move"
+                                        class="cursor-pointer rounded-sm px-1.5 py-0.5 text-ink" :class="shownPly === m.ply ? 'bg-btc-press text-btc-hi' : 'hover:bg-row-hover'"><span class="text-ink-3" x-text="m.ply + '.'"></span> <span x-text="m.notation"></span></button></li>
                         </template>
                     </ol>
                 </div>

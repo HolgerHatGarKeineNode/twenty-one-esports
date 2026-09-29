@@ -6,6 +6,7 @@ use App\Enums\NotificationKind;
 use App\Events\UserNotified;
 use App\Jobs\SendNostrDm;
 use App\Jobs\SendWebPush;
+use App\Models\BoardGame;
 use App\Models\ChatMute;
 use App\Models\ChessGame;
 use App\Models\NotificationDigestItem;
@@ -38,13 +39,17 @@ use Throwable;
  * (NotificationDmOptOut), because the recipient may never have logged in.
  * Never a DM: "your move" outside a daily game (a live game's players are at
  * the board), and anything from a sender the recipient muted (ChatMute).
+ *
+ * A correspondence board game (plan "Mühle und Dame", P8) counts as a daily
+ * game for "your move"; it has no per-game channel or reminder switch, so
+ * the account settings decide.
  */
 final class Notifier
 {
     /**
      * @return list<'push'|'dm'|'digest'> the remote channels it went out on ('digest': a DM that waits for the daily digest)
      */
-    public function send(User $user, NotificationKind $kind, Notice $notice, ?ChessGame $game = null, bool $remote = true, ?User $sender = null): array
+    public function send(User $user, NotificationKind $kind, Notice $notice, ChessGame|BoardGame|null $game = null, bool $remote = true, ?User $sender = null): array
     {
         $settings = $user->chessSettings();
         $trigger = $kind->value;
@@ -53,7 +58,7 @@ final class Notifier
             return [];
         }
 
-        if ($trigger === 'reminder' && $game !== null && ($color = $game->colorOf($user)) !== null
+        if ($trigger === 'reminder' && $game instanceof ChessGame && ($color = $game->colorOf($user)) !== null
             && ! ($color === 'w' ? $game->white_remind : $game->black_remind)) {
             return [];
         }
@@ -66,7 +71,7 @@ final class Notifier
 
         $channels = array_values(array_filter([$settings->push ? 'push' : null, $settings->dmFor($trigger) ? 'dm' : null]));
 
-        if ($game !== null && ($color = $game->colorOf($user)) !== null) {
+        if ($game instanceof ChessGame && ($color = $game->colorOf($user)) !== null) {
             $choice = $color === 'w' ? $game->white_notify : $game->black_notify;
 
             if ($trigger === 'your_move' && $choice !== null) {

@@ -328,7 +328,8 @@ test('chess keeps its weights and shares: the config, the default draft and a se
         ->and($defaults['shares'])->toBe(['chess' => 35, 'rocket-league' => 40, 'ea-sports-fc' => 25])
         // The board games are in the draft as a group, without a weight: they do not mine until the board says so.
         ->and($defaults['groups'])->toBe(['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27'], 'board-games' => ['nine-mens-morris', 'checkers']])
-        ->and(ChainDraft::table($defaults)['board-games'])->toBe(['nine-mens-morris/blitz', 'checkers/blitz'])
+        // Correspondence (P8) is a mode of each board game with its own weight row.
+        ->and(ChainDraft::table($defaults)['board-games'])->toBe(['nine-mens-morris/blitz', 'nine-mens-morris/correspondence', 'checkers/blitz', 'checkers/correspondence'])
         ->and($season->genesis->weightFor('nine-mens-morris/blitz'))->toBe(0);
 
     $proposal = ChainDraft::boardGamesProposal($defaults);
@@ -340,7 +341,8 @@ test('the board games\' proposal shrinks the other shares in proportion to exact
     $defaults = ChainDraft::defaults();
 
     expect(ChainDraft::boardGamesProposal($defaults))->toBe([
-        'weights' => ['nine-mens-morris/blitz' => 1000, 'checkers/blitz' => 1000],
+        // Correspondence (P8) proposed at twice blitz, as chess daily.
+        'weights' => ['nine-mens-morris/blitz' => 1000, 'nine-mens-morris/correspondence' => 2000, 'checkers/blitz' => 1000, 'checkers/correspondence' => 2000],
         'shares' => ['chess' => 32, 'rocket-league' => 36, 'ea-sports-fc' => 22, 'board-games' => 10],
         'daily' => ['board-games' => 5],
     ])

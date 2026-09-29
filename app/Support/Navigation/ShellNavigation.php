@@ -212,7 +212,7 @@ final class ShellNavigation
             $name === 'games.series' => $known($route->parameter('slug')),
             $name === 'ladder.show' => $known($route->parameter('game')),
             // A board game's lobby and its games (plan "Mühle und Dame", P5): their own context bar, never chess's.
-            $name === 'board.lobby' => $known($route->parameter('board')),
+            $name === 'board.lobby', $name === 'board.correspondence' => $known($route->parameter('board')),
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
             // The match list files no board game (it lists chess games and series): all games.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -383,12 +383,14 @@ final class ShellNavigation
         }
 
         if ($game->kind() === GameKind::Board) {
-            return [
+            return array_values(array_filter([
                 self::link('play', GameNames::page($slug), __('Play blitz'), 'bolt', null, null, __('Play'), 'play'),
+                // Correspondence (P8): one move a day, on its own page, for a board game that has the mode.
+                $game->mode('correspondence') !== null ? self::link('daily', route('board.correspondence', $slug), __('Correspondence'), 'calendar') : null,
                 self::link('ladder', route('ladder.show', [$slug, array_key_first($game->modes())]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
                 self::strongest(),
-            ];
+            ]));
         }
 
         if (in_array($slug, $series, true)) {

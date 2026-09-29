@@ -8,6 +8,7 @@ use App\Models\BoardInvite;
 use App\Models\BoardQueueEntry;
 use App\Models\Rating;
 use App\Models\User;
+use App\Support\Board\BoardChallenges;
 use App\Support\Board\BoardGameService;
 use App\Support\Board\BoardInvites;
 use App\Support\Board\BoardQueue;
@@ -51,6 +52,11 @@ use Livewire\Component;
  * P57 notice says in counts only how many others search rated and whether
  * any of them list each other with this player, with the fix next to it.
  * Off, the page is as before: casual only.
+ *
+ * Correspondence (P8): a card next to blitz leads to the board game's
+ * correspondence page (board.correspondence) and says what waits there for
+ * this player: challenges to answer, games whose move is theirs. "Live now"
+ * lists live games only.
  *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a board game whose own switch is off is a 404.
@@ -314,7 +320,7 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
     #[Computed]
     public function liveGames(): Collection
     {
-        return BoardGame::query()->where('game', $this->slug)->where('status', BoardGameStatus::Active)
+        return BoardGame::query()->live()->where('game', $this->slug)->where('status', BoardGameStatus::Active)
             ->with(['white', 'black'])->latest('id')->limit(8)->get();
     }
 
@@ -329,6 +335,31 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
         return Rating::query()->where(['pool' => Rating::CASUAL, 'season' => '', 'game' => $this->slug, 'mode' => 'blitz'])
             ->where('results', '>', 0)->whereNotNull('user_id')->with('user')
             ->orderByDesc('rating')->orderByDesc('results')->orderBy('id')->limit(5)->get();
+    }
+
+    /**
+     * What waits for this player in the correspondence games of this board
+     * game (P8): challenges to answer, games whose move is theirs, games
+     * running.
+     *
+     * @return array{challenges: int, yourMove: int, running: int}
+     */
+    #[Computed]
+    public function correspondence(): array
+    {
+        $user = auth()->user();
+
+        if (! $user instanceof User) {
+            return ['challenges' => 0, 'yourMove' => 0, 'running' => 0];
+        }
+
+        $games = BoardGame::query()->correspondence()->where('game', $this->slug)->where('status', BoardGameStatus::Active)->playedBy($user)->get(['id', 'white_id', 'black_id', 'turn']);
+
+        return [
+            'challenges' => app(BoardChallenges::class)->incoming($user, $this->slug)->count(),
+            'yourMove' => $games->filter(fn (BoardGame $game): bool => $game->turn === $game->colorOf($user))->count(),
+            'running' => $games->count(),
+        ];
     }
 
     /** Whether the page asks the server on its own: searching, or waiting for an answer to an invite. */
@@ -494,6 +525,26 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
                 </label>
             @endif
         </section>
+
+        {{-- Correspondence (P8): one move a day, on its own page; what waits there for this player. --}}
+        @php($correspondence = $this->correspondence)
+        @if (app(GameRegistry::class)->mode($slug, BoardGame::CORRESPONDENCE) !== null)
+            <section aria-labelledby="board-corr-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-6" data-test="board-correspondence-card">
+                <div class="flex min-w-0 flex-col gap-1">
+                    <h2 id="board-corr-h" class="m-0 text-[15px] font-bold">{{ __('Correspondence') }}</h2>
+                    <p class="m-0 max-w-[60ch] text-[13px] leading-normal text-ink-2">
+                        @if ($correspondence['challenges'] > 0 || $correspondence['yourMove'] > 0)
+                            <span class="font-bold text-btc-hi" data-test="correspondence-waiting">{{ trans_choice(':count challenge to answer|:count challenges to answer', $correspondence['challenges']) }} · {{ trans_choice('your move in :count game|your move in :count games', $correspondence['yourMove']) }}</span>
+                        @elseif ($correspondence['running'] > 0)
+                            {{ trans_choice(':count correspondence game running, their move.|:count correspondence games running, their move in each.', $correspondence['running']) }}
+                        @else
+                            {{ __('One move a day against a player you challenge. A reminder comes before your deadline.') }}
+                    @endif
+                </p>
+            </div>
+            <div class="shrink-0"><x-button :variant="$correspondence['challenges'] > 0 || $correspondence['yourMove'] > 0 ? 'primary' : 'secondary'" icon="calendar" :href="route('board.correspondence', $slug)" data-test="open-correspondence">{{ __('Correspondence games') }}</x-button></div>
+        </section>
+        @endif
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:items-start lg:gap-5">
             {{-- Who looks for a game right now: invite them. --}}

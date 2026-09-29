@@ -46,19 +46,21 @@ casual on the league's own server with a casual rating each, in casual cups and 
 a ladder until they join the season chain; **revision 9.13** (2026-09-29): the board games in the
 season chain: rated games from each board game's rated queue and in rated tournaments, a ladder per
 board game, their attestations and blocks, one share group `board-games`, and consensus rule 2 for
-board games). Not
+board games; **revision 9.14** (2026-09-29): correspondence board games, one move a day, casual or rated
+from a challenge, with a ladder, a weight and a tournament profile of their own). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12 and 9.13 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13 and 9.14 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
 board games (their ladders, attestations and blocks), of the same shape as a rated chess game's, but
-prints none of them yet.
+prints none of them yet. Revision 9.14 adds a mode, not a shape: a correspondence board game's ladder,
+attestation and block differ from a blitz one's only in `d`, `mode`, `time_control` and the weight key.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -106,6 +108,41 @@ revision 9.13 (with every other ladder), and in a season already live then with 
 revision 9.13 has no `board-games` group and no row for a board game, so in that season a parameter change adds each
 board game as its own share key. Rule 2's move count holds for every board game candidate attested after the league
 adopts revision 9.13; no chess, Rocket League or EA Sports FC rule, ladder or event changes.
+The rules marked "rev. 9.14" add the correspondence mode of the board games. Its ladders open like a board game's
+blitz ladder under revision 9.13 (at Block 0 of a season released after the league adopts revision 9.14, or in a live
+season with the first parameter change after it, which must give `<board game>/correspondence` a weight to mine); a
+genesis signed earlier has no weight for it, so its wins do not mine there. Its tournaments follow the rules of
+revision 9.12 and 9.13 for every tournament whose first `31923` version the league signs after it adopts revision 9.14.
+No blitz board game, chess, Rocket League or EA Sports FC rule, ladder or event changes.
+
+### Changelog of revision 9.14 (2026-09-29)
+
+Correspondence board games ([Board games](#board-games-rev-912), [Game registry](#game-registry)). No new kind and no
+new tag.
+
+- **A second mode per board game.** `nine-mens-morris` and `checkers` get the mode `correspondence`, time control
+  `1/86400` as correspondence chess: one move per day, played on the league server like blitz, and moves are no
+  events. The side to move has 86400 seconds from the previous move; a missed deadline loses on time, or aborts
+  the game before both sides made their first move. A player plays any number of correspondence games next to
+  one live game.
+- **Challenges.** A correspondence game starts from a challenge of one player to another (league data, no event,
+  as a casual chess challenge), open for 48 hours; the challenger picks a colour or leaves it to chance. A
+  challenge asks for a casual or a rated game. A rated one is accepted only while the board game's
+  correspondence ladder is open and both players pass the trust gate and list each other (rule 1); the accept
+  is the pairing, so the gate and the clans are read and pinned then, as for the rated queue of revision 9.13.
+- **Ladders, attestations, blocks.** `32152` with `d` = `<board game>/correspondence/<season>`, `rates`
+  `player`, `time_control` `1/86400`; a rated correspondence game is attested (`2154`) and is a block candidate
+  exactly like a rated blitz board game, with the weight of `<board game>/correspondence` and within the one
+  share and daily limit of the group `board-games`. The league's draft proposes twice the blitz weight, as
+  for chess (league behaviour, no event).
+- **Every game ends.** Without a clock only the rules end a game: nine men's morris draws after 50 moves
+  each without a mill, and after the placing every mill takes a man; checkers draws after 25 moves each with
+  only kings moving and nothing captured, and men only move forward. So both games end after a bounded number
+  of moves; no further limit is needed.
+- **Tournaments.** A tournament may be played in a board game's correspondence mode: one game per match, its
+  first move within the tournament's check-in, then a day per move, as a correspondence chess tournament.
+- **Notifications.** The player to move is told of the opponent's move and reminded before the deadline,
+  under the same settings as correspondence chess (league behaviour, NIP-17 DMs as in revision 9.8).
 
 ### Changelog of revision 9.13 (2026-09-29)
 
@@ -964,11 +1001,11 @@ their own tables, next to chess and not built on it:
 
 | field | nine men's morris | checkers |
 |---|---|---|
-| game, mode | `nine-mens-morris`: `blitz` | `checkers`: `blitz` |
+| game, mode | `nine-mens-morris`: `blitz`, `correspondence` (rev. 9.14) | `checkers`: `blitz`, `correspondence` (rev. 9.14) |
 | rated entity | `rates` `player` (rev. 9.13; before, casual rating only) | `player` (rev. 9.13) |
-| time control | `300+3` | `300+3` |
+| time control | `300+3`; correspondence `1/86400` | `300+3`; correspondence `1/86400` |
 | rules | nine men per side, flying with three, a mill removes one man (from a mill only when all stand in mills); two men or no move loses; threefold position or 50 moves each without a mill is a draw | German rules on 8 x 8: men move forward and capture both ways, compulsory capture as a whole chain with free choice between chains, a flying king that lands right behind the captured man, a man crowned mid-chain ends the move; no man or no move loses; threefold position or 25 moves each without a capture or a man moving is a draw |
-| rated | rev. 9.13: yes, from the rated queue and in rated tournaments, on the ladder `nine-mens-morris/blitz/<season>`; casual games stay off it. Revision 9.12: no | as nine men's morris, ladder `checkers/blitz/<season>` |
+| rated | rev. 9.13: yes, from the rated queue and in rated tournaments, on the ladder `nine-mens-morris/blitz/<season>`; casual games stay off it. Revision 9.12: no. Rev. 9.14: correspondence from a rated challenge or a rated tournament, on `nine-mens-morris/correspondence/<season>` | as nine men's morris, ladders `checkers/blitz/<season>` and `checkers/correspondence/<season>` |
 | match size | one game; a knockout draw is replayed with the colours swapped | as nine men's morris |
 | draws | yes | yes |
 | moves on Nostr | none | none |
@@ -977,7 +1014,8 @@ A board game's casual rating is league data under the same Elo parameters as eve
 Its tournaments are ordinary tournaments (a `31923` whose summary names the game and mode). Revision
 9.12: with no ladder `a`, their matches never rated. Revision 9.13: a tournament published while the
 board game's ladder is open names it and is rated like a chess tournament (a directors' result of a
-board game is not played on the league server and rates nothing). A player plays one live game at a time across chess, the board games and the casual 1v1.
+board game is not played on the league server and rates nothing). A player plays one live game at a time across chess, the board games and the casual 1v1;
+correspondence games (rev. 9.14) are no live games.
 
 **Rated (rev. 9.13).** A rated board game is attested like a solo chess game on the ladder of its board
 game (see the changelog of revision 9.13 for the tags), without an `e`: it has no challenge, answer or
