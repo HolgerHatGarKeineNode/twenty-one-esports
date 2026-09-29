@@ -324,7 +324,7 @@ Mühle and Dame cubes: post only once the board game switches are on in prod.
 **DE**
 1. (3s) Jede Partie landet im Mempool — *der Mempool-Streifen, Würfel aller fünf Spiele fallen hinein, casual entsättigt, Gesichter und Clan-Logos darunter*
 2. (3s) Läuft sie, füllt sich der Würfel — *rechts vom Trenner: laufende Partien, der Würfel füllt sich Zug für Zug, „live“ mit grünem Punkt*
-3. (3s) Season läuft? Dein gewerteter Sieg wird Block — *die Zeile über dem Streifen wechselt auf die Season-Fassung; das gewertete Rocket-League-1v1 endet 3 : 1, der Deckel wird orange, „Block 1“ fällt darunter*
+3. (3s) Season läuft? Dein gewerteter Sieg wird zum Block — *die Zeile über dem Streifen wechselt auf die Season-Fassung; das gewertete Rocket-League-1v1 endet 3 : 1, der Deckel wird orange, „Block 1“ fällt darunter*
 4. (3s) Jeder Block bringt Sats, halbiert je Epoche — */mining: Block 1 hängt an der Season-Chain, der Zähler läuft auf die Belohnung pro siegreichem Spieler, markiert „Entwurf, nicht freigegeben“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
@@ -346,16 +346,16 @@ The casual Elo is the app's `EloRating` with `season.casual`: +20 for one win, +
 
 **DE**
 1. (3s) Dein Matt. Dein Moment. — *Brett, Légals Matt (Paris 1750) landet, das Matt-Feld leuchtet*
-2. (3s) Rund um die Uhr im Livestream — *der Stream „LIVE“: LATEST WIN · GG, satsjaeger mit Krone, beat hodlqueen, +20 casual Elo*
+2. (3s) Rund um die Uhr: Sieger im Stream — *der Stream „LIVE“: LATEST WIN · GG, satsjaeger mit Krone, beat hodlqueen, +20 casual Elo*
 3. (3s) Dein Aufstieg, groß im Bild — *Climbers of the week: drei Gesichter, die Balken steigen auf +57, +39, +20 casual Elo*
-4. (3s) Dein Block. Dein Turnierlauf. Live. — *zwei Stream-Slides: Block 1 mit Gesicht, und der Weg durchs Halbfinale ins Finale*
+4. (3s) Dein Block in der Season. Dein Turnierlauf. — *zwei Stream-Slides: Block 1 mit Gesicht, und der Weg durchs Halbfinale ins Finale*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
 1. (3s) Your mate. Your moment. — *board, Légal's mate (Paris 1750) lands, the mate square lights up*
-2. (3s) On the live stream, around the clock — *the stream, "LIVE": LATEST WIN · GG, satsjaeger with a crown, beat hodlqueen, +20 casual Elo*
+2. (3s) Around the clock, winners go on stream — *the stream, "LIVE": LATEST WIN · GG, satsjaeger with a crown, beat hodlqueen, +20 casual Elo*
 3. (3s) Your climb, big on screen — *Climbers of the week: three faces, the bars rise to +57, +39, +20 casual Elo*
-4. (3s) Your block. Your bracket run. Live. — *two stream slides: Block 1 with a face, and the path through the semifinal into the final*
+4. (3s) Your block in season. Your bracket run. — *two stream slides: Block 1 with a face, and the path through the semifinal into the final*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---
@@ -369,13 +369,13 @@ kind exists or is mentioned.
 **DE**
 1. (3s) Das Turnier läuft live im Stream — *der Stream „LIVE“: Halbfinale, ein Match läuft, der grüne Punkt pulsiert*
 2. (3s) Ergebnis rein, Sieger rückt vor — *die Halbfinals entscheiden sich, die Sieger rücken ins Finale*
-3. (3s) Ein Champion, groß im Bild — *das Finale fällt, kai_blitz bekommt die Krone, Champion*
+3. (3s) Ein Champion trägt die Krone — *das Finale fällt, kai_blitz bekommt die Krone, Champion*
 4. (3s) Das nächste öffnet. Nimm Platz. — *Nächstes Turnier, Anmeldung offen: die Plätze füllen sich, „Dein Platz?“ leuchtet*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
 1. (3s) The tournament runs live on stream — *the stream, "LIVE": semifinals, one match running, the green dot pulses*
 2. (3s) Result in, winner moves on — *the semifinals are decided, the winners move into the final*
-3. (3s) One champion, big on screen — *the final is decided, kai_blitz gets the crown, Champion*
+3. (3s) One champion. One crown. — *the final is decided, kai_blitz gets the crown, Champion*
 4. (3s) The next one opens. Take a seat. — *Next tournament, sign-up open: the seats fill up, "Your spot?" lights up*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

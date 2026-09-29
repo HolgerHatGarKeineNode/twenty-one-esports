@@ -275,23 +275,23 @@ Facts 28-33. Shows Mühle and Dame: post only once the board game switches are o
 figure in the text: until Block 0 it is the board's draft.
 
 **Nostr (DE):**
-Jede Partie landet bei uns im Mempool: Schach, Mühle, Dame, Rocket League und EA FC, als Würfel auf
-/matches. Links, was gespielt ist, rechts, was gerade läuft und was als Nächstes kommt. Casual-Partien
-zählen zum Spaß und schürfen nie. Läuft eine Season, schürft ein fairer gewerteter Sieg einen Block
-der Season-Chain, mit seiner Höhe, und jeder Block bringt Sats. Die Belohnung halbiert sich jede
-Epoche, ausgezahlt wird einmal, nach der Season-Prüfung.
+Auf /matches wird jede Partie zum Würfel: Schach, Mühle, Dame, Rocket League, EA FC, mit den
+Gesichtern der Spieler darunter. Links steht, was gespielt ist, rechts, was gerade läuft und was
+als Nächstes kommt. Casual ist zum Spaß da und schürft nie. Läuft eine Season, schürft dein fairer
+gewerteter Sieg einen Block der Season-Chain, mit seiner Höhe darunter, und jeder Block bringt Sats.
+Die Belohnung halbiert sich jede Epoche und wird einmal ausgezahlt, nach der Season-Prüfung.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
-Every match lands in our mempool: chess, nine men's morris, checkers, Rocket League and EA FC, as
-cubes on /matches. On the left what has been played, on the right what is live and up next. Casual
-games count for fun and never mine. While a season runs, a fair rated win mines a block of the season
-chain, with its height, and every block pays sats. The reward halves every era and is paid once,
-after the season review.
+On /matches, every game becomes a cube: chess, nine men's morris, checkers, Rocket League, EA FC,
+with the players' faces underneath. Left is what has been played, right is what is live and up next.
+Casual is for fun and never mines. While a season runs, your fair rated win mines a block of the
+season chain, with its height stamped underneath, and every block pays sats. The reward halves every
+era and is paid once, after the season review.
 esports.einundzwanzig.space
 
-**X (DE):** Erst Mempool, dann Block: Läuft eine Season, schürft dein gewerteter Sieg einen Block der Season-Chain. esports.einundzwanzig.space
-**X (EN):** Mempool first, then a block: while a season runs, your rated win mines a block of the season chain. esports.einundzwanzig.space
+**X (DE):** Erst Mempool, dann Block. Läuft eine Season, schürft dein gewerteter Sieg einen Block der Season-Chain. esports.einundzwanzig.space
+**X (EN):** Mempool first, then a block. While a season runs, your rated win mines a block of the season chain. esports.einundzwanzig.space
 
 ---
 
@@ -301,21 +301,21 @@ Facts 34-39. The block slide and the tournament-run slide are plan P3/P5: post o
 the prod stream.
 
 **Nostr (DE):**
-Unser Livestream läuft rund um die Uhr, und er zeigt, wer gewinnt. Dein letzter Sieg kommt mit
-Gesicht und Casual-Elo ins Bild, die drei größten Aufsteiger der Woche stehen oben, dein Block der
-Season-Chain läuft, sobald eine Season läuft, und dein Weg durch den Turnierbaum Runde für Runde.
-Spiel eine Partie, und der nächste Name im Stream ist deiner.
+Unser Livestream läuft rund um die Uhr und zeigt, wer gewinnt. Dein letzter Sieg kommt mit Gesicht,
+Krone und Casual-Elo ins Bild. Die drei größten Aufsteiger der Woche stehen oben. Läuft eine Season,
+kommt dein Block der Season-Chain dazu, und dein Weg durch den Turnierbaum, Runde für Runde.
+Spiel mit, dann kann der nächste Name im Stream deiner sein.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
-Our live stream runs around the clock, and it shows who wins. Your latest win goes on screen with
-your face and casual Elo, the week's three biggest climbers are up top, your season chain block airs
-once a season runs, and so does your path through the bracket, round by round. Play a game, and the
-next name on stream is yours.
+Our live stream runs around the clock and shows who wins. Your latest win goes on screen with your
+face, a crown and your casual Elo. The week's three biggest climbers are up top. While a season runs,
+your season chain block joins in, and so does your path through the bracket, round by round. Join in,
+and the next name on stream can be yours.
 esports.einundzwanzig.space
 
-**X (DE):** Gewinn, und dein Name läuft im Stream. Rund um die Uhr, mit Gesicht und Casual-Elo. esports.einundzwanzig.space
-**X (EN):** Win, and your name goes on stream. Around the clock, with your face and casual Elo. esports.einundzwanzig.space
+**X (DE):** Dein Sieg. Dein Gesicht. Im Stream, rund um die Uhr, mit Krone und Casual-Elo. esports.einundzwanzig.space
+**X (EN):** Your win. Your face. On stream, around the clock, with a crown and casual Elo. esports.einundzwanzig.space
 
 ---
 
@@ -325,20 +325,19 @@ Facts 40-44. The live bracket and champion slides are plan P5: post only once th
 stream.
 
 **Nostr (DE):**
-Turniere laufen bei uns live im Stream: der Turnierbaum mit jedem Ergebnis, Runde für Runde, bis ein
-Champion mit Krone im Bild steht. Genug zugeschaut? Das nächste Turnier öffnet die Anmeldung, du
-meldest dich mit deinem Nostr-Schlüssel an und stehst selbst im Turnierbaum. Schach, Rocket League
-und EA FC.
+Unsere Turniere laufen live im Stream: der Turnierbaum mit jedem Ergebnis, Runde für Runde, bis ein
+Champion die Krone trägt. Genug zugeschaut? Melde dich beim nächsten Turnier mit deinem
+Nostr-Schlüssel an, dann stehst du selbst im Turnierbaum. Schach, Rocket League und EA FC.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
 Our tournaments run live on stream: the bracket with every result, round by round, until a champion
-stands on screen with the crown. Done watching? The next tournament opens its sign-up, you sign up
-with your Nostr key and you are in the bracket yourself. Chess, Rocket League and EA FC.
+wears the crown. Watched enough? Sign up for the next tournament with your Nostr key and you are in
+the bracket yourself. Chess, Rocket League and EA FC.
 esports.einundzwanzig.space
 
-**X (DE):** Genug zugeschaut? Das nächste Turnier öffnet. Nimm Platz im Turnierbaum. esports.einundzwanzig.space
-**X (EN):** Done watching? The next tournament opens. Take your seat in the bracket. esports.einundzwanzig.space
+**X (DE):** Genug zugeschaut? Nimm Platz im Turnierbaum, beim nächsten Turnier. esports.einundzwanzig.space
+**X (EN):** Watched enough? Grab a seat in the bracket at the next tournament. esports.einundzwanzig.space
 
 ---
 

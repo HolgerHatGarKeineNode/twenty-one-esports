@@ -266,20 +266,20 @@ diagonal). In the DE cut the king is called "Dame", in the EN cut "king". Facts 
 ## 11. Mempool → Block
 
 **DE Headline:** Erst Mempool, dann Block
-**DE Subline:** Jede Partie aller Spiele landet als Würfel im Mempool. Läuft eine Season, schürft ein gewerteter Sieg einen Block.
+**DE Subline:** Jede Partie wird ein Würfel, mit den Gesichtern der Spieler. Läuft eine Season, schürft dein gewerteter Sieg einen Block.
 **DE Bullets:**
 - Schach, Mühle, Dame, Rocket League, EA FC
-- Links gespielt, rechts live und als Nächstes
-- Casual zählt zum Spaß und schürft nie
-- Die Belohnung pro Block halbiert sich jede Epoche
+- Links: gespielt. Rechts: live und als Nächstes.
+- Casual ist zum Spaß da und schürft nie
+- Die Block-Belohnung halbiert sich jede Epoche
 
 **EN Headline:** Mempool first. Then a block.
-**EN Subline:** Every match of every game lands in the mempool as a cube. While a season runs, a rated win mines a block.
+**EN Subline:** Every match becomes a cube, with the players' faces on it. While a season runs, your rated win mines a block.
 **EN Bullets:**
 - Chess, morris, checkers, Rocket League, EA FC
-- Played on the left, live and up next on the right
-- Casual counts for fun and never mines
-- The reward per block halves every era
+- Left: played. Right: live and up next.
+- Casual is for fun and never mines
+- The block reward halves every era
 
 **CTA:** esports.einundzwanzig.space
 **Designer note:** the /matches mempool strip (`components/block-strip`) at hero scale: casual
@@ -292,18 +292,18 @@ once the board game switches are on in prod.**
 
 ## 12. On the stream
 
-**DE Headline:** Gewinn. Dein Name läuft im Stream.
-**DE Subline:** Der Livestream läuft rund um die Uhr, und er zeigt, wer gewinnt: deinen Sieg, deinen Aufstieg, deinen Block, deinen Turnierlauf.
+**DE Headline:** Dein Sieg. Dein Gesicht. Im Stream.
+**DE Subline:** Der Livestream läuft rund um die Uhr und zeigt, wer gewinnt: deinen Sieg, deinen Aufstieg, deinen Block, deinen Turnierlauf.
 **DE Bullets:**
-- Dein letzter Sieg, mit Gesicht und Casual-Elo
+- Dein letzter Sieg, mit Gesicht, Krone und Casual-Elo
 - Die drei größten Aufsteiger der Woche
 - Dein Block, sobald eine Season läuft
 - Dein Weg durch den Turnierbaum, Runde für Runde
 
-**EN Headline:** Win. Your name goes on stream.
-**EN Subline:** The live stream runs around the clock, and it shows who wins: your win, your climb, your block, your tournament run.
+**EN Headline:** Your win. Your face. On stream.
+**EN Subline:** The live stream runs around the clock and shows who wins: your win, your climb, your block, your tournament run.
 **EN Bullets:**
-- Your latest win, with your face and casual Elo
+- Your latest win, with your face, a crown and casual Elo
 - The week's three biggest climbers
 - Your block, once a season runs
 - Your path through the bracket, round by round
@@ -320,18 +320,18 @@ on the prod stream.**
 ## 13. Tournaments live
 
 **DE Headline:** Genug zugeschaut? Nimm Platz.
-**DE Subline:** Turniere laufen live im Stream, Runde für Runde bis zum Champion. Beim nächsten stehst du selbst im Turnierbaum.
+**DE Subline:** Turniere laufen live im Stream, Runde für Runde, bis ein Champion die Krone trägt. Im nächsten kannst du dabei sein.
 **DE Bullets:**
 - Turnierbaum live, mit jedem Ergebnis
-- Der Champion groß im Stream
+- Der Champion mit Krone, groß im Bild
 - Anmelden mit deinem Nostr-Schlüssel
 - Schach, Rocket League und EA FC
 
-**EN Headline:** Done watching? Take a seat.
-**EN Subline:** Tournaments run live on stream, round by round to the champion. In the next one, you are in the bracket.
+**EN Headline:** Watched enough? Grab a seat.
+**EN Subline:** Tournaments run live on stream, round by round, until a champion wears the crown. In the next one, you can be in it.
 **EN Bullets:**
 - A live bracket, every result as it lands
-- The champion, big on stream
+- The champion with the crown, big on screen
 - Sign up with your Nostr key
 - Chess, Rocket League and EA FC
 
