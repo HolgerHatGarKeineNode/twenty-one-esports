@@ -15,6 +15,9 @@ const MOTIF_KEYS = [
   [/sats pot/i, 'satspot'],
   [/fifa/i, 'fifa'],
   [/casual cup/i, 'cups'],
+  // the board games, before /nostr/ (their posts mention Nostr) and /daily/
+  [/mühle|morris/i, 'morris'],
+  [/\bdame\b|checkers/i, 'checkers'],
   [/nostr|login|anmeld/i, 'login'],
   [/blitz/i, 'blitz'],
   [/daily|fernschach|correspond/i, 'daily'],

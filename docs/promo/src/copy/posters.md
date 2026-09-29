@@ -1,4 +1,4 @@
-# Poster copy — 8 motifs, casual recruitment (round 2)
+# Poster copy — 10 motifs, casual recruitment (round 2)
 
 CTA on every poster: **esports.einundzwanzig.space**
 Every claim here is checked against `facts.md`. Written under the round-2 rules (no
@@ -210,6 +210,56 @@ preview, not a mock.
 snippet or the footer strip itself (`resources/views/components/shell/footer.blade.php`)
 as the visual; this motif is optional (only render it if it earns a spot in the
 week's rotation — it's the least casual-recruitment-relevant of the eight).
+
+---
+
+## 9. Mühle
+
+**DE Headline:** Mühle — Blitz im Browser
+**DE Subline:** Neun Steine, drei in einer Reihe: Blitz 5+3 live, jeder Zug vom Server geprüft.
+**DE Bullets:**
+- Setzen, ziehen, springen bei drei Steinen
+- Drei in einer Reihe: Gegnerstein nehmen
+- Blitz 5+3, Gegner über die Lobby
+- Eigene Casual-Ladder für Mühle
+
+**EN Headline:** Nine men's morris, live
+**EN Subline:** Three in a row takes a man: blitz 5+3 live, every move checked by the server.
+**EN Bullets:**
+- Place, move, fly once you're at three
+- A mill takes one of their men
+- Blitz 5+3, find an opponent in the lobby
+- Its own casual ladder
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the Mühle board (24 points, three nested squares) with a mill
+on one line; DE UI, English UI for the EN cut. Facts 17-21 in `facts.md`; feature is on master behind
+`ESPORTS_BOARD_GAMES` (off on prod until switched on).
+
+---
+
+## 10. Dame
+
+**DE Headline:** Dame nach deutschen Regeln
+**DE Subline:** 8×8, Schlagzwang, fliegende Dame: Blitz 5+3 live, jeder Zug vom Server geprüft.
+**DE Bullets:**
+- Schlagzwang: wer schlagen kann, muss
+- Steine schlagen auch rückwärts
+- Schlagketten, Feld für Feld geklickt
+- Die Dame fliegt über die Diagonale
+
+**EN Headline:** Checkers, German rules
+**EN Subline:** 8×8, capture is compulsory, kings fly: blitz 5+3 live, every move checked by the server.
+**EN Bullets:**
+- Capturing is compulsory
+- Men capture backwards too
+- Capture chains, clicked square by square
+- Flying kings run the whole diagonal
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** 8×8 board with a capture in progress (a chain or a king on a long
+diagonal). In the DE cut the king is called "Dame", in the EN cut "king". Facts 17-19 and
+22-25 in `facts.md`; feature is on master behind `ESPORTS_BOARD_GAMES` (off on prod until switched on).
 
 ---
 

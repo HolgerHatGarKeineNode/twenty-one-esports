@@ -12,7 +12,7 @@ const ROOT = path.resolve(SRC, '..');
 const SITE = 'https://esports.einundzwanzig.space';
 
 /* Page each motif points to (routes/web.php). */
-const FEATURE = { login: `${SITE}/login`, blitz: `${SITE}/chess`, daily: `${SITE}/chess`, clans: `${SITE}/clans`, tournaments: `${SITE}/tournaments`, watch: `${SITE}/games`, invite: `${SITE}/`, opensource: 'https://github.com/HolgerHatGarKeineNode/twenty-one-esports', satspot: `${SITE}/tournaments/2`, fifa: `${SITE}/tournaments/1`, cups: `${SITE}/tournaments`, grasp: 'https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports' };
+const FEATURE = { login: `${SITE}/login`, blitz: `${SITE}/chess`, daily: `${SITE}/chess`, clans: `${SITE}/clans`, tournaments: `${SITE}/tournaments`, watch: `${SITE}/games`, invite: `${SITE}/`, opensource: 'https://github.com/HolgerHatGarKeineNode/twenty-one-esports', satspot: `${SITE}/tournaments/2`, fifa: `${SITE}/tournaments/1`, cups: `${SITE}/tournaments`, morris: `${SITE}/games/nine-mens-morris`, checkers: `${SITE}/games/checkers`, grasp: 'https://gitworkshop.dev/npub1pt0kw36ue3w2g4haxq3wgm6a2fhtptmzsjlc2j2vphtcgle72qesgpjyc6/relay.ngit.dev/twenty-one-esports' };
 const FMT = { 'mobile-9x16': ['MOB', 'mobile'], 'x-16x9': ['X', 'x'], 'nostr-square': ['SQ', 'nostr'], 'nostr-wide': ['WIDE', 'nostr'], 'stream-banner': ['STREAM', 'stream'] };
 
 const posters = parsePosters();

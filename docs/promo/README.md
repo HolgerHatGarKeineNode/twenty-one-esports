@@ -29,21 +29,22 @@ with Pillow (contact sheet).
 
 ## What's in here
 
-**Posters**: 8 motifs, from `src/copy/posters.md`, each in DE and EN, 70 PNGs at @2x:
+**Posters**: 10 motifs, from `src/copy/posters.md`, each in DE and EN, 86 PNGs at @2x:
 
 | Format | Size (CSS px, PNG is @2x) | Folder | Motifs |
 |---|---|---|---|
-| Mobile / story | 1080×1920 | `posters/mobile/` | all 8 |
-| X | 1600×900 | `posters/x/` | all 8 |
-| Nostr square | 1080×1080 | `posters/nostr/` | all 8 |
-| Nostr / link card | 1200×630 | `posters/nostr/` | all 8 |
+| Mobile / story | 1080×1920 | `posters/mobile/` | all 10 |
+| X | 1600×900 | `posters/x/` | all 10 |
+| Nostr square | 1080×1080 | `posters/nostr/` | all 10 |
+| Nostr / link card | 1200×630 | `posters/nostr/` | all 10 |
 | Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments |
 
 Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `daily`
-(Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional).
+(Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional),
+`morris` (Mühle), `checkers` (Dame).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 12 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups), DE and
+**Reels**: 14 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
 poster; the gallery shows it as its own section.
@@ -54,6 +55,14 @@ taken, the pot as the tournament sets it and its split). They go stale with ever
 read the tournaments again (`TournamentSlides::upcoming()`, `PrizePool::shownPotSats()`),
 update `UP` and the copy, and re-render before posting them later. The tournaments people set
 up come first, then the casual cups; the sats pot reel is the headline.
+
+**Mühle and Dame** (`morris`, `checkers`): on master since 2026-09-29 but behind
+`ESPORTS_BOARD_GAMES`, `ESPORTS_BOARD_GAME_NINE_MENS_MORRIS` and `ESPORTS_BOARD_GAME_CHECKERS`
+(all off by default). **Do not post them before those are switched on in prod.** Casual only:
+nothing about rated board games, mining or sats. Every board position is a ply of one game per
+board game, replayed move by move through the app's own `app/Support/Board/*Rules.php` by
+`src/gen-boardgames.php` (a move not in `legalMoves()` stops it); `src/lib/boardgames.js` draws
+them the way `resources/js/boardGame.js` does.
 
 **How it is built:** one real object from the product per motif (a board, the clock, the
 login card, the invite card, the bracket, the clan card, the code), drawn from the app's own
@@ -122,15 +131,16 @@ poster. Pick the poster in the language of the post.
 From the repo root. The render scripts run the position and string checks first.
 
 ```bash
-node docs/promo/src/render-posters.mjs                 # all posters (70), DE+EN, probes on
+node docs/promo/src/render-posters.mjs                 # all posters (86), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (18), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (14), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png
 node docs/promo/src/build-gallery.mjs                  # manifest.json + gallery.html
 node docs/promo/src/check-positions.mjs                # chess positions only
 node docs/promo/src/check-ui-strings.mjs               # mock-up strings only
+php docs/promo/src/gen-boardgames.php                  # Mühle/Dame games -> src/lib/boardgames.data.js
 ```
 
 Debug switches for `render-posters.mjs`: `PROBE_SOFT=1` also writes failing posters as

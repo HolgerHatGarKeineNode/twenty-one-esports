@@ -193,3 +193,16 @@
   .h-invite .ic-left { font-size: min(1.9cqw, 3.4cqh); }
   .h-invite .ic-board { height: min(26cqw, 52cqh); }
 }
+
+/* ===== board games (Mühle, Dame): the blitz layout with an SVG board ===== */
+.bd > .bgsvg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.h-bgame .mode { color: var(--btc); padding-bottom: .12em; }
+/* capture chains are long ("a5xc7xe5xg3"): the move columns size to their text */
+@container (min-aspect-ratio: 1/1) and (max-aspect-ratio: 14/10) {
+  /* the whole board stays inside the hero: no bleed as on the chess poster */
+  .h-bgame .bwrap { height: min(calc(100cqh - var(--d)), calc(62cqw - var(--d))); justify-self: start; align-self: center; }
+  .h-bg-checkers .moves { grid-template-columns: 2em auto; }
+  .h-bg-checkers .moves span:nth-child(3n) { grid-column: 2; }
+  .h-bg-checkers .moves span:nth-child(3n):empty { display: none; }
+}
+.h-bgame .moves span { white-space: nowrap; }

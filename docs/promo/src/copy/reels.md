@@ -265,3 +265,47 @@ kommunikator.
 3. (3s) Four players, two losses and out — *bracket, double elimination*
 4. (3s) Only four spots per cup — *sign-up, confirm, "is in"*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 13 — Mühle
+
+Sources: `facts.md` 17-21 (`NineMensMorrisRules.php` docblock: place nine men, then move along lines, fly
+at three men, a mill removes an enemy man; `NineMensMorris.php`: Blitz 5+3, `'300+3'`). Five beats of 3 s, 18.4 s with the cuts, as every reel.
+Points use the rules' notation (files a-g, ranks 1-7, a1 bottom left). The positions are one game replayed through `NineMensMorrisRules` (`src/gen-boardgames.php`, plies 1-18 and 50).
+
+**DE**
+1. (3s) Neun Steine setzen — *leeres Mühle-Brett, Weiß und Schwarz setzen abwechselnd Steine auf freie Punkte, Zähler „in der Hand“ zählt von 9 runter*
+2. (3s) Drei in einer Reihe: Stein weg — *Schwarz setzt den letzten Stein auf c5: Linie c3-c4-c5 leuchtet auf, der weiße Stein auf g4 wird vom Brett genommen*
+3. (3s) Bei drei Steinen darfst du springen — *späte Stellung, Schwarz hat nur noch drei Steine; der Stein auf d1 springt nach a4, schließt a4-b4-c4, der weiße Stein auf c3 wird genommen*
+4. (3s) Blitz 5+3, live im Browser — *Brett mit beiden Uhren auf 5:00; nach jedem Zug kommen 3 Sekunden dazu*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) Place nine men — *empty morris board, White and Black place men on free points in turn, the "in hand" counter counts down from 9*
+2. (3s) Three in a row: take a man — *Black places its last man on c5: the line c3-c4-c5 lights up, the white man on g4 is taken off the board*
+3. (3s) Down to three? Your men fly — *late position, Black has only three men left; the man on d1 flies to a4, closes a4-b4-c4, the white man on c3 is taken*
+4. (3s) Blitz 5+3, live in your browser — *the board with both clocks at 5:00; every move adds 3 seconds*
+5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 14 — Dame
+
+Sources: `facts.md` 17-19, 22-25 (`CheckersRules.php` docblock: compulsory capture, men capture backwards, capture
+chains, flying king; `Checkers.php`: Blitz 5+3, `'300+3'`; lobby: casual ladder top five). Five beats of 3 s, 18.4 s with the cuts, as every reel.
+DE calls the game and the king "Dame", EN "checkers" and "king". Squares as in chess notation (a1 dark, bottom left). The positions are one game replayed through `CheckersRules` (`src/gen-boardgames.php`, plies 19, 23 and 34).
+
+**DE**
+1. (3s) Schlagen ist Pflicht — *8×8-Brett, Weiß am Zug: nur der Schlag e3xg5 ist erlaubt, markiert, der Stein springt über f4*
+2. (3s) Schlagkette: Feld für Feld klicken — *Weiß klickt a5, c7, e5, g3: der Stein springt dreimal, die drei schwarzen Steine verschwinden erst nach dem Zug*
+3. (3s) Die Dame fliegt die Diagonale — *schwarze Dame auf c3: sie schlägt d4, dann aus der Entfernung g3, und landet auf h2*
+4. (3s) Blitz 5+3, eigene Casual-Ladder — *beide Uhren bei 5:00, das Brett spielt Blitz, darunter die Casual-Ladder: der erste Sieg zählt*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) Capturing is compulsory — *8×8 board, White to move: only the capture e3xg5 is allowed and marked, the man jumps over f4*
+2. (3s) One move, a whole capture chain — *White clicks a5, c7, e5, g3: the man jumps three times, the three black men leave only after the move*
+3. (3s) Kings fly the diagonal — *black king on c3: it captures d4, then g3 from a distance, and lands on h2*
+4. (3s) Blitz 5+3, own casual ladder — *both clocks at 5:00, the board plays blitz, below it the casual ladder: the first win counts*
+5. (3s) esports.einundzwanzig.space — *logo + URL*

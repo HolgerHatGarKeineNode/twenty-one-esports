@@ -177,6 +177,41 @@
     </div>`;
   };
 
+  /* ===== board games: Mühle and Dame (positions from lib/boardgames.data.js) ===== */
+  function boardGameHero(game, n, lang, o) {
+    const B = window.BG;
+    const p = B.ply(game, n);
+    const plies = B.DATA[game].plies;
+    let moves = '';
+    for (let i = o.from; i <= n; i += 2) {
+      const w = plies[i], b = plies[i + 1];
+      moves += `<span class="mn">${(i + 1) / 2}.</span><span class="${i === n ? 'hot' : ''}">${K.esc(w.move)}</span><span class="${i + 1 === n ? 'hot' : ''}">${b && i + 1 <= n ? K.esc(b.move) : ''}</span>`;
+    }
+    const board = `<div class="bd cube lit">${B.svg(game, p.pos, o.draw(p))}</div>`;
+    return `
+    <div class="h-blitz h-bgame h-bg-${game}">
+      <div class="bwrap">${board}</div>
+      <div class="side">
+        <div class="clock${o.run === 'w' ? '' : ' dim'}"><span class="who">${av(o.white)}<b>${o.white}</b></span><span class="t">${o.clocks[0]}</span></div>
+        <div class="moves">${moves}</div>
+        <div class="clock${o.run === 'b' ? '' : ' dim'}"><span class="who">${av(o.black)}<b>${o.black}</b></span><span class="t">${o.clocks[1]}</span></div>
+        <div class="mode">${U(o.name, lang)}</div>
+      </div>
+    </div>`;
+  }
+
+  /* Mühle, ply 18: Black places its last man on c5, closes c3-c4-c5 and takes g4. */
+  H.morris = (lang) => boardGameHero('morris', 18, lang, {
+    from: 9, name: 'gameMorris', white: 'kai_blitz', black: 'zap_zoe', clocks: ['4:31', '4:12'], run: 'w',
+    draw: (p) => ({ last: p.path, mill: window.BG.millsAt(window.BG.pieces('morris', p.pos), 'c5'), taken: window.BG.taken('morris', 18) }),
+  });
+
+  /* Dame, ply 23: one move, a chain of three captures a5xc7xe5xg3. */
+  H.checkers = (lang) => boardGameHero('checkers', 23, lang, {
+    from: 21, name: 'gameCheckers', white: 'hodlqueen', black: 'taproot_tim', clocks: ['3:47', '3:05'], run: 'b',
+    draw: (p) => ({ path: p.path, last: p.path, taken: window.BG.taken('checkers', 23) }),
+  });
+
   function build(motif, lang) {
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);

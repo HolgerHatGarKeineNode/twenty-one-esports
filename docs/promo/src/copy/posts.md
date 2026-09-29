@@ -227,6 +227,48 @@ https://esports.einundzwanzig.space/tournaments
 
 ---
 
+## Mühle
+
+**Nostr (DE):**
+Mühle im Browser: Neun Steine setzen, dann ziehen, und bei drei Steinen darfst du
+springen. Drei in einer Reihe ist eine Mühle und nimmt dem Gegner einen Stein. Blitz
+5+3, live gespielt, der Server prüft jeden Zug. Gegner findest du über die Lobby, es
+gibt eine eigene Casual-Ladder für Mühle, und Zuschauer sehen die Partie live.
+esports.einundzwanzig.space
+
+**Nostr (EN):**
+Nine men's morris in your browser: place nine men, then move them, and at three men
+you fly. Three in a row is a mill and takes one of your opponent's men. Blitz 5+3,
+played live, the server checks every move. Find an opponent in the lobby, there is a
+casual ladder for morris, and spectators can watch the game live.
+esports.einundzwanzig.space
+
+**X (DE):** Mühle, Blitz 5+3, live im Browser. Drei in einer Reihe, Stein weg. esports.einundzwanzig.space
+**X (EN):** Nine men's morris, blitz 5+3, live in your browser. Three in a row, man gone. esports.einundzwanzig.space
+
+---
+
+## Dame
+
+**Nostr (DE):**
+Dame nach deutschen Regeln, 8×8, Blitz 5+3 live im Browser. Schlagzwang, Steine
+schlagen auch rückwärts, Schlagketten klickst du Feld für Feld, und die Dame fliegt.
+Der Server prüft jeden Zug. Gegner findest du über die Lobby, es gibt eine eigene
+Casual-Ladder für Dame, und Zuschauer sehen die Partie live.
+esports.einundzwanzig.space
+
+**Nostr (EN):**
+Checkers by German rules, 8×8, blitz 5+3 live in your browser. Capturing is
+compulsory, men capture backwards too, you click capture chains square by square,
+and kings fly. The server checks every move. Find an opponent in the lobby, there is
+a casual ladder for checkers, and spectators can watch the game live.
+esports.einundzwanzig.space
+
+**X (DE):** Dame, Blitz 5+3, live im Browser. Schlagzwang, fliegende Dame. esports.einundzwanzig.space
+**X (EN):** Checkers, blitz 5+3, live in your browser. Compulsory capture, flying kings. esports.einundzwanzig.space
+
+---
+
 ## Hype-week plan
 
 Reihenfolge nach Ansprache-Priorität (casual, sofort spielbar zuerst; Aufbauendes

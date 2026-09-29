@@ -71,6 +71,13 @@
     search: { en: 'Search players, clans or match #', de: 'Spieler, Clans oder Match-# suchen' },
     logIn: { en: 'Log in', de: 'Anmelden' },
     casualLadder: { en: 'Casual ladder', de: 'Casual-Ladder' },
+    // board games (pages/board/⚡lobby, ⚡show)
+    gameMorris: { en: 'Nine Men\'s Morris', de: 'Mühle' },
+    gameCheckers: { en: 'Checkers', de: 'Dame' },
+    moves: { en: 'Moves', de: 'Züge' },
+    boardPairing: { en: 'Blitz 5+3 · Casual · paired by rating', de: 'Blitz 5+3 · Casual · nach Wertung gepaart' },
+    liveMoveSide: { en: 'Live · move :move · :side to move', de: 'Live · Zug :move · :side am Zug' },
+    findOpponentShort: { en: 'Find opponent', de: 'Gegner finden' },
     casualNote: { en: 'permanent, no tier, no reward, no season reset', de: 'dauerhaft, kein Rang, keine Belohnung, kein Season-Reset' },
     colPlayer: { en: 'Player', de: 'Spieler' },
     colElo: { en: 'Elo', de: 'Elo' },
