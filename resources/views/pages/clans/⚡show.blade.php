@@ -324,7 +324,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @endforeach
             </div>
             <div class="flex flex-col">
-                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? $seasonName : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Share') }}</span></div>
+                <div class="grid h-8 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-xs text-ink-3 lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]"><span>{{ __('Share :window', ['window' => $season ? $seasonName : __('7 days')]) }}</span><span></span><span class="text-right">{{ __('Points') }}</span><span class="text-right">{{ __('Win %') }}</span></div>
                 @foreach ($contrib as $row)
                     <div class="grid h-10 grid-cols-[110px_minmax(0,1fr)_40px_44px] items-center gap-3 border-b border-hairline text-[13px] lg:grid-cols-[170px_minmax(0,1fr)_56px_64px]" title="{{ $row['name'] }}: {{ $row['points'] }}">
                         <span @class(['truncate', 'text-ink-2' => $row['bonus']])>{{ $row['name'] }}</span>

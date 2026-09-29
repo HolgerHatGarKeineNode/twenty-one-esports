@@ -147,3 +147,15 @@ test('the Lightning address of a player never reaches the page, as text or in th
     $this->actingAs(User::factory()->create())->get(route('players.show', $player->npub))
         ->assertOk()->assertDontSee('secretname@getalby.com')->assertDontSee('secretname', false);
 });
+
+test('the share button reads "Teilen" in German, and the clan table keeps "Anteil" for the win share', function () {
+    $clan = Clan::factory()->create();
+
+    $html = $this->withSession(['locale' => 'de'])->get(route('clans.show', $clan))->assertOk()->getContent();
+
+    preg_match('~data-test="nostr-share".*?<span class="max-sm:sr-only">([^<]+)</span>~s', $html, $label);
+
+    expect($label[1] ?? null)->toBe('Teilen')
+        ->and(__('Win %', [], 'de'))->toBe('Anteil')
+        ->and(__('Win %', [], 'en'))->toBe('Win %');
+});
