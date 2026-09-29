@@ -3,9 +3,13 @@
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
+use App\Models\Admin;
 use App\Models\ChessGame;
+use App\Models\Clan;
 use App\Models\InviteLink;
 use App\Models\InviteLinkUse;
+use App\Models\Lineup;
 use App\Models\Rating;
 use App\Models\RatingChange;
 use App\Models\SeasonAttestation;
@@ -14,12 +18,17 @@ use App\Models\SeasonPayout;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Badges\RankBadges;
+use App\Support\FairPlay\AccountLinks;
+use App\Support\Rating\RatingService;
+use App\Support\StreamBot\PrideNotes;
 use App\Support\TwentyOne\Stream\PrideSlides;
 use App\Support\TwentyOne\Stream\RotationKit;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\CheckersGame;
 use Tests\Support\TestSigner;
 
@@ -178,6 +187,88 @@ test('the season chain, the strongest, rank-ups, streaks, payouts and inviters n
         ->and($svg('e9'))->toContain('21,000', '>Hal<')
         ->and($svg('d3'))->toContain('Mia &lt;i&gt;', 'brought 2 new players in 30 days')
         ->and($svg('e5').$svg('e6').$svg('e7').$svg('d3'))->not->toContain('<i>');
+});
+
+test('a climb out of games a fair play link voided is no climb', function () {
+    Queue::fake();
+    $main = User::factory()->create(['name' => 'Main']);
+    $alt = User::factory()->create(['name' => 'Alt']);
+    foreach (range(1, 3) as $i) {
+        app(RatingService::class)->applyChessGame(ChessGame::factory()->finished('1-0')->create(['white_id' => $main->id, 'black_id' => $alt->id, 'ended_at' => now()->subMinutes(30 - $i)]));
+    }
+    $before = array_column(app(PrideSlides::class)->read()['climbers'], 'name');
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    app(AccountLinks::class)->link($admin, $main->pubkey, $alt->pubkey, 'Same person');
+
+    expect($before)->toBe(['Main'])
+        ->and(app(PrideSlides::class)->read()['climbers'])->toBe([]);
+});
+
+test('with the board games switched off no climb, rank-up or block of theirs reaches a slide or a note', function () {
+    $season = openSeason();
+    CheckersGame::play();
+    // A board game's rated ladder opens only with its published version (its rank badge needs it).
+    publishLadders($season);
+    config(['esports.badges.nsec' => (new TestSigner)->secret]);
+    $user = User::factory()->create(['name' => 'Checkerist']);
+    prideRating($user, [40], game: 'checkers');
+    $rating = Rating::query()->create(['pool' => Rating::RATED, 'season' => $season->slug, 'game' => 'checkers', 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1010, 'results' => 5, 'wins' => 4]);
+    app(RankBadges::class)->sync($user, 'checkers', 'blitz');
+    $rating->forceFill(['rating' => 1061, 'results' => 9, 'wins' => 7])->save();
+    app(RankBadges::class)->sync($user, 'checkers', 'blitz');
+    shareBlock($season, 1, $user, User::factory()->create())->forceFill(['source' => SeasonAttestation::BOARD, 'game' => 'checkers', 'mode' => 'blitz'])->save();
+    $on = app(PrideSlides::class)->read();
+    config(['esports.board_games.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    app()->forgetInstance(PrideSlides::class);
+    $off = app(PrideSlides::class)->read();
+
+    expect([count($on['climbers']), count($on['rankUps']), $on['block']['height'] ?? null])->toBe([1, 1, 1])
+        ->and([$off['climbers'], $off['rankUps'], $off['block']])->toBe([[], [], null])
+        ->and(app(PrideNotes::class)->compose(2, 0))->toBeNull();
+});
+
+test('a series won by a no-show is no pride moment, on the slide or in the note', function () {
+    $lineup = fn (User $user) => Lineup::factory()->game('rocket-league', '1v1')->create(['clan_id' => Clan::factory()->create(['owner_id' => $user->id])->id]);
+    [$winner, $loser] = [User::factory()->create(['name' => 'Winner']), User::factory()->create(['name' => 'NoShow'])];
+    SeriesMatch::factory()->create(['challenger_lineup_id' => $lineup($winner)->id, 'challenged_lineup_id' => $lineup($loser)->id,
+        'status' => SeriesStatus::Resolved, 'resolution' => SeriesResolution::Forfeit, 'winner' => 'challenger', 'finished_at' => now()->subMinutes(5), 'result_games' => [],
+        'resolved_roster' => [['user_id' => $winner->id, 'pubkey' => $winner->pubkey, 'name' => 'Winner', 'side' => 'challenger', 'role' => 'player']]]);
+
+    expect(app(PrideSlides::class)->read()['win'])->toBeNull()
+        ->and(app(PrideNotes::class)->compose(1, 0))->toBeNull()
+        // Still a game played wherever the league counts.
+        ->and(app(StreamStats::class)->count()['gamesPlayed'])->toBe(1);
+});
+
+test('a rank-up a correction took back leaves the slide', function () {
+    $season = openSeason();
+    $user = User::factory()->create(['name' => 'Dropped']);
+    shareMoments($user, $season);
+    $before = app(PrideSlides::class)->read()['rankUps'];
+    Rating::query()->where(['pool' => Rating::RATED, 'user_id' => $user->id, 'game' => 'chess', 'mode' => 'blitz'])->update(['rating' => 1010]);
+    app(RankBadges::class)->sync($user, 'chess', 'blitz');
+
+    expect(array_column($before, 'tier'))->toBe(['Gold II'])
+        ->and(app(PrideSlides::class)->read()['rankUps'])->toBe([]);
+});
+
+test('an ended season\'s block, the list\'s own places and a climb over many games are told as they are', function () {
+    $renderer = SceneRenderer::fromConfig();
+    $svg = fn (string $scene, array $pride): string => $renderer->svg(['pride' => $pride, 'stats' => [], 'backdrop' => null, 'viewers' => null], RotationPlanner::VIEWS[$scene]);
+    $miner = ['name' => 'Mia', 'avatar' => null];
+
+    $e5 = $svg('e5', ['block' => ['height' => 9, 'season' => 'season-1', 'reward' => 5000, 'ladder' => 'Chess blitz', 'miners' => [$miner], 'beat' => ['Ben'], 'seasonBlocks' => 9, 'minerBlocks' => 2, 'ago' => '1 day ago', 'live' => false]]);
+    // Place 2's name has no letter the fonts draw: its row drops, place 3 stays 3.
+    $e6 = $svg('e6', ['strongest' => ['season' => 'season-1', 'ranked' => 3, 'rows' => [['place' => 1, 'name' => 'Mia', 'rating' => 1200, 'games' => ['Chess']], ['place' => 2, 'name' => 'مرحبا', 'rating' => 1100, 'games' => []], ['place' => 3, 'name' => 'Zoe', 'rating' => 1000, 'games' => []]]]]);
+    $e9 = $svg('e9', ['payouts' => ['season' => 'season-1', 'total' => 30000, 'players' => 7, 'rows' => [['rank' => 1, 'name' => 'مرحبا', 'sats' => 20000, 'blocks' => 4], ['rank' => 2, 'name' => 'Zoe', 'sats' => 10000, 'blocks' => 2]]]]);
+    $e2 = $svg('e2', ['climbers' => [['name' => 'Kai', 'gain' => 60, 'games' => 9, 'from' => ['Chess', 'Checkers', 'Rocket League']]]]);
+
+    expect($e5)->toContain('The last block of season-1')->not->toContain('New block', 'mine the next one')
+        ->and($e6)->toContain('data-unit="place-name-3"')->not->toContain('data-unit="place-name-2"')
+        ->and($e9)->toContain('to 7 players', '>2</text>')->not->toContain('>1</text>')
+        ->and($e2)->toContain('9 results in 3 games')->not->toContain('Chess and');
 });
 
 test('a styled name keeps its letters on the stream instead of losing them', function () {

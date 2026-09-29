@@ -21,7 +21,9 @@
         $rows = [];
         foreach (K::prideRows($paid['rows'] ?? [], 3) as $i => $row) {
             $rows[] = [
-                'y' => 424 + $i * 58, 'lead' => $i === 0, 'face' => K::prideFace($row),
+                // The payout's own rank: a name the fonts cannot draw drops its row, it never renumbers the others.
+                'rank' => $rank = is_int($row['rank'] ?? null) ? $row['rank'] : $i + 1,
+                'y' => 424 + $i * 58, 'lead' => $rank === 1, 'face' => K::prideFace($row),
                 'name' => K::fit($row['name'], K::MONO, 22, 560),
                 'blocks' => is_int($row['blocks'] ?? null) ? (string) $row['blocks'] : '',
                 'sats' => is_int($row['sats'] ?? null) ? K::sats($row['sats']) : '',
@@ -46,7 +48,7 @@
 <rect x="40" y="384" width="1200" height="1" fill="#2A2A30"/>
 @foreach ($rows as $ri => $r)
 @php($ink = $r['lead'] ? '#F7931A' : '#FFFFFF')
-<text x="40" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="{{ $ink }}">{{ $ri + 1 }}</text>
+<text x="40" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="{{ $ink }}">{{ $r['rank'] }}</text>
 @include('stream.rotation.partials.face', ['face' => $r['face'], 'x' => 68, 'y' => $r['y'] - 30, 'd' => 38, 'id' => 'paid-'.$ri, 'fUnit' => 'paid-face-'.$ri, 'fShape' => 'square', 'fRing' => $r['lead'] ? '#F7931A' : '#6B6B72', 'fCrown' => $r['lead'] ? '#F7931A' : null])
 <text data-unit="paid-name-{{ $ri }}" data-box="111 {{ $r['y'] - 22 }} 700 {{ $r['y'] + 6 }}" x="112" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="{{ $ink }}">{{ $r['name'] }}</text>
 @if ($r['blocks'] !== '')<text data-unit="paid-blocks-{{ $ri }}" data-box="819 {{ $r['y'] - 22 }} 960 {{ $r['y'] + 6 }}" x="820" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="{{ $ink }}">{{ $r['blocks'] }}</text>@endif

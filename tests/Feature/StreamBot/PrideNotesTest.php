@@ -154,17 +154,16 @@ test('a won 1v1 series is told as a series and links its match page, not a game 
         ->and(implode("\n", $bodies))->not->toContain('Watch', route('games.show', $match->id));
 });
 
-test('the climbers note links the ladder the gains came from, the Strongest list when they span several games', function () {
+test('the climbers note links the ladder of the top climber\'s biggest gain, whatever the others played', function () {
     $climb = function (User $user, string $game, string $mode, int $delta): void {
         $rating = Rating::query()->create(['pool' => Rating::CASUAL, 'season' => '', 'game' => $game, 'mode' => $mode, 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1000 + $delta, 'results' => 1, 'wins' => 1]);
         RatingChange::query()->create(['rating_id' => $rating->id, 'source' => RatingChange::SERIES, 'source_id' => $rating->id, 'score' => 1, 'before' => 1000, 'after' => 1000 + $delta, 'delta' => $delta, 'results_before' => 0]);
     };
+    $climb($this->winner, 'chess', 'blitz', 10);
     $climb($this->winner, 'rocket-league', '1v1', 30);
-    $one = app(PrideNotes::class)->compose(2, 0)['body'];
-    $climb($this->loser, 'chess', 'blitz', 20);
-    $two = app(PrideNotes::class)->compose(2, 0)['body'];
+    $climb($this->loser, 'chess', 'correspondence', 20);
+    $body = app(PrideNotes::class)->compose(2, 0)['body'];
 
-    expect($one)->toContain(route('ladder.show', ['game' => 'rocket-league', 'mode' => '1v1']))
-        ->and($one)->not->toContain(route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']))
-        ->and($two)->toContain(route('ladder.strongest'));
+    expect($body)->toContain(route('ladder.show', ['game' => 'rocket-league', 'mode' => '1v1']))
+        ->and($body)->not->toContain(route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']), route('ladder.strongest'));
 });

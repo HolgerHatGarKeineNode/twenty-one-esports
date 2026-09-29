@@ -2,6 +2,7 @@
 
 namespace App\Support\StreamBot;
 
+use App\Games\GameRegistry;
 use App\Models\BotPost;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
@@ -241,34 +242,27 @@ class PrideNotes
     }
 
     /**
-     * Where the gains came from: the one game's ladder (the top climber's
-     * busiest ladder of it), or the cross-game Strongest list when the
-     * climbs span several games. Data cached before the ladders were read
-     * (just after a deploy) falls back to the chess blitz ladder.
+     * Where the gains came from: the ladder of the top climber's biggest
+     * gain (PrideSlides orders each climber's ladders by gain). A ladder of
+     * a game no longer registered (a board game switched off) is no link;
+     * data cached before the ladders were read (just after a deploy) falls
+     * back to the chess blitz ladder.
      *
      * @param  list<array<string, mixed>>  $climbers
      */
     private function climbersUrl(array $climbers): string
     {
-        $ladders = [];
+        $ladders = $climbers[0]['ladders'] ?? [];
 
-        foreach ($climbers as $climber) {
-            foreach (is_array($climber['ladders'] ?? null) ? $climber['ladders'] : [] as $ladder) {
-                if (is_string($ladder) && preg_match('#^[a-z0-9-]+/[a-z0-9-]+$#', $ladder) === 1) {
-                    $ladders[] = $ladder;
-                }
+        foreach (is_array($ladders) ? $ladders : [] as $ladder) {
+            [$game, $mode] = is_string($ladder) ? [...explode('/', $ladder, 2), ''] : ['', ''];
+
+            if (app(GameRegistry::class)->mode($game, $mode) !== null) {
+                return route('ladder.show', ['game' => $game, 'mode' => $mode]);
             }
         }
 
-        $games = array_unique(array_map(fn (string $ladder): string => explode('/', $ladder)[0], $ladders));
-
-        if (count($games) > 1) {
-            return route('ladder.strongest');
-        }
-
-        [$game, $mode] = $ladders === [] ? ['chess', 'blitz'] : explode('/', $ladders[0]);
-
-        return route('ladder.show', ['game' => $game, 'mode' => $mode]);
+        return route('ladder.show', ['game' => 'chess', 'mode' => 'blitz']);
     }
 
     /**

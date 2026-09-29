@@ -28,6 +28,9 @@
         $mine = is_int($block['minerBlocks'] ?? null) && $block['minerBlocks'] > 0 ? K::ordinal($block['minerBlocks']).' block this season' : null;
         $heights = K::chainHeights($block['height'], 5);
         $season = K::clean($block['season'] ?? '');
+        // After the season ended this block closed it: no next one to mine in it.
+        $live = ($block['live'] ?? true) !== false;
+        $label = $live ? 'New block' : K::fit($season !== '' ? 'The last block of '.$season : 'The last block of the season', K::MONO, 24, 860);
         $total = is_int($block['seasonBlocks'] ?? null) ? K::plural($block['seasonBlocks'], 'block', 'blocks').' mined'.($season !== '' ? ' in '.$season : '') : null;
     }
 @endphp
@@ -37,7 +40,7 @@
 @include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? null, 'bdDim' => 0.8])
 @include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => 'season chain'])
 @if ($block)
-<text x="40" y="132" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#A1A1A7">New block</text>
+<text data-unit="block-label" data-box="39 110 900 138" x="40" y="132" font-family="JetBrains Mono" font-weight="700" font-size="24" fill="#A1A1A7">{{ $label }}</text>
 <text data-unit="height" data-box="38 140 700 252" x="40" y="240" font-family="Unbounded" font-weight="800" font-size="112" fill="#F7931A">{{ $block['height'] }}</text>
 @include('stream.rotation.partials.face', ['face' => K::prideFace($miner), 'x' => 40, 'y' => 288, 'd' => 120, 'id' => 'miner', 'fUnit' => 'miner-face', 'fRing' => '#F7931A'])
 <text x="184" y="312" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#A1A1A7">mined by</text>
@@ -52,7 +55,7 @@
 @elseif ($mine)
 <text data-unit="miner-count" data-box="39 490 820 520" x="40" y="512" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#FFFFFF">{{ $mine }}</text>
 @endif
-<text x="40" y="596" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#A1A1A7">Every rated win can mine the next one.</text>
+@if ($live)<text x="40" y="596" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#A1A1A7">Every rated win can mine the next one.</text>@endif
 {{-- The chain: the last five heights top down, links between them, the new block lit. --}}
 @foreach ($heights as $hi => $h)
 @php($by = 112 + $hi * 96)

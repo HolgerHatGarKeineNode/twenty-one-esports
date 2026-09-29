@@ -5,6 +5,7 @@ namespace App\Support\TwentyOne\Stream;
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
+use App\Enums\SeriesResolution;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
@@ -27,6 +28,7 @@ use App\Support\Rating\RankTiers;
 use App\Support\Rating\StrongestList;
 use App\Support\Tournaments\TournamentChampion;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Route;
 use Throwable;
@@ -222,7 +224,9 @@ class PrideSlides
         }
 
         $since = now()->subDays(self::DAYS);
+        // A forfeit (a no-show) is a result, but nothing to be proud of: no pride for it.
         $decided = fn () => StreamStats::decidedSeries()->whereIn('winner', SeriesMatch::SIDES)->whereIn('game', $slugs)->whereNotNull('finished_at')
+            ->where(fn ($query) => $query->whereNull('resolution')->orWhere('resolution', '!=', SeriesResolution::Forfeit))
             ->with(['challengerLineup.clan', 'challengedLineup.clan', 'latestReport'])->latest('finished_at')->latest('id');
         $match = $decided()->where('finished_at', '>=', $since)->first() ?? $decided()->first();
 
@@ -373,9 +377,7 @@ class PrideSlides
      */
     private function climbers(): array
     {
-        $rows = RatingChange::query()->where('rating_changes.created_at', '>=', now()->subDays(self::DAYS))
-            ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
-            ->whereNotNull('ratings.user_id')
+        $rows = $this->weekChanges()
             ->groupBy('ratings.user_id')
             ->selectRaw('ratings.user_id as user_id, sum(rating_changes.delta) as gain, count(*) as games')
             ->havingRaw('sum(rating_changes.delta) > 0')
@@ -388,13 +390,11 @@ class PrideSlides
 
         $ids = $rows->pluck('user_id')->map(fn ($id): int => (int) $id)->all();
         $users = User::query()->whereIn('id', $ids)->get()->keyBy('id');
-        // The ladders each climb came from, most results first (the games for the slide, the ladders for the note's link).
-        $from = RatingChange::query()->where('rating_changes.created_at', '>=', now()->subDays(self::DAYS))
-            ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
-            ->whereIn('ratings.user_id', $ids)
+        // The ladders each climb came from, biggest gain first (the games for the slide, the top ladder for the note's link).
+        $from = $this->weekChanges()->whereIn('ratings.user_id', $ids)
             ->groupBy('ratings.user_id', 'ratings.game', 'ratings.mode')
-            ->selectRaw('ratings.user_id as user_id, ratings.game as game, ratings.mode as mode, count(*) as results')
-            ->orderByDesc('results')->orderBy('ratings.game')->orderBy('ratings.mode')->toBase()->get()
+            ->selectRaw('ratings.user_id as user_id, ratings.game as game, ratings.mode as mode, sum(rating_changes.delta) as gain')
+            ->orderByDesc('gain')->orderBy('ratings.game')->orderBy('ratings.mode')->toBase()->get()
             ->groupBy('user_id');
         $climbers = [];
 
@@ -413,6 +413,25 @@ class PrideSlides
         }
 
         return $climbers;
+    }
+
+    /**
+     * The live rating changes of the last DAYS days on the player ladders of
+     * the registered games (a board game switched off is not one), without
+     * the results a fair play link voided: AccountLinks keeps the casual Elo
+     * of a voided game, but it is no climb.
+     *
+     * @return Builder<RatingChange>
+     */
+    private function weekChanges(): Builder
+    {
+        return RatingChange::query()->where('rating_changes.created_at', '>=', now()->subDays(self::DAYS))
+            ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
+            ->whereNotNull('ratings.user_id')
+            ->whereIn('ratings.game', array_keys($this->games->all()))
+            ->whereNotExists(fn ($void) => $void->selectRaw('1')->from('fair_play_voids')
+                ->whereColumn('fair_play_voids.source', 'rating_changes.source')
+                ->whereColumn('fair_play_voids.source_id', 'rating_changes.source_id'));
     }
 
     /**
@@ -484,7 +503,8 @@ class PrideSlides
     private function block(): ?array
     {
         $voided = SeasonBlockVoid::query()->select('season_attestation_id');
-        $block = SeasonAttestation::query()->whereNotNull('height')->whereNotIn('id', $voided)
+        // Only a registered game's block: a board game switched off shows none.
+        $block = SeasonAttestation::query()->whereNotNull('height')->whereNotIn('id', $voided)->whereIn('game', array_keys($this->games->all()))
             ->with('season')->orderByDesc('season_id')->orderByDesc('height')->orderByDesc('id')->first();
 
         if ($block === null) {
@@ -538,7 +558,8 @@ class PrideSlides
                 'name' => PublicName::clean($row['user']->displayName()),
                 'ref' => StreamImages::avatarRef($row['user']),
                 'rating' => $row['rating'],
-                'games' => array_map(fn (string $slug): string => $this->games->name($slug), array_keys($row['games'])),
+                // The registered games only: a board game switched off is not named.
+                'games' => array_values(array_map(fn (string $slug): string => $this->games->name($slug), array_filter(array_keys($row['games']), fn (string $slug): bool => $this->games->find($slug) !== null))),
                 'clan' => $row['user']->clanMember?->clan?->clantag,
             ];
         }
@@ -556,11 +577,21 @@ class PrideSlides
         $versions = RankBadgeVersion::query()->where('signed_at', '>=', now()->subDays(self::DAYS)->getTimestamp())
             ->with('badge.user')->orderByDesc('signed_at')->orderByDesc('id')->limit(40)->get();
         $rows = [];
+        $order = array_flip(array_keys(RankTiers::fromConfig()->ascending()));
+
+        $seen = [];
 
         foreach ($versions as $version) {
             $user = $version->badge->user;
+            // Each badge's newest version decides: a step down after a rank-up leaves nothing to show.
+            $newest = ! isset($seen[$version->rank_badge_id]);
+            $seen[$version->rank_badge_id] = true;
 
-            if ($user === null || isset($rows[$user->id]) || $version->tier === RankTiers::Provisional || ! $version->isRankUp()) {
+            if (! $newest || $user === null || isset($rows[$user->id]) || $version->tier === RankTiers::Provisional || ! $version->isRankUp()
+                // A board game switched off has no ladder to show.
+                || $this->games->mode($version->badge->game, $version->badge->mode) === null
+                // Only a tier the player still holds: a rank-up a correction took back is gone from the slide.
+                || ($order[$version->badge->tier] ?? -1) < ($order[$version->tier] ?? PHP_INT_MAX)) {
                 continue;
             }
 
@@ -662,7 +693,8 @@ class PrideSlides
             'season' => $season->slug,
             'total' => (int) (clone $paid)->sum('amount_sats'),
             'players' => (clone $paid)->count(),
-            'rows' => array_values($top->map(fn (SeasonPayout $payout): array => [
+            'rows' => array_values($top->values()->map(fn (SeasonPayout $payout, int $index): array => [
+                'rank' => $index + 1,
                 'name' => PublicName::clean($payout->user?->displayName() ?? $payout->name),
                 'ref' => StreamImages::avatarRef($payout->user),
                 'sats' => $payout->amount_sats,

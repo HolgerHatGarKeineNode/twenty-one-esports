@@ -15,6 +15,8 @@
     $rows = K::prideRows($list['rows'] ?? [], 5);
     $top = $rows[0] ?? null;
     if ($top) {
+        // The list's own place: a name the fonts cannot draw drops its row, it never renumbers the others.
+        $topPlace = is_int($top['place'] ?? null) ? $top['place'] : 1;
         $topName = K::name($top['name'], 'Player', 44, 560);
         $topRating = is_int($top['rating'] ?? null) ? (string) $top['rating'] : '';
         $topGames = K::fit(K::listing($top['games'] ?? [], 3), K::MONO, 20, 560);
@@ -22,7 +24,7 @@
     $rest = [];
     foreach (array_slice($rows, 1, 4) as $i => $row) {
         $rest[] = [
-            'y' => 150 + $i * 116, 'place' => $i + 2, 'face' => K::prideFace($row),
+            'y' => 150 + $i * 116, 'place' => is_int($row['place'] ?? null) ? $row['place'] : $i + 2, 'face' => K::prideFace($row),
             'name' => K::name($row['name'], 'Player', 28, 440),
             'line' => K::fit(implode(', ', array_filter([is_int($row['rating'] ?? null) ? $row['rating'].' Global Rating' : null, K::listing($row['games'] ?? [], 2)])), K::MONO, 18, 440),
         ];
@@ -39,8 +41,8 @@
 @if ($top)
 <radialGradient id="strong-glow"><stop offset="0.5" stop-color="#F7931A" stop-opacity="0.45"/><stop offset="1" stop-color="#F7931A" stop-opacity="0"/></radialGradient>
 <circle cx="130" cy="316" r="140" fill="url(#strong-glow)"/>
-@include('stream.rotation.partials.face', ['face' => K::prideFace($top), 'x' => 40, 'y' => 226, 'd' => 180, 'id' => 'strongest', 'fUnit' => 'strongest-face', 'fRing' => '#F7931A', 'fCrown' => '#F7931A',
-    'fRank' => 1, 'fRankFill' => '#F7931A', 'fRankInk' => '#17120A', 'fRankRim' => '#0A0A0B'])
+@include('stream.rotation.partials.face', ['face' => K::prideFace($top), 'x' => 40, 'y' => 226, 'd' => 180, 'id' => 'strongest', 'fUnit' => 'strongest-face', 'fRing' => '#F7931A', 'fCrown' => $topPlace === 1 ? '#F7931A' : null,
+    'fRank' => $topPlace, 'fRankFill' => '#F7931A', 'fRankInk' => '#17120A', 'fRankRim' => '#0A0A0B'])
 <text data-unit="strongest-name" data-box="39 432 620 486" x="40" y="474" font-family="{{ $topName['font'] }}" font-weight="800" font-size="44" fill="#FFFFFF">{{ $topName['text'] }}</text>
 @if ($topRating !== '')
 <text data-unit="strongest-rating" data-box="38 496 620 574" x="40" y="564" font-family="Unbounded" font-weight="800" font-size="72" fill="#F7931A">{{ $topRating }}</text>

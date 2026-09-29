@@ -18,7 +18,9 @@
             'x' => $x, 'rank' => $i + 1, 'avatar' => $c['avatar'] ?? null,
             'name' => K::name($c['name'] ?? '', 'Player', 32, 336),
             'gain' => '+'.(int) ($c['gain'] ?? 0).' Elo',
-            'games' => K::fit(implode(' in ', array_filter([K::plural((int) ($c['games'] ?? 0), 'result', 'results'), K::listing($c['from'] ?? [], 2)])), K::MONO, 18, 354),
+            // Two games by name, more as a count: a list is never cut off.
+            'games' => K::fit(implode(' in ', array_filter([K::plural((int) ($c['games'] ?? 0), 'result', 'results'),
+                count(array_unique(array_filter(is_array($c['from'] ?? null) ? $c['from'] : [], 'is_string'))) > 2 ? count(array_unique(array_filter($c['from'], 'is_string'))).' games' : K::listing($c['from'] ?? [], 2)])), K::MONO, 18, 354),
         ];
     }
 @endphp
