@@ -263,6 +263,85 @@ diagonal). In the DE cut the king is called "Dame", in the EN cut "king". Facts 
 
 ---
 
+## 11. Mempool → Block
+
+**DE Headline:** Erst Mempool, dann Block
+**DE Subline:** Jede Partie aller Spiele landet als Würfel im Mempool. Läuft eine Season, schürft ein gewerteter Sieg einen Block.
+**DE Bullets:**
+- Schach, Mühle, Dame, Rocket League, EA FC
+- Links gespielt, rechts live und als Nächstes
+- Casual zählt zum Spaß und schürft nie
+- Die Belohnung pro Block halbiert sich jede Epoche
+
+**EN Headline:** Mempool first. Then a block.
+**EN Subline:** Every match of every game lands in the mempool as a cube. While a season runs, a rated win mines a block.
+**EN Bullets:**
+- Chess, morris, checkers, Rocket League, EA FC
+- Played on the left, live and up next on the right
+- Casual counts for fun and never mines
+- The reward per block halves every era
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the /matches mempool strip (`components/block-strip`) at hero scale: casual
+cubes desaturated as in the app, one rated Rocket League 1v1 win with the orange lid and its
+"Block 1" stamp, and the block card as /mining lists it. No reward figure on the poster (the
+figure is the board's draft until Block 0, facts 28-33). Shows Mühle and Dame cubes: **post only
+once the board game switches are on in prod.**
+
+---
+
+## 12. On the stream
+
+**DE Headline:** Gewinn. Dein Name läuft im Stream.
+**DE Subline:** Der Livestream läuft rund um die Uhr, und er zeigt, wer gewinnt: deinen Sieg, deinen Aufstieg, deinen Block, deinen Turnierlauf.
+**DE Bullets:**
+- Dein letzter Sieg, mit Gesicht und Casual-Elo
+- Die drei größten Aufsteiger der Woche
+- Dein Block, sobald eine Season läuft
+- Dein Weg durch den Turnierbaum, Runde für Runde
+
+**EN Headline:** Win. Your name goes on stream.
+**EN Subline:** The live stream runs around the clock, and it shows who wins: your win, your climb, your block, your tournament run.
+**EN Bullets:**
+- Your latest win, with your face and casual Elo
+- The week's three biggest climbers
+- Your block, once a season runs
+- Your path through the bracket, round by round
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the stream frame with the "LATEST WIN · GG" slide (e1) and three slide
+thumbnails. The stream's own text is English only, in both cuts. Facts 34-39: the win and the
+climbers are on master; the block slide and the tournament-run slide are the plan
+`2026-09-29T2215-stream-slides-stolz-und-turniere` (P3, P5). **Post only once those slides are
+on the prod stream.**
+
+---
+
+## 13. Tournaments live
+
+**DE Headline:** Genug zugeschaut? Nimm Platz.
+**DE Subline:** Turniere laufen live im Stream, Runde für Runde bis zum Champion. Beim nächsten stehst du selbst im Turnierbaum.
+**DE Bullets:**
+- Turnierbaum live, mit jedem Ergebnis
+- Der Champion groß im Stream
+- Anmelden mit deinem Nostr-Schlüssel
+- Schach, Rocket League und EA FC
+
+**EN Headline:** Done watching? Take a seat.
+**EN Subline:** Tournaments run live on stream, round by round to the champion. In the next one, you are in the bracket.
+**EN Bullets:**
+- A live bracket, every result as it lands
+- The champion, big on stream
+- Sign up with your Nostr key
+- Chess, Rocket League and EA FC
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the stream frame with a decided bracket (semifinals, final, champion with
+crown) and the next tournament's sign-up card with one free seat marked "Your spot?". Facts
+40-44. The live bracket slides are plan P5: **post only once they are on the prod stream.**
+
+---
+
 ## Dropped or corrected since round 1 (see `facts.md` for full reasoning)
 
 - Clan logo moved from "at founding" to "on the manage page, after founding."

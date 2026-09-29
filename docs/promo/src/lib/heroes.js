@@ -212,9 +212,131 @@
     draw: (p) => ({ path: p.path, last: p.path, taken: window.BG.taken('checkers', 23) }),
   });
 
+  /* ===== mempool, on the stream, tournaments live (motifs 11-13) ===== */
+
+  /* Game marks as the strip draws them: the knight of components/block-strip.blade.php,
+     the stroke icons of components/icon.blade.php. */
+  const KNIGHT = '<svg class="gl" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17 18C17.5 12 17 6.5 12.5 4L11.5 2L10 4.2C8 5.2 6 7.8 4.6 10.2C4.3 10.9 4.7 11.7 5.4 11.9L6.4 12.3C7.1 12.5 7.9 12.2 8.3 11.6L9.6 10.6C10.3 10.3 10.8 10.4 11.2 10.8C9.4 12.8 8 15 7.6 18ZM9.9 6.2a.9 .9 0 1 0 .01 0ZM5 19.5h14V22H5z"></path></svg>';
+  const ICON = {
+    rl: '<circle cx="12" cy="12" r="9"></circle><path d="M12 3v4l-3.5 2.5M12 7l3.5 2.5M8.5 9.5 7 14l5 3 5-3-1.5-4.5M3.5 10.5 7 14M20.5 10.5 17 14M12 17v4"></path>',
+    fc: '<circle cx="12" cy="12" r="9"></circle><path d="m12 7 4 3-1.5 4.5h-5L8 10z"></path><path d="M12 3v4M16 10l4.5-1.5M14.5 14.5l2.5 4M9.5 14.5 7 18.5M8 10 3.5 8.5"></path>',
+    morris: '<rect x="3" y="3" width="18" height="18"></rect><rect x="7.5" y="7.5" width="9" height="9"></rect><path d="M12 3v4.5M12 16.5V21M3 12h4.5M16.5 12H21"></path>',
+    checkers: '<ellipse cx="12" cy="9" rx="8" ry="3.5"></ellipse><path d="M4 9v5c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V9"></path><ellipse cx="12" cy="9" rx="4" ry="1.6"></ellipse>',
+  };
+  const glyphOf = (g) => (g === 'chess' ? KNIGHT : `<svg class="gl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[g]}</svg>`);
+  /* Game names of the legend (GameNames::game, lang/de.json). */
+  const GAME = { chess: { en: 'Chess', de: 'Schach' }, rl: { en: 'Rocket League', de: 'Rocket League' }, fc: { en: 'EA Sports FC', de: 'EA Sports FC' }, morris: { en: 'Nine Men\'s Morris', de: 'Mühle' }, checkers: { en: 'Checkers', de: 'Dame' } };
+  /* Carbon's short diffForHumans, as the cubes print `when` (MatchBlocks::oneVsOne). */
+  const AGO = { '2m': { en: '2m ago', de: 'vor 2 Min.' }, '9m': { en: '9m ago', de: 'vor 9 Min.' }, '1h': { en: '1h ago', de: 'vor 1 Std.' }, '3h': { en: '3h ago', de: 'vor 3 Std.' }, '5h': { en: '5h ago', de: 'vor 5 Std.' } };
+
+  /* The strip's sample: kit players and clans only. Finished oldest to newest (the newest
+     sits next to the divider), then running and next. Only the rated Rocket League 1v1
+     mined: rated chess and rated board games are not open (pages/⚡mining, "not open"),
+     and casual never mines (config/season.php `casual`). Block 1 is the first block a
+     season mines ("The first fair rated win mines block 1.", pages/⚡mining). */
+  const STRIP = [
+    { g: 'chess', num: '#36', casual: true, st: 'fin', mode: 'Blitz 5+3', score: '1–0', who: 'satsjaeger', when: '5h', sides: [['satsjaeger', 1], ['hodlqueen', 0]] },
+    { g: 'checkers', num: '#7', casual: true, st: 'fin', mode: 'Blitz 5+3', score: '0–1', who: 'taproot_tim', when: '3h', sides: [['orange_olga', 0], ['taproot_tim', 1]] },
+    { g: 'fc', num: '#39', casual: true, st: 'fin', mode: 'FC26 1v1', score: '2 : 1', who: 'STK', when: '1h', sides: [['STK', 1, 'clan'], ['B21', 0, 'clan']] },
+    { g: 'morris', num: '#12', casual: true, st: 'fin', mode: 'Blitz 5+3', score: '1–0', who: 'kai_blitz', when: '9m', sides: [['kai_blitz', 1], ['zap_zoe', 0]] },
+    { g: 'rl', num: '#41', casual: false, st: 'fin', mode: 'RL 1v1', score: '3 : 1', who: 'OPS', when: '2m', sides: [['OPS', 1, 'clan'], ['LSR', 0, 'clan']], block: 1 },
+    { g: 'chess', num: '#37', casual: true, st: 'live', mode: 'Blitz 5+3', move: 23, turn: 'lnurl_lena', lvl: 29, sides: [['lnurl_lena', 0], ['hodl_hanna', 0]] },
+    { g: 'morris', num: '#13', casual: true, st: 'live', mode: 'Blitz 5+3', move: 14, turn: 'dca_doris', lvl: 45, sides: [['dca_doris', 0], ['sat_sepp', 0]] },
+    { g: 'rl', num: '#42', casual: false, st: 'next', mode: 'RL 1v1', score: 'BO5', who: 'ladder', when: '20:00', sides: [['HDL', 0, 'clan'], ['NCE', 0, 'clan']] },
+  ];
+  const face = (n, kind) => (kind === 'clan' ? `<img class="fc" src="${A}/clans/${n}.svg" alt="">` : `<img class="fc" src="${A}/avatars/${n}.svg" alt="">`);
+  /* One column of the strip: number + casual tag, the cube, the two sides, the chain stamp. */
+  function stripCol(c, lang, o = {}) {
+    const who = c.st === 'live' ? U('nameTurn', lang, { name: c.turn }) : c.st === 'next' ? U('ladderWord', lang) : c.who;
+    const when = c.st === 'live' ? U('liveWord', lang) : c.st === 'next' ? U('atTime', lang, { time: c.when }) : AGO[c.when][lang];
+    const score = c.st === 'live' ? U('moveN', lang, { n: c.move }) : c.score;
+    const cls = ['mcube', 'cube', 'g-' + c.g, 'is-' + c.st, c.casual ? 'is-casual' : '', c.block && o.mined !== false ? 'is-mined' : ''].filter(Boolean).join(' ');
+    const sides = c.sides.map(([n, won, kind], i) => `<span class="sd${won && c.st === 'fin' ? ' won' : ''}">${i ? '<i>vs</i>' : ''}${face(n, kind)}<span class="nm">${K.esc(n)}</span></span>`).join('');
+    const stamp = c.block && o.mined !== false ? `<span class="stamp"><i class="mini"></i>${K.esc(U('blockHeight', lang, { height: c.block }))}</span>` : '';
+    return `<div class="mcol${c.block ? ' newest' : ''}" data-st="${c.st}">
+      <span class="mh"><span class="num">${c.num}</span>${c.casual ? `<span class="tag">${U('casualTag', lang)}</span>` : ''}</span>
+      <div class="${cls}" style="--lvl:${c.lvl || 0}%">${c.st === 'live' ? '<i class="fill"></i>' : ''}
+        <span class="r1">${glyphOf(c.g)}<span>${K.esc(c.mode)}</span></span>
+        <span class="sc${c.st !== 'fin' ? ' word' : ''}">${K.esc(score)}</span>
+        <span class="wh">${K.esc(who)}</span>
+        <span class="wn">${c.st === 'live' ? '<i class="dot"></i>' : ''}${K.esc(when)}</span>
+      </div>
+      <span class="cap">${sides}</span>
+      <span class="chain">${stamp}</span>
+    </div>`;
+  }
+  const STRIP_FIN = STRIP.filter((c) => c.st === 'fin'), STRIP_RUN = STRIP.filter((c) => c.st !== 'fin');
+  function stripHTML(lang, nFin, nRun, o = {}) {
+    const fin = STRIP_FIN.slice(-nFin).map((c) => stripCol(c, lang, o)).join('');
+    const run = STRIP_RUN.slice(0, nRun).map((c) => stripCol(c, lang, o)).join('');
+    return `<div class="mrow"><div class="mgrp">${fin}</div><span class="mdiv"></span><div class="mgrp">${run}</div></div>`;
+  }
+  const legendHTML = (lang, games) => games.map((g) => `<span class="lk g-${g}"><i class="chip"></i>${glyphOf(g)}<span>${K.esc(GAME[g][lang])}</span></span>`).join('');
+
+  H.mempool = (lang) => `
+    <div class="h-mempool">
+      <div class="mp-head"><b>${U('mempool', lang)}</b><span>${K.esc(U('mpLeadLive', lang))}</span></div>
+      <div class="mp-strip">
+        <div class="v v5">${stripHTML(lang, 4, 2)}</div>
+        <div class="v v4">${stripHTML(lang, 3, 1)}</div>
+        <div class="v v3">${stripHTML(lang, 2, 1)}</div>
+      </div>
+      <div class="mp-block ui-card">
+        <div class="bk-cube cube"><i class="mini"></i></div>
+        <div class="bk-t"><span class="lab">${K.esc(U('seasonChain', lang))}</span><b>${K.esc(U('blockHeight', lang, { height: 1 }))}</b><span class="sub">${K.esc(U('minedAsBlock', lang, { height: 1 }))}</span></div>
+        <div class="bk-who">${face('OPS', 'clan')}<b>OPS</b></div>
+      </div>
+      <div class="mp-legend">${legendHTML(lang, ['chess', 'morris', 'checkers', 'rl', 'fc'])}<span class="lk ch"><i class="mini"></i><span>${K.esc(U('ratedWinsMine', lang))}</span></span></div>
+    </div>`;
+
+  /* ---- the stream frame: the channel as it airs, English only (the stream's own texts,
+     resources/views/stream/rotation/*: "LATEST WIN · GG", "beat :name", "+N casual Elo",
+     "Climbers of the week"). The casual Elo is the app's EloRating with season.casual
+     (start 1000, provisional K 40): one win against a new player is +20, three are +57,
+     two +39. ---- */
+  function tvHTML(inner, lang, o = {}) {
+    return `<div class="tv${o.cls ? ' ' + o.cls : ''}"><div class="tv-bar"><span class="tv-bug"><i class="mark">21</i>TWENTY ONE ESPORTS</span><span class="tv-live"><i class="dot"></i>LIVE</span></div><div class="tv-body">${inner}</div></div>`;
+  }
+  const crown = '<svg class="crown" viewBox="0 0 12 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="var(--btc)" d="M0 1h1v1h1v1h1V1h1v1h1V0h2v2h1V1h1v2h1V2h1V1h1v7H0z"/><path fill="var(--btc-hi)" d="M1 6h10v1H1z"/></svg>';
+  const bigFace = (n, cls = '') => `<div class="bf ${cls}">${crown}<img src="${A}/avatars/${n}.svg" alt=""></div>`;
+
+  H.onstream = (lang) => {
+    const win = `<div class="win">${bigFace('satsjaeger')}<div class="wt"><span class="lab">LATEST WIN · GG</span><b class="nm">satsjaeger</b><span class="bt">beat hodlqueen</span><span class="elo">+20 casual Elo</span></div></div>`;
+    const thumb = (n, label, value, cls = '') => `<div class="th ${cls}"><span class="thl">${label}</span><div class="thb"><img src="${A}/avatars/${n}.svg" alt=""><b>${value}</b></div></div>`;
+    return `
+    <div class="h-onstream">
+      <div class="os-tv">${tvHTML(win, lang)}</div>
+      <div class="os-thumbs">
+        ${thumb('kai_blitz', 'Climbers of the week', '+57 casual Elo')}
+        ${thumb('zap_zoe', 'Season chain', 'Block 1', 'blk')}
+        ${thumb('hodlqueen', 'Final', 'hodlqueen', 'fin')}
+      </div>
+    </div>`;
+  };
+
+  /* ---- tournaments live: semifinals decided, the final decided, the champion; then the
+     next tournament open for sign-up. Names are kit players; the bracket is a mock of the
+     live bracket slides (plan stream-slides-stolz-und-turniere, P5). ---- */
+  H.livecup = (lang) => {
+    const slot = (n, cls = '') => `<div class="ls ${cls}"><img src="${A}/avatars/${n}.svg" alt=""><b>${n}</b></div>`;
+    const sf = `<div class="lcol"><span class="rh">SEMIFINAL</span><div class="lm">${slot('kai_blitz', 'won')}${slot('taproot_tim', 'out')}</div><div class="lm">${slot('hodlqueen', 'won')}${slot('zap_zoe', 'out')}</div></div>`;
+    const fin = `<div class="lcol"><span class="rh">FINAL</span><div class="lm">${slot('kai_blitz', 'won')}${slot('hodlqueen', 'out')}</div></div>`;
+    const champ = `<div class="lcol champ"><span class="rh">CHAMPION</span>${bigFace('kai_blitz', 'sm')}<b class="cn">kai_blitz</b></div>`;
+    const seats = ['satsjaeger', 'lnurl_lena', 'orange_olga', 'sat_sepp', 'dca_doris', null, ''].map((n) => (n ? `<i class="seat"><img src="${A}/avatars/${n}.svg" alt=""></i>` : n === null ? `<i class="seat you"><span>${K.esc(U('yourSpot', lang))}</span></i>` : '<i class="seat open"></i>')).join('');
+    return `
+    <div class="h-livecup">
+      <div class="lc-tv">${tvHTML(`<div class="lbr">${sf}${fin}${champ}</div>`, lang)}</div>
+      <div class="lc-next ui-card">
+        <div class="nx-h"><b>${K.esc(U('nextTournament', lang))}</b><span class="open"><i class="dot"></i>${K.esc(U('signupOpen', lang))}</span></div>
+        <div class="seats">${seats}</div>
+        <div class="btn primary">${K.esc(U('signUp', lang))}</div>
+      </div>
+    </div>`;
+  };
+
   function build(motif, lang) {
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);
   }
-  window.Heroes = { build, boardHTML, hudTag, av, crest, H };
+  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME };
 })();

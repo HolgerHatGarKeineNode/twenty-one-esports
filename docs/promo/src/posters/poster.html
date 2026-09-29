@@ -135,15 +135,27 @@ function probeAll() {
   const res = Kit.probe(root);
   const hero = root.querySelector('.hero');
   const H = hero.getBoundingClientRect();
-  const parts = [...hero.querySelectorAll('[data-part]')];
+  // parts and cubes that are not rendered (a layout variant for another format) are not on the poster
+  const parts = [...hero.querySelectorAll('[data-part]')].filter((e) => e.getClientRects().length);
   /* A part's extent = its box plus the faces of every cube inside it (top +d, right +d). */
   const extent = (e) => {
     const r = e.getBoundingClientRect();
     const x = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
-    for (const c of [e, ...e.querySelectorAll('.cube')].filter((c) => c.classList.contains('cube'))) {
+    for (const c of [e, ...e.querySelectorAll('.cube')].filter((c) => c.classList.contains('cube') && c.getClientRects().length)) {
       const cr = c.getBoundingClientRect(), d = parseFloat(getComputedStyle(c, '::before').height) || 0;
       x.top = Math.min(x.top, cr.top - d); x.right = Math.max(x.right, cr.right + d);
       x.left = Math.min(x.left, cr.left); x.bottom = Math.max(x.bottom, cr.bottom);
+    }
+    // and everything rendered inside it: text that spills out of its grid row belongs to the part
+    for (const c of e.querySelectorAll('*')) {
+      if (!c.getClientRects().length || c.closest('.bd')) continue;
+      // inside a clipping box (overflow hidden) it shows only within that box, which counts itself
+      let clipped = false;
+      for (let q = c.parentElement; q && q !== e.parentElement; q = q.parentElement) if (getComputedStyle(q).overflow !== 'visible') { clipped = true; break; }
+      if (clipped) continue;
+      const cr = c.getBoundingClientRect();
+      if (!cr.width || !cr.height) continue;
+      x.top = Math.min(x.top, cr.top); x.left = Math.min(x.left, cr.left); x.right = Math.max(x.right, cr.right); x.bottom = Math.max(x.bottom, cr.bottom);
     }
     return x;
   };
@@ -184,7 +196,7 @@ function probeAll() {
   });
   // legibility floor in CSS px (output is @2x): copy >= 20, hero UI >= 11
   root.querySelectorAll('.copy *, .hero *').forEach((e) => {
-    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) return;
+    if (![...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) || !e.getClientRects().length) return;
     const fs = parseFloat(getComputedStyle(e).fontSize);
     const floor = e.closest('.copy') ? 20 : 11;
     if (fs < floor) res.issues.push(`small text ${fs.toFixed(1)}px: "${e.textContent.trim().slice(0, 24)}"`);

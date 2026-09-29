@@ -27,3 +27,6 @@ normalises to -14 LUFS integrated, true peak -1.5 dBTP (single-pass `loudnorm`).
 | cups | `instrumental/03.mp3` |
 | morris | `instrumental/08.mp3` |
 | checkers | `instrumental/21.mp3` |
+| mempool | `instrumental/13.mp3` |
+| onstream | `instrumental/02.mp3` |
+| livecup | `instrumental/07.mp3` |

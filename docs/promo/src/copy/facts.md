@@ -71,6 +71,37 @@ lobby only renders `<x-tournaments.cup-mentions :game="$slug" />` for cups that 
 `reels.md` 12 lists only four games with automatic cups); "guests can watch without login" (see 26); the
 rated search on the lobby page (season/mining wording, off limits).
 
+## Added 2026-09-29 — mempool, on the stream, tournaments live (motifs 11-13)
+
+Written by the design lead (not the kommunikator), checked claim by claim against master `8021940e`
+and, where a number is shown, against prod's public pages read on 2026-09-29. **The user lifted the
+"nothing about the season" rule for these motifs** (2026-09-29, the /matches mempool strip with the
+"real" version once a season runs); every season claim stays conditional ("while a season runs",
+"once a season runs"), with no date and no countdown.
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 28 | /matches shows a strip titled "Mempool": matches of every game, finished on the left (newest next to the divider), running and scheduled on the right; casual and rated | `app/Support/Matches/MempoolStrip.php` docblock ("played on the left and waiting on the right, casual and rated"); `components/block-strip.blade.php`; prod /matches 2026-09-29 shows it (chess and Rocket League only, board games off) | prod |
+| 29 | Every cube shows its game by colour and logo, faces (players) or clan logos under it; casual cubes are desaturated and carry "casual"; a running cube fills up with the game (ply / expected ply) and says "move n" | `block-strip.blade.php` docblock; `app.css` `.bs-cube.is-casual { filter: saturate(0.3) }`; `MatchBlocks::oneVsOne()` (`level`, `move :n`, expected ply 80 chess, 60 board games) | prod |
+| 30 | The strip's lead line: "Rated wins mine blocks only while a season runs." (off season) / "A fair rated win mines a block of the season chain." (season live) | `pages/matches/⚡index.blade.php` (`$strip['live']`), `MempoolStrip::build()` `live` = `Seasons::isLive()`; prod shows the off-season line | prod |
+| 31 | A finished rated match that mined carries its block ("Block 812") under its cube, the lid turns orange; casual matches have no stamp and never mine | `ChainStamps.php` (stamp only from a `SeasonAttestation` with a height; "Before Block 0 there are no attestations"); `app.css` `a.bs-cube.is-fin.is-mined { --top: var(--color-btc) }`; `config/season.php` `casual` ("never counted for badges, the season chain, rewards") | master, needs a running season |
+| 32 | The first block a season mines is Block 1; Block 1 follows Block 0 | `pages/⚡mining.blade.php` ("No block yet. The first fair rated win mines block 1.", "Block 1 follows Block 0") | prod |
+| 33 | Reward per block: per winning player, halves every era, paid once after the season review. **Figure:** prod /mining 2026-09-29, "Rocket League 1v1 win pays 2 100 sats per winning player, era 1", under "The numbers below are the Pre-Season draft. The board can still change them before it releases Block 0." Same as `config/season.php` `chain.subsidy` 2 100 at weight 1000 (`SeasonParameters::rewardPerPlayer`). Rated chess and rated board games "not open", so the sample block is a Rocket League 1v1 | `pages/⚡mining.blade.php` lead and tiles; `SeasonParameters.php` docblock (`reward/player = floor(subsidy * w_milli / (1000 * 2^(n - 1)))`); prod /mining | draft: the figure appears only in reel 15 beat 4, labelled "draft, not released" (`lang/de.json`), never in a caption, poster or post |
+| 34 | The stream runs 24/7 | `config/twentyone.php` (`about`: "This channel streams 24/7"); `lang/de.json` "…around the clock" (pages/⚡live) | prod |
+| 35 | The stream shows the latest win: the winner's face with a crown, "LATEST WIN · GG", "beat :name", the casual Elo change | `resources/views/stream/rotation/e1-win.blade.php`; `PrideSlides.php` (`win`) | master |
+| 36 | The stream shows "Climbers of the week", the three biggest casual chess Elo gains of 7 days | `e2-climbers.blade.php`; `PrideSlides.php` (`climbers`) | master |
+| 37 | Casual Elo numbers shown: +20 (one win), +39 (two), +57 (three), each against a new player at 1000 | `App\Support\Rating\EloRating` with `season.casual` (start 1000, provisional K 40), replayed 2026-09-29 | computed |
+| 38 | The stream text is English only, in both cuts | plan `2026-09-29T2215-stream-slides-stolz-und-turniere` ("Stream-Texte sind nur Englisch") | — |
+| 39 | A season-block slide and a tournament-run slide on the stream | plan `2026-09-29T2215-stream-slides-stolz-und-turniere` P3 (Season-Block) and P5 (Turnier-Slides) | **planned, not on master**: do not post `onstream` before they air |
+| 40 | Tournaments are on the stream today: sign-up hero and bracket preview ("Who plays", "Your spot?") | `stream/rotation/ta1-hero`, `ta2-bracket`; `TournamentSlides.php` | master |
+| 41 | Live bracket with results, champion moment, next tournament slide | plan P5 ("laufend (echtes Bracket mit Ergebnissen …), beendet (Champion …) + FOMO-Slide") | **planned, not on master**: do not post `livecup` before it airs |
+| 42 | Sign-up with the Nostr key | `lang/de.json` "Confirm with your Nostr key. You can pull out until sign-up closes." (fact 10, reel 7) | prod |
+| 43 | Tournament games: chess, Rocket League, EA Sports FC | reels 10-12 sources (tournaments 1, 2 and the casual cups, live system 2026-09-28) | prod |
+| 44 | Players never pay anything to play or sign up; the copy names no fee of any kind | user rule (memory `no-fees-ever`) | rule |
+
+**Left out:** any date or countdown for Block 0; any claim that a season runs now; the supply
+("not announced yet" on prod); pots of future tournaments; payouts to named players (none exist).
+
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
 Round 1's clan copy said clans have a "Kader"/"lineup" and play chess "team matches
@@ -96,7 +127,7 @@ claim a chess lineup or a board-count team format for clans.
 | Claim | Why it is not in the copy |
 |---|---|
 | Rank badges, share cards, "rank up" cards | Coordinator: arrive only with the rated season. `routes/web.php:159-192` shows the code paths exist, but nothing is awarded pre-Block 0. |
-| Any mention of mining, blocks, block rewards, halving, the season chain | Coordinator, verbatim (2026-09-26 correction): "kein Mining, weil die Season noch gar nicht läuft." `routes/web.php:107-108` (`mining`) is a "rest state before Block 0" — a placeholder. |
+| Any mention of mining, blocks, block rewards, halving, the season chain (motifs 1-10; lifted for motifs 11-13 on 2026-09-29, see facts 28-33) | Coordinator, verbatim (2026-09-26 correction): "kein Mining, weil die Season noch gar nicht läuft." `routes/web.php:107-108` (`mining`) is a "rest state before Block 0" — a placeholder. |
 | The rated ladder / rated Elo / official ranking / Clan Rating / Clan Hashrate | `app/Providers/AppServiceProvider.php:63-64`: rated play "stays closed" pre-season. `resources/views/pages/clans/⚡show.blade.php:282,309`: Clan Rating and Hashrate both start at Block 0. |
 | "Money on the street", any pot size, any sats-earned claim | Hard gate + coordinator correction; this is exactly what the old `docs/promo/src/build-gallery-manifest.mjs:66` ad titles did. |
 | A countdown to Block 0 or the season start | Coordinator: "no countdown, no promises." At most one honest line ("the rated season starts later"), used once in `posts.md`, never as a headline. |

@@ -11,6 +11,10 @@ const COPY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'copy');
 const MOTIF_KEYS = [
   // before login: the GRASP copy mentions Nostr, the heading must not fall into /nostr/
   [/grasp/i, 'grasp'],
+  // motifs 11-13, before /tournament/, /watch/ and /nostr/ (their texts name all three)
+  [/mempool/i, 'mempool'],
+  [/on the stream|im stream/i, 'onstream'],
+  [/tournaments live|turniere live/i, 'livecup'],
   // the upcoming-tournament reels (10-12), before /tournament/ and /clan/
   [/sats pot/i, 'satspot'],
   [/fifa/i, 'fifa'],

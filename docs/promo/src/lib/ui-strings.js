@@ -113,6 +113,39 @@
     // ladder (casual only, pre-season)
     blitzLadder: { en: 'Blitz ladder', de: 'Blitz-Ladder' },
     casualUntil: { en: 'casual until Block 0', de: 'casual bis Block 0' },
+    // mempool strip (components/block-strip, pages/matches/⚡index, Support/Matches/*), motif mempool
+    mempool: { en: 'Mempool', de: 'Mempool' },
+    mpLeadCasual: { en: 'Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.', de: 'Partien aller Spiele, gespielt und wartend. Gewertete Siege minen Blöcke nur, solange eine Season läuft.' },
+    mpLeadLive: { en: 'Matches of every game, played and waiting. A fair rated win mines a block of the season chain.', de: 'Partien aller Spiele, gespielt und wartend. Ein fairer gewerteter Sieg mint einen Block der Season-Chain.' },
+    casualTag: { en: 'casual', de: 'casual' },
+    moveN: { en: 'move :n', de: 'Zug :n' },
+    nameTurn: { en: ':name\'s turn', de: ':name ist am Zug' },
+    liveWord: { en: 'live', de: 'live' },
+    playingWord: { en: 'playing', de: 'läuft' },
+    atTime: { en: 'at :time', de: 'um :time' },
+    ladderWord: { en: 'Ladder', de: 'Ladder' },
+    blockHeight: { en: 'Block :height', de: 'Block :height' },
+    minedAsBlock: { en: 'Mined as block :height of the season chain', de: 'Als Block :height der Season-Chain gemint' },
+    ratedWinsMine: { en: 'Rated wins mine a block of the season chain', de: 'Gewertete Siege minen einen Block der Season-Chain' },
+    seasonChain: { en: 'Season chain', de: 'Season-Chain' },
+    stFinished: { en: 'Finished', de: 'Beendet' },
+    stPlaying: { en: 'Playing, fills up as it goes', de: 'Läuft, füllt sich mit dem Spielstand' },
+    stUpNext: { en: 'Up next', de: 'Als Nächstes' },
+    stUnrated: { en: 'Unrated', de: 'Ungewertet' },
+    // /mining (pages/⚡mining): the chain stats and the latest blocks
+    latestBlocks: { en: 'Latest blocks', de: 'Neueste Blöcke' },
+    minedPending: { en: 'mined, pending the season review', de: 'geschürft, vorbehaltlich der Season-Prüfung' },
+    gameWinPays: { en: ':game win pays', de: 'Ein Sieg in :game bringt' },
+    satsPerWinner: { en: 'sats per winning player, era :era', de: 'sats pro siegreichem Spieler, Epoche :era' },
+    draftNotReleased: { en: 'draft, not released', de: 'Entwurf, nicht freigegeben' },
+    blocksWord: { en: 'Blocks', de: 'Blöcke' },
+    eraWord: { en: 'Era', de: 'Epoche' },
+    minedWord: { en: 'Mined', de: 'Geschürft' },
+    // the live stream (pages/⚡live) and the tournaments on it, motifs onstream and livecup
+    liveStreamOnAir: { en: 'Live stream on air', de: 'Livestream auf Sendung' },
+    onTheStream: { en: 'On the stream', de: 'Im Stream' },
+    nextTournament: { en: 'Next tournament', de: 'Nächstes Turnier' },
+    champion: { en: 'Champion', de: 'Champion' },
   };
   window.UI = (key, lang, vars) => {
     const e = S[key];

@@ -4,7 +4,7 @@ Pre-season recruitment material for esports.einundzwanzig.space, rebuilt 2026-09
 Everything exists in **German and English**. The German cut is German all the way
 through, including every UI mock-up and the chess notation (K D T L S).
 
-**Content rule (user-set, 2026-09-28):** nothing about the season yet (no season
+**Content rule (user-set, 2026-09-28; widened 2026-09-29 for motifs 11-13, see below):** nothing about the season yet (no season
 chain, Block 0 or countdown). Everything else that is live may be shown, prize pots
 in sats and Rocket League included. The earlier, wider list (no pot or sats figures,
 no Rocket League, no ranks) was never the intent. Independent of that: every claim
@@ -29,22 +29,23 @@ with Pillow (contact sheet).
 
 ## What's in here
 
-**Posters**: 10 motifs, from `src/copy/posters.md`, each in DE and EN, 86 PNGs at @2x:
+**Posters**: 13 motifs, from `src/copy/posters.md`, each in DE and EN, 116 PNGs at @2x:
 
 | Format | Size (CSS px, PNG is @2x) | Folder | Motifs |
 |---|---|---|---|
-| Mobile / story | 1080×1920 | `posters/mobile/` | all 10 |
-| X | 1600×900 | `posters/x/` | all 10 |
-| Nostr square | 1080×1080 | `posters/nostr/` | all 10 |
-| Nostr / link card | 1200×630 | `posters/nostr/` | all 10 |
-| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments |
+| Mobile / story | 1080×1920 | `posters/mobile/` | all 13 |
+| X | 1600×900 | `posters/x/` | all 13 |
+| Nostr square | 1080×1080 | `posters/nostr/` | all 13 |
+| Nostr / link card | 1200×630 | `posters/nostr/` | all 13 |
+| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup |
 
 Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `daily`
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional),
-`morris` (Mühle), `checkers` (Dame).
+`morris` (Mühle), `checkers` (Dame), `mempool` (mempool to block), `onstream` (on the stream),
+`livecup` (tournaments live).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 14 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers), DE and
+**Reels**: 17 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
 poster; the gallery shows it as its own section.
@@ -63,6 +64,26 @@ nothing about rated board games, mining or sats. Every board position is a ply o
 board game, replayed move by move through the app's own `app/Support/Board/*Rules.php` by
 `src/gen-boardgames.php` (a move not in `legalMoves()` stops it); `src/lib/boardgames.js` draws
 them the way `resources/js/boardGame.js` does.
+
+**Mempool, on the stream, tournaments live** (`mempool`, `onstream`, `livecup`, added 2026-09-29
+for the stream-slides plan): the user asked for the season's "real" side here, so these three may
+name the season chain, blocks and the reward per block, always conditional ("while a season runs"),
+never with a date or a countdown. Facts 28-44 in `src/copy/facts.md`.
+- `mempool`: the /matches strip (`components/block-strip`) drawn from `src/lib/heroes.js` `STRIP`:
+  casual cubes desaturated, one rated Rocket League 1v1 that mined Block 1. The reward figure
+  (2 100 sats per winning player, era 1) is prod's Pre-Season draft on /mining and shows only in
+  reel 15 beat 4, labelled "draft, not released": **re-read /mining and update `REWARD` in
+  `src/reels/reel.html` before posting**. Shows Mühle and Dame cubes: **post only once the board
+  game switches are on in prod.**
+- `onstream`: the stream frame with the latest-win slide (on master) and the climbers slide (on
+  master); the season-block and tournament-run slides are plan P3/P5. **Post only once those air.**
+- `livecup`: the live bracket and champion slides are plan P5. **Post only once they air.**
+- The stream frame shows the stream's own English text in both cuts (the stream is English only).
+
+**Probe change (2026-09-29):** the poster probe ignores parts, cubes and text that are not rendered
+(`display: none` layout variants for another format), and a part's extent now includes everything
+rendered inside it (except inside a clipping box), so text spilling out of its grid row is caught.
+All 116 posters pass with it; it caught the mempool banner's stamp on the legend.
 
 **How it is built:** one real object from the product per motif (a board, the clock, the
 login card, the invite card, the bracket, the clan card, the code), drawn from the app's own
@@ -131,9 +152,9 @@ poster. Pick the poster in the language of the post.
 From the repo root. The render scripts run the position and string checks first.
 
 ```bash
-node docs/promo/src/render-posters.mjs                 # all posters (86), DE+EN, probes on
+node docs/promo/src/render-posters.mjs                 # all posters (116), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (14), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (17), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png
