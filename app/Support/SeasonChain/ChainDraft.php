@@ -365,7 +365,10 @@ final class ChainDraft
             $limit = trim($input['daily'][$shareKey] ?? '');
 
             if ($mines && ($share === '' || $limit === '')) {
-                throw new SeasonReleaseRefused(__(':game mines, so it needs a share and a daily limit.', ['game' => $label]));
+                // The board games' share group is plural: its own sentence.
+                throw new SeasonReleaseRefused($shareKey === 'board-games'
+                    ? __('Board games mine, so they need a share and a daily limit.')
+                    : __(':game mines, so it needs a share and a daily limit.', ['game' => $label]));
             }
 
             if ($share !== '') {

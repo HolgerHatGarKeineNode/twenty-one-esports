@@ -92,7 +92,7 @@ test('the board keeps the board games unmined by leaving their weights empty; a 
 
     // A weight without a share and a daily limit is refused.
     $page->set('draftWeights.checkers/blitz', '1')->call('saveDraft');
-    expect($page->get('draftError'))->toBe('Board games mines, so it needs a share and a daily limit.');
+    expect($page->get('draftError'))->toBe('Board games mine, so they need a share and a daily limit.');
 });
 
 test('in a live season with the board games\' group the rule change adds them: weights, the group\'s share and daily limit, in one change', function () {
@@ -147,4 +147,29 @@ test('a running season whose genesis has no board games\' group takes each board
         'shares' => ['ea-sports-fc' => 20, 'checkers' => 5],
         'daily' => ['checkers' => 3],
     ]);
+});
+
+test('a rule change that lets the board games mine without their share and daily limit names them in the plural; a single game keeps its sentence', function () {
+    openSeason();
+
+    Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->set('weights.checkers/blitz', '1')
+        ->set('reason', 'Board games mine.')
+        ->call('saveChange')
+        ->assertSet('changeError', 'Board games mine, so they need a share and a daily limit in the same change.');
+
+    $defaults = ChainDraft::defaults();
+    Season::query()->delete();
+    openSeason(['parameters' => [
+        'weights' => $defaults['weights'], 'groups' => ['ea-sports-fc' => ['ea-sports-fc-26', 'ea-sports-fc-27']],
+        'shares' => $defaults['shares'], 'daily' => $defaults['daily'], 'pairlimit' => $defaults['pairlimit'], 'subtree' => $defaults['subtree'], 'moves' => $defaults['moves'],
+    ]]);
+
+    Livewire::actingAs($this->board)->test('pages::admin.season')
+        ->set('weights.checkers/blitz', '1')
+        ->set('reason', 'Checkers mines.')
+        ->call('saveChange')
+        ->assertSet('changeError', 'Checkers mines, so it needs a share and a daily limit in the same change.');
+
+    expect(SeasonParameterChange::query()->count())->toBe(0);
 });

@@ -8,14 +8,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
 
 /**
- * One result a link voided (P41): a series or a chess game between two
+ * One result a link voided (P41): a series, a chess game or a board game
+ * other than chess (P6 of plan "Mühle und Dame") between two
  * accounts of the same person, what it was before, and the Elo the revert
  * took back (null when it moved no Elo that could still be corrected).
  * Unlinking does not bring it back.
  *
  * @property int $id
  * @property int $account_link_id
- * @property 'series'|'chess' $source
+ * @property 'series'|'chess'|'board' $source
  * @property int $source_id
  * @property int|null $match_number
  * @property array<string, mixed> $previous

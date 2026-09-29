@@ -2,12 +2,15 @@
 
 namespace App\Support\FairPlay;
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
 use App\Models\AccountLink;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\FairPlayVoid;
 use App\Models\SeasonPayout;
@@ -36,7 +39,8 @@ use Illuminate\Support\Facades\Gate;
  *   the payout runner, which refuses to start a withheld one;
  * - voids every finished result between it and the other accounts of the
  *   person: a series gets resolution `void` (no winner), a chess game ends
- *   `voided` without a result, and a tournament match they played is
+ *   `voided` without a result, and so does a board game other than chess
+ *   (plan "Mühle und Dame", P6), and a tournament match they played is
  *   marked `void` in its stored result (the bracket stays as played). Rated
  *   Elo of the open season goes back through the rating correction
  *   ({@see RatingService::revert()}, delta only); casual Elo and a closed
@@ -114,7 +118,8 @@ final class AccountLinks
             ]);
 
             $others = array_values(array_filter(array_map(fn (User $user): int => $user->id, [$main, ...$this->group($main)]), fn (int $id): bool => $id !== $linked->id));
-            $voided = $this->voidSeries($link, $admin, $linked->id, $others) + $this->voidChess($link, $linked->id, $others);
+            $voided = $this->voidSeries($link, $admin, $linked->id, $others) + $this->voidChess($link, $linked->id, $others)
+                + $this->voidBoard($link, $linked->id, $others);
 
             $withheld = 0;
 
@@ -250,6 +255,38 @@ final class AccountLinks
 
             $this->markTournamentMatch($game->tournament_match_id);
             FairPlayVoid::query()->create(['account_link_id' => $link->id, 'source' => 'chess', 'source_id' => $game->id, 'match_number' => $game->number, 'previous' => $previous, 'elo' => $elo]);
+        }
+
+        return $games->count();
+    }
+
+    /**
+     * Every finished board game other than chess (plan "Mühle und Dame", P6)
+     * between the linked account and one of the others, as voidChess():
+     * voided without a result, Elo reverted.
+     *
+     * @param  list<int>  $others
+     */
+    private function voidBoard(AccountLink $link, int $linkedId, array $others): int
+    {
+        if ($others === []) {
+            return 0;
+        }
+
+        $games = BoardGame::query()->where('status', BoardGameStatus::Finished)->whereNotNull('result')
+            ->where(fn (Builder $query) => $query
+                ->where(fn (Builder $q) => $q->where('white_id', $linkedId)->whereIn('black_id', $others))
+                ->orWhere(fn (Builder $q) => $q->where('black_id', $linkedId)->whereIn('white_id', $others)))
+            ->orderBy('id')->get();
+
+        foreach ($games as $game) {
+            $previous = ['status' => $game->status->value, 'result' => $game->result, 'end_reason' => $game->end_reason];
+            $elo = $this->ratings->revert($game);
+
+            BoardGame::query()->whereKey($game->id)->update(['status' => BoardGameStatus::Aborted, 'result' => null, 'end_reason' => BoardEndReason::Voided->value]);
+
+            $this->markTournamentMatch($game->tournament_match_id);
+            FairPlayVoid::query()->create(['account_link_id' => $link->id, 'source' => 'board', 'source_id' => $game->id, 'match_number' => $game->number, 'previous' => $previous, 'elo' => $elo]);
         }
 
         return $games->count();

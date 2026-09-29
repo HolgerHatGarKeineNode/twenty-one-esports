@@ -664,7 +664,10 @@ final class SeasonChains
             $shareKey = $current->shareKey(explode('/', (string) $key, 2)[0]);
 
             if ($milli > 0 && (! isset($shares[$shareKey]) || ! isset($daily[$shareKey]))) {
-                throw new SeasonReleaseRefused(__(':game mines, so it needs a share and a daily limit in the same change.', ['game' => ChainDraft::shareLabel($shareKey)]));
+                // The board games' share group is plural: its own sentence.
+                throw new SeasonReleaseRefused($shareKey === 'board-games'
+                    ? __('Board games mine, so they need a share and a daily limit in the same change.')
+                    : __(':game mines, so it needs a share and a daily limit in the same change.', ['game' => ChainDraft::shareLabel($shareKey)]));
             }
         }
 

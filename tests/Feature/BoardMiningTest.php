@@ -10,12 +10,16 @@
 | season page proposes their values and never redistributes on its own.
 */
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
 use App\Games\Checkers;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
+use App\Models\Admin;
 use App\Models\BoardGame;
 use App\Models\BoardQueueEntry;
 use App\Models\Clan;
+use App\Models\FairPlayVoid;
 use App\Models\NostrEvent;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -27,6 +31,7 @@ use App\Support\Board\BoardQueue;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Board\RatedBoard;
 use App\Support\Engagement\ClanHashrate;
+use App\Support\FairPlay\AccountLinks;
 use App\Support\Rating\ClanRating;
 use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\ChainOverview;
@@ -444,4 +449,43 @@ test('P57 in the board lobby: searching rated beside players it does not list ea
     $page->call('searchCasualInstead')->assertSee('data-rated="false"', false);
 
     expect(BoardQueueEntry::query()->where('user_id', $anna->id)->value('rated'))->toBeFalse();
+});
+
+/* ---------- Fair play: linked accounts ---------------------------------------------------------------------- */
+
+test('linking two accounts voids their board games like their chess games: no result, rated Elo reverted, the void kept', function () {
+    boardMiningSeason();
+    [$main, $second, $stranger] = User::factory()->count(3)->create();
+    $rated = whiteWinsAfterOneMove(ratedBoardGame(NineMensMorris::SLUG, $second, $main));
+    $casual = whiteWinsAfterOneMove(app(BoardGameService::class)->start(Checkers::SLUG, $main, $second));
+    $kept = whiteWinsAfterOneMove(ratedBoardGame(NineMensMorris::SLUG, $main, $stranger));
+    $rating = fn (User $user): array => Rating::query()->where(['pool' => Rating::RATED, 'game' => NineMensMorris::SLUG, 'user_id' => $user->id])->sole()->only(['rating', 'results', 'wins']);
+    $strangerBefore = $rating($stranger);
+    $casualBefore = Rating::query()->where(['pool' => Rating::CASUAL, 'game' => Checkers::SLUG, 'user_id' => $main->id])->value('rating');
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    expect($rating($second)['rating'])->toBe(1020);
+
+    $done = app(AccountLinks::class)->link($admin, $main->pubkey, $second->pubkey, 'Same person');
+    $void = FairPlayVoid::query()->where('source_id', $rated->id)->sole();
+
+    expect($done['voided'])->toBe(2)
+        ->and([$rated->refresh()->status, $rated->result, $rated->end_reason])->toBe([BoardGameStatus::Aborted, null, BoardEndReason::Voided->value])
+        ->and([$casual->refresh()->status, $casual->result])->toBe([BoardGameStatus::Aborted, null])
+        ->and($void->only(['source', 'match_number']))->toBe(['source' => 'board', 'match_number' => $rated->number])
+        ->and($void->previous)->toBe(['status' => 'finished', 'result' => '1-0', 'end_reason' => 'resignation'])
+        ->and($void->elo['applied'])->toBeNull()
+        // The second account is back at the start; the main account keeps only its game against the stranger.
+        ->and($rating($second))->toBe(['rating' => 1000, 'results' => 0, 'wins' => 0])
+        ->and($rating($main)['results'])->toBe(1)
+        ->and($rating($stranger))->toBe($strangerBefore)
+        ->and($kept->refresh()->result)->toBe('1-0')
+        // Casual Elo stays as it is, as for chess.
+        ->and(Rating::query()->where(['pool' => Rating::CASUAL, 'game' => Checkers::SLUG, 'user_id' => $main->id])->value('rating'))->toBe($casualBefore)
+        ->and(RatingChange::query()->withoutGlobalScope(RatingChange::LIVE)->where('source', RatingChange::BOARD)->where('source_id', $rated->id)->whereNotNull('reverted_at')->count())->toBe(2);
+
+    // A later game between them rates nothing.
+    $later = whiteWinsAfterOneMove(app(BoardGameService::class)->start(Checkers::SLUG, $second, $main));
+    expect(RatingChange::query()->where('source', RatingChange::BOARD)->where('source_id', $later->id)->count())->toBe(0);
 });

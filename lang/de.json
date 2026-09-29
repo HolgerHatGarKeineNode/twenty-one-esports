@@ -5470,5 +5470,7 @@
     "Rated :game is not open yet. Games are casual for now.": "Gewertetes :game ist noch nicht offen. Partien sind vorerst locker.",
     "Rated :game needs a Trusted account (trust rank :minimum or more). Casual games with members, and players who add you back, raise your trust.": "Gewertetes :game braucht ein Trusted-Konto (Vertrauensrang :minimum oder mehr). Casual-Partien mit Mitgliedern und Spieler, die dich zurück hinzufügen, erhöhen dein Vertrauen.",
     "Needs 3 or more players in one match. A board game is always one player against one.": "Braucht 3 oder mehr Spieler in einem Match. Ein Brettspiel ist immer einer gegen einen.",
-    "Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.": "Braucht ein Spiel mit Punkten oder Zeit, das man allein spielt, etwa ein Zeitfahren. Brettspiele gewinnt man gegen einen Gegner."
+    "Needs a game with a score or time you play alone, like a time trial. Board games are won against an opponent.": "Braucht ein Spiel mit Punkten oder Zeit, das man allein spielt, etwa ein Zeitfahren. Brettspiele gewinnt man gegen einen Gegner.",
+    "Board games mine, so they need a share and a daily limit in the same change.": "Brettspiele schürfen, brauchen also in derselben Änderung einen Anteil und ein Tageslimit.",
+    "Board games mine, so they need a share and a daily limit.": "Brettspiele schürfen, brauchen also einen Anteil und ein Tageslimit."
 }
