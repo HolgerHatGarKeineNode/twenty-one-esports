@@ -111,9 +111,9 @@
 @if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif
 @else
 @include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => 'board games'])
-<text data-unit="claim" data-box="39 170 640 214" x="40" y="206" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">Board games</text>
+<text data-unit="claim" data-box="39 166 640 222" x="40" y="206" font-family="Unbounded" font-weight="800" font-size="40" fill="#FFFFFF">Board games</text>
 @foreach ($names as $i => $name)
-<text data-unit="game-{{ $i }}" data-box="39 {{ 222 + $i * 52 }} 640 {{ 266 + $i * 52 }}" x="40" y="{{ 258 + $i * 52 }}" font-family="Unbounded" font-weight="800" font-size="40" fill="#F7931A">{{ $name }}</text>
+<text data-unit="game-{{ $i }}" data-box="39 {{ 218 + $i * 52 }} 640 {{ 272 + $i * 52 }}" x="40" y="{{ 258 + $i * 52 }}" font-family="Unbounded" font-weight="800" font-size="40" fill="#F7931A">{{ $name }}</text>
 @endforeach
 <rect x="40" y="{{ $rule }}" width="600" height="1" fill="#2A2A30"/>
 @foreach ($facts as $i => [$label, $fact])
