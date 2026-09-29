@@ -898,6 +898,9 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         </div>
     @else
         @include('pages.games.partials.done', ['game' => $game, 'players' => $players, 'color' => $color, 'chat' => $color ? $this->chatConfig() : null])
+
+        {{-- P47: a tip for the winner (NIP-57), when their profile has a Lightning address; nothing otherwise --}}
+        <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="game" :subject="(string) $game->id" :wire:key="'zap-game-'.$game->id" /></div>
     @endif
 
     {{-- P45: the game on Nostr (the league's NIP-64 record once signed), a message to the opponent.

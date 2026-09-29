@@ -666,6 +666,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @endif
             </div>
         </section>
+
+        {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
+        <div class="mx-4 has-[>.hidden]:hidden lg:mx-12"><livewire:zap-winner type="tournament" :subject="(string) $tournament->id" :wire:key="'zap-tournament-'.$tournament->id" /></div>
     @endif
 
     @if ($status === TournamentStatus::Draft && $this->canManage)

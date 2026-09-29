@@ -276,6 +276,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         </div>
     </section>
 
+    {{-- P47: a tip for the winners (NIP-57), each whose profile has a Lightning address; nothing otherwise --}}
+    @if ($match->status->hasResult())
+        <livewire:zap-winner type="series" :subject="(string) $match->number" :wire:key="'zap-series-'.$match->number" />
+    @endif
+
     <x-proof toggle="show" class="border-0 bg-proof-fill shadow-[inset_0_0_0_1px_var(--color-proof-ring)]" :rows="SeriesPresenter::proofRows($match)">
         {{ $match->rated ? __('Every step of this series is a Nostr event anyone can check.') : __('A casual match publishes no events: the NIP gives casual games no match-flow events. Rated matches start at Block 0.') }}
     </x-proof>

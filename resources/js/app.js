@@ -19,6 +19,7 @@ import './nostrSign.js';
 import './casualPlay.js';
 import './badgeShare.js';
 import './nostrBar.js';
+import './zapWinner.js';
 import './captured.js';
 import './sanNotation.js';
 import './tournamentLanding.js';

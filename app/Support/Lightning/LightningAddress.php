@@ -78,6 +78,61 @@ class LightningAddress
     }
 
     /**
+     * A NIP-57 zap invoice (P47, "zap the winner"): the payRequest of the
+     * address must allow Nostr (`allowsNostr` true, a hex `nostrPubkey`), the
+     * callback gets the amount, the signed zap request as `nostr` and the
+     * `lnurl`, and the invoice must be for the amount asked for and commit to
+     * exactly that zap request (description hash = SHA-256 of the JSON sent,
+     * NIP-57 appendix D), on an allowed network, valid for another minute.
+     * The same host checks as {@see invoice()}; nothing is stored.
+     *
+     * @throws LightningAddressFailure `no_zaps` when the address takes no zaps
+     */
+    public function zapInvoice(string $lud16, int $amountSats, string $zapRequestJson, string $lnurl): Bolt11
+    {
+        $target = self::target($lud16) ?? throw new LightningAddressFailure('lnurl_invalid', 'not a Lightning address');
+        $document = $this->getJson($target['base'].'/.well-known/lnurlp/'.$target['name']);
+
+        $callback = $document['callback'] ?? null;
+        $min = $document['minSendable'] ?? null;
+        $max = $document['maxSendable'] ?? null;
+
+        if (($document['tag'] ?? null) !== 'payRequest' || ! is_string($callback) || ! is_int($min) || ! is_int($max)) {
+            throw new LightningAddressFailure('lnurl_invalid', 'not a payRequest');
+        }
+
+        if (($document['allowsNostr'] ?? null) !== true || ! is_string($document['nostrPubkey'] ?? null) || preg_match('/^[0-9a-f]{64}$/', $document['nostrPubkey']) !== 1) {
+            throw new LightningAddressFailure('no_zaps', 'the address takes no zaps');
+        }
+
+        $msats = $amountSats * 1000;
+
+        if ($msats < $min || $msats > $max) {
+            throw new LightningAddressFailure('amount_out_of_range', 'amount outside minSendable..maxSendable');
+        }
+
+        $separator = str_contains($callback, '?') ? '&' : '?';
+        $answer = $this->getJson($callback.$separator.http_build_query(['amount' => $msats, 'nostr' => $zapRequestJson, 'lnurl' => $lnurl]));
+
+        if (($answer['status'] ?? null) === 'ERROR' || ! is_string($answer['pr'] ?? null)) {
+            throw new LightningAddressFailure('lnurl_invalid', 'the callback returned no invoice');
+        }
+
+        $invoice = Bolt11::decode($answer['pr']);
+
+        if ($invoice === null
+            || ! in_array($invoice->network, (array) config('esports.wallet.invoice_networks', ['bc']), true)
+            || $invoice->amountMsats !== $msats
+            || $invoice->descriptionHash !== hash('sha256', $zapRequestJson)
+            || $invoice->expiresAt() < time() + 60
+        ) {
+            throw new LightningAddressFailure('invoice_mismatch', 'the invoice does not match the zap request');
+        }
+
+        return $invoice;
+    }
+
+    /**
      * Name, host and base URL of a Lightning address, or null when it is not
      * a plain `name@dns-name` (or one of the configured insecure test hosts).
      *
