@@ -13,9 +13,16 @@
     own zone unless it reports a spoofed one (App\Support\Tournaments\CupBoard,
     cupStart in resources/js/tournamentLanding.js).
 
-    Still a side mention, never a poster or a hero: those belong to the
-    special tournaments (user, 2026-09-28: "Casual Cups sollen nicht so einen
-    präsenten Platz bekommen und eher Seitenerwähnungen bleiben").
+    Never a poster or a hero: those belong to the special tournaments, and on
+    the tournaments page the organizers' tournaments stay above the cups
+    (user, 2026-09-28: "Casual Cups sollen nicht so einen präsenten Platz
+    bekommen"). There, under them, the cups get a head of their own that says
+    what they are (user, 2026-09-29: "er versteht sie gar nicht als Turniere,
+    weil es nirgends steht ... Trotzdem haben die anderen Turniere oben drüber
+    absolute Prio"): the word tournament and one line on what a cup is, the
+    last cup's winner, and the next cup to sign up for with its cover, the
+    faces of who is in, a countdown to its start and the way in. That head
+    shows even when no cup is on. Home and the game pages keep the mention.
 
     `game`: one game's cups only, without covers (the page is that game's).
     `except`: a tournament id to leave out (the cup whose page this is).
@@ -24,8 +31,9 @@
     `compact`: one line per game (home: the cups stay a side mention, user
     2026-09-28); the full board lives on the tournaments page.
     `filters`: the filter bar (game, region, free places, order), without a
-    reload; only where every game's cups show (the tournaments page).
-    Renders nothing when no cup is on.
+    reload; only where every game's cups show (the tournaments page). With
+    `heading`, it also brings the cups' head described above.
+    Renders nothing when no cup is on, except that head.
 --}}
 @php
     use App\Enums\TournamentStatus;
@@ -33,19 +41,26 @@
     use App\Support\Tournaments\CasualCups;
     use App\Support\Tournaments\CupBoard;
 
-    $cupGroups = app(CupBoard::class)->groups($game, $except, auth()->user()?->timezone);
+    $cupBoard = app(CupBoard::class);
+    $cupGroups = $cupBoard->groups($game, $except, auth()->user()?->timezone, auth()->id());
     $cupSingle = $game !== null;
     $cupFilters = $filters && ! $cupSingle && ! $compact && $cupGroups !== [];
+    // The tournaments page: the cups' head with what a cup is, its proud moment and the next cup to sign up for.
+    $cupHall = $heading && $filters && ! $cupSingle && ! $compact;
+    $cupWinner = $cupHall ? $cupBoard->lastWinner() : null;
+    $cupNext = $cupHall ? CupBoard::next($cupGroups) : null;
     $cupRegions = CasualCups::regions();
     $cupCount = array_sum(array_map(fn (array $group): int => count($group['cups']), $cupGroups));
     $segBtn = 'inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 border-0 px-3 text-[13px] whitespace-nowrap';
 @endphp
 
-@if ($cupGroups !== [])
+@if ($cupGroups !== [] || $cupHall)
     <div {{ $attributes->class('flex flex-col gap-3') }} data-test="cup-mentions"
          @if ($cupFilters) x-data="cupBoard()" x-effect="apply()" wire:ignore @endif
          @if ($heading) role="region" aria-labelledby="cup-board-h" id="casual-cups" @endif>
-        @if ($heading)
+        @if ($cupHall)
+            <x-tournaments.cup-hall :winner="$cupWinner" :next="$cupNext" :empty="$cupGroups === []" />
+        @elseif ($heading)
             <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <h2 id="cup-board-h" class="m-0 text-[15px] font-bold">{{ __('Casual cups') }}</h2>
                 @unless ($cupFilters)
@@ -159,7 +174,7 @@
                         </a>
                         <h3 class="m-0 flex min-w-0 flex-col text-[13px] leading-tight font-bold lg:pt-1">
                             <a href="{{ GameNames::page($groupGame) }}" class="truncate text-ink hover:text-btc-hi">{{ GameNames::game($groupGame) }}</a>
-                            <span class="font-normal text-ink-2">{{ $groupMode }}, {{ __('casual cup') }}</span>
+                            <span class="font-normal text-ink-2" data-test="cup-group-kind">{{ __(':mode tournament, :format', ['mode' => $groupMode, 'format' => $group['cups'][0]['tournament']->format->label()]) }}</span>
                         </h3>
                     @endunless
                     <ul @class(['m-0 grid list-none gap-1 p-0', 'col-span-2 lg:col-span-1' => ! $cupSingle, 'lg:grid-cols-2' => $cupSingle])>
@@ -182,6 +197,17 @@
                                         <span class="text-ink-2"><span @unless ($cup['fixedZone']) x-text="day || @js($cup['day'])" @endunless data-test="cup-day">{{ $cup['day'] }}</span>, <span class="text-ink-3" @unless ($cup['fixedZone']) x-text="city || @js($cup['city'])" @endunless data-test="cup-city">{{ $cup['city'] }}</span></span>
                                     </time>
                                     <span class="flex items-center gap-2" data-test="cup-seats">
+                                        @if ($cup['faces'] !== [])
+                                            {{-- Who is in: up to three faces, then how many more. --}}
+                                            <span class="flex shrink-0 items-center" aria-hidden="true" data-test="cup-faces">
+                                                @foreach (array_slice($cup['faces'], 0, 3) as $face)
+                                                    <x-avatar :user="$face" :size="20" class="rounded-tag ring-2 ring-card not-first:-ml-1" />
+                                                @endforeach
+                                                @if (count($cup['faces']) > 3)
+                                                    <span class="ml-1 text-ink-2 tabular-nums">+{{ count($cup['faces']) - 3 }}</span>
+                                                @endif
+                                            </span>
+                                        @endif
                                         <span class="flex items-center gap-0.5" aria-hidden="true">
                                             @for ($seat = 0; $seat < min($cup['places'], 16); $seat++)
                                                 <span @class([$segment, 'h-3.5 rounded-[2px]', 'bg-btc' => $seat < $cup['taken'], 'border border-edge' => $seat >= $cup['taken']])></span>

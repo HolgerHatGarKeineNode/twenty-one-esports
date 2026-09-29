@@ -4,6 +4,8 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Models\TournamentSignup;
+use App\Models\User;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -20,6 +22,12 @@ use Illuminate\Support\Collection;
  * was planned for, named by its city, never a bare UTC offset. The browser then
  * rewrites it to its own zone, unless that zone is one a privacy browser
  * reports instead of the real one (resources/js/tournamentLanding.js).
+ *
+ * P3 of plan mempool-streifen (user, 2026-09-29: the cups "gehen ... total
+ * unter" and nobody reads them as tournaments): each row also carries the
+ * faces of who signed up and whether the viewer is in, read for every cup in
+ * one query (the page's query count stays flat however many cups and players),
+ * and the board names the next cup to sign up for and the last cup's winner.
  */
 final class CupBoard
 {
@@ -29,12 +37,10 @@ final class CupBoard
         'en' => ['day' => 'ddd, MMM D', 'clock' => 'h:mm A'],
     ];
 
-    public function __construct(private TournamentSignups $signups) {}
-
     /**
-     * @return list<array{game: string, cups: list<array{tournament: Tournament, region: ?string, regionLabel: ?string, taken: int, places: int, free: bool, zone: string, fixedZone: bool, day: string, clock: string, city: string}>}>
+     * @return list<array{game: string, cups: list<array{tournament: Tournament, region: ?string, regionLabel: ?string, taken: int, places: int, free: bool, faces: list<User>, entered: bool, zone: string, fixedZone: bool, day: string, clock: string, city: string}>}>
      */
-    public function groups(?string $game = null, ?int $except = null, ?string $viewerZone = null): array
+    public function groups(?string $game = null, ?int $except = null, ?string $viewerZone = null, ?int $viewerId = null): array
     {
         $cups = Tournament::query()->casualCup()
             ->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Running])
@@ -43,6 +49,9 @@ final class CupBoard
             ->orderBy('starts_at')->orderBy('id')
             ->limit(64)->get();
 
+        // Every cup's active sign-ups in one query, with their players: the places and the faces come from here.
+        $signups = $cups->isEmpty() ? new Collection
+            : TournamentSignup::query()->whereIn('tournament_id', $cups->modelKeys())->active()->with('user')->orderBy('id')->get()->groupBy('tournament_id');
         $gameOrder = array_flip(CasualCups::enabledGames());
         $regionOrder = array_flip(array_keys(CasualCups::regions()));
 
@@ -52,18 +61,26 @@ final class CupBoard
                 'game' => $slug,
                 'cups' => array_values($group
                     ->sortBy(fn (Tournament $cup): string => sprintf('%03d%012d', $regionOrder[CasualCups::regionOf($cup) ?? ''] ?? 999, $cup->starts_at->getTimestamp()))
-                    ->map(fn (Tournament $cup): array => $this->row($cup, $viewerZone))
+                    ->map(fn (Tournament $cup): array => $this->row($cup, $viewerZone, array_values($signups->get($cup->id, new Collection)->all()), $viewerId))
                     ->all()),
             ])
             ->all());
     }
 
     /**
-     * @return array{tournament: Tournament, region: ?string, regionLabel: ?string, taken: int, places: int, free: bool, zone: string, fixedZone: bool, day: string, clock: string, city: string}
+     * One cup as its row shows it. `$signups`: its active sign-ups with their players, when the caller read them for
+     * several cups at once; null reads them here.
+     *
+     * @param  list<TournamentSignup>|null  $signups
+     * @return array{tournament: Tournament, region: ?string, regionLabel: ?string, taken: int, places: int, free: bool, faces: list<User>, entered: bool, zone: string, fixedZone: bool, day: string, clock: string, city: string}
      */
-    public function row(Tournament $cup, ?string $viewerZone = null): array
+    public function row(Tournament $cup, ?string $viewerZone = null, ?array $signups = null, ?int $viewerId = null): array
     {
-        $places = $this->signups->places($cup);
+        $signups ??= TournamentSignup::query()->where('tournament_id', $cup->id)->active()->with('user')->orderBy('id')->get()->all();
+        $size = $cup->teamSize();
+        $lineups = count(array_filter($signups, fn (TournamentSignup $signup): bool => $signup->lineup_id !== null));
+        $taken = $lineups * $size + (count($signups) - $lineups);
+        $places = $cup->capacity * $size;
         $zone = $viewerZone ?? CasualCups::timezoneOf($cup);
         $start = self::start($cup->starts_at, $zone);
 
@@ -71,13 +88,60 @@ final class CupBoard
             'tournament' => $cup,
             'region' => CasualCups::regionOf($cup),
             'regionLabel' => CasualCups::regionLabel($cup),
-            'taken' => $places['taken'],
-            'places' => $places['places'],
-            'free' => $cup->status === TournamentStatus::Signup && $places['taken'] < $places['places'],
+            'taken' => $taken,
+            'places' => $places,
+            'free' => $cup->status === TournamentStatus::Signup && $taken < $places,
+            // The players who signed up solo, first come first; a lineup has no single face here.
+            'faces' => array_values(array_filter(array_map(fn (TournamentSignup $signup): ?User => $signup->lineup_id === null ? $signup->user : null, $signups))),
+            'entered' => $viewerId !== null && array_any($signups, fn (TournamentSignup $signup): bool => $signup->user_id === $viewerId || in_array($viewerId, $signup->members ?? [], true)),
             'zone' => $zone,
             'fixedZone' => $viewerZone !== null,
             ...$start,
         ];
+    }
+
+    /**
+     * The cup to sign up for next: of the board's rows, the one open for sign-up with a free place that starts
+     * first (the board's order breaks a tie). Null when no cup takes players now.
+     *
+     * @param  list<array{game: string, cups: list<array<string, mixed>>}>  $groups
+     * @return array<string, mixed>|null
+     */
+    public static function next(array $groups): ?array
+    {
+        $next = null;
+
+        foreach ($groups as $group) {
+            foreach ($group['cups'] as $cup) {
+                if ($cup['free'] && ($next === null || $cup['tournament']->starts_at->lt($next['tournament']->starts_at))) {
+                    $next = $cup;
+                }
+            }
+        }
+
+        return $next;
+    }
+
+    /**
+     * The winner of the casual cup that finished last, for the board's proud moment: the cup and its champion
+     * (TournamentChampion reads it from the bracket). Null before the first cup ends, or when the last one has no
+     * single winner; never an older cup instead, so the query count stays the same.
+     *
+     * @return array{cup: Tournament, user: User|null, name: string}|null
+     */
+    public function lastWinner(): ?array
+    {
+        $cup = Tournament::query()->casualCup()->where('status', TournamentStatus::Finished)
+            ->orderByDesc('cup_ended_at')->orderByDesc('id')->first();
+        $champion = $cup === null ? null : app(TournamentChampion::class)->of($cup);
+
+        if ($cup === null || $champion === null) {
+            return null;
+        }
+
+        $user = $champion->lineup_id === null && $champion->user_id !== null ? User::query()->find($champion->user_id) : null;
+
+        return ['cup' => $cup, 'user' => $user, 'name' => $user?->displayName() ?? $champion->name];
     }
 
     /**

@@ -2,6 +2,7 @@
 
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Models\User;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\CupBoard;
 use Carbon\CarbonImmutable;
@@ -345,6 +346,113 @@ test('the organizers\' tournaments stand above the casual cups, large and with t
             : expect(array_unique(array_column($state['cards'], 'width')))->toBe([343])->and($state['hero']['width'])->toBe(343);
 
         expect($page->evaluate('() => window.__errors'))->toBe([])
+            ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+    }
+});
+
+/*
+ * The cups' head under the organizers' tournaments (P3 of plan
+ * mempool-streifen; user, 2026-09-29: the cups "gehen ... total unter" and
+ * nobody reads them as tournaments, "Trotzdem haben die anderen Turniere oben
+ * drüber absolute Prio"). At 320, 375 and 1280 in English and German: the
+ * organizers' hero and card come first and stay larger, the head says
+ * tournament, shows the winner and the next cup with faces and a countdown
+ * that ticks; at 375 and 1280 its sign-up button is in the head's first
+ * screen. No overflow, no text box cut, and after a Livewire round trip the
+ * console and the answers stay clean (positive control first).
+ */
+const CUP_HEAD_STATE = <<<'JS'
+    () => {
+        const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { top: Math.round(r.top + scrollY), bottom: Math.round(r.bottom + scrollY), width: Math.round(r.width), height: Math.round(r.height) }; };
+        const size = (el) => el ? parseFloat(getComputedStyle(el).fontSize) : 0;
+        // Every element that holds text of its own, inside the head and the board rows: cut when its content is wider than its box.
+        const own = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '');
+        const scope = [...document.querySelectorAll('[data-test=cup-hall], [data-test=cup-group]')];
+        const cut = scope.flatMap((root) => [root, ...root.querySelectorAll('*')])
+            .filter((el) => own(el) && el.checkVisibility() && !el.closest('.sr-only') && getComputedStyle(el).display !== 'inline' && el.scrollWidth > el.clientWidth + 1)
+            .map((el) => (el.dataset.test || el.tagName) + ': ' + el.innerText.trim().slice(0, 40));
+        // The floor of the screen: a bar fixed to the bottom (the phone's tab bar), else the window's bottom.
+        const floor = Math.min(innerHeight, ...[...document.querySelectorAll('body *')].filter((el) => getComputedStyle(el).position === 'fixed' && el.checkVisibility() && Math.abs(el.getBoundingClientRect().bottom - innerHeight) < 2 && el.getBoundingClientRect().width > innerWidth / 2).map((el) => el.getBoundingClientRect().top));
+        return {
+            lang: document.documentElement.lang,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            floor: Math.round(floor),
+            organizers: box(document.querySelector('[data-test=organizer-tournaments]')),
+            heroName: size(document.querySelector('[data-test=next-tournament-name]')),
+            heroCover: box(document.querySelector('[data-test=next-tournament-cover]')),
+            hall: box(document.querySelector('[data-test=cup-hall]')),
+            kind: document.querySelector('[data-test=cup-kind]')?.innerText.trim(),
+            explainer: document.querySelector('[data-test=cup-explainer]')?.innerText.trim(),
+            winner: document.querySelector('[data-test=cup-winner-name]')?.innerText.trim(),
+            nextName: size(document.querySelector('[data-test=cup-next-name]')),
+            nextCover: box(document.querySelector('[data-test=cup-next-cover]')),
+            faces: [...document.querySelectorAll('[data-test=cup-next-face] img')].filter((img) => img.checkVisibility() && img.getBoundingClientRect().width >= 24).length,
+            rowFaces: document.querySelectorAll('[data-test=cup-faces] img').length,
+            cta: box(document.querySelector('[data-test=cup-next-cta]')),
+            countdown: document.querySelector('[data-test=cup-next-countdown]')?.innerText.trim(),
+            cut,
+        };
+    }
+    JS;
+
+test('the cups\' head says tournament and brings the winner and the next cup under the organizers\' tournaments, at 320, 375 and 1280 in English and German', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
+    wonCasualCup(User::factory()->create(['name' => 'satoshi_nakamoto_21']), User::factory()->create(['name' => 'hal_finney']));
+    app(CasualCups::class)->tick();
+    cupSignups(openCup(), 3);
+    $now = CarbonImmutable::now();
+    $made = function (string $name, TournamentStatus $status, CarbonImmutable $startsAt, array $attributes = []): Tournament {
+        $tournament = Tournament::factory()->create(['name' => $name, 'starts_at' => $startsAt, 'created_by_id' => organizer()->id, ...$attributes]);
+        $tournament->forceFill(['status' => $status, 'published_at' => now()->subDay(), 'signup_closes_at' => $startsAt->subHour()])->save();
+
+        return $tournament;
+    };
+    $made('EINUNDZWANZIG Fifa 2026', TournamentStatus::Signup, $now->addDays(3), ['game' => 'ea-sports-fc-26', 'mode' => '1v1']);
+    $made('21,000 Sats, Zero Ball Control', TournamentStatus::Signup, $now->addDays(4), ['game' => 'rocket-league', 'mode' => '3v3']);
+    $words = [
+        'en' => ['Tournaments', 'The league opens a cup for every game and region on its own. Its games are casual and move only your casual Elo.'],
+        'de' => ['Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.'],
+    ];
+
+    foreach ([[1280, 900, 'en'], [375, 812, 'en'], [320, 640, 'en'], [1280, 900, 'de'], [375, 812, 'de'], [320, 640, 'de']] as [$width, $height, $lang]) {
+        $page = cupRegionsPage('/tournaments', $width, $height, '[data-test=cup-hall]');
+        // Every page of a run shares its cookies (the locale too), so each one says its language.
+        $page->goto(ComputeUrl::from('/locale/'.$lang));
+        $page->goto(ComputeUrl::from('/tournaments'));
+        BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=cup-hall]") !== null && document.fonts.status === "loaded"', 10_000);
+
+        if ($width === 1280 && $lang === 'en') {
+            cupRegionsControl($page);
+        }
+
+        $page->evaluate('() => document.querySelector("[data-test=cup-hall]").scrollIntoView()');
+        $state = $page->evaluate(CUP_HEAD_STATE);
+        cupRegionsShot($page, "cup-head-{$width}-{$lang}");
+
+        expect([$width, $lang, $state['lang'], $state['overflow'], $state['cut']])->toBe([$width, $lang, $lang, 0, []])
+            ->and([$state['kind'], $state['explainer']])->toBe($words[$lang])
+            ->and($state['winner'])->toBe('satoshi_nakamoto_21')
+            // The organizers first and larger: their block ends before the head, their hero's name and cover are bigger.
+            ->and($state['organizers']['bottom'])->toBeLessThan($state['hall']['top'])
+            ->and($state['heroName'])->toBeGreaterThan($state['nextName'])
+            ->and($state['heroCover']['height'])->toBeGreaterThan($state['nextCover']['height'])
+            // Faces: three in the next cup's seats, three in its board row.
+            ->and([$state['faces'], $state['rowFaces']])->toBe([3, 3])
+            ->and($state['cta']['height'])->toBeGreaterThanOrEqual(44);
+
+        // The sign-up button in the head's first screen, above a phone's tab bar.
+        if ($width >= 375) {
+            expect($state['cta']['bottom'] - $state['hall']['top'])->toBeLessThanOrEqual($state['floor']);
+        }
+
+        // The countdown ticks in the browser.
+        BrowserWait::until($page, '() => document.querySelector("[data-test=cup-next-countdown]").innerText.trim() !== '.json_encode($state['countdown']), 3_000);
+
+        // A Livewire round trip on the page: the head stays, the console and the answers stay clean.
+        $page->evaluate('() => window.Livewire.find(document.querySelector("[data-test=tournaments-index]").closest("[wire\\\\:id]").getAttribute("wire:id")).$refresh()');
+        BrowserWait::until($page, '() => performance.getEntries().some((e) => e.name.includes("/livewire") && e.name.includes("update") && e.responseStatus > 0)', 5_000);
+        expect($page->evaluate('() => document.querySelector("[data-test=cup-hall]") !== null'))->toBeTrue()
+            ->and($page->evaluate('() => window.__errors'))->toBe([])
             ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
     }
 });
