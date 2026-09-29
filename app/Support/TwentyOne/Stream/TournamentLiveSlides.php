@@ -234,7 +234,8 @@ class TournamentLiveSlides
         $timezone = $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : (string) config('twentyone.stream.stats.timezone', 'Europe/Berlin');
         $phase = self::phase($tournament);
         $tv = new TournamentTv($tournament);
-        $stages = $phase === 'drawing' ? [] : $tv->stages();
+        $paused = $phase === 'running' && $tournament->isPaused();
+        $stages = $phase === 'drawing' ? [] : $this->annotate($tournament, $tv->stages(), $paused);
         $pictures = [];
         $entrants = $phase === 'drawing' ? 0 : $tournament->participants()->count();
         $at = fn (?CarbonInterface $moment): ?string => $moment?->copy()->timezone($timezone)->format('D j M, H:i T');
@@ -244,7 +245,8 @@ class TournamentLiveSlides
             'status' => match ($phase) {
                 'drawing' => 'Draw pending',
                 'finished' => 'Finished',
-                default => 'Live now',
+                // Paused by an organizer or an admin (TournamentControl): nothing is played now.
+                default => $paused ? 'Paused' : 'Live now',
             },
             'name' => PublicName::clean($tournament->name),
             'game' => $this->games->name($tournament->game),
@@ -333,11 +335,11 @@ class TournamentLiveSlides
                 TournamentTv::spotlight($stages, 2));
         }
 
-        foreach ($tv->ticker(self::RESULTS) as $item) {
+        foreach ($tv->ticker(3 * self::RESULTS) as $item) {
             $box = $boxes[$item['key']] ?? null;
             $result = $box === null ? null : $this->result($box, $name);
 
-            if ($result !== null) {
+            if ($result !== null && count($snapshot['results']) < self::RESULTS) {
                 $snapshot['results'][] = $result;
             }
         }
@@ -369,6 +371,117 @@ class TournamentLiveSlides
         }
 
         return [...$snapshot, 'pictures' => $pictures];
+    }
+
+    /**
+     * The stages with what the stream needs to tell a result honestly: every
+     * box gets `outcome` from its stored result (RESULT_*), and `how` for a
+     * match decided without a game ("by forfeit"); a paused tournament has no
+     * live box. A double elimination names its last rounds (Upper final,
+     * Lower final, Grand final, Grand final reset) where the page says
+     * "Round N"; the page itself (TournamentView) is not changed.
+     *
+     * @param  list<array<string, mixed>>  $stages
+     * @return list<array<string, mixed>>
+     */
+    private function annotate(Tournament $tournament, array $stages, bool $paused): array
+    {
+        $results = TournamentMatch::query()->where('tournament_id', $tournament->id)->pluck('result', 'key')->all();
+
+        foreach ($stages as &$stage) {
+            foreach ($stage['parts'] as &$part) {
+                if ($part['kind'] === 'bracket') {
+                    $double = count($part['sections']) === 3;
+
+                    foreach ($part['sections'] as $si => &$section) {
+                        $last = count($section['columns']) - 1;
+
+                        foreach ($section['columns'] as $ci => &$column) {
+                            $label = $double ? self::finalName($column['matches'], $si, $ci === $last) : null;
+                            $column['label'] = $label ?? $column['label'];
+
+                            foreach ($column['matches'] as &$box) {
+                                $box = self::told($box, $results[$box['key']] ?? null, $paused, $label);
+                            }
+                            unset($box);
+                        }
+                        unset($column);
+                    }
+                    unset($section);
+                } elseif ($part['kind'] === 'table') {
+                    foreach ($part['rounds'] as &$round) {
+                        $round = array_map(fn (array $box): array => self::told($box, $results[$box['key']] ?? null, $paused, null), $round);
+                    }
+                    unset($round);
+                } else {
+                    $part['heats'] = array_map(fn (array $box): array => self::told($box, $results[$box['key']] ?? null, $paused, null), $part['heats']);
+                }
+            }
+            unset($part);
+        }
+        unset($stage);
+
+        return $stages;
+    }
+
+    /**
+     * A double elimination's last rounds by name: the grand final and its reset by their boxes, the last round of the
+     * upper (section 0) and the lower bracket (section 1) as their finals; null keeps the page's label.
+     *
+     * @param  list<array<string, mixed>>  $boxes
+     */
+    private static function finalName(array $boxes, int $section, bool $last): ?string
+    {
+        $brackets = array_values(array_unique(array_column($boxes, 'bracket')));
+
+        return match (true) {
+            $brackets === ['grand-final'] => 'Grand final',
+            $brackets === ['reset'] => 'Grand final reset',
+            $last && $section === 0 && $brackets === ['upper'] => 'Upper final',
+            $last && $section === 1 && $brackets === ['lower'] => 'Lower final',
+            default => null,
+        };
+    }
+
+    /**
+     * One box with its outcome as the stream may tell it, from the stored result:
+     * - `void`: voided (FairPlay, linked accounts): kept in its place, told as nothing, no score, no winner;
+     * - `double`: both sides missed it (a double no-show): no score, no winner, no draw;
+     * - `decided`: a side advanced without a played result (forfeit, disqualification, no-show, on seeding, by lot,
+     *   Armageddon): no played score; `how` says how;
+     * - `played`: a played result.
+     *
+     * @param  array<string, mixed>  $box
+     * @param  array<string, mixed>|null  $result
+     * @return array<string, mixed>
+     */
+    private static function told(array $box, ?array $result, bool $paused, ?string $round): array
+    {
+        $outcome = match (true) {
+            $result === null => 'none',
+            isset($result['void']) => 'void',
+            ($result['double_loss'] ?? false) === true => 'double',
+            ($result['forfeit'] ?? false) === true || in_array($result['decided'] ?? null, ['disqualified', 'withdrawn', 'noshow', 'seed', 'acted', 'lot', 'armageddon'], true) => 'decided',
+            default => 'played',
+        };
+        $how = $outcome === 'decided' ? match ($result['decided'] ?? null) {
+            'disqualified', 'withdrawn' => ' by forfeit',
+            'seed' => ' on seeding',
+            'lot' => ' by lot',
+            'armageddon' => ' on Armageddon',
+            default => ', no-show',
+        } : null;
+
+        if ($outcome !== 'played' && $outcome !== 'none') {
+            foreach ($box['sides'] as &$side) {
+                $side['score'] = null;
+                // A voided match names no winner; a double no-show has none.
+                $side['won'] = $outcome === 'decided' && $side['won'];
+            }
+            unset($side);
+        }
+
+        return [...$box, 'outcome' => $outcome, 'how' => $how, 'live' => $box['live'] && ! $paused, 'round' => $round ?? $box['round']];
     }
 
     /**
@@ -558,7 +671,7 @@ class TournamentLiveSlides
         $title = $section['title'] ?? ($part['title'] ?? null) ?? $stageTitle;
 
         return ['kind' => 'bracket', 'title' => (string) $title, 'columns' => $out,
-            'now' => $phase === 'running' ? $columns[$current]['label'].(($section['title'] ?? null) !== null ? ', '.mb_strtolower((string) $section['title']) : '') : null];
+            'now' => $phase === 'running' ? $columns[$current]['label'].(($section['title'] ?? null) !== null && ! str_contains(mb_strtolower($columns[$current]['label']), 'final') ? ', '.mb_strtolower((string) $section['title']) : '') : null];
     }
 
     /**
@@ -622,11 +735,13 @@ class TournamentLiveSlides
             'key' => (string) $box['key'],
             'state' => match (true) {
                 $box['bracket'] === 'bye' => 'bye',
+                ($box['outcome'] ?? null) === 'void' => 'void',
                 $box['live'] => 'live',
                 $box['status'] === 'done' => 'done',
                 default => 'waiting',
             },
-            'label' => $box['label'],
+            'label' => ($box['outcome'] ?? 'played') === 'played' ? $box['label'] : null,
+            'how' => $box['how'] ?? null,
             'from' => array_values($box['from'] ?? []),
             'sides' => $sides,
         ];
@@ -659,7 +774,9 @@ class TournamentLiveSlides
     }
 
     /**
-     * A played match as a result line; null for a bye or a match without two known sides.
+     * A match as a result line: a played one with its score from the winner's view, one decided without a game with
+     * `how` ("by forfeit") and no score, never an upset. Null for a bye, a voided match, a double no-show or a match
+     * without two known sides.
      *
      * @param  array<string, mixed>  $box
      * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
@@ -667,10 +784,11 @@ class TournamentLiveSlides
      */
     private function result(array $box, callable $name): ?array
     {
-        if ($box['bracket'] === 'bye' || $box['status'] !== 'done' || count($box['sides']) !== 2) {
+        if ($box['bracket'] === 'bye' || $box['status'] !== 'done' || count($box['sides']) !== 2 || in_array($box['outcome'] ?? null, ['void', 'double'], true)) {
             return null;
         }
 
+        $decided = ($box['outcome'] ?? null) === 'decided';
         $a = $name($box['sides'][0]['entry'] ?? null);
         $b = $name($box['sides'][1]['entry'] ?? null);
 
@@ -683,8 +801,9 @@ class TournamentLiveSlides
         [$winner, $loser] = $first === 1 ? [$b, $a] : [$a, $b];
 
         return [
-            'winner' => $winner, 'loser' => $loser, 'label' => self::score($box, $first), 'draw' => $draw, 'round' => (string) ($box['round'] ?? ''),
-            'upset' => ! $draw && is_int($winner['seed']) && is_int($loser['seed']) && $winner['seed'] - $loser['seed'] >= self::UPSET_GAP,
+            'winner' => $winner, 'loser' => $loser, 'label' => $decided ? null : self::score($box, $first), 'draw' => $draw && ! $decided, 'round' => (string) ($box['round'] ?? ''),
+            'how' => $decided ? $box['how'] : null,
+            'upset' => ! $decided && ! $draw && is_int($winner['seed']) && is_int($loser['seed']) && $winner['seed'] - $loser['seed'] >= self::UPSET_GAP,
         ];
     }
 
@@ -743,7 +862,7 @@ class TournamentLiveSlides
     }
 
     /**
-     * The champion's played matches in bracket order: round, opponent, score.
+     * The champion's played matches in bracket order: round, opponent, score (voided and decided ones left out).
      *
      * @param  array<string, array<string, mixed>>  $boxes
      * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
@@ -756,7 +875,8 @@ class TournamentLiveSlides
         foreach ($boxes as $box) {
             $index = array_search($champion, $box['ids'] ?? [], true);
 
-            if ($index === false || $box['bracket'] === 'bye' || $box['status'] !== 'done' || count($box['sides']) !== 2) {
+            // Only what was played: a voided match, a forfeit or a no-show is no step of the path.
+            if ($index === false || $box['bracket'] === 'bye' || $box['status'] !== 'done' || count($box['sides']) !== 2 || ($box['outcome'] ?? 'played') !== 'played') {
                 continue;
             }
 

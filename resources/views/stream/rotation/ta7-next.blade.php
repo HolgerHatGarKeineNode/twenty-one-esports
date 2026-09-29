@@ -1,6 +1,6 @@
 {{--
     TA7 · Arena · the call to sign up for the next tournament, after a tournament past sign-up. Dark left half over the
-    next one's blurred cover: what the tournament on show is doing ("… is live right now."), the headline "Don't watch
+    next one's blurred cover: what the tournament on show is doing ("… is live."), the headline "Don't watch
     the next one. Play it.", then the next tournament: its sharp cover, name, game line and how it runs in one line.
     Orange right half as the sign-up hero (ta1): the countdown to sign-up close in fixed digit cells, the seats with
     the faces already in, the spots left and the call to sign up. The planner only schedules this slide while a next

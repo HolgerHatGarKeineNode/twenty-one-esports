@@ -13,7 +13,10 @@
     $t = is_array($tournament ?? null) ? $tournament : [];
     $n = is_array($next ?? null) ? $next : null;
     $nt = $n ?? [];
-    $context = K::nextContext($t, K::MONO, 18, 520);
+    // The context sits where b-chrome puts its note, next to the viewer badge. It is drawn here, fitted once to the room
+    // the badge leaves (b-chrome would clean and fit it a second time and cut the sentence): only the name is shortened.
+    $badge = K::viewerBadge($viewers ?? null, 1024, 59, K::DISPLAY, 18, 18);
+    $context = K::nextContext($t, K::MONO, 18, $badge ? $badge['x0'] - 404 : 520);
     $cover = K::coverUri($nt['cover'] ?? null);
     $name = K::headline(K::text($nt, 'name', 'Tournament'), [26, 22], 360, 2);
     $nameStep = round($name['size'] * 1.12);
@@ -35,7 +38,8 @@
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
 @include('stream.rotation.partials.backdrop', ['uri' => $nt['backdrop'] ?? $backdrop ?? null])
-@include('stream.rotation.partials.b-chrome', ['stats' => $stats ?? [], 'bugNote' => $context])
+@include('stream.rotation.partials.b-chrome', ['stats' => $stats ?? []])
+<text data-unit="bug-note" data-box="380 36 {{ $badge ? $badge['x0'] - 24 : 900 }} 66" x="380" y="59" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $context }}</text>
 
 <text data-unit="headline-0" data-box="39 {{ 160 - 48 }} 617 {{ 160 + 12 }}" x="40" y="160" font-family="Unbounded" font-weight="800" font-size="44" fill="#FFFFFF">Don't watch</text>
 <text data-unit="headline-1" data-box="39 {{ 216 - 48 }} 617 {{ 216 + 12 }}" x="40" y="216" font-family="Unbounded" font-weight="800" font-size="44" fill="#FFFFFF">the next one.</text>

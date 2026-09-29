@@ -3,9 +3,11 @@
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\Admin;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\Tournaments\TournamentControl;
 use App\Support\Tournaments\TournamentRunner;
 use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
@@ -14,6 +16,7 @@ use App\Support\TwentyOne\Stream\StreamStats;
 use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use App\Support\TwentyOne\Stream\TournamentSlides;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
 /*
@@ -231,4 +234,95 @@ test('every live tournament slide renders a running and a finished tournament wi
         ->and($upcomingHow)->toContain('How it runs', 'Sign up', 'esports.einundzwanzig.space/tournaments/'.$next->id, $upcoming[0]['countdown'])->not->toContain('Now:')
         // Never a fee, a hashtag or a Lightning address.
         ->and(mb_strtolower($all))->not->toContain('fee')->not->toContain('lnurl')->not->toContain('#bitcoin');
+});
+
+/** An admin who may disqualify, pause and link accounts. */
+function liveAdmin(): User
+{
+    $admin = User::factory()->create(['name' => 'Referee']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    return $admin;
+}
+
+/** The text of every data-unit of a live slide. */
+function liveUnits(array $frame, string $scene, ?int $viewers = null): array
+{
+    $svg = SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation($scene, null, [], 0, (int) now()->getTimestampMs(), [], $frame, []), 'viewers' => $viewers], RotationPlanner::VIEWS[$scene]);
+    preg_match_all('/data-unit="([^"]+)"[^>]*>([^<]+)</', $svg, $m);
+
+    return array_combine($m[1], array_map('html_entity_decode', $m[2]));
+}
+
+test('a result decided without a game is told as that, never as a played win, an upset or a step of the path; a double no-show never as a draw', function () {
+    Queue::fake();
+    // A disqualification: seed 1 is out, seed 8 advances without a game.
+    $forfeit = runningChess(TournamentFormat::SingleElimination, 8);
+    app(TournamentControl::class)->disqualify($forfeit, liveAdmin(), $forfeit->participants()->where('seed', 1)->value('id'), 'Borrowed account');
+    // A director's no-show.
+    $noShow = runningChess(TournamentFormat::SingleElimination, 8);
+    $match = TournamentMatch::query()->where('tournament_round_id', TournamentRunner::currentRound($noShow)->id)->where('status', 'ready')->where('bracket', '!=', 'bye')->orderBy('position')->first();
+    app(TournamentRunner::class)->enterResult($match, $noShow->creator, ['result' => 'noshow-1']);
+    // A double no-show, as TournamentRunner::doubleNoShow() stores it in a Swiss round.
+    $double = runningChess(TournamentFormat::Swiss, 4);
+    TournamentMatch::query()->where('tournament_round_id', TournamentRunner::currentRound($double)->id)->where('bracket', '!=', 'bye')->orderBy('position')->first()
+        ->forceFill(['status' => 'done', 'result' => ['winner' => null, 'double_loss' => true, 'games_won' => [0.0, 0.0], 'points' => [], 'forfeit' => true, 'decided' => 'noshow', 'label' => 'double no-show', 'by' => 'league']])->save();
+
+    $f = liveFrame($forfeit);
+    $n = liveFrame($noShow);
+    $d = liveFrame($double);
+    $text = implode(' | ', liveUnits($f, 'ta5')).' | '.implode(' | ', liveUnits($n, 'tb5')).' | '.implode(' | ', liveUnits($d, 'tc5'));
+
+    expect($f['upset'])->toBeNull()
+        ->and($f['results'][0])->toMatchArray(['how' => ' by forfeit', 'label' => null, 'upset' => false])
+        ->and($n['results'][0])->toMatchArray(['how' => ', no-show', 'label' => null])
+        ->and($d['results'])->toBe([])
+        ->and($text)->toContain(' advances by forfeit', ' advances, no-show')->not->toContain(' drew ')->not->toMatch('/ beat [^|]* 1-0/')
+        // In the bracket the winner advances without a played score.
+        ->and(collect($f['board']['columns'][0]['matches'])->flatMap(fn (array $m): array => $m['sides'])->whereNotNull('score')->all())->toBe([]);
+});
+
+test('a voided match keeps its place but feeds no result, upset or path; the voided final stays out of the champion\'s path', function () {
+    Queue::fake();
+    $t = runningChess(TournamentFormat::SingleElimination, 4);
+    // Round 1: the weaker seed wins the first match (an upset), then the final; both are then voided as linked accounts.
+    liveRounds($t, 2, ['1.1']);
+    TournamentMatch::query()->where('tournament_id', $t->id)->where('status', 'done')->get()
+        ->each(fn (TournamentMatch $m) => $m->forceFill(['result' => ['void' => 'linked_accounts', 'unrated' => true] + $m->result])->save());
+    $frame = liveFrame($t);
+
+    expect($frame['phase'])->toBe('finished')
+        ->and($frame['results'])->toBe([])
+        ->and($frame['upset'])->toBeNull()
+        ->and($frame['path'])->toBe([])
+        ->and(array_values(array_unique(array_column(array_merge(...array_column($frame['board']['columns'], 'matches')), 'state'))))->toBe(['void'])
+        ->and(collect($frame['board']['columns'])->flatMap(fn (array $c): array => $c['matches'])->flatMap(fn (array $m): array => $m['sides'])->where('won', true)->all())->toBe([]);
+});
+
+test('a paused tournament says so and lists no match as on now; a double elimination names its finals', function () {
+    Queue::fake();
+    $paused = runningChess(TournamentFormat::SingleElimination, 8);
+    app(TournamentControl::class)->pause($paused, liveAdmin(), 'Server trouble');
+    $de = runningChess(TournamentFormat::DoubleElimination, 4);
+    liveRounds($de, 3);
+
+    $p = liveFrame($paused);
+    $d = liveFrame($de);
+    $units = liveUnits($p, 'ta4');
+
+    expect($p['status'])->toBe('Paused')
+        ->and($p['live'])->toBe([])
+        ->and(collect($p['board']['columns'][0]['matches'])->pluck('state')->unique()->all())->not->toContain('live')
+        ->and($units['status'])->toBe('Paused')
+        ->and($units)->not->toHaveKey('live-label')
+        ->and(array_column($d['board']['columns'], 'label'))->toBe(['Finals', 'Grand final', 'Grand final reset'])
+        ->and($d['now'])->toBe('Grand final');
+});
+
+test('the next-one slide on the desk fits its sentence once, next to the viewer badge: only the name is shortened', function () {
+    $t = runningChess(TournamentFormat::SingleElimination, 4);
+    $t->forceFill(['name' => 'The Very Long Winter Blitz Championship of the Whole League 2026'])->save();
+    $units = liveUnits(liveFrame($t), 'tb7', 12345);
+
+    expect($units['bug-note'])->toEndWith('… is live.');
 });

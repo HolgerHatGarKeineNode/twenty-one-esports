@@ -1613,7 +1613,7 @@ final class RotationKit
             $sa = is_string($sides[0]['score'] ?? null) ? self::clean($sides[0]['score']) : '';
             $sb = is_string($sides[1]['score'] ?? null) ? self::clean($sides[1]['score']) : '';
             $state = $match['state'] ?? 'live';
-            $out[] = ['a' => $a === '' ? 'Player' : $a, 'b' => $b === '' ? 'Player' : $b, 'score' => $sa !== '' && $sb !== '' && $state === 'done' ? $sa.'-'.$sb : 'vs',
+            $out[] = ['a' => $a === '' ? 'Player' : $a, 'b' => $b === '' ? 'Player' : $b, 'score' => in_array($state, ['done', 'void'], true) ? ($sa !== '' && $sb !== '' ? $sa.'-'.$sb : '') : 'vs',
                 'live' => $state === 'live' || ! isset($match['state']), 'faces' => [self::face($sides[0], $clan), self::face($sides[1], $clan)]];
         }
 
@@ -1668,6 +1668,13 @@ final class RotationKit
 
         if ($winner === '' || $loser === '') {
             return '';
+        }
+
+        // Decided without a game (TournamentLiveSlides `how`): "Hal advances by forfeit", never a played score.
+        if (in_array($result['how'] ?? null, [' by forfeit', ', no-show', ' on seeding', ' by lot', ' on Armageddon'], true)) {
+            $tail = ' advances'.$result['how'];
+
+            return self::fit($winner, $font, $size, $maxPx - self::width($tail, $font, $size) * ($font === self::MONO ? 1.0 : 1.04)).$tail;
         }
 
         $score = is_string($result['label'] ?? null) ? ' '.str_replace('–', '-', self::clean($result['label'])) : '';
@@ -1740,7 +1747,8 @@ final class RotationKit
     }
 
     /**
-     * The line that ties the next-tournament slide to the one on show: "Halving Cup is live right now." by phase.
+     * The line that ties the next-tournament slide to the one on show: "Halving Cup is live." by phase. Only the name
+     * is shortened to fit $maxPx, never the sentence; print it as it is (fitting it again would clean its "…").
      *
      * @param  array<string, mixed>  $t
      */
@@ -1749,7 +1757,7 @@ final class RotationKit
         $tail = match ($t['phase'] ?? null) {
             'finished' => ' has its champion.',
             'drawing' => ' is about to start.',
-            default => ' is live right now.',
+            default => ' is live.',
         };
         $name = self::fit(self::text($t, 'name', 'This tournament'), $font, $size, $maxPx - self::width($tail, $font, $size) * ($font === self::MONO ? 1.0 : 1.04));
 
