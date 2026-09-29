@@ -15,6 +15,10 @@ use Phrity\Net\SocketStream;
  * that sent one byte a second held the worker 49 s and more, because the
  * caller looked at its deadline only between frames. With this stream both
  * limits hold inside a frame and during the HTTP upgrade.
+ *
+ * `$maxReadBytes` caps one read on its own (a frame's payload), below the
+ * connection's budget: the NIP-47 wallet connection has a larger budget for
+ * its long wait, but still never takes one frame beyond 64 KiB.
  */
 final class BoundedSocketStream extends SocketStream
 {
@@ -26,7 +30,7 @@ final class BoundedSocketStream extends SocketStream
     /**
      * @param  resource  $stream
      */
-    public function __construct($stream, private readonly float $deadline, private readonly int $maxBytes)
+    public function __construct($stream, private readonly float $deadline, private readonly int $maxBytes, private readonly ?int $maxReadBytes = null)
     {
         parent::__construct($stream);
     }
@@ -40,6 +44,10 @@ final class BoundedSocketStream extends SocketStream
     {
         if ($this->bytesRead + $length > $this->maxBytes) {
             throw new RelayLimitExceeded('relay frame larger than the '.$this->maxBytes.' bytes allowed');
+        }
+
+        if ($this->maxReadBytes !== null && $length > $this->maxReadBytes) {
+            throw new RelayLimitExceeded('relay frame larger than the '.$this->maxReadBytes.' bytes allowed');
         }
 
         $this->waitAtMostUntilDeadline();

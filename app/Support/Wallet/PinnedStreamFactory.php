@@ -16,13 +16,14 @@ use Psr\Http\Message\UriInterface;
  * the name, so the relay sees an ordinary client.
  *
  * With a deadline (P45 audit F1, the relays of a player's DM relay list) every
- * read also stops at that deadline and a byte budget ({@see BoundedSocketStream}).
+ * read also stops at that deadline and a byte budget ({@see BoundedSocketStream}),
+ * as on the NIP-47 wallet connections.
  */
 final class PinnedStreamFactory extends BoundedStreamFactory
 {
-    public function __construct(private readonly string $host, private readonly string $ip, ?float $deadline = null, int $maxBytes = 65536)
+    public function __construct(private readonly string $host, private readonly string $ip, ?float $deadline = null, int $maxBytes = 65536, ?int $maxFrameBytes = null)
     {
-        parent::__construct($deadline, $maxBytes);
+        parent::__construct($deadline, $maxBytes, $maxFrameBytes);
     }
 
     public function createSocketClient(UriInterface $uri, ?Context $context = null): SocketClient

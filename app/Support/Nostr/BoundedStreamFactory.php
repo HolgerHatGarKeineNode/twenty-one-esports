@@ -10,12 +10,12 @@ use Psr\Http\Message\UriInterface;
 
 /**
  * Websocket connections whose every read stops at an absolute deadline and a
- * byte budget ({@see BoundedSocketStream}). Without a deadline it is phrity's
- * own factory, unchanged (the NIP-47 wallet connections wait on purpose).
+ * byte budget ({@see BoundedSocketStream}), and optionally a cap on one
+ * frame. Without a deadline it is phrity's own factory, unchanged.
  */
 class BoundedStreamFactory extends StreamFactory
 {
-    public function __construct(private readonly ?float $deadline = null, private readonly int $maxBytes = 65536)
+    public function __construct(private readonly ?float $deadline = null, private readonly int $maxBytes = 65536, private readonly ?int $maxFrameBytes = null)
     {
         parent::__construct();
     }
@@ -28,10 +28,11 @@ class BoundedStreamFactory extends StreamFactory
 
         $deadline = $this->deadline;
         $maxBytes = $this->maxBytes;
+        $maxFrameBytes = $this->maxFrameBytes;
 
-        return new class($uri, $context, $deadline, $maxBytes) extends SocketClient
+        return new class($uri, $context, $deadline, $maxBytes, $maxFrameBytes) extends SocketClient
         {
-            public function __construct(UriInterface $uri, ?Context $context, private readonly float $deadline, private readonly int $maxBytes)
+            public function __construct(UriInterface $uri, ?Context $context, private readonly float $deadline, private readonly int $maxBytes, private readonly ?int $maxFrameBytes)
             {
                 parent::__construct($uri, $context);
             }
@@ -41,7 +42,7 @@ class BoundedStreamFactory extends StreamFactory
                 $this->setTimeout(max(0.01, min((float) ($this->timeout ?? 5), $this->deadline - microtime(true))));
                 $resource = parent::connect()->detach();
 
-                return new BoundedSocketStream($resource, $this->deadline, $this->maxBytes);
+                return new BoundedSocketStream($resource, $this->deadline, $this->maxBytes, $this->maxFrameBytes);
             }
         };
     }

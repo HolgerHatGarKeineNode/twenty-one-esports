@@ -2,6 +2,8 @@
 
 namespace App\Support\Wallet;
 
+use App\Support\Nostr\BoundedSocketStream;
+use App\Support\Nostr\BoundedStreamFactory;
 use Throwable;
 use WebSocket\Client;
 use WebSocket\Message\Text;
@@ -17,9 +19,22 @@ use WebSocket\Message\Text;
  * Every relay passes {@see RelayGuard} first, and the socket is pinned to
  * the address it checked (security gate F1): a relay URL comes from a
  * connection string an organizer typed. A refused relay is never contacted.
+ *
+ * Every read on the socket stops at the round trip's own deadline and never
+ * takes a frame beyond MAX_FRAME_BYTES or the connection beyond MAX_BYTES
+ * ({@see BoundedSocketStream}; P47 audit follow-up): before, the deadline was
+ * looked at only between frames, so a relay that announced a 1e9-byte frame
+ * was a PHP fatal and one that dripped a frame held the worker 49 s. The
+ * long wait for a wallet's answer is the deadline itself, unchanged.
  */
 final class WebsocketNwcTransport implements NwcTransport
 {
+    /** Largest frame taken from a wallet relay, in bytes. */
+    public const MAX_FRAME_BYTES = 65536;
+
+    /** Bytes one connection may read in all (the upgrade answer and every frame). */
+    public const MAX_BYTES = 1048576;
+
     public function __construct(private readonly RelayGuard $guard) {}
 
     public function roundTrip(string $relay, array $request, array $filter, float $timeout, callable $accept): ?array
@@ -77,10 +92,9 @@ final class WebsocketNwcTransport implements NwcTransport
 
         try {
             $client = new Client($relay);
-
-            if ($target['ip'] !== null) {
-                $client->setStreamFactory(new PinnedStreamFactory($target['host'], $target['ip']));
-            }
+            $client->setStreamFactory($target['ip'] !== null
+                ? new PinnedStreamFactory($target['host'], $target['ip'], $deadline, self::MAX_BYTES, self::MAX_FRAME_BYTES)
+                : new BoundedStreamFactory($deadline, self::MAX_BYTES, self::MAX_FRAME_BYTES));
 
             $client->setTimeout(max(1, (int) ceil($timeout)));
             $client->text((string) json_encode(['REQ', $subscription, $filter], JSON_UNESCAPED_SLASHES));
