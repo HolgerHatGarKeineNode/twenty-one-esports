@@ -16,14 +16,17 @@ use Livewire\Component;
  * domain, newest first, with a search, and "Revoke" for a name that
  * impersonates someone or breaks the rules. A revoked name answers no more
  * and stays held until an admin lifts the hold here; the held names (revoked,
- * and given up within the change period) are listed with "Lift"
- * (Nip05Names::revoke(), P47 security audit F2). Admins only.
+ * and given up within the change period) are listed with "Lift" and a search
+ * of their own (Nip05Names::revoke(), P47 security audit F2). Admins only.
  */
 new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])] class extends Component {
     public const LIMIT = 50;
 
     #[Url(as: 'q', except: '')]
     public string $search = '';
+
+    #[Url(as: 'hq', except: '')]
+    public string $holdSearch = '';
 
     public string $flash = '';
 
@@ -41,19 +44,43 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
         $term = Nip05Names::normalize($this->search);
 
         return User::query()->whereNotNull('nip05_name')
-            ->when($term !== '', fn ($query) => $query->where('nip05_name', 'like', '%'.addcslashes($term, '%_\\').'%'))
+            ->when($term !== '', fn ($query) => $query->whereRaw("nip05_name like ? escape '!'", [self::contains($term)]))
             ->latest('nip05_changed_at')->limit(self::LIMIT)->get();
     }
 
     /**
-     * Holds in force: revoked names first, then names given up lately.
+     * Holds in force: revoked names first, then names given up lately. The
+     * search finds a name as written and as it reads ({@see Nip05Names::skeleton()}:
+     * `admin` finds the hold on `adm1n`).
      *
      * @return Collection<int, Nip05Hold>
      */
     #[Computed]
     public function holds(): Collection
     {
-        return Nip05Hold::query()->active()->orderByRaw("case when reason = 'revoked' then 0 else 1 end")->latest('id')->limit(self::LIMIT)->get();
+        $term = Nip05Names::normalize($this->holdSearch);
+        $skeleton = Nip05Names::skeleton($term);
+
+        return Nip05Hold::query()->active()
+            ->when($term !== '', fn ($query) => $query->where(fn ($query) => $query->whereRaw("name like ? escape '!'", [self::contains($term)])
+                ->when($skeleton !== '', fn ($query) => $query->orWhereRaw("skeleton like ? escape '!'", [self::contains($skeleton)]))))
+            ->orderByRaw("case when reason = 'revoked' then 0 else 1 end")->latest('id')->limit(self::LIMIT)->get();
+    }
+
+    /**
+     * A LIKE pattern for "contains `$term`" with `_` and `%` taken literally:
+     * a backslash is no escape character in SQLite unless the query names it,
+     * so the claimed-names search found nothing for `lnd_node` before (`!` is named here, on every driver).
+     */
+    private static function contains(string $term): string
+    {
+        return '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $term).'%';
+    }
+
+    #[Computed]
+    public function holdsTotal(): int
+    {
+        return Nip05Hold::query()->active()->count();
     }
 
     public function lift(int $holdId, Nip05Names $names): void
@@ -67,7 +94,7 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
             $this->flash = __('The hold on :name was lifted.', ['name' => $hold->name]);
         }
 
-        unset($this->holds);
+        unset($this->holds, $this->holdsTotal);
     }
 
     private function admin(): User
@@ -98,7 +125,7 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
         $names->revoke($user, $this->admin());
         $this->flash = __(':address was revoked.', ['address' => $name.'@'.Nip05Names::domain()]);
 
-        unset($this->claimed, $this->total, $this->holds);
+        unset($this->claimed, $this->total, $this->holds, $this->holdsTotal);
     }
 }; ?>
 
@@ -129,10 +156,14 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
         @endif
     </x-admin.panel>
 
-    <x-admin.panel :title="__('Held names')" :meta="trans_choice(':count name|:count names', $this->holds->count())" data-test="nip05-holds">
+    <x-admin.panel :title="__('Held names')" :meta="trans_choice(':count name|:count names', $this->holdsTotal)" data-test="nip05-holds">
         <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Nobody can claim these. A revoked name stays held until you lift the hold; a name given up is held for :days days against other keys.', ['days' => (int) config('esports.nip05.change_days')]) }}</p>
+        <label class="flex flex-col gap-1.5 lg:max-w-[420px]">
+            <span class="text-[13px]">{{ __('Search a held name') }}</span>
+            <input type="search" wire:model.live.debounce.300ms="holdSearch" class="h-11 w-full rounded-md border border-edge bg-ground px-3 font-mono text-[13px] text-ink" data-test="nip05-hold-search">
+        </label>
         @if ($this->holds->isEmpty())
-            <x-admin.empty :text="__('No name is held.')" />
+            <x-admin.empty :text="$holdSearch === '' ? __('No name is held.') : __('No name matches.')" />
         @else
             <ul class="m-0 flex list-none flex-col p-0">
                 @foreach ($this->holds as $hold)
@@ -145,6 +176,9 @@ new #[Title('Nostr addresses')] #[Layout('layouts::app', ['section' => 'admin'])
                     </li>
                 @endforeach
             </ul>
+            @if ($this->holdsTotal > $this->holds->count() && $holdSearch === '')
+                <p class="m-0 text-xs text-ink-2" data-test="nip05-holds-more">{{ __('Showing :shown of :total. Search to find the others.', ['shown' => $this->holds->count(), 'total' => $this->holdsTotal]) }}</p>
+            @endif
         @endif
     </x-admin.panel>
 </x-admin.page>

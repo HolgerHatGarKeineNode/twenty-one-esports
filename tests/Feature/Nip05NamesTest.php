@@ -156,6 +156,45 @@ test('one key holds at most one given-up name: each new release ends its older r
         ->and($names->claim(User::factory()->create(), 'kate'))->toStartWith('This name was given up recently');
 });
 
+test('the admin page searches the held names as written and as they read, past the first 50, with _ taken literally', function () {
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $names = app(Nip05Names::class);
+
+    foreach (['sats_queen', 'satsxqueen', 'adm1nistrator'] as $name) {
+        Nip05Hold::query()->create(['name' => $name, 'skeleton' => Nip05Names::skeleton($name), 'reason' => Nip05Hold::REVOKED, 'pubkey' => str_repeat('c', 64)]);
+    }
+
+    // 60 newer releases of 60 keys push the three past the first 50 (made directly: `filler1` and
+    // `filler11` read the same, so the second could not be claimed).
+    for ($i = 0; $i < 60; $i++) {
+        Nip05Hold::query()->create(['name' => 'filler'.$i, 'skeleton' => Nip05Names::skeleton('filler'.$i), 'reason' => Nip05Hold::RELEASED,
+            'pubkey' => str_pad(dechex($i), 64, 'd', STR_PAD_LEFT), 'held_until' => now()->addDays(30)]);
+    }
+
+    $claimed = User::factory()->create();
+    $names->claim($claimed, 'lnd_node');
+    $names->claim(User::factory()->create(), 'lndxnode');
+
+    $page = Livewire::actingAs($admin)->test('pages::admin.nip05')
+        ->assertSee('data-test="nip05-hold-search"', false)
+        ->assertSee('63 names')
+        ->assertSee('Showing 50 of 63. Search to find the others.');
+
+    $held = fn (string $search): array => $page->set('holdSearch', $search)->instance()->holds()->pluck('name')->sort()->values()->all();
+
+    expect($held('sats_queen'))->toBe(['sats_queen'])
+        ->and($held('SATSX'))->toBe(['satsxqueen'])
+        ->and($held('admin'))->toBe(['adm1nistrator'])
+        ->and($held('filler59'))->toBe(['filler59'])
+        ->and($held('nobody'))->toBe([]);
+
+    $page->set('holdSearch', 'nobody')->assertSee('No name matches.')->assertDontSee('Showing 50 of 63');
+
+    // The claimed-names search takes _ literally too.
+    expect($page->set('search', 'lnd_node')->instance()->claimed()->pluck('nip05_name')->all())->toBe(['lnd_node']);
+});
+
 test('deleting the account ends the name at once; another key gets it after the change period', function () {
     $anna = User::factory()->create();
     app(Nip05Names::class)->claim($anna, 'anna');
