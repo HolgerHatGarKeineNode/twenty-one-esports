@@ -31,7 +31,8 @@
     $hub = new HomeHub($user);
     $cups = $hub->cups();
     $live = $hub->live();
-    $games = ShellNavigation::current()->games();
+    // The board games next to chess, not behind every series game (plan "Mühle und Dame", P7).
+    $games = ShellNavigation::current()->playOrder();
 
     // A live season replaces the Block 0 strip with the season's strip.
     $liveSeason = Seasons::live();

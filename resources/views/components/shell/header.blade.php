@@ -11,7 +11,9 @@
     $nav = \App\Support\Navigation\ShellNavigation::current();
     $nav->remember();
     $user = $nav->user;
-    $games = $nav->games();
+    // The phone's game chips and the hub list the board games next to chess (plan "Mühle und Dame", P7);
+    // the desktop tabs keep their own order (tabs()): a board games tab does not fit row 1 at 1440 px.
+    $games = $nav->playOrder();
     $tabs = $nav->tabs();
     $active = $nav->activeGame();
     $onGamePage = $nav->onGamePage();

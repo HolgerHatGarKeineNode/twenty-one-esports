@@ -100,6 +100,48 @@ final class ShellNavigation
     }
 
     /**
+     * games() with the board games (plan "Mühle und Dame", P7) as one block
+     * next to chess: right after it, or where the first board game stands
+     * when the viewer played one more recently than chess. /play and home
+     * list the games in this order, so nine men's morris and checkers no
+     * longer sit behind every series game at the end.
+     *
+     * @return list<NavGame>
+     */
+    public function playOrder(): array
+    {
+        $games = $this->games();
+        $boards = array_values(array_filter($games, fn (array $game): bool => $this->registry->isBoard($game['slug'])));
+
+        if ($boards === []) {
+            return $games;
+        }
+
+        $ordered = [];
+        $placed = false;
+
+        foreach ($games as $game) {
+            if ($this->registry->isBoard($game['slug'])) {
+                if (! $placed) {
+                    array_push($ordered, ...$boards);
+                    $placed = true;
+                }
+
+                continue;
+            }
+
+            $ordered[] = $game;
+
+            if ($game['slug'] === 'chess' && ! $placed) {
+                array_push($ordered, ...$boards);
+                $placed = true;
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
      * The game tabs of row 1: the active game first, then the next games in
      * their usual order, TABS in all. Narrower widths hide tabs from the end
      * (the gtab-N tiers), so the active game has to hold the first slot to

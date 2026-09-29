@@ -281,6 +281,8 @@ new class extends Component
     $user = auth()->user();
     $chatOn = CasualLobby::chatOn();
     $games = CasualLobby::games();
+    // The board games (plan "Mühle und Dame", P7): no chat needed, their own lobby pairs them; offered on /play.
+    $boardGames = $choose ? array_keys(app(App\Games\GameRegistry::class)->boards()) : [];
     $gameName = GameNames::game($game);
     $assets = app(App\Games\GameRegistry::class)->find($game)?->assets();
     $settings = $this->settings;
@@ -328,6 +330,24 @@ new class extends Component
                 </button>
             @endforeach
         </div>
+        @if ($boardGames !== [])
+            {{-- A board game is a link to its lobby, not a choice here: its queue is the lobby's "Find opponent". --}}
+            <div class="flex flex-col gap-2" data-test="casual-boards">
+                <p class="m-0 text-xs text-ink-2">{{ __('Or a board game, right here in the browser:') }}</p>
+                {{-- One compact row: the tiles line up with the game tiles above without doubling the block's height. --}}
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    @foreach ($boardGames as $slug)
+                        @php($board = app(App\Games\GameRegistry::class)->get($slug))
+                        <a href="{{ GameNames::page($slug) }}" data-test="casual-board-{{ $slug }}"
+                           class="flex min-h-11 min-w-0 items-center gap-2 rounded-md bg-well p-1.5 text-left text-xs text-ink shadow-ring hover:bg-row-hover hover:text-ink">
+                            <x-game-cover :game="$slug" size="thumb" class="w-12 shrink-0 rounded-xs" />
+                            <b class="min-w-0 truncate leading-5"><span class="sm:hidden">{{ __($board->assets()->shortLabel) }}</span><span class="max-sm:hidden">{{ GameNames::game($slug) }}</span></b>
+                            <x-icon name="next" :size="16" class="ml-auto shrink-0 text-ink-3" />
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     @endif
 
     @if (! $chatOn)

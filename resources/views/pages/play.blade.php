@@ -1,7 +1,8 @@
 {{--
     All games and modes (/play, header concept B): every registered game
     (GameRegistry) with its cover, its modes and what a player does in it,
-    the viewer's games first. The game hub links here. Public: a guest sees
+    the viewer's games first, the board games as one group next to chess.
+    The game hub links here. Public: a guest sees
     the pages anyone can open, and "Log in to play" instead of the actions
     that need an account. The links are the navigation's own
     (App\Support\Navigation\ShellNavigation), so this page never promises
@@ -9,20 +10,10 @@
 --}}
 @php
     $nav = \App\Support\Navigation\ShellNavigation::current();
-    $games = $nav->games();
+    $games = $nav->playOrder();
     $user = $nav->user;
     $registry = app(\App\Games\GameRegistry::class);
-    $modeFacts = function (\App\Games\GameMode $mode): string {
-        $facts = [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')];
-        if ($mode->bestOf !== []) {
-            $facts[] = __('best of :list', ['list' => implode(' / ', $mode->bestOf)]);
-        }
-        if ($mode->boards !== []) {
-            $facts[] = __('clan matches on :list boards', ['list' => implode(' / ', $mode->boards)]);
-        }
-
-        return implode(', ', $facts);
-    };
+    $boards = array_values(array_filter($games, fn (array $game): bool => $registry->isBoard($game['slug'])));
     app(\App\Support\PageMeta::class)
         ->describe(__('All games and modes'), __('Every game of the TWENTY ONE esports league with its modes: :games. What each one is, how it is rated and where to play it.', ['games' => implode(', ', array_map(fn (string $game): string => \App\Support\GameNames::game($game), array_keys($registry->all())))]))
         ->card(fn () => \App\Support\Cards\PageCard::page('play'));
@@ -41,43 +32,27 @@
             <livewire:casual-play />
         @endif
 
+        {{--
+            The board games (plan "Mühle und Dame", P7) as one group right after chess (ShellNavigation::playOrder()),
+            not behind every series game at the end.
+        --}}
         <ul class="m-0 flex list-none flex-col gap-4 p-0">
             @foreach ($games as $game)
-                @php
-                    $modes = $registry->get($game['slug'])->modes();
-                    $primary = $game['actions'][0];
-                    $more = array_slice($game['actions'], 1);
-                @endphp
-                <li id="{{ $game['slug'] }}" class="grid grid-cols-1 gap-4 rounded-lg bg-card p-4 sm:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] lg:gap-6 lg:p-5" style="--game: {{ $game['colour'] }}" data-test="play-game-{{ $game['slug'] }}">
-                    <a href="{{ $game['page'] }}" class="block self-start">
-                        <x-game-cover :game="$game['slug']" size="card" class="w-full rounded-md border-b-[3px] border-(--game)" :loading="$loop->first ? 'eager' : 'lazy'" />
-                    </a>
-                    <div class="flex min-w-0 flex-col gap-3">
-                        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <h2 class="m-0 font-display text-xl font-bold"><a href="{{ $game['page'] }}" class="text-ink hover:text-ink">{{ $game['name'] }}</a></h2>
-                            @if ($game['played'])
-                                <span class="text-xs text-ink-3">{{ __('You play this') }}</span>
-                            @endif
+                @if (! $registry->isBoard($game['slug']))
+                    @include('pages.play.game', ['game' => $game, 'level' => 2, 'eager' => $loop->first])
+                @elseif ($game['slug'] === $boards[0]['slug'])
+                    <li id="board-games" class="flex scroll-mt-24 flex-col gap-3" data-test="play-board-games">
+                        <div class="flex max-w-[68ch] flex-col gap-1">
+                            <h2 class="m-0 font-display text-xl font-bold">{{ __('Board games') }}</h2>
+                            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Blitz 5+3 on a board right here in the browser: find an opponent in seconds and climb a casual ladder.') }}</p>
                         </div>
-
-                        <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">
-                            @foreach ($modes as $mode)
-                                <dt class="font-bold text-ink">{{ __($mode->name) }}</dt>
-                                <dd class="m-0 text-ink-2">{{ $modeFacts($mode) }}</dd>
+                        <ul class="m-0 flex list-none flex-col gap-4 p-0">
+                            @foreach ($boards as $board)
+                                @include('pages.play.game', ['game' => $board, 'level' => 3, 'eager' => $loop->parent->first && $loop->first])
                             @endforeach
-                        </dl>
-
-                        <div class="flex flex-wrap items-center gap-2 pt-1">
-                            <x-button :href="$primary['href']">{{ $primary['label'] }}</x-button>
-                            @foreach ($more as $link)
-                                <x-button variant="secondary" :href="$link['href']">{{ $link['label'] }}</x-button>
-                            @endforeach
-                            @guest
-                                <x-button variant="quiet" :href="route('login', ['then' => 'play'])" data-test="play-login">{{ __('Log in to play') }}</x-button>
-                            @endguest
-                        </div>
-                    </div>
-                </li>
+                        </ul>
+                    </li>
+                @endif
             @endforeach
         </ul>
     </div>
