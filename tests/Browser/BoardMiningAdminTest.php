@@ -201,11 +201,14 @@ test('two players who list each other find a rated nine men\'s morris game from 
     $first->setViewportSize($width, $height);
     $first->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
     $first->goto(ComputeUrl::from($lobby));
-    BrowserWait::until($first, '() => document.querySelector("[data-test=rated-search]")?.dataset.ratedOpen === "true"', 10_000);
-    $offered = boardMiningAdminMeasure($first, ['find-opponent', 'find-rated-opponent', 'rated-why']);
+    // As in the chess lobby (P5 of plan mempool-streifen): the Blitz tile opens the panel, Rated is its second option.
+    BrowserWait::until($first, '() => document.querySelector("[data-test=game-kind]")?.dataset.ratedOpen === "true"', 10_000);
+    $first->locator('[data-test=play-blitz]')->click();
+    $first->locator('[data-test=kind-rated]')->click();
+    $offered = boardMiningAdminMeasure($first, ['find-opponent', 'kind-rated', 'find-opponent-button']);
     shellShot($first, "board-rated-lobby-{$locale}-{$width}");
 
-    $first->locator('[data-test=find-rated-opponent]')->click();
+    $first->locator('[data-test=find-opponent-button]')->click();
     BrowserWait::until($first, '() => document.querySelector("[data-test=lobby-searching]")?.dataset.rated === "true"', 10_000);
     $searching = boardMiningAdminMeasure($first, ['lobby-searching']);
 
@@ -214,8 +217,10 @@ test('two players who list each other find a rated nine men\'s morris game from 
     $second->setViewportSize($width, $height);
     $second->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
     $second->goto(ComputeUrl::from($lobby));
-    BrowserWait::until($second, '() => document.querySelector("[data-test=find-rated-opponent]") !== null', 10_000);
-    $second->locator('[data-test=find-rated-opponent]')->click();
+    BrowserWait::until($second, '() => document.querySelector("[data-test=game-kind]")?.dataset.ratedOpen === "true"', 10_000);
+    $second->locator('[data-test=play-blitz]')->click();
+    $second->locator('[data-test=kind-rated]')->click();
+    $second->locator('[data-test=find-opponent-button]')->click();
 
     foreach ([$second, $first] as $page) {
         BrowserWait::until($page, '() => location.pathname.startsWith("/board/") && document.querySelector("[data-test=board-game]") !== null', 15_000);

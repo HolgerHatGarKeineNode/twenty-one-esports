@@ -383,8 +383,11 @@ test('the lobby offers no rated search while the rated queue is off, and refuses
     config(['esports.board_games.rated_queue' => false]);
     [$anna] = boardLobbyPlayer('Anna');
 
+    // As in the chess lobby: Rated is there but disabled, with the reason behind "?" (P5 of plan mempool-streifen).
     Livewire::actingAs($anna)->test('pages::board.lobby', ['board' => Checkers::SLUG])
-        ->assertDontSee('data-test="rated-search"', false)
+        ->assertSee('data-test="game-kind" data-rated-open="false"', false)
+        ->assertSeeHtml('data-test="kind-rated-badge"')
+        ->assertSee('Rated Checkers is not open yet. Games are casual for now.')
         ->assertSee('data-test="find-opponent"', false)
         ->call('findOpponent', true)
         ->assertSet('error', 'Rated Checkers is not open yet. Games are casual for now.');

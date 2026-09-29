@@ -11,6 +11,7 @@ import blockZeroCountdown from './blockZeroCountdown.js';
 import { profileCardHost, profileStore } from './profiles.js';
 import { dropFailedBunker, forgetForeignSession } from './millAuth.js';
 import matchDock from './matchDock.js';
+import boardLobby from './boardLobby.js';
 import playerPicker from './playerPicker.js';
 import { firstSteps, shellHeader, shellSheet } from './shellNav.js';
 import { livePlayer, liveStage } from './livePlayer.js';
@@ -38,6 +39,8 @@ document.addEventListener('livewire:init', () => dropAnswersForDetachedComponent
 document.addEventListener('alpine:init', () => {
     window.Alpine.data('nostrLogin', nostrLogin);
     window.Alpine.data('blockZeroCountdown', blockZeroCountdown);
+    // A board game's lobby (pages/board/⚡lobby): online list and "Looking to play", as chessLobby.
+    window.Alpine.data('boardLobby', boardLobby);
     // Nostr profiles of the players on a page, and the player card (P10a).
     window.Alpine.store('profiles', profileStore());
     window.Alpine.data('profileCardHost', profileCardHost);

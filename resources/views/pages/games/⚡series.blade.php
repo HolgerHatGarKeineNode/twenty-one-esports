@@ -370,7 +370,7 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                 @else
                     <x-tournaments.next-empty :game="$slug" heading-id="game-next-h" />
                 @endif
-                <x-tournaments.cup-mentions :game="$slug" />
+                <x-tournaments.cup-mentions :game="$slug" titled class="mt-4" />
             </div>
 
             {{-- Matches (P26): live, next, latest, with faces and scores. --}}

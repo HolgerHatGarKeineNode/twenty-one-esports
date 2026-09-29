@@ -1,4 +1,4 @@
-@props(['game' => null, 'except' => null, 'filters' => false, 'heading' => false, 'compact' => false])
+@props(['game' => null, 'except' => null, 'filters' => false, 'heading' => false, 'compact' => false, 'titled' => false])
 
 {{--
     The league's casual cups (P25) as a board (P53): open for sign-up or
@@ -28,6 +28,12 @@
     `except`: a tournament id to leave out (the cup whose page this is).
     `heading`: a "Casual cups" heading (home and the tournaments page); without
     the filter bar it links to the tournaments page, where the filters are.
+    `titled`: with `game`, a head that says these are tournaments (the game
+    pages: chess lobby, a board game's lobby, a series game page; P5 of plan
+    mempool-streifen, user 2026-09-29: "Casual Cups aber, kein Titel gar
+    nix....nicht gut!"): "Casual cups" with the Tournaments chip and the
+    explainer line of the tournaments page's cup head, a countdown to this
+    game's next cup to sign up for, and the way to every tournament.
     `compact`: one line per game (home: the cups stay a side mention, user
     2026-09-28); the full board lives on the tournaments page.
     `filters`: the filter bar (game, region, free places, order), without a
@@ -49,7 +55,11 @@
     // Not when the cups are switched off or the league has no key to open one: then no cup is coming, and the head would say one is.
     $cupHall = $heading && $filters && ! $cupSingle && ! $compact && CasualCups::enabledGames() !== [] && \App\Support\SeasonChain\LeagueKey::fromConfig() !== null;
     $cupWinner = $cupHall ? $cupBoard->lastWinner() : null;
-    $cupNext = $cupHall ? CupBoard::next($cupGroups) : null;
+    // A game page (`titled`): the same words as the tournaments page's cup head, and the countdown to this game's next cup.
+    // Same gate as the tournaments page's head: cups switched off or no league key means no cup is coming, so no countdown
+    // and no promise; the rows of cups still open stay, as before.
+    $cupTitled = $titled && $cupSingle && ! $compact && CasualCups::enabledGames() !== [] && \App\Support\SeasonChain\LeagueKey::fromConfig() !== null;
+    $cupNext = $cupHall || $cupTitled ? CupBoard::next($cupGroups) : null;
     $cupRegions = CasualCups::regions();
     $cupCount = array_sum(array_map(fn (array $group): int => count($group['cups']), $cupGroups));
     $segBtn = 'inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 border-0 px-3 text-[13px] whitespace-nowrap';
@@ -58,9 +68,33 @@
 @if ($cupGroups !== [] || $cupHall)
     <div {{ $attributes->class('flex flex-col gap-3') }} data-test="cup-mentions"
          @if ($cupFilters) x-data="cupBoard()" x-effect="apply()" wire:ignore @endif
-         @if ($heading) role="region" aria-labelledby="cup-board-h" id="casual-cups" @endif>
+         @if ($heading) role="region" aria-labelledby="cup-board-h" id="casual-cups" @elseif ($cupTitled) role="region" aria-labelledby="cup-game-h" @endif>
         @if ($cupHall)
             <x-tournaments.cup-hall :winner="$cupWinner" :next="$cupNext" :empty="$cupGroups === []" />
+        @elseif ($cupTitled)
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-6" data-test="cup-head">
+                <div class="flex min-w-0 flex-col gap-1">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <h2 id="cup-game-h" class="m-0 text-[15px] font-bold">{{ __('Casual cups') }}</h2>
+                        <span class="inline-flex h-6 items-center gap-1.5 rounded-tag bg-btc-chip px-2 text-xs font-bold text-btc-hi" data-test="cup-kind"><x-icon name="trophy" :size="14" />{{ __('Tournaments') }}</span>
+                    </div>
+                    <p class="m-0 max-w-[65ch] text-[13px] leading-normal text-ink-2" data-test="cup-explainer">{{ __('The league opens a cup for every game and region on its own. Its games are casual and move only your casual Elo.') }}</p>
+                </div>
+                <div class="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+                    @if ($cupNext !== null)
+                        @php
+                            $cupSeconds = max(0, (int) now()->diffInSeconds($cupNext['tournament']->starts_at, false));
+                            $cupDays = intdiv($cupSeconds, 86400);
+                            $cupCountdown = ($cupDays > 0 ? trans_choice(':count day|:count days', $cupDays).' ' : '').sprintf('%02d:%02d:%02d', intdiv($cupSeconds % 86400, 3600), intdiv($cupSeconds % 3600, 60), $cupSeconds % 60);
+                        @endphp
+                        <span class="flex items-baseline gap-2 text-ink-2" data-test="cup-next-in">
+                            {{ __('Next cup starts in') }}
+                            <b class="font-display text-[15px] text-ink tabular-nums" role="timer" x-data="countdown({ at: {{ (int) $cupNext['tournament']->starts_at->getTimestampMs() }}, days: @js(__(':count day|:count days')) })" x-text="text">{{ $cupCountdown }}</b>
+                        </span>
+                    @endif
+                    <a href="{{ route('tournaments.index') }}#casual-cups" class="inline-flex min-h-11 items-center text-btc-hi hover:text-btc" data-test="cup-all">{{ __('All casual cups') }}</a>
+                </div>
+            </div>
         @elseif ($heading)
             <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <h2 id="cup-board-h" class="m-0 text-[15px] font-bold">{{ __('Casual cups') }}</h2>

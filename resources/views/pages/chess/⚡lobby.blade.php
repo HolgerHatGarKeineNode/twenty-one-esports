@@ -527,7 +527,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
 <div class="flex grow flex-col" x-data="chessLobby(@js(['userId' => $user?->id, 'poll' => max(30, (int) config('esports.chess.lobby_poll_seconds'))]))" data-server-now="{{ (int) now()->getTimestampMs() }}" data-looking="{{ $user?->looking_to_play === 'chess/blitz' ? 'true' : 'false' }}">
     <div class="flex flex-col gap-6 px-4 pb-8 lg:gap-8 lg:px-12 lg:pb-10">
         {{-- The title below lg; from lg the header's chess bar names the page. --}}
-        <div class="flex items-baseline justify-between gap-3 lg:hidden">
+        <div class="flex items-baseline justify-between gap-3 lg:hidden" data-test="lobby-title">
             <h1 class="m-0 font-display text-2xl leading-tight font-bold">{{ __('Chess') }}</h1>
             @auth<x-rating :rating="\App\Support\Rating\Ratings::headline($user->id, 'chess', 'blitz')" :label="__('Blitz')" class="text-[13px] text-ink-2" />@endauth
         </div>
@@ -549,7 +549,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
                         <span class="flex min-w-0 grow items-center gap-3">
                             <x-player-link :user="$invite->inviter" class="shrink-0"><x-avatar :user="$invite->inviter" :size="40" class="rounded-md" /></x-player-link>
                             <span class="flex min-w-0 flex-col gap-0.5">
-                                <b class="text-[15px]">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
+                                <b class="text-[15px] wrap-anywhere">{{ __(':name invites you', ['name' => $invite->inviter->displayName()]) }}</b>
                                 <span class="text-xs text-ink-2">{{ __('Blitz 5+3 · Casual · colours drawn at random') }}</span>
                             </span>
                         </span>
@@ -570,7 +570,7 @@ new #[Layout('layouts::app', ['section' => 'chess', 'realtime' => true, 'scripts
         @else
             <x-tournaments.next-empty game="chess" heading-id="lobby-next-h" />
         @endif
-        <x-tournaments.cup-mentions game="chess" class="-mt-4 lg:-mt-6" />
+        <x-tournaments.cup-mentions game="chess" titled />
 
         {{-- The player's own business and the live lobby. Below lg in reading order: your games, live, ladder. --}}
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-start lg:gap-5">

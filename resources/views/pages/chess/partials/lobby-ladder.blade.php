@@ -1,9 +1,11 @@
 {{--
     The blitz ladder's top five in the chess lobby, from the view the ladder
     page opens on (rated once it has a result, casual before), and the way
-    to the whole ladder.
+    to the whole ladder. A board game's lobby includes it with `ladderGame`
+    (its slug); the chess lobby leaves it out.
 --}}
 @php
+    $ladderGame ??= 'chess';
     $top = $this->ladderTop;
     $rated = $top['pool'] === 'rated';
 @endphp
@@ -31,5 +33,5 @@
         </ol>
     @endif
 
-    <x-button variant="quiet" :href="route('ladder.show', ['chess', 'blitz'])" class="self-start" data-test="lobby-ladder-link">{{ __('Open the blitz ladder') }}</x-button>
+    <x-button variant="quiet" :href="route('ladder.show', [$ladderGame, 'blitz'])" class="self-start" data-test="lobby-ladder-link">{{ __('Open the blitz ladder') }}</x-button>
 </section>
