@@ -39,6 +39,10 @@ new class extends Component {
     #[Locked]
     public ?int $excludeSeries = null;
 
+    /** The board game on screen (plan "Mühle und Dame", P5), which never has a tab. */
+    #[Locked]
+    public ?int $excludeBoard = null;
+
     /** On a running game page: the dock goes into the title row from lg. */
     #[Locked]
     public bool $gamePage = false;
@@ -50,6 +54,7 @@ new class extends Component {
     public function mount(): void
     {
         ['game' => $this->excludeGame, 'series' => $this->excludeSeries] = OpenMatches::onScreen(request());
+        $this->excludeBoard = OpenMatches::boardOnScreen(request());
 
         if ($this->excludeGame !== null) {
             $game = ChessGame::query()->find($this->excludeGame);
@@ -64,7 +69,7 @@ new class extends Component {
     #[Computed]
     public function items(): Collection
     {
-        return app(OpenMatches::class)->for($this->user(), $this->excludeGame, $this->excludeSeries);
+        return app(OpenMatches::class)->for($this->user(), $this->excludeGame, $this->excludeSeries, $this->excludeBoard);
     }
 
     private function user(): User

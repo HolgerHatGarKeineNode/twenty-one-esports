@@ -11,6 +11,7 @@ use App\Models\TournamentStage;
 use App\Support\Tournaments\Engine\Standings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Route;
 
 /**
  * The public view of a running or finished tournament, built from the stored
@@ -35,7 +36,7 @@ final class TournamentView
     public function stages(): array
     {
         $matches = TournamentMatch::query()->where('tournament_id', $this->tournament->id)
-            ->with(['round', 'slots', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
+            ->with(['round', 'slots', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
         $stages = [];
 
         foreach (TournamentStage::query()->where('tournament_id', $this->tournament->id)->orderBy('number')->get() as $stage) {
@@ -192,7 +193,8 @@ final class TournamentView
     {
         $result = $match->result;
         $winner = $result['winner'] ?? null;
-        $chess = $this->tournament->profile()->isChess();
+        // One game per match (chess, and the board games of plan "Mühle und Dame", P5): 1, ½, 0.
+        $chess = $this->tournament->profile()->isChess() || $this->tournament->profile()->isBoard();
         $sides = [];
 
         foreach ($match->slots as $slot) {
@@ -225,7 +227,8 @@ final class TournamentView
             'number' => $match->seriesMatch !== null ? $match->seriesMatch->number : $match->chessGame?->number,
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)
-                : ($match->chessGame !== null ? route('games.show', $match->chessGame) : null),
+                : ($match->chessGame !== null ? route('games.show', $match->chessGame)
+                    : ($match->boardGame !== null && Route::has('board.show') ? route('board.show', $match->boardGame) : null)),
             // A result set on the tournament control (P18) is marked like a director's.
             'director' => $match->isDirectorResult() || ($result['by'] ?? null) === 'control' ? self::marker((array) $result) : null,
             'held' => $match->held !== null,

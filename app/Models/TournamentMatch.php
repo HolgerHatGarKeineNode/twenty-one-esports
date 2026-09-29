@@ -25,7 +25,8 @@ use Illuminate\Support\Carbon;
  * league decided itself (a withdrawn side, the double no-show rule, the
  * higher seed after the last drawn replay), with `forfeit`, `double_loss`
  * and `decided` (`withdrawn`, `noshow`, `seed`). The normal match it is played as is
- * {@see seriesMatch()} (Rocket League) or {@see chessGame()} (chess).
+ * {@see seriesMatch()} (Rocket League) or {@see chessGame()} (chess), or
+ * {@see boardGame()} for a board game other than chess (plan "Mühle und Dame", P5).
  *
  * @property int $id
  * @property int $tournament_id
@@ -48,6 +49,7 @@ use Illuminate\Support\Carbon;
  * @property-read Tournament $tournament
  * @property-read SeriesMatch|null $seriesMatch
  * @property-read ChessGame|null $chessGame
+ * @property-read BoardGame|null $boardGame
  */
 #[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule'])]
 class TournamentMatch extends Model
@@ -89,6 +91,16 @@ class TournamentMatch extends Model
     public function chessGame(): HasOne
     {
         return $this->hasOne(ChessGame::class)->latestOfMany();
+    }
+
+    /**
+     * The latest game of a board game match (nine men's morris, checkers).
+     *
+     * @return HasOne<BoardGame, $this>
+     */
+    public function boardGame(): HasOne
+    {
+        return $this->hasOne(BoardGame::class)->latestOfMany();
     }
 
     /**

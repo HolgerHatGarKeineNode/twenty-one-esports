@@ -2,6 +2,7 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\NotificationKind;
 use App\Enums\SeriesResolution;
@@ -18,6 +19,8 @@ use App\Models\TournamentResultEntry;
 use App\Models\TournamentRound;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
@@ -93,6 +96,7 @@ final class TournamentControl
         private ChessGameService $chess,
         private Notifier $notifier,
         private RatingService $ratings,
+        private BoardGameService $boards,
     ) {}
 
     /* ---------- 1. Results ------------------------------------------------------------------------------------ */
@@ -177,6 +181,8 @@ final class TournamentControl
 
             // The series or game still being played ends with this result, as the league's decision.
             $this->closeWithResult($match, $series, $game, $stored, $reason, $actor);
+            // A board game still being played (plan "Mühle und Dame", P5) is voided: the league's result stands.
+            $this->voidBoard($match);
             [$voided, $held] = $this->propagate($locked, $match->id, $before, $actor);
 
             if ($locked->status === TournamentStatus::Finished) {
@@ -464,7 +470,7 @@ final class TournamentControl
                 'user_id' => $actor->id,
                 'name' => $actor->displayName(),
             ],
-            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id)),
+            'replaced_through' => max((int) $match->replaced_through, (int) ($match->seriesMatch->id ?? $match->chessGame->id ?? $match->boardGame?->id)),
         ])->save();
     }
 
@@ -498,7 +504,30 @@ final class TournamentControl
             return true;
         }
 
-        return false;
+        return $this->voidBoard($match);
+    }
+
+    /**
+     * Void the live board game of a match (plan "Mühle und Dame", P5): it
+     * ends unrated and no longer counts here. True if one was under way.
+     */
+    private function voidBoard(TournamentMatch $match): bool
+    {
+        $board = $match->boardGame()->first();
+
+        if ($board === null || $match->isReplaced($board->id) || $board->status !== BoardGameStatus::Active) {
+            return false;
+        }
+
+        try {
+            $this->boards->void($board);
+        } catch (BoardRuleViolation) {
+            // It ended on its own a moment ago: superseded all the same.
+        }
+
+        $match->forceFill(['replaced_through' => $board->id])->save();
+
+        return true;
     }
 
     /**
@@ -594,12 +623,14 @@ final class TournamentControl
         $forfeited = [];
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereNull('result')->where('bracket', '!=', 'bye')
             ->whereHas('slots', fn ($slot) => $slot->where('tournament_participant_id', $participant->id))
-            ->with(['slots.participant', 'seriesMatch', 'chessGame'])->get();
+            ->with(['slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->get();
 
         foreach ($matches as $match) {
             $series = $this->current($match, $match->seriesMatch);
             $game = $this->current($match, $match->chessGame);
-            $running = ($series !== null && $series->status->isRunning()) || ($game !== null && $game->status === ChessGameStatus::Active);
+            $board = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
+            $running = ($series !== null && $series->status->isRunning()) || ($game !== null && $game->status === ChessGameStatus::Active)
+                || ($board !== null && $board->status === BoardGameStatus::Active);
 
             if (! $running || count($match->slots) !== 2) {
                 continue;
@@ -630,6 +661,9 @@ final class TournamentControl
                 } catch (ChessRuleViolation) {
                     // It ended on its own a moment ago; the forfeit stored here decides the match.
                 }
+            } elseif ($board !== null) {
+                // A board game (P5) ends unrated; the forfeit stored here decides the match.
+                $this->voidBoard($match);
             }
 
             $forfeited[] = $this->label($match);

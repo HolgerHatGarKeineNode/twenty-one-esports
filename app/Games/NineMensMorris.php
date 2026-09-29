@@ -43,7 +43,7 @@ final class NineMensMorris extends BoardGame
 
     public function assets(): GameAssets
     {
-        return new GameAssets('grid', 'var(--color-edge)', 'var(--color-line)', 'Morris');
+        return new GameAssets('morris', 'var(--color-edge)', 'var(--color-line)', 'Morris', new GameCover('nine-mens-morris'));
     }
 
     public function rules(): BoardRules

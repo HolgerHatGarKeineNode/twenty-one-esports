@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Games\GameRegistry;
+use Illuminate\Support\Facades\Route;
 
 /**
  * Display names and pages of the registered games, translated: the game
@@ -31,15 +32,15 @@ final class GameNames
     }
 
     /**
-     * The page of a game: the chess lobby, or the overview of a series game.
-     * Chess is the one game that is not played as a series. A board game has
-     * no page of its own before P5 of plan "Mühle und Dame": the list of all
-     * games, never the chess lobby.
+     * The page of a game: the chess lobby, the overview of a series game, or
+     * the lobby of a board game (plan "Mühle und Dame", P5), never the chess
+     * lobby for it.
      */
     public static function page(string $game): string
     {
+        // A route table cached before the switch went on has no lobby yet: the list of all games then.
         if (app(GameRegistry::class)->isBoard($game)) {
-            return route('play');
+            return Route::has('board.lobby') ? route('board.lobby', $game) : route('play');
         }
 
         return app(GameRegistry::class)->isSeries($game) ? route('games.series', $game) : route('chess.lobby');

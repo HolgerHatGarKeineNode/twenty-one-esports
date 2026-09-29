@@ -452,8 +452,8 @@ final class PageCardFacts
     private static function countPage(string $page): array
     {
         $registry = app(GameRegistry::class);
-        // The games the site offers: a board game is counted once it is playable (plan "Mühle und Dame", P5).
-        $offered = array_diff_key($registry->all(), $registry->boards());
+        // The games the site offers, the board games switched on included (plan "Mühle und Dame", P5).
+        $offered = $registry->all();
         $liveGames = fn (): int => ChessGame::query()->where('status', ChessGameStatus::Active)->count();
         $players = fn (): int => User::query()->count();
         $next = fn (): ?Tournament => Tournament::query()->special()->whereNotNull('published_at')->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])

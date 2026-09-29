@@ -217,7 +217,8 @@ new class extends Component {
      */
     private function resultInput(TournamentMatch $match): array
     {
-        if ($this->tournament->profile()->isChess()) {
+        // A board game's result is one game, entered as chess's (plan "Mühle und Dame", P5).
+        if ($this->tournament->profile()->isChess() || $this->tournament->profile()->isBoard()) {
             return ['result' => $this->chessResult];
         }
 
@@ -267,7 +268,7 @@ new class extends Component {
     $tournament = $this->tournament;
     $status = $tournament->status;
     $running = $status === TournamentStatus::Running;
-    $chess = $tournament->profile()->isChess();
+    $chess = $tournament->profile()->isChess() || $tournament->profile()->isBoard();
     $field = 'h-11 w-full min-w-0 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink';
     $name = fn (TournamentMatch $match, int $slot): string => $match->slots[$slot]->participant->name ?? __('open');
 @endphp

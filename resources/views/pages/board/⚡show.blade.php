@@ -167,18 +167,25 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 'outcome' => ['wins' => __(':name wins'), 'draw' => __('Draw'), 'aborted' => __('Game aborted')],
                 'reasons' => [
                     'resignation' => __('Resignation'), 'timeout' => __('Out of time'), 'agreement' => __('Draw by agreement'), 'aborted' => __('Aborted'),
+                    'forfeit' => __('No first move'), 'voided' => __('Voided by the league'),
                     ...array_map(fn (string $label): string => __($label), $reasons),
                 ],
                 'errors' => ['illegal_move' => __('That move is not legal here.'), 'not_your_turn' => __('It is not your turn.'),
                     'out_of_sync' => __('The board was behind. It shows the latest position now.'), 'game_over' => __('The game is already over.'),
                     'not_a_player' => __('Only the two players can do that.'), 'too_late_to_abort' => __('Both sides have moved, the game can no longer be aborted.'),
+                    'tournament_game' => __('A tournament game cannot be aborted.'),
                     'default' => __('That did not work. The board shows the server\'s state.')],
             ],
         ];
     }
 }; ?>
 
-@php($config = $this->config())
+@php
+    $config = $this->config();
+    // A guest has the "New here?" strip above the page (P5, from the P2 review): the board gives up what the first
+    // viewport lacks, so the lower player card stays in view at 1440 x 900; players and logged-in spectators keep 560 px.
+    $boardColumn = auth()->guest() ? 'lg:grid-cols-[minmax(0,min(560px,calc(100dvh-340px)))_minmax(0,1fr)]' : 'lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]';
+@endphp
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
     <div wire:ignore x-data="boardGame(@js($config))" class="mx-auto flex w-full max-w-[1000px] flex-col gap-4 lg:gap-5" data-test="board-game">
@@ -186,6 +193,8 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
         {{-- Title row --}}
         <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
             <h1 class="m-0 font-display text-[22px] font-bold lg:text-[28px]">{{ GameNames::game($boardGame->game) }}</h1>
+            {{-- The lobby of this board game (P5): the next opponent, the ladder. --}}
+            <a href="{{ route('board.lobby', $boardGame->game) }}" class="text-[13px] text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink hover:decoration-btc" data-test="board-lobby-link">{{ __('Lobby') }}</a>
             <span class="grow"></span>
             <span role="status" class="flex h-[34px] items-center gap-2 rounded-md px-3 text-[13px]"
                   :class="connection === 'connected' ? 'bg-[#122016] text-win' : 'bg-[#241D10] text-btc-hi'">
@@ -195,7 +204,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
             <span class="flex h-[34px] items-center rounded-md bg-btc-press px-3.5 text-[13px] font-bold text-btc-hi" x-text="statusLine" data-test="status-line"></span>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] lg:gap-7">
+        <div @class(['grid grid-cols-1 gap-4 lg:gap-7', $boardColumn])>
             {{-- The board: the rules describe it, the script draws it --}}
             <div class="flex min-w-0 flex-col gap-3">
                 <div class="flex items-center justify-between gap-3 rounded-lg bg-card px-3 py-2" data-test="player-top">
@@ -220,7 +229,14 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
                 <p role="alert" class="m-0 text-[13px] text-loss" x-show="error" x-text="error" data-test="board-error"></p>
 
                 <template x-if="state.status !== 'active'">
-                    <div class="rounded-lg bg-card p-4 text-base font-bold" data-test="result" x-text="outcome"></div>
+                    <div class="flex flex-col gap-3 rounded-lg bg-card p-4">
+                        <span class="text-base font-bold" data-test="result" x-text="outcome"></span>
+                        @if ($boardGame->tournament_match_id === null)
+                            <x-button :href="route('board.lobby', $boardGame->game)" icon="bolt" data-test="next-opponent">{{ __('Find next opponent') }}</x-button>
+                        @else
+                            <x-button variant="secondary" :href="route('tournaments.show', $boardGame->tournamentMatch?->tournament_id ?? 0)" data-test="back-to-tournament">{{ __('Back to the tournament') }}</x-button>
+                        @endif
+                    </div>
                 </template>
 
                 <template x-if="color && state.status === 'active' && state.drawOffer && state.drawOffer !== color">
@@ -235,9 +251,12 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/bo
 
                 <template x-if="color && state.status === 'active'">
                     <div class="grid grid-cols-2 gap-2">
-                        <template x-if="state.ply < 2">
-                            <x-button variant="quiet" x-on:click="call('abort')" data-test="abort">{{ __('Abort game') }}</x-button>
-                        </template>
+                        {{-- A tournament game cannot be aborted: a missed first move is the league's to decide (P5). --}}
+                        @if ($boardGame->tournament_match_id === null)
+                            <template x-if="state.ply < 2">
+                                <x-button variant="quiet" x-on:click="call('abort')" data-test="abort">{{ __('Abort game') }}</x-button>
+                            </template>
+                        @endif
                         <template x-if="state.ply >= 2">
                             <x-button variant="quiet" x-on:click="call('offerDraw')" x-bind:disabled="state.drawOffer === color" data-test="offer-draw">
                                 <span x-text="state.drawOffer === color ? @js(__('Draw offered')) : @js(__('Offer draw'))"></span>

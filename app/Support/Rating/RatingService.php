@@ -6,6 +6,7 @@ use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentStatus;
 use App\Jobs\SyncRankBadges;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Rating;
 use App\Models\RatingChange;
@@ -31,6 +32,10 @@ use InvalidArgumentException;
  *   and a series with a deleted lineup rate nothing. A tournament series
  *   between two single players (RL 1v1 entries, P8b) rates the two players;
  *   a mix team (a roster side of several players) is never rated.
+ * - A board game other than chess (plan "Mühle und Dame", P5) rates its two
+ *   players on the casual ladder of that board game, White as the
+ *   challenger: the rating row names the board game, so chess ratings never
+ *   move. Board games have no rated ladder before they mine (P6).
  * - A rated game or series goes to the season ladder, but only while that
  *   ladder is open ({@see Ladders}); before Block 0 there is none and a rated
  *   result moves nothing (fail closed). A rated series counts only on the
@@ -90,6 +95,38 @@ final class RatingService
             ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],
             ['subject' => 'user:'.$game->black_id, 'user_id' => $game->black_id],
             $score, RatingChange::CHESS, $game->id, $game->number,
+        );
+    }
+
+    /**
+     * A finished game of a board game other than chess: casual, on the ladder
+     * of its own board game and mode (plan "Mühle und Dame", P5).
+     *
+     * @return bool whether any rating moved
+     */
+    public function applyBoardGame(BoardGame $game): bool
+    {
+        $score = match ($game->result) {
+            '1-0' => 1.0,
+            '0-1' => 0.0,
+            '1/2-1/2' => 0.5,
+            default => null,
+        };
+
+        if ($score === null || $game->white_id === null || $game->black_id === null || self::inCalledOffTournament($game->tournament_match_id)) {
+            return false;
+        }
+
+        // Two accounts of one person (P41): their results are void and rate nothing.
+        if (FairPlay::samePerson([$game->white_id], [$game->black_id])) {
+            return false;
+        }
+
+        return $this->apply(
+            false, $game->game, $game->mode,
+            ['subject' => 'user:'.$game->white_id, 'user_id' => $game->white_id],
+            ['subject' => 'user:'.$game->black_id, 'user_id' => $game->black_id],
+            $score, RatingChange::BOARD, $game->id, null,
         );
     }
 

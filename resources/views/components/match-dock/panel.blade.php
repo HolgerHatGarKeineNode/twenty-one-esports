@@ -16,8 +16,10 @@
     $share = $item->fuseShare($nowMs);
     $isGame = $model instanceof ChessGame;
     $isSeries = $model instanceof SeriesMatch;
+    // A board game (plan "Mühle und Dame", P5): its sentence and clock below, the board on its page.
+    $isBoard = $model instanceof \App\Models\BoardGame;
     $cta = match (true) {
-        $isGame => $item->needsYou ? __('Play your move') : __('Open game'),
+        $isGame, $isBoard => $item->needsYou ? __('Play your move') : __('Open game'),
         $isSeries => match ($item->phase) {
             'accept' => __('Review the result'),
             'answer' => __('Answer the challenge'),
@@ -31,7 +33,7 @@
      x-show="open === @js('item:'.$item->key)" x-cloak
      class="dk-panel dk-rise" data-panel="{{ $item->key }}" data-test="dock-panel">
     <div class="flex h-[52px] items-center gap-2 border-b border-hairline pr-1 pl-4">
-        @if ($item->isChess())<x-icon name="chess" :size="16" class="text-ink-2" />@else<span class="dk-slot text-ink-2">{{ $item->gameMark() }}</span>@endif
+        @if ($item->isChess())<x-icon name="chess" :size="16" class="text-ink-2" />@elseif ($item->boardIcon() !== null)<x-icon :name="$item->boardIcon()" :size="16" class="text-ink-2" />@else<span class="dk-slot text-ink-2">{{ $item->gameMark() }}</span>@endif
         <span class="text-[13px] font-bold whitespace-nowrap">{{ $item->title }}</span>
         @if ($item->number !== '')
             <a href="{{ $item->href }}" class="inline-flex min-h-11 min-w-11 items-center justify-center text-[13px]">{{ $item->number }}</a>

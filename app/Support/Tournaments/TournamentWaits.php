@@ -2,9 +2,11 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentStatus;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -48,7 +50,7 @@ final class TournamentWaits
 
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', '!=', 'bye')
             ->where(fn ($query) => $query->whereNotNull('held')->orWhere(fn ($query) => $query->where('status', 'ready')->whereNull('result')))
-            ->with(['round', 'slots.participant', 'seriesMatch.latestReport', 'chessGame'])->orderBy('id')->get();
+            ->with(['round', 'slots.participant', 'seriesMatch.latestReport', 'chessGame', 'boardGame'])->orderBy('id')->get();
 
         $waits = [];
 
@@ -120,6 +122,12 @@ final class TournamentWaits
             return self::chess($base, $game);
         }
 
+        $board = $match->boardGame;
+
+        if ($board !== null && ! $match->isReplaced($board->id) && $board->status === BoardGameStatus::Active) {
+            return self::board($base, $board);
+        }
+
         $series = $match->seriesMatch;
         $series = $series !== null && ! $match->isReplaced($series->id) && $series->status->isRunning() ? $series : null;
 
@@ -161,6 +169,29 @@ final class TournamentWaits
         }
 
         return $base->make('playing');
+    }
+
+    /**
+     * A board game of a tournament match (plan "Mühle und Dame", P5): before
+     * both first moves the side to move has the first-move window (White
+     * missing it aborts the game, Black loses by forfeit); then it plays.
+     */
+    private static function board(WaitBuilder $base, BoardGame $game): MatchWait
+    {
+        $base->subject('board:'.$game->id)->url(route('board.show', $game));
+
+        if ($game->clocksRunning()) {
+            return $base->make('playing');
+        }
+
+        $at = $game->deadline_ms === null ? null : CarbonImmutable::createFromTimestampMs($game->deadline_ms);
+        $since = CarbonImmutable::createFromTimestampMs($game->turn_started_ms);
+        $mover = (int) ($game->turn === 'w' ? $game->white_id : $game->black_id);
+        $base->waitOnUsers([$mover]);
+
+        return $game->ply === 0
+            ? $base->make('first_move', since: $since, decidesAt: $at, consequence: 'The game is aborted', action: 'Make your first move, or the game is aborted.')
+            : $base->make('first_move', since: $since, decidesAt: $at, consequence: ':name loses by forfeit', action: 'Make your first move, or you lose by forfeit.', params: ['name' => $base->nameOf($mover)]);
     }
 
     /**
@@ -259,7 +290,7 @@ final class TournamentWaits
         $slot = CasualCups::autoSlot($endsAt, CasualCups::timezoneOf($tournament));
         $params = ['time' => LeagueTime::stamp($slot)];
 
-        if ($tournament->profile()->isChess()) {
+        if ($tournament->profile()->isChess() || $tournament->profile()->isBoard()) {
             return $base->waitOnSlot(0)->waitOnSlot(1)->make('not_started', decidesAt: $slot,
                 consequence: 'The league starts the game at :time', action: 'Start your cup game with your opponent, or the league starts it at :time.', params: $params, timeAt: $slot);
         }

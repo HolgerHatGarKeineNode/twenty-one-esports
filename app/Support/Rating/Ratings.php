@@ -3,6 +3,7 @@
 namespace App\Support\Rating;
 
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\LineupSeat;
 use App\Models\Rating;
@@ -183,6 +184,25 @@ final class Ratings
         };
 
         return ['w' => $side($game->white_id, $game->black_id), 'b' => $side($game->black_id, $game->white_id)];
+    }
+
+    /**
+     * Both players of a board game other than chess on the casual ladder of
+     * that board game (plan "Mühle und Dame", P5), with this game's change
+     * once it moved their rating (`delta` null otherwise).
+     *
+     * @return array{w: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}, b: array{rating: int, results: int, wins: int, draws: int, losses: int, provisional: bool, tier: string|null, pool: string, before: int|null, delta: int|null}}
+     */
+    public static function forBoardGame(BoardGame $game): array
+    {
+        $now = self::forUsers(array_values(array_filter([$game->white_id, $game->black_id], fn (?int $id): bool => $id !== null)), $game->game, $game->mode, Rating::CASUAL);
+        $changes = self::changesOf(RatingChange::BOARD, $game->id);
+        $side = fn (?int $userId): array => ($userId !== null && isset($now[$userId]) ? $now[$userId] : self::summary(null, Rating::CASUAL)) + [
+            'before' => $userId === null ? null : ($changes['user:'.$userId] ?? null)?->before,
+            'delta' => $userId === null ? null : ($changes['user:'.$userId] ?? null)?->delta,
+        ];
+
+        return ['w' => $side($game->white_id), 'b' => $side($game->black_id)];
     }
 
     /**

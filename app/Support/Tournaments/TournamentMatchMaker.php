@@ -2,6 +2,7 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\LineupRole;
 use App\Enums\SeriesResolution;
@@ -9,6 +10,7 @@ use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Lineup;
 use App\Models\LineupSeat;
@@ -19,6 +21,8 @@ use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\TournamentRound;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\Chess\RatedChess;
@@ -74,6 +78,7 @@ final class TournamentMatchMaker
         private RatedTrustGate $gate,
         private GameRegistry $games,
         private CasualCupNotices $cupNotices,
+        private BoardGameService $boards,
     ) {}
 
     /**
@@ -98,7 +103,7 @@ final class TournamentMatchMaker
         // A held match (P18) waits for an organizer's or admin's decision.
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')
-            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
         $current = TournamentRunner::currentRound($tournament);
 
         foreach ($matches as $match) {
@@ -153,6 +158,30 @@ final class TournamentMatchMaker
     }
 
     /**
+     * A casual cup's board game match whose players agreed to play now (an
+     * accepted "Play your cup match" invite, BoardInvites; plan "Mühle und
+     * Dame", P5): as startInvited() for chess. Null when it cannot start.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function startInvitedBoard(TournamentMatch $match, User $acceptedBy): ?BoardGame
+    {
+        $tournament = $match->tournament()->firstOrFail();
+
+        if (! $tournament->isCasualCup() || ! $tournament->profile()->isBoard() || $match->boardGame !== null) {
+            return null;
+        }
+
+        $match = TournamentMatch::query()->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->findOrFail($match->id);
+
+        if ($this->startLocked($tournament, $match, $acceptedBy) !== true) {
+            return null;
+        }
+
+        return BoardGame::query()->where('tournament_match_id', $match->id)->latest('id')->first();
+    }
+
+    /**
      * Start one match inside startReady()'s transaction. Null when the
      * tournament is paused or no longer running, false when the match
      * cannot start now, true when it started.
@@ -191,6 +220,16 @@ final class TournamentMatchMaker
                 $this->pinPairing($tournament, $match, $a, $b);
             } elseif (self::needsGame($match)) {
                 return $this->startGame($tournament, $match, $a, $b, $acceptedBy) !== null;
+            }
+
+            return true;
+        }
+
+        // A board game other than chess (plan "Mühle und Dame", P5): one game on the board game core,
+        // started as a chess game is; in director mode played elsewhere, with the result entered.
+        if ($tournament->profile()->isBoard()) {
+            if (! $tournament->isDirectorMode() && self::needsBoardGame($match)) {
+                return $this->startBoardGame($tournament, $match, $a, $b, $acceptedBy) !== null;
             }
 
             return true;
@@ -256,6 +295,54 @@ final class TournamentMatchMaker
             $game->status === ChessGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnGames($match) <= TournamentRunner::drawnReplays($match->tournament),
             default => false,
         };
+    }
+
+    /**
+     * A board game match needs a (new) game as a chess match does
+     * ({@see needsGame()}): none yet, a knockout draw (replayed with the
+     * colours swapped, at most `drawn_replays` times), or a game aborted
+     * because White missed the first move (restarted `first_move_restarts` times).
+     */
+    public static function needsBoardGame(TournamentMatch $match): bool
+    {
+        $game = $match->boardGame;
+
+        return match (true) {
+            $game === null, $match->isReplaced($game->id) => true,
+            $game->status === BoardGameStatus::Aborted => TournamentRunner::abortedBoardGames($match) <= TournamentRunner::firstMoveRestarts(),
+            $game->status === BoardGameStatus::Finished && $game->result === '1/2-1/2' && ! TournamentRunner::allowsDraw($match) => TournamentRunner::drawnBoardGames($match) <= TournamentRunner::drawnReplays($match->tournament),
+            default => false,
+        };
+    }
+
+    private function startBoardGame(Tournament $tournament, TournamentMatch $match, TournamentParticipant $a, TournamentParticipant $b, ?User $acceptedBy = null): ?BoardGame
+    {
+        $first = User::query()->find($a->memberIds()[0] ?? 0);
+        $second = User::query()->find($b->memberIds()[0] ?? 0);
+
+        if ($first === null || $second === null) {
+            return null;
+        }
+
+        // Slot 0 has White; a knockout replay after a draw swaps the colours, a restart keeps them.
+        $last = $match->boardGame !== null && ! $match->isReplaced($match->boardGame->id) ? $match->boardGame : null;
+        $swap = $last !== null && ($last->status === BoardGameStatus::Aborted ? $last->white_id !== $first->id : $last->white_id === $first->id);
+        [$white, $black] = $swap ? [$second, $first] : [$first, $second];
+
+        try {
+            $game = $this->boards->start($tournament->game, $white, $black, $tournament->mode, $match->id,
+                BoardGame::query()->where('tournament_match_id', $match->id)->count() + 1, TournamentDeadlines::checkinSeconds($tournament));
+        } catch (BoardRuleViolation) {
+            // Busy in another live game, or the board game is switched off: the next run tries again.
+            return null;
+        }
+
+        // A cup game may start while its players are away (the auto slot): they are told on every channel.
+        if ($tournament->isCasualCup()) {
+            $this->cupNotices->gameStarted($tournament, $game, $acceptedBy);
+        }
+
+        return $game;
     }
 
     /**

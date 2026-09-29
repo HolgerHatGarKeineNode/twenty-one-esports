@@ -1,14 +1,19 @@
 <?php
 
+use App\Enums\BoardGameStatus;
+use App\Enums\BoardInviteStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\ChessInviteStatus;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Models\BoardInvite;
 use App\Models\ChessInvite;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Board\BoardInvites;
+use App\Support\Board\BoardRuleViolation;
 use App\Support\Chess\ChessInvites;
 use App\Support\Chess\ChessRuleViolation;
 use App\Support\LeagueTime;
@@ -146,7 +151,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     /**
      * The viewer's open chess match in this casual cup, with its invites.
      *
-     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, zone: string, evening: bool, game: \App\Models\ChessGame|null, incoming: ChessInvite|null, outgoing: ChessInvite|null, series: bool, agreed: \Carbon\CarbonImmutable|null, seriesMatch: \App\Models\SeriesMatch|null, mine: bool}|null
+     * @return array{match: TournamentMatch, opponent: string, endsAt: \Carbon\CarbonInterface, slot: \Carbon\CarbonImmutable, zone: string, evening: bool, game: \App\Models\ChessGame|\App\Models\BoardGame|null, gameUrl: string|null, incoming: ChessInvite|BoardInvite|null, outgoing: ChessInvite|BoardInvite|null, series: bool, agreed: \Carbon\CarbonImmutable|null, seriesMatch: \App\Models\SeriesMatch|null, mine: bool}|null
      */
     #[Computed]
     public function cupMatch(): ?array
@@ -160,14 +165,20 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->where('status', 'ready')->whereNull('result')
             ->where('bracket', '!=', 'bye')->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))
             ->whereHas('slots.participant', fn ($query) => $query->where('user_id', $user->id))
-            ->with(['round', 'slots.participant', 'chessGame', 'seriesMatch'])->first();
+            ->with(['round', 'slots.participant', 'chessGame', 'seriesMatch', 'boardGame'])->first();
 
         if ($match === null || $match->round->window_ends_at === null) {
             return null;
         }
 
         $opponent = $match->slots->first(fn ($slot): bool => $slot->participant !== null && $slot->participant->user_id !== $user->id)?->participant;
-        $open = fn () => ChessInvite::query()->where('tournament_match_id', $match->id)->where('status', ChessInviteStatus::Pending)->where('expires_at', '>', now())->latest('id');
+        // A board game's cup (plan "Mühle und Dame", P5) plays as chess, through its own invites and board.
+        $board = $this->tournament->profile()->isBoard();
+        $open = fn () => ($board ? BoardInvite::query()->where('status', BoardInviteStatus::Pending) : ChessInvite::query()->where('status', ChessInviteStatus::Pending))
+            ->where('tournament_match_id', $match->id)->where('expires_at', '>', now())->latest('id');
+        $game = $board
+            ? ($match->boardGame?->status === BoardGameStatus::Active ? $match->boardGame : null)
+            : ($match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null);
 
         return [
             'match' => $match,
@@ -176,11 +187,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             'slot' => CasualCups::autoSlot($match->round->window_ends_at, CasualCups::timezoneOf($this->tournament)),
             'zone' => CasualCups::timezoneOf($this->tournament),
             'evening' => CasualCups::isEvening($this->tournament),
-            'game' => $match->chessGame?->status === ChessGameStatus::Active ? $match->chessGame : null,
+            'game' => $game,
+            'gameUrl' => $game === null ? null : ($board ? route('board.show', $game) : route('games.show', ['game' => $game])),
             'incoming' => $open()->where('invitee_id', $user->id)->first(),
             'outgoing' => $open()->where('inviter_id', $user->id)->first(),
             // Rocket League and EA Sports FC (S3): the proposed and agreed time, and the series once the league started it.
-            'series' => ! $this->tournament->profile()->isChess(),
+            'series' => $this->tournament->profile()->isSeries(),
             'agreed' => CupSchedules::agreedAt($match),
             'seriesMatch' => $match->seriesMatch,
             'mine' => ($match->schedule['by'] ?? null) === $user->id,
@@ -244,6 +256,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 throw new ChessRuleViolation('match_not_open');
             }
 
+            if ($this->tournament->profile()->isBoard()) {
+                $game = app(BoardInvites::class)->inviteToCupMatch($user, $match)->boardGame;
+
+                if ($game !== null) {
+                    $this->redirectRoute('board.show', ['boardGame' => $game]);
+                }
+
+                return;
+            }
+
             $game = app(ChessInvites::class)->inviteToCupMatch($user, $match)->game;
 
             if ($game !== null) {
@@ -255,6 +277,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function acceptCupInvite(int $inviteId): void
     {
         $this->cupAttempt(function (User $user) use ($inviteId): void {
+            if ($this->tournament->profile()->isBoard()) {
+                $game = app(BoardInvites::class)->accept(BoardInvite::query()->whereNotNull('tournament_match_id')->findOrFail($inviteId), $user);
+                $this->redirectRoute('board.show', ['boardGame' => $game]);
+
+                return;
+            }
+
             $game = app(ChessInvites::class)->accept(ChessInvite::query()->whereNotNull('tournament_match_id')->findOrFail($inviteId), $user);
             $this->redirectRoute('games.show', ['game' => $game]);
         });
@@ -274,9 +303,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
         try {
             $action($user);
-        } catch (ChessRuleViolation $violation) {
+        } catch (ChessRuleViolation|BoardRuleViolation $violation) {
             $this->cupError = match ($violation->reason) {
-                'already_playing', 'accept_while_playing' => __('You are in a live game. One live game at a time: finish it, then play your cup match.'),
+                'already_playing', 'accept_while_playing', 'playing_elsewhere' => __('You are in a live game. One live game at a time: finish it, then play your cup match.'),
                 'opponent_playing' => __('Your opponent is in another live game right now. Try again when it is over.'),
                 'invite_closed' => __('That invite is no longer open.'),
                 'match_not_open', 'not_your_match' => __('This match cannot be started now.'),
@@ -380,6 +409,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $zone = (string) (auth()->user()->timezone ?? config('esports.preseason.display_timezone'));
     $teams = $profile->entersTeams();
     $chess = $profile->isChess();
+    // Chess and the board games (plan "Mühle und Dame", P5) play their games here, with a clock; the series are reported.
+    $playsHere = $chess || $profile->isBoard();
     $status = $tournament->status;
     $drawn = $landing->drawn();
     $published = $status !== TournamentStatus::Draft && $tournament->published_at !== null;
@@ -420,6 +451,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ['shield-check', __('Results'), $tournament->results_mode->label(), 'results'],
         ['ladder', __('Rated'), match (true) {
             $status === TournamentStatus::Draft => __('decided when it is published'),
+            $profile->isBoard() => __('no: board games play casual until they join the season'),
             $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
             ! $chess && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
             default => __('yes, on its ladder while that is open and the trust gate passes'),
@@ -449,13 +481,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             : __('When sign-up closes, players are seeded by Elo, equal Elo by earlier sign-up. The hash of the next Bitcoin block seeds the bracket.')],
         [__('Play'), $tournament->isDirectorMode()
             ? __('Play your match; the tournament directors enter the result. Winners move on until the last match decides.')
-            : ($chess ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
+            : ($playsHere ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
     ];
 
     $formatCopy = FormatCopy::for($tournament->format);
     $noShow = $tournament->isDirectorMode()
         ? __('A tournament director can record a no-show. The other side wins by forfeit, and no Elo changes hands.')
-        : ($chess
+        : ($playsHere
             ? __('Games run here with a clock, like every game on the site.')
             : __('Results come from the players: one side reports, the other confirms. If they disagree, an admin decides.'));
 

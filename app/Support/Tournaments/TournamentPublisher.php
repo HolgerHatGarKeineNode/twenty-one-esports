@@ -300,6 +300,8 @@ final class TournamentPublisher
             ? 'Results are entered by the tournament directors.'
             : 'Players report results and the other side accepts them.';
         $lines[] = match (true) {
+            // Board games (plan "Mühle und Dame", P5) have no rated ladder before they join the season.
+            $profile->isBoard() => 'The matches are unrated: board games play casual.',
             $tournament->ladder_address === null => 'The matches are unrated: no ladder was open when the tournament was published, so they are casual for its whole run.',
             ! $profile->isChess() && ! $tournament->isDirectorMode() => 'A series is rated on the ladder named here if, at its pairing, that ladder is open, the trust gate passes and the two sides are not of one clan; the league signs the pairing, and the rating counts once the other side confirms the result or an admin decides a dispute. Mix teams play casual.',
             default => 'Matches are rated on the ladder named here while it is open and the trust gate passes; otherwise casual.',

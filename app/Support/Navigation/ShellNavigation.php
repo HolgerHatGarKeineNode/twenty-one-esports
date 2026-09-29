@@ -7,6 +7,7 @@ use App\Enums\TournamentStatus;
 use App\Games\Contracts\Game;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ClanInvite;
 use App\Models\SeriesMatch;
@@ -89,11 +90,6 @@ final class ShellNavigation
         $games = [];
 
         foreach (array_values($this->registry->all()) as $index => $game) {
-            // Board games join the navigation with their pages (plan "Mühle und Dame", P5).
-            if ($game->kind() === GameKind::Board) {
-                continue;
-            }
-
             $games[] = [$game, $lastPlayed[$game->slug()] ?? null, $index];
         }
 
@@ -165,7 +161,7 @@ final class ShellNavigation
         $request = $this->request;
         $route = $request->route();
         $name = is_object($route) ? $route->getName() : null;
-        $known = fn (mixed $slug): ?string => is_string($slug) && $this->registry->find($slug) !== null && ! $this->registry->isBoard($slug) ? $slug : null;
+        $known = fn (mixed $slug): ?string => is_string($slug) && $this->registry->find($slug) !== null ? $slug : null;
 
         return $this->pageGame = match (true) {
             $name === null => null,
@@ -173,7 +169,11 @@ final class ShellNavigation
             $name === 'games.rocket-league' => $known('rocket-league'),
             $name === 'games.series' => $known($route->parameter('slug')),
             $name === 'ladder.show' => $known($route->parameter('game')),
-            $name === 'matches.index' => $known($request->query('game')),
+            // A board game's lobby and its games (plan "Mühle und Dame", P5): their own context bar, never chess's.
+            $name === 'board.lobby' => $known($route->parameter('board')),
+            $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
+            // The match list files no board game (it lists chess games and series): all games.
+            $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
             $name === 'challenges.create' => $known($request->query('game')) ?? array_key_first($this->registry->series()),
             in_array($name, ['matches.show', 'matches.room'], true) => $this->gameOfMatch($route->parameter('match')),
             str_starts_with($name, 'tournaments.') && $route->parameter('tournament') !== null => $this->gameOfTournament($route->parameter('tournament')),
@@ -340,6 +340,15 @@ final class ShellNavigation
             ]));
         }
 
+        if ($game->kind() === GameKind::Board) {
+            return [
+                self::link('play', GameNames::page($slug), __('Play blitz'), 'bolt', null, null, __('Play'), 'play'),
+                self::link('ladder', route('ladder.show', [$slug, array_key_first($game->modes())]), __('Ladder'), 'ladder', null, null, null, 'ladder'),
+                self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
+                self::strongest(),
+            ];
+        }
+
         if (in_array($slug, $series, true)) {
             return array_values(array_filter([
                 self::link('play', GameNames::page($slug), __('Overview'), 'trophy', null, null, __('Play'), 'play'),
@@ -387,7 +396,26 @@ final class ShellNavigation
             $last[(string) $game] = (string) $at;
         }
 
+        // The board games next to chess (plan "Mühle und Dame", P5), one query for all of them.
+        if ($this->registry->boards() !== []) {
+            $boards = DB::table('board_games')->where(fn ($query) => $query->where('white_id', $user->id)->orWhere('black_id', $user->id))
+                ->groupBy('game')->selectRaw('game, max(created_at) as last_at')->pluck('last_at', 'game');
+
+            foreach ($boards as $game => $at) {
+                $last[(string) $game] = (string) $at;
+            }
+        }
+
         return $last;
+    }
+
+    private function gameOfBoardGame(mixed $boardGame): ?string
+    {
+        if ($boardGame instanceof BoardGame) {
+            return $boardGame->game;
+        }
+
+        return is_numeric($boardGame) ? BoardGame::query()->whereKey((int) $boardGame)->value('game') : null;
     }
 
     private function gameOfMatch(mixed $number): ?string

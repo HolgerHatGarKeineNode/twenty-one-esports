@@ -2,6 +2,7 @@
 
 namespace App\Support\Tournaments;
 
+use App\Games\BoardGame;
 use InvalidArgumentException;
 
 /**
@@ -55,6 +56,8 @@ final readonly class GameProfile
             // (no 2-game match yet), and the series lengths the game registry allows (Bo3, Bo5).
             'chess/blitz' => new self('blitz', $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'chess/correspondence' => new self('daily', $game, $mode, 'day', 30, 0, 1, 1, 1, [1], true, 'game'),
+            // Board games (plan "Mühle und Dame", P5): one blitz game 5+3 per match, planned as blitz chess.
+            'nine-mens-morris/blitz', 'checkers/blitz' => new self("{$game}/{$mode}", $game, $mode, 'min', 14, 0, 3, 1, 1, [1], false, 'game', overhead: 3),
             'rocket-league/1v1' => new self('rl1', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 1, 5, 1.25),
             'rocket-league/2v2' => new self('rl2', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 2, 5, 1.25),
             'rocket-league/3v3' => new self('rl3', $game, $mode, 'min', 8, 5, 5, 3, 5, [3, 5], false, 'series', 3, 5, 1.25),
@@ -78,6 +81,16 @@ final readonly class GameProfile
     public function isChess(): bool
     {
         return $this->game === 'chess';
+    }
+
+    /**
+     * A match is one game on a board game other than chess, played on the
+     * board game core (nine men's morris, checkers; plan "Mühle und Dame",
+     * P5): neither chess nor a series.
+     */
+    public function isBoard(): bool
+    {
+        return in_array($this->game, BoardGame::RESERVED_SLUGS, true);
     }
 
     /**

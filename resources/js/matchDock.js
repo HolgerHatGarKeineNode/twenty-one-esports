@@ -220,6 +220,9 @@ export default function matchDock(config) {
                 .listen('.user.notified', refresh)
                 .listen('.chess.game-started', refresh)
                 .listen('.chess.invite', refresh)
+                // Board games (plan "Mühle und Dame", P5): a game started, an invite sent or answered.
+                .listen('.board.game-started', refresh)
+                .listen('.board.invite', refresh)
                 // Rocket League series: challenge, answer, live score, result (App\Events\SeriesMatchChanged).
                 .listen('.series.changed', refresh)
                 // Casual 1v1 invites (P23, App\Events\SeriesInviteChanged).

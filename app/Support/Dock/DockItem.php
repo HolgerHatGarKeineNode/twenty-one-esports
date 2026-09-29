@@ -3,6 +3,8 @@
 namespace App\Support\Dock;
 
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
+use App\Models\BoardInvite;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
@@ -27,7 +29,7 @@ use App\Models\User;
 final readonly class DockItem
 {
     /**
-     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'  $kind
+     * @param  'blitz'|'daily'|'series'|'blitz_invite'|'daily_challenge'|'clan_invite'|'casual_invite'|'board'|'board_invite'  $kind
      * @param  'live'|'need'|'wait'  $group
      * @param  'your_move'|'their_move'|'answer'|'invite'|'starts'|'live'|'accept'|'waiting'|'dispute'|'ready'  $phase
      * @param  array{endsAt: int, format: 'clock'|'hm', total: int, redUnder: int}|null  $tick
@@ -51,13 +53,24 @@ final readonly class DockItem
         public ?string $action,
         public ?int $deadlineMs,
         public ?array $tick,
-        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite $model,
+        public ChessGame|SeriesMatch|ChessInvite|ChessChallenge|ClanInvite|SeriesInvite|BoardGame|BoardInvite $model,
         public ?Clan $clan = null,
     ) {}
 
     public function isChess(): bool
     {
         return in_array($this->kind, ['blitz', 'daily', 'blitz_invite', 'daily_challenge'], true);
+    }
+
+    /**
+     * The icon of a board game item (plan "Mühle und Dame", P5): the board
+     * game's own, next to chess's; null for every other item.
+     */
+    public function boardIcon(): ?string
+    {
+        $game = $this->model instanceof BoardGame || $this->model instanceof BoardInvite ? $this->model->game : null;
+
+        return $game === null ? null : (app(GameRegistry::class)->find($game)?->assets()->icon ?? 'grid');
     }
 
     /** The two-letter game mark of a non-chess item: RL, FC. */

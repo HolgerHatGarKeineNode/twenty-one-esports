@@ -11,8 +11,9 @@ use Illuminate\Support\Carbon;
 /**
  * What one result did to one rating: before, after and the delta, plus the
  * score from this entity's side (1, 0.5, 0). `source` is `chess` (a chess
- * game id) or `series` (a series match id); `match_number` is the league
- * match number shown next to it.
+ * game id), `series` (a series match id) or `board` (a game of a board game
+ * other than chess, plan "Mühle und Dame" P5; its rating row names the
+ * board game); `match_number` is the league match number shown next to it.
  *
  * A correction of a rated result (RatingService::correct()) marks the
  * result's rows `reverted_at` and may write the corrected ones as the next
@@ -23,7 +24,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property int $rating_id
  * @property int|null $opponent_rating_id
- * @property 'chess'|'series' $source
+ * @property 'chess'|'series'|'board' $source
  * @property int $source_id
  * @property int|null $match_number
  * @property float $score
@@ -43,6 +44,9 @@ class RatingChange extends Model
     public const CHESS = 'chess';
 
     public const SERIES = 'series';
+
+    /** A board game other than chess (plan "Mühle und Dame", P5). */
+    public const BOARD = 'board';
 
     /** The global scope that hides reverted rows. */
     public const LIVE = 'live';

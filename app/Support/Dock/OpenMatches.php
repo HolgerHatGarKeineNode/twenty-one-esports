@@ -2,11 +2,16 @@
 
 namespace App\Support\Dock;
 
+use App\Enums\BoardGameStatus;
+use App\Enums\BoardInviteStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\ChessInviteStatus;
 use App\Enums\InviteStatus;
 use App\Enums\ReportStatus;
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
+use App\Models\BoardGame;
+use App\Models\BoardInvite;
 use App\Models\ChessChallenge;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
@@ -24,6 +29,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 /**
  * What a player has open, for the match dock (P5f, MatchDock.dc.html
@@ -63,14 +69,17 @@ final class OpenMatches
     /**
      * @param  int|null  $excludeGame  the chess game on screen, which never has a tab
      * @param  int|null  $excludeSeries  the series (league match number) on screen
+     * @param  int|null  $excludeBoard  the board game on screen (plan "Mühle und Dame", P5)
      * @return Collection<int, DockItem>
      */
-    public function for(User $user, ?int $excludeGame = null, ?int $excludeSeries = null): Collection
+    public function for(User $user, ?int $excludeGame = null, ?int $excludeSeries = null, ?int $excludeBoard = null): Collection
     {
         $nowMs = (int) now()->getTimestampMs();
 
         $items = collect()
             ->concat($this->games($user, $excludeGame, $nowMs))
+            ->concat($this->boardGames($user, $excludeBoard, $nowMs))
+            ->concat($this->boardInvites($user))
             ->concat($this->blitzInvites($user))
             ->concat($this->dailyChallenges($user))
             ->concat($this->clanInvites($user))
@@ -125,6 +134,19 @@ final class OpenMatches
             'game' => $name === 'games.show' ? $id('game', 'id') : null,
             'series' => in_array($name, ['matches.show', 'matches.room'], true) ? $id('match', 'number') : null,
         ];
+    }
+
+    /**
+     * The board game on the current page (plan "Mühle und Dame", P5), which
+     * the dock leaves out as it does the chess game of onScreen().
+     */
+    public static function boardOnScreen(?Request $request): ?int
+    {
+        $route = $request?->route();
+        $value = $route?->getName() === 'board.show' ? $route->parameter('boardGame') : null;
+        $value = is_object($value) ? ($value->id ?? null) : $value;
+
+        return is_numeric($value) ? (int) $value : null;
     }
 
     /**
@@ -311,6 +333,107 @@ final class OpenMatches
             tick: null,
             model: $game,
         );
+    }
+
+    /**
+     * The live board games of this player (plan "Mühle und Dame", P5): as a
+     * blitz chess tab, with the board game's name. Nothing while the board
+     * games are switched off.
+     *
+     * @return list<DockItem>
+     */
+    private function boardGames(User $user, ?int $exclude, int $nowMs): array
+    {
+        if (app(GameRegistry::class)->boards() === [] || ! Route::has('board.show')) {
+            return [];
+        }
+
+        $games = BoardGame::query()->playedBy($user)->where('status', BoardGameStatus::Active)
+            ->when($exclude !== null, fn ($query) => $query->whereKeyNot($exclude))
+            ->with(['white', 'black'])->latest('id')->limit(self::KIND_LIMIT)->get();
+
+        return array_values($games->map(function (BoardGame $game) use ($user, $nowMs): DockItem {
+            $color = (string) $game->colorOf($user);
+            $opponent = $game->opponentOf($user);
+            $mine = $game->turn === $color;
+            $myMs = $color === 'w' ? $game->white_ms : $game->black_ms;
+            $endsAt = match (true) {
+                ! $mine => null,
+                $game->clocksRunning() => $game->turn_started_ms + $myMs,
+                default => $game->deadline_ms,
+            };
+            $left = $endsAt === null ? $myMs : $endsAt - $nowMs;
+            $state = $mine ? __('Your move') : __('Their move');
+            $name = $opponent?->displayName() ?? '';
+            $title = GameNames::game($game->game);
+
+            return new DockItem(
+                key: 'board-'.$game->id,
+                kind: 'board',
+                group: 'live',
+                phase: $mine ? 'your_move' : 'their_move',
+                needsYou: $mine,
+                name: $name,
+                face: $opponent,
+                tag: null,
+                number: '',
+                href: route('board.show', $game),
+                title: $title,
+                state: $state,
+                trailing: self::format($left, 'clock'),
+                line: __(':game, :state', ['game' => $title, 'state' => mb_strtolower($state)]),
+                sentence: __(':game against :name, :state, :left on your clock', ['game' => $title, 'name' => $name, 'state' => mb_strtolower($state), 'left' => self::format($left, 'clock')]),
+                action: $mine ? self::text('Play') : null,
+                deadlineMs: $endsAt ?? $nowMs + $myMs,
+                tick: $endsAt === null ? null : ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $game->initial_ms), 'redUnder' => self::BLITZ_RED_MS],
+                model: $game,
+            );
+        })->all());
+    }
+
+    /**
+     * Invites to a board game this player has to answer (plan "Mühle und
+     * Dame", P5); a cup match's invite leads to its cup page.
+     *
+     * @return list<DockItem>
+     */
+    private function boardInvites(User $user): array
+    {
+        if (app(GameRegistry::class)->boards() === [] || ! Route::has('board.lobby')) {
+            return [];
+        }
+
+        $invites = BoardInvite::query()->where('invitee_id', $user->id)->where('status', BoardInviteStatus::Pending)
+            ->where('expires_at', '>', now())->with(['inviter', 'tournamentMatch'])->latest('id')->limit(self::KIND_LIMIT)->get();
+
+        return array_values($invites->map(function (BoardInvite $invite): DockItem {
+            $endsAt = (int) $invite->expires_at->getTimestampMs();
+            $name = $invite->inviter->displayName();
+            $title = GameNames::game($invite->game);
+            $total = (int) $invite->expires_at->diffInMilliseconds($invite->created_at ?? now(), true);
+
+            return new DockItem(
+                key: 'board-invite-'.$invite->id,
+                kind: 'board_invite',
+                group: 'need',
+                phase: 'answer',
+                needsYou: true,
+                name: $name,
+                face: $invite->inviter,
+                tag: null,
+                number: '',
+                href: $invite->tournamentMatch !== null ? route('tournaments.show', $invite->tournamentMatch->tournament_id) : route('board.lobby', $invite->game),
+                title: __(':game invite', ['game' => $title]),
+                state: __('Answer'),
+                trailing: self::format($endsAt - (int) now()->getTimestampMs(), 'clock'),
+                line: __(':game invite, answer now', ['game' => $title]),
+                sentence: __(':name invites you to a game of :game', ['name' => $name, 'game' => $title]),
+                action: __('Answer'),
+                deadlineMs: $endsAt,
+                tick: ['endsAt' => $endsAt, 'format' => 'clock', 'total' => max(1, $total), 'redUnder' => self::BLITZ_RED_MS],
+                model: $invite,
+            );
+        })->all());
     }
 
     /**

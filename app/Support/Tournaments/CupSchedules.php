@@ -121,7 +121,7 @@ final class CupSchedules
             throw new SeriesRuleViolation('not_your_match', __('This is not your match.'));
         }
 
-        if (! $cup->isCasualCup() || $cup->profile()->isChess() || CasualCups::isEvening($cup) || $cup->status !== TournamentStatus::Running
+        if (! $cup->isCasualCup() || ! $cup->profile()->isSeries() || CasualCups::isEvening($cup) || $cup->status !== TournamentStatus::Running
             || $locked->status !== 'ready' || $locked->result !== null || $locked->seriesMatch !== null
             || ! ($locked->round->window_ends_at?->isFuture() ?? false)) {
             throw new SeriesRuleViolation('cup_not_schedulable', __('This match cannot be scheduled now.'));

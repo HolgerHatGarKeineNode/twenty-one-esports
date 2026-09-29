@@ -14,6 +14,8 @@
         <span aria-hidden="true" class="absolute -right-1.5 -bottom-1 flex size-4 items-center justify-center rounded-[4px] bg-card text-ink-2">
             @if ($item->isChess())
                 <x-icon name="chess" :size="12" />
+            @elseif ($item->boardIcon() !== null)
+                <x-icon :name="$item->boardIcon()" :size="12" />
             @else
                 <span class="dk-slot">{{ $item->gameMark() }}</span>
             @endif

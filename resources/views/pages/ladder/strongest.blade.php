@@ -37,8 +37,7 @@
     $ladders = [];
     foreach ($registry->all() as $game) {
         $mode = array_key_first($game->modes());
-        // A board game's ladder opens in P5 of plan "Mühle und Dame".
-        if ($mode !== null && ! $registry->isBoard($game->slug())) {
+        if ($mode !== null) {
             $ladders[] = ['game' => $game->slug(), 'name' => GameNames::full($game->slug(), (string) $mode), 'href' => route('ladder.show', [$game->slug(), $mode])];
         }
     }

@@ -4,8 +4,10 @@
 | Board games next to chess (plan "Mühle und Dame", P1): every game names its
 | kind, board games come in only through `esports.board_games` (off by
 | default), and every switch between chess and the series treats a board
-| game as neither: it leaves it out until P5 (play, ladders, cups) or P6
-| (mining) opens the feature. FixtureBoardGame stands in for the real games.
+| game as neither. P5 opened play, ladders, navigation, rules, cups and
+| tournaments (tests/Feature/BoardLeagueTest.php); what stays closed until
+| P6 (mining, the event admin) or P7 (the stream) is still left out here.
+| FixtureBoardGame stands in for the real games.
 */
 
 use App\Games\BoardGame;
@@ -32,8 +34,10 @@ use App\Support\Tournaments\GameProfile;
 use App\Support\Tournaments\TournamentGames;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 use Livewire\Livewire;
 use Tests\Support\FixtureBoardGame;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
 const FIXTURE_BOARD = FixtureBoardGame::SLUG;
@@ -92,22 +96,30 @@ test('a board game is registered only with the switch and its own entry on, and 
         ->and(array_keys($notBoard->all()))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
 });
 
-test('the page of a board game is the list of all games, never the chess lobby', function () {
+test('the page of a board game is its lobby, or the list of all games while its route is not there, never the chess lobby', function () {
     FixtureBoardGame::register();
 
-    expect(GameNames::page(FIXTURE_BOARD))->toBe(route('play'))
+    // Registered, but the routes of the board games were loaded at boot with the switch off.
+    expect(GameNames::page(FIXTURE_BOARD))->toBe(route('play'));
+
+    FixtureBoardGame::play();
+
+    expect(GameNames::page(FIXTURE_BOARD))->toBe(route('board.lobby', FIXTURE_BOARD))
         ->and(GameNames::page('chess'))->toBe(route('chess.lobby'))
         ->and(GameNames::page('rocket-league'))->toBe(route('games.series', 'rocket-league'));
 });
 
-test('the shell navigation leaves a board game out: no hub tile, no active game', function () {
-    FixtureBoardGame::register();
+test('the shell navigation lists a board game with its own actions (P5), while the match list files none under it', function () {
+    FixtureBoardGame::play();
 
-    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
+    $game = collect(ShellNavigation::current()->games())->firstWhere('slug', FIXTURE_BOARD);
+
+    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', FIXTURE_BOARD])
+        ->and(array_column($game['actions'], 'key'))->toBe(['play', 'ladder', 'rules', 'strongest'])
+        ->and($game['actions'][0]['href'])->toBe(route('board.lobby', FIXTURE_BOARD));
 
     $this->get(route('matches.index', ['game' => FIXTURE_BOARD]))->assertOk()
-        ->assertDontSee('data-test="hub-game-'.FIXTURE_BOARD.'"', false)
-        ->assertDontSee('Fixture Board');
+        ->assertSee('data-test="hub-game-'.FIXTURE_BOARD.'"', false);
     expect(ShellNavigation::current()->pageGame())->toBeNull();
 });
 
@@ -133,36 +145,37 @@ test('the invite link module shows nothing for a board game, not the chess daily
     expect(Livewire::test('invite-link', ['game' => FIXTURE_BOARD])->instance()->state)->toBe('hidden');
 });
 
-test('a board game has no ladder page, no ladder card and no ladder in the sitemap, the hubs or the event admin', function () {
-    FixtureBoardGame::register();
+test('a board game has its ladder page, card and sitemap entries (P5); the event admin still leaves it out (P6)', function () {
+    FixtureBoardGame::play();
     $admin = User::factory()->create();
     config(['esports.board' => [NostrKeys::hexToNpub($admin->pubkey)]]);
 
-    $this->get(route('ladder.show', [FIXTURE_BOARD, 'blitz']))->assertNotFound();
+    $this->get(route('ladder.show', [FIXTURE_BOARD, 'blitz']))->assertOk();
     $this->get(route('ladder.show', ['chess', 'blitz']))->assertOk();
 
-    expect(PageCard::resolve('ladder', FIXTURE_BOARD.'.blitz'))->toBeNull()
+    expect(PageCard::resolve('ladder', FIXTURE_BOARD.'.blitz'))->not->toBeNull()
         ->and(PageCard::resolve('ladder', 'chess.blitz'))->not->toBeNull();
 
     $sitemap = $this->get(route('sitemap.section', ['pages', 1]))->assertOk()->getContent();
-    expect($sitemap)->toContain(route('ladder.show', ['chess', 'blitz']))->not->toContain(FIXTURE_BOARD);
+    expect($sitemap)->toContain(route('ladder.show', ['chess', 'blitz']))
+        ->toContain(route('ladder.show', [FIXTURE_BOARD, 'blitz']))
+        ->toContain(route('board.lobby', FIXTURE_BOARD));
 
-    $this->get('/')->assertOk()->assertDontSee(FIXTURE_BOARD)->assertDontSee('Fixture Board');
-    $this->get(route('ladder.strongest'))->assertOk()->assertDontSee(FIXTURE_BOARD)->assertDontSee('Fixture Board');
+    $this->get(route('ladder.strongest'))->assertOk()->assertSee('Fixture Board');
     Livewire::actingAs($admin)->test('pages::admin.events')
         ->assertSeeHtml('value="chess/blitz"')->assertDontSeeHtml('value="'.FIXTURE_BOARD.'/blitz"');
 });
 
-test('the rules, the games list, the tournaments list and their cards leave a board game out', function () {
-    FixtureBoardGame::register();
+test('the rules, the games list, the tournaments list and their cards name a board game once it is on (P5)', function () {
+    FixtureBoardGame::play();
     Cache::flush();
 
-    $this->get(route('rules'))->assertOk()->assertSee('Rocket League')->assertDontSee('Fixture Board');
-    $this->get(route('play'))->assertOk()->assertSee('Rocket League')->assertDontSee('Fixture Board');
-    $this->get(route('tournaments.index'))->assertOk()->assertDontSee('Fixture Board');
+    $this->get(route('rules'))->assertOk()->assertSee('Rocket League')->assertSee('Fixture Board');
+    $this->get(route('play'))->assertOk()->assertSee('Rocket League')->assertSee('Fixture Board');
+    $this->get(route('tournaments.index'))->assertOk()->assertSee('Fixture Board');
 
-    expect(PageCardFacts::page('play')['games'])->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26'])
-        ->and(PageCardFacts::page('rules')['figures'][0])->toBe(['games', 4]);
+    expect(PageCardFacts::page('play')['games'])->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', FIXTURE_BOARD])
+        ->and(PageCardFacts::page('rules')['figures'][0])->toBe(['games', 5]);
 });
 
 test('the stream bot does not announce a board game before it is playable', function () {
@@ -175,14 +188,44 @@ test('the stream bot does not announce a board game before it is playable', func
     expect($message)->toContain('Rocket League')->not->toContain('Fixture Board');
 });
 
-test('no tournament and no cup runs a board game: it has no tournament profile', function () {
+test('a tournament plays only a board game with a profile: nine men\'s morris and checkers have one (P5), the fixture has none', function () {
     FixtureBoardGame::register();
-    config(['esports.casual_cups.enabled' => ['chess', FIXTURE_BOARD], 'esports.casual_cups.games.'.FIXTURE_BOARD => config('esports.casual_cups.games.chess')]);
 
     expect(fn () => GameProfile::for(FIXTURE_BOARD, 'blitz'))->toThrow(InvalidArgumentException::class)
-        ->and(array_column(TournamentGames::all(), 0))->not->toContain(FIXTURE_BOARD)
-        ->and(CasualCups::enabledGames())->toBe(['chess'])
-        ->and(fn () => Tournament::factory()->make(['game' => FIXTURE_BOARD, 'mode' => 'blitz'])->profile())->toThrow(InvalidArgumentException::class);
+        ->and(fn () => Tournament::factory()->make(['game' => FIXTURE_BOARD, 'mode' => 'blitz'])->profile())->toThrow(InvalidArgumentException::class)
+        // The organizers' chooser offers board games with P6 (the admin pages), not before.
+        ->and(array_column(TournamentGames::all(), 0))->not->toContain(FIXTURE_BOARD);
+
+    foreach (BoardGame::RESERVED_SLUGS as $slug) {
+        $profile = GameProfile::for($slug, 'blitz');
+
+        expect($profile->isBoard())->toBeTrue()
+            ->and($profile->isChess())->toBeFalse()
+            ->and($profile->isSeries())->toBeFalse()
+            ->and($profile->bestOfOptions)->toBe([1]);
+    }
+
+    // Switched off, a board game's cup does not open; chess's does.
+    config(['esports.casual_cups.enabled' => ['chess', 'nine-mens-morris']]);
+    expect(CasualCups::enabledGames())->toBe(['chess']);
+});
+
+test('switched off, a board game has no route and no place in the navigation', function () {
+    // The test app boots with the switch off: routes/board.php is never loaded.
+    expect(Route::has('board.lobby'))->toBeFalse()->and(Route::has('board.show'))->toBeFalse();
+
+    $this->get('/games/nine-mens-morris')->assertNotFound();
+    $this->get('/games/checkers')->assertNotFound();
+    $this->get('/board/1')->assertNotFound();
+    $this->get(route('ladder.show', ['nine-mens-morris', 'blitz']))->assertNotFound();
+    $this->get(route('play'))->assertOk()->assertDontSee("Nine Men's Morris")->assertDontSee('data-test="play-game-checkers"', false);
+    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
+
+    // The switch on, but one board game's own entry off: its lobby is not found, the other one's is there.
+    NineMensMorrisOn::play();
+    $this->get(route('board.lobby', 'nine-mens-morris'))->assertOk();
+    $this->get(route('board.lobby', 'checkers'))->assertNotFound();
+    expect(array_column(ShellNavigation::current()->games(), 'slug'))->not->toContain('checkers');
 });
 
 test('a board game mines nothing before P6: no ladder event, no chain row, no parameter change', function () {

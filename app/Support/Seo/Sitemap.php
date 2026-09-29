@@ -16,6 +16,7 @@ use App\Support\GameNames;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Route;
 use InvalidArgumentException;
 
 /**
@@ -108,9 +109,9 @@ final class Sitemap
         $urls = array_values(array_unique($urls));
 
         foreach (app(GameRegistry::class)->all() as $game) {
-            // Board games open their ladders in P5 of plan "Mühle und Dame".
-            if ($game->kind() === GameKind::Board) {
-                continue;
+            // A board game's lobby (plan "Mühle und Dame", P5), while its route is there.
+            if ($game->kind() === GameKind::Board && Route::has('board.lobby')) {
+                $urls[] = route('board.lobby', $game->slug());
             }
 
             foreach ($game->modes() as $mode) {

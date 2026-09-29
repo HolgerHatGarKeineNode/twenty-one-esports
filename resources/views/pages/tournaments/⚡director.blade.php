@@ -163,7 +163,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
 @php
     $tournament = $this->tournament;
-    $chess = $tournament->profile()->isChess();
+    // A board game's result is one game, entered as chess's (plan "Mühle und Dame", P5).
+    $chess = $tournament->profile()->isChess() || $tournament->profile()->isBoard();
     $round = $this->round;
     $matches = $this->matches;
     $left = $matches->whereNotIn('status', ['done', 'skipped'])->count();

@@ -43,15 +43,19 @@ use Illuminate\Support\Carbon;
  * @property int|null $deadline_ms
  * @property 'w'|'b'|null $draw_offer
  * @property int $version
+ * @property int|null $tournament_match_id the tournament match this game is played for (P5), null for a casual game
+ * @property int|null $tournament_game its number within that match (a replay after a draw is the next)
+ * @property int|null $first_move_seconds a tournament game's first-move window, pinned at the start; null = the league default
  * @property Carbon|null $ended_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $white
  * @property-read User|null $black
  * @property-read Collection<int, BoardMove> $moves
+ * @property-read TournamentMatch|null $tournamentMatch
  */
 #[Fillable(['game', 'mode', 'white_id', 'black_id', 'status', 'result', 'end_reason', 'position', 'turn', 'ply', 'initial_ms', 'increment_ms',
-    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at'])]
+    'white_ms', 'black_ms', 'turn_started_ms', 'deadline_ms', 'draw_offer', 'version', 'ended_at', 'tournament_match_id', 'tournament_game', 'first_move_seconds'])]
 class BoardGame extends Model
 {
     protected function casts(): array
@@ -66,6 +70,8 @@ class BoardGame extends Model
             'turn_started_ms' => 'integer',
             'deadline_ms' => 'integer',
             'version' => 'integer',
+            'tournament_game' => 'integer',
+            'first_move_seconds' => 'integer',
             'ended_at' => 'datetime',
         ];
     }
@@ -92,6 +98,14 @@ class BoardGame extends Model
     public function moves(): HasMany
     {
         return $this->hasMany(BoardMove::class)->orderBy('ply');
+    }
+
+    /**
+     * @return BelongsTo<TournamentMatch, $this>
+     */
+    public function tournamentMatch(): BelongsTo
+    {
+        return $this->belongsTo(TournamentMatch::class);
     }
 
     /**
@@ -129,6 +143,15 @@ class BoardGame extends Model
             null => null,
             $this->white_id => 'w',
             $this->black_id => 'b',
+            default => null,
+        };
+    }
+
+    public function opponentOf(User $user): ?User
+    {
+        return match ($this->colorOf($user)) {
+            'w' => $this->black,
+            'b' => $this->white,
             default => null,
         };
     }

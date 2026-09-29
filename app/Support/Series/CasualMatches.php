@@ -11,6 +11,7 @@ use App\Models\ChessQueueEntry;
 use App\Models\MatchNumber;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
 use App\Support\Chess\Broadcasts;
 use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\CasualNotifications;
@@ -96,12 +97,13 @@ final class CasualMatches
     }
 
     /**
-     * One live game at a time: a live chess game or a running casual 1v1
-     * keeps a player out of the queue and the invites. Null when free.
+     * One live game at a time: a live chess game, a live board game (plan
+     * "Mühle und Dame", P5) or a running casual 1v1 keeps a player out of
+     * the queue and the invites. Null when free.
      */
     public function busyReason(User $user): ?string
     {
-        if ($this->chess->activeGameOf($user) !== null || $this->activeMatchOf($user) !== null) {
+        if ($this->chess->activeGameOf($user) !== null || $this->activeMatchOf($user) !== null || app(BoardGameService::class)->activeGameOf($user) !== null) {
             return 'already_playing';
         }
 
@@ -368,7 +370,7 @@ final class CasualMatches
             throw self::refuse('checkin_not_open', ['time' => $match->checkInOpensAt()?->copy()->timezone($user->timezone ?? config('esports.preseason.display_timezone'))->format('H:i') ?? '']);
         }
 
-        if ($this->chess->activeGameOf($user) !== null || self::runningMatchOf($user, except: $match->id) !== null) {
+        if ($this->chess->activeGameOf($user) !== null || self::runningMatchOf($user, except: $match->id) !== null || app(BoardGameService::class)->activeGameOf($user) !== null) {
             throw self::refuse('already_playing');
         }
 

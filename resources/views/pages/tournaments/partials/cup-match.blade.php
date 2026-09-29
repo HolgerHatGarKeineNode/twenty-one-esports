@@ -1,6 +1,7 @@
 {{--
     The viewer's open match in a casual cup (P25): opponent, deadline, the
-    league's auto slot, and the one action that fits. Chess: open the game,
+    league's auto slot, and the one action that fits. Chess and the board
+    games (plan "Mühle und Dame", P5): open the game,
     accept the opponent's invite, or invite them. Rocket League and EA
     Sports FC (S3): the agreed time and the way to the match room, or the
     times to propose or accept (partials/cup-schedule).
@@ -26,7 +27,7 @@
         @endif
         <div class="flex flex-wrap items-center gap-3">
             @if ($cup['game'])
-                <x-button :href="route('games.show', ['game' => $cup['game']])" icon="pawn" data-test="cup-match-game">{{ __('Open your game') }}</x-button>
+                <x-button :href="$cup['gameUrl']" icon="pawn" data-test="cup-match-game">{{ __('Open your game') }}</x-button>
             @elseif ($cup['incoming'])
                 <x-button type="button" wire:click="acceptCupInvite({{ $cup['incoming']->id }})" icon="pawn" data-test="cup-match-accept">{{ __(':name is ready: play now', ['name' => $cup['opponent']]) }}</x-button>
             @elseif ($cup['outgoing'])

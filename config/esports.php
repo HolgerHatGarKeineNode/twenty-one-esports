@@ -193,13 +193,21 @@ return [
     | classes come with P3 (nine men's morris) and P4 (checkers); an entry
     | without a class stays off. first_move_seconds (P2): before both sides
     | made their first move no clock runs; the side to move has this long for
-    | it or the game is aborted (as `chess.first_move_seconds`).
+    | it or the game is aborted (as `chess.first_move_seconds`). queue (P5):
+    | the casual queue of each board game, paired by the casual rating of
+    | that game within a range that widens while a player waits (as
+    | `chess.queue.range`). invite_seconds (P5): how long an invite to a
+    | player stays open.
     |
     */
 
     'board_games' => [
         'enabled' => (bool) env('ESPORTS_BOARD_GAMES', false),
         'first_move_seconds' => 30,
+        'queue' => [
+            'range' => ['initial' => 150, 'step' => 150, 'every_seconds' => 30, 'max' => 600],
+        ],
+        'invite_seconds' => 120,
         'games' => [
             'nine-mens-morris' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_NINE_MENS_MORRIS', false), 'class' => NineMensMorris::class],
             'checkers' => ['enabled' => (bool) env('ESPORTS_BOARD_GAME_CHECKERS', false), 'class' => Checkers::class],
@@ -489,7 +497,9 @@ return [
     | the moment a round opens, which is as soon as the round before it is
     | done; max_days after the start every open match is decided at once.
     | auto_slot: a chess match nobody started is started by the league at
-    | this time (the region's zone) on the window's last evening. invite_minutes: how
+    | this time (the region's zone) on the window's last evening; a board
+    | game match (nine men's morris, checkers; plan "Mühle und Dame", P5)
+    | runs as chess, and its cup runs only while its board game is on. invite_minutes: how
     | long a "Play your cup match" invite stays open. Rocket League and EA
     | Sports FC (S3): either player proposes one to three times inside the
     | window, the other accepts one within answer_hours (at the latest by the
@@ -510,12 +520,15 @@ return [
     */
 
     'casual_cups' => [
-        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27'))))),
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,nine-mens-morris,checkers'))))),
         'games' => [
             'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
             'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3],
             'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
             'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
+            // Board games (plan "Mühle und Dame", P5): a cup runs only while the board game is switched on.
+            'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
+            'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
         ],
         'sizes' => [4, 8, 16],
         'growth_freeze_minutes' => 60,

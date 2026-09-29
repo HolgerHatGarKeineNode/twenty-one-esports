@@ -13,6 +13,8 @@ use App\Support\Board\CheckersRules;
  */
 final class Checkers extends BoardGame
 {
+    public const SLUG = 'checkers';
+
     public const RESULTS = ['1-0', '0-1', '1/2-1/2'];
 
     public function rules(): BoardRules
@@ -22,7 +24,7 @@ final class Checkers extends BoardGame
 
     public function slug(): string
     {
-        return 'checkers';
+        return self::SLUG;
     }
 
     public function name(): string
@@ -47,6 +49,6 @@ final class Checkers extends BoardGame
 
     public function assets(): GameAssets
     {
-        return new GameAssets('grid', 'var(--color-edge)', 'var(--color-line)', 'Checkers');
+        return new GameAssets('checkers', 'var(--color-edge)', 'var(--color-line)', 'Checkers', new GameCover('checkers'));
     }
 }

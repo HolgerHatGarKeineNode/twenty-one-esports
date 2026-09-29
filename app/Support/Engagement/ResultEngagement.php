@@ -46,6 +46,8 @@ final class ResultEngagement
      *
      * - chess: the player; for the clan when the rated game pinned their clan
      *   at the pairing (it counts for the clan's hashrate).
+     * - a board game other than chess (plan "Mühle und Dame", P5): the
+     *   player; never for a clan (board games are casual until P6).
      * - a series: the roster the result counts for this side, else the
      *   lineup's active seats, else the roster side's players; for the clan
      *   when the side is a clan lineup.
@@ -55,6 +57,10 @@ final class ResultEngagement
     private function playersOf(RatingChange $change): array
     {
         $rating = $change->rating;
+
+        if ($change->source === RatingChange::BOARD) {
+            return [$rating->user_id === null ? [] : [$rating->user_id], []];
+        }
 
         if ($change->source === RatingChange::CHESS) {
             $game = ChessGame::query()->find($change->source_id);

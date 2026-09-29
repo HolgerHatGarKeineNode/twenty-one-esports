@@ -2,13 +2,18 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardGameStatus;
+use App\Enums\BoardInviteStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\ChessInviteStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Games\BoardGame;
 use App\Games\GameRegistry;
+use App\Models\BoardGame as BoardGameModel;
+use App\Models\BoardInvite;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\SeriesMatch;
@@ -93,15 +98,18 @@ final class CasualCups
 
     /**
      * The games whose cup series runs, each with a known cup setup. A board
-     * game gets its cups in P5 of plan "Mühle und Dame", not before.
+     * game (plan "Mühle und Dame", P5) runs its cups only while it is
+     * switched on (in the registry); off, its cups stop opening.
      *
      * @return list<string>
      */
     public static function enabledGames(): array
     {
         $games = (array) config('esports.casual_cups.games', []);
+        $registry = app(GameRegistry::class);
 
-        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])), fn (string $game): bool => isset($games[$game]) && ! app(GameRegistry::class)->isBoard($game)));
+        return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])),
+            fn (string $game): bool => isset($games[$game]) && (! in_array($game, BoardGame::RESERVED_SLUGS, true) || $registry->isBoard($game))));
     }
 
     /**
@@ -330,7 +338,7 @@ final class CasualCups
 
         $evening = (array) config('esports.casual_cups.evening', []);
 
-        if ($players === 2 && ! $cup->profile()->isChess()) {
+        if ($players === 2 && $cup->profile()->isSeries()) {
             $bestOf = (int) ($evening['duel_best_of'] ?? 3);
 
             return ['format' => TournamentFormat::SingleElimination, 'options' => ['bestOf' => $bestOf, 'finalBestOf' => $bestOf]];
@@ -943,7 +951,7 @@ final class CasualCups
         $matches = TournamentMatch::query()->where('tournament_id', $cup->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')->whereNull('held')
             ->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at')->where('window_ends_at', '<=', now()))
-            ->with(['slots.participant', 'chessGame', 'seriesMatch'])->orderBy('id')->get();
+            ->with(['slots.participant', 'chessGame', 'seriesMatch', 'boardGame'])->orderBy('id')->get();
 
         foreach ($matches as $match) {
             if (count($match->slots) !== 2 || self::isUnderWay($match)) {
@@ -983,6 +991,12 @@ final class CasualCups
             return true;
         }
 
+        $board = $match->boardGame;
+
+        if ($board !== null && ! $match->isReplaced($board->id) && $board->status === BoardGameStatus::Active) {
+            return true;
+        }
+
         $series = $match->seriesMatch;
 
         return $series !== null && ! $match->isReplaced($series->id) && $series->resolution !== SeriesResolution::Void && ! $series->status->hasResult();
@@ -1005,12 +1019,12 @@ final class CasualCups
         }
 
         // A live evening's games start at their round's start (S2).
-        if ($invited || $match->chessGame !== null || self::isEvening($match->tournament)) {
+        if ($invited || $match->chessGame !== null || $match->boardGame !== null || self::isEvening($match->tournament)) {
             return true;
         }
 
         // A series match (S3) is started when the check-in for its agreed time (or the auto slot) opens.
-        if (! $match->tournament->profile()->isChess()) {
+        if ($match->tournament->profile()->isSeries()) {
             return ! self::seriesStartsAt($match)->subMinutes(max(0, (int) config('esports.casual.checkin_before_minutes', 10)))->isFuture();
         }
 
@@ -1101,6 +1115,25 @@ final class CasualCups
 
             if ($game->black_seen_at !== null) {
                 $acted[] = $game->black_id;
+            }
+        }
+
+        // A board game match (P5): sending or accepting its invite, and moving on its board, is trying to play.
+        foreach (BoardInvite::query()->where('tournament_match_id', $match->id)->get() as $invite) {
+            $acted[] = $invite->inviter_id;
+
+            if ($invite->status === BoardInviteStatus::Accepted) {
+                $acted[] = $invite->invitee_id;
+            }
+        }
+
+        foreach (BoardGameModel::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)->get() as $board) {
+            if ($board->ply >= 1) {
+                $acted[] = $board->white_id;
+            }
+
+            if ($board->ply >= 2) {
+                $acted[] = $board->black_id;
             }
         }
 

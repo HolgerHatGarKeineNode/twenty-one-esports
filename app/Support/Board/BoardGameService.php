@@ -4,15 +4,24 @@ namespace App\Support\Board;
 
 use App\Enums\BoardEndReason;
 use App\Enums\BoardGameStatus;
+use App\Enums\BoardInviteStatus;
 use App\Events\BoardGameStarted;
 use App\Events\BoardGameUpdated;
 use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
 use App\Jobs\CheckBoardClock;
 use App\Models\BoardGame;
+use App\Models\BoardInvite;
 use App\Models\BoardMove;
+use App\Models\BoardQueueEntry;
+use App\Models\ChessQueueEntry;
+use App\Models\SeriesQueueEntry;
 use App\Models\User;
 use App\Support\Chess\Broadcasts;
+use App\Support\Chess\ChessGameService;
+use App\Support\Rating\RatingService;
+use App\Support\Series\CasualMatches;
+use App\Support\Tournaments\TournamentRunner;
 use Closure;
 use Illuminate\Support\Facades\DB;
 
@@ -38,8 +47,20 @@ use Illuminate\Support\Facades\DB;
  * thinking time is taken off the mover's clock and the increment added after
  * the move. A flag loses: the board games know no "too little to win".
  *
- * Not yet here (later phases of the plan): ratings (P5), mining (P6), a
- * record of the game, tournaments, queue and invites (P5).
+ * League (P5): one live game at a time across games — a player in a live
+ * chess game or a running casual 1v1 starts no board game, and a board game
+ * that starts takes both players out of every queue (board, chess, casual
+ * 1v1) and withdraws their open board invites (LiveGameGuard keeps chess
+ * from starting a game for a player in a live board game). A finished game
+ * rates its two players on the casual ladder of its board game, in the
+ * transaction that ends it (RatingService::applyBoardGame()); a tournament
+ * game reports to TournamentRunner once committed. A tournament game cannot
+ * be aborted by its players; its first-move window is the tournament's
+ * check-in, and a Black who misses its first move after White's loses by
+ * forfeit (a White who misses it aborts the game, and the tournament
+ * restarts it or applies the double no-show rule).
+ *
+ * Not yet here (later phases of the plan): mining (P6), a record of the game.
  */
 final class BoardGameService
 {
@@ -49,9 +70,9 @@ final class BoardGameService
 
     /**
      * @throws BoardRuleViolation for a game that is no switched-on board game,
-     *                            a mode without a clock, or a player already in a live board game
+     *                            a mode without a clock, or a player already in a live game
      */
-    public function start(string $slug, User $white, User $black, string $mode = 'blitz'): BoardGame
+    public function start(string $slug, User $white, User $black, string $mode = 'blitz', ?int $tournamentMatchId = null, ?int $tournamentGame = null, ?int $firstMoveSeconds = null): BoardGame
     {
         if ($white->is($black)) {
             throw new BoardRuleViolation('same_player');
@@ -62,14 +83,28 @@ final class BoardGameService
         $rules = $definition->rules();
         $start = $rules->start();
 
-        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start): BoardGame {
+        $game = DB::transaction(function () use ($slug, $mode, $white, $black, $initialMs, $incrementMs, $rules, $start, $tournamentMatchId, $tournamentGame, $firstMoveSeconds): BoardGame {
             foreach ([$white, $black] as $player) {
                 if ($this->activeGameOf($player) !== null) {
                     throw new BoardRuleViolation('already_playing', "{$player->id} already plays a live board game.");
                 }
+
+                // One live game at a time across games (P5): live chess and a running casual 1v1 count too.
+                if (app(ChessGameService::class)->activeGameOf($player) !== null || CasualMatches::runningMatchOf($player) !== null) {
+                    throw new BoardRuleViolation('playing_elsewhere', "{$player->id} already plays a live game of another kind.");
+                }
             }
 
             $now = $this->nowMs();
+            $players = [$white->id, $black->id];
+
+            // One intent at a time: both stop searching anywhere, and their open board invites are withdrawn.
+            BoardQueueEntry::query()->whereIn('user_id', $players)->delete();
+            ChessQueueEntry::query()->whereIn('user_id', $players)->delete();
+            SeriesQueueEntry::query()->whereIn('user_id', $players)->delete();
+            BoardInvite::query()->where('status', BoardInviteStatus::Pending)
+                ->where(fn ($query) => $query->whereIn('inviter_id', $players)->orWhereIn('invitee_id', $players))
+                ->update(['status' => BoardInviteStatus::Withdrawn, 'updated_at' => now()]);
 
             return BoardGame::query()->create([
                 'game' => $slug,
@@ -85,7 +120,10 @@ final class BoardGameService
                 'white_ms' => $initialMs,
                 'black_ms' => $initialMs,
                 'turn_started_ms' => $now,
-                'deadline_ms' => $now + $this->firstMoveMs(),
+                'deadline_ms' => $now + ($firstMoveSeconds !== null ? $firstMoveSeconds * 1000 : $this->firstMoveMs()),
+                'first_move_seconds' => $firstMoveSeconds,
+                'tournament_match_id' => $tournamentMatchId,
+                'tournament_game' => $tournamentGame,
             ]);
         });
 
@@ -172,7 +210,7 @@ final class BoardGameService
 
             $game->deadline_ms = $game->clocksRunning()
                 ? $now + ($game->turn === 'w' ? $game->white_ms : $game->black_ms)
-                : $now + $this->firstMoveMs();
+                : $now + $this->firstMoveMs($game);
 
             $history = [$rules->serialize($rules->start()), ...$game->moves()->pluck('position')->all()];
             $outcome = $rules->outcome($next, array_values(array_map(strval(...), $history)));
@@ -258,7 +296,30 @@ final class BoardGameService
                 throw new BoardRuleViolation('too_late_to_abort');
             }
 
+            // A tournament game is the league's to abort (a missed first move), never a player's.
+            if ($game->tournament_match_id !== null) {
+                throw new BoardRuleViolation('tournament_game');
+            }
+
             $this->end($game, BoardGameStatus::Aborted, null, BoardEndReason::Aborted->value, $now);
+        });
+    }
+
+    /**
+     * The league voids a live tournament game (TournamentControl: a result
+     * set by an organizer or admin, a restart, a call-off): it ends unrated,
+     * and the match no longer counts it.
+     *
+     * @throws BoardRuleViolation for a game of no tournament, or one that is over already
+     */
+    public function void(BoardGame $game): BoardGame
+    {
+        return $this->change($game, function (BoardGame $game, int $now): void {
+            if ($game->tournament_match_id === null) {
+                throw new BoardRuleViolation('not_a_tournament_game');
+            }
+
+            $this->end($game, BoardGameStatus::Aborted, null, BoardEndReason::Voided->value, $now);
         });
     }
 
@@ -457,7 +518,10 @@ final class BoardGameService
             return false;
         }
 
-        if (! $game->clocksRunning()) {
+        if (! $game->clocksRunning() && $game->tournament_match_id !== null && $game->ply === 1) {
+            // A tournament game whose Black missed the first move after White's: Black loses by forfeit.
+            $this->end($game, BoardGameStatus::Finished, '1-0', BoardEndReason::Forfeit->value, $game->deadline_ms);
+        } elseif (! $game->clocksRunning()) {
             $this->end($game, BoardGameStatus::Aborted, null, BoardEndReason::Aborted->value, $game->deadline_ms);
         } else {
             $this->end($game, BoardGameStatus::Finished, $game->turn === 'w' ? '0-1' : '1-0', BoardEndReason::Timeout->value, $game->deadline_ms);
@@ -488,6 +552,18 @@ final class BoardGameService
             'draw_offer' => null,
             'ended_at' => now(),
         ]);
+
+        // In the transaction that ends the game: its rating change commits with the result or not at all.
+        if ($status === BoardGameStatus::Finished && $reason !== BoardEndReason::Forfeit->value) {
+            app(RatingService::class)->applyBoardGame($game);
+        }
+
+        if ($game->tournament_match_id !== null) {
+            $id = $game->id;
+            DB::afterCommit(fn () => $status === BoardGameStatus::Aborted
+                ? app(TournamentRunner::class)->boardGameAborted($id)
+                : app(TournamentRunner::class)->boardGameFinished($id));
+        }
     }
 
     private function announce(BoardGame $game): void
@@ -568,9 +644,13 @@ final class BoardGameService
         throw new BoardRuleViolation('unsupported_mode', "{$definition->slug()} mode {$mode} has no supported time control.");
     }
 
-    private function firstMoveMs(): int
+    /**
+     * The first-move window: a tournament game's own (its check-in, pinned
+     * at the start), else `esports.board_games.first_move_seconds`.
+     */
+    private function firstMoveMs(?BoardGame $game = null): int
     {
-        return (int) config('esports.board_games.first_move_seconds') * 1000;
+        return ($game->first_move_seconds ?? (int) config('esports.board_games.first_move_seconds')) * 1000;
     }
 
     private function nowMs(): int

@@ -3,6 +3,8 @@
 namespace App\Support\Tournaments;
 
 use App\Enums\NotificationKind;
+use App\Models\BoardGame;
+use App\Models\BoardInvite;
 use App\Models\ChessGame;
 use App\Models\ChessInvite;
 use App\Models\Tournament;
@@ -105,7 +107,7 @@ final class CasualCupNotices
                 }
 
                 $locale = $this->locale($player);
-                $body = $cup->profile()->isChess()
+                $body = $cup->profile()->isChess() || $cup->profile()->isBoard()
                     ? __('Play :opponent by :deadline: when you are both online, start it from the cup page. Otherwise the league starts your game at :slot.', [
                         'opponent' => $opponent->name,
                         'deadline' => $this->time($round->window_ends_at, $player, $cup),
@@ -165,7 +167,7 @@ final class CasualCupNotices
     /**
      * The opponent asks to play the cup match now.
      */
-    public function invited(Tournament $cup, ChessInvite $invite): void
+    public function invited(Tournament $cup, ChessInvite|BoardInvite $invite): void
     {
         $player = $invite->invitee;
         $locale = $this->locale($player);
@@ -179,10 +181,10 @@ final class CasualCupNotices
      * players, wherever they are; not the one who just accepted the invite
      * and is taken to the board anyway.
      */
-    public function gameStarted(Tournament $cup, ChessGame $game, ?User $except = null): void
+    public function gameStarted(Tournament $cup, ChessGame|BoardGame $game, ?User $except = null): void
     {
         foreach ([$game->white, $game->black] as $player) {
-            if ($except !== null && $player->is($except)) {
+            if ($player === null || ($except !== null && $player->is($except))) {
                 continue;
             }
 
@@ -194,10 +196,10 @@ final class CasualCupNotices
                     'color' => $game->colorOf($player) === 'w' ? __('White', [], $locale) : __('Black', [], $locale),
                     'name' => $game->opponentOf($player)?->displayName() ?? '',
                 ], $locale),
-                route('games.show', $game),
-                $game->id,
+                $game instanceof BoardGame ? route('board.show', $game) : route('games.show', $game),
+                $game instanceof ChessGame ? $game->id : null,
                 __('Play now', [], $locale),
-            ), $game);
+            ), $game instanceof ChessGame ? $game : null);
         }
     }
 

@@ -2,6 +2,8 @@
 
 namespace App\Support\Tournaments;
 
+use App\Enums\BoardEndReason;
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
@@ -10,6 +12,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Events\TournamentChanged;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
@@ -459,6 +462,87 @@ final class TournamentRunner
         $this->sync($match->tournament);
     }
 
+    /**
+     * A board game of a tournament match ended (plan "Mühle und Dame", P5):
+     * as chessGameFinished(), except that a drawn knockout game is replayed
+     * (colours swapped) up to `drawn_replays` times, a casual cup's too, and
+     * then the higher seed advances: the board games know no Armageddon.
+     */
+    public function boardGameFinished(int $boardGameId): void
+    {
+        $game = BoardGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($boardGameId);
+        $match = $game?->tournamentMatch;
+
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Finished || $match->isReplaced($game->id)) {
+            return;
+        }
+
+        $whiteSlot = in_array((int) $game->white_id, $match->slots[0]->participant?->memberIds() ?? [], true) ? 0 : 1;
+
+        if ($game->result === '1/2-1/2' && ! self::allowsDraw($match)) {
+            if (self::drawnBoardGames($match) > self::drawnReplays($match->tournament)) {
+                $this->store($match, $this->seedDecision($match, 'seed'));
+            }
+
+            $this->sync($match->tournament);
+
+            return;
+        }
+
+        $winner = match ($game->result) {
+            '1-0' => $whiteSlot,
+            '0-1' => 1 - $whiteSlot,
+            default => null,
+        };
+
+        $forfeit = $game->end_reason === BoardEndReason::Forfeit->value;
+
+        $this->store($match, [
+            'winner' => $winner,
+            'games_won' => $winner === null ? [0.5, 0.5] : ($winner === 0 ? [1.0, 0.0] : [0.0, 1.0]),
+            'points' => [],
+            'forfeit' => $forfeit,
+            'label' => $forfeit ? __('forfeit') : self::chessLabel($winner),
+            'by' => 'players',
+        ]);
+
+        $this->sync($match->tournament);
+    }
+
+    /**
+     * White missed the first move of a tournament board game: it is started
+     * again `first_move_restarts` times, then the double no-show rule decides.
+     */
+    public function boardGameAborted(int $boardGameId): void
+    {
+        $game = BoardGame::query()->with('tournamentMatch.tournament', 'tournamentMatch.round.stage', 'tournamentMatch.slots.participant')->find($boardGameId);
+        $match = $game?->tournamentMatch;
+
+        if ($game === null || $match === null || $match->tournament->isDirectorMode() || $match->result !== null || $game->status !== BoardGameStatus::Aborted || $match->isReplaced($game->id)) {
+            return;
+        }
+
+        if (self::abortedBoardGames($match) > self::firstMoveRestarts()) {
+            $this->store($match, $this->doubleNoShow($match));
+        }
+
+        $this->sync($match->tournament);
+    }
+
+    /** Knockout draws of a board game match so far (since the league last voided or superseded its games). */
+    public static function drawnBoardGames(TournamentMatch $match): int
+    {
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', BoardGameStatus::Finished)->where('result', '1/2-1/2')->count();
+    }
+
+    /** Games of a board game match aborted because White missed the first move. */
+    public static function abortedBoardGames(TournamentMatch $match): int
+    {
+        return BoardGame::query()->where('tournament_match_id', $match->id)->where('id', '>', (int) $match->replaced_through)
+            ->where('status', BoardGameStatus::Aborted)->count();
+    }
+
     /** Knockout draws of a chess match so far (since the league last voided or superseded its games, P18). */
     public static function drawnGames(TournamentMatch $match): int
     {
@@ -522,7 +606,7 @@ final class TournamentRunner
         $decided = false;
         $matches = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('status', 'ready')
             ->where('bracket', '!=', 'bye')->whereNull('result')
-            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame'])->orderBy('id')->get();
+            ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
 
         foreach ($matches as $match) {
             if (count($match->slots) !== 2) {
@@ -536,6 +620,10 @@ final class TournamentRunner
             }
 
             if ($match->chessGame !== null && $match->chessGame->status === ChessGameStatus::Active && ! $match->isReplaced($match->chessGame->id)) {
+                continue;
+            }
+
+            if ($match->boardGame !== null && $match->boardGame->status === BoardGameStatus::Active && ! $match->isReplaced($match->boardGame->id)) {
                 continue;
             }
 
@@ -666,7 +754,8 @@ final class TournamentRunner
                 throw new TournamentRuleViolation('interested', __('You have an interest in this match (you play in it, belong to a clan in it, or were named by someone who does), so another director or an admin has to enter its result.'));
             }
 
-            $result = $tournament->profile()->isChess()
+            // A board game's result is entered as a chess result (one game, 1-0 / ½-½ / 0-1).
+            $result = $tournament->profile()->isChess() || $tournament->profile()->isBoard()
                 ? $this->chessInput($match, $input)
                 : $this->seriesInput($tournament, $match, $input);
 
@@ -735,7 +824,8 @@ final class TournamentRunner
                 ->where('bracket', '!=', 'bye')->with(['slots.participant', 'seriesMatch', 'round.stage'])->get();
 
             foreach ($matches as $match) {
-                if ($match->isDirectorResult()) {
+                // A board game played elsewhere has no game record here and rates nothing (P5).
+                if ($match->isDirectorResult() && ! $locked->profile()->isBoard()) {
                     $locked->profile()->isChess() ? $this->finishChess($locked, $match) : $this->finishSeries($locked, $match);
                 }
             }
@@ -883,7 +973,7 @@ final class TournamentRunner
      */
     public function parseResult(Tournament $tournament, TournamentMatch $match, array $input): array
     {
-        return $tournament->profile()->isChess() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
+        return $tournament->profile()->isChess() || $tournament->profile()->isBoard() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
     }
 
     /**

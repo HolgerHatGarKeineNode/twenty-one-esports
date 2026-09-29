@@ -7,6 +7,7 @@ use App\Games\Contracts\Game;
 use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Board\LiveGameGuard;
 use App\Support\Clans\ClanStats;
 use App\Support\Engagement\ClanHashrate;
 use App\Support\PageMeta;
@@ -91,6 +92,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // One live game at a time across chess and the board games (plan "Mühle und Dame", P5).
+        LiveGameGuard::register();
 
         Gate::define('admin', fn (User $user): bool => $user->isAdmin());
 
