@@ -262,7 +262,7 @@ final class SeriesPresenter
      * block. `chain` is the match's place in the season chain
      * (App\Support\Matches\ChainStamps), null while it has none.
      *
-     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
      * @return array<string, mixed> the shape of App\Support\Matches\MatchBlocks::shape()
      */
     public static function block(SeriesMatch $match, bool $newest = false, ?User $viewer = null, ?array $chain = null): array
@@ -282,7 +282,7 @@ final class SeriesPresenter
             default => __('playing'),
         };
         $when = match ($state) {
-            'fin' => $match->finished_at?->diffForHumans() ?? '',
+            'fin' => $match->finished_at?->diffForHumans(['short' => true]) ?? '',
             'next' => __('at :time', ['time' => self::time($match->start_at ?? now(), $viewer, 'H:i')]),
             default => match ($match->status) {
                 SeriesStatus::Reported => __('to confirm'),
@@ -312,7 +312,7 @@ final class SeriesPresenter
             aria: __(':number, :game :mode best of :bo, :status, :a vs :b', [
                 'number' => $match->label(), 'game' => GameNames::game($match->game), 'mode' => $match->mode, 'bo' => $match->best_of,
                 'status' => $state === 'fin' ? $who : self::chip($match)['label'], 'a' => $match->challenger_name, 'b' => $match->challenged_name,
-            ]).($chain === null ? '' : ', '.$chain['text']),
+            ]).($chain === null ? '' : ', '.$chain['spoken']),
             state: $state,
             level: $state === 'fin' ? '100%' : ($state === 'next' ? '0%' : (int) round(min(1, $played / max(1, intdiv($match->best_of, 2) + 1)) * 100).'%'),
             casual: ! $match->rated,

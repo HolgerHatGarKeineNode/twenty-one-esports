@@ -292,7 +292,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
      * The mempool strip: the matches of every game, played left (newest at
      * the divider), running and scheduled right (App\Support\Matches\MempoolStrip).
      *
-     * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>}
+     * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}
      */
     #[Computed]
     public function strip(): array
@@ -311,8 +311,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
 <div class="flex grow flex-col gap-6 pb-10" data-test="matches">
     @if ($strip['finished'] !== [] || $strip['running'] !== [])
-        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')"
-                       :lead="__('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.')" />
+        {{-- The copy promises mining only while a season runs: before Block 0 and between seasons no win mines. --}}
+        <x-block-strip :finished="$strip['finished']" :running="$strip['running']" :title="__('Mempool')" :chain-live="$strip['live']"
+                       :lead="$strip['live'] ? __('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.') : __('Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.')" />
     @endif
 
     <div class="flex flex-col gap-5 px-4 lg:px-12">

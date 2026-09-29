@@ -11,6 +11,7 @@ use App\Models\ChessGame;
 use App\Models\SeasonAttestation;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Series\SeriesPresenter;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Route;
@@ -38,7 +39,10 @@ final class MempoolStrip
     public const SIDE = 5;
 
     /**
-     * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>}
+     * `live`: whether a season runs now, so the strip's copy promises mining
+     * only then (before Block 0 and between seasons no win mines).
+     *
+     * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}
      */
     public static function build(?User $viewer = null): array
     {
@@ -85,6 +89,7 @@ final class MempoolStrip
         return [
             'finished' => array_map(fn (array $item, int $index): array => self::present($item, $index === $last, $viewer, $stamps), $finished, array_keys($finished)),
             'running' => array_map(fn (array $item): array => self::present($item, false, $viewer, []), $running),
+            'live' => Seasons::isLive(),
         ];
     }
 
@@ -128,7 +133,7 @@ final class MempoolStrip
 
     /**
      * @param  array{kind: string, model: SeriesMatch|ChessGame|BoardGame, at: int}  $item
-     * @param  array<string, array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}>  $stamps
+     * @param  array<string, array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}>  $stamps
      * @return array<string, mixed>
      */
     private static function present(array $item, bool $newest, ?User $viewer, array $stamps): array

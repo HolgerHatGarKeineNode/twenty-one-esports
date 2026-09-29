@@ -110,8 +110,8 @@ test('a mined rated match shows its block and links to it; a voided or unmined o
     $blocks = collect(MempoolStrip::build()['finished'])->keyBy('key');
 
     expect($blocks['series-'.$mined->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 812, 'href' => route('mining').'#block-812', 'text' => 'Block 812'])
-        ->and($blocks['chess-'.$voided->id]['chain'])->toMatchArray(['state' => 'void', 'height' => 813, 'text' => 'Block 813 void', 'title' => 'Farmed between two accounts.'])
-        ->and($blocks['chess-'.$rejected->id]['chain'])->toMatchArray(['state' => 'none', 'height' => null, 'href' => null, 'text' => 'no block', 'title' => 'No block: a player is not Trusted yet'])
+        ->and($blocks['chess-'.$voided->id]['chain'])->toMatchArray(['state' => 'void', 'height' => 813, 'text' => 'Block 813', 'note' => 'void', 'title' => 'Farmed between two accounts.', 'spoken' => 'Block 813 void'])
+        ->and($blocks['chess-'.$rejected->id]['chain'])->toMatchArray(['state' => 'none', 'height' => null, 'href' => null, 'text' => 'no block', 'reason' => 'a player is not Trusted yet', 'title' => 'No block: a player is not Trusted yet'])
         ->and($blocks['chess-'.$drawn->id]['chain'])->toBeNull()
         ->and($blocks['chess-'.$casual->id]['chain'])->toBeNull()
         ->and($blocks['series-'.$mined->id]['aria'])->toEndWith(', Block 812');
@@ -121,9 +121,61 @@ test('a mined rated match shows its block and links to it; a voided or unmined o
     expect(substr_count($html, 'data-test="strip-block"'))->toBe(2)
         ->and($html)->toContain('href="'.route('mining').'#block-812"')
         ->toContain('is-mined')
-        ->toContain('Block 813 void')
+        ->toContain('<span class="bs-stamp-text">Block 813</span>')
+        ->toContain('data-test="strip-block-note">void</span>')
         ->toContain('data-test="strip-no-block"')
+        // A screen reader hears "no block: <reason>", the prefix once (review note).
+        ->toContain('<span class="bs-stamp-text">no block</span><span class="sr-only">: a player is not Trusted yet</span>')
+        ->not->toContain('No block: No block')
         ->not->toContain('#block-900');
+});
+
+test('a block of another season names its season and links nowhere; only a block of the season /mining shows links to it', function () {
+    $this->freezeTime();
+    $old = openSeason(['slug' => 'pre-season', 'genesis_at' => now()->subDays(60), 'ends_at' => now()->subDays(30)]);
+    $live = openSeason(['slug' => 'season-1', 'genesis_at' => now()->subDay(), 'ends_at' => now()->addDays(30)]);
+    $then = mempoolSeries(['rated' => true, 'finished_at' => now()->subMinutes(2)]);
+    $now = ChessGame::factory()->rated()->finished('1-0')->create(['ended_at' => now()->subMinute()]);
+    // The same height in both seasons: heights count per season.
+    mempoolAttest($old, SeasonAttestation::SERIES, $then->id, 3);
+    mempoolAttest($live, SeasonAttestation::CHESS, $now->id, 3);
+
+    $blocks = collect(MempoolStrip::build()['finished'])->keyBy('key');
+
+    expect($blocks['series-'.$then->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 3, 'href' => null, 'text' => 'Block 3', 'note' => 'Pre-Season', 'title' => 'Block 3 of Pre-Season'])
+        ->and($blocks['chess-'.$now->id]['chain'])->toMatchArray(['state' => 'mined', 'height' => 3, 'href' => route('mining').'#block-3', 'note' => null]);
+
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+
+    expect(substr_count($html, 'href="'.route('mining').'#block-3"'))->toBe(1)
+        ->and($html)->toContain('data-test="strip-block-note">Pre-Season</span>');
+
+    // Between seasons /mining shows the latest ended one: its blocks link, the older season's do not.
+    $this->travel(31)->days();
+    $blocks = collect(MempoolStrip::build()['finished'])->keyBy('key');
+
+    expect($blocks['chess-'.$now->id]['chain']['href'])->toBe(route('mining').'#block-3')
+        ->and($blocks['series-'.$then->id]['chain']['href'])->toBeNull();
+});
+
+test('the strip promises mining only while a season runs', function () {
+    mempoolSeries();
+    $promise = 'A fair rated win mines a block of the season chain.';
+
+    // Before Block 0.
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+    expect($html)->not->toContain($promise)->not->toContain('Rated wins mine a block of the season chain')
+        ->toContain('Rated wins mine blocks only while a season runs.');
+
+    // Live.
+    $season = openSeason();
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+    expect($html)->toContain($promise)->toContain('Rated wins mine a block of the season chain');
+
+    // Between seasons.
+    $season->forceFill(['ends_at' => now()->subMinute()])->save();
+    $html = $this->get(route('matches.index'))->assertOk()->getContent();
+    expect($html)->not->toContain($promise)->toContain('Rated wins mine blocks only while a season runs.');
 });
 
 test('/mining carries the anchor of each latest block, where the strip links a mined match', function () {

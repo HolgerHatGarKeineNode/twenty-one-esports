@@ -922,13 +922,38 @@ select:focus[data-flux-control] {
     }
 
     /* The season chain under a finished rated match: its block, the one orange text of the strip */
+    /* Two rows: the stamp, and under it what it must never lose (void, or an older season's name) */
     .bs-chain {
         box-sizing: border-box;
         width: var(--b);
-        height: 32px;
+        height: 52px;
         padding-top: 4px;
         display: flex;
-        justify-content: center;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .bs-stamp-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .bs-note {
+        max-width: 100%;
+        font-size: 11px;
+        line-height: 16px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--color-ink-2);
+    }
+
+    .bs-note.is-void {
+        font-weight: 700;
+        color: var(--color-loss);
     }
 
     .bs-stamp {
@@ -962,6 +987,9 @@ select:focus[data-flux-control] {
         background: transparent;
         box-shadow: inset 0 0 0 1px var(--color-line);
         color: var(--color-ink-3);
+    }
+
+    .bs-stamp.is-void .bs-stamp-text {
         text-decoration: line-through;
     }
 

@@ -5534,5 +5534,7 @@
     "No block: :reason": "Kein Block: :reason",
     "no result": "kein Ergebnis",
     "Daily game": "Fernpartie",
-    "The first game opens the list.": "Die erste Partie eröffnet die Liste."
+    "The first game opens the list.": "Die erste Partie eröffnet die Liste.",
+    "Block :height of :season": "Block :height der :season",
+    "Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.": "Partien aller Spiele, gespielt und wartend. Gewertete Siege minen nur Blöcke, solange eine Season läuft."
 }

@@ -87,7 +87,7 @@ class SampleData
             dot: $dot,
             word: $word,
             newest: $newest,
-            chain: $chain === null ? null : ['state' => 'mined', 'height' => $chain, 'href' => route('mining').'#block-'.$chain, 'text' => __('Block :height', ['height' => $chain]), 'title' => __('Mined as block :height of the season chain', ['height' => $chain])],
+            chain: $chain === null ? null : ['state' => 'mined', 'height' => $chain, 'href' => route('mining').'#block-'.$chain, 'text' => __('Block :height', ['height' => $chain]), 'note' => null, 'reason' => null, 'title' => __('Mined as block :height of the season chain', ['height' => $chain]), 'spoken' => __('Block :height', ['height' => $chain])],
         );
     }
 }

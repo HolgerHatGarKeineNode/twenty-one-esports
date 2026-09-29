@@ -6,6 +6,7 @@
     'legend' => true,
     'title' => null,
     'lead' => null,
+    'chainLive' => true,
 ])
 
 {{--
@@ -24,6 +25,10 @@
     size:  md (120 px cubes), sm (100 px, mobile), auto (sm below 1024 px, md above)
     focus: a colour family (chess|rl|fc|morris|checkers) marks that game's cubes on a game page; nothing is hidden
     title, lead: a visible name and one line of explanation above the strip
+    chainLive: whether a season runs now; the legend promises mining only then
+    chain stamp (App\Support\Matches\ChainStamps): the block, and under it a
+    second line for what it must not lose (void, or an older season's name);
+    it links only to a block /mining shows.
 --}}
 @php
     $knight = '<svg class="bs-logo" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17 18C17.5 12 17 6.5 12.5 4L11.5 2L10 4.2C8 5.2 6 7.8 4.6 10.2C4.3 10.9 4.7 11.7 5.4 11.9L6.4 12.3C7.1 12.5 7.9 12.2 8.3 11.6L9.6 10.6C10.3 10.3 10.8 10.4 11.2 10.8C9.4 12.8 8 15 7.6 18ZM9.9 6.2a.9 .9 0 1 0 .01 0ZM5 19.5h14V22H5z"></path></svg>';
@@ -95,11 +100,20 @@
                             @if ($chainRow)
                                 <span class="bs-chain">
                                     @if ($block['chain'] !== null && $block['chain']['state'] !== 'none')
-                                        <a href="{{ $block['chain']['href'] }}" @class(['bs-stamp', 'is-void' => $block['chain']['state'] === 'void']) title="{{ $block['chain']['title'] }}" data-test="strip-block">
-                                            <span class="bs-mini" aria-hidden="true"></span>{{ $block['chain']['text'] }}
-                                        </a>
+                                        @if ($block['chain']['href'] !== null)
+                                            <a href="{{ $block['chain']['href'] }}" @class(['bs-stamp', 'is-void' => $block['chain']['state'] === 'void']) title="{{ $block['chain']['title'] }}" data-test="strip-block">
+                                                <span class="bs-mini" aria-hidden="true"></span><span class="bs-stamp-text">{{ $block['chain']['text'] }}</span>@if ($block['chain']['note'] !== null)<span class="sr-only">{{ ' '.$block['chain']['note'] }}</span>@endif
+                                            </a>
+                                        @else
+                                            <span @class(['bs-stamp is-elsewhere', 'is-void' => $block['chain']['state'] === 'void']) title="{{ $block['chain']['title'] }}" data-test="strip-block">
+                                                <span class="bs-mini" aria-hidden="true"></span><span class="bs-stamp-text">{{ $block['chain']['text'] }}</span>@if ($block['chain']['note'] !== null)<span class="sr-only">{{ ' '.$block['chain']['note'] }}</span>@endif
+                                            </span>
+                                        @endif
+                                        @if ($block['chain']['note'] !== null)
+                                            <span @class(['bs-note', 'is-void' => $block['chain']['state'] === 'void']) aria-hidden="true" data-test="strip-block-note">{{ $block['chain']['note'] }}</span>
+                                        @endif
                                     @elseif ($block['chain'] !== null)
-                                        <span class="bs-stamp is-none" title="{{ $block['chain']['title'] }}" data-test="strip-no-block">{{ $block['chain']['text'] }}<span class="sr-only">: {{ $block['chain']['title'] }}</span></span>
+                                        <span class="bs-stamp is-none" title="{{ $block['chain']['title'] }}" data-test="strip-no-block"><span class="bs-stamp-text">{{ $block['chain']['text'] }}</span><span class="sr-only">{{ ': '.$block['chain']['reason'] }}</span></span>
                                     @endif
                                 </span>
                             @endif
@@ -121,7 +135,7 @@
                 <span class="bs-key bs-key--state"><span class="bs-chip" aria-hidden="true" style="border: 1px solid #ADADB0; background: linear-gradient(0deg, #ADADB0 50%, transparent 50%)"></span>{{ __('Playing, fills up as it goes') }}</span>
                 <span class="bs-key bs-key--state"><span class="bs-chip" aria-hidden="true" style="border: 2px solid #ADADB0"></span>{{ __('Up next') }}</span>
                 <span class="bs-key bs-key--state"><span class="bs-tag">{{ __('casual') }}</span>{{ __('Unrated') }}</span>
-                <a href="{{ route('mining') }}" class="bs-key bs-key--chain" data-test="strip-legend-chain"><span class="bs-mini" aria-hidden="true"></span>{{ __('Rated wins mine a block of the season chain') }}</a>
+                <a href="{{ route('mining') }}" class="bs-key bs-key--chain" data-test="strip-legend-chain"><span class="bs-mini" aria-hidden="true"></span>{{ $chainLive ? __('Rated wins mine a block of the season chain') : __('Season chain') }}</a>
             </div>
         </div>
     @endif

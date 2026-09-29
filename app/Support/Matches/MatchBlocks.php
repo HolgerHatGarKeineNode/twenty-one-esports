@@ -44,8 +44,8 @@ final class MatchBlocks
     /**
      * @param  list<array{name: string, user: User|null, clan: Clan|null, won: bool}>  $sides
      * @param  'fin'|'live'|'next'  $state
-     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
-     * @return array{key: string, number: string, slug: string, game: string, icon: string, mode: string, score: string, word: bool, who: string, when: string, sides: list<array{name: string, user: User|null, clan: Clan|null, won: bool}>, href: string, aria: string, level: string, casual: bool, state: string, dot: bool, newest: bool, chain: array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null}
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
+     * @return array{key: string, number: string, slug: string, game: string, icon: string, mode: string, score: string, word: bool, who: string, when: string, sides: list<array{name: string, user: User|null, clan: Clan|null, won: bool}>, href: string, aria: string, level: string, casual: bool, state: string, dot: bool, newest: bool, chain: array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null}
      */
     public static function shape(
         string $key,
@@ -92,7 +92,7 @@ final class MatchBlocks
     /**
      * A chess game, blitz or daily. Aborted games never reach the strip.
      *
-     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
      * @return array<string, mixed>
      */
     public static function chess(ChessGame $game, bool $newest = false, ?array $chain = null): array
@@ -122,7 +122,7 @@ final class MatchBlocks
      * A board game other than chess. Only called while its route is there
      * (MempoolStrip checks Route::has('board.show')).
      *
-     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
      * @return array<string, mixed>
      */
     public static function board(BoardGame $game, bool $newest = false, ?array $chain = null): array
@@ -155,7 +155,7 @@ final class MatchBlocks
      * on the page comes from it.
      *
      * @param  'w'|'b'  $turn
-     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, title: string}|null  $chain
+     * @param  array{state: 'mined'|'void'|'none', height: int|null, href: string|null, text: string, note: string|null, reason: string|null, title: string, spoken: string}|null  $chain
      * @return array<string, mixed>
      */
     private static function oneVsOne(
@@ -192,7 +192,7 @@ final class MatchBlocks
             default => __('Draw'),
         };
         $when = match (true) {
-            $finished => $endedAt?->diffForHumans() ?? '',
+            $finished => $endedAt?->diffForHumans(['short' => true]) ?? '',
             $daily => __('running'),
             default => __('live'),
         };
@@ -217,7 +217,7 @@ final class MatchBlocks
                 $game.' '.$mode,
                 $finished ? $score.' '.$who : $who,
                 $name($white).' '.__('vs :name', ['name' => $name($black)]),
-                $chain['text'] ?? null,
+                $chain['spoken'] ?? null,
             ], fn (mixed $part): bool => is_string($part) && $part !== '')),
             state: $finished ? 'fin' : 'live',
             level: $finished ? '100%' : (int) round(min(1, $ply / $expectedPly) * 100).'%',
