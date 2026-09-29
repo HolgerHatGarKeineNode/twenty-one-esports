@@ -162,7 +162,7 @@ test('deleting the account removes our data and logs out', function () {
     $this->assertGuest();
 });
 
-test('every settings page shows the same six tabs, its own one active and named in the heading', function (string $route, string $heading) {
+test('every settings page shows the same seven tabs, its own one active and named in the heading', function (string $route, string $heading) {
     $html = $this->actingAs(User::factory()->create())->get(route($route))->assertOk()->getContent();
 
     preg_match('/<nav aria-label="Settings sections".*?<\/nav>/s', $html, $nav);
@@ -170,11 +170,11 @@ test('every settings page shows the same six tabs, its own one active and named 
     preg_match('/<a [^>]*aria-current="page"[^>]*>([^<]+)<\/a>/', $nav[0] ?? '', $active);
     preg_match('/<h1[^>]*data-test="settings-heading"[^>]*>([^<]+)<\/h1>/', $html, $h1);
 
-    expect($tabs[1])->toBe(['settings-gamer-tags-tab', 'settings-account-tab', 'settings-notifications-tab', 'settings-chess-tab', 'settings-opponents-tab', 'settings-badges-tab'])
+    expect($tabs[1])->toBe(['settings-gamer-tags-tab', 'settings-account-tab', 'settings-notifications-tab', 'settings-chess-tab', 'settings-opponents-tab', 'settings-badges-tab', 'settings-nostr-address-tab'])
         ->and(substr_count($nav[0], 'aria-current="page"'))->toBe(1)
         ->and(html_entity_decode(trim($active[1] ?? '')))->toBe($heading)
         ->and(html_entity_decode(trim($h1[1] ?? '')))->toBe($heading)
-        ->and(substr_count($nav[0], 'wire:navigate'))->toBe(6);
+        ->and(substr_count($nav[0], 'wire:navigate'))->toBe(7);
 })->with([
     ['gaming.edit', 'Gamer tags'],
     ['settings.account', 'Account'],
@@ -182,4 +182,5 @@ test('every settings page shows the same six tabs, its own one active and named 
     ['settings.chess', 'Chess'],
     ['settings.opponents', 'Opponents'],
     ['settings.badges', 'Badges and sharing'],
+    ['settings.nip05', 'Nostr address'],
 ]);

@@ -122,7 +122,7 @@ function settingsMeasure(Page $page, string $label, int $width, string $heading)
     fwrite(STDERR, "\n[settings] {$label} {$width}px: ".json_encode($layout)."\n");
 
     expect($layout['scrollWidth'])->toBeLessThanOrEqual($layout['clientWidth'])
-        ->and($layout['tabs'])->toBe(6)
+        ->and($layout['tabs'])->toBe(7)
         ->and($layout['activeCount'])->toBe(1)
         ->and($layout['active'])->toBe($heading)
         ->and($layout['heading'])->toBe($heading)
@@ -152,6 +152,7 @@ test('every settings page has the same tabs, the active one names the heading an
             'settings.chess' => 'Chess',
             'settings.opponents' => 'Opponents',
             'settings.badges' => 'Badges and sharing',
+            'settings.nip05' => 'Nostr address',
         ] as $route => $heading) {
             $page = settingsOpen(route($route, absolute: false), $width, $user);
             $layout = settingsMeasure($page, $route, $width, $heading);

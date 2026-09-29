@@ -19,7 +19,7 @@
         'chess' => [route('settings.chess'), __('Chess'), 'settings-chess-tab'],
         'opponents' => [route('settings.opponents'), __('Opponents'), 'settings-opponents-tab'],
         'badges' => [route('settings.badges'), __('Badges and sharing'), 'settings-badges-tab'],
-        'nip05' => [route('settings.nip05'), __('Nostr address'), 'settings-nip05-tab'],
+        'nip05' => [route('settings.nip05'), __('Nostr address'), 'settings-nostr-address-tab'],
     ];
 @endphp
 
