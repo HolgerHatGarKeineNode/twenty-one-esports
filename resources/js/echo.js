@@ -102,5 +102,5 @@ if (window.Echo && presenceUser) {
 
 // Notifications on every logged-in page (P5c): toast, sound, tab title, desktop notification.
 startAlerts();
-// While a page is visible, push and DM wait (App\Support\Notifications\OnSite).
+// While a page is visible, no push or DM is sent; the bell and the toast reach the player (App\Support\Notifications\OnSite).
 startOnSitePing();

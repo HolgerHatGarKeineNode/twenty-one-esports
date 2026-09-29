@@ -4,12 +4,14 @@ use App\Models\ChessGame;
 use App\Models\User;
 use App\Support\Chess\ChessGameService;
 use App\Support\Notifications\OnSite;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserWait;
+use Tests\Support\RunnerConsole;
 
 pest()->group('browser');
 
@@ -236,9 +238,9 @@ test('the notification settings group the switches, show how far each reaches an
 
             expect($shape)->toBe([
                 'groups' => ['notify-group-correspondence', 'notify-group-play', 'notify-group-community', 'notify-group-league'],
-                'switches' => 24,
+                'switches' => 25,
                 'pageOnly' => [],
-                'reachDm' => 10,
+                'reachDm' => 8,
             ])
                 ->and($page->evaluate(DM_PAGES_CLIPPED, '[data-test=notify-about]'))->toBe([])
                 ->and($page->evaluate(DM_PAGES_CLIPPED, '#notifications'))->toBe([]);
@@ -316,4 +318,96 @@ test('a daily game offers push or only here for the opponent\'s move, never a DM
             $game->forceFill(['white_notify' => 'dm'])->save();
         }
     }
+});
+
+/*
+ * A tab left open after the player logged out (here: the session ended on
+ * the server, as a logout in another tab does). Measured on the runner's
+ * own console channel (RunnerConsole), which sees Chrome's network lines.
+ */
+const DM_PAGES_FLIP_VISIBILITY = <<<'JS'
+    () => {
+        const flip = (state) => {
+            Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+            document.dispatchEvent(new Event('visibilitychange'));
+        };
+        flip('hidden');
+        flip('visible');
+        return true;
+    }
+    JS;
+
+test('a tab left open after logout stops pinging and writes nothing to the console', function () {
+    $anna = User::factory()->create(['locale' => 'en']);
+    $page = dmPagesOpen(route('settings.notifications', absolute: false), 1280, $anna);
+    BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=notify-about]") !== null', 10_000);
+    dmPagesPinged($page);
+    expect(app(OnSite::class)->isOnSite($anna))->toBeTrue();
+
+    $console = RunnerConsole::watch($page);
+
+    // Logged out elsewhere: the session is gone. Back to visible, the page pings, is told to stop, and stops.
+    DB::table('sessions')->where('user_id', $anna->id)->delete();
+    $console->run(DM_PAGES_FLIP_VISIBILITY);
+
+    expect($console->until('() => window.esportsOnSite.stopped()'))->toBeTrue()
+        ->and(array_values(array_filter($console->messages(), fn (array $m): bool => in_array($m['type'], ['error', 'warning'], true))))->toBe([]);
+
+    // Stopped for good: another turn to visible sends nothing.
+    $pings = $console->run('() => performance.getEntriesByType("resource").filter((e) => e.name.endsWith("/presence/ping")).length');
+    $console->run(DM_PAGES_FLIP_VISIBILITY);
+    $console->run('() => new Promise((resolve) => setTimeout(resolve, 500))');
+    expect($console->run('() => performance.getEntriesByType("resource").filter((e) => e.name.endsWith("/presence/ping")).length'))->toBe($pings);
+
+    // Positive control: the same channel sees a failed request and a console error.
+    $console->run('() => fetch("/presence/ping-nowhere").then(() => true)');
+    $console->run('() => { console.error("positive control"); return true; }');
+    $console->run('() => new Promise((resolve) => setTimeout(resolve, 300))');
+    $seen = array_map(fn (array $m): string => $m['text'], $console->messages());
+
+    expect(collect($seen)->contains(fn (string $text): bool => str_contains($text, 'status of 404')))->toBeTrue()
+        ->and($seen)->toContain('positive control');
+});
+
+test('the heading of the notification settings stays one word on one line at 320, 375 and 1280 px in English and German', function () {
+    foreach (['en', 'de'] as $locale) {
+        foreach ([320, 375, 1280] as $width) {
+            $anna = User::factory()->create(['locale' => $locale]);
+            $page = dmPagesOpen(route('settings.notifications', absolute: false), $width, $anna);
+            BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=settings-heading]") !== null', 10_000);
+
+            $heading = $page->evaluate('() => {
+                const h1 = document.querySelector("[data-test=settings-heading]");
+                const range = document.createRange();
+                range.selectNodeContents(h1);
+                const lines = new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+                const box = h1.getBoundingClientRect();
+                const parent = h1.parentElement.getBoundingClientRect();
+                return { text: h1.textContent.trim(), lines, inside: box.right <= parent.right + 0.5 && Math.max(...[...range.getClientRects()].map((r) => r.right)) <= parent.right + 0.5 };
+            }');
+            fwrite(STDERR, "\n[dm-pages] heading {$locale} {$width}px: ".json_encode($heading)."\n");
+
+            expect($heading)->toBe(['text' => $locale === 'de' ? 'Benachrichtigungen' : 'Notifications', 'lines' => 1, 'inside' => true]);
+            dmPagesMeasure($page, '[data-test=settings-header]', "header {$locale}", $width);
+            dmPagesClean($page);
+        }
+    }
+});
+
+test('the game row shows the away line only when a push can go out', function () {
+    $anna = User::factory()->create(['locale' => 'en', 'chess_settings' => ['push' => false]]);
+    $game = app(ChessGameService::class)->start($anna, User::factory()->create(), ChessGame::CORRESPONDENCE);
+
+    $page = dmPagesOpen(route('games.show', $game, absolute: false), 1280, $anna);
+    BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=notify-away-only]") !== null', 10_000);
+    dmPagesPinged($page);
+    $state = fn () => $page->evaluate('() => ({ away: document.querySelector("[data-test=notify-away-only]").offsetParent !== null, summary: [...document.querySelectorAll("section[aria-labelledby=nt-h] span")].map((s) => s.offsetParent !== null ? s.textContent.trim() : "").filter((t) => t.startsWith("Now:")).join("") })');
+
+    // Push off and no choice for this game: nothing goes out, and the row says only that.
+    expect($state())->toBe(['away' => false, 'summary' => 'Now: your settings (Notifications are off)']);
+
+    $page->locator('[data-test=notify-push]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=notify-away-only]").offsetParent !== null', 5_000);
+    expect($state()['away'])->toBeTrue();
+    dmPagesClean($page);
 });

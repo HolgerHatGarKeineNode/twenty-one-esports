@@ -17,7 +17,8 @@ use Throwable;
 
 /**
  * Reminders to the players a tournament match waits on (P18, slice 5),
- * through the Notifier (the bell, push, and a Nostr DM by default,
+ * through the Notifier (the bell, and a browser push while the player is
+ * away; minutes to act are too few for a Nostr DM,
  * NotificationKind::TournamentReminder):
  *
  * 1. **Automatic** ({@see tick()}, run by `tournaments:tick`): at each point

@@ -10,6 +10,11 @@
     page, and starts scrolled so the active tab is in view. Tabs switch with
     wire:navigate. The slot sits beside the heading (the chess page's
     "Saved" status).
+
+    The heading steps down below 360 and 640 px so the longest one, the
+    German „Benachrichtigungen“, stays one word on one line at 320 px (the
+    test browser has no hyphenation dictionary; a break inside the word read
+    as „Benachrichtigu/ngen“).
 --}}
 @php
     $tabs = [
@@ -38,7 +43,7 @@
     </nav>
 
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <h1 class="m-0 min-w-0 font-display text-[28px] font-bold break-words hyphens-auto lg:text-[32px]" data-test="settings-heading">{{ $tabs[$current][1] }}</h1>
+        <h1 class="m-0 font-display text-[22px] font-bold min-[360px]:text-[26px] sm:text-[28px] lg:text-[32px]" data-test="settings-heading">{{ $tabs[$current][1] }}</h1>
         {{ $slot }}
     </div>
 </div>

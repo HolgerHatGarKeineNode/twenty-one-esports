@@ -3,6 +3,8 @@
 namespace App\Support\Chess;
 
 use App\Enums\NotificationKind;
+use App\Models\BoardGame;
+use App\Models\ChessGame;
 
 /**
  * A player's chess and notification preferences (ChessSettings.dc.html),
@@ -135,6 +137,26 @@ final readonly class ChessSettings
     public function dmFor(string $trigger): bool
     {
         return (NotificationKind::tryFrom($trigger)?->dmAllowed() ?? false) && $this->dmOn();
+    }
+
+    /**
+     * Where this kind reaches the player while they are away, by the
+     * account settings alone: the Notifier starts from this (a game's own
+     * "Tell me when" choice may narrow it), and the pages that describe the
+     * channels read it too, so what they say is what goes out.
+     *
+     * @return list<'push'|'dm'>
+     */
+    public function remoteChannels(NotificationKind $kind, ChessGame|BoardGame|null $game = null): array
+    {
+        if (! $this->wants($kind->value)) {
+            return [];
+        }
+
+        return array_values(array_filter([
+            $this->push && $kind->pushAllowed($game) ? 'push' : null,
+            $this->dmFor($kind->value) ? 'dm' : null,
+        ]));
     }
 
     /**

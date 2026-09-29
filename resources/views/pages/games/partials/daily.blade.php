@@ -22,8 +22,9 @@
     $settings = $viewer?->chessSettings();
     $opponentName = $opponent['name'] ?? '';
     $opponentUser = $game->opponentOf($viewer);
-    $channels = array_filter([$settings?->dmFor('your_move') ? __('Nostr DM') : null, $settings?->push ? __('browser push') : null]);
-    $channelSummary = $channels === [] ? __('Notifications are off') : __(':channels on', ['channels' => implode(' '.__('and').' ', $channels)]);
+    // "Your move" by the account settings, as the Notifier reads them (never a DM).
+    $accountPush = in_array('push', $settings?->remoteChannels(App\Enums\NotificationKind::YourMove, $game) ?? [], true);
+    $channelSummary = $accountPush ? __(':channels on', ['channels' => __('browser push')]) : __('Notifications are off');
     // Rev. 9.4: moves are no events. A game begun before keeps the notes of its earlier moves as history.
     $moveNotes = $game->moves()->whereNotNull('nostr_event_id')->count();
     // The league's record goes to the league relays; the chat relays carry only gift wraps (P5d: public in production).
@@ -303,7 +304,7 @@
                 @endforeach
             </div>
             <span class="text-xs text-ink-3" x-show="notify === null">{{ __('Now: your settings (:summary)', ['summary' => $channelSummary]) }}</span>
-            <span class="text-xs text-ink-3" x-show="notify !== 'here'" data-test="notify-away-only">{{ __('Only while you are away, at most once an hour.') }}</span>
+            <span class="text-xs text-ink-3" x-show="notify === 'push' || (notify === null && @js($accountPush))" data-test="notify-away-only">{{ __('Only while you are away, at most once an hour.') }}</span>
             <span class="grow"></span>
             <label class="flex min-h-11 cursor-pointer items-center gap-2.5 text-[13px]">
                 <input type="checkbox" :checked="remind" x-on:change="toggleRemind()" class="m-0 size-5 accent-btc" data-test="remind-toggle">

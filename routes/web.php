@@ -53,13 +53,15 @@ Route::middleware('guest')->group(function () {
 // Every registered game with its cover, modes and actions ("All games and modes", the game hub's last link). Public.
 Route::view('play', 'pages.play')->name('play');
 
+// A visible page, every 30 s: no push or DM while the player is on the site (OnSite).
+// No `auth`: a tab left open after logout gets 204 and a stop signal, never an error (OnSitePingController).
+Route::post('presence/ping', OnSitePingController::class)->name('presence.ping');
+
 Route::middleware('auth')->group(function () {
     // The player's own hub (P30): what needs them, what runs, where they stand. The header's "Your page".
     Route::livewire('me', 'pages::me.hub')->name('dashboard');
     Route::post('logout', Logout::class)->name('logout');
     Route::post('notify/block0', NotifyAtBlockZeroController::class)->name('notify.block0');
-    // A visible page, once a minute: no push or DM while the player is on the site (OnSite).
-    Route::post('presence/ping', OnSitePingController::class)->middleware('throttle:10,1')->name('presence.ping');
 });
 
 /*

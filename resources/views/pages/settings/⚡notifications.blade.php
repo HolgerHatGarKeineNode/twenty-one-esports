@@ -296,7 +296,7 @@ new #[Title('Notifications')] #[Layout('layouts::app', ['scripts' => ['resources
                         @include('pages.settings.partials.switch', [
                             'label' => __($label),
                             'hint' => __($hint, ['hours' => $settings->remindHours]),
-                            'reach' => $kind->dmAllowed() ? __('bell, push and DM') : __('bell and push'),
+                            'reach' => __($kind->reach()),
                             'on' => $settings->wants($kind->value),
                             'action' => "toggleTrigger('{$kind->value}')",
                             'test' => 'trigger-'.$kind->value,

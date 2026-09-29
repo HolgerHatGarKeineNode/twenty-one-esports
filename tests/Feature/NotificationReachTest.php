@@ -10,6 +10,7 @@
 
 use App\Enums\NotificationKind;
 use App\Games\NineMensMorris;
+use App\Http\Controllers\OnSitePingController;
 use App\Jobs\PublishNostrEvent;
 use App\Jobs\SendNostrDm;
 use App\Jobs\SendWebPush;
@@ -19,15 +20,19 @@ use App\Models\PushSubscription;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
+use App\Support\Chess\ChessInvites;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\Notice;
 use App\Support\Notifications\Notifier;
 use App\Support\Notifications\OnSite;
 use App\Support\Notifications\WebPush;
+use App\Support\Tournaments\CasualCups;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Tests\Support\NineMensMorrisOn;
+use Tests\Support\TestSigner;
 
 beforeEach(function () {
     $this->freezeTime();
@@ -100,6 +105,9 @@ test('each verdict class reaches exactly as far as the matrix says, whatever the
     'push only: correspondence game over' => [NotificationKind::GameOver, 'correspondence', ['push']],
     'push only: 5-minute no-show claim' => [NotificationKind::CasualNoShow, 'none', ['push']],
     'push only: clan join answer' => [NotificationKind::ClanJoinAnswer, 'none', ['push']],
+    'push only: 15-minute 1v1 start reminder' => [NotificationKind::CasualReminder, 'none', ['push']],
+    'push only: tournament match reminder (30 and 5 min)' => [NotificationKind::TournamentReminder, 'none', ['push']],
+    'push only: cup game now' => [NotificationKind::CupGameNow, 'none', ['push']],
     'push and DM: challenge' => [NotificationKind::Challenge, 'none', ['push', 'dm']],
     'push and DM: season payout' => [NotificationKind::SeasonPayout, 'none', ['push', 'dm']],
 ]);
@@ -145,7 +153,7 @@ test('"your move" is never a DM, whatever the switch, the per-game choice or whe
 
 /* ---------- On the site ------------------------------------------------------------------------------------- */
 
-test('a player on the site gets the bell only; three minutes after the last ping, push and DM go out again', function () {
+test('a player on the site gets the bell only; 75 s after the last ping, push and DM go out again', function () {
     $anna = User::factory()->create();
     $bert = reachPlayer();
 
@@ -155,7 +163,7 @@ test('a player on the site gets the bell only; three minutes after the last ping
     expect(remoteTo($bert))->toBe(['push' => 0, 'dm' => 0])
         ->and($bert->notifications()->count())->toBe(1);
 
-    $this->travel(179)->seconds();
+    $this->travel(74)->seconds();
     expect(app(OnSite::class)->isOnSite($bert))->toBeTrue();
 
     $this->travel(2)->seconds();
@@ -188,17 +196,92 @@ test('the deadline reminder still goes out while the player is on the site', fun
     expect(remoteTo($anna))->toBe(['push' => 1, 'dm' => 1]);
 });
 
-test('the ping needs a login, and marks only the player who sent it', function () {
+test('the ping marks only the player who sent it for 75 s, and a signed-out tab is told to stop without an error', function () {
     [$anna, $bert] = User::factory()->count(2)->create();
 
-    $this->post(route('presence.ping'))->assertRedirect(route('login'));
+    $this->post(route('presence.ping'))->assertNoContent()->assertHeader('X-On-Site', 'signed-out');
     $this->actingAs($anna)->get('/presence/ping')->assertStatus(404);
     expect(app(OnSite::class)->isOnSite($anna))->toBeFalse();
 
-    $this->actingAs($anna)->post(route('presence.ping'))->assertNoContent();
+    $this->actingAs($anna)->post(route('presence.ping'))->assertNoContent()->assertHeaderMissing('X-On-Site');
 
     expect(app(OnSite::class)->isOnSite($anna))->toBeTrue()
         ->and(app(OnSite::class)->isOnSite($bert))->toBeFalse();
+
+    // The page stopped pinging (hidden or closed): 75 s later she counts as away.
+    $this->travel(75)->seconds();
+    expect(app(OnSite::class)->isOnSite($anna))->toBeFalse();
+});
+
+test('more pings than a minute allows are told to slow down, still without an error status', function () {
+    $anna = User::factory()->create();
+
+    foreach (range(1, OnSitePingController::PER_MINUTE) as $ping) {
+        $this->actingAs($anna)->post(route('presence.ping'))->assertNoContent()->assertHeaderMissing('X-On-Site');
+    }
+
+    $this->actingAs($anna)->post(route('presence.ping'))->assertNoContent()->assertHeader('X-On-Site', 'slow')->assertHeader('Retry-After');
+});
+
+test('the on-site check comes before the hourly "your move" slot: a move seen on the site does not use up the next push', function () {
+    $anna = reachPlayer();
+    $bert = reachPlayer();
+    $games = app(ChessGameService::class);
+    $game = $games->start($anna, $bert, ChessGame::CORRESPONDENCE);
+
+    app(OnSite::class)->seen($bert);
+    $games->move($game, $anna, 'e2e4');                      // t0: Bert is on the site: bell only
+    expect(remoteTo($bert)['push'])->toBe(0);
+
+    $this->travel(20)->minutes();
+    $games->move($game->refresh(), $bert, 'e7e5');
+    $this->travel(20)->minutes();
+    $games->move($game->refresh(), $anna, 'g1f3');           // t40: Bert away, moved 20 min ago: pushed
+
+    expect(remoteTo($bert))->toBe(['push' => 1, 'dm' => 0]);
+});
+
+test('a per-game "push" on a live game sends nothing: the kind still decides', function () {
+    $anna = reachPlayer();
+    $bert = reachPlayer();
+    $blitz = app(ChessGameService::class)->start($anna, $bert);
+    $blitz->forceFill(['black_notify' => 'push'])->save();
+
+    app(Notifier::class)->send($bert, NotificationKind::YourMove, reachNotice(), $blitz);
+
+    expect(remoteTo($bert))->toBe(['push' => 0, 'dm' => 0]);
+});
+
+/* ---------- Casual cups: what is on now is no DM ---------------------------------------------------------- */
+
+test('a cup play-now invite and a cup game the league started reach an away player by push, never by DM', function () {
+    Http::fake();
+    config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess']]);
+    $cup = runningCup(4);
+    cupTick();
+    $match = openCupMatches($cup)->first();
+    [$white, $black] = matchPlayers($match);
+    $players = openCupMatches($cup)->flatMap(fn ($m) => matchPlayers($m));
+
+    foreach ($players as $player) {
+        [$browserKey] = WebPush::generateKeyPair();
+        PushSubscription::query()->create(['user_id' => $player->id, 'endpoint' => 'https://push.example.test/'.$player->id, 'public_key' => WebPush::base64UrlEncode($browserKey), 'auth_token' => WebPush::base64UrlEncode(random_bytes(16))]);
+        $player->forceFill(['chess_settings' => ['dm' => true, 'push' => true]])->save();
+    }
+
+    Bus::fake([SendWebPush::class, SendNostrDm::class, PublishNostrEvent::class]);
+    app(ChessInvites::class)->inviteToCupMatch($black, $match);
+
+    expect(remoteTo($white->refresh()))->toBe(['push' => 1, 'dm' => 0])
+        ->and($white->notifications()->where('type', 'cup_game_now')->count())->toBe(1);
+
+    Bus::fake([SendWebPush::class, SendNostrDm::class, PublishNostrEvent::class]);
+    $this->travelTo(CasualCups::autoSlot(openCupMatches($cup)->first()->round->window_ends_at));
+    cupTick();
+
+    expect(ChessGame::query()->whereNotNull('tournament_match_id')->count())->toBeGreaterThan(0)
+        ->and($players->sum(fn (User $user) => remoteTo($user)['dm']))->toBe(0)
+        ->and($players->sum(fn (User $user) => remoteTo($user)['push']))->toBeGreaterThan(0);
 });
 
 /* ---------- "Your move": at the board, and once an hour ---------------------------------------------------- */
@@ -327,4 +410,57 @@ test('the deadline reminder goes out once a turn, however often the sweep runs, 
     expect($reminders($bert))->toBe(1)
         ->and($reminders($anna))->toBe(1)
         ->and($game->refresh()->reminded_ply)->toBe(1);
+});
+
+/* ---------- What the pages say goes out ------------------------------------------------------------------- */
+
+test('the correspondence hub says what goes out, for every combination of channels and switches', function (array $settings, string $state, string $text) {
+    $anna = User::factory()->create(['locale' => 'en', 'chess_settings' => $settings]);
+    app(ChessGameService::class)->start($anna, User::factory()->create(), ChessGame::CORRESPONDENCE);
+
+    $html = $this->actingAs($anna)->get(route('me.correspondence'))->assertOk()->getContent();
+    preg_match('~data-test="correspondence-reach">(.*?)</span>~s', $html, $reach);
+
+    expect($html)->toContain($state)
+        ->and(preg_replace('/\s+/', ' ', trim(html_entity_decode($reach[1] ?? ''))))->toBe($text);
+})->with([
+    'push and DM on' => [['push' => true, 'dm' => true], 'Notifications on', 'A browser push for an opponent\'s move, at most once an hour and only while you are away. Nostr DM and browser push 6 h before your deadline.'],
+    'push on, DM off' => [['push' => true, 'dm' => false], 'Notifications on', 'A browser push for an opponent\'s move, at most once an hour and only while you are away. Browser push 6 h before your deadline.'],
+    'DM on, push off' => [['push' => false, 'dm' => true], 'Notifications on', 'Opponent moves show here and in the bell. Nostr DM 6 h before your deadline.'],
+    'DM never chosen, push off' => [['push' => false], 'Notifications on', 'Opponent moves show here and in the bell. Nostr DM 6 h before your deadline.'],
+    'your move switched off' => [['push' => true, 'dm' => true, 'triggers' => ['your_move' => false]], 'Notifications on', 'Opponent moves show here and in the bell. Nostr DM and browser push 6 h before your deadline.'],
+    'reminder switched off' => [['push' => true, 'dm' => true, 'triggers' => ['reminder' => false]], 'Notifications on', 'A browser push for an opponent\'s move, at most once an hour and only while you are away. No reminder before your deadline.'],
+    'both off' => [['push' => false, 'dm' => false], 'Notifications off', ''],
+]);
+
+test('the hub and the Notifier agree: what the hub promises for a move and a reminder is what goes out while away', function (bool $push, bool $dm) {
+    $anna = reachPlayer(['push' => $push, 'dm' => $dm]);
+    $bert = reachPlayer();
+    $games = app(ChessGameService::class);
+    $game = $games->start($bert, $anna, ChessGame::CORRESPONDENCE);
+    $daily = (new ChessGame)->forceFill(['mode' => ChessGame::CORRESPONDENCE]);
+
+    $games->move($game, $bert, 'e2e4');
+    $move = remoteTo($anna);
+    $this->travel(18 * 60 + 1)->minutes();
+    $this->artisan('chess:daily-reminders')->assertSuccessful();
+    $all = remoteTo($anna);
+
+    expect(['push' => $move['push'] > 0, 'dm' => $move['dm'] > 0])->toBe(['push' => in_array('push', $anna->chessSettings()->remoteChannels(NotificationKind::YourMove, $daily), true), 'dm' => false])
+        ->and(['push' => $all['push'] - $move['push'] > 0, 'dm' => $all['dm'] - $move['dm'] > 0])
+        ->toBe(['push' => in_array('push', $anna->chessSettings()->remoteChannels(NotificationKind::Reminder, $daily), true), 'dm' => in_array('dm', $anna->chessSettings()->remoteChannels(NotificationKind::Reminder, $daily), true)]);
+})->with([true, false])->with([true, false]);
+
+test('each settings row says how far its kind reaches, and says it true', function () {
+    $reach = collect(NotificationKind::cases())->reject(fn (NotificationKind $kind) => $kind->pageOnly())->mapWithKeys(fn (NotificationKind $kind) => [$kind->value => $kind->reach()])->all();
+    $dmKinds = array_values(array_map(fn (NotificationKind $kind) => $kind->value, array_filter(NotificationKind::cases(), fn (NotificationKind $kind) => $kind->dmAllowed())));
+
+    expect(array_keys(array_filter($reach, fn (string $text) => str_contains($text, 'DM'))))->toBe($dmKinds)
+        ->and($reach['game_over'])->toBe('bell; push only for correspondence games')
+        ->and($reach['opponent_resigned'])->toBe('bell; push only for correspondence games')
+        ->and($reach['invite_accepted'])->toBe('bell; push only for an invite link')
+        ->and($reach['your_move'])->toBe('bell; push at most once an hour per game')
+        ->and($reach['reminder'])->toBe('bell, push and DM, even while you are here')
+        ->and($reach['cup_game_now'])->toBe('bell and push')
+        ->and($reach['game_started'])->toBe('bell and push');
 });

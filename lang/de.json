@@ -5562,5 +5562,17 @@
     "Clans and tournaments": "Clans und Turniere",
     "bell, push and DM": "Glocke, Push und DM",
     "bell and push": "Glocke und Push",
-    "Always on this page only, never sent: opponent found, invites to a live game or 1v1, your opponent joined your lobby. You are at the board for these.": "Immer nur hier auf der Seite, nie verschickt: Gegner gefunden, Einladungen zu Live-Partie oder 1v1, dein Gegner ist deiner Lobby beigetreten. Dabei sitzt du ohnehin am Brett."
+    "Always on this page only, never sent: opponent found, invites to a live game or 1v1, your opponent joined your lobby. You are at the board for these.": "Immer nur hier auf der Seite, nie verschickt: Gegner gefunden, Einladungen zu Live-Partie oder 1v1, dein Gegner ist deiner Lobby beigetreten. Dabei sitzt du ohnehin am Brett.",
+    "bell, push and DM, even while you are here": "Glocke, Push und DM, auch wenn du hier bist",
+    "bell; push at most once an hour per game": "Glocke; Push höchstens einmal pro Stunde und Partie",
+    "bell; push only for correspondence games": "Glocke; Push nur bei Fernpartien",
+    "bell; push only for an invite link": "Glocke; Push nur bei einem Einladungslink",
+    "only on the page": "nur auf der Seite",
+    "Cup game now": "Cup-Partie jetzt",
+    "your cup opponent wants to play now, or the league started your cup game": "dein Cup-Gegner will jetzt spielen, oder die Liga hat deine Cup-Partie gestartet",
+    "a tournament you play in opened your match, set or moved a time, was paused, resumed or called off, or its organizer wrote to all players": "ein Turnier, in dem du spielst, hat dein Match geöffnet, eine Zeit festgelegt oder verschoben, wurde pausiert, fortgesetzt oder abgesagt, oder sein Veranstalter hat allen Spielern geschrieben",
+    "A browser push for an opponent's move, at most once an hour and only while you are away.": "Ein Browser-Push für einen Zug des Gegners, höchstens einmal pro Stunde und nur, wenn du nicht hier bist.",
+    "Opponent moves show here and in the bell.": "Züge des Gegners siehst du hier und in der Glocke.",
+    ":channels :hours h before your deadline.": ":channels :hours h vor deiner Frist.",
+    "No reminder before your deadline.": "Keine Erinnerung vor deiner Frist."
 }

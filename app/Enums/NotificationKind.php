@@ -45,6 +45,7 @@ enum NotificationKind: string
     case BlockZero = 'block0';
     case SeasonPayout = 'season_payout';
     case OpponentRequest = 'opponent_request';
+    case CupGameNow = 'cup_game_now';
 
     /**
      * The page follows the link on its own after a short, cancellable
@@ -63,51 +64,61 @@ enum NotificationKind: string
      * say (a stored per-kind value that asks for more is ignored, not deleted).
      *
      * A Nostr DM only for what a player has to act on while away, with hours
-     * or days to do it: DMs arrive too slowly for anything live. Browser push
-     * where seconds matter or where it is plain news; never for a live event
-     * the player is already at. Both only while the player is not on the site
-     * (OnSite), except the correspondence deadline reminder.
+     * or days to do it: DMs arrive too slowly for anything live or
+     * minute-scale ("live → no DM", user 2026-09-30). Browser push where
+     * minutes matter or where it is plain news; never for a live event the
+     * player is already at. Neither is sent while the player is on the site
+     * (OnSite; the bell and the toast reach them there), except the
+     * correspondence deadline reminder.
      *
-     * | kind                     | fires when                                         | player is      | reach                 |
-     * |--------------------------|----------------------------------------------------|----------------|-----------------------|
-     * | match_found              | blitz queue paired (live, seconds)                 | in the queue   | page only             |
-     * | invite                   | blitz invite from a friend (live, 120 s)           | on the site    | page only             |
-     * | invite_accepted          | a blitz invite (link) was taken, board open        | anywhere       | push (seconds count)  |
-     * | challenge                | correspondence / clan match challenge (48 h, days) | away           | push, DM              |
-     * | game_started             | correspondence challenge accepted                  | away           | push; live: page only |
-     * | your_move                | correspondence opponent moved (24 h a move)        | away           | push, never a DM (1)  |
-     * | reminder                 | correspondence move due in 2/6/12 h                | away           | push, DM, even on site|
-     * | opponent_resigned        | a game ended by resignation                        | away / at board| push if correspondence|
-     * | game_over                | a game ended                                       | away / at board| push if correspondence|
-     * | clan_join_request        | a player asks to join your clan (async)            | away           | push, DM              |
-     * | clan_join_answer         | your join request was answered (news)              | away           | push                  |
-     * | invite_link_taken        | your challenge link was taken (news)               | away           | push                  |
-     * | tournament_entry_removed | an organizer removed your entry (news)             | away           | push                  |
-     * | tournament_news          | paused, resumed, called off, organizer message     | away           | push, DM              |
-     * | casual_match_found       | 1v1 queue paired, Ready within 60 s                | in the queue   | page only             |
-     * | casual_invite            | 1v1 invite (live, 120 s)                           | on the site    | page only             |
-     * | casual_lobby_shared      | host shared the lobby, join within 10 min          | match room     | push                  |
-     * | casual_noshow            | no-show claimed, contest within 5 min              | away           | push (minutes)        |
-     * | casual_report            | result reported, answer within 30 min              | just played    | push (minutes)        |
-     * | casual_result            | a 1v1 ended, maybe decided by the league           | anywhere       | push                  |
-     * | casual_opponent_joined   | guest joined the host's lobby                      | in the game    | page only             |
-     * | casual_challenge         | scheduled 1v1 challenge (reply in days)            | away           | push, DM              |
-     * | casual_challenge_answer  | your challenge accepted, declined, expired         | away           | push                  |
-     * | casual_reminder          | scheduled 1v1 starts in 15 min, forfeit at stake   | away           | push, DM (2)          |
-     * | casual_checkin           | check-in open, 10 min after the reminder           | away           | push                  |
-     * | tournament_reminder      | league decides the match in 30 / 5 min             | away           | push, DM (2)          |
-     * | block0                   | Block 0 date and release, asked for                | away           | push, DM              |
-     * | season_payout            | season sats wait for a Lightning address (days)    | away           | push, DM              |
-     * | opponent_request         | a player listed you as an opponent (accept)        | away           | push, DM              |
+     * Every sender, per kind (grep `NotificationKind::` to check the list):
      *
-     * (1) User decision 2026-09-30: "IMMER sinnlos". Push at most once per game
-     * and hour, and not while the player is at the board (YourMoveThrottle).
-     * (2) Minutes, not hours, but a game is forfeited: the one reminder that
-     * has to reach a player who is not there. A decision to confirm.
+     * | kind                     | senders and what they say                                                   | time to act    | reach            |
+     * |--------------------------|-----------------------------------------------------------------------------|----------------|------------------|
+     * | match_found              | ChessNotifications::matchFound (blitz queue paired)                         | seconds        | page only        |
+     * | invite                   | ChessNotifications::inviteReceived (blitz invite from a friend)             | 120 s          | page only        |
+     * | invite_accepted          | ChessNotifications::inviteAccepted (remote: false); InviteLinks::announce   | now            | push (link only) |
+     * |                          | (a blitz invite link was taken, the board is open)                          |                |                  |
+     * | challenge                | Chess/BoardNotifications::challengeReceived; SeriesService (clan match)     | 48 h, days     | push, DM         |
+     * | game_started             | Chess/BoardNotifications::gameStarted (correspondence challenge accepted,   | 24 h           | push             |
+     * |                          | also via InviteLinks for a daily link)                                      |                |                  |
+     * | your_move                | Chess/BoardNotifications::yourMove (correspondence only)                    | 24 h           | push (1)         |
+     * | reminder                 | Chess/BoardNotifications::reminder (`*:daily-reminders`, 2/6/12 h left)     | hours          | push, DM (2)     |
+     * | opponent_resigned        | Chess/BoardNotifications::gameOver                                          | none (news)    | push if corresp. |
+     * | game_over                | Chess/BoardNotifications::gameOver                                          | none (news)    | push if corresp. |
+     * | clan_join_request        | ClanNotifications::joinRequested (captains), ::joinApproved (the owner)     | days           | push, DM         |
+     * | clan_join_answer         | ClanNotifications::joinAnswered (listed: confirm to join, or declined)      | none (news)    | push             |
+     * | invite_link_taken        | InviteLinks::announce (a clan took your challenge link)                     | none (news)    | push             |
+     * | tournament_entry_removed | TournamentControl, TournamentModeration (entry removed)                     | none (news)    | push             |
+     * | tournament_news          | TournamentControl (paused, goes on, called off, organizer message);         | hours, days    | push, DM         |
+     * |                          | CasualCupNotices (called off, live evening set, moved, match open with a    |                |                  |
+     * |                          | 36-48 h window, times suggested, time agreed)                               |                |                  |
+     * | cup_game_now             | CasualCupNotices::invited (play-now invite, 600 s), ::gameStarted (the      | minutes        | push             |
+     * |                          | league started a cup game: 300 s to the first move)                         |                |                  |
+     * | casual_match_found       | CasualNotifications::matchFound (Ready within 60 s)                         | seconds        | page only        |
+     * | casual_invite            | CasualNotifications::inviteReceived (120 s)                                 | 120 s          | page only        |
+     * | casual_lobby_shared      | CasualNotifications::lobbyShared (join within 10 min)                       | 10 min         | push             |
+     * | casual_noshow            | CasualNotifications::noShowClaimed (contest within 5 min)                   | 5 min          | push             |
+     * | casual_report            | CasualNotifications::reportToConfirm (answer within 30 min)                 | 30 min         | push             |
+     * | casual_result            | CasualNotifications::result                                                 | none (news)    | push             |
+     * | casual_opponent_joined   | CasualNotifications::opponentJoined (the host is in the game)               | seconds        | page only        |
+     * | casual_challenge         | CasualNotifications::challengeReceived (reply in days)                      | days           | push, DM         |
+     * | casual_challenge_answer  | CasualNotifications::challengeAnswered                                      | none (news)    | push             |
+     * | casual_reminder          | CasualNotifications::reminder (15 min before the start)                     | 15 min         | push             |
+     * | casual_checkin           | CasualNotifications::checkInOpen (10 min before to 10 min after)            | 20 min         | push             |
+     * | tournament_reminder      | TournamentReminders (30 and 5 min before the league decides; by hand)       | minutes        | push             |
+     * | block0                   | BlockZeroNotifications (asked for: the date, the release)                   | days           | push, DM         |
+     * | season_payout            | SeasonSettlement (sats wait for a Lightning address)                        | days           | push, DM         |
+     * | opponent_request         | OpponentRequests (accept or decline)                                        | days           | push, DM         |
+     *
+     * (1) Never a DM (user decision 2026-09-30: "IMMER sinnlos"). A push at
+     * most once per game and hour, and not while the player is at the board
+     * (YourMoveThrottle).
+     * (2) Also while the player is on the site (remoteWhileOnSite()).
      */
     public function dmAllowed(): bool
     {
-        return in_array($this, [self::Challenge, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualChallenge, self::CasualReminder, self::TournamentReminder, self::BlockZero, self::SeasonPayout, self::OpponentRequest], true);
+        return in_array($this, [self::Challenge, self::Reminder, self::ClanJoinRequest, self::TournamentNews, self::CasualChallenge, self::BlockZero, self::SeasonPayout, self::OpponentRequest], true);
     }
 
     /**
@@ -147,16 +158,33 @@ enum NotificationKind: string
             self::Challenge, self::GameStarted, self::YourMove, self::Reminder, self::OpponentResigned, self::GameOver => 'correspondence',
             self::InviteAccepted, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport, self::CasualResult,
             self::CasualChallenge, self::CasualChallengeAnswer, self::CasualReminder, self::CasualCheckIn => 'play',
-            self::ClanJoinRequest, self::ClanJoinAnswer, self::InviteLinkTaken, self::TournamentEntryRemoved, self::TournamentNews, self::TournamentReminder => 'community',
+            self::ClanJoinRequest, self::ClanJoinAnswer, self::InviteLinkTaken, self::TournamentEntryRemoved, self::TournamentNews, self::CupGameNow, self::TournamentReminder => 'community',
             self::BlockZero, self::SeasonPayout, self::OpponentRequest => 'league',
         };
     }
 
     /**
+     * How far it reaches, as the settings page says it (an English key; the
+     * page adds that nothing is sent while the player is on the site).
+     */
+    public function reach(): string
+    {
+        return match (true) {
+            $this->pageOnly() => 'only on the page',
+            $this === self::Reminder => 'bell, push and DM, even while you are here',
+            $this->dmAllowed() => 'bell, push and DM',
+            $this === self::YourMove => 'bell; push at most once an hour per game',
+            in_array($this, [self::OpponentResigned, self::GameOver], true) => 'bell; push only for correspondence games',
+            $this === self::InviteAccepted => 'bell; push only for an invite link',
+            default => 'bell and push',
+        };
+    }
+
+    /**
      * Goes out by push and DM even while the player is on the site: the
-     * correspondence deadline reminder, where hours and the game are at
-     * stake, and an open tab left behind on another device still counts as
-     * on the site.
+     * correspondence deadline reminder. Hours and the game are at stake, and
+     * "on the site" only means a visible page, which may have nobody at it
+     * (a tab left open on a desktop at home).
      */
     public function remoteWhileOnSite(): bool
     {
@@ -172,7 +200,7 @@ enum NotificationKind: string
         return match ($this) {
             self::MatchFound, self::Invite, self::InviteAccepted, self::Challenge, self::YourMove, self::Reminder, self::ClanJoinRequest, self::InviteLinkTaken,
             self::CasualMatchFound, self::CasualInvite, self::CasualLobbyShared, self::CasualNoShow, self::CasualReport,
-            self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder, self::OpponentRequest => 'challenge',
+            self::CasualChallenge, self::CasualReminder, self::CasualCheckIn, self::TournamentReminder, self::OpponentRequest, self::CupGameNow => 'challenge',
             self::ClanJoinAnswer, self::TournamentEntryRemoved, self::TournamentNews, self::CasualResult, self::CasualOpponentJoined, self::CasualChallengeAnswer, self::BlockZero, self::SeasonPayout => 'confirmed',
             self::GameStarted, self::OpponentResigned => 'success',
             self::GameOver => 'confirmed',
@@ -215,7 +243,8 @@ enum NotificationKind: string
             self::ClanJoinAnswer => ['Clan join answer', 'a clan answered your join request'],
             self::InviteLinkTaken => ['Invite link taken', 'someone took the invite link you shared'],
             self::TournamentEntryRemoved => ['Tournament entry removed', 'an organizer removed your entry from a tournament'],
-            self::TournamentNews => ['Tournament news', 'a tournament you play in was paused, resumed or called off, or its organizer wrote to all players'],
+            self::TournamentNews => ['Tournament news', 'a tournament you play in opened your match, set or moved a time, was paused, resumed or called off, or its organizer wrote to all players'],
+            self::CupGameNow => ['Cup game now', 'your cup opponent wants to play now, or the league started your cup game'],
             self::CasualMatchFound => ['1v1 opponent found', 'the casual 1v1 queue paired you, press Ready'],
             self::CasualInvite => ['1v1 invite', 'a player invites you to a casual 1v1'],
             self::CasualLobbyShared => ['1v1 lobby shared', 'your opponent shared the game lobby in the match chat'],

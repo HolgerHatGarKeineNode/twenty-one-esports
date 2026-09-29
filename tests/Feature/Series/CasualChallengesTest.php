@@ -149,8 +149,8 @@ test('both players get the reminder 15 minutes before and the check-in call 10 m
         // A concurrent run that read the match before the first one sent nothing more.
         ->and($scheduler->remind($stale))->toBeFalse()
         ->and(casualAlerts())->toContain([$anna->id, 'casual_reminder'], [$bert->id, 'casual_reminder'])
-        // The reminder goes out as a DM by default: it is for a player who is away.
-        ->and(Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($anna))->count())->toBeGreaterThanOrEqual(1);
+        // 15 minutes is too short for a DM (NotificationKind::dmAllowed(), audit 2026-09-30): bell and push only.
+        ->and(Queue::pushed(SendNostrDm::class)->filter(fn (SendNostrDm $job) => $job->user->is($anna))->count())->toBe(0);
 
     $this->travel(5)->minutes();
     expect($scheduler->tick())->toMatchArray(['checkin_opened' => 1])

@@ -77,7 +77,7 @@ final class Notifier
             return [];
         }
 
-        $channels = array_values(array_filter([$settings->push ? 'push' : null, $settings->dmFor($trigger) ? 'dm' : null]));
+        $channels = $settings->remoteChannels($kind, $game);
 
         if ($game instanceof ChessGame && ($color = $game->colorOf($user)) !== null) {
             $choice = $color === 'w' ? $game->white_notify : $game->black_notify;

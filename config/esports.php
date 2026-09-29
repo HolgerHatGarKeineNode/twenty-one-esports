@@ -854,8 +854,9 @@ return [
     | and pushAllowed() (the audit table is there).
     |
     | on_site_seconds (App\Support\Notifications\OnSite): a player whose
-    | page was visible this recently is on the site; push and DM wait, the
-    | bell and the toast reach them. Pages ping once a minute while visible.
+    | page was visible this recently is on the site. Push and DM are not sent
+    | to them at all (not held back): the bell and the toast reach them. Pages
+    | ping every 30 s while visible and stop when hidden or closed.
     |
     | your_move (App\Support\Notifications\YourMoveThrottle): "your move" in a
     | correspondence game is never a DM, and a push only while the player is
@@ -871,7 +872,7 @@ return [
         'name' => 'TWENTY ONE esports notifications',
         // P5c: seconds an "Opponent found" toast counts down before it opens the game.
         'countdown_seconds' => 5,
-        'on_site_seconds' => (int) env('ESPORTS_ON_SITE_SECONDS', 180),
+        'on_site_seconds' => (int) env('ESPORTS_ON_SITE_SECONDS', 75),
         'your_move' => [
             'at_board_minutes' => (int) env('ESPORTS_YOUR_MOVE_AT_BOARD_MINUTES', 15),
             'per_game_minutes' => (int) env('ESPORTS_YOUR_MOVE_PER_GAME_MINUTES', 60),

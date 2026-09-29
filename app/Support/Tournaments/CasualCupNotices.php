@@ -20,9 +20,11 @@ use Illuminate\Database\Eloquent\Collection;
 
 /**
  * What the league tells the players of its casual cups (P25, CasualCups),
- * in their language and on the channels they chose (Notifier, kind
- * `tournament_news`, which may go out as a DM: a player away from the site
- * has to hear that their match is open or starting).
+ * in their language and on the channels they chose (Notifier). News with
+ * hours or days to act (match open, times, called off) is `tournament_news`,
+ * which may go out as a DM; what is on now (a play-now invite, a started
+ * game with minutes to the first move) is `cup_game_now`: the page and a
+ * browser push, never a DM, which would come too late (audit 2026-09-30).
  */
 final class CasualCupNotices
 {
@@ -173,7 +175,7 @@ final class CasualCupNotices
         $locale = $this->locale($player);
 
         $this->send($player, $cup, __(':name wants to play your cup match now', ['name' => $invite->inviter->displayName()], $locale),
-            __(':tournament · open the cup page to accept.', ['tournament' => $cup->name], $locale), $locale);
+            __(':tournament · open the cup page to accept.', ['tournament' => $cup->name], $locale), $locale, NotificationKind::CupGameNow);
     }
 
     /**
@@ -190,7 +192,7 @@ final class CasualCupNotices
 
             $locale = $this->locale($player);
 
-            $this->notifier->send($player, NotificationKind::TournamentNews, new Notice(
+            $this->notifier->send($player, NotificationKind::CupGameNow, new Notice(
                 __(':tournament: your game is on', ['tournament' => $cup->name], $locale),
                 __('You play :color against :name. Make your first move in time.', [
                     'color' => $game->colorOf($player) === 'w' ? __('White', [], $locale) : __('Black', [], $locale),
@@ -203,9 +205,9 @@ final class CasualCupNotices
         }
     }
 
-    private function send(User $player, Tournament $cup, string $title, string $body, string $locale): void
+    private function send(User $player, Tournament $cup, string $title, string $body, string $locale, NotificationKind $kind = NotificationKind::TournamentNews): void
     {
-        $this->notifier->send($player, NotificationKind::TournamentNews, new Notice($title, $body, route('tournaments.show', $cup), null, __('Open tournament', [], $locale)));
+        $this->notifier->send($player, $kind, new Notice($title, $body, route('tournaments.show', $cup), null, __('Open tournament', [], $locale)));
     }
 
     /** In the player's zone, else the cup's (its region's). */

@@ -190,8 +190,12 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
     });
     $next = $mine->first();
     $settings = $user->chessSettings();
-    $channels = array_filter([$settings->dmFor('your_move') ? __('Nostr DM') : null, $settings->push ? __('browser push') : null]);
-    $notificationsOn = $channels !== [] && ($settings->wants('your_move') || $settings->wants('reminder'));
+    // What goes out while the player is away, by the Notifier's own rules (ChessSettings::remoteChannels): never a DM for a move.
+    $daily = (new \App\Models\ChessGame)->forceFill(['mode' => \App\Models\ChessGame::CORRESPONDENCE]);
+    $moveReach = $settings->remoteChannels(\App\Enums\NotificationKind::YourMove, $daily);
+    $reminderReach = $settings->remoteChannels(\App\Enums\NotificationKind::Reminder, $daily);
+    $reminderChannels = array_values(array_filter([in_array('dm', $reminderReach, true) ? __('Nostr DM') : null, in_array('push', $reminderReach, true) ? __('browser push') : null]));
+    $notificationsOn = $moveReach !== [] || $reminderReach !== [];
     $pool = \App\Support\Rating\Ratings::headline(null, 'chess', 'correspondence')['pool'];
     $opponentRatings = \App\Support\Rating\Ratings::forUsers($cards->map(fn ($card) => $card['opponent']?->id)->all(), 'chess', 'correspondence', $pool);
     $myDeltas = \App\Models\RatingChange::query()->where('source', \App\Models\RatingChange::CHESS)->whereIn('source_id', $finished->pluck('id'))
@@ -236,7 +240,10 @@ new #[Title('Daily chess')] #[Layout('layouts::app', ['section' => 'chess', 'scr
             <span class="flex min-w-0 grow flex-col gap-0.5 text-[13px] lg:max-w-[280px]">
                 @if ($notificationsOn)
                     <b class="flex items-center gap-1.5 text-win"><x-icon name="check" :size="14" />{{ __('Notifications on') }}</b>
-                    <span class="text-xs leading-normal text-ink-2">{{ __(':channels on every opponent move and :hours h before your deadline', ['channels' => ucfirst(implode(' '.__('and').' ', $channels)), 'hours' => $settings->remindHours]) }}</span>
+                    <span class="text-xs leading-normal text-ink-2" data-test="correspondence-reach">
+                        {{ $moveReach !== [] ? __('A browser push for an opponent\'s move, at most once an hour and only while you are away.') : __('Opponent moves show here and in the bell.') }}
+                        {{ $reminderChannels !== [] ? __(':channels :hours h before your deadline.', ['channels' => ucfirst(implode(' '.__('and').' ', $reminderChannels)), 'hours' => $settings->remindHours]) : __('No reminder before your deadline.') }}
+                    </span>
                 @else
                     <b class="text-ink-2">{{ __('Notifications off') }}</b>
                     <span class="text-xs leading-normal text-ink-2">{{ __('You only see new moves here. Turn on a reminder so no deadline slips by.') }}</span>
