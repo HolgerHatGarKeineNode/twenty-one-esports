@@ -72,11 +72,12 @@ use Livewire\Component;
  * then Your games | Live now with who is online | the ladder, and the
  * weekly events. What stays different, in chess's slots: Correspondence in
  * Daily chess's tile; no invite link and no team match tile (board games
- * have neither); no "Your follows here" (it has no board game context
- * yet); the rules link in the title row. The game chat sits in chess's
- * slot, under the lobby and above the weekly events (plan
- * brettspiel-chat-und-follows, P1: the board game's own NIP-28 channel,
- * GameChannels, NIP rev. 9.15).
+ * have neither); the rules link in the title row. "Your follows here"
+ * (plan brettspiel-chat-und-follows, P2) and the game chat (P1: the board
+ * game's own NIP-28 channel, GameChannels, NIP rev. 9.15) sit in chess's
+ * slots and order, under the lobby and above the weekly events: the
+ * follows' challenge is a correspondence game, their invite the blitz
+ * invite of "Online now".
  */
 new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/gameChannel.js']])] class extends Component {
     #[Locked]
@@ -595,7 +596,9 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
             @include('pages.chess.partials.lobby-ladder', ['ladderGame' => $slug])
         </div>
 
-        {{-- The global chat of this board game (P1 of plan brettspiel-chat-und-follows): as chess's, under the lobby, above the weekly events. --}}
+        {{-- Plan brettspiel-chat-und-follows, P2: who of the player's Nostr follows plays here, to invite or challenge, as in chess --}}
+        <livewire:follows-here context="board" :subject="$slug" :wire:key="'follows-here-'.$slug" />
+        {{-- The global chat of this board game (P1 of the same plan): as chess's, under the follows, above the weekly events. --}}
         <livewire:game-channel :game="$slug" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}

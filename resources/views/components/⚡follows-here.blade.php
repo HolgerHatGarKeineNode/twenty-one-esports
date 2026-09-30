@@ -1,9 +1,12 @@
 <?php
 
 use App\Enums\InviteLinkType;
+use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\InviteLink;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\GameNames;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use App\Support\Nostr\NostrBar;
@@ -27,11 +30,23 @@ use Livewire\Component;
  * nor the text.
  *
  * Contexts: `me` (the own page: daily chess and a 1v1), `chess` (the lobby:
- * daily chess), `series` (a game page, `subject` its slug: a 1v1 where the
- * game has casual 1v1s) and `tournament` (`subject` its id: no challenge;
- * the invite carries the personal tournament link while sign-up is open).
- * The personal link is made on the click that asks for the invite's
- * preview, never on page load.
+ * daily chess), `board` (a board game's lobby, `subject` its slug: a
+ * correspondence challenge, the board game's correspondence page with the
+ * follow picked, never sent on its own), `series` (a game page, `subject`
+ * its slug: a 1v1 where the game has casual 1v1s) and `tournament`
+ * (`subject` its id: no challenge; the invite carries the personal
+ * tournament link while sign-up is open). The personal link is made on the
+ * click that asks for the invite's preview, never on page load; a board
+ * game has no invite link, so its lobby points to the own page for that.
+ *
+ * On the two lobbies (`chess`, `board`; plan brettspiel-chat-und-follows,
+ * P2) each follow's row says whether they are online and whether they look
+ * for this lobby's blitz, from the page-wide presence the lobby's "Online
+ * now" reads (window.esportsPresence, never a second source), and a follow
+ * who looks for it gets the lobby's own blitz invite ($wire.$parent.invite,
+ * the method "Online now" calls; ChessInvites/BoardInvites refuse the rest).
+ * A `board` subject that is no board game switched on is a 404, as its
+ * lobby.
  *
  * Matching is one query however long the list ({@see match()}: one whereIn
  * over at most MAX_FOLLOWS keys), the list shows the first SHOWN.
@@ -54,7 +69,8 @@ new class extends Component {
 
     public function mount(string $context = 'me', string $subject = ''): void
     {
-        abort_unless(in_array($context, ['me', 'chess', 'series', 'tournament'], true), 404);
+        abort_unless(in_array($context, ['me', 'chess', 'board', 'series', 'tournament'], true), 404);
+        abort_if($context === 'board' && ! app(GameRegistry::class)->isBoard($subject), 404);
 
         $this->context = $context;
         $this->subject = $subject;
@@ -117,6 +133,19 @@ new class extends Component {
         return $this->context === 'tournament' && ctype_digit($this->subject) ? Tournament::query()->find((int) $this->subject) : null;
     }
 
+    /**
+     * The `users.looking_to_play` value of the lobby this section sits in,
+     * or null off a lobby: the rows then say nothing about presence.
+     */
+    public function lookingKey(): ?string
+    {
+        return match ($this->context) {
+            'chess' => 'chess/blitz',
+            'board' => $this->subject.'/blitz',
+            default => null,
+        };
+    }
+
     /** Whether this page offers the invite DM: a personal link exists for it. */
     public function invites(): bool
     {
@@ -171,6 +200,10 @@ new class extends Component {
     $viewer = auth()->user();
     $casual = $context === 'series' && CasualLobby::offers($subject);
     $invites = $viewer !== null && $this->invites();
+    $lookingKey = $this->lookingKey();
+    // The tag "Online now" puts on a player who looks for this lobby's blitz (components/lobby/online-now), word for word.
+    $lookingTag = $context === 'board' ? __('looking: :game', ['game' => GameNames::game($subject)]) : __('looking: Blitz 5+3');
+    $correspondence = $context === 'board' && app(GameRegistry::class)->mode($subject, BoardGame::CORRESPONDENCE) !== null;
     $button = 'inline-flex h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-well px-3 text-[13px] text-ink hover:text-ink';
     $primary = 'btn-p inline-flex h-11 min-w-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-btc px-4 text-[13px] font-bold text-on-btc hover:text-on-btc disabled:cursor-default disabled:opacity-60';
 @endphp
@@ -181,6 +214,7 @@ new class extends Component {
                  x-data="followsHere(@js([
                      'me' => $viewer->pubkey,
                      'relays' => NostrBar::browserRelays(),
+                     'lookingKey' => $lookingKey,
                      'labels' => [
                          'signer' => SignerMessages::labels(),
                          'failed' => __('That did not work. Please try again.'),
@@ -209,23 +243,56 @@ new class extends Component {
             @if ($this->players->isNotEmpty())
                 <ul class="m-0 grid list-none grid-cols-1 gap-2 p-0 sm:grid-cols-2 xl:grid-cols-3" data-test="follows-here-list">
                     @foreach ($this->players as $player)
-                        <li wire:key="fh-{{ $player->id }}" class="flex min-w-0 items-center gap-3 rounded-md bg-well px-3 py-2" data-test="follows-here-player">
+                        <li wire:key="fh-{{ $player->id }}" class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-well px-3 py-2" data-test="follows-here-player">
                             <x-avatar :user="$player" :size="36" class="shrink-0" />
-                            <span class="flex min-w-0 grow flex-col">
-                                <x-player-link :user="$player" class="inline-flex min-h-11 min-w-11 items-center truncate text-[13px] font-bold" />
+                            <span class="flex min-w-0 grow basis-0 flex-col">
+                                {{-- The name in a box of its own: text-overflow does not act on a flex container's text, so a long name was cut without the ellipsis. --}}
+                                <x-player-link :user="$player" class="inline-flex min-h-11 min-w-11 items-center overflow-hidden text-[13px] font-bold"><span class="min-w-0 truncate" data-test="follows-here-name">{{ $player->displayName() }}</span></x-player-link>
                                 @if ($player->clanMember?->clan)
                                     <span class="truncate text-xs text-ink-2">{{ $player->clanMember->clan->name }}</span>
                                 @endif
+                                {{-- On a lobby: online, or looking for its blitz, as the row in "Online now" says it; nothing while offline. --}}
+                                @if ($lookingKey)
+                                    <span class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pb-1" x-show="online[{{ $player->id }}]" x-cloak data-test="follows-here-presence">
+                                        <span class="inline-flex items-center gap-1.5 text-xs text-ink-2" x-show="! looks({{ $player->id }})"><span class="size-2 shrink-0 rounded-full bg-win" aria-hidden="true"></span>{{ __('online') }}</span>
+                                        <span class="max-w-full rounded-xs bg-win-tint px-1.5 py-0.5 text-[11px] font-bold wrap-break-word text-win shadow-ring-win" x-show="looks({{ $player->id }})" data-test="follows-here-looking">{{ $lookingTag }}</span>
+                                    </span>
+                                @endif
                             </span>
+                            @if ($lookingKey)
+                                {{--
+                                    The lobby's blitz invite, for a follow who looks for it; "Invited" until the invite is answered or
+                                    runs out. One labelled action per row, the timely one: next to it the challenge keeps its icon and
+                                    its aria-label, so the name keeps its room in a three-column row (German "Einladen" + "Herausfordern").
+                                --}}
+                                <template x-if="looks({{ $player->id }}) && ! invitedBlitz({{ $player->id }})">
+                                    <button type="button" class="{{ $button }}" x-on:click="inviteBlitz({{ $player->id }})" x-bind:disabled="inviting !== null" data-test="follows-here-invite" aria-label="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}" title="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}">
+                                        <x-icon name="bolt" :size="16" class="shrink-0" /><span class="max-sm:sr-only">{{ __('Invite') }}</span>
+                                    </button>
+                                </template>
+                                <template x-if="invitedBlitz({{ $player->id }})">
+                                    <span class="inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 px-1 text-[13px] text-ink-2" data-test="follows-here-invited">
+                                        <x-icon name="check" :size="16" class="shrink-0 text-win" /><span class="max-sm:sr-only">{{ __('Invited') }}</span>
+                                    </span>
+                                </template>
+                            @endif
+                            @if ($correspondence)
+                                <a href="{{ route('board.correspondence', ['board' => $subject, 'to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to :game by correspondence', ['name' => $player->displayName(), 'game' => GameNames::game($subject)]) }}" title="{{ __('Challenge :name to :game by correspondence', ['name' => $player->displayName(), 'game' => GameNames::game($subject)]) }}">
+                                    <x-icon name="calendar" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': looks({{ $player->id }}) || invitedBlitz({{ $player->id }}) }" @endif>{{ __('Challenge') }}</span>
+                                </a>
+                            @endif
                             @if (in_array($context, ['me', 'chess'], true))
-                                <a href="{{ route('chess.challenge', ['to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}">
-                                    <x-icon name="pawn" :size="16" class="shrink-0" /><span class="max-sm:sr-only">{{ __('Challenge') }}</span>
+                                <a href="{{ route('chess.challenge', ['to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}" title="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}">
+                                    <x-icon name="pawn" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': looks({{ $player->id }}) || invitedBlitz({{ $player->id }}) }" @endif>{{ __('Challenge') }}</span>
                                 </a>
                             @endif
                             @if ($context === 'me' || $casual)
                                 <a href="{{ route('challenges.casual', array_filter(['to' => $player->id, 'game' => $casual ? $subject : null])) }}" class="{{ $button }}" data-test="follows-here-1v1" aria-label="{{ __('Schedule a 1v1 with :name', ['name' => $player->displayName()]) }}">
                                     <x-icon name="calendar" :size="16" class="shrink-0" /><span class="max-sm:sr-only">1v1</span>
                                 </a>
+                            @endif
+                            @if ($lookingKey)
+                                <p role="alert" class="m-0 basis-full text-xs leading-normal text-loss empty:hidden" x-text="blitzError({{ $player->id }})" data-test="follows-here-invite-error"></p>
                             @endif
                         </li>
                     @endforeach
@@ -311,7 +378,7 @@ new class extends Component {
                         </template>
                     </div>
                 </div>
-            @elseif ($context === 'series')
+            @elseif (in_array($context, ['series', 'board'], true))
                 <a href="{{ route('dashboard') }}#follows-here" class="inline-flex min-h-11 items-center gap-1.5 self-start text-[13px]" x-show="state === 'done' && notHere.length > 0" x-cloak data-test="follows-invite-elsewhere">
                     <x-icon name="send" :size="14" />{{ __('Invite the others from your page') }}
                 </a>

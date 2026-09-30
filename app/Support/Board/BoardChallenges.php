@@ -51,6 +51,23 @@ final class BoardChallenges
     ) {}
 
     /**
+     * Whether a challenge between the two to this board game is open, sent by
+     * either: a second one is refused, and the challenge form says so as
+     * soon as the other player is picked.
+     */
+    public function openBetween(User $one, User $other, string $slug): bool
+    {
+        return BoardChallenge::query()
+            ->where('game', $slug)
+            ->where('status', BoardInviteStatus::Pending)
+            ->where('expires_at', '>', now())
+            ->where(fn ($query) => $query
+                ->where(fn ($query) => $query->where('challenger_id', $one->id)->where('challenged_id', $other->id))
+                ->orWhere(fn ($query) => $query->where('challenger_id', $other->id)->where('challenged_id', $one->id)))
+            ->exists();
+    }
+
+    /**
      * @param  string  $color  the challenger's colour: random, white or black (checked here, it comes from a form)
      *
      * @throws BoardRuleViolation
@@ -81,16 +98,7 @@ final class BoardChallenges
             $this->assertRated($challenger, $challenged, $slug);
         }
 
-        $open = BoardChallenge::query()
-            ->where('game', $slug)
-            ->where('status', BoardInviteStatus::Pending)
-            ->where('expires_at', '>', now())
-            ->where(fn ($query) => $query
-                ->where(fn ($query) => $query->where('challenger_id', $challenger->id)->where('challenged_id', $challenged->id))
-                ->orWhere(fn ($query) => $query->where('challenger_id', $challenged->id)->where('challenged_id', $challenger->id)))
-            ->exists();
-
-        if ($open) {
+        if ($this->openBetween($challenger, $challenged, $slug)) {
             throw new BoardRuleViolation('challenge_open');
         }
 

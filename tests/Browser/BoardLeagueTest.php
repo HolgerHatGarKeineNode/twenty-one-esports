@@ -205,6 +205,10 @@ test('a guest watching a board game at 1440 x 900 sees both player cards under t
 | order, nothing wider than the window, no text box of the new parts cut,
 | no word of a tile broken mid-word.
 |
+| "Your follows here" sits in chess's slot on both (plan
+| brettspiel-chat-und-follows, P2; its rows are measured in
+| BoardFollowsTest); the game chat is chess's own until P1 of that plan.
+|
 | Online now (review 2026-09-30: next to the tag and Invite a name shrank
 | to 0 px on a 375 px phone): Cleo looks for chess and Dora for nine men's
 | morris from the moment they join; Bert, with a 39-character name and no
@@ -341,14 +345,15 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
 
     $order = fn (array $rows): array => array_column($rows, 0);
     // Below lg one column; from lg Your games | Live now | ladder share a row, "Online now" sits in Live now under the boards.
-    // The game chat under all of it on both lobbies (P1 of plan brettspiel-chat-und-follows).
-    $expected = $width >= 1024 ? ['title', 'play', 'next', 'cups', 'games', 'live', 'ladder', 'online', 'chat'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder', 'chat'];
+    // Then "Your follows here" (P2) and the game chat (P1 of plan brettspiel-chat-und-follows), as in chess.
+    $expected = $width >= 1024 ? ['title', 'play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder'];
     // From lg the title is the header's context bar: the lobby's own title row is hidden on both.
     $expected = $width >= 1024 ? array_values(array_diff($expected, ['title'])) : $expected;
+    $expected[] = 'follows';
+    $expected[] = 'chat';
 
     expect($order($measured['board']['sections']))->toBe($expected)
-        // The one known difference left: "Your follows here" is chess's only.
-        ->and(array_values(array_diff($order($measured['chess']['sections']), ['follows'])))->toBe($expected)
+        ->and($order($measured['chess']['sections']))->toBe($expected)
         ->and($online['tag'])->toBe($locale === 'de' ? 'sucht: Mühle' : "looking: Nine Men's Morris")
         ->and($online['tile'])->toBe($online['count'])
         ->and($waiting['text'])->toContain($long)
@@ -505,9 +510,9 @@ test('each board game chat sits in chess\'s slot and holds long names, long word
 
         fwrite(STDERR, 'board chat '.$locale.' '.$width.' '.($signedIn ? 'player' : 'guest').': '.json_encode(compact('sections', 'filled', 'after', 'collected')).PHP_EOL);
 
-        $expected = $width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online', 'chat'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder', 'chat'];
+        $expected = [...($width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder']), ...($signedIn ? ['follows'] : []), 'chat'];
         expect($sections['board'])->toBe($expected)
-            ->and(array_values(array_diff($sections['chess'], ['follows'])))->toBe($expected)
+            ->and($sections['chess'])->toBe($expected)
             ->and($filled['heading'])->toBe($locale === 'de' ? 'Mühle-Chat' : "Nine Men's Morris chat")
             ->and($signedIn ? $filled['guest'] : str_replace("\n", ' ', (string) $filled['guest']))->toBe($signedIn ? null : ($locale === 'de' ? 'Zum Chatten anmelden Mitlesen kann jeder.' : 'Log in to chat Reading is open to everyone.'))
             ->and($filled['form'])->toBe($signedIn)

@@ -42,7 +42,7 @@ const LOBBY_SECTIONS = [
     'live' => 'aria-labelledby="live-h"',
     'online' => 'data-test="online-now"',
     'ladder' => 'data-test="lobby-ladder"',
-    // Chess only, and why: "Your follows here" has no board game context.
+    // Logged in only, on both lobbies (plan brettspiel-chat-und-follows, P2): a guest has no follow list here.
     'follows' => 'data-test="follows-here"',
     // Since P1 of plan brettspiel-chat-und-follows on both: each board game has its own channel (GameChannels).
     'chat' => 'data-test="game-chat"',
@@ -78,8 +78,10 @@ test('the board lobby has the chess lobby\'s sections in the chess lobby\'s orde
     $chess = lobbySections($this->get(route('chess.lobby'))->assertOk()->getContent());
     $board = lobbySections($this->get(route('board.lobby', NineMensMorris::SLUG))->assertOk()->getContent());
 
-    expect($board)->toBe(['title', 'play', 'next tournament', 'cups', 'your games', 'live', 'online', 'ladder', 'chat'])
-        ->and(array_values(array_diff($chess, ['follows'])))->toBe($board);
+    $expected = ['title', 'play', 'next tournament', 'cups', 'your games', 'live', 'online', 'ladder', ...($signedIn ? ['follows'] : []), 'chat'];
+
+    expect($board)->toBe($expected)
+        ->and($chess)->toBe($expected);
 })->with(['guest' => [false], 'player' => [true]]);
 
 test('the board lobby\'s online list is the presence channel\'s, with its own "Looking to play" switch, never a stored flag passed off as online', function () {

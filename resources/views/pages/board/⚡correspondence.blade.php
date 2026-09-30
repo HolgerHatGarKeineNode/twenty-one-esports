@@ -10,6 +10,7 @@ use App\Support\Board\BoardChallenges;
 use App\Support\Board\BoardRuleViolation;
 use App\Support\Board\RatedBoard;
 use App\Support\GameNames;
+use App\Support\Nostr\NostrKeys;
 use App\Support\PageMeta;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -36,6 +37,13 @@ use Livewire\Component;
  * does not list each other with them, the P57 notice says so and puts the
  * fix ("Add as opponent") next to it (BoardChallenges::ratedRefusal()).
  *
+ * `?to=` picks the opponent: a user id (the list's pick) or an npub (the
+ * challenge of "Your follows here" in the lobby, plan
+ * brettspiel-chat-und-follows, P2). It only fills in the form, nothing is
+ * sent before "Challenge <name>". An npub that is none, the player's own,
+ * one without an account, or a player with an open challenge between the
+ * two is said in the form (toProblem); a guest's "Log in" comes back here.
+ *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a board game whose own switch is off is a 404.
  */
@@ -46,7 +54,7 @@ new #[Layout('layouts::app')] class extends Component {
     #[Url(as: 'q')]
     public string $search = '';
 
-    /** The chosen opponent's user id. */
+    /** The chosen opponent: a user id, or an npub from a link (`?to=npub1…`). */
     #[Url(as: 'to')]
     public string $to = '';
 
@@ -66,6 +74,11 @@ new #[Layout('layouts::app')] class extends Component {
         abort_unless(app(GameRegistry::class)->isBoard($board) && app(GameRegistry::class)->mode($board, BoardGame::CORRESPONDENCE) !== null, 404);
 
         $this->slug = $board;
+
+        // A guest who came with an opponent picked lands here again after the login (NostrLoginController).
+        if (auth()->guest() && $this->to !== '') {
+            session()->put('url.intended', request()->fullUrl());
+        }
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -79,7 +92,7 @@ new #[Layout('layouts::app')] class extends Component {
     {
         $this->to = (string) $id;
         $this->error = '';
-        unset($this->opponent, $this->ratedRefusal);
+        unset($this->named, $this->opponent, $this->openWithOpponent, $this->toProblem, $this->players, $this->ratedRefusal);
     }
 
     public function send(): void
@@ -91,8 +104,8 @@ new #[Layout('layouts::app')] class extends Component {
 
         $opponent = $this->opponent;
 
-        if ($opponent === null) {
-            $this->error = __('Pick an opponent first.');
+        if ($opponent === null || $this->openWithOpponent) {
+            $this->error = $opponent === null ? __('Pick an opponent first.') : __('There is already an open challenge between the two of you.');
 
             return;
         }
@@ -101,6 +114,7 @@ new #[Layout('layouts::app')] class extends Component {
             $challenge = app(BoardChallenges::class)->challenge($user, $opponent, $this->slug, $this->color, $this->rated, $this->message);
             $this->status = __('Challenge sent to :name. They have :hours h to accept.', ['name' => $challenge->challenged->displayName(), 'hours' => (int) config('esports.board_games.correspondence.challenge_hours')]);
             $this->reset('to', 'message', 'rated');
+            unset($this->named, $this->opponent, $this->openWithOpponent, $this->toProblem, $this->players);
         });
     }
 
@@ -153,25 +167,78 @@ new #[Layout('layouts::app')] class extends Component {
     }
 
     /**
+     * The players to pick from; with no search the picked one first, so a
+     * player picked by a link shows as picked.
+     *
      * @return Collection<int, User>
      */
     #[Computed]
     public function players(): Collection
     {
         $term = trim($this->search);
+        $first = $term === '' ? $this->opponent : null;
 
-        return User::query()
+        $found = User::query()
             ->when(auth()->id() !== null, fn ($query) => $query->whereKeyNot(auth()->id()))
+            ->when($first !== null, fn ($query) => $query->whereKeyNot($first->id))
             ->when($term !== '', fn ($query) => $query->where(fn ($query) => $query->where('name', 'like', '%'.$term.'%')->orWhere('npub', 'like', $term.'%')))
             ->latest('updated_at')
-            ->limit(8)
+            ->limit($first !== null ? 7 : 8)
             ->get();
+
+        return $first !== null ? $found->prepend($first)->values() : $found;
     }
 
+    /** The account `to` names (a user id or an npub), never the player's own. */
     #[Computed]
     public function opponent(): ?User
     {
-        return ctype_digit($this->to) && (int) $this->to !== auth()->id() ? User::query()->find((int) $this->to) : null;
+        $named = $this->named;
+
+        return $named !== null && $named->id !== auth()->id() ? $named : null;
+    }
+
+    /** Whoever `to` names, the player included: by user id or by npub, or null. */
+    #[Computed]
+    public function named(): ?User
+    {
+        $to = trim($this->to);
+
+        if (ctype_digit($to)) {
+            return User::query()->find((int) $to);
+        }
+
+        $hex = $to === '' ? null : NostrKeys::toHex($to);
+
+        return $hex === null ? null : User::query()->where('pubkey', $hex)->first();
+    }
+
+    /**
+     * Why the opponent `to` names cannot be challenged from this form, or
+     * null: said in the form, before anything is sent.
+     */
+    #[Computed]
+    public function toProblem(): ?string
+    {
+        $to = trim($this->to);
+
+        return match (true) {
+            $to === '' || auth()->guest() => null,
+            ! ctype_digit($to) && NostrKeys::toHex($to) === null => __('That is not an npub. Pick your opponent from the list.'),
+            $this->named === null => ctype_digit($to) ? __('No player found.') : __('Nobody in the league has that key. Pick your opponent from the list.'),
+            $this->named?->id === auth()->id() => __('You cannot challenge yourself.'),
+            $this->openWithOpponent => __('There is already an open challenge between the two of you.'),
+            default => null,
+        };
+    }
+
+    /** Whether a challenge between this player and the picked opponent is open already (the rule BoardChallenges enforces). */
+    #[Computed]
+    public function openWithOpponent(): bool
+    {
+        $user = auth()->user();
+
+        return $user instanceof User && $this->opponent !== null && app(BoardChallenges::class)->openBetween($user, $this->opponent, $this->slug);
     }
 
     /**
@@ -248,7 +315,7 @@ new #[Layout('layouts::app')] class extends Component {
             };
         }
 
-        unset($this->incoming, $this->outgoing, $this->games, $this->ratedRefusal);
+        unset($this->incoming, $this->outgoing, $this->games, $this->ratedRefusal, $this->openWithOpponent, $this->toProblem);
     }
 }; ?>
 
@@ -370,6 +437,9 @@ new #[Layout('layouts::app')] class extends Component {
                             <p class="m-0 px-3 py-3 text-[13px] text-ink-2">{{ __('No player found.') }}</p>
                         @endforelse
                     </div>
+                    @if ($this->toProblem)
+                        <p role="alert" class="m-0 text-[13px] leading-normal text-loss" data-test="challenge-to-problem">{{ $this->toProblem }}</p>
+                    @endif
                 </div>
 
                 <div class="flex flex-col gap-2">
@@ -409,11 +479,16 @@ new #[Layout('layouts::app')] class extends Component {
                     @error('message')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
                 </div>
 
-                <button type="button" wire:click="send" @disabled(! $opponent) data-test="send-challenge"
-                        class="btn-p inline-flex h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 text-[15px] font-bold text-on-btc disabled:cursor-not-allowed disabled:opacity-50">
-                    <x-icon name="shield-check" :size="18" />{{ $opponent ? __('Challenge :name', ['name' => $opponent->displayName()]) : __('Send challenge') }}
+                {{-- A name without a break wraps inside the button (a 41-character one ran 39 px past a 320 px phone), the verb stays visible in both languages. --}}
+                <button type="button" wire:click="send" @disabled(! $opponent || $this->openWithOpponent) data-test="send-challenge"
+                        class="btn-p inline-flex min-h-[52px] cursor-pointer items-center justify-center gap-2.5 rounded-md bg-btc px-5 py-2 text-[15px] font-bold text-on-btc disabled:cursor-not-allowed disabled:opacity-50">
+                    <x-icon name="shield-check" :size="18" class="shrink-0" /><span class="min-w-0 text-center wrap-anywhere">{{ $opponent ? __('Challenge :name', ['name' => $opponent->displayName()]) : __('Send challenge') }}</span>
                 </button>
                 <span class="text-xs leading-normal text-ink-2">{{ __('The other player has :hours h to accept. You can withdraw the challenge while it is open.', ['hours' => $hours]) }}</span>
+                {{-- As chess's challenge page offers blitz with a friend: the lobby's "Online now", where a player who looks for a game can be invited. --}}
+                <a href="{{ route('board.lobby', $slug) }}#online-now" class="inline-flex min-h-11 items-center gap-1.5 self-start text-[13px] text-ink underline decoration-edge underline-offset-4 hover:decoration-btc" data-test="correspondence-blitz">
+                    <x-icon name="bolt" :size="14" class="shrink-0" />{{ __('Blitz 5+3 now: invite a player who is looking to play') }}
+                </a>
             </section>
         </div>
     @endguest

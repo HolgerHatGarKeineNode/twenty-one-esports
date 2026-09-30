@@ -13,6 +13,13 @@
  *
  * Nothing is signed or sent before "Sign and send"; the league never sees
  * the follow list beyond the pubkeys it matches, nor the message.
+ *
+ * On a lobby (`lookingKey` set: `chess/blitz`, `<board game>/blitz`) each row
+ * reads the page-wide presence that "Online now" reads
+ * (window.esportsPresence, resources/js/echo.js): online, or looking for
+ * this lobby's blitz, and for the latter the lobby's own invite
+ * ($wire.$parent.invite, the lobby page's component). The lobby keeps the
+ * invite's state (invitedUserId, invitedUntilMs, error); the row reads it.
  */
 import { npubEncode } from 'nostr-tools/nip19';
 import { readFollows, readNames, splitFollows } from './followsHere.js';
@@ -22,7 +29,7 @@ import { signerMessage } from './signing.js';
 const PICK_MAX = 10;
 const LISTED = 200;
 
-export function followsHere({ me = null, relays = [], labels = {} } = {}) {
+export function followsHere({ me = null, relays = [], labels = {}, lookingKey = null } = {}) {
     return {
         // idle -> reading -> done | none | failed
         state: 'idle',
@@ -45,9 +52,19 @@ export function followsHere({ me = null, relays = [], labels = {} } = {}) {
         link: '',
         text: '',
         results: {},
+        // presence on a lobby: user id -> member of `online`
+        online: {},
+        inviting: null,
+        invitedLast: null,
+        stopPresence: null,
 
         init() {
             if (!me) return;
+            if (lookingKey) {
+                this.stopPresence = window.esportsPresence?.subscribe((members) => {
+                    this.online = Object.fromEntries(members.map((member) => [member.id, member]));
+                }) ?? null;
+            }
             if (typeof IntersectionObserver !== 'function') {
                 this.read();
 
@@ -60,6 +77,43 @@ export function followsHere({ me = null, relays = [], labels = {} } = {}) {
                 }
             }, { rootMargin: '200px' });
             observer.observe(this.$el);
+        },
+
+        destroy() {
+            this.stopPresence?.();
+        },
+
+        /** Whether this follow is online and looks for this lobby's blitz. */
+        looks(id) {
+            return lookingKey !== null && this.online[id]?.looking === lookingKey;
+        },
+
+        /** The lobby's open blitz invite goes to this follow (until it runs out; the lobby clears it on its next render). */
+        invitedBlitz(id) {
+            const lobby = this.$wire.$parent;
+
+            return Boolean(lobby) && lobby.invitedUserId === id && Date.now() < lobby.invitedUntilMs;
+        },
+
+        /** The lobby's own invite: a searching follow starts the game at once, the page then moves to the board. */
+        async inviteBlitz(id) {
+            const lobby = this.$wire.$parent;
+            if (!lobby || this.inviting !== null) return;
+            this.inviting = id;
+            this.invitedLast = null;
+            try {
+                await lobby.invite(id);
+            } catch (error) {
+                console.warn('[follows here] the blitz invite failed:', error);
+            } finally {
+                this.invitedLast = id;
+                this.inviting = null;
+            }
+        },
+
+        /** Why the lobby refused this row's invite, where it was clicked (the lobby also says it at its top). */
+        blitzError(id) {
+            return this.invitedLast === id && !this.invitedBlitz(id) ? (this.$wire.$parent?.error ?? '') : '';
         },
 
         label(key, replace = {}) {
