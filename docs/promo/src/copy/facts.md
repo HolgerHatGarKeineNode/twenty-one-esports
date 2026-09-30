@@ -137,6 +137,24 @@ factory names with their pixel avatars, not people. **Left out:** any automatic 
 games (`PrideSlides::win()`), because it is the `onstream` motif's claim and is on master only
 (fact 35); a fixed cup date (the posters say "on Sundays", the date goes stale).
 
+## Added 2026-10-01 — the casual cups on the weekend (reel 12, rewritten)
+
+Checked against master `96d2cd41` and prod `/tournaments` read 2026-10-01 (all fourteen cups
+listed, each "#1", 0 of 4 spots). Replaces the reel-12 sources of 2026-09-28 (four games on
+Saturday evening), stale since `beabfc89`.
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 1v1, nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each | prod |
+| 62 | Weekend slots: Friday 18:00 EA FC 26, 20:00 EA FC 27; Saturday 15:00 nine men's morris, 20:00 chess and Rocket League; Sunday 15:00 checkers, 20:00 AoE2 | `casual_cups.games.*.slot` (`friday 18:00`, `friday 20:00`, `saturday 15:00`, `saturday 20:00` ×2, `sunday 15:00`, `sunday 20:00`); commit `beabfc89`; prod start times (e.g. "8:00 PM Sat, Oct 3, Berlin" chess EU, "3:00 PM Sun, Oct 4, New York" checkers US) | prod |
+| 63 | One cup per game and region, EU and US, at the same local time (Europe/Berlin, America/New_York) | `casual_cups.regions`; config docblock ("an EU and a US cup of a game start at the same local time") | prod |
+| 64 | A cup opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
+| 65 | The format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
+| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said) | fact 54 (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
+
+**Corrected:** the 2026-09-28 cut said "Four players, two losses and out" and "No rating". A
+double elimination needs six players (fact 65), and cup results move the casual Elo (fact 66).
+
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
 Round 1's clan copy said clans have a "Kader"/"lineup" and play chess "team matches

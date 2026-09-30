@@ -167,6 +167,9 @@
     gamesWon: { en: ':count games won', de: ':count Spiele gewonnen' },
     modeLadder: { en: ':mode ladder', de: ':mode-Ladder' },
     sunday: { en: 'Sunday', de: 'Sonntag' },
+    friday: { en: 'Friday', de: 'Freitag' },
+    saturday: { en: 'Saturday', de: 'Samstag' },
+    formatAtStart: { en: 'The format is set at the start, by how many play.', de: 'Das Format steht zum Start fest, je nachdem, wie viele spielen.' },
   };
   window.UI = (key, lang, vars) => {
     const e = S[key];

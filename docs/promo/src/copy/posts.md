@@ -207,23 +207,29 @@ https://esports.einundzwanzig.space/tournaments/1
 
 ## Casual cups
 
-**Nostr (DE):**
-Casual Cups für jeden: Blitzschach, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
-FC 27 1v1, automatisch angelegt. Jedes Spiel hat einen EU-Cup (Sa., 3. Oktober, 20:00
-Uhr) und einen US-Cup (So., 4. Oktober, 02:00 Uhr). Nur 4 Plätze pro Cup, Double
-Elimination — zwei Niederlagen und du bist raus. Kein Rating, keine Preise, nur Spaß.
-Meld dich für deinen Cup an. https://esports.einundzwanzig.space/tournaments
+Facts 61-66. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
+board game cups (Mühle, Dame) only while those games are on in prod (they have cups on prod
+since at least 2026-10-01).
 
-**Nostr (EN):**
-Casual cups for everyone: Blitz chess, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
-FC 27 1v1, set up automatically. Every game has an EU cup (Sat, Oct 3, 20:00 CEST)
-and a US cup (Sun, Oct 4, 02:00 CEST). Only 4 spots per cup, double elimination — two
-losses and you're out. No rating, no prizes, just for fun. Sign up for your cup.
+**Nostr (DE):**
+Jedes Wochenende Casual Cups in sieben Spielen, jeweils einer für die EU und einer für die USA,
+zur selben Uhrzeit in Berlin und New York. Freitag 18 Uhr EA FC 26, 20 Uhr EA FC 27. Samstag
+15 Uhr Mühle, 20 Uhr Schach und Rocket League. Sonntag 15 Uhr Dame, 20 Uhr Age of Empires II.
+Ein Cup öffnet mit vier Plätzen und wächst, wenn er voll wird. Das Format steht zum Start fest,
+je nachdem, wie viele spielen. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
 https://esports.einundzwanzig.space/tournaments
 
-**X (DE):** Casual Cups: Schach, Rocket League, FC 26, FC 27 — je ein EU- und ein US-Cup. Nur 4 Plätze, Double Elimination. Jetzt anmelden. esports.einundzwanzig.space/tournaments
+**Nostr (EN):**
+Casual cups every weekend in seven games, one for the EU and one for the US, at the same time in
+Berlin and New York. Friday 18:00 EA FC 26, 20:00 EA FC 27. Saturday 15:00 nine men's morris,
+20:00 chess and Rocket League. Sunday 15:00 checkers, 20:00 Age of Empires II. A cup opens with
+four spots and grows when it fills up. The format is set at the start, by how many play. Sign up
+with your Nostr key, no prizes, just the game.
+https://esports.einundzwanzig.space/tournaments
 
-**X (EN):** Casual cups: Chess, Rocket League, FC 26, FC 27 — one EU and one US cup each. Only 4 spots, double elimination. Sign up now. esports.einundzwanzig.space/tournaments
+**X (DE):** Casual Cups jedes Wochenende: sieben Spiele, Freitag bis Sonntag, EU und US zur selben Uhrzeit. Platz nehmen: esports.einundzwanzig.space/tournaments
+
+**X (EN):** Casual cups every weekend: seven games, Friday to Sunday, EU and US at the same time. Take a seat: esports.einundzwanzig.space/tournaments
 
 ---
 

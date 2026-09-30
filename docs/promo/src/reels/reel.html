@@ -811,9 +811,19 @@ const COV = '../../../../public/images/games/';
 const UP = {
   pot: { name: '21,000 Sats, Zero Ball Control', game: 'Rocket League', mode: '1v1', cover: 'rocket-league-382.jpg', start: { de: 'So 4. Okt · 18:00 CEST', en: 'Sun 4 Oct · 18:00 CEST' }, places: 12, taken: 1, sats: 21000, split: [50, 30, 20] },
   fifa: { name: 'EINUNDZWANZIG Fifa 2026', game: 'EA Sports FC 26', mode: '1v1', cover: 'ea-sports-fc-26-480.jpg', start: { de: 'Sa 3. Okt · 18:00 CEST', en: 'Sat 3 Oct · 18:00 CEST' }, places: 16, taken: 2 },
-  cups: [['Chess', 'Blitz 5+3', 'chess-1280.jpg'], ['Rocket League', '1v1', 'rocket-league-382.jpg'], ['EA Sports FC 26', '1v1', 'ea-sports-fc-26-480.jpg'], ['EA Sports FC 27', '1v1', 'ea-sports-fc-27-1280.jpg']],
-  cupTimes: [['EU', { de: 'Sa 3. Okt · 20:00 CEST', en: 'Sat 3 Oct · 20:00 CEST' }], ['US', { de: 'So 4. Okt · 02:00 CEST', en: 'Sun 4 Oct · 02:00 CEST' }]],
-  cupPlaces: 4,
+  /* The casual cups as config/esports.php casual_cups sets them since beabfc89 (prod /tournaments
+     2026-10-01: all fourteen, EU and US, 0 of 4 spots): name as the cup names it, mode, cover, and
+     the weekly slot. `pos` crops a cover: FC 26 and AoE2 show only their logo, no faces. */
+  cups: [
+    { g: 'EA FC 26', m: '1v1', c: 'ea-sports-fc-26-480.jpg', pos: '0% 100%', size: '190% auto', d: 'friday', t: '18:00' },
+    { g: 'EA FC 27', m: '1v1', c: 'ea-sports-fc-27-480.jpg', d: 'friday', t: '20:00' },
+    { g: 'Nine Men\'s Morris', gde: 'Mühle', m: 'Blitz 5+3', c: 'nine-mens-morris-480.jpg', d: 'saturday', t: '15:00' },
+    { g: 'Chess', gde: 'Schach', m: 'Blitz 5+3', c: 'chess-480.jpg', d: 'saturday', t: '20:00' },
+    { g: 'Rocket League', m: '1v1', c: 'rocket-league-382.jpg', d: 'saturday', t: '20:00' },
+    { g: 'Checkers', gde: 'Dame', m: 'Blitz 5+3', c: 'checkers-480.jpg', d: 'sunday', t: '15:00' },
+    { g: 'AoE2', m: '1v1', c: 'age-of-empires-2-800.jpg', pos: '50% 100%', size: '142.86% auto', d: 'sunday', t: '20:00' },
+  ],
+  cupSizes: [4, 8, 16],
 };
 const satsFmt = (n, l) => n.toLocaleString(l === 'de' ? 'de-DE' : 'en-US');
 const BOLT = (w, c = 'var(--btc)') => `<svg viewBox="0 0 12 20" width="${w}" height="${Math.round(w * 20 / 12)}" shape-rendering="crispEdges" aria-hidden="true" style="display:block;flex:none"><path fill="${c}" d="M7 0H3L0 11h4l-2 9 10-13H7l3-7z"/></svg>`;
@@ -920,30 +930,47 @@ S.fifa = [
   { html: endCard, update: endUpdate },
 ];
 
+const cupName = (x, l) => (l === 'de' && x.gde ? x.gde : x.g);
+const cupCover = (x, h) => `<div style="height:${h}px;background:#000 url('${COV}${x.c}') ${x.pos || 'center'}/${x.size || 'cover'} no-repeat"></div>`;
 S.cups = [
-  { html: () => `<div class="center" style="position:absolute"><div style="width:920px;display:grid;grid-template-columns:1fr 1fr;gap:28px">${UP.cups.map(([g, m, c], i) => `<div data-t="${i}" class="card cube" style="display:grid;--d:20px;overflow:hidden">${coverBox(c, 250)}<div style="padding:4px 24px 24px;display:grid;row-gap:8px"><b style="font:800 34px/1.1 var(--disp)">${E(g)}</b><span class="muted" style="font:700 24px/1.2 var(--mono)">${E(m)}</span></div></div>`).join('')}</div></div>`,
-    update(root, t) { root.querySelectorAll('[data-t]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.25, 0.5 + i * 0.25)); e.style.opacity = clamp(p * 1.5); e.style.transform = `scale(${0.6 + 0.4 * p})`; }); } },
-  { html: (l) => `<div class="center" style="position:absolute"><div style="display:grid;row-gap:36px;width:900px">${UP.cupTimes.map(([r, when], i) => `<div data-r="${i}" class="card cube" style="padding:40px 44px;display:grid;row-gap:18px;--d:24px">
-      <div class="row" style="justify-content:space-between"><b style="font:800 110px/1 var(--disp);color:var(--btc)">${r}</b><span class="muted" style="font:700 26px/1.2 var(--mono)">4 × Cup</span></div>
-      <span style="font:700 40px/1.2 var(--mono)">${E(when[l])}</span>
-      <span class="dim" style="font:500 26px/1.2 var(--mono)">Chess · RL · FC 26 · FC 27</span></div>`).join('')}</div></div>`,
-    update(root, t) { root.querySelectorAll('[data-r]').forEach((e, i) => { const p = back(seg(t, 0.15 + i * 0.5, 0.6 + i * 0.5)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * (i ? 160 : -160)}px)`; }); } },
+  { html: (l) => `<div class="center" style="position:absolute"><div style="width:920px;display:grid;grid-template-columns:1fr 1fr;gap:24px">${UP.cups.map((x, i) => `<div data-t="${i}" class="card" style="display:grid;overflow:hidden">${cupCover(x, 150)}<div style="padding:14px 22px 18px;display:grid;row-gap:6px"><b style="font:800 32px/1.1 var(--disp);white-space:nowrap">${E(cupName(x, l))}</b><span class="muted" style="font:700 22px/1.2 var(--mono)">${E(x.m)}</span></div></div>`).join('')}
+      <div data-t="7" class="card" style="display:grid;place-items:center;align-content:center;row-gap:14px;border-color:var(--btc)"><b style="font:800 64px/1 var(--disp);color:var(--btc)">EU</b><b style="font:800 64px/1 var(--disp);color:var(--btc)">US</b></div></div></div>`,
+    update(root, t) { root.querySelectorAll('[data-t]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.16, 0.45 + i * 0.16)); e.style.opacity = clamp(p * 1.5); e.style.transform = `scale(${0.6 + 0.4 * p})`; }); } },
   { html: (l) => {
-      const slot = (n) => `<div style="height:72px;border:3px dashed var(--dash);display:grid;place-items:center"><b style="font:800 32px/1 var(--disp);color:var(--ink-2)">${n}</b></div>`;
-      return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:26px;--d:28px">
-        <div class="row" style="justify-content:space-between"><b style="font:800 50px/1.1 var(--disp)">${E(UI('doubleElim', l))}</b><b style="font:800 50px/1 var(--disp);color:var(--btc)">${UP.cupPlaces}</b></div>
-        <span class="lbl">${E(UI('upperBracket', l))}</span>
-        <div data-up style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">${[1, 2, 3, 4].map(slot).join('')}</div>
-        <span class="lbl">${E(UI('lowerBracket', l))}</span>
-        <div data-lo style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px">${[0, 1, 2, 3].map(() => '<div style="height:72px;border:3px dashed var(--line)"></div>').join('')}</div>
-        <div data-drop style="position:absolute;width:0;height:0"></div>
+      const days = ['friday', 'saturday', 'sunday'];
+      const dayCard = (d, i) => {
+        const rows = UP.cups.filter((x) => x.d === d);
+        const times = [...new Set(rows.map((x) => x.t))];
+        return `<div data-r="${i}" class="card cube" style="padding:26px 34px;display:grid;row-gap:14px;--d:20px">
+          <b style="font:800 44px/1.1 var(--disp)">${E(UI(d, l))}</b>
+          ${times.map((tm) => `<div class="row" style="gap:24px;align-items:baseline"><b style="font:800 40px/1 var(--disp);color:var(--btc);width:180px;flex:none;white-space:nowrap">${tm}</b><span style="font:700 30px/1.3 var(--mono)">${rows.filter((x) => x.t === tm).map((x) => E(cupName(x, l))).join(', ')}</span></div>`).join('')}</div>`;
+      };
+      return `<div class="center" style="position:absolute"><div style="display:grid;row-gap:30px;width:900px">${days.map(dayCard).join('')}
+        <div data-z class="row" style="gap:20px">${[['EU', 'Berlin'], ['US', 'New York']].map(([r, z]) => `<span class="row" style="gap:14px;padding:14px 20px;border:3px solid var(--btc);font:700 30px/1 var(--mono)"><b style="font:800 32px/1 var(--disp);color:var(--btc)">${r}</b>${z}</span>`).join('')}</div></div></div>`;
+    },
+    update(root, t) {
+      root.querySelectorAll('[data-r]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.35, 0.55 + i * 0.35)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * (i % 2 ? 160 : -160)}px)`; });
+      root.querySelector('[data-z]').style.opacity = eo(seg(t, 1.3, 1.7));
+    } },
+  { html: (l) => {
+      const who = ['kai_blitz', 'hodlqueen', 'taproot_tim', 'lnurl_lena', 'orange_olga', 'sat_sepp'];
+      return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:30px;--d:28px">
+        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp);white-space:nowrap">AoE2 Casual Cup EU</b><b data-n style="font:800 56px/1 var(--disp);color:var(--btc);white-space:nowrap">0 / 4</b></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">${Array.from({ length: 8 }, (_, i) => `<div data-sp="${i}" style="height:150px;border:3px dashed var(--dash);display:grid;place-items:center">${i < who.length ? `<span data-f style="opacity:0">${av(who[i], 88)}</span>` : ''}</div>`).join('')}</div>
+        <span class="muted" style="font:700 28px/1.3 var(--mono)">${E(UI('formatAtStart', l))}</span>
       </div></div>`;
     },
     update(root, t) {
       cardIn(root, t);
-      const up = [...root.querySelectorAll('[data-up] > div')], lo = [...root.querySelectorAll('[data-lo] > div')];
-      up.forEach((e, i) => { const lost = t > 1.0 && (i === 1 || i === 3); e.style.opacity = lost ? 0.35 : 1; e.style.borderStyle = t > 0.6 ? 'solid' : 'dashed'; e.style.borderColor = t > 0.6 ? (lost ? 'var(--line)' : 'var(--win)') : ''; });
-      lo.forEach((e, i) => { const on = (i === 1 || i === 3) && t > 1.3; e.style.borderStyle = on ? 'solid' : 'dashed'; e.style.borderColor = on ? 'var(--btc)' : ''; e.style.background = on ? 'rgba(247,147,26,.12)' : 'transparent'; if (i === 3 && t > 2.1) { e.style.opacity = 0.3; e.style.borderColor = 'var(--loss)'; } else e.style.opacity = 1; });
+      const grown = t > 1.7, filled = Math.min(6, Math.floor(clamp((t - 0.3) / 2.2) * 7));
+      const n = root.querySelector('[data-n]'); n.textContent = `${Math.min(filled, grown ? 8 : 3)} / ${grown ? 8 : 4}`;
+      n.style.transform = `scale(${grown ? 1 + 0.12 * (1 - eo(seg(t, 1.7, 2.1))) : 1})`;
+      root.querySelectorAll('[data-sp]').forEach((c, i) => {
+        const shown = i < 4 || grown, p = i < 4 ? 1 : eo(seg(t, 1.7 + (i - 4) * 0.08, 2.0 + (i - 4) * 0.08));
+        c.style.opacity = shown ? p : 0; c.style.transform = `scale(${0.7 + 0.3 * p})`;
+        const f = c.querySelector('[data-f]'); if (f) f.style.opacity = i < filled && (grown || i < 3) ? 1 : 0;
+        c.style.borderStyle = f && f.style.opacity === '1' ? 'solid' : 'dashed'; c.style.borderColor = f && f.style.opacity === '1' ? 'transparent' : '';
+      });
     } },
   { html: (l) => signUpScene().html(l), update: (root, t, len, l) => signUpScene().update(root, t, len, l) },
   { html: endCard, update: endUpdate },

@@ -55,9 +55,12 @@ system's data of 2026-09-28 (the `UP` block in `src/reels/reel.html`: names, sta
 taken, the pot as the tournament sets it and its split). They go stale with every sign-up:
 read the tournaments again (`TournamentSlides::upcoming()`, `PrizePool::shownPotSats()`),
 update `UP` and the copy, and re-render before posting them later. The tournaments people set
-up come first, then the casual cups; the sats pot reel is the headline. **`cups` is stale since
-`beabfc89`** (2026-09-30): it shows four cup games on Saturday evening, the cups now run for seven
-games over the weekend (Friday to Sunday). Re-read and re-render it before posting it again.
+up come first, then the casual cups; the sats pot reel is the headline. **`cups` was rewritten on
+2026-10-01** to the weekend slots of `beabfc89` (seven games, Friday to Sunday, EU and US at the same
+local time, facts 61-66). It carries no date and no cup number, so it stays true while the slots do;
+re-check `casual_cups` in `config/esports.php` before posting. Its Mühle and Dame cups: prod lists
+them on 2026-10-01, which suggests the board game switches are on there; confirm that before
+lifting the `morris`/`checkers` gate below.
 
 **Mühle and Dame** (`morris`, `checkers`): on master since 2026-09-29 but behind
 `ESPORTS_BOARD_GAMES`, `ESPORTS_BOARD_GAME_NINE_MENS_MORRIS` and `ESPORTS_BOARD_GAME_CHECKERS`

@@ -246,24 +246,25 @@ unrated, no prize pool, 16 places / 2 taken, starts Sat 3 Oct 2026 18:00 CEST, s
 
 ## Reel 12 — Casual cups
 
-Sources: live system 2026-09-28, https://esports.einundzwanzig.space/tournaments (automatic casual
-cups: Chess Blitz 5+3, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports FC 27 1v1; per game one
-EU cup, start Sat 3 Oct 2026 20:00 CEST, and one US cup, start Sun 4 Oct 2026 02:00 CEST; 4 places
-per cup, Double Elimination: out after the second loss; unrated, no prizes). Written by the
-kommunikator.
+Sources: `facts.md` 61-66 (`config/esports.php` `casual_cups`, commit `beabfc89`, prod
+https://esports.einundzwanzig.space/tournaments read 2026-10-01: all fourteen cups, seven games in
+EU and US, each at its weekend slot, 0 of 4 spots). Rewritten 2026-10-01 by the design lead: the
+previous cut (four games on Saturday evening, "two losses and out", "no rating") went stale with
+`beabfc89` and was partly wrong (double elimination only from six players; a cup series moves the
+casual Elo). No date in the copy: the slots repeat, the cup numbers do not.
 
 **DE**
-1. (3s) Vier Spiele, vier Cups — *Cover: Schach, Rocket League, FC 26, FC 27*
-2. (3s) EU- und US-Start, du wählst — *zwei Startzeiten nebeneinander*
-3. (3s) Vier Spieler, zwei Niederlagen raus — *Bracket, Double Elimination*
-4. (3s) Nur vier Plätze pro Cup — *Anmeldung, Bestätigung, „ist dabei"*
+1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover: Schach, Rocket League, FC 26, FC 27, AoE2, Mühle, Dame*
+2. (3s) Freitag bis Sonntag, in EU und US — *das Wochenende: Fr 18:00 FC 26, 20:00 FC 27; Sa 15:00 Mühle, 20:00 Schach und Rocket League; So 15:00 Dame, 20:00 AoE2; dieselbe Uhrzeit in Berlin und New York*
+3. (3s) Wird es voll, wächst der Cup — *vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
+4. (3s) Platz nehmen, mit deinem Nostr-Schlüssel — *Anmelden, Bestätigung mit dem Nostr-Schlüssel, „zap_zoe ist dabei.“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Four games, four cups — *covers: Chess, Rocket League, FC 26, FC 27*
-2. (3s) EU or US start, you choose — *two start times side by side*
-3. (3s) Four players, two losses and out — *bracket, double elimination*
-4. (3s) Only four spots per cup — *sign-up, confirm, "is in"*
+1. (3s) Seven games, seven casual cups — *seven covers: chess, Rocket League, FC 26, FC 27, AoE2, nine men's morris, checkers*
+2. (3s) Friday to Sunday, in the EU and US — *the weekend: Fri 18:00 FC 26, 20:00 FC 27; Sat 15:00 morris, 20:00 chess and Rocket League; Sun 15:00 checkers, 20:00 AoE2; the same time in Berlin and New York*
+3. (3s) Fills up? The cup grows. — *four spots fill, with one left the cup grows to eight*
+4. (3s) Take a seat with your Nostr key — *sign up, confirm with the Nostr key, "zap_zoe is in."*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---
