@@ -133,8 +133,9 @@ Game channels for the board games ([Game channels](#game-channels-rev-93)). No n
 - **The same `created_at`.** Every channel of the league has one `created_at`, so a client computes any channel id
   from the creator's pubkey and the name alone. A `created_at` of their own would be as fixed, but it would add a
   field per channel for every implementer to carry; nothing in NIP-28 or NIP-01 ties `created_at` to the moment of
-  the first publish. A relay whose NIP-11 `created_at_lower_limit` lies after it refuses every channel of the league
-  alike, the four of revision 9.3 too; a `created_at` two days later would only put that off by two days.
+  the first publish. A relay that enforces a NIP-11 `created_at_lower_limit` after it (NIP-11 names the limit, not
+  what a relay does with it) would refuse every channel of the league alike, the four of revision 9.3 too; a
+  `created_at` two days later would only put that off by two days.
 - **Only while the league runs the board game.** A board game the league has switched off has no channel on its
   pages, and the league signs no kind `40` or `41` for it. Its channel id is fixed all the same: the kind `40` goes
   out with the first daily publish after the board game is switched on, and it is the channel computed here.
