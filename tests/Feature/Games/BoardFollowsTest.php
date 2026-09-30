@@ -172,19 +172,62 @@ test('the correspondence page picks an npub from the link and says why one canno
     $page->call('pick', $other->id)->assertDontSeeHtml('data-test="challenge-to-problem"')->assertSee('Challenge Other Otto');
 })->with(['npub', 'user id', 'no npub', 'own npub', 'unknown npub', 'unknown user id', 'open challenge']);
 
-test('a guest who opens a follow\'s challenge link logs in and comes back to it', function () {
+test('a guest who opens a follow\'s challenge link comes back to it when logging in from there, and only then', function () {
     $friend = User::factory()->create(['name' => 'Mill Mia']);
     $url = route('board.correspondence', ['board' => NineMensMorris::SLUG, 'to' => $friend->npub]);
 
+    // A visit alone leaves the login's landing alone (review of P2: a stale intent sent a later login elsewhere here).
     $this->get($url)->assertOk()
         ->assertSeeHtml('data-test="correspondence-login"')
+        ->assertSeeHtml('wire:click="logIn"')
         ->assertDontSeeHtml('data-test="challenge-to-problem"')
-        ->assertSessionHas('url.intended', $url);
+        ->assertSessionMissing('url.intended');
 
-    // Without a picked opponent a visit leaves the login's landing alone.
-    $this->flushSession();
-    $this->get(route('board.correspondence', NineMensMorris::SLUG))->assertOk()->assertSessionMissing('url.intended');
+    // "Log in to play" on the page: the login comes back to the form with the follow picked.
+    Livewire::withQueryParams(['to' => $friend->npub])->test('pages::board.correspondence', ['board' => NineMensMorris::SLUG])
+        ->call('logIn')
+        ->assertRedirect(route('login'));
+    expect(session('url.intended'))->toBe($url);
+
+    // Without a picked opponent it comes back to the page itself.
+    session()->forget('url.intended');
+    Livewire::withQueryParams([])->test('pages::board.correspondence', ['board' => NineMensMorris::SLUG])->call('logIn')->assertRedirect(route('login'));
+    expect(session('url.intended'))->toBe(route('board.correspondence', NineMensMorris::SLUG));
 });
+
+/**
+ * The names of the pick list, in page order.
+ *
+ * @return list<string>
+ */
+function boardPickOrder(string $html): array
+{
+    preg_match_all('/data-test="pick-player"[^>]*>(?:\s|<[^>]*>)*?<span class="truncate">([^<]*)</', $html, $found);
+
+    return $found[1];
+}
+
+test('a tap in the pick list keeps its order, and a linked player heads it from the first load on', function (bool $linked) {
+    $me = User::factory()->create();
+    $players = collect(range(1, 9))->map(fn (int $i): User => User::factory()->create(['name' => 'Player '.$i, 'updated_at' => now()->subMinutes(20 - $i)]));
+    // The linked player is the oldest: without the link they would not be in the list at all.
+    $link = $players->first();
+
+    $page = Livewire::actingAs($me)->withQueryParams($linked ? ['to' => $link->npub] : [])->test('pages::board.correspondence', ['board' => NineMensMorris::SLUG]);
+    $before = boardPickOrder($page->html());
+
+    expect($before)->toHaveCount(8)
+        ->and($before[0])->toBe($linked ? 'Player 1' : 'Player 9');
+
+    // Tapping the fifth row picks it where it is: nothing moves under the finger.
+    $fifth = User::query()->where('name', $before[4])->sole();
+    $page->call('pick', $fifth->id)->assertSeeHtml('aria-checked="true"');
+    expect(boardPickOrder($page->html()))->toBe($before);
+
+    // And back to the linked one: still the same order.
+    $page->call('pick', $link->id);
+    expect(boardPickOrder($page->html()))->toBe($linked ? $before : boardPickOrder($page->html()));
+})->with(['from a link' => [true], 'without a link' => [false]]);
 
 test('the correspondence page offers blitz as chess\'s challenge page does: the lobby\'s "Online now"', function () {
     $this->actingAs(User::factory()->create())->get(route('board.correspondence', NineMensMorris::SLUG))->assertOk()

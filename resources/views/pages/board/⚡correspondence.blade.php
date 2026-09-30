@@ -42,7 +42,10 @@ use Livewire\Component;
  * brettspiel-chat-und-follows, P2). It only fills in the form, nothing is
  * sent before "Challenge <name>". An npub that is none, the player's own,
  * one without an account, or a player with an open challenge between the
- * two is said in the form (toProblem); a guest's "Log in" comes back here.
+ * two is said in the form (toProblem). The player a link names heads the
+ * list from the first load on and keeps that place, so a tap never moves
+ * the list under the finger. A guest's "Log in" comes back here, set on
+ * that click, never on a mere visit.
  *
  * The route exists only while `esports.board_games.enabled` is on
  * (routes/board.php); a board game whose own switch is off is a 404.
@@ -68,17 +71,32 @@ new #[Layout('layouts::app')] class extends Component {
 
     public string $status = '';
 
+    /** The player `?to=` named on the first load, first in the list for as long as the page lives; null without one. */
+    #[Locked]
+    public ?int $linkedId = null;
+
     public function mount(string $board): void
     {
         // A board game without the correspondence mode (a test fixture) has no such page.
         abort_unless(app(GameRegistry::class)->isBoard($board) && app(GameRegistry::class)->mode($board, BoardGame::CORRESPONDENCE) !== null, 404);
 
         $this->slug = $board;
+        $this->linkedId = $this->opponent?->id;
+    }
 
-        // A guest who came with an opponent picked lands here again after the login (NostrLoginController).
-        if (auth()->guest() && $this->to !== '') {
-            session()->put('url.intended', request()->fullUrl());
+    /**
+     * "Log in to play": the login lands on this page again, with the picked
+     * opponent (NostrLoginController pulls `url.intended`). Set on this
+     * click only: a guest who merely looked at the page and logs in
+     * elsewhere later is not brought back here.
+     */
+    public function logIn(): void
+    {
+        if (auth()->guest()) {
+            session()->put('url.intended', route('board.correspondence', array_filter(['board' => $this->slug, 'to' => trim($this->to)])));
         }
+
+        $this->redirectRoute('login');
     }
 
     public function rendering(\Illuminate\View\View $view): void
@@ -167,8 +185,9 @@ new #[Layout('layouts::app')] class extends Component {
     }
 
     /**
-     * The players to pick from; with no search the picked one first, so a
-     * player picked by a link shows as picked.
+     * The players to pick from; with no search the player a link named
+     * first (linkedId, fixed on the first load), so a picked link shows as
+     * picked and a later tap never reorders the list.
      *
      * @return Collection<int, User>
      */
@@ -176,7 +195,7 @@ new #[Layout('layouts::app')] class extends Component {
     public function players(): Collection
     {
         $term = trim($this->search);
-        $first = $term === '' ? $this->opponent : null;
+        $first = $term === '' && $this->linkedId !== null ? User::query()->find($this->linkedId) : null;
 
         $found = User::query()
             ->when(auth()->id() !== null, fn ($query) => $query->whereKeyNot(auth()->id()))
@@ -357,7 +376,7 @@ new #[Layout('layouts::app')] class extends Component {
     @guest
         <section class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6">
             <p class="m-0 text-[13px] text-ink-2">{{ __('Log in to challenge a player and play your correspondence games.') }}</p>
-            <div><x-button :href="route('login')" data-test="correspondence-login">{{ __('Log in to play') }}</x-button></div>
+            <div><x-button wire:click="logIn" data-test="correspondence-login">{{ __('Log in to play') }}</x-button></div>
         </section>
     @else
         {{-- Challenges received: answer them first. --}}

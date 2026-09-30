@@ -88,6 +88,11 @@ export function followsHere({ me = null, relays = [], labels = {}, lookingKey = 
             return lookingKey !== null && this.online[id]?.looking === lookingKey;
         },
 
+        /** The lobby's own answer (its canInvite, as "Online now" gets it): no invite while the viewer is in a live game. */
+        canInvite() {
+            return this.$wire.$parent?.canInvite === true;
+        },
+
         /** The lobby's open blitz invite goes to this follow (until it runs out; the lobby clears it on its next render). */
         invitedBlitz(id) {
             const lobby = this.$wire.$parent;
@@ -98,7 +103,7 @@ export function followsHere({ me = null, relays = [], labels = {}, lookingKey = 
         /** The lobby's own invite: a searching follow starts the game at once, the page then moves to the board. */
         async inviteBlitz(id) {
             const lobby = this.$wire.$parent;
-            if (!lobby || this.inviting !== null) return;
+            if (!lobby || this.inviting !== null || !this.canInvite()) return;
             this.inviting = id;
             this.invitedLast = null;
             try {

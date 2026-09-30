@@ -5,6 +5,8 @@ use App\Models\BoardChallenge;
 use App\Models\BoardInvite;
 use App\Models\Clan;
 use App\Models\User;
+use App\Support\Board\BoardGameService;
+use App\Support\Chess\ChessGameService;
 use App\Support\Nostr\PlayerProfile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
@@ -43,6 +45,12 @@ pest()->group('browser');
 | collector (console, uncaught errors, answers >= 400) stays empty, with a
 | positive control. SHELL_SHOTS=<dir> writes the English screenshots.
 |
+| Every measurement waits for what it measures to be on screen (review of
+| P2: Alpine's x-show reveals on the next animation frame, so a wait on the
+| component's `done` alone measured hidden rows in a busy shard), then two
+| frames. BOARD_FOLLOWS_SLOW_RAF=<ms> delays every animation frame by that
+| much, the way the flake was forced; the file stays green with it.
+|
 */
 
 beforeEach(function () {
@@ -74,6 +82,10 @@ function boardFollowsPage(?User $user, string $to, int $width, int $height, stri
 {
     $page = visit($user === null ? BrowserLogin::LANDING : BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $slow = (int) getenv('BOARD_FOLLOWS_SLOW_RAF');
+    if ($slow > 0) {
+        $page->context()->addInitScript('(() => { const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = (callback) => setTimeout(() => raf(callback), '.$slow.'); })();');
+    }
     $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
     $page->goto(ComputeUrl::from($to));
@@ -109,6 +121,26 @@ function boardFollowsClean(Page $page): array
         'errors' => (array) $page->evaluate('() => window.__errors'),
         'bad' => (array) $page->evaluate(BrowserConsole::BAD_RESPONSES),
     ];
+}
+
+/** Two animation frames: what an x-show or x-if decided is painted by then. */
+const BOARD_FOLLOWS_FRAMES = '() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))';
+
+/**
+ * The follows list as it must be before it is measured, on screen: 12 rows,
+ * each with its visible presence line, `looking` visible tags, and the
+ * invite way of the page (chess: the invite DM, a board game: the way to the
+ * own page) visible.
+ */
+function boardFollowsShown(string $which, int $looking): string
+{
+    $invite = $which === 'chess' ? 'follows-invite' : 'follows-invite-elsewhere';
+
+    return '() => { const s = document.querySelector("[data-test=follows-here]"); if (! s || s.dataset.state !== "done") return false;'
+        .' const rows = [...s.querySelectorAll("[data-test=follows-here-player]")];'
+        .' return rows.length === 12 && rows.every((r) => r.querySelector("[data-test=follows-here-presence]")?.checkVisibility())'
+        .' && [...s.querySelectorAll("[data-test=follows-here-looking]")].filter((e) => e.checkVisibility()).length === '.$looking
+        .' && s.querySelector("[data-test='.$invite.']")?.checkVisibility() === true && document.fonts.status === "loaded"; }';
 }
 
 /** The lobby sections present and visible, in reading order (top, then left). */
@@ -203,7 +235,9 @@ test('the board lobby lists your follows as chess does, with who is online, the 
         BrowserWait::until($page, '() => window.esportsPresence?.ready === true && window.esportsPresence.members.some((m) => m.name === '.json_encode($long).')', 10_000);
         $page->evaluate($inject);
         $page->evaluate('() => document.querySelector("[data-test=follows-here]").scrollIntoView({ block: "start" })');
-        BrowserWait::until($page, '() => document.querySelector("[data-test=follows-here]")?.dataset.state === "done" && document.querySelectorAll("[data-test=follows-here-player]").length === 12 && document.fonts.status === "loaded"', 20_000);
+        // Bert and the four of the shown eleven who look for nine men's morris carry the tag on its lobby; none on chess's.
+        BrowserWait::until($page, boardFollowsShown($which, $which === 'board' ? 5 : 0), 20_000);
+        $page->evaluate(BOARD_FOLLOWS_FRAMES);
         $rows[$which] = $page->evaluate(BOARD_FOLLOWS_ROWS);
         $measured[$which] = ['sections' => $page->evaluate(BOARD_FOLLOWS_SECTIONS)] + boardFollowsClean($page);
         if ($locale === 'en') {
@@ -218,8 +252,9 @@ test('the board lobby lists your follows as chess does, with who is online, the 
     $bertRow = '[...document.querySelectorAll("[data-test=follows-here-player]")].find((row) => row.innerText.includes('.json_encode($long).'))';
     $page->evaluate('() => '.$bertRow.'.scrollIntoView({ block: "center" })');
     $page->evaluate('() => '.$bertRow.'.querySelector("[data-test=follows-here-invite]").click()');
-    BrowserWait::until($page, '() => '.$bertRow.'.querySelector("[data-test=follows-here-invited]") !== null && document.querySelector("[data-test=lobby-invited]") !== null', 10_000);
+    BrowserWait::until($page, '() => '.$bertRow.'.querySelector("[data-test=follows-here-invited]")?.checkVisibility() === true && document.querySelector("[data-test=lobby-invited]")?.checkVisibility() === true', 10_000);
     BrowserWait::until($bertPage, '() => document.querySelector("[data-test=incoming-invite]") !== null', 10_000);
+    $page->evaluate(BOARD_FOLLOWS_FRAMES);
     $rows['invited'] = $page->evaluate(BOARD_FOLLOWS_ROWS);
     $measured['invited'] = boardFollowsClean($page);
     $measured['bert'] = boardFollowsClean($bertPage);
@@ -230,7 +265,8 @@ test('the board lobby lists your follows as chess does, with who is online, the 
 
     // His correspondence challenge: the form with him picked, nothing sent.
     $page->evaluate('() => '.$bertRow.'.querySelector("[data-test=follows-here-challenge]").click()');
-    BrowserWait::until($page, '() => location.pathname.endsWith("/correspondence") && document.querySelector("[data-test=send-challenge]") !== null', 10_000);
+    BrowserWait::until($page, '() => location.pathname.endsWith("/correspondence") && document.querySelector("[data-test=send-challenge]")?.checkVisibility() === true && document.fonts.status === "loaded"', 10_000);
+    $page->evaluate(BOARD_FOLLOWS_FRAMES);
     $form = $page->evaluate('() => { const b = document.querySelector("[data-test=send-challenge]").getBoundingClientRect(); const picked = document.querySelector("[data-test=pick-player][aria-checked=true]"); return { to: new URLSearchParams(location.search).get("to"), button: document.querySelector("[data-test=send-challenge]").textContent.trim(), right: Math.round(b.right), buttonWhole: document.querySelector("[data-test=send-challenge]").scrollWidth <= document.querySelector("[data-test=send-challenge]").clientWidth + 1, disabled: document.querySelector("[data-test=send-challenge]").disabled, picked: picked?.textContent.trim() ?? null, problem: document.querySelector("[data-test=challenge-to-problem]")?.textContent ?? null, wide: [...document.querySelectorAll("body *")].filter((e) => { if (! e.checkVisibility() || e.getBoundingClientRect().right <= innerWidth + 0.5) return false; for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) { if (getComputedStyle(p).overflowX !== "visible") return false; } return true; }).slice(-6).map((e) => e.tagName + " " + (e.dataset.test ?? "") + " " + String(e.className).slice(0, 80) + " " + Math.round(e.getBoundingClientRect().right)) }; }');
     $measured['correspondence'] = boardFollowsClean($page);
     if ($locale === 'en') {
@@ -310,6 +346,8 @@ test('a guest\'s board lobby has the chess lobby\'s sections, without follows, a
     $measured = [];
     foreach (['chess' => route('chess.lobby', [], false), 'board' => route('board.lobby', NineMensMorris::SLUG, false)] as $which => $path) {
         $page = boardFollowsPage(null, $path, $width, $height, $locale);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=online-now]")?.checkVisibility() === true && document.fonts.status === "loaded"', 10_000);
+        $page->evaluate(BOARD_FOLLOWS_FRAMES);
         $measured[$which] = ['sections' => $page->evaluate(BOARD_FOLLOWS_SECTIONS)] + boardFollowsClean($page);
     }
 
@@ -332,3 +370,62 @@ test('a guest\'s board lobby has the chess lobby\'s sections, without follows, a
     'desktop 1280, en' => [1280, 800, 'en'],
     'desktop 1280, de' => [1280, 800, 'de'],
 ]);
+
+/*
+| Review of P2: in a live game the viewer cannot invite (the invite would only
+| lead back to that game), so the follow row offers no blitz invite, from the
+| same source as "Online now" (the lobby's canInvite). Carl looks for chess
+| and Dora for nine men's morris, both really online; Anna follows both and
+| plays a live game of the lobby's own kind: neither list offers her an
+| Invite, the row still says who looks, and its challenge carries the label.
+*/
+
+test('in a live game the follow row offers no blitz invite, as "Online now" offers none', function (string $lobby) {
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
+
+    $anna = User::factory()->create(['name' => 'Anna']);
+    $signer = TestSigner::forBrowser($anna);
+    $anna->refresh();
+    $key = $lobby === 'chess' ? 'chess/blitz' : NineMensMorris::SLUG.'/blitz';
+    $friend = User::factory()->create(['name' => $lobby === 'chess' ? 'Carl' : 'Dora', 'looking_to_play' => $key]);
+    $at = now()->getTimestamp() - 600;
+    boardFollowsSend($this->relayUrl, $signer->sign(10002, [['r', $this->relayUrl]], '', $at));
+    boardFollowsSend($this->relayUrl, $signer->sign(3, [['p', $friend->pubkey]], '', $at));
+
+    // Anna's live game, of the lobby's own kind.
+    $rival = User::factory()->create(['name' => 'Rival']);
+    $lobby === 'chess' ? app(ChessGameService::class)->start($anna, $rival) : app(BoardGameService::class)->start(NineMensMorris::SLUG, $anna, $rival);
+    $path = $lobby === 'chess' ? route('chess.lobby', [], false) : route('board.lobby', NineMensMorris::SLUG, false);
+
+    $friendPage = boardFollowsPage($friend, $path, 375, 667, 'en');
+    BrowserWait::until($friendPage, '() => window.esportsPresence?.ready === true', 10_000);
+    $page = boardFollowsPage($anna, $path, 375, 667, 'en');
+    BrowserWait::until($page, '() => window.esportsPresence?.members.some((m) => m.name === '.json_encode($friend->name).')', 10_000);
+    $page->evaluate('() => document.querySelector("[data-test=follows-here]").scrollIntoView({ block: "start" })');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=follows-here]")?.dataset.state === "done" && document.querySelector("[data-test=follows-here-presence]")?.checkVisibility() === true && [...document.querySelectorAll("[data-test=online-player]")].some((r) => r.checkVisibility())', 20_000);
+    $page->evaluate(BOARD_FOLLOWS_FRAMES);
+
+    $seen = $page->evaluate('() => ({
+        canInvite: Alpine.$data(document.querySelector("[data-test=follows-here]")).$wire.$parent.canInvite,
+        rowInvite: document.querySelectorAll("[data-test=follows-here-invite], [data-test=follows-here-invited]").length,
+        onlineInvite: document.querySelectorAll("[data-test=online-now] [data-test=invite], [data-test=online-now] [data-test=invited]").length,
+        presence: document.querySelector("[data-test=follows-here-presence]").innerText.trim(),
+        challengeLabel: [...document.querySelector("[data-test=follows-here-challenge]").querySelectorAll("span")].map((e) => e.className),
+    })');
+    $clean = boardFollowsClean($page);
+    fwrite(STDERR, "board follows live-game {$lobby}: ".json_encode(compact('seen', 'clean')).PHP_EOL);
+
+    expect($seen['canInvite'])->toBeFalse()
+        ->and($seen['rowInvite'])->toBe(0)
+        ->and($seen['onlineInvite'])->toBe(0)
+        ->and($seen['presence'])->toBe($lobby === 'chess' ? 'looking: Blitz 5+3' : "looking: Nine Men's Morris")
+        // Without the invite next to it, the challenge is the row's labelled action again.
+        ->and(implode(' ', $seen['challengeLabel']))->not->toMatch('/(^|\s)sr-only(\s|$)/')
+        ->and(BoardInvite::query()->count())->toBe(0)
+        ->and($clean['errors'])->toBe([])
+        ->and($clean['bad'])->toBe([]);
+
+    // Positive control: the collector sees a throw on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("live game positive control"); }); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("live game positive control"))', 5_000);
+})->with(['chess', 'board']);

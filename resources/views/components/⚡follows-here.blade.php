@@ -265,12 +265,12 @@ new class extends Component {
                                     runs out. One labelled action per row, the timely one: next to it the challenge keeps its icon and
                                     its aria-label, so the name keeps its room in a three-column row (German "Einladen" + "Herausfordern").
                                 --}}
-                                <template x-if="looks({{ $player->id }}) && ! invitedBlitz({{ $player->id }})">
+                                <template x-if="canInvite() && looks({{ $player->id }}) && ! invitedBlitz({{ $player->id }})">
                                     <button type="button" class="{{ $button }}" x-on:click="inviteBlitz({{ $player->id }})" x-bind:disabled="inviting !== null" data-test="follows-here-invite" aria-label="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}" title="{{ __('Invite :name to blitz 5+3', ['name' => $player->displayName()]) }}">
                                         <x-icon name="bolt" :size="16" class="shrink-0" /><span class="max-sm:sr-only">{{ __('Invite') }}</span>
                                     </button>
                                 </template>
-                                <template x-if="invitedBlitz({{ $player->id }})">
+                                <template x-if="canInvite() && invitedBlitz({{ $player->id }})">
                                     <span class="inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 px-1 text-[13px] text-ink-2" data-test="follows-here-invited">
                                         <x-icon name="check" :size="16" class="shrink-0 text-win" /><span class="max-sm:sr-only">{{ __('Invited') }}</span>
                                     </span>
@@ -278,12 +278,12 @@ new class extends Component {
                             @endif
                             @if ($correspondence)
                                 <a href="{{ route('board.correspondence', ['board' => $subject, 'to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to :game by correspondence', ['name' => $player->displayName(), 'game' => GameNames::game($subject)]) }}" title="{{ __('Challenge :name to :game by correspondence', ['name' => $player->displayName(), 'game' => GameNames::game($subject)]) }}">
-                                    <x-icon name="calendar" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': looks({{ $player->id }}) || invitedBlitz({{ $player->id }}) }" @endif>{{ __('Challenge') }}</span>
+                                    <x-icon name="calendar" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': canInvite() && (looks({{ $player->id }}) || invitedBlitz({{ $player->id }})) }" @endif>{{ __('Challenge') }}</span>
                                 </a>
                             @endif
                             @if (in_array($context, ['me', 'chess'], true))
                                 <a href="{{ route('chess.challenge', ['to' => $player->npub]) }}" class="{{ $button }}" data-test="follows-here-challenge" aria-label="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}" title="{{ __('Challenge :name to daily chess', ['name' => $player->displayName()]) }}">
-                                    <x-icon name="pawn" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': looks({{ $player->id }}) || invitedBlitz({{ $player->id }}) }" @endif>{{ __('Challenge') }}</span>
+                                    <x-icon name="pawn" :size="16" class="shrink-0" /><span class="max-sm:sr-only" @if ($lookingKey) x-bind:class="{ 'sr-only': canInvite() && (looks({{ $player->id }}) || invitedBlitz({{ $player->id }})) }" @endif>{{ __('Challenge') }}</span>
                                 </a>
                             @endif
                             @if ($context === 'me' || $casual)

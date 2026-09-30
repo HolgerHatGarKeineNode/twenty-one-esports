@@ -95,6 +95,17 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
     #[Locked]
     public int $invitedUntilMs = 0;
 
+    /**
+     * Whether this player may invite from the lobby now: not while in a live
+     * game (the invite would only lead back to it). The blitz invite of
+     * "Your follows here" reads it ($wire.$parent.canInvite); "Online now"
+     * gets the same activeGame in the template (! $active), since a value set
+     * here in rendering() reaches $wire, not the Blade render already under
+     * way. Set on every render.
+     */
+    #[Locked]
+    public bool $canInvite = true;
+
     public function mount(string $board): void
     {
         abort_unless(app(GameRegistry::class)->isBoard($board), 404);
@@ -111,6 +122,7 @@ new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/ga
         $outgoing = $this->outgoing;
         $this->invitedUserId = $outgoing?->invitee_id;
         $this->invitedUntilMs = $outgoing?->expires_at->getTimestampMs() ?? 0;
+        $this->canInvite = $this->activeGame === null;
     }
 
     public function findOpponent(bool $rated = false): void
