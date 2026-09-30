@@ -209,6 +209,10 @@ test('the collectors see a broken image and a thrown error (positive control)', 
     BrowserWait::until($page, '() => document.readyState === "complete" && document.querySelector("[data-test=open-edit]") !== null', 10_000);
     $page->evaluate('() => setTimeout(() => { throw new Error("positive control"); })');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("positive control"))', 5_000);
+    // The logo loads lazily (x-clan-tag), so neither the load event nor the thrown error waits for its
+    // answer: reading the resource timing right away raced the 404 and found nothing now and then. Wait
+    // for the image's error event (the collector records it) first; proven with the 404 held back 1.5 s.
+    BrowserWait::until($page, '() => window.__errors.some((e) => /^error: \S+\/clan-logos\/0{64}\.png$/.test(e))', 10_000);
 
     expect(implode("\n", $page->evaluate(CLAN_EDIT_BAD_RESPONSES)))->toMatch('#^404 http://\S+/clan-logos/0{64}\.png$#m');
 });
