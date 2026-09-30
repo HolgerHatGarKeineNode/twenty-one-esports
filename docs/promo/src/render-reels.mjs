@@ -32,7 +32,7 @@ const copy = { posters: parsePosters(), reels: parseReels(), posts: parsePosts()
 const TL = Object.fromEntries(['legal', 'opera', 'qgd', 'qgd7', 'italian'].map((g) => [g, timeline(g)]));
 const music = {};
 for (const line of fs.readFileSync(path.join(SRC, 'reels/MUSIC.md'), 'utf8').split('\n')) {
-  const m = line.match(/^\| ([a-z-]+) \| `([^`]+)` \|$/);
+  const m = line.match(/^\| ([a-z0-9-]+) \| `([^`]+)` \|$/);
   if (!m) continue;
   // Reels use instrumentals only (MUSIC.md): a vocal track is refused, not rendered.
   if (!/^instrumental\/[^/]+$/.test(m[2])) { console.error(`FAIL music for ${m[1]}: ${m[2]} is not an instrumental (assets/music/instrumental/)`); process.exit(1); }

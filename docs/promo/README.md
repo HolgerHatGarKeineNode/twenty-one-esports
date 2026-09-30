@@ -29,23 +29,23 @@ with Pillow (contact sheet).
 
 ## What's in here
 
-**Posters**: 13 motifs, from `src/copy/posters.md`, each in DE and EN, 116 PNGs at @2x:
+**Posters**: 14 motifs, from `src/copy/posters.md`, each in DE and EN, 126 PNGs at @2x:
 
 | Format | Size (CSS px, PNG is @2x) | Folder | Motifs |
 |---|---|---|---|
-| Mobile / story | 1080×1920 | `posters/mobile/` | all 13 |
-| X | 1600×900 | `posters/x/` | all 13 |
-| Nostr square | 1080×1080 | `posters/nostr/` | all 13 |
-| Nostr / link card | 1200×630 | `posters/nostr/` | all 13 |
-| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup |
+| Mobile / story | 1080×1920 | `posters/mobile/` | all 14 |
+| X | 1600×900 | `posters/x/` | all 14 |
+| Nostr square | 1080×1080 | `posters/nostr/` | all 14 |
+| Nostr / link card | 1200×630 | `posters/nostr/` | all 14 |
+| Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup, aoe2 |
 
 Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `daily`
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional),
 `morris` (Mühle), `checkers` (Dame), `mempool` (mempool to block), `onstream` (on the stream),
-`livecup` (tournaments live).
+`livecup` (tournaments live), `aoe2` (Age of Empires II).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 17 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup), DE and
+**Reels**: 18 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup, aoe2), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
 poster; the gallery shows it as its own section.
@@ -55,7 +55,12 @@ system's data of 2026-09-28 (the `UP` block in `src/reels/reel.html`: names, sta
 taken, the pot as the tournament sets it and its split). They go stale with every sign-up:
 read the tournaments again (`TournamentSlides::upcoming()`, `PrizePool::shownPotSats()`),
 update `UP` and the copy, and re-render before posting them later. The tournaments people set
-up come first, then the casual cups; the sats pot reel is the headline.
+up come first, then the casual cups; the sats pot reel is the headline. **`cups` was rewritten on
+2026-10-01** to the weekend slots of `beabfc89` (seven games, Friday to Sunday, EU and US at the same
+local time, facts 61-66). It carries no date and no cup number, so it stays true while the slots do;
+re-check `casual_cups` in `config/esports.php` before posting. Its Mühle and Dame cups: prod lists
+them on 2026-10-01, which suggests the board game switches are on there; confirm that before
+lifting the `morris`/`checkers` gate below.
 
 **Mühle and Dame** (`morris`, `checkers`): on master since 2026-09-29 but behind
 `ESPORTS_BOARD_GAMES`, `ESPORTS_BOARD_GAME_NINE_MENS_MORRIS` and `ESPORTS_BOARD_GAME_CHECKERS`
@@ -79,6 +84,15 @@ never with a date or a countdown. Facts 28-44 in `src/copy/facts.md`.
   master); the season-block and tournament-run slides are plan P3/P5. **Post only once those air.**
 - `livecup`: the live bracket and champion slides are plan P5. **Post only once they air.**
 - The stream frame shows the stream's own English text in both cuts (the stream is English only).
+
+**Age of Empires II** (`aoe2`, added 2026-10-01): live on prod (game page, casual 1v1, the first EU
+and US cups read 2026-10-01), so no posting gate. Facts 45-60 in `src/copy/facts.md`. Pseudonymous:
+players are pixel avatars and names, never faces, and the cover (`public/images/games/age-of-empires-2-800.jpg`,
+read from the app) shows only its logo band. Nothing about mining (AoE2 has only a draft proposal)
+and no automatic result check (not built): players enter the winner, the other confirms.
+
+**Pseudonymous copy (user, 2026-10-01):** no "face" / "Gesicht" anywhere in the copy; players
+are their avatar and their name.
 
 **Probe change (2026-09-29):** the poster probe ignores parts, cubes and text that are not rendered
 (`display: none` layout variants for another format), and a part's extent now includes everything
@@ -152,9 +166,9 @@ poster. Pick the poster in the language of the post.
 From the repo root. The render scripts run the position and string checks first.
 
 ```bash
-node docs/promo/src/render-posters.mjs                 # all posters (116), DE+EN, probes on
+node docs/promo/src/render-posters.mjs                 # all posters (126), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (17), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (18), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png

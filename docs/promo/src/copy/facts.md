@@ -82,13 +82,13 @@ and, where a number is shown, against prod's public pages read on 2026-09-29. **
 | # | Claim | Source | Live? |
 |---|---|---|---|
 | 28 | /matches shows a strip titled "Mempool": matches of every game, finished on the left (newest next to the divider), running and scheduled on the right; casual and rated | `app/Support/Matches/MempoolStrip.php` docblock ("played on the left and waiting on the right, casual and rated"); `components/block-strip.blade.php`; prod /matches 2026-09-29 shows it (chess and Rocket League only, board games off) | prod |
-| 29 | Every cube shows its game by colour and logo, faces (players) or clan logos under it; casual cubes are desaturated and carry "casual"; a running cube fills up with the game (ply / expected ply) and says "move n" | `block-strip.blade.php` docblock; `app.css` `.bs-cube.is-casual { filter: saturate(0.3) }`; `MatchBlocks::oneVsOne()` (`level`, `move :n`, expected ply 80 chess, 60 board games) | prod |
+| 29 | Every cube shows its game by colour and logo, avatars (players) or clan logos under it; casual cubes are desaturated and carry "casual"; a running cube fills up with the game (ply / expected ply) and says "move n" | `block-strip.blade.php` docblock; `app.css` `.bs-cube.is-casual { filter: saturate(0.3) }`; `MatchBlocks::oneVsOne()` (`level`, `move :n`, expected ply 80 chess, 60 board games) | prod |
 | 30 | The strip's lead line: "Rated wins mine blocks only while a season runs." (off season) / "A fair rated win mines a block of the season chain." (season live) | `pages/matches/⚡index.blade.php` (`$strip['live']`), `MempoolStrip::build()` `live` = `Seasons::isLive()`; prod shows the off-season line | prod |
 | 31 | A finished rated match that mined carries its block ("Block 812") under its cube, the lid turns orange; casual matches have no stamp and never mine | `ChainStamps.php` (stamp only from a `SeasonAttestation` with a height; "Before Block 0 there are no attestations"); `app.css` `a.bs-cube.is-fin.is-mined { --top: var(--color-btc) }`; `config/season.php` `casual` ("never counted for badges, the season chain, rewards") | master, needs a running season |
 | 32 | The first block a season mines is Block 1; Block 1 follows Block 0 | `pages/⚡mining.blade.php` ("No block yet. The first fair rated win mines block 1.", "Block 1 follows Block 0") | prod |
 | 33 | Reward per block: per winning player, halves every era, paid once after the season review. **Figure:** prod /mining 2026-09-29, "Rocket League 1v1 win pays 2 100 sats per winning player, era 1", under "The numbers below are the Pre-Season draft. The board can still change them before it releases Block 0." Same as `config/season.php` `chain.subsidy` 2 100 at weight 1000 (`SeasonParameters::rewardPerPlayer`). Rated chess and rated board games "not open", so the sample block is a Rocket League 1v1 | `pages/⚡mining.blade.php` lead and tiles; `SeasonParameters.php` docblock (`reward/player = floor(subsidy * w_milli / (1000 * 2^(n - 1)))`); prod /mining | draft: the figure appears only in reel 15 beat 4, labelled "draft, not released" (`lang/de.json`), never in a caption, poster or post |
 | 34 | The stream runs 24/7 | `config/twentyone.php` (`about`: "This channel streams 24/7"); `lang/de.json` "…around the clock" (pages/⚡live) | prod |
-| 35 | The stream shows the latest win: the winner's face with a crown, "LATEST WIN · GG", "beat :name", the casual Elo change | `resources/views/stream/rotation/e1-win.blade.php`; `PrideSlides.php` (`win`) | master |
+| 35 | The stream shows the latest win: the winner's avatar with a crown, "LATEST WIN · GG", "beat :name", the casual Elo change | `resources/views/stream/rotation/e1-win.blade.php`; `PrideSlides.php` (`win`) | master |
 | 36 | The stream shows "Climbers of the week", the three biggest casual chess Elo gains of 7 days | `e2-climbers.blade.php`; `PrideSlides.php` (`climbers`) | master |
 | 37 | Casual Elo numbers shown: +20 (one win), +39 (two), +57 (three), each against a new player at 1000 | `App\Support\Rating\EloRating` with `season.casual` (start 1000, provisional K 40), replayed 2026-09-29 | computed |
 | 38 | The stream text is English only, in both cuts | plan `2026-09-29T2215-stream-slides-stolz-und-turniere` ("Stream-Texte sind nur Englisch") | — |
@@ -101,6 +101,59 @@ and, where a number is shown, against prod's public pages read on 2026-09-29. **
 
 **Left out:** any date or countdown for Block 0; any claim that a season runs now; the supply
 ("not announced yet" on prod); pots of future tournaments; payouts to named players (none exist).
+
+## Added 2026-10-01 — Age of Empires II (motif 14)
+
+Written by the design lead, checked claim by claim against master `96d2cd41` (Age of Empires II
+added in `813bf8f2`, its cup slot in `beabfc89`) and against prod's public pages read on
+2026-10-01: `/games/age-of-empires-2` answers 200 and shows "1v1 2v2 3v3 BO1/3" and "Play alone
+or with your clan. Every series moves your Elo."; `/tournaments` lists "AoE2 Casual Cup EU #1"
+(Sun 4 Oct, 8:00 PM Berlin, 0 of 4 spots) and "AoE2 Casual Cup US #1" (starts
+`2026-10-05T00:00:00Z` = Sun 4 Oct, 8:00 PM New York). Pseudonymous throughout: players are
+their Nostr avatar and name, never a face (user, 2026-10-01).
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 45 | Age of Empires II: Definitive Edition ("AoE2") is a series game: 1v1 is a player ladder, 2v2 and 3v3 are clan lineups; best of 1 or 3 | `app/Games/AgeOfEmpires2.php` docblock ("1v1 is a player ladder … 2v2 and 3v3 are clan lineups") and `modes()` (`[1, 3]`, `'player' : 'lineup'`); prod game page "1v1 2v2 3v3 BO1/3" | prod |
+| 46 | A game has a winner and no score: each game is entered by its winner only, the series counts games won | `AgeOfEmpires2::hasGoals()` (false); `SeriesGame::validateResult()` refuses goals; `lang/de.json` "winner per game" / "Sieger je Spiel", ":count games won" / ":count Spiele gewonnen" | prod |
+| 47 | AoE2 is in the casual 1v1 (queue or invite), played best of 1 | `config/esports.php` `casual.games` (`'age-of-empires-2'`); `app/Support/Series/CasualMatches.php` (`'best_of' => … min($mode->bestOf)`); prod game page "searching 1v1" | prod |
+| 48 | The host is drawn, hosts a lobby in the game with a password and spectators allowed, and shares its name and password as a card in the encrypted match chat; the league never sees it | `resources/views/pages/matches/partials/casual-steps.blade.php` ("Host a lobby in Age of Empires II with a password and spectators allowed, then share its name and password in the chat."); `lang/de.json` "The host is drawn. The host shares the lobby (Rocket League, Age of Empires II) … in the encrypted match chat. The league never sees it."; card title "Age of Empires II lobby" / "Age-of-Empires-II-Lobby" (`⚡room.blade.php` `lobbyTitle`) | prod |
+| 49 | The lobby card comes pre-filled with the name `e21-<match number>` and a fresh six-character password for every new lobby | `pages/matches/⚡room.blade.php` (`'lobbyName' => 'e21-'.$match->number`); `resources/js/roomChat.js` `openComposer()` ("A fresh password for every new lobby"); `resources/js/lobbyCards.js` `randomPassword(length = 6)`, alphabet `abcdefghjkmnpqrstuvwxyz23456789` (the kit's `k7m2px` uses only these) | prod |
+| 50 | The guest finds the lobby by its name in the game's lobby browser, joins with the password, then confirms "I am in the lobby" | `casual-steps.blade.php` ("Find the lobby by its name in the lobby browser, join with the password from the card in the chat, then confirm here.", button "I am in the lobby") | prod |
+| 51 | Either player may send their Steam or Xbox name as a card, only on "Send card" | `card-composer.blade.php` (Steam / Xbox select, "Your name goes to your opponent only, so you find each other in the game. The league never sees it."); `lobbyCards.js` `ACCOUNT_CARDS['age-of-empires-2'] = ['steam', 'xbox']` | prod |
+| 52 | The steps of a casual 1v1: Ready, Lobby shared, Joined, Result (either player), Confirmed (the other player); a report nobody answers is confirmed by the league | `casual-steps.blade.php` step list (`'Ready'`, `'Lobby shared'`, `'Joined'`, `'Result'` "either player", `'Confirmed'` "the other player"); `lang/de.json` "Nobody reports: the match is void. A report nobody answers is confirmed by the league." | prod |
+| 53 | **Not built:** checking a result against the game's own match history. The copy never claims an automatic check; players report and confirm | `AgeOfEmpires2.php` docblock ("checking the result against the game's match history comes with a later phase") | not built |
+| 54 | Every series moves your Elo; before the season it is the casual Elo (start 1000, provisional K 40): a first win against a new player is +20 | prod game page "Play alone or with your clan. Every series moves your Elo."; `config/season.php` `casual` ("A second Elo per game and mode for casual play, the same arithmetic"); +20 as fact 37. The reel's cup final moving the 1v1 casual ladder: a cup series is unrated without an open frozen ladder, and `SeriesService::rateAndAttest()` sends every confirmed series, tournament ones included, through `RatingService::applySeries()`, which rates a `'player'` mode (AoE2 1v1 as RL 1v1) on the casual pool; shown by `tests/Feature/Tournaments/TournamentRunTest.php` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo" (run 2026-10-01 in the main checkout at `8f5c099e`, whose rating and series code equals `96d2cd41`: passed, 4 assertions; the same `GameMode(…, 'player')` path as AoE2 1v1, no AoE2-specific test) | prod |
+| 55 | The AoE2 Casual Cup runs per region, EU and US, and starts on Sunday at 20:00 on its region's clock (Europe/Berlin, America/New_York); rounds best of 1, the final best of 3 | `config/esports.php` `casual_cups.games['age-of-empires-2']` (`'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'sunday', 'time' => '20:00']`), `casual_cups.regions`; commit `beabfc89`; prod `/tournaments` (EU #1 and US #1, above) | prod |
+| 56 | AoE2 can be picked for a tournament: planned at about 21 min a game, best-of-1 rounds and a best-of-3 final | `app/Support/Tournaments/GameProfile.php` (`'age-of-empires-2/1v1', … => new self(…, 21, 5, 5, 1, 3, [1, 3], …)`, "planned at about 21 min a game … Bo1 rounds and a Bo3 final") | prod |
+| 57 | Clans play AoE2 as 2v2 and 3v3 lineups; the clan page lists the lineups of every series game | `AgeOfEmpires2::modes()`; commit `813bf8f2` ("Clan page, clan list and clan invite list the lineups of every series game, not only Rocket League's") | prod |
+| 58 | **Not claimed:** mining. AoE2 mines only once the board takes up its draft proposal; the copy says nothing about blocks, rewards or the season | `config/season.php` `chain.age_of_empires_2_proposal` ("DRAFT values … AoE2 mines only once the board fills them in") | draft |
+| 59 | The game's cover art, used cropped to its logo on the marble band (no painted characters in the frame) | `AgeOfEmpires2::assets()` `GameCover('age-of-empires-2', [480, 800])`; `public/images/games/age-of-empires-2-800.jpg` (read by the kit from the app, as the upcoming-tournament reels do) | prod |
+| 60 | The game's colour and mark: fuchsia family `#F0ABFC` / `#D946EF` / `#86198F` / `#701A75`, the castle keep icon | `resources/css/app.css` (`--color-aoe`, `-aoe-2`, `-aoe-deep`, `-aoe-deep-2`); `resources/views/components/icon.blade.php` (`'castle'`) | prod |
+
+Players and the sample match in the kit (satsjaeger 2 : 1 kai_blitz, match #58) are the kit's
+factory names with their pixel avatars, not people. **Left out:** any automatic result check
+(53); mining or rewards for AoE2 (58); the 24/7 stream's latest-win slide, which covers series
+games (`PrideSlides::win()`), because it is the `onstream` motif's claim and is on master only
+(fact 35); a fixed cup date (the posters say "on Sundays", the date goes stale).
+
+## Added 2026-10-01 — the casual cups on the weekend (reel 12, rewritten)
+
+Checked against master `96d2cd41` and prod `/tournaments` read 2026-10-01 (all fourteen cups
+listed, each "#1", 0 of 4 spots). Replaces the reel-12 sources of 2026-09-28 (four games on
+Saturday evening), stale since `beabfc89`.
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 1v1, nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each | prod |
+| 62 | Weekend slots: Friday 18:00 EA FC 26, 20:00 EA FC 27; Saturday 15:00 nine men's morris, 20:00 chess and Rocket League; Sunday 15:00 checkers, 20:00 AoE2 | `casual_cups.games.*.slot` (`friday 18:00`, `friday 20:00`, `saturday 15:00`, `saturday 20:00` ×2, `sunday 15:00`, `sunday 20:00`); commit `beabfc89`; prod start times (e.g. "8:00 PM Sat, Oct 3, Berlin" chess EU, "3:00 PM Sun, Oct 4, New York" checkers US) | prod |
+| 63 | One cup per game and region, EU and US, at the same local time (Europe/Berlin, America/New_York) | `casual_cups.regions`; config docblock ("an EU and a US cup of a game start at the same local time") | prod |
+| 64 | A cup opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
+| 65 | The format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
+| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said) | fact 54 (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
+
+**Corrected:** the 2026-09-28 cut said "Four players, two losses and out" and "No rating". A
+double elimination needs six players (fact 65), and cup results move the casual Elo (fact 66).
 
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 

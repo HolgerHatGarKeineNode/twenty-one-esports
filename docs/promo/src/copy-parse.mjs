@@ -11,6 +11,8 @@ const COPY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'copy');
 const MOTIF_KEYS = [
   // before login: the GRASP copy mentions Nostr, the heading must not fall into /nostr/
   [/grasp/i, 'grasp'],
+  // motif 14, first: its texts name the casual cup, tournaments, clans and the ladder
+  [/age of empires|aoe2/i, 'aoe2'],
   // motifs 11-13, before /tournament/, /watch/ and /nostr/ (their texts name all three)
   [/mempool/i, 'mempool'],
   [/on the stream|im stream/i, 'onstream'],

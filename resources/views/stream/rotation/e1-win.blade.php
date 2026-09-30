@@ -7,7 +7,7 @@
 
     Data contract:
       $pride     array{win: array{winner: string, winnerAvatar: ?string, winnerLogo?: ?string, winnerTag?: ?string,
-                 teamAvatars?: list<?string>, loser: string, mode: string, score?: ?string, delta: ?int, ratedDelta?: ?int,
+                 teamAvatars?: list<?string>, loser: string, mode: string, shownMode?: string (a series: the game's short title and mode, printed instead of mode), score?: ?string, delta: ?int, ratedDelta?: ?int,
                  block?: ?int, ago: ?string, tournament?: ?string}|null, …} (PrideSlides::all());
                  `tournament`: the tournament the win won its winner, in the label instead of "Latest win"
       $stats     array: the ticker counts (b-chrome)
@@ -22,7 +22,7 @@
         $name = ($head['lines'][0] ?? '') === '' ? ['text' => 'Player', 'font' => K::DISPLAY, 'size' => 64.0] : ['text' => $head['lines'][0], 'font' => $head['font'], 'size' => $head['size']];
         $score = K::clean(is_string($win['score'] ?? null) ? $win['score'] : '');
         $beat = K::fit('beat '.K::clean($win['loser'] ?? '').($score !== '' ? ' '.$score : ''), K::MONO, 30, 740);
-        $when = K::fit(implode(', ', array_filter([K::clean($win['mode'] ?? ''), K::clean($win['ago'] ?? '')])), K::MONO, 24, 740);
+        $when = K::fit(implode(', ', array_filter([K::clean($win['shownMode'] ?? $win['mode'] ?? ''), K::clean($win['ago'] ?? '')])), K::MONO, 24, 740);
         $chips = array_values(array_filter([
             is_int($win['ratedDelta'] ?? null) && $win['ratedDelta'] > 0 ? '+'.$win['ratedDelta'].' season Elo' : (is_int($win['delta'] ?? null) && $win['delta'] > 0 ? '+'.$win['delta'].' casual Elo' : null),
             is_int($win['block'] ?? null) && $win['block'] > 0 ? 'Mined block '.$win['block'] : null,

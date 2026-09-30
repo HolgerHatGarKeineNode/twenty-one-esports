@@ -222,6 +222,8 @@
     fc: '<circle cx="12" cy="12" r="9"></circle><path d="m12 7 4 3-1.5 4.5h-5L8 10z"></path><path d="M12 3v4M16 10l4.5-1.5M14.5 14.5l2.5 4M9.5 14.5 7 18.5M8 10 3.5 8.5"></path>',
     morris: '<rect x="3" y="3" width="18" height="18"></rect><rect x="7.5" y="7.5" width="9" height="9"></rect><path d="M12 3v4.5M12 16.5V21M3 12h4.5M16.5 12H21"></path>',
     checkers: '<ellipse cx="12" cy="9" rx="8" ry="3.5"></ellipse><path d="M4 9v5c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V9"></path><ellipse cx="12" cy="9" rx="4" ry="1.6"></ellipse>',
+    // Age of Empires II: the castle keep with its gate (components/icon.blade.php 'castle')
+    aoe2: '<path d="M4 21V8h3v3h2.5V8h5v3H17V8h3v13zM10 21v-4a2 2 0 0 1 4 0v4"></path>',
   };
   const glyphOf = (g) => (g === 'chess' ? KNIGHT : `<svg class="gl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[g]}</svg>`);
   /* Game names of the legend (GameNames::game, lang/de.json). */
@@ -334,9 +336,48 @@
     </div>`;
   };
 
+  /* ---- Age of Empires II (motif 14): the cover cropped to its logo (no painted characters in
+     frame), a cup final worded as the match page words a game without goals (games won, one
+     line per game to its winner), and the host's lobby card in the casual 1v1 match chat with
+     the room's steps (pages/matches/⚡room, partials/casual-steps, card-composer). Players are
+     kit names with their pixel avatars. The lobby name is the room's own proposal
+     `e21-<match number>`, the password six characters of lobbyCards.js's alphabet. ---- */
+  const AOE = { match: 58, lobby: 'e21-58', password: 'k7m2px', winner: 'satsjaeger', loser: 'kai_blitz', games: ['satsjaeger', 'kai_blitz', 'satsjaeger'] };
+  const COVER = '../../../../public/images/games/age-of-empires-2-800.jpg';
+  const TICK = '<svg class="tk" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M6 1h1v2H6v1H5v1H4v1H3v1H2V6H1V4h1v1h1V4h1V3h1V2h1z"/></svg>';
+  function aoeFinal(lang) {
+    const won = (n) => AOE.games.filter((g) => g === n).length;
+    const wonText = (k) => U(k === 1 ? 'gameWon' : 'gamesWon', lang, { count: k });
+    const side = (n, cls) => `<div class="af-side ${cls}">${av(n)}<b>${K.esc(n)}</b><span class="gw">${K.esc(wonText(won(n)))}</span></div>`;
+    const games = AOE.games.map((n, i) => `<span class="g${n === AOE.winner ? ' w' : ''}"><i>${K.esc(U('gameN', lang, { number: i + 1 }))}</i>${av(n)}</span>`).join('');
+    return `<div class="ae-final ui-card">
+      <div class="af-h"><b>AoE2 Casual Cup EU</b><span class="af-r">${K.esc(U('final', lang))}<i>BO3</i></span></div>
+      ${side(AOE.winner, 'won')}${side(AOE.loser, 'out')}
+      <div class="af-games"><span class="lab">${K.esc(U('winnerPerGame', lang))}</span><div class="gs">${games}</div></div>
+    </div>`;
+  }
+  function aoeLobby(lang) {
+    const steps = [['stReady', 1], ['stLobbyShared', 1], ['stJoined', 1], ['stResult', 0], ['stConfirmed', 0]]
+      .map(([k, done]) => `<span class="st${done ? ' done' : ''}">${done ? TICK : '<i class="o"></i>'}<span>${K.esc(U(k, lang))}</span></span>`).join('');
+    const field = (k, v) => `<div class="al-f"><span class="k">${K.esc(U(k, lang))}</span><code>${K.esc(v)}</code><span class="cp">${K.esc(U('copy', lang))}</span></div>`;
+    return `<div class="ae-lobby ui-card">
+      <div class="al-h"><b>${K.esc(U('matchChat', lang))}</b><span>${K.esc(U('casual1v1', lang))} #${AOE.match}</span></div>
+      <div class="al-from">${av(AOE.winner)}<span>${K.esc(U('hostName', lang, { name: AOE.winner }))}</span></div>
+      <div class="al-card"><b class="al-t">${K.esc(U('aoeLobby', lang))}</b>${field('name', AOE.lobby)}${field('password', AOE.password)}</div>
+      <div class="al-steps">${steps}</div>
+    </div>`;
+  }
+  H.aoe2 = (lang) => `
+    <div class="h-aoe2">
+      <div class="ae-cover cube"><div class="ae-art" style="background-image:url('${COVER}')"></div>
+        <div class="ae-tags"><span class="mk">${glyphOf('aoe2')}<b>AoE2</b></span><span>1v1</span><span>2v2</span><span>3v3</span><span>BO1/3</span></div></div>
+      ${aoeFinal(lang)}
+      ${aoeLobby(lang)}
+    </div>`;
+
   function build(motif, lang) {
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);
   }
-  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME };
+  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeFinal, aoeLobby };
 })();

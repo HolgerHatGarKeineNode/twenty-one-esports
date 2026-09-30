@@ -207,23 +207,29 @@ https://esports.einundzwanzig.space/tournaments/1
 
 ## Casual cups
 
-**Nostr (DE):**
-Casual Cups für jeden: Blitzschach, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
-FC 27 1v1, automatisch angelegt. Jedes Spiel hat einen EU-Cup (Sa., 3. Oktober, 20:00
-Uhr) und einen US-Cup (So., 4. Oktober, 02:00 Uhr). Nur 4 Plätze pro Cup, Double
-Elimination — zwei Niederlagen und du bist raus. Kein Rating, keine Preise, nur Spaß.
-Meld dich für deinen Cup an. https://esports.einundzwanzig.space/tournaments
+Facts 61-66. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
+board game cups (Mühle, Dame) only while those games are on in prod (they have cups on prod
+since at least 2026-10-01).
 
-**Nostr (EN):**
-Casual cups for everyone: Blitz chess, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports
-FC 27 1v1, set up automatically. Every game has an EU cup (Sat, Oct 3, 20:00 CEST)
-and a US cup (Sun, Oct 4, 02:00 CEST). Only 4 spots per cup, double elimination — two
-losses and you're out. No rating, no prizes, just for fun. Sign up for your cup.
+**Nostr (DE):**
+Jedes Wochenende Casual Cups in sieben Spielen, jeweils einer für die EU und einer für die USA,
+zur selben Uhrzeit in Berlin und New York. Freitag 18 Uhr EA FC 26, 20 Uhr EA FC 27. Samstag
+15 Uhr Mühle, 20 Uhr Schach und Rocket League. Sonntag 15 Uhr Dame, 20 Uhr Age of Empires II.
+Ein Cup öffnet mit vier Plätzen und wächst, wenn er voll wird. Das Format steht zum Start fest,
+je nachdem, wie viele spielen. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
 https://esports.einundzwanzig.space/tournaments
 
-**X (DE):** Casual Cups: Schach, Rocket League, FC 26, FC 27 — je ein EU- und ein US-Cup. Nur 4 Plätze, Double Elimination. Jetzt anmelden. esports.einundzwanzig.space/tournaments
+**Nostr (EN):**
+Casual cups every weekend in seven games, one for the EU and one for the US, at the same time in
+Berlin and New York. Friday 18:00 EA FC 26, 20:00 EA FC 27. Saturday 15:00 nine men's morris,
+20:00 chess and Rocket League. Sunday 15:00 checkers, 20:00 Age of Empires II. A cup opens with
+four spots and grows when it fills up. The format is set at the start, by how many play. Sign up
+with your Nostr key, no prizes, just the game.
+https://esports.einundzwanzig.space/tournaments
 
-**X (EN):** Casual cups: Chess, Rocket League, FC 26, FC 27 — one EU and one US cup each. Only 4 spots, double elimination. Sign up now. esports.einundzwanzig.space/tournaments
+**X (DE):** Casual Cups jedes Wochenende: sieben Spiele, Freitag bis Sonntag, EU und US zur selben Uhrzeit. Platz nehmen: esports.einundzwanzig.space/tournaments
+
+**X (EN):** Casual cups every weekend: seven games, Friday to Sunday, EU and US at the same time. Take a seat: esports.einundzwanzig.space/tournaments
 
 ---
 
@@ -275,8 +281,8 @@ Facts 28-33. Shows Mühle and Dame: post only once the board game switches are o
 figure in the text: until Block 0 it is the board's draft.
 
 **Nostr (DE):**
-Auf /matches wird jede Partie zum Würfel: Schach, Mühle, Dame, Rocket League, EA FC, mit den
-Gesichtern der Spieler darunter. Links steht, was gespielt ist, rechts, was gerade läuft und was
+Auf /matches wird jede Partie zum Würfel: Schach, Mühle, Dame, Rocket League, EA FC, mit Avatar
+und Namen der Spieler darunter. Links steht, was gespielt ist, rechts, was gerade läuft und was
 als Nächstes kommt. Casual ist zum Spaß da und schürft nie. Läuft eine Season, schürft dein fairer
 gewerteter Sieg einen Block der Season-Chain, mit seiner Höhe darunter, und jeder Block bringt Sats.
 Die Belohnung halbiert sich jede Epoche und wird einmal ausgezahlt, nach der Season-Prüfung.
@@ -284,7 +290,7 @@ esports.einundzwanzig.space
 
 **Nostr (EN):**
 On /matches, every game becomes a cube: chess, nine men's morris, checkers, Rocket League, EA FC,
-with the players' faces underneath. Left is what has been played, right is what is live and up next.
+with the players' avatars and names underneath. Left is what has been played, right is what is live and up next.
 Casual is for fun and never mines. While a season runs, your fair rated win mines a block of the
 season chain, with its height stamped underneath, and every block pays sats. The reward halves every
 era and is paid once, after the season review.
@@ -301,21 +307,21 @@ Facts 34-39. The block slide and the tournament-run slide are plan P3/P5: post o
 the prod stream.
 
 **Nostr (DE):**
-Unser Livestream läuft rund um die Uhr und zeigt, wer gewinnt. Dein letzter Sieg kommt mit Gesicht,
-Krone und Casual-Elo ins Bild. Die drei größten Aufsteiger der Woche stehen oben. Läuft eine Season,
+Unser Livestream läuft rund um die Uhr und zeigt, wer gewinnt. Dein letzter Sieg kommt ins Bild: dein
+Name, dein Avatar mit Krone, deine Casual-Elo. Die drei größten Aufsteiger der Woche stehen oben. Läuft eine Season,
 kommt dein Block der Season-Chain dazu, und dein Weg durch den Turnierbaum, Runde für Runde.
 Spiel mit, dann kann der nächste Name im Stream deiner sein.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
-Our live stream runs around the clock and shows who wins. Your latest win goes on screen with your
-face, a crown and your casual Elo. The week's three biggest climbers are up top. While a season runs,
+Our live stream runs around the clock and shows who wins. Your latest win goes on screen: your
+name, your avatar with a crown, your casual Elo. The week's three biggest climbers are up top. While a season runs,
 your season chain block joins in, and so does your path through the bracket, round by round. Join in,
 and the next name on stream can be yours.
 esports.einundzwanzig.space
 
-**X (DE):** Dein Sieg. Dein Gesicht. Im Stream, rund um die Uhr, mit Krone und Casual-Elo. esports.einundzwanzig.space
-**X (EN):** Your win. Your face. On stream, around the clock, with a crown and casual Elo. esports.einundzwanzig.space
+**X (DE):** Dein Sieg. Dein Name. Im Stream, rund um die Uhr, dein Avatar mit Krone. esports.einundzwanzig.space
+**X (EN):** Your win. Your name. On stream, around the clock, your avatar with a crown. esports.einundzwanzig.space
 
 ---
 
@@ -338,6 +344,34 @@ esports.einundzwanzig.space
 
 **X (DE):** Genug zugeschaut? Nimm Platz im Turnierbaum, beim nächsten Turnier. esports.einundzwanzig.space
 **X (EN):** Watched enough? Grab a seat in the bracket at the next tournament. esports.einundzwanzig.space
+
+---
+
+## Age of Empires II
+
+Facts 45-60. Live on prod (game page, casual 1v1, the first EU and US cups, read 2026-10-01).
+No automatic result check is claimed (fact 53), no mining (fact 58).
+
+**Nostr (DE):**
+Age of Empires II: Definitive Edition ist in der Liga. Im Casual 1v1 findest du deinen Gegner über
+die Warteschlange. Der Host erstellt eine Lobby mit Passwort und teilt Name und Passwort im
+verschlüsselten Match-Chat, die Liga sieht sie nie. Nach dem Spiel trägt einer den Sieger ein, der
+andere bestätigt. Jede Serie bewegt dein Elo, und dein Name steigt in der 1v1-Ladder. Sonntags um
+20 Uhr läuft der AoE2 Casual Cup, einmal nach Berliner, einmal nach New Yorker Zeit. Dazu Turniere
+und Clan-Lineups im 2v2 und 3v3.
+esports.einundzwanzig.space
+
+**Nostr (EN):**
+Age of Empires II: Definitive Edition is in the league. In the casual 1v1 you find your opponent in
+the queue. The host sets up a lobby with a password and shares its name and password in the
+encrypted match chat; the league never sees them. After the game one of you enters the winner and
+the other confirms. Every series moves your Elo, and your name climbs the 1v1 ladder. On Sundays at
+8 pm the AoE2 Casual Cup runs, once on Berlin time, once on New York time. Plus tournaments, and clan
+lineups for 2v2 and 3v3.
+esports.einundzwanzig.space
+
+**X (DE):** Age of Empires II im 1v1: Gegner finden, Lobby teilen, Sieger eintragen. Sonntags 20 Uhr der Casual Cup. esports.einundzwanzig.space
+**X (EN):** Age of Empires II 1v1: find an opponent, share the lobby, enter the winner. Casual Cup on Sundays at 8 pm. esports.einundzwanzig.space
 
 ---
 

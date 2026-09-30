@@ -201,6 +201,8 @@ return [
             'tournament_seconds' => 15,
             // A finished tournament keeps its champion and final bracket on the stream this long after its last result (TournamentLiveSlides).
             'finished_tournament_hours' => 48,
+            // The series game on the spotlight teaser (d6, GameSpotlight); unknown or empty: the newest series game.
+            'spotlight' => env('TWENTYONE_STREAM_SPOTLIGHT', 'age-of-empires-2'),
         ],
 
         /*

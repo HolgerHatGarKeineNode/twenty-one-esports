@@ -371,3 +371,86 @@
   .h-livecup .lc-next { font-size: max(12px, min(1.3cqw, 3.6cqh)); align-content: center; }
   .h-livecup .seats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* ---------------- Age of Empires II (motif 14) ----------------
+ * The game layer is AoE2's fuchsia family (resources/css/app.css --color-aoe*), as cyan is
+ * chess's; orange stays the one action colour (the CTA). The cover shows only the logo band:
+ * source columns 120-680 and rows 272-450 of the 800 x 450 art (no painted characters). */
+.h-aoe2 { --aoe: #F0ABFC; --aoe-2: #D946EF; --aoe-deep: #86198F; --aoe-deep-2: #701A75;
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+  gap: 3cqmin; font-size: max(15px, min(2.45cqw, 2.35cqh)); }
+.h-aoe2 .ae-cover { grid-column: 1 / -1; --cube-face: var(--aoe-deep); background: var(--card); display: grid; }
+.h-aoe2 .ae-art { aspect-ratio: 560 / 178; background-size: 142.86% auto; background-position: 50% 100%; background-repeat: no-repeat; }
+.h-aoe2 .ae-tags { display: flex; font: 700 max(11px, .8em)/1 var(--mono); border-top: 3px solid var(--aoe-2); }
+.h-aoe2 .ae-tags > span { padding: .55em .7em; color: var(--aoe); }
+.h-aoe2 .ae-tags .mk { display: flex; align-items: center; gap: .4em; background: var(--aoe); color: var(--on-btc); }
+.h-aoe2 .ae-tags .mk b { font: 800 1em/1 var(--disp); }
+.h-aoe2 .ae-tags .gl { width: 1.2em; height: 1.2em; display: block; }
+
+/* the cup final: games won, one line per game to its winner; the winner's avatar is the pride */
+.h-aoe2 .ae-final { display: grid; grid-template-rows: auto auto auto auto; align-content: space-between; row-gap: .7em; padding: 1em; border-top: .3em solid var(--aoe-2); }
+.h-aoe2 .af-h { display: grid; row-gap: .35em; }
+.h-aoe2 .af-h b { font: 800 1.1em/1.15 var(--disp); }
+.h-aoe2 .af-r { display: flex; align-items: center; gap: .6em; color: var(--ink-2); font: 700 .85em/1.2 var(--mono); }
+.h-aoe2 .af-r i { font-style: normal; color: var(--aoe); }
+.h-aoe2 .af-side { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .7em; row-gap: .2em; align-items: center; align-content: center; padding: .6em; background: var(--well); }
+.h-aoe2 .af-side .av { grid-row: 1 / 3; width: 2.6em; height: 2.6em; }
+.h-aoe2 .af-side b { font: 800 1.1em/1.15 var(--disp); min-width: 0; white-space: nowrap; overflow: hidden; }
+.h-aoe2 .af-side .gw { font: 700 .85em/1.2 var(--mono); color: var(--ink-2); }
+.h-aoe2 .af-side.won { box-shadow: inset .3em 0 0 var(--win); padding: .8em .7em .8em 1em; }
+.h-aoe2 .af-side.won .av { width: 3.8em; height: 3.8em; box-shadow: 0 0 0 .2em var(--aoe), 0 0 1.4em rgba(217,70,239,.55); }
+.h-aoe2 .af-side.won b { font-size: 1.45em; }
+.h-aoe2 .af-side.won .gw { color: var(--win); }
+.h-aoe2 .af-side.out b, .h-aoe2 .af-side.out .av { opacity: .6; }
+.h-aoe2 .af-games { display: grid; row-gap: .45em; }
+.h-aoe2 .af-games .lab { font: 700 .8em/1.2 var(--mono); color: var(--ink-3); }
+.h-aoe2 .af-games .gs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4em; }
+.h-aoe2 .af-games .g { display: flex; align-items: center; justify-content: space-between; gap: .3em; padding: .4em .45em; background: var(--raised); border-bottom: .22em solid var(--line); min-width: 0; }
+.h-aoe2 .af-games .g.w { border-bottom-color: var(--win); }
+.h-aoe2 .af-games .g i { font: 700 max(11px, .72em)/1.1 var(--mono); font-style: normal; color: var(--ink-2); white-space: nowrap; }
+.h-aoe2 .af-games .g .av { width: 1.5em; height: 1.5em; }
+
+/* the host's lobby card in the match chat, and the room's steps */
+.h-aoe2 .ae-lobby { display: grid; grid-template-rows: auto auto auto auto; align-content: space-between; row-gap: .5em; padding: .85em 1em; }
+.h-aoe2 .al-h { display: flex; justify-content: space-between; align-items: baseline; gap: .6em; flex-wrap: wrap; }
+.h-aoe2 .al-h b { font: 800 1.1em/1.15 var(--disp); }
+.h-aoe2 .al-h span { font: 700 .8em/1.2 var(--mono); color: var(--ink-3); }
+.h-aoe2 .al-from { display: flex; align-items: center; gap: .5em; font: 700 .8em/1.2 var(--mono); color: var(--ink-2); }
+.h-aoe2 .al-from .av { width: 1.9em; height: 1.9em; }
+.h-aoe2 .al-card { display: grid; row-gap: .4em; padding: .65em .8em; background: var(--well); border: 2px solid var(--aoe-2); }
+.h-aoe2 .al-t { font: 800 .95em/1.2 var(--disp); color: var(--aoe); overflow-wrap: anywhere; }
+.h-aoe2 .al-f { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: .6em; row-gap: .1em; align-items: center; }
+.h-aoe2 .al-f .k { grid-column: 1 / -1; font: 500 max(11px, .75em)/1.2 var(--mono); color: var(--ink-3); }
+.h-aoe2 .al-f code { font: 800 1.25em/1.1 var(--mono); letter-spacing: .04em; color: var(--ink); }
+.h-aoe2 .al-f .cp { font: 700 max(11px, .72em)/1 var(--mono); padding: .45em .55em; border: 2px solid var(--line); color: var(--ink-2); }
+.h-aoe2 .al-steps { display: grid; row-gap: .3em; }
+.h-aoe2 .st { display: flex; align-items: center; gap: .5em; font: 700 max(11px, .8em)/1.2 var(--mono); color: var(--ink-3); }
+.h-aoe2 .st.done { color: var(--ink); }
+.h-aoe2 .st .tk { width: 1.1em; height: 1.1em; color: var(--win); flex: none; display: block; }
+.h-aoe2 .st .o { width: 1.1em; height: 1.1em; border: 2px solid var(--dash); flex: none; display: block; }
+
+/* a small zone (the 1200 x 630 card): the cards keep their essentials */
+@container (max-width: 640px) {
+  .h-aoe2 .al-from, .h-aoe2 .al-steps, .h-aoe2 .af-games .lab { display: none; }
+  .h-aoe2 .af-side.won .av { width: 3.2em; height: 3.2em; }
+  .h-aoe2 .af-side .av { width: 2.2em; height: 2.2em; }
+  .h-aoe2 .af-games .g i { display: none; }
+  .h-aoe2 .af-games .g { justify-content: center; }
+  .h-aoe2 .af-side.won b { font-size: 1.2em; }
+}
+
+/* landscape (square poster, stream banner): cover over the final, the lobby beside them */
+@container (min-aspect-ratio: 9/5) {
+  .h-aoe2 { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: 4.5cqmin; font-size: max(15px, min(1.6cqw, 4.2cqh)); }
+  .h-aoe2 .ae-cover { grid-column: 1; grid-row: 1; }
+  .h-aoe2 .ae-final { grid-column: 1; grid-row: 2; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); column-gap: .7em; padding: .7em .9em; border-top-width: .2em; }
+  .h-aoe2 .af-h { grid-column: 1 / -1; grid-template-columns: auto auto; justify-content: space-between; align-items: baseline; }
+  .h-aoe2 .af-games { display: none; }
+  .h-aoe2 .af-side { padding: .45em .55em; }
+  .h-aoe2 .af-side.won { padding: .45em .55em .45em .8em; }
+  .h-aoe2 .af-side.won .av { width: 2.6em; height: 2.6em; box-shadow: 0 0 0 .15em var(--aoe); }
+  .h-aoe2 .af-side.won b { font-size: 1.15em; }
+  .h-aoe2 .ae-lobby { grid-column: 2; grid-row: 1 / 3; padding: .8em .9em; row-gap: .5em; }
+  .h-aoe2 .al-from { display: none; }
+  .h-aoe2 .al-steps { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto); grid-auto-flow: column; column-gap: .6em; }
+}

@@ -246,24 +246,25 @@ unrated, no prize pool, 16 places / 2 taken, starts Sat 3 Oct 2026 18:00 CEST, s
 
 ## Reel 12 — Casual cups
 
-Sources: live system 2026-09-28, https://esports.einundzwanzig.space/tournaments (automatic casual
-cups: Chess Blitz 5+3, Rocket League 1v1, EA Sports FC 26 1v1, EA Sports FC 27 1v1; per game one
-EU cup, start Sat 3 Oct 2026 20:00 CEST, and one US cup, start Sun 4 Oct 2026 02:00 CEST; 4 places
-per cup, Double Elimination: out after the second loss; unrated, no prizes). Written by the
-kommunikator.
+Sources: `facts.md` 61-66 (`config/esports.php` `casual_cups`, commit `beabfc89`, prod
+https://esports.einundzwanzig.space/tournaments read 2026-10-01: all fourteen cups, seven games in
+EU and US, each at its weekend slot, 0 of 4 spots). Rewritten 2026-10-01 by the design lead: the
+previous cut (four games on Saturday evening, "two losses and out", "no rating") went stale with
+`beabfc89` and was partly wrong (double elimination only from six players; a cup series moves the
+casual Elo). No date in the copy: the slots repeat, the cup numbers do not.
 
 **DE**
-1. (3s) Vier Spiele, vier Cups — *Cover: Schach, Rocket League, FC 26, FC 27*
-2. (3s) EU- und US-Start, du wählst — *zwei Startzeiten nebeneinander*
-3. (3s) Vier Spieler, zwei Niederlagen raus — *Bracket, Double Elimination*
-4. (3s) Nur vier Plätze pro Cup — *Anmeldung, Bestätigung, „ist dabei"*
+1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover: Schach, Rocket League, FC 26, FC 27, AoE2, Mühle, Dame*
+2. (3s) Freitag bis Sonntag, in EU und US — *das Wochenende: Fr 18:00 FC 26, 20:00 FC 27; Sa 15:00 Mühle, 20:00 Schach und Rocket League; So 15:00 Dame, 20:00 AoE2; dieselbe Uhrzeit in Berlin und New York*
+3. (3s) Wird es voll, wächst der Cup — *vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
+4. (3s) Platz nehmen, mit deinem Nostr-Schlüssel — *Anmelden, Bestätigung mit dem Nostr-Schlüssel, „zap_zoe ist dabei.“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Four games, four cups — *covers: Chess, Rocket League, FC 26, FC 27*
-2. (3s) EU or US start, you choose — *two start times side by side*
-3. (3s) Four players, two losses and out — *bracket, double elimination*
-4. (3s) Only four spots per cup — *sign-up, confirm, "is in"*
+1. (3s) Seven games, seven casual cups — *seven covers: chess, Rocket League, FC 26, FC 27, AoE2, nine men's morris, checkers*
+2. (3s) Friday to Sunday, in the EU and US — *the weekend: Fri 18:00 FC 26, 20:00 FC 27; Sat 15:00 morris, 20:00 chess and Rocket League; Sun 15:00 checkers, 20:00 AoE2; the same time in Berlin and New York*
+3. (3s) Fills up? The cup grows. — *four spots fill, with one left the cup grows to eight*
+4. (3s) Take a seat with your Nostr key — *sign up, confirm with the Nostr key, "zap_zoe is in."*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---
@@ -322,14 +323,14 @@ app's own "draft, not released" label; the captions carry no figure. Casual cube
 Mühle and Dame cubes: post only once the board game switches are on in prod.
 
 **DE**
-1. (3s) Jede Partie landet im Mempool — *der Mempool-Streifen, Würfel aller fünf Spiele fallen hinein, casual entsättigt, Gesichter und Clan-Logos darunter*
+1. (3s) Jede Partie landet im Mempool — *der Mempool-Streifen, Würfel aller fünf Spiele fallen hinein, casual entsättigt, Avatare und Clan-Logos darunter*
 2. (3s) Läuft sie, füllt sich der Würfel — *rechts vom Trenner: laufende Partien, der Würfel füllt sich Zug für Zug, „live“ mit grünem Punkt*
 3. (3s) Season läuft? Dein gewerteter Sieg wird zum Block — *die Zeile über dem Streifen wechselt auf die Season-Fassung; das gewertete Rocket-League-1v1 endet 3 : 1, der Deckel wird orange, „Block 1“ fällt darunter*
 4. (3s) Jeder Block bringt Sats, halbiert je Epoche — */mining: Block 1 hängt an der Season-Chain, der Zähler läuft auf die Belohnung pro siegreichem Spieler, markiert „Entwurf, nicht freigegeben“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Every match lands in the mempool — *the mempool strip, cubes of all five games drop in, casual ones desaturated, faces and clan logos below*
+1. (3s) Every match lands in the mempool — *the mempool strip, cubes of all five games drop in, casual ones desaturated, avatars and clan logos below*
 2. (3s) While it's played, the cube fills up — *right of the divider: running games, the cube fills move by move, "live" with a green dot*
 3. (3s) Season running? Your rated win becomes a block — *the line above the strip switches to its season wording; the rated Rocket League 1v1 ends 3 : 1, the lid turns orange, "Block 1" drops in below*
 4. (3s) Every block pays sats, halving every era — */mining: Block 1 joins the season chain, the counter runs to the reward per winning player, labelled "draft, not released"*
@@ -347,15 +348,15 @@ The casual Elo is the app's `EloRating` with `season.casual`: +20 for one win, +
 **DE**
 1. (3s) Dein Matt. Dein Moment. — *Brett, Légals Matt (Paris 1750) landet, das Matt-Feld leuchtet*
 2. (3s) Rund um die Uhr: Sieger im Stream — *der Stream „LIVE“: LATEST WIN · GG, satsjaeger mit Krone, beat hodlqueen, +20 casual Elo*
-3. (3s) Dein Aufstieg, groß im Bild — *Climbers of the week: drei Gesichter, die Balken steigen auf +57, +39, +20 casual Elo*
-4. (3s) Dein Block in der Season. Dein Turnierlauf. — *zwei Stream-Slides: Block 1 mit Gesicht, und der Weg durchs Halbfinale ins Finale*
+3. (3s) Dein Aufstieg, groß im Bild — *Climbers of the week: drei Avatare, die Balken steigen auf +57, +39, +20 casual Elo*
+4. (3s) Dein Block in der Season. Dein Turnierlauf. — *zwei Stream-Slides: Block 1 mit Avatar, und der Weg durchs Halbfinale ins Finale*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
 1. (3s) Your mate. Your moment. — *board, Légal's mate (Paris 1750) lands, the mate square lights up*
 2. (3s) Around the clock, winners go on stream — *the stream, "LIVE": LATEST WIN · GG, satsjaeger with a crown, beat hodlqueen, +20 casual Elo*
-3. (3s) Your climb, big on screen — *Climbers of the week: three faces, the bars rise to +57, +39, +20 casual Elo*
-4. (3s) Your block in season. Your bracket run. — *two stream slides: Block 1 with a face, and the path through the semifinal into the final*
+3. (3s) Your climb, big on screen — *Climbers of the week: three avatars, the bars rise to +57, +39, +20 casual Elo*
+4. (3s) Your block in season. Your bracket run. — *two stream slides: Block 1 with an avatar, and the path through the semifinal into the final*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---
@@ -378,4 +379,28 @@ kind exists or is mentioned.
 2. (3s) Result in, winner moves on — *the semifinals are decided, the winners move into the final*
 3. (3s) One champion. One crown. — *the final is decided, kai_blitz gets the crown, Champion*
 4. (3s) The next one opens. Take a seat. — *Next tournament, sign-up open: the seats fill up, "Your spot?" lights up*
+5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 18 — Age of Empires II
+
+Sources: `facts.md` 45-60 (`app/Games/AgeOfEmpires2.php`, `config/esports.php` `casual` and
+`casual_cups`, `pages/matches/partials/casual-steps` and `card-composer`, `⚡room`, `lobbyCards.js`,
+prod /games/age-of-empires-2 and /tournaments read 2026-10-01). Five beats of 3 s, 18.4 s with the
+cuts, as every reel. The cup seats in beat 4 are kit players; the casual Elo is fact 54 (+20 for a
+first win). No automatic result check is shown or said (fact 53): players enter and confirm.
+
+**DE**
+1. (3s) Age of Empires II. Dein 1v1 wartet. — *das Cover-Logo, darunter „1v1-Gegner finden“; der Cursor klickt, „Gegner gefunden“: satsjaeger gegen kai_blitz*
+2. (3s) Lobby und Passwort, verschlüsselt im Chat — *Match-Chat: die Karte „Age-of-Empires-II-Lobby“ mit e21-58 und frischem Passwort, die Schritte haken ab: Bereit, Lobby geteilt, Beigetreten*
+3. (3s) Du gewinnst. Dein Name steigt. — *Sieger je Spiel: drei Linien, zwei fließen zu satsjaeger, 2 Spiele gewonnen; die 1v1-Ladder zählt +20*
+4. (3s) Sonntags 20 Uhr: der AoE2 Casual Cup — *zwei Cup-Karten, EU 20:00 Berlin und US 20:00 New York, die Plätze füllen sich, „Dein Platz?“ leuchtet*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) Age of Empires II. Your 1v1 awaits. — *the cover logo, "Find a 1v1 opponent" below it; the cursor clicks, "Opponent found": satsjaeger vs kai_blitz*
+2. (3s) Lobby and password, encrypted in chat — *match chat: the "Age of Empires II lobby" card with e21-58 and a fresh password, the steps tick off: Ready, Lobby shared, Joined*
+3. (3s) You win. Your name climbs. — *winner per game: three lines, two flow to satsjaeger, 2 games won; the 1v1 ladder counts +20*
+4. (3s) Sundays at 8 pm: the AoE2 Casual Cup — *two cup cards, EU 20:00 Berlin and US 20:00 New York, the seats fill up, "Your spot?" lights up*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

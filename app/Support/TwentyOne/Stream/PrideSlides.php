@@ -23,7 +23,6 @@ use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentSignup;
 use App\Models\User;
-use App\Support\Badges\BadgeCopy;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\StrongestList;
@@ -31,6 +30,7 @@ use App\Support\Tournaments\TournamentChampion;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Throwable;
 
@@ -67,8 +67,10 @@ use Throwable;
  *   live season, with the games each played.
  * - `rankUps`: the three newest rank-ups (a step up of a rank badge, the
  *   first reveal included) of the last seven days, one per player.
- * - `streaks`: the three longest win streaks still running over chess and
- *   the board games of the last STREAK_DAYS days, STREAK wins or more.
+ * - `streaks`: the three longest win streaks still running over chess, the
+ *   board games and the series (a player's side of a Rocket League, EA FC
+ *   or Age of Empires II series; a forfeit counts neither way) of the last
+ *   STREAK_DAYS days, STREAK wins or more.
  * - `payouts`: the latest season that paid its miners: total, players, and
  *   the three biggest payouts.
  * - `inviters`: the three players who brought the most new players in the
@@ -306,7 +308,9 @@ class PrideSlides
             'team' => $solo ? [] : array_values(array_filter($winners->take(4)->map(fn (User $user): ?array => StreamImages::avatarRef($user))->all())),
             'loser' => PublicName::clean($loser?->displayName() ?? $match->sideName($other)),
             'loserRef' => $loser === null ? null : StreamImages::avatarRef($loser),
+            // The pride note (StreamBot\PrideNotes) words the win with `mode`; the slide prints the game's short title.
             'mode' => $this->games->name($match->game).' '.$match->mode,
+            'shownMode' => GameTitle::of($match->game).' '.$match->mode,
             'score' => $score[$side] + $score[$other] > 0 ? $score[$side].'-'.$score[$other] : null,
             'delta' => $subject === null ? null : $this->delta(RatingChange::SERIES, $match->id, $subject, Rating::CASUAL),
             'ratedDelta' => $subject === null ? null : $this->delta(RatingChange::SERIES, $match->id, $subject, Rating::RATED),
@@ -407,7 +411,7 @@ class PrideSlides
                 $climbers[] = [
                     'name' => PublicName::clean($user->displayName()), 'ref' => StreamImages::avatarRef($user),
                     'gain' => (int) $row->getAttribute('gain'), 'games' => (int) $row->getAttribute('games'),
-                    'from' => array_values(array_unique(array_map(fn ($entry): string => $this->games->name((string) $entry->game), ($from->get($userId) ?? collect())->all()))),
+                    'from' => array_values(array_unique(array_map(fn ($entry): string => GameTitle::of((string) $entry->game), ($from->get($userId) ?? collect())->all()))),
                     'ladders' => array_values(array_map(fn ($entry): string => $entry->game.'/'.$entry->mode, ($from->get($userId) ?? collect())->all())),
                 ];
             }
@@ -497,7 +501,7 @@ class PrideSlides
 
         return [
             'name' => PublicName::clean($tournament->name),
-            'game' => $this->games->name($tournament->game),
+            'game' => GameTitle::of($tournament->game),
             'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
             'pot' => $pot,
             'places' => array_map(fn (array $place): array => ['place' => $place['place'], 'sats' => $place['sats']], $this->pools->projection($tournament)),
@@ -536,7 +540,7 @@ class PrideSlides
             'season' => $block->season->slug,
             'reward' => $block->reward_per_player,
             'label' => $block->label,
-            'ladder' => BadgeCopy::ladder($block->game, $block->mode),
+            'ladder' => GameTitle::ladder($block->game, $block->mode),
             'miners' => $miners,
             'beat' => array_map(fn (array $loser): string => $loser['name'], array_map($person, array_slice(array_map(strval(...), (array) ($block->candidate['losers'] ?? [])), 0, 3))),
             'seasonBlocks' => $mined->count(),
@@ -572,7 +576,7 @@ class PrideSlides
                 'ref' => StreamImages::avatarRef($row['user']),
                 'rating' => $row['rating'],
                 // The registered games only: a board game switched off is not named.
-                'games' => array_values(array_map(fn (string $slug): string => $this->games->name($slug), array_filter(array_keys($row['games']), fn (string $slug): bool => $this->games->find($slug) !== null))),
+                'games' => array_values(array_map(fn (string $slug): string => GameTitle::of($slug), array_filter(array_keys($row['games']), fn (string $slug): bool => $this->games->find($slug) !== null))),
                 'clan' => $row['user']->clanMember?->clan?->clantag,
             ];
         }
@@ -614,7 +618,7 @@ class PrideSlides
                 'tier' => RankTiers::label($version->tier),
                 'colour' => RankTiers::colour($version->tier),
                 'previous' => $version->previous_tier === null || $version->previous_tier === RankTiers::Provisional ? null : RankTiers::label($version->previous_tier),
-                'ladder' => BadgeCopy::ladder($version->badge->game, $version->badge->mode),
+                'ladder' => GameTitle::ladder($version->badge->game, $version->badge->mode),
                 'rating' => $version->rating,
             ];
 
@@ -627,7 +631,9 @@ class PrideSlides
     }
 
     /**
-     * The longest win streaks still running (a draw or a loss ends one) over chess and the board games switched on.
+     * The longest win streaks still running (a draw or a loss ends one) over chess, the board games switched on and
+     * the series: a series counts for the players seated on its sides (`series_match_players`), a forfeit and a
+     * voided series not at all, as on the latest-win slide.
      *
      * @return list<array<string, mixed>>
      */
@@ -640,31 +646,57 @@ class PrideSlides
         $slugs = array_keys($this->games->boards());
         $boards = $slugs === [] ? collect() : BoardGame::query()->where('status', BoardGameStatus::Finished)->whereIn('game', $slugs)->whereIn('result', ['1-0', '0-1', '1/2-1/2'])->where($this->notForfeited(...))
             ->where('ended_at', '>=', $since)->orderByDesc('ended_at')->orderByDesc('id')->limit(self::STREAK_GAMES)->toBase()->get([...$columns, 'game']);
-        $games = $chess->concat($boards)->sortByDesc(fn ($game): string => (string) $game->ended_at)->values();
+        /** @var list<array{at: string, game: string, players: array<int, bool>}> $results a result each: who played it, and whether they won */
+        $results = [];
+
+        foreach ($chess->concat($boards) as $game) {
+            $players = [];
+
+            foreach (['1-0' => [$game->white_id, $game->black_id], '0-1' => [$game->black_id, $game->white_id], '1/2-1/2' => [$game->white_id, $game->black_id]][$game->result] as $index => $userId) {
+                if ($userId !== null) {
+                    $players[(int) $userId] = $game->result !== '1/2-1/2' && $index === 0;
+                }
+            }
+
+            $results[] = ['at' => (string) $game->ended_at, 'game' => (string) ($game->game ?? 'chess'), 'players' => $players];
+        }
+
+        $series = array_keys($this->games->series());
+        $matches = $series === [] ? collect() : StreamStats::decidedSeries()->whereIn('winner', SeriesMatch::SIDES)->whereIn('game', $series)->where('finished_at', '>=', $since)
+            ->where(fn ($query) => $query->whereNull('resolution')->orWhere('resolution', '!=', SeriesResolution::Forfeit))
+            ->orderByDesc('finished_at')->orderByDesc('id')->limit(self::STREAK_GAMES)->toBase()->get(['id', 'game', 'winner', 'finished_at']);
+        $seats = $matches->isEmpty() ? collect() : DB::table('series_match_players')->whereIn('series_match_id', $matches->pluck('id')->all())->get(['series_match_id', 'user_id', 'side'])->groupBy('series_match_id');
+
+        foreach ($matches as $match) {
+            $players = [];
+
+            foreach ($seats->get($match->id) ?? [] as $seat) {
+                $players[(int) $seat->user_id] = $seat->side === $match->winner;
+            }
+
+            if ($players !== []) {
+                $results[] = ['at' => (string) $match->finished_at, 'game' => (string) $match->game, 'players' => $players];
+            }
+        }
+
+        usort($results, fn (array $a, array $b): int => strcmp($b['at'], $a['at']));
         /** @var array<int, array{run: int, open: bool, at: string, games: array<string, true>}> $streaks */
         $streaks = [];
 
-        foreach ($games as $game) {
-            $sides = $game->result === '0-1' ? [$game->black_id, $game->white_id] : [$game->white_id, $game->black_id];
-
-            foreach ($sides as $index => $userId) {
-                if ($userId === null) {
-                    continue;
-                }
-
-                $won = $game->result !== '1/2-1/2' && $index === 0;
-                $streak = $streaks[(int) $userId] ?? ['run' => 0, 'open' => true, 'at' => (string) $game->ended_at, 'games' => []];
+        foreach ($results as $result) {
+            foreach ($result['players'] as $userId => $won) {
+                $streak = $streaks[$userId] ?? ['run' => 0, 'open' => true, 'at' => $result['at'], 'games' => []];
 
                 if ($streak['open']) {
                     $streak['open'] = $won;
 
                     if ($won) {
                         $streak['run']++;
-                        $streak['games'][$this->games->name((string) ($game->game ?? 'chess'))] = true;
+                        $streak['games'][GameTitle::of($result['game'])] = true;
                     }
                 }
 
-                $streaks[(int) $userId] = $streak;
+                $streaks[$userId] = $streak;
             }
         }
 

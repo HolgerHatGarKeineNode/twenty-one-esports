@@ -266,7 +266,7 @@ diagonal). In the DE cut the king is called "Dame", in the EN cut "king". Facts 
 ## 11. Mempool → Block
 
 **DE Headline:** Erst Mempool, dann Block
-**DE Subline:** Jede Partie wird ein Würfel, mit den Gesichtern der Spieler. Läuft eine Season, schürft dein gewerteter Sieg einen Block.
+**DE Subline:** Jede Partie wird ein Würfel, mit Avatar und Namen der Spieler. Läuft eine Season, schürft dein gewerteter Sieg einen Block.
 **DE Bullets:**
 - Schach, Mühle, Dame, Rocket League, EA FC
 - Links: gespielt. Rechts: live und als Nächstes.
@@ -274,7 +274,7 @@ diagonal). In the DE cut the king is called "Dame", in the EN cut "king". Facts 
 - Die Block-Belohnung halbiert sich jede Epoche
 
 **EN Headline:** Mempool first. Then a block.
-**EN Subline:** Every match becomes a cube, with the players' faces on it. While a season runs, your rated win mines a block.
+**EN Subline:** Every match becomes a cube, with the players' avatars and names on it. While a season runs, your rated win mines a block.
 **EN Bullets:**
 - Chess, morris, checkers, Rocket League, EA FC
 - Left: played. Right: live and up next.
@@ -292,18 +292,18 @@ once the board game switches are on in prod.**
 
 ## 12. On the stream
 
-**DE Headline:** Dein Sieg. Dein Gesicht. Im Stream.
+**DE Headline:** Dein Sieg. Dein Name. Im Stream.
 **DE Subline:** Der Livestream läuft rund um die Uhr und zeigt, wer gewinnt: deinen Sieg, deinen Aufstieg, deinen Block, deinen Turnierlauf.
 **DE Bullets:**
-- Dein letzter Sieg, mit Gesicht, Krone und Casual-Elo
+- Dein letzter Sieg: dein Avatar mit Krone, deine Casual-Elo
 - Die drei größten Aufsteiger der Woche
 - Dein Block, sobald eine Season läuft
 - Dein Weg durch den Turnierbaum, Runde für Runde
 
-**EN Headline:** Your win. Your face. On stream.
+**EN Headline:** Your win. Your name. On stream.
 **EN Subline:** The live stream runs around the clock and shows who wins: your win, your climb, your block, your tournament run.
 **EN Bullets:**
-- Your latest win, with your face, a crown and casual Elo
+- Your latest win: your avatar with a crown, your casual Elo
 - The week's three biggest climbers
 - Your block, once a season runs
 - Your path through the bracket, round by round
@@ -339,6 +339,33 @@ on the prod stream.**
 **Designer note:** the stream frame with a decided bracket (semifinals, final, champion with
 crown) and the next tournament's sign-up card with one free seat marked "Your spot?". Facts
 40-44. The live bracket slides are plan P5: **post only once they are on the prod stream.**
+
+---
+
+## 14. Age of Empires II
+
+**DE Headline:** Dein Imperium. Dein Name in der Ladder.
+**DE Subline:** Age of Empires II im 1v1: Gegner finden, Lobby mit Passwort im Match-Chat teilen, Sieger eintragen. Jede Serie bewegt dein Elo.
+**DE Bullets:**
+- Casual 1v1: Gegner über die Warteschlange
+- Der Host teilt Lobby-Name und Passwort, verschlüsselt
+- Casual Cup sonntags: 20 Uhr Berlin, 20 Uhr New York
+- Turniere, Ladder und Clan-Lineups im 2v2 und 3v3
+
+**EN Headline:** Your empire. Your name on the ladder.
+**EN Subline:** Age of Empires II 1v1: find an opponent, share a password lobby in the match chat, enter the winner. Every series moves your Elo.
+**EN Bullets:**
+- Casual 1v1: find an opponent in the queue
+- The host shares lobby name and password, encrypted
+- Casual Cup on Sundays: 8 pm Berlin, 8 pm New York
+- Tournaments, ladders and clan lineups in 2v2 and 3v3
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the game's cover cropped to its logo (no painted characters in frame), the
+cup final as the match page words a game without goals ("2 games won", one line per game to its
+winner, the winner's pixel avatar lit), and the host's lobby card from the encrypted match chat
+with the casual steps. Players are avatars and names, never faces. Facts 45-60; live on prod
+(game page and the first EU/US cups read 2026-10-01).
 
 ---
 
