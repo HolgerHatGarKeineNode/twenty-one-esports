@@ -250,6 +250,9 @@ test('two players find an opponent on the Rocket League page, both get the ready
 });
 
 test('a player switches Looking to play on, the other invites them from the list, and the accept brings the ready prompt to both', function () {
+    // The invitee's page learns of the invite by push; its own poll runs only every 30 s, longer than the 15 s wait below.
+    expect(config('broadcasting.default'))->toBe('reverb', 'Run this through `composer test:browser`, which starts Reverb.');
+
     [$relay] = casualPlayRelay();
 
     try {
