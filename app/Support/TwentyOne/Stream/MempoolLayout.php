@@ -70,6 +70,7 @@ final class MempoolLayout
         'fc' => ['#22C55E', '#16A34A', '#86EFAC', '#15803D', '#14532D'],
         'morris' => ['#D9B77E', '#A87A42', '#EBD3A8', '#6B4A22', '#4A3318'],
         'checkers' => ['#60A5FA', '#3B82F6', '#93C5FD', '#1E40AF', '#1E3A8A'],
+        'aoe' => ['#F0ABFC', '#D946EF', '#F5D0FE', '#86198F', '#701A75'],
         'other' => ['#ADADB0', '#8A8A90', '#D4D4D6', '#3A3A42', '#2A2A30'],
     ];
 
@@ -83,6 +84,7 @@ final class MempoolLayout
         'soccer' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m12 7 4 3-1.5 4.5h-5L8 10z"/><path d="M12 3v4M16 10l4.5-1.5M14.5 14.5l2.5 4M9.5 14.5 7 18.5M8 10 3.5 8.5"/></g>',
         'morris' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18"/><rect x="7.5" y="7.5" width="9" height="9"/><path d="M12 3v4.5M12 16.5V21M3 12h4.5M16.5 12H21"/></g>',
         'checkers' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="9" rx="8" ry="3.5"/><path d="M4 9v5c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V9"/><ellipse cx="12" cy="9" rx="4" ry="1.6"/></g>',
+        'castle' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8h3v3h2.5V8h5v3H17V8h3v13zM10 21v-4a2 2 0 0 1 4 0v4"/></g>',
         'trophy' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></g>',
     ];
 

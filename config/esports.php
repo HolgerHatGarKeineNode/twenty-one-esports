@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\AgeOfEmpires2;
 use App\Games\Checkers;
 use App\Games\Chess;
 use App\Games\EaSportsFc26;
@@ -177,6 +178,7 @@ return [
         RocketLeague::class,
         EaSportsFc27::class,
         EaSportsFc26::class,
+        AgeOfEmpires2::class,
     ],
 
     /*
@@ -388,7 +390,7 @@ return [
     */
 
     'casual' => [
-        'games' => ['rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27'],
+        'games' => ['rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2'],
         'mode' => '1v1',
         'crossplay_excluded' => ['ea-sports-fc-26' => ['switch'], 'ea-sports-fc-27' => ['switch']],
         'ready_seconds' => (int) env('ESPORTS_CASUAL_READY_SECONDS', 60),
@@ -537,12 +539,13 @@ return [
     */
 
     'casual_cups' => [
-        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,nine-mens-morris,checkers'))))),
+        'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers'))))),
         'games' => [
             'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
             'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3],
             'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
             'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
+            'age-of-empires-2' => ['name' => 'AoE2', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
             // Board games (plan "Mühle und Dame", P5): a cup runs only while the board game is switched on.
             'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
             'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],

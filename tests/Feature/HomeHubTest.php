@@ -116,7 +116,7 @@ test('without an open tournament the games are the hero and Block 0 is a strip u
     expect($html)->not->toContain('data-test="home-hero"')
         ->toMatch('/data-test="play-now"\s+data-stage/')
         ->toContain('data-test="block0-strip"')
-        ->and(homeCount($html, 'data-test="play-tile"'))->toBe(4)
+        ->and(homeCount($html, 'data-test="play-tile"'))->toBe(5)
         ->and(strpos($html, 'data-test="play-now"'))->toBeLessThan(strpos($html, 'data-test="block0-strip"'));
 });
 
@@ -211,5 +211,7 @@ test('the queries do not grow with entrants, boards, results, newcomers or ladde
 /**
  * Measured 2026-09-27 for a guest with three open tournaments (one with a pot): 46 queries, shell included; the rest is headroom for the shell.
  * 51 since 2026-09-28 (P44): the league settings in force are one more query per request (LeagueSettings::overrides()), the headroom was used up.
+ * 52 since 2026-09-30 (Age of Empires II): the strongest players ask Ladders::isOpen() once per game, and each asks
+ * Seasons::live() again (not kept per request), so one more series game is one more query. It does not grow with entrants.
  */
-const HOME_QUERY_BUDGET = 51;
+const HOME_QUERY_BUDGET = 52;

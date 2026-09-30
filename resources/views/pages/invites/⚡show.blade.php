@@ -106,12 +106,17 @@ new #[Title('Clan invite')] #[Layout('layouts::app', ['section' => 'clans'])] cl
     $invitee = $invite->invitee;
     $inviter = $invite->inviter;
     $mine = $this->isInvitee();
-    $lineups = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, ['3v3', '2v2', '1v1'], true))->values();
+    // The lineups of every series game: the games in registry order, each game's biggest mode first.
+    $series = app(\App\Games\GameRegistry::class)->series();
+    $lineups = $clan->lineups->filter(fn (Lineup $lineup) => isset($series[$lineup->game]))
+        ->sortBy(fn (Lineup $lineup) => [array_search($lineup->game, array_keys($series), true), -($series[$lineup->game]->mode($lineup->mode)->teamSize ?? 0)])->values();
+    // A lineup of the first series game (Rocket League) goes by its mode, any other with the game's short label.
+    $lineupName = fn (Lineup $lineup) => $lineup->game === array_key_first($series) ? $lineup->mode : $series[$lineup->game]->assets()->shortLabel.' '.$lineup->mode;
     $lead = $lineups->first();
     $stats = $lead ? app(ClanStats::class)->lineup($lead) : null;
     $members = $clan->members->sortBy(fn (ClanMember $member) => [$member->user_id === $clan->owner_id ? 0 : 1, $member->joined_at->getTimestamp()])->values();
     $captains = $members->filter(fn (ClanMember $member) => $member->role === ClanRole::Captain)->map(fn (ClanMember $member) => $member->user->displayName())->implode(', ');
-    $lineupSummary = $lineups->map(fn (Lineup $lineup) => $lineup->mode.' '.($lineup->isReady() ? __('ready') : __('needs players')))->implode(', ');
+    $lineupSummary = $lineups->map(fn (Lineup $lineup) => $lineupName($lineup).' '.($lineup->isReady() ? __('ready') : __('needs players')))->implode(', ');
     $current = $invitee->clanMember?->clan;
     $days = (int) $invitee->created_at?->diffInDays(now());
     $status = match ($invite->status) {

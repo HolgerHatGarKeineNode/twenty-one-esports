@@ -40,7 +40,7 @@ test('the chain draft shows the board games as one row with a weight per game, a
         ->assertSee('Board games')
         // Not mining yet: empty fields, the other shares as the board decided them, and the proposal next to them.
         ->assertSet('draftWeights.nine-mens-morris/blitz', '')
-        ->assertSet('draftShares', ['chess' => '35', 'rocket-league' => '40', 'ea-sports-fc' => '25', 'board-games' => ''])
+        ->assertSet('draftShares', ['chess' => '35', 'rocket-league' => '40', 'ea-sports-fc' => '25', 'board-games' => '', 'age-of-empires-2' => ''])
         ->assertSee('data-test="board-games-proposal"', false)
         ->assertSee('Chess 32 %, Rocket League 36 %, EA Sports FC 22 %');
 });
@@ -50,7 +50,7 @@ test('the board fills in the proposal and saves it: the board games mine in the 
         ->call('fillBoardGamesProposal')
         ->assertSet('draftWeights.nine-mens-morris/blitz', '1')
         ->assertSet('draftWeights.checkers/blitz', '1')
-        ->assertSet('draftShares', ['chess' => '32', 'rocket-league' => '36', 'ea-sports-fc' => '22', 'board-games' => '10'])
+        ->assertSet('draftShares', ['chess' => '32', 'rocket-league' => '36', 'ea-sports-fc' => '22', 'board-games' => '10', 'age-of-empires-2' => ''])
         ->assertSet('draftDaily.board-games', '5')
         // Nothing is saved by filling in.
         ->tap(fn () => expect(ChainDraft::stored())->toBeNull())

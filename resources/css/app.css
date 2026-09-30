@@ -120,6 +120,15 @@
     --color-checkers-2: #3B82F6;
     --color-checkers-deep: #1E40AF;
     --color-checkers-deep-2: #1E3A8A;
+    /*
+     * Age of Empires II: a fuchsia no other game or signal holds (between
+     * Proof's violet and the pink end of Rocket League). On-btc text on the
+     * light ends: 10.6 / 5.4 : 1; white on the deep ends 8.2 and 10.0 : 1.
+     */
+    --color-aoe: #F0ABFC;
+    --color-aoe-2: #D946EF;
+    --color-aoe-deep: #86198F;
+    --color-aoe-deep-2: #701A75;
 
     /* Flux accent mapped onto the brand orange */
     --color-accent: #F7931A;
@@ -1063,6 +1072,12 @@ select:focus[data-flux-control] {
         --side: linear-gradient(180deg, #1E40AF, #1E3A8A);
     }
 
+    a.bs-cube.is-fin.g-aoe {
+        background: linear-gradient(180deg, var(--color-aoe), var(--color-aoe-2));
+        --top: #F5D0FE;
+        --side: linear-gradient(180deg, #86198F, #701A75);
+    }
+
     a.bs-cube.is-fin.g-other {
         background: linear-gradient(180deg, var(--color-ink-2), var(--color-ink-3));
         --top: #D4D4D6;
@@ -1130,6 +1145,14 @@ select:focus[data-flux-control] {
         --side: linear-gradient(0deg, #172B66 var(--lvl), #16161A var(--lvl));
     }
 
+    a.bs-cube.is-live.g-aoe .bs-fill {
+        background: linear-gradient(180deg, var(--color-aoe-deep), var(--color-aoe-deep-2));
+    }
+
+    a.bs-cube.is-live.g-aoe {
+        --side: linear-gradient(0deg, #4A044E var(--lvl), #16161A var(--lvl));
+    }
+
     a.bs-cube.is-live.g-other .bs-fill {
         background: linear-gradient(180deg, #3A3A42, #2A2A30);
     }
@@ -1166,6 +1189,13 @@ select:focus[data-flux-control] {
         --glow: rgba(34, 197, 94, 0.45);
         --top: rgba(34, 197, 94, 0.16);
         --side: rgba(22, 163, 74, 0.22);
+    }
+
+    a.bs-cube.is-next.g-aoe {
+        --edge: #F0ABFC;
+        --glow: rgba(240, 171, 252, 0.45);
+        --top: rgba(240, 171, 252, 0.16);
+        --side: rgba(217, 70, 239, 0.22);
     }
 
     a.bs-cube.is-next.g-other {
@@ -1271,6 +1301,8 @@ select:focus[data-flux-control] {
     .bs-key.g-morris .bs-key-logo { color: var(--color-morris); }
     .bs-key.g-checkers .bs-chip--game { background: linear-gradient(180deg, var(--color-checkers), var(--color-checkers-2)); }
     .bs-key.g-checkers .bs-key-logo { color: var(--color-checkers); }
+    .bs-key.g-aoe .bs-chip--game { background: linear-gradient(180deg, var(--color-aoe), var(--color-aoe-2)); }
+    .bs-key.g-aoe .bs-key-logo { color: var(--color-aoe); }
     .bs-key.g-other .bs-chip--game { background: linear-gradient(180deg, var(--color-ink-2), var(--color-ink-3)); }
     .bs-key.g-other .bs-key-logo { color: var(--color-ink-2); }
 

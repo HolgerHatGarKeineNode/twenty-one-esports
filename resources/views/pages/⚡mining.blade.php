@@ -456,7 +456,7 @@ new #[Layout('layouts::app', ['section' => 'mining'])] class extends Component
                         {{-- The split as a bar in each game's colour (P53); the words above carry the numbers, the colour never alone. --}}
                         <div class="mt-1.5 flex h-2 max-w-80 gap-0.5 overflow-hidden rounded-[2px] bg-raised" aria-hidden="true" data-test="share-cap-bar">
                             @foreach ($inForce->shares as $shareGame => $share)
-                                <span @class(['h-full basis-0', match (true) { $shareGame === 'chess' => 'bg-chess', str_starts_with((string) $shareGame, 'rocket') => 'bg-rl', str_starts_with((string) $shareGame, 'ea-sports-fc') => 'bg-fc', default => 'bg-ink-3' }]) style="flex-grow: {{ max(0, (float) $share) }}" title="{{ ChainOverview::gameLabel((string) $shareGame) }} {{ $share }} %"></span>
+                                <span @class(['h-full basis-0', match (true) { $shareGame === 'chess' => 'bg-chess', str_starts_with((string) $shareGame, 'rocket') => 'bg-rl', str_starts_with((string) $shareGame, 'ea-sports-fc') => 'bg-fc', $shareGame === 'age-of-empires-2' => 'bg-aoe', default => 'bg-ink-3' }]) style="flex-grow: {{ max(0, (float) $share) }}" title="{{ ChainOverview::gameLabel((string) $shareGame) }} {{ $share }} %"></span>
                             @endforeach
                             @if (array_sum($inForce->shares) < 100)
                                 <span class="h-full basis-0" style="flex-grow: {{ 100 - array_sum($inForce->shares) }}"></span>

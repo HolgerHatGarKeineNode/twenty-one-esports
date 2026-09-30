@@ -29,8 +29,8 @@ beforeEach(function () {
     config(['esports.chat.relays' => ['wss://relay.example']]);
 });
 
-test('the Rocket League and both EA FC pages carry the module, the chess lobby and /play for guests stay honest', function () {
-    foreach (['rocket-league' => '/games/rocket-league', 'ea-sports-fc-26' => '/games/ea-sports-fc-26', 'ea-sports-fc-27' => '/games/ea-sports-fc-27'] as $game => $url) {
+test('the Rocket League, both EA FC and the Age of Empires II pages carry the module, the chess lobby and /play for guests stay honest', function () {
+    foreach (['rocket-league' => '/games/rocket-league', 'ea-sports-fc-26' => '/games/ea-sports-fc-26', 'ea-sports-fc-27' => '/games/ea-sports-fc-27', 'age-of-empires-2' => '/games/age-of-empires-2'] as $game => $url) {
         $this->get($url)->assertOk()->assertSee('data-test="casual-play"', false)->assertSee('data-game="'.$game.'"', false)->assertSee('Log in to play');
     }
 

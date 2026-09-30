@@ -139,6 +139,11 @@ return [
     | shrinks them in proportion to make room (35/40/25 become 32/36/22 next
     | to 10), and the board saves that or not (plan: no silent redistribution).
     |
+    | age_of_empires_2_proposal: the same for Age of Empires II (plan "AoE2
+    | und Trackmania", P1): a weight per mode as the other series games, its
+    | own share and daily limit. These are DRAFT values nobody decided yet;
+    | AoE2 mines only once the board fills them in (or its own) and saves.
+    |
     */
 
     'chain' => [
@@ -175,6 +180,16 @@ return [
                 'nine-mens-morris/correspondence' => 2000,
                 'checkers/blitz' => 1000,
                 'checkers/correspondence' => 2000,
+            ],
+            'share' => 10,
+            'daily' => 5,
+        ],
+        // DRAFT values (plan "AoE2 und Trackmania", P1, 2026-09-30), not decided by the board: as the series games.
+        'age_of_empires_2_proposal' => [
+            'weights' => [
+                'age-of-empires-2/1v1' => 1000,
+                'age-of-empires-2/2v2' => 1000,
+                'age-of-empires-2/3v3' => 1000,
             ],
             'share' => 10,
             'daily' => 5,

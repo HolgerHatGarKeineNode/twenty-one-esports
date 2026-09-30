@@ -27,7 +27,7 @@ final class MatchBlocks
      * registry icon, so a new edition of a game keeps its colour. `other` is
      * the neutral family for a game the strip has no colour for.
      *
-     * @return 'chess'|'rl'|'fc'|'morris'|'checkers'|'other'
+     * @return 'chess'|'rl'|'fc'|'morris'|'checkers'|'aoe'|'other'
      */
     public static function family(string $slug): string
     {
@@ -37,6 +37,7 @@ final class MatchBlocks
             'soccer' => 'fc',
             'morris' => 'morris',
             'checkers' => 'checkers',
+            'castle' => 'aoe',
             default => 'other',
         };
     }

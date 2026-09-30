@@ -329,8 +329,8 @@ const SWEEP_PRIDE_HASH = '5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed5e
 
 const SWEEP_ROUTE_PARAMETERS = [
     'ladder.show' => ['game' => 'chess', 'mode' => 'blitz'],
-    // The page of a series game: a registry slug (EA Sports FC 27), not free text.
-    'games.series' => ['slug' => 'ea-sports-fc-27'],
+    // The page of a series game: a registry slug, the newest game's (Age of Empires II), not free text.
+    'games.series' => ['slug' => 'age-of-empires-2'],
     // Rank badge artwork (P11): a game slug and a tier, not the chess game fixture.
     'badges.rank' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1'],
     'badges.rank.thumb' => ['game' => 'chess', 'tier' => 'gold-2', 'artwork' => '1', 'size' => '256'],

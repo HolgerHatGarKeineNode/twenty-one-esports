@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\User;
@@ -104,7 +105,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     /**
      * Clan id => "Challenge" link, as on the clan page (P16): the challenge
-     * form with the clan's Rocket League lineup picked, in the mode of a
+     * form with the clan's lineup of a series game picked (the first game
+     * of the registry, its biggest mode first), in the game and mode of a
      * lineup the viewer captains when both have one. None for the own clan
      * and for clans without a lineup; a guest gets the link, the form asks
      * them to log in.
@@ -115,11 +117,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     public function challenges(): array
     {
         $user = auth()->user();
-        $modes = ['3v3', '2v2', '1v1'];
+        $series = app(GameRegistry::class)->series();
+        $order = array_keys($series);
+        // Every series game in registry order, each game's biggest mode first.
+        $sorted = fn (Collection $lineups): Collection => $lineups->filter(fn (Lineup $lineup): bool => isset($series[$lineup->game]))
+            ->sortBy(fn (Lineup $lineup): array => [array_search($lineup->game, $order, true), -($series[$lineup->game]->mode($lineup->mode)->teamSize ?? 0)]);
         $mine = $user instanceof User && $this->myClanId !== null
-            ? Lineup::query()->with(['seats', 'clan'])->where(['clan_id' => $this->myClanId, 'game' => 'rocket-league'])->get()
-                ->filter(fn (Lineup $lineup): bool => $lineup->isActingCaptain($user))
-                ->sortBy(fn (Lineup $lineup): int => (int) array_search($lineup->mode, $modes, true))->values()
+            ? $sorted(Lineup::query()->with(['seats', 'clan'])->where('clan_id', $this->myClanId)->get())
+                ->filter(fn (Lineup $lineup): bool => $lineup->isActingCaptain($user))->values()
             : collect();
         $links = [];
 
@@ -128,14 +133,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 continue;
             }
 
-            $theirs = $clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup): int => (int) array_search($lineup->mode, $modes, true))->keyBy('mode');
+            $theirs = $sorted($clan->lineups)->keyBy(fn (Lineup $lineup): string => $lineup->game.'/'.$lineup->mode);
 
             if ($theirs->isEmpty()) {
                 continue;
             }
 
-            $own = $mine->first(fn (Lineup $lineup): bool => $theirs->has($lineup->mode));
-            $target = $own !== null ? $theirs[$own->mode] : $theirs->first();
+            $own = $mine->first(fn (Lineup $lineup): bool => $theirs->has($lineup->game.'/'.$lineup->mode));
+            $target = $own !== null ? $theirs[$own->game.'/'.$own->mode] : $theirs->first();
             $links[$clan->id] = route('challenges.create', array_filter(['lineup' => $own?->id, 'to' => $target->id]));
         }
 

@@ -11,9 +11,10 @@ use Livewire\Livewire;
 use Tests\Support\TestSigner;
 
 /*
-| EA Sports FC 26 and 27 on the pages of a series game: their own game page,
-| the match list filter, the challenge form and the lineup builder. Every
-| surface shows the game's cover, so a player sees which game is meant.
+| EA Sports FC 26 and 27, and Age of Empires II, on the pages of a series
+| game: their own game page, the match list filter, the challenge form, the
+| lineup builder, the clan page and the ladder. Every surface shows the
+| game's cover, so a player sees which game is meant.
 */
 
 function fcLineup(string $game, string $mode = '1v1'): Lineup
@@ -103,4 +104,51 @@ test('the owner builds an FC lineup next to the Rocket League ones', function ()
 
     Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])->call('editLineup', '3v3', 'ea-sports-fc-27')->assertForbidden();
     Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])->call('editLineup', 'blitz', 'chess')->assertForbidden();
+});
+
+test('Age of Empires II has its page, 2v2 and 3v3 lineups built by the owner, a 3v3 challenge in best of 1 or 3, a clan page without goals and a ladder', function () {
+    $this->get(route('games.series', 'age-of-empires-2'))->assertOk()
+        ->assertSee('Age of Empires II: Definitive Edition')
+        ->assertSee('images/games/age-of-empires-2-480.webp', false)
+        ->assertSee('Modes: 1v1, 2v2, 3v3 · best of 1 / 3');
+
+    $signer = new TestSigner;
+    $owner = User::factory()->withPubkey($signer->pubkey)->create();
+    $service = app(ClanService::class);
+    $draft = new ClanDraft('Wololo Guild', 'WOLO');
+    $clan = $service->create($owner, $draft, $signer->signTemplates($service->prepareCreate($owner, $draft)));
+    $seats = [$owner->id => LineupRole::Captain];
+
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])
+        ->assertSeeHtml('data-test="lineups-age-of-empires-2"')
+        ->call('editLineup', '3v3', 'age-of-empires-2')
+        ->assertSet('editingGame', 'age-of-empires-2')
+        ->set("picks.{$owner->id}", 'captain')
+        ->call('saveLineup', json_encode($signer->signTemplates($service->prepareLineup($owner, $clan, 'age-of-empires-2', '3v3', $seats))))
+        ->assertHasNoErrors()
+        ->call('editLineup', '2v2', 'age-of-empires-2')
+        ->set("picks.{$owner->id}", 'captain')
+        ->call('saveLineup', json_encode($signer->signTemplates($service->prepareLineup($owner, $clan, 'age-of-empires-2', '2v2', $seats))))
+        ->assertHasNoErrors();
+    Livewire::actingAs($owner)->test('pages::clans.manage', ['clan' => $clan])->call('editLineup', '4v4', 'age-of-empires-2')->assertForbidden();
+
+    expect(Lineup::query()->where('clan_id', $clan->id)->orderBy('mode')->get()->map->only(['game', 'mode'])->all())
+        ->toBe([['game' => 'age-of-empires-2', 'mode' => '2v2'], ['game' => 'age-of-empires-2', 'mode' => '3v3']]);
+
+    // The clan page names the lineups by game and mode, and a clan of AoE2 alone has no goal count.
+    $this->get(route('clans.show', $clan))->assertOk()
+        ->assertSee('Lineups AoE2 3v3 · AoE2 2v2')
+        ->assertDontSee('Goals (team)');
+
+    $mine = fcLineup('age-of-empires-2', '3v3');
+    $theirs = fcLineup('age-of-empires-2', '3v3');
+
+    Livewire::actingAs($mine->clan->owner)->withQueryParams(['game' => 'age-of-empires-2'])->test('pages::challenges.create')
+        ->assertSet('lineupId', $mine->id)
+        ->assertSet('bestOf', 3)
+        ->assertSeeHtml('data-test="lineup-age-of-empires-2-3v3"')
+        ->assertSeeHtml('data-test="bo-1"')->assertSeeHtml('data-test="bo-3"')->assertDontSeeHtml('data-test="bo-5"')
+        ->assertSee($theirs->clan->name);
+
+    $this->get(route('ladder.show', ['age-of-empires-2', '3v3']))->assertOk()->assertSee('Age of Empires II: Definitive Edition');
 });

@@ -672,6 +672,16 @@ class SeriesMatch extends Model
             ?? throw new \LogicException("Match {$this->number} has an unknown mode.");
     }
 
+    /**
+     * Whether a game of this series ends with goals (Rocket League, EA
+     * Sports FC) or with its winner only (Age of Empires II): the room,
+     * the match page and the dispute word the result by this.
+     */
+    public function hasGoals(): bool
+    {
+        return app(GameRegistry::class)->hasGoals($this->game);
+    }
+
     public function label(): string
     {
         return '#'.$this->number;

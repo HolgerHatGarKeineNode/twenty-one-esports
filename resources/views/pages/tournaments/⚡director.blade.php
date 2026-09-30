@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\TournamentResultEntry;
@@ -15,7 +16,8 @@ use Livewire\Component;
 /*
  * The director desk (TournamentDirector.dc.html, TOURNAMENT-FORMATS.md,
  * section 6): the creator and the named directors enter each result of the
- * open round with one tap (chess) or the goals of each game (Rocket League),
+ * open round with one tap (chess) or the goals of each game (Rocket League;
+ * the winner of each game for a game without goals, Age of Empires II),
  * correct it until the round is closed, and close the round once every
  * result is in. Every entry and correction goes to the public log. The
  * route checks `direct-tournament`; every action checks it again (a direct
@@ -85,7 +87,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function enterSeries(int $matchId): void
     {
         $form = $this->series[$matchId] ?? ['games' => [], 'unknown' => false, 'winners' => []];
-        $input = ($form['unknown'] ?? false)
+        // A game without goals (Age of Empires II) is entered by its winners only.
+        $input = ($form['unknown'] ?? false) || ! app(GameRegistry::class)->hasGoals($this->tournament->game)
             ? ['winners' => array_values(array_filter($form['winners'] ?? [], fn ($winner) => $winner !== '' && $winner !== null))]
             : ['games' => array_values(array_map(fn ($pair) => [$pair[0] ?? '', $pair[1] ?? ''], $form['games'] ?? []))];
 
@@ -247,7 +250,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         </details>
                                     @else
                                         @php $bestOf = $match->seriesMatch?->best_of ?? (TournamentRunner::isFinal($match) ? $tournament->formatOptions()->finalBestOf : $tournament->formatOptions()->bestOf); @endphp
-                                        <div class="flex flex-col gap-2" x-data="{ unknown: false }">
+                                        @php $hasGoals = app(GameRegistry::class)->hasGoals($tournament->game); @endphp
+                                        <div class="flex flex-col gap-2" x-data="{ unknown: @js(! $hasGoals) }">
                                             <div class="flex flex-wrap gap-3" x-show="! unknown">
                                                 @for ($game = 0; $game < $bestOf; $game++)
                                                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Game :number', ['number' => $game + 1]) }}
@@ -270,7 +274,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                                     </label>
                                                 @endfor
                                             </div>
-                                            <label class="flex min-h-9 items-center gap-2 text-xs text-ink-2"><input type="checkbox" x-model="unknown" wire:model="series.{{ $match->id }}.unknown" class="accent-[#F7931A]">{{ __('Goals unknown, enter winners only') }}</label>
+                                            @if ($hasGoals)
+                                                <label class="flex min-h-9 items-center gap-2 text-xs text-ink-2"><input type="checkbox" x-model="unknown" wire:model="series.{{ $match->id }}.unknown" class="accent-[#F7931A]">{{ __('Goals unknown, enter winners only') }}</label>
+                                            @endif
                                             <div class="flex flex-wrap gap-2">
                                                 <x-button wire:click="enterSeries({{ $match->id }})" data-test="save-series">{{ __('Save series result') }}</x-button>
                                                 <details class="text-xs">

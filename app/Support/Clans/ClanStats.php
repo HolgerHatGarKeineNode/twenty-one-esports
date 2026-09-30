@@ -3,6 +3,7 @@
 namespace App\Support\Clans;
 
 use App\Enums\SeriesStatus;
+use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\Lineup;
@@ -187,11 +188,12 @@ final class ClanStats
     }
 
     /**
-     * The clan's Rocket League series record (ClanShow.dc.html): series,
-     * wins and team goals in the last 30 days and in total (decided series
-     * only), the Elo line of its 3v3 lineup on its headline ladder, and the
-     * latest series with a result or waiting for one. Empty for a clan
-     * without series.
+     * The clan's series record (ClanShow.dc.html): series, wins and team
+     * goals in the last 30 days and in total (decided series only; goals
+     * only while the clan played a game with goals, so a clan of Age of
+     * Empires II alone shows none), the Elo line of its Rocket League 3v3
+     * lineup on its headline ladder, and the latest series with a result or
+     * waiting for one. Empty for a clan without series.
      *
      * @return array{stats: list<array{0: string, 1: int, 2: int}>, line: list<int>, matches: list<array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string, 6: string, 7: string}>}|null
      */
@@ -221,6 +223,8 @@ final class ClanStats
         ];
         [$recentSeries, $recentWins, $recentGoals] = $count($recent);
         [$series, $wins, $goals] = $count($decided);
+        $registry = app(GameRegistry::class);
+        $withGoals = $matches->contains(fn (SeriesMatch $match): bool => $registry->hasGoals($match->game));
 
         $deltas = RatingChange::query()
             ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
@@ -249,7 +253,8 @@ final class ClanStats
         })->all();
 
         $line = [];
-        $lead = $lineups->firstWhere('mode', '3v3');
+        // The headline ladder is the first series game's (Rocket League): the page names it so.
+        $lead = $lineups->first(fn (Lineup $lineup): bool => $lineup->mode === '3v3' && $lineup->game === array_key_first($registry->series()));
 
         if ($lead instanceof Lineup) {
             $pool = Ratings::pool(Ladders::isOpen($lead->game, $lead->mode));
@@ -275,7 +280,7 @@ final class ClanStats
         }
 
         return [
-            'stats' => [['Series', $recentSeries, $series], ['Wins', $recentWins, $wins], ['Goals (team)', $recentGoals, $goals]],
+            'stats' => [['Series', $recentSeries, $series], ['Wins', $recentWins, $wins], ...($withGoals ? [['Goals (team)', $recentGoals, $goals]] : [])],
             'line' => $line,
             'matches' => array_values($rows),
         ];

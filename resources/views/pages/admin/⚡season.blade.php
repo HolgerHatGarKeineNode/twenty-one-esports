@@ -183,9 +183,18 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
      */
     public function fillBoardGamesProposal(): void
     {
+        $this->fillProposal('board-games');
+    }
+
+    /**
+     * Fill one late game's proposal (ChainDraft::PROPOSALS: the board games,
+     * Age of Empires II) into the draft form, as fillBoardGamesProposal().
+     */
+    public function fillProposal(string $which): void
+    {
         Gate::authorize('admin');
 
-        $proposal = ChainDraft::boardGamesProposal(ChainDraft::current());
+        $proposal = array_key_exists($which, ChainDraft::PROPOSALS) ? ChainDraft::proposal($which, ChainDraft::current()) : null;
 
         if ($proposal === null) {
             return;
@@ -203,7 +212,9 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
             $this->draftDaily[$key] = (string) $blocks;
         }
 
-        $this->notice = __('The board games\' proposal is filled in. Check it and save the draft.');
+        $this->notice = $which === 'board-games'
+            ? __('The board games\' proposal is filled in. Check it and save the draft.')
+            : __('The proposal for :game is filled in. Check it and save the draft.', ['game' => ChainDraft::shareLabel($which)]);
     }
 
     /** Save the chain draft for Block 0 (board only, checked again in RatingSettings::saveDraft()), with its log row. */
@@ -911,6 +922,19 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                                 'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
                             ]) }}</p>
                             <span><button type="button" wire:click="fillBoardGamesProposal" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-board-games-proposal">{{ __('Fill in the proposal') }}</button></span>
+                        </div>
+                    @endif
+                    {{-- Age of Empires II (plan "AoE2 und Trackmania", P1): draft values nobody decided yet, the same way. --}}
+                    @if (! $draftLocked && ($proposal = ChainDraft::proposal('age-of-empires-2', $draftChain)) !== null)
+                        <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="age-of-empires-2-proposal">
+                            <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this draft. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.', [
+                                'game' => ChainDraft::shareLabel('age-of-empires-2'),
+                                'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                                'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                                'daily' => (int) collect($proposal['daily'])->first(),
+                                'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                            ]) }}</p>
+                            <span><button type="button" wire:click="fillProposal('age-of-empires-2')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-age-of-empires-2-proposal">{{ __('Fill in the proposal') }}</button></span>
                         </div>
                     @endif
                 </fieldset>

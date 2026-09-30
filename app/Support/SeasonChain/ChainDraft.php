@@ -231,28 +231,54 @@ final class ChainDraft
     }
 
     /**
+     * The games that joined after the board's shares of 2026-09-28 and mine
+     * only once the board takes up their proposal: the config key of each
+     * proposal, keyed by the proposal's name on the admin season page.
+     */
+    public const PROPOSALS = [
+        'board-games' => 'season.chain.board_games_proposal',
+        'age-of-empires-2' => 'season.chain.age_of_empires_2_proposal',
+    ];
+
+    /**
      * What the admin season page proposes for the board games (plan "Mühle
      * und Dame", P6) on top of this draft, or null while no board game is
-     * switched on or they mine already: the weight of every board game and
-     * mode, the share and daily limit of their share key
-     * (`season.chain.board_games_proposal`), and the shares of the other
-     * keys shrunk in proportion so that all of them add up to at most 100 %
-     * (largest remainder; a tie goes to the larger share). Nothing is saved:
-     * the board fills it into the form and saves it, or not.
+     * switched on or they mine already; proposal() says how.
      *
      * @param  Chain  $chain
      * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
      */
     public static function boardGamesProposal(array $chain): ?array
     {
+        return self::proposal('board-games', $chain);
+    }
+
+    /**
+     * What the admin season page proposes for one late game (PROPOSALS) on
+     * top of this draft, or null while it is not in the registry (a board
+     * game switched off) or mines already: the weight of every game and
+     * mode, the share and daily limit of its share key (from its config
+     * entry), and the shares of the other keys shrunk in proportion so that
+     * all of them add up to at most 100 % (largest remainder; a tie goes to
+     * the larger share). Nothing is saved: the board fills it into the form
+     * and saves it, or not. Age of Empires II (plan "AoE2 und Trackmania",
+     * P1) proposes DRAFT values the board has not decided yet.
+     *
+     * @param  key-of<self::PROPOSALS>  $which
+     * @param  Chain  $chain
+     * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
+     */
+    public static function proposal(string $which, array $chain): ?array
+    {
         /** @var array{weights: array<string, int>, share: int, daily: int} $proposal */
-        $proposal = config('season.chain.board_games_proposal');
+        $proposal = config(self::PROPOSALS[$which]);
         $registry = app(GameRegistry::class);
+        $ofProposal = fn (string $game): bool => $which === 'board-games' ? $registry->isBoard($game) : $game === $which;
         $keys = [];
 
         foreach (self::table($chain) as $shareKey => $weightKeys) {
             foreach ($weightKeys as $key) {
-                if ($registry->isBoard(explode('/', $key, 2)[0])) {
+                if ($ofProposal(explode('/', $key, 2)[0])) {
                     $keys[$shareKey][] = $key;
                 }
             }
@@ -268,9 +294,9 @@ final class ChainDraft
             $weights[$key] = (int) ($proposal['weights'][$key] ?? 1000);
         }
 
-        $boardShares = array_fill_keys(array_keys($keys), (int) $proposal['share']);
-        $others = array_diff_key($chain['shares'], $boardShares);
-        $room = 100 - array_sum($boardShares);
+        $newShares = array_fill_keys(array_keys($keys), (int) $proposal['share']);
+        $others = array_diff_key($chain['shares'], $newShares);
+        $room = 100 - array_sum($newShares);
         $shares = $others;
 
         if (array_sum($others) > $room) {
@@ -288,7 +314,7 @@ final class ChainDraft
 
         return [
             'weights' => $weights,
-            'shares' => $shares + $boardShares,
+            'shares' => $shares + $newShares,
             'daily' => array_fill_keys(array_keys($keys), (int) $proposal['daily']),
         ];
     }

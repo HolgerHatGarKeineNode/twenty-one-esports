@@ -82,8 +82,8 @@ test('a parameter change republishes every ladder with the standings and the fro
     $tags = ladderTags('chess/blitz/pre-season');
 
     expect(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/pre-season'])->count())->toBe(2)
-        // Two versions of every ladder: chess 2, Rocket League 3, EA Sports FC 27 and 26 2 each.
-        ->and(NostrEvent::query()->where('kind', Ladders::KIND)->count())->toBe(18)
+        // Two versions of every ladder: chess 2, Rocket League 3, EA Sports FC 27 and 26 2 each, Age of Empires II 3.
+        ->and(NostrEvent::query()->where('kind', Ladders::KIND)->count())->toBe(24)
         ->and(NostrEvent::query()->where(['kind' => Ladders::KIND, 'd' => 'chess/blitz/pre-season'])->max('signed_at'))->toBeGreaterThan($first->signed_at)
         ->and($tags)->toContain(['rating', 'elo', '1000', '32', '400'], ['e', str_repeat('d', 64), ''], ['p', $alice->pubkey], ['p', $bob->pubkey])
         ->and(collect($tags)->where(0, 'standing')->values()->all())->toBe([

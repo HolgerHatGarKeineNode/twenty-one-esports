@@ -48,7 +48,7 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     expect($page->evaluate('() => [...document.querySelectorAll("[data-test^=hub-game-]:has([data-test=hub-yours])")].map((el) => el.dataset.test)'))
         ->toBe(['hub-game-rocket-league', 'hub-game-chess']);
     $hub = $page->evaluate('() => { const r = document.getElementById("game-hub").getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), Math.round(r.left), Math.round(r.right)]; }');
-    fwrite(STDERR, "\n[shell-hub] 4 games @1440 top/height/left/right ".json_encode($hub));
+    fwrite(STDERR, "\n[shell-hub] 5 games @1440 top/height/left/right ".json_encode($hub));
     shellShot($page, 'shell-player-1440-hub');
 
     // The filter: "rock" leaves Rocket League; the toggle "1v1" hides no real game (every one has a 1v1 ladder).
@@ -59,9 +59,9 @@ test('the game hub opens with a click, filters and toggles, pins your games in o
     $page->locator('#hub-filter')->fill('');
     $page->locator('[data-test=hub-kind-solo]')->click();
     BrowserWait::until($page, '() => document.querySelector("[data-test=hub-kind-solo]").getAttribute("aria-pressed") === "true"', 5_000);
-    expect($page->evaluate('() => [...document.querySelectorAll("[data-test^=hub-game-]")].filter((el) => el.checkVisibility()).length'))->toBe(4);
+    expect($page->evaluate('() => [...document.querySelectorAll("[data-test^=hub-game-]")].filter((el) => el.checkVisibility()).length'))->toBe(5);
 
-    // Tab stays inside, Esc closes and gives the focus back to "All 4 games".
+    // Tab stays inside, Esc closes and gives the focus back to "All 5 games".
     foreach (range(1, 40) as $step) {
         $page->locator(':focus')->press('Tab');
     }
@@ -112,6 +112,8 @@ const HUB_MEASURE = <<<'JS'
     JS;
 
 test('the hub spends its width on one card grid and does not scroll with 4 games at 1280, 1440 and 1920 px', function () {
+    // Four games, one row: the registry's first four (Age of Empires II makes it five, a second row the 8/12 test measures).
+    app()->instance(GameRegistry::class, new GameRegistry(array_slice(array_values(app(GameRegistry::class)->all()), 0, 4)));
     $player = shellPlayer();
     $problems = [];
     $sizes = [];
@@ -174,7 +176,8 @@ test('the hub with 8 and 12 games (a test-only registry): 8 fit without scrollin
     $problems = [];
     $sizes = [];
 
-    foreach ([4, 8, 12] as $count) {
+    // Five: the real registry (chess, Rocket League, two EA Sports FC, Age of Empires II).
+    foreach ([5, 8, 12] as $count) {
         // FakeGame::registry() builds on the bound registry: the real one each time, not the last fake.
         app()->forgetInstance(GameRegistry::class);
         app()->instance(GameRegistry::class, FakeGame::registry($count));

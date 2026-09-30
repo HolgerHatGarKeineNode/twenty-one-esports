@@ -51,6 +51,7 @@ test('every registered game names its kind, and no board game is registered whil
         'rocket-league' => GameKind::Series,
         'ea-sports-fc-27' => GameKind::Series,
         'ea-sports-fc-26' => GameKind::Series,
+        'age-of-empires-2' => GameKind::Series,
     ])
         ->and(config('esports.board_games.enabled'))->toBeFalse()
         ->and($registry->boards())->toBe([])
@@ -77,7 +78,7 @@ test('a board game is registered only with the switch and its own entry on, and 
 
     $on = $rebuild(['enabled' => true, 'games' => [FIXTURE_BOARD => $entry]]);
 
-    expect(array_keys($on->all()))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', FIXTURE_BOARD])
+    expect(array_keys($on->all()))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', FIXTURE_BOARD])
         ->and(array_keys($on->boards()))->toBe([FIXTURE_BOARD])
         ->and($on->isBoard(FIXTURE_BOARD))->toBeTrue()
         ->and($on->isSeries(FIXTURE_BOARD))->toBeFalse()
@@ -94,7 +95,7 @@ test('a board game is registered only with the switch and its own entry on, and 
     $notBoard = $rebuild(['enabled' => true, 'games' => [FIXTURE_BOARD => ['enabled' => true, 'class' => Chess::class]]]);
 
     expect($wrongSlug->boards())->toBe([])
-        ->and(array_keys($notBoard->all()))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
+        ->and(array_keys($notBoard->all()))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2']);
 });
 
 test('the page of a board game is its lobby, or the list of all games while its route is not there, never the chess lobby', function () {
@@ -115,7 +116,7 @@ test('the shell navigation lists a board game with its own actions (P5), while t
 
     $game = collect(ShellNavigation::current()->games())->firstWhere('slug', FIXTURE_BOARD);
 
-    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', FIXTURE_BOARD])
+    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', FIXTURE_BOARD])
         ->and(array_column($game['actions'], 'key'))->toBe(['play', 'ladder', 'rules', 'strongest'])
         ->and($game['actions'][0]['href'])->toBe(route('board.lobby', FIXTURE_BOARD));
 
@@ -185,8 +186,8 @@ test('the rules, the games list, the tournaments list and their cards name a boa
     $this->get(route('play'))->assertOk()->assertSee('Rocket League')->assertSee('Fixture Board');
     $this->get(route('tournaments.index'))->assertOk()->assertSee('Fixture Board');
 
-    expect(PageCardFacts::page('play')['games'])->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', FIXTURE_BOARD])
-        ->and(PageCardFacts::page('rules')['figures'][0])->toBe(['games', 5]);
+    expect(PageCardFacts::page('play')['games'])->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2', FIXTURE_BOARD])
+        ->and(PageCardFacts::page('rules')['figures'][0])->toBe(['games', 6]);
 });
 
 test('the stream bot does not announce a board game before it is playable', function () {
@@ -230,7 +231,7 @@ test('switched off, a board game has no route and no place in the navigation', f
     $this->get('/board/1')->assertNotFound();
     $this->get(route('ladder.show', ['nine-mens-morris', 'blitz']))->assertNotFound();
     $this->get(route('play'))->assertOk()->assertDontSee("Nine Men's Morris")->assertDontSee('data-test="play-game-checkers"', false);
-    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26']);
+    expect(array_column(ShellNavigation::current()->games(), 'slug'))->toBe(['chess', 'rocket-league', 'ea-sports-fc-27', 'ea-sports-fc-26', 'age-of-empires-2']);
 
     // The switch on, but one board game's own entry off: its lobby is not found, the other one's is there.
     NineMensMorrisOn::play();

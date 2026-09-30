@@ -528,6 +528,11 @@ final class SeriesService
 
         $known = $challengerGoals !== null || $challengedGoals !== null;
 
+        // A game without goals (Age of Empires II) has a winner only.
+        if ($known && ! $match->hasGoals()) {
+            throw new SeriesRuleViolation('goals', __('Game :number has a score, but this game records only its winner.', ['number' => $index + 1]));
+        }
+
         if ($known) {
             if ($challengerGoals === null || $challengedGoals === null || $challengerGoals < 0 || $challengedGoals < 0 || $challengerGoals > 99 || $challengedGoals > 99 || $challengerGoals === $challengedGoals) {
                 throw new SeriesRuleViolation('goals', __('Enter both goal counts; a game cannot end in a draw.'));
@@ -768,7 +773,7 @@ final class SeriesService
         $errors = $this->games->get($match->game)->validateResult($match->gameMode(), ['bo' => $match->best_of, 'games' => $games]);
 
         if ($errors !== []) {
-            throw new SeriesRuleViolation('series_invalid', $this->seriesError($errors[0], $match->best_of));
+            throw new SeriesRuleViolation('series_invalid', $this->seriesError($errors[0], $match->best_of, $match->hasGoals()));
         }
 
         return ['games' => $games, 'roster' => $this->rosterFor($match, $side)];
@@ -891,12 +896,13 @@ final class SeriesService
         return $roster;
     }
 
-    private function seriesError(string $code, int $bestOf): string
+    private function seriesError(string $code, int $bestOf, bool $hasGoals = true): string
     {
         return match (true) {
             $code === 'series_not_finished' => __('The series is not finished: one side needs :wins game wins in a best of :bo.', ['wins' => intdiv($bestOf, 2) + 1, 'bo' => $bestOf]),
             $code === 'no_games' => __('Enter the result of each game first.'),
             str_ends_with($code, '_after_series_end') => __('The series was already decided before game :number.', ['number' => (int) filter_var($code, FILTER_SANITIZE_NUMBER_INT)]),
+            str_ends_with($code, '_goals') && ! $hasGoals => __('Game :number has a score, but this game records only its winner.', ['number' => (int) filter_var($code, FILTER_SANITIZE_NUMBER_INT)]),
             str_ends_with($code, '_goals') => __('The goals of game :number do not match its winner.', ['number' => (int) filter_var($code, FILTER_SANITIZE_NUMBER_INT)]),
             default => __('This result is not valid for the format.'),
         };
@@ -1576,7 +1582,7 @@ final class SeriesService
         $errors = $this->games->get($match->game)->validateResult($match->gameMode(), ['bo' => $match->best_of, 'games' => $games]);
 
         if ($errors !== []) {
-            throw new SeriesRuleViolation('series_invalid', $this->seriesError($errors[0], $match->best_of));
+            throw new SeriesRuleViolation('series_invalid', $this->seriesError($errors[0], $match->best_of, $match->hasGoals()));
         }
 
         $wins = SeriesMatch::seriesScore($games);

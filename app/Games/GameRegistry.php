@@ -68,6 +68,19 @@ final class GameRegistry
     }
 
     /**
+     * Whether a series of this game is scored in goals (Rocket League, EA
+     * Sports FC) or in games won only (Age of Empires II): the report form,
+     * the dispute and every page word the result by this. A game no longer
+     * registered keeps the goals wording its series were played with.
+     */
+    public function hasGoals(string $slug): bool
+    {
+        $game = $this->find($slug);
+
+        return ! $game instanceof SeriesGame || $game->hasGoals();
+    }
+
+    /**
      * The board games other than chess (nine men's morris, checkers), in
      * display order. Registered only while `esports.board_games` has them on;
      * every switch between chess and the series leaves these out until their

@@ -22,7 +22,7 @@
  */
 import { SimplePool } from 'nostr-tools/pool';
 import { loadCache, roomEntry, saveCache } from './chatCache.js';
-import { HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
+import { ACCOUNT_CARDS, ACCOUNT_SERVICES, HOST_CARD, accountTags, cardContent, casualExpiration, isExpired, lobbyTags, openCardIds, parseCard, randomPassword } from './lobbyCards.js';
 import { canEncrypt, chatSince, roomMessages, unwrapMessage, wrapGroupMessage } from './nostrChat.js';
 import { ensureSigner } from './nostrSign.js';
 
@@ -60,6 +60,7 @@ export function roomChat(config) {
         lobbyName: '',
         lobbyPassword: '',
         accountId: '',
+        accountService: '',
         cardError: '',
         revealed: [],
         seenBusy: false,
@@ -199,7 +200,7 @@ export function roomChat(config) {
         cardView(card, isOpen) {
             const fields = card.closed ? [] : card.kind === 'lobby'
                 ? [{ label: this.t.cardName, value: card.name }, { label: this.t.cardPassword, value: card.password }]
-                : [{ label: this.t.cardEaId, value: card.id }];
+                : [{ label: card.service === 'ea' ? this.t.cardEaId : ACCOUNT_SERVICES[card.service], value: card.id }];
 
             return {
                 kind: card.kind,
@@ -283,13 +284,22 @@ export function roomChat(config) {
 
         /* ---------- Cards (casual 1v1) ---------- */
 
-        /** Which cards this player may send here: `lobby` (Rocket League host), `account` (EA FC, both). */
+        /**
+         * Which cards this player may send here: `lobby` (Rocket League and Age of Empires II host),
+         * `account` (EA FC, both; Age of Empires II, both, the Steam or Xbox name).
+         */
         get cardKinds() {
             if (!this.casual || !this.casual.started || !this.casual.open) return [];
             const host = HOST_CARD[this.casual.game];
-            if (host?.marker === 'lobby') return this.casual.isHost ? ['lobby'] : [];
+            const account = (ACCOUNT_CARDS[this.casual.game] ?? []).length > 0 ? ['account'] : [];
+            if (host?.marker === 'lobby') return [...(this.casual.isHost ? ['lobby'] : []), ...account];
 
-            return host?.marker === 'account' ? ['account'] : [];
+            return account;
+        },
+
+        /** The services this room's account card may name (EA ID; Steam or Xbox). */
+        get accountServices() {
+            return ACCOUNT_CARDS[this.casual?.game] ?? [];
         },
 
         /** A card goes to exactly one opponent (NIP: refused in a 1v1 room naming more members). */
@@ -311,7 +321,10 @@ export function roomChat(config) {
                 // A fresh password for every new lobby: an old one may sit in stored wraps (NIP threat table).
                 this.lobbyPassword = randomPassword();
             } else {
-                this.accountId = mine?.card.fields[0].value ?? this.casual.eaId ?? '';
+                // The own saved tag of the first service that has one (settings, private), else the first service.
+                const saved = this.casual.accounts ?? { ea: this.casual.eaId ?? '' };
+                this.accountService = mine?.card.marker ?? this.accountServices.find((service) => saved[service]) ?? this.accountServices[0];
+                this.accountId = mine?.card.fields[0].value ?? saved[this.accountService] ?? '';
             }
         },
 
@@ -334,7 +347,7 @@ export function roomChat(config) {
             try {
                 tags = kind === 'lobby'
                     ? lobbyTags({ game: this.casual.game, name: withdraw ? '' : this.lobbyName.trim(), password: withdraw ? '' : this.lobbyPassword.trim() })
-                    : accountTags({ service: HOST_CARD[this.casual.game].value, id: withdraw ? '' : this.accountId.trim() });
+                    : accountTags({ service: this.accountServices.includes(this.accountService) ? this.accountService : '', id: withdraw ? '' : this.accountId.trim() });
                 if (!withdraw && tags.length === 1) throw new Error('card_value');
             } catch {
                 this.cardError = this.t.cardInvalid;

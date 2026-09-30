@@ -155,6 +155,7 @@ test('on a phone the active game chip shows whole and no chip label is cut, with
         'rocket-league' => route('games.rocket-league', absolute: false),
         'ea-sports-fc-27' => route('games.series', 'ea-sports-fc-27', false),
         'ea-sports-fc-26' => route('games.series', 'ea-sports-fc-26', false),
+        'age-of-empires-2' => route('games.series', 'age-of-empires-2', false),
     ];
     // The guests first: the pages of one test share their cookies, so a guest after the login would not be one.
     $runs = [['guest', null, 'en', 375, 667], ['guest', null, 'en', 320, 568], ['guest', null, 'de', 320, 568], ['player', shellPlayer(), 'de', 320, 568]];

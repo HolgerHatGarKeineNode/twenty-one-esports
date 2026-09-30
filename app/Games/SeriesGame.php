@@ -6,7 +6,8 @@ use App\Games\Contracts\Game;
 
 /**
  * A game played as a best-of series between two sides, with goals per game
- * (Rocket League, EA Sports FC). Everything the series flow needs (challenge,
+ * (Rocket League, EA Sports FC) or only a winner per game (Age of Empires
+ * II, hasGoals()). Everything the series flow needs (challenge,
  * match room, report, dispute, tournament series) reads the mode's `bestOf`
  * and this validator; a new series game only names itself, its modes and
  * its per-game flags.
@@ -32,6 +33,17 @@ abstract class SeriesGame implements Game
         return GameKind::Series;
     }
 
+    /**
+     * Whether a game of it ends with goals (team goals from the end screen).
+     * A game without goals reports its winner only: both goal values are
+     * always null, a score is refused, and every page words the result as
+     * games won instead of goals.
+     */
+    public function hasGoals(): bool
+    {
+        return true;
+    }
+
     public function mode(string $slug): ?GameMode
     {
         return $this->modes()[$slug] ?? null;
@@ -39,12 +51,14 @@ abstract class SeriesGame implements Game
 
     public function resultSchema(GameMode $mode): array
     {
+        $goals = fn (string $side): string => $this->hasGoals() ? "team goals of the {$side}, or null when unknown" : 'always null: this game has no goals';
+
         return [
             'bo' => 'integer, one of '.implode(', ', $mode->bestOf),
             'games' => 'list, one entry per game played, in order',
             'games.*.winner' => 'challenger | challenged',
-            'games.*.challenger' => 'team goals of the challenger, or null when unknown',
-            'games.*.challenged' => 'team goals of the challenged, or null when unknown',
+            'games.*.challenger' => $goals('challenger'),
+            'games.*.challenged' => $goals('challenged'),
             'games.*.flags' => 'optional list: '.implode(', ', $this->flags()),
         ];
     }
@@ -87,7 +101,9 @@ abstract class SeriesGame implements Game
             $winnerGoals = $game[$winner] ?? null;
             $loserGoals = $game[$loser] ?? null;
 
-            if ($winnerGoals !== null || $loserGoals !== null) {
+            if (! $this->hasGoals() && ($winnerGoals !== null || $loserGoals !== null)) {
+                $errors[] = "game_{$number}_goals";
+            } elseif ($winnerGoals !== null || $loserGoals !== null) {
                 if (! is_int($winnerGoals) || ! is_int($loserGoals) || $winnerGoals < 0 || $loserGoals < 0 || $winnerGoals <= $loserGoals) {
                     $errors[] = "game_{$number}_goals";
                 }

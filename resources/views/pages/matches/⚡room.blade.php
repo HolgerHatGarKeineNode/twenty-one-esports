@@ -126,7 +126,10 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     /** Rebuild the sheet from the stored live games. */
     private function readSheet(): void
     {
-        $live = $this->fresh()->live_games ?? [];
+        $match = $this->fresh();
+        $live = $match->live_games ?? [];
+        // A game without goals (Age of Empires II) has only a winner per game: every row is a winner-only row.
+        $winnersOnly = ! $match->hasGoals();
         $this->sheet = [];
 
         for ($i = 0; $i < $this->match->best_of; $i++) {
@@ -134,7 +137,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             $this->sheet[] = [
                 'c' => $game['challenger'] ?? null,
                 'd' => $game['challenged'] ?? null,
-                'unknown' => $game !== null && ($game['winner'] ?? null) !== null && ($game['challenger'] ?? null) === null,
+                'unknown' => $winnersOnly || ($game !== null && ($game['winner'] ?? null) !== null && ($game['challenger'] ?? null) === null),
                 'winner' => $game['winner'] ?? null,
             ];
         }
@@ -151,6 +154,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             return;
         }
 
+        // A game without goals never sends any, whatever the form holds.
+        $row['unknown'] = $row['unknown'] || ! $this->match->hasGoals();
         $goal = fn (mixed $v): ?int => $v === null || $v === '' ? null : (is_numeric($v) ? (int) $v : -1);
         $c = $row['unknown'] ? null : $goal($row['c']);
         $d = $row['unknown'] ? null : $goal($row['d']);
@@ -534,6 +539,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 'lobbyName' => 'e21-'.$match->number,
                 'eaId' => (string) ($this->user()->gamer_tags['ea'] ?? ''),
             ];
+
+            // Age of Empires II: the player's own Steam and Xbox names from the private gamer tags, sent only on Send card.
+            if ($match->game === 'age-of-empires-2') {
+                $casual['accounts'] = array_map(fn (string $service): string => (string) ($this->user()->gamer_tags[$service] ?? ''), ['steam' => 'steam', 'xbox' => 'xbox']);
+            }
         }
 
         return [
@@ -553,14 +563,14 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 'notSent' => __('The message did not reach any relay. Please try again.'),
                 'failed' => __('That did not work. Please try again.'),
                 'copy' => __('Copy'),
-                'lobbyTitle' => __('Rocket League private match'),
-                'accountTitle' => __('EA ID for a friend request'),
+                'lobbyTitle' => $match->game === 'age-of-empires-2' ? __('Age of Empires II lobby') : __('Rocket League private match'),
+                'accountTitle' => $match->game === 'age-of-empires-2' ? __('Steam or Xbox name to find each other') : __('EA ID for a friend request'),
                 'cardName' => __('Name'),
                 'cardPassword' => __('Password'),
                 'cardEaId' => __('EA ID'),
                 'cardReplaced' => __('Replaced by a newer card'),
                 'lobbyClosed' => __('Lobby closed'),
-                'accountWithdrawn' => __('EA ID withdrawn'),
+                'accountWithdrawn' => $match->game === 'age-of-empires-2' ? __('Name withdrawn') : __('EA ID withdrawn'),
                 'cardNotSent' => __('The card did not reach your opponent\'s relays. Please try again.'),
                 'cardInvalid' => __('Every field needs 1 to 64 characters, without line breaks.'),
                 'cardOneOpponent' => __('A card goes to exactly one opponent, and this room has more players.'),
@@ -673,6 +683,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     $other = $mySide === null ? 'challenged' : SeriesMatch::otherSide($mySide);
     $games = $m->currentGames();
     $wins = SeriesMatch::seriesScore($games);
+    // Age of Empires II has no goals: the sheet asks for the winner of each game only.
+    $hasGoals = $m->hasGoals();
     $chip = SeriesPresenter::chip($m);
     $elo = SeriesPresenter::ratingFacts($m);
     // A tournament whose directors enter the results: the players report and accept nothing (P8b).
@@ -948,16 +960,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
     {{-- Games + Who played --}}
     <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section aria-labelledby="games-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="games">
-            <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games in this series') }}</h2><span class="text-xs text-ink-2">{{ __('after each game, enter the team goals from the end screen') }}</span></span>
+            <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="games-h" class="m-0 text-[15px] font-bold">{{ __('Games in this series') }}</h2><span class="text-xs text-ink-2">{{ $hasGoals ? __('after each game, enter the team goals from the end screen') : __('after each game, pick its winner') }}</span></span>
+            @if ($hasGoals)
             <div class="grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-center gap-2 text-xs text-ink-3 lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]">
                 <span>{{ __('Game #') }}</span><span class="text-center">{{ $m->challenger_tag }}</span><span></span><span class="text-center">{{ $m->challenged_tag }}</span><span>{{ __('Winner') }}</span><span class="max-lg:hidden"></span>
             </div>
+            @endif
             @foreach ($this->sheet as $index => $row)
                 @php($decided = $index > 0 && max(SeriesMatch::seriesScore(array_slice(array_map(fn ($r) => ['winner' => $r['winner']], $this->sheet), 0, $index))) >= intdiv($m->best_of, 2) + 1)
                 @php($current = $row['winner'] === null && ! $decided && ($index === 0 || $this->sheet[$index - 1]['winner'] !== null))
-                <div wire:key="g-{{ $index }}" @class(['grid grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] items-center gap-2 border-b border-hairline py-2 text-[13px] lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]', 'opacity-50' => $decided]) data-test="game-row">
+                <div wire:key="g-{{ $index }}" @class(['grid items-center gap-2 border-b border-hairline py-2 text-[13px]', 'grid-cols-[64px_56px_12px_56px_minmax(0,1fr)] lg:grid-cols-[72px_60px_12px_60px_minmax(0,1fr)_130px]' => $hasGoals, 'grid-cols-[64px_minmax(0,1fr)_auto] lg:grid-cols-[72px_minmax(0,1fr)_auto]' => ! $hasGoals, 'opacity-50' => $decided]) data-test="game-row">
                     <b>{{ __('Game :n', ['n' => $index + 1]) }}</b>
-                    @foreach (['c', 'd'] as $box)
+                    @foreach ($hasGoals ? ['c', 'd'] : [] as $box)
                         <input type="number" inputmode="numeric" min="0" max="99" wire:model.live.blur="sheet.{{ $index }}.{{ $box }}" @disabled(! $editable || $row['unknown'] || $decided)
                                aria-label="{{ __('Goals of :clan in game :n', ['clan' => $m->sideTag($box === 'c' ? 'challenger' : 'challenged'), 'n' => $index + 1]) }}" data-test="goals-{{ $index }}-{{ $box }}"
                                @class(['h-11 w-full rounded-md border bg-ground px-2 text-center text-[15px] text-ink disabled:opacity-60', 'border-btc' => $current && $editable, 'border-edge' => ! ($current && $editable)])>
@@ -972,16 +986,18 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                             {{ $current && $m->status === SeriesStatus::Accepted && ! $m->start_at?->isFuture() ? __('playing now') : __('not played') }}
                         @endif
                     </span>
-                    <span class="col-span-5 flex flex-wrap items-center gap-3 lg:col-span-1">
+                    <span @class(['flex flex-wrap items-center gap-3', 'col-span-5 lg:col-span-1' => $hasGoals])>
                         @if ($editable && ! $decided)
-                            <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-xs text-ink-2"><input type="checkbox" wire:model.live="sheet.{{ $index }}.unknown" class="size-4 accent-[#F7931A]">{{ __('Goals unknown') }}</label>
+                            @if ($hasGoals)
+                                <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-xs text-ink-2"><input type="checkbox" wire:model.live="sheet.{{ $index }}.unknown" class="size-4 accent-[#F7931A]">{{ __('Goals unknown') }}</label>
+                            @endif
                             @if ($row['unknown'])
                                 <select wire:model.live="sheet.{{ $index }}.winner" aria-label="{{ __('Winner of game :n', ['n' => $index + 1]) }}" class="h-9 rounded-md border border-edge bg-ground px-2 text-xs text-ink">
                                     <option value="">{{ __('winner?') }}</option>
                                     @foreach (SeriesMatch::SIDES as $side)<option value="{{ $side }}">{{ $m->sideTag($side) }}</option>@endforeach
                                 </select>
                             @endif
-                        @elseif ($row['unknown'])
+                        @elseif ($row['unknown'] && $hasGoals)
                             <span class="text-xs text-ink-3">{{ __('Goals unknown') }}</span>
                         @endif
                     </span>
@@ -991,7 +1007,9 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 <span>{{ __('Series after game :n', ['n' => $playing]) }} <b class="text-ink">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b></span>
                 <span>{{ __('shown publicly as provisional until both captains confirm') }}</span>
             </div>
-            <p class="m-0 flex items-start gap-2 text-xs leading-normal text-ink-3"><x-icon name="alert" :size="14" class="mt-0.5 shrink-0" />{{ __('Forgot the goals? Tick "Goals unknown" and just pick the winner. The game counts for the series but not for goal stats.') }}</p>
+            @if ($hasGoals)
+                <p class="m-0 flex items-start gap-2 text-xs leading-normal text-ink-3"><x-icon name="alert" :size="14" class="mt-0.5 shrink-0" />{{ __('Forgot the goals? Tick "Goals unknown" and just pick the winner. The game counts for the series but not for goal stats.') }}</p>
+            @endif
         </section>
 
         <section aria-labelledby="who-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="who-played">

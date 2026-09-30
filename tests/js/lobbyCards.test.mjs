@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import * as nip44 from 'nostr-tools/nip44';
 import {
-    MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, randomPassword, validValue,
+    ACCOUNT_CARDS, HOST_CARD, MAX_FUTURE, accountTags, cacheEntry, cardContent, casualExpiration, expirationOf, isExpired, lobbyTags, openCardIds, parseCard, randomPassword, validValue,
 } from '../../resources/js/lobbyCards.js';
 import { unwrapMessage, wrapGroupMessage } from '../../resources/js/nostrChat.js';
 
@@ -40,7 +40,7 @@ test('cards are built from the fields, and a withdrawal carries the marker alone
     assert.throws(() => lobbyTags({ game: 'rocket-league', name: 'only a name' }), /card_value/);
     assert.throws(() => lobbyTags({ game: 'rocket-league', name: 'x'.repeat(65), password: 'p' }), /card_value/);
     assert.throws(() => lobbyTags({ game: 'ea-sports-fc-26', name: 'n', password: 'p' }), /card_game/);
-    assert.throws(() => accountTags({ service: 'steam', id: 'x' }), /card_service/);
+    assert.throws(() => accountTags({ service: 'battlenet', id: 'x' }), /card_service/);
     assert.throws(() => accountTags({ service: 'ea', id: 'two\nlines' }), /card_value/);
 });
 
@@ -67,7 +67,7 @@ test('a card is read from its tags only; anything off the rules is a plain messa
         'a data tag of the other card': [['account', 'ea'], ['account-id', 'x'], ['lobby-password', 'p']],
         'a name without password': [['lobby', 'rocket-league'], ['lobby-name', 'n']],
         'an unknown game': [['lobby', 'ea-sports-fc-26'], ['lobby-name', 'n'], ['lobby-password', 'p']],
-        'an unknown service': [['account', 'steam'], ['account-id', 'x']],
+        'an unknown service': [['account', 'battlenet'], ['account-id', 'x']],
         'an empty value': [['account', 'ea'], ['account-id', '']],
         'a control character': [['account', 'ea'], ['account-id', 'a\u0007b']],
         'a line separator': [['account', 'ea'], ['account-id', 'a\u2028b']],
@@ -194,4 +194,17 @@ test('the suggested password is random, six characters, without look-alikes', ()
     let calls = 0;
     const bytes = (n) => (calls++ === 0 ? new Uint8Array(n).fill(255) : Uint8Array.from({ length: n }, (_, i) => i));
     assert.equal(randomPassword(6, bytes), 'abcdef');
+});
+
+test('Age of Empires II: the host shares a lobby card, either player may send a Steam or Xbox account card (rev. 9.16)', () => {
+    const lobby = lobbyTags({ game: 'age-of-empires-2', name: 'e21-1234', password: 'k7m2q9' });
+    const steam = accountTags({ service: 'steam', id: 'Saladin_21' });
+
+    assert.deepEqual(HOST_CARD['age-of-empires-2'], { marker: 'lobby', value: 'age-of-empires-2' });
+    assert.deepEqual(ACCOUNT_CARDS['age-of-empires-2'], ['steam', 'xbox']);
+    assert.equal(ACCOUNT_CARDS['rocket-league'], undefined);
+    assert.deepEqual(parseCard(rumor(lobby), NOW), { kind: 'lobby', game: 'age-of-empires-2', key: 'lobby:age-of-empires-2', closed: false, name: 'e21-1234', password: 'k7m2q9' });
+    assert.deepEqual(parseCard(rumor(steam), NOW), { kind: 'account', service: 'steam', key: 'account:steam', closed: false, id: 'Saladin_21' });
+    assert.equal(cardContent(parseCard(rumor(steam), NOW), 1234), 'Steam: Saladin_21\n(add me as a friend for match 1234)');
+    assert.deepEqual(accountTags({ service: 'xbox' }), [['account', 'xbox']]);
 });

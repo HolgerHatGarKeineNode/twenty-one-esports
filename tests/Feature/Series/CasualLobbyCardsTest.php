@@ -22,7 +22,63 @@ test('the card rules hold in the client: build, parse, validation, newest wins, 
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/lobbyCards.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 11')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 12')->toContain('ℹ skipped 0');
+});
+
+test('Age of Empires II lobby card: only the host composes it, with the proposed name, and nothing of it reaches another page', function () {
+    [$match, $host, $guest] = casualStarted('age-of-empires-2');
+
+    $hostRoom = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match]);
+    $config = $hostRoom->instance()->chatConfig();
+
+    expect($config['casual']['game'])->toBe('age-of-empires-2')
+        ->and($config['casual']['isHost'])->toBeTrue()
+        ->and($config['casual']['lobbyName'])->toBe('e21-'.$match->number)
+        ->and($config['labels']['lobbyTitle'])->toBe('Age of Empires II lobby')
+        ->and($hostRoom->html())->toContain('data-test="lobby-form"')->toContain('Age of Empires II lobby')
+        ->toContain('Host a lobby in Age of Empires II with a password and spectators allowed');
+
+    // The guest is told to wait for it; the league stores the flag only, never the lobby.
+    Livewire::actingAs($guest)->test('pages::matches.room', ['match' => $match])->assertSee('Waiting for '.$host->displayName().' to share the lobby in the chat.');
+    Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match])->call('casualLobbyShared')->assertReturned(['ok' => true]);
+
+    expect($match->refresh()->lobby_shared_at)->not->toBeNull()
+        ->and($match->lobby_name)->toBeNull()
+        ->and($match->lobby_password)->toBeNull();
+
+    // A third user gets the public match page, without the room's composer or its proposed name.
+    $this->actingAs(User::factory()->create())->get(route('matches.room', $match))->assertRedirect(route('matches.show', $match));
+    expect($this->get(route('matches.show', $match))->assertOk()->getContent())->not->toContain('data-test="card-composer"')->not->toContain('e21-'.$match->number);
+});
+
+test('Age of Empires II account card: each player gets only their own Steam and Xbox names to send, and no page shows them', function () {
+    [$match, $host, $guest] = casualStarted('age-of-empires-2');
+    $host->forceFill(['gamer_tags' => ['steam' => 'Saladin_Steam', 'xbox' => 'Saladin_Xbox', 'epic' => 'saladinepic']])->save();
+    $guest->forceFill(['gamer_tags' => ['steam' => 'Richard_Steam']])->save();
+
+    // Livewire::actingAs() switches the logged-in user: each room is read while its player is logged in.
+    $hostRoom = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match]);
+    expect($hostRoom->instance()->chatConfig()['casual']['accounts'])->toBe(['steam' => 'Saladin_Steam', 'xbox' => 'Saladin_Xbox'])
+        ->and($hostRoom->html())->not->toContain('Richard_Steam');
+
+    $guestRoom = Livewire::actingAs($guest)->test('pages::matches.room', ['match' => $match]);
+    expect($guestRoom->instance()->chatConfig()['casual']['accounts'])->toBe(['steam' => 'Richard_Steam', 'xbox' => ''])
+        ->and($guestRoom->instance()->chatConfig()['labels']['accountTitle'])->toBe('Steam or Xbox name to find each other')
+        // The composer offers the platform; the names travel only in the chat config of their owner, sent on Send card.
+        ->and($guestRoom->html())->toContain('data-test="card-account-service"')->not->toContain('Saladin_Steam');
+
+    // A Rocket League or EA FC room has no Steam or Xbox prefill.
+    [$rocket, $rocketHost] = casualStarted('rocket-league');
+    $rocketHost->forceFill(['gamer_tags' => ['steam' => 'Rocket_Steam']])->save();
+    expect(Livewire::actingAs($rocketHost)->test('pages::matches.room', ['match' => $rocket])->instance()->chatConfig()['casual'])->not->toHaveKey('accounts');
+
+    // Nobody else sees a name: the public match page, the players' profiles.
+    $third = User::factory()->create();
+    $pages = [route('matches.show', $match), route('players.show', $host->npub), route('players.show', $guest->npub)];
+
+    foreach ($pages as $url) {
+        expect($this->actingAs($third)->get($url)->assertOk()->getContent())->not->toContain('Saladin_Steam')->not->toContain('Saladin_Xbox')->not->toContain('Richard_Steam');
+    }
 });
 
 test('the room chat and the game chat keep separate caches, and neither holds a card or breaks on the other\'s entries', function () {

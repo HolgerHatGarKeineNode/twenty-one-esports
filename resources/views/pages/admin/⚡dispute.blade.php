@@ -108,10 +108,12 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     private function enteredGames(): array
     {
         $games = [];
+        // A game without goals (Age of Empires II): the admin picks the winner of each game, nothing else.
+        $hasGoals = $this->case->hasGoals();
 
         foreach ($this->games as $row) {
-            $c = $row['c'] === null || $row['c'] === '' ? null : (int) $row['c'];
-            $d = $row['d'] === null || $row['d'] === '' ? null : (int) $row['d'];
+            $c = ! $hasGoals || $row['c'] === null || $row['c'] === '' ? null : (int) $row['c'];
+            $d = ! $hasGoals || $row['d'] === null || $row['d'] === '' ? null : (int) $row['d'];
             $winner = $c !== null && $d !== null && $c !== $d ? ($c > $d ? 'challenger' : 'challenged') : ($row['winner'] ?: null);
 
             if ($winner === null) {
@@ -267,7 +269,7 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                         </button>
                     @endforeach
                     <button type="button" role="radio" wire:click="$set('decision', 'result')" aria-checked="{{ $decision === 'result' ? 'true' : 'false' }}" @class([$option, 'border-btc bg-btc-press' => $decision === 'result', 'border-line bg-ground' => $decision !== 'result'])>
-                        <b class="text-[13px]">{{ __('Enter the result') }}</b><span class="text-xs text-ink-2">{{ __('goals per game') }}</span>
+                        <b class="text-[13px]">{{ __('Enter the result') }}</b><span class="text-xs text-ink-2">{{ $case->hasGoals() ? __('goals per game') : __('winner per game') }}</span>
                     </button>
                     <button type="button" role="radio" wire:click="$set('decision', 'void')" aria-checked="{{ $decision === 'void' ? 'true' : 'false' }}" data-test="decide-void" @class([$option, 'border-btc bg-btc-press' => $decision === 'void', 'border-line bg-ground' => $decision !== 'void'])>
                         <b class="text-[13px]">{{ __('Void match') }}</b><span class="text-xs text-ink-2">{{ __('no winner') }}</span>
@@ -289,6 +291,16 @@ new #[Title('Dispute')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                 @if ($decision === 'result')
                     <div class="flex flex-col gap-2" data-test="result-entry">
                         @foreach ($games as $index => $row)
+                            @if (! $case->hasGoals())
+                                <div class="grid grid-cols-[70px_minmax(0,1fr)] items-center gap-2 text-[13px]">
+                                    <span class="text-ink-2">{{ __('Game :n', ['n' => $index + 1]) }}</span>
+                                    <select wire:model="games.{{ $index }}.winner" aria-label="{{ __('Winner of game :n', ['n' => $index + 1]) }}" data-test="result-winner-{{ $index }}" class="h-10 max-w-60 rounded-md border border-edge bg-ground px-2 text-ink">
+                                        <option value="">{{ __('not played') }}</option>
+                                        @foreach (SeriesMatch::SIDES as $side)<option value="{{ $side }}">{{ $case->sideTag($side) }}</option>@endforeach
+                                    </select>
+                                </div>
+                                @continue
+                            @endif
                             <div class="grid grid-cols-[70px_60px_12px_60px_minmax(0,1fr)] items-center gap-2 text-[13px]">
                                 <span class="text-ink-2">{{ __('Game :n', ['n' => $index + 1]) }}</span>
                                 <input type="number" min="0" max="99" wire:model="games.{{ $index }}.c" aria-label="{{ __('Goals of :clan in game :n', ['clan' => $case->challenger_tag, 'n' => $index + 1]) }}" class="h-10 rounded-md border border-edge bg-ground px-2 text-center text-ink">

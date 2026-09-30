@@ -15,6 +15,7 @@ use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -996,7 +997,8 @@ final class PageCard
     /** One line under the title, what the page is for. */
     private function pageLine(): string
     {
-        $games = implode(', ', array_map(fn (string $game): string => GameNames::game($game), (array) ($this->facts['games'] ?? [])));
+        // A name without its subtitle ("Age of Empires II", not "…: Definitive Edition"): the line lists every game and must fit the card.
+        $games = implode(', ', array_map(fn (string $game): string => Str::before(GameNames::game($game), ':'), (array) ($this->facts['games'] ?? [])));
 
         return match ($this->key) {
             'clans' => __('Every clan of the league with its players, lineups and Clan Rating.'),

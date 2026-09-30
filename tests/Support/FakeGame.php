@@ -28,7 +28,7 @@ final class FakeGame implements Game
     public static function registry(int $total): GameRegistry
     {
         $real = array_values(app(GameRegistry::class)->all());
-        $names = ['Counter-Strike 2', 'Street Fighter 6', 'Age of Empires II', 'Tekken 8', 'StarCraft II', 'Trackmania', 'Chess960', 'Brawlhalla', 'Dota 2', 'Valorant'];
+        $names = ['Counter-Strike 2', 'Street Fighter 6', 'Halo Infinite', 'Tekken 8', 'StarCraft II', 'Trackmania', 'Chess960', 'Brawlhalla', 'Dota 2', 'Valorant'];
         $fakes = [];
 
         foreach (array_slice($names, 0, max(0, $total - count($real))) as $index => $name) {

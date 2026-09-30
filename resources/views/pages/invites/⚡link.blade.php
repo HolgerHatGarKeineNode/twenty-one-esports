@@ -364,7 +364,7 @@ new #[Layout('layouts::app')] class extends Component {
         <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1 lg:gap-6">
             <div class="flex flex-wrap items-center gap-2">
                 <span class="inline-flex h-7 items-center gap-2 rounded-md border border-line bg-well px-2.5 text-xs">
-                    <x-icon :name="$type->isChess() ? 'pawn' : ($type === InviteLinkType::Series ? 'rocket-league' : 'clans')" :size="14" />{{ $copy->gameChip() }}
+                    <x-icon :name="$type->isChess() ? 'pawn' : ($type === InviteLinkType::Series ? (app(\App\Games\GameRegistry::class)->find((string) $link->option('game'))?->assets()->icon ?? 'rocket-league') : 'clans')" :size="14" />{{ $copy->gameChip() }}
                 </span>
                 <span @class(['inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs', 'border-line text-ink-2' => $tag[1] === 'plain', 'border-btc-deep bg-btc-chip font-bold text-btc-hi' => $tag[1] === 'warn'])>
                     @if ($tag[1] === 'warn')<x-icon name="clock" :size="14" />@endif{{ $tag[0] }}

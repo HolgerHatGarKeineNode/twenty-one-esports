@@ -69,6 +69,7 @@ test('players pair on the same platform, or across platforms only when both allo
     'FC on Switch never plays cross-platform' => ['ea-sports-fc-27', Platform::Switch, true, Platform::Pc, true, false],
     'FC on Switch against Switch' => ['ea-sports-fc-27', Platform::Switch, false, Platform::Switch, false, true],
     'FC across consoles with crossplay' => ['ea-sports-fc-27', Platform::PlayStation, true, Platform::Xbox, true, true],
+    'AoE2 on PC against Xbox with crossplay' => ['age-of-empires-2', Platform::Pc, true, Platform::Xbox, true, true],
 ]);
 
 test('a player is paired with the longest waiting fitting opponent, never across games', function () {

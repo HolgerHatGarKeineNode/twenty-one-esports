@@ -202,7 +202,7 @@ new #[Title('Disputes')] #[Layout('layouts::app', ['section' => 'admin'])] class
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach ([
             [__('Accept a report'), __('One of the two reports stands. The league record says "decided by admin".')],
-            [__('Enter the result'), __('You enter the goals per game after checking the evidence.')],
+            [__('Enter the result'), __('You enter each game\'s goals, or its winner in a game without goals, after checking the evidence.')],
             [__('Forfeit'), __('One side didn\'t show up, reported with the no-show button from 15 min after the start while no game was entered. The other side wins.')],
             [__('Void'), __('The match doesn\'t count, nobody wins. For breakdowns that are nobody\'s fault.')],
         ] as [$title, $text])

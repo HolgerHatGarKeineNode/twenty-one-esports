@@ -1036,6 +1036,11 @@ final class TournamentRunner
             $games[] = ['winner' => $a > $b ? 'challenger' : 'challenged', 'challenger' => $a, 'challenged' => $b];
         }
 
+        // A game without goals (Age of Empires II) is entered by its winners only.
+        if ($games !== [] && ! $this->games->hasGoals($tournament->game)) {
+            throw new TournamentRuleViolation('goals', __('Game :number has a score, but this game records only its winner.', ['number' => 1]));
+        }
+
         if ($games === []) {
             foreach ((array) ($input['winners'] ?? []) as $winner) {
                 if (! in_array((int) $winner, [0, 1], true)) {

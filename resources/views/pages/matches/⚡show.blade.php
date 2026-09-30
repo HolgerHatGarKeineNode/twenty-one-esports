@@ -120,6 +120,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $viewer = auth()->user();
     $games = $match->currentGames();
     $wins = SeriesMatch::seriesScore($games);
+    // Age of Empires II has no goals: the flow and the summary count games won instead.
+    $hasGoals = $match->hasGoals();
     $goals = ['challenger' => array_sum(array_map(fn ($g) => (int) ($g['challenger'] ?? 0), $games)), 'challenged' => array_sum(array_map(fn ($g) => (int) ($g['challenged'] ?? 0), $games))];
     $report = $match->latestReport;
     $mySide = $match->captainSideOf($viewer);
@@ -197,7 +199,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <div class="relative">
                         @foreach ($games as $index => $game)
                             <span class="absolute inset-x-0 -translate-y-1/2 text-right text-[11px] leading-tight text-ink-2 lg:text-xs lg:whitespace-nowrap" style="top: {{ ($index + 0.5) / count($games) * 100 }}%">
-                                {{ __('Game :n', ['n' => $index + 1]) }} · {{ $game['challenger'] !== null ? $game['challenger'].':'.$game['challenged'] : '?' }} · {{ $match->sideTag($game['winner']) }}
+                                {{ __('Game :n', ['n' => $index + 1]) }}@if ($hasGoals) · {{ $game['challenger'] !== null ? $game['challenger'].':'.$game['challenged'] : '?' }}@endif · {{ $match->sideTag($game['winner']) }}
                             </span>
                         @endforeach
                     </div>
@@ -213,14 +215,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     <div class="relative text-xs">
                         @foreach (SeriesMatch::SIDES as $side)
                             <span class="absolute inset-x-0 -translate-y-1/2 text-[11px] leading-tight lg:text-xs lg:whitespace-nowrap" style="top: {{ $side === 'challenger' ? 22 : 52 }}%; color: {{ $colors[$side] }}">
-                                {{ $match->sideName($side) }} · {{ trans_choice(':count goal|:count goals', $goals[$side]) }}@if ($match->winner === $side) · {{ __('winner') }}@endif
+                                {{ $match->sideName($side) }} · {{ $hasGoals ? trans_choice(':count goal|:count goals', $goals[$side]) : trans_choice(':count game won|:count games won', $wins[$side]) }}@if ($match->winner === $side) · {{ __('winner') }}@endif
                             </span>
                         @endforeach
                         <span class="absolute inset-x-0 top-[88%] -translate-y-1/2 text-[11px] leading-tight text-ink-2 lg:text-xs lg:whitespace-nowrap">{{ __('League record') }}</span>
                     </div>
                 </div>
             @endif
-            <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Width = goals in the game, team goals from the end screen. A game marked "goals unknown" flows at a fixed width and only counts as a win.') }}@if (! $match->status->hasResult() && $games !== []) {{ __('Shown as provisional until both captains confirm.') }}@endif</p>
+            <p class="m-0 text-xs leading-normal text-ink-2">{{ $hasGoals ? __('Width = goals in the game, team goals from the end screen. A game marked "goals unknown" flows at a fixed width and only counts as a win.') : __('One line per game, flowing to the side that won it. This game has no score per game, only a winner.') }}@if (! $match->status->hasResult() && $games !== []) {{ __('Shown as provisional until both captains confirm.') }}@endif</p>
         </div>
     </section>
 
@@ -252,7 +254,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 </ul>
             </div>
             <div class="mt-4 flex flex-wrap items-center gap-4 border-t border-hairline pt-4">
-                <span class="text-[13px] text-ink-2">{{ __('Series') }} <b class="text-ink">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b> · {{ trans_choice(':count game|:count games', count($games)) }} · {{ trans_choice(':count goal|:count goals', $goals['challenger'] + $goals['challenged']) }}</span>
+                <span class="text-[13px] text-ink-2">{{ __('Series') }} <b class="text-ink">{{ $wins['challenger'] }} : {{ $wins['challenged'] }}</b> · {{ trans_choice(':count game|:count games', count($games)) }}@if ($hasGoals) · {{ trans_choice(':count goal|:count goals', $goals['challenger'] + $goals['challenged']) }}@endif</span>
                 <span class="grow"></span>
                 @if ($toAnswer)
                     <a href="{{ route('matches.room', $match) }}#check" class="inline-flex h-11 items-center rounded-md border border-loss px-5 text-[15px] text-loss hover:text-loss" data-test="detail-report-problem">{{ __('Report a problem') }}</a>

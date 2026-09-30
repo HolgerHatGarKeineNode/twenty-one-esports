@@ -23,6 +23,7 @@ use App\Support\Series\SeriesRuleViolation;
 use App\Support\Series\SeriesService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 use Tests\Support\TestSigner;
 use Tests\Support\TrustedFacts;
 
@@ -147,6 +148,44 @@ test('an EA Sports FC 1v1 series runs challenge, report and confirm like Rocket 
     'FC 27, best of 1' => ['ea-sports-fc-27', 1, [[2, 1]], 'challenger'],
     'FC 26, best of 3' => ['ea-sports-fc-26', 3, [[0, 1], [3, 2], [1, 4]], 'challenged'],
 ]);
+
+test('an Age of Empires II 3v3 series is reported with its winners only: a score is refused, and no page says goals', function () {
+    [$match, [, $captainA], [, $captainB]] = acceptedSeries(bestOf: 3, game: 'age-of-empires-2', mode: '3v3');
+
+    expect(fn () => $this->series->saveLiveGame($match, $captainA, 0, 3, 1, null))->toThrow(SeriesRuleViolation::class, 'records only its winner');
+
+    foreach (['challenger', 'challenged', 'challenger'] as $index => $winner) {
+        $this->series->saveLiveGame($match, $captainA, $index, null, null, $winner);
+    }
+
+    // The room asks for the winner of each game, never for goals.
+    $room = Livewire::actingAs($captainA)->test('pages::matches.room', ['match' => $match])
+        ->assertSee('after each game, pick its winner')->assertDontSeeHtml('data-test="goals-0-c"')->html();
+    $this->series->report($match, $captainA, []);
+    $this->series->respond($match, $captainB, 'confirmed', '', []);
+
+    expect($match->refresh()->status)->toBe(SeriesStatus::Confirmed)
+        ->and($match->winner)->toBe('challenger')
+        ->and(array_column($match->result_games, 'challenger'))->toBe([null, null, null]);
+
+    // Rocket League keeps its goals.
+    [$rocket, [, $rocketCaptain]] = acceptedSeries();
+    Livewire::actingAs($rocketCaptain)->test('pages::matches.room', ['match' => $rocket])
+        ->assertSee('after each game, enter the team goals from the end screen')->assertSeeHtml('data-test="goals-0-c"');
+
+    // The room, the match page and the rules, in English and in German: no goals, no Tore.
+    $text = fn (string $html): string => html_entity_decode(strip_tags((string) preg_replace('~<(script|style)\b.*?</\1>~s', '', $html)));
+    $pages = [$text($room), $text($this->get(route('matches.show', $match->number))->assertOk()->getContent()), $text($this->get(route('rules'))->assertOk()->getContent())];
+    $german = [$text($this->withSession(['locale' => 'de'])->get(route('matches.show', $match->number))->assertOk()->getContent()), $text($this->withSession(['locale' => 'de'])->get(route('rules'))->assertOk()->getContent())];
+
+    foreach ($pages as $page) {
+        expect($page)->not->toMatch('/\bgoals?\b/i');
+    }
+
+    foreach ($german as $page) {
+        expect($page)->not->toMatch('/\bTor(e|en)?\b/u');
+    }
+});
 
 test('an EA Sports FC series only takes the lengths and scores of its registry entry', function () {
     $a = seriesLineup('1v1', game: 'ea-sports-fc-27');

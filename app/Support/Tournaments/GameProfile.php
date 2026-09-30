@@ -18,7 +18,9 @@ use InvalidArgumentException;
  * request, the lobby and the report; `longPlay` stretches a game to its
  * longest (EA Sports FC extra time and penalties, Rocket League overtime).
  * Both are unmeasured assumptions: FC 10 min and 1.3, RL 5 min and 1.25,
- * blitz 3 min and 1.0 (the clock bounds a game), daily chess 0 and 1.0.
+ * AoE2 10 min and 1.5 (a game has no clock and runs long far more often
+ * than it ends early), blitz 3 min and 1.0 (the clock bounds a game),
+ * daily chess 0 and 1.0.
  */
 final readonly class GameProfile
 {
@@ -66,6 +68,8 @@ final readonly class GameProfile
             // EA Sports FC: planned at about 15 min a game (league default, not measured yet), Bo1 rounds and a Bo3 final.
             'ea-sports-fc-26/1v1', 'ea-sports-fc-27/1v1' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 1, 10, 1.3),
             'ea-sports-fc-26/2v2', 'ea-sports-fc-27/2v2' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 2, 10, 1.3),
+            // Age of Empires II: planned at about 21 min a game (the median of a small sample, plan "AoE2 und Trackmania"), Bo1 rounds and a Bo3 final.
+            'age-of-empires-2/1v1', 'age-of-empires-2/2v2', 'age-of-empires-2/3v3' => new self("{$game}/{$mode}", $game, $mode, 'min', 21, 5, 5, 1, 3, [1, 3], false, 'series', (int) $mode[0], 10, 1.5),
             default => throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
     }
@@ -96,7 +100,7 @@ final readonly class GameProfile
     }
 
     /**
-     * A match is a best-of series between two sides (Rocket League, EA Sports FC).
+     * A match is a best-of series between two sides (Rocket League, EA Sports FC, Age of Empires II).
      */
     public function isSeries(): bool
     {

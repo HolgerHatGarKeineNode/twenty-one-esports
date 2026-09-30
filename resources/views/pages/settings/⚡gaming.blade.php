@@ -107,17 +107,21 @@ new #[Title('Gamer tags')] class extends Component {
     // Which tags each game's card holds, and what reads them today. A registered game in no card needs no tag.
     $cards = [];
     $placed = [];
+    // A service has one field on the page: a later card that needs it too (Age of Empires II: Steam, Xbox) points to it.
+    $fields = [];
 
     foreach ([
         [['rocket-league'], ['epic', 'steam', 'psn', 'xbox', 'nintendo'], __('Only for you: nothing on this site reads these. In a Rocket League 1v1 the host shares a private match name and password in the room chat instead.')],
         [['ea-sports-fc-27', 'ea-sports-fc-26'], ['ea'], __('Fills in the EA ID card of your EA Sports FC 1v1 room. It goes out only when you press Send card, and only to your opponent.')],
+        [['age-of-empires-2'], ['steam', 'xbox'], __('Only for you: nothing on this site reads these. In an Age of Empires II 1v1 the host shares a lobby name and password in the room chat instead.')],
     ] as [$games, $services, $use]) {
         $games = array_values(array_filter($games, fn (string $slug): bool => $registry->find($slug) !== null));
         $services = array_values(array_filter($services, fn (string $service): bool => isset($labels[$service])));
 
         if ($games !== [] && $services !== []) {
-            $cards[] = ['games' => $games, 'services' => $services, 'use' => $use];
+            $cards[] = ['games' => $games, 'services' => array_values(array_diff($services, $fields)), 'shared' => array_values(array_intersect($services, $fields)), 'use' => $use];
             $placed = [...$placed, ...$games];
+            $fields = array_values(array_unique([...$fields, ...$services]));
         }
     }
 
@@ -177,6 +181,9 @@ new #[Title('Gamer tags')] class extends Component {
                         <div class="flex min-w-0 flex-col gap-1">
                             <h3 id="gt-card-{{ $i }}" class="m-0 text-[15px] font-bold">{{ $gameNames($card['games']) }}</h3>
                             <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="tag-use">{{ $card['use'] }}</p>
+                            @if ($card['shared'] !== [])
+                                <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="tag-shared">{{ __('Your :services tags above count here too.', ['services' => \Illuminate\Support\Arr::join(array_map(fn (string $service): string => $labels[$service], $card['shared']), ', ', ' '.__('and').' ')]) }}</p>
+                            @endif
                         </div>
                     </div>
 

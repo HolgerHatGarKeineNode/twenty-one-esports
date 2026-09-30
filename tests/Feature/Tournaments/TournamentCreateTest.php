@@ -273,30 +273,33 @@ test('the public tournaments page links admins and organizers to creating one, a
     $this->get(route('tournaments.index'))->assertOk()->assertDontSee('data-test="index-new-tournament"', false);
 });
 
-test('an EA Sports FC tournament is created in the chooser: cover and modes offered, Bo1 rounds and a Bo3 final, about 15 min a game', function () {
+test('an EA Sports FC or Age of Empires II tournament is created in the chooser: cover and modes offered, Bo1 rounds and a Bo3 final, the game\'s planned minutes', function (string $game, float $minutes) {
     $page = Livewire::actingAs(tournamentAdmin())->test('pages::admin.tournament-create')
-        ->assertSeeHtml('data-test="game-ea-sports-fc-27"')
-        ->assertSeeHtml('images/games/ea-sports-fc-27-480.webp')
+        ->assertSeeHtml('data-test="game-'.$game.'"')
+        ->assertSeeHtml('images/games/'.$game.'-480.webp')
         ->assertSeeHtml('images/games/ea-sports-fc-26-480.webp')
         ->set('name', 'Kick-off Cup')
-        ->call('pickGame', 'ea-sports-fc-27/1v1')
+        ->call('pickGame', $game.'/1v1')
         ->set('players', '8');
 
     $profile = $page->instance()->profile();
 
     expect([$profile->game, $profile->mode, $profile->gameLength, $profile->bestOf, $profile->finalBestOf, $profile->bestOfOptions, $profile->entersTeams()])
-        ->toBe(['ea-sports-fc-27', '1v1', 15.0, 1, 3, [1, 3], false])
+        ->toBe([$game, '1v1', $minutes, 1, 3, [1, 3], false])
         // A series game recommends a format that ends in a final, like Rocket League.
         ->and($page->instance()->evaluation->recommended?->hasFinal())->toBeTrue();
 
-    $page->call('pickGame', 'ea-sports-fc-27/2v2');
+    $page->call('pickGame', $game.'/2v2');
 
     expect($page->instance()->profile()->entersTeams())->toBeTrue();
 
-    $page->call('pickGame', 'ea-sports-fc-27/1v1')->call('create')->assertHasNoErrors();
+    $page->call('pickGame', $game.'/1v1')->call('create')->assertHasNoErrors();
 
     $tournament = Tournament::query()->sole();
 
     expect([$tournament->game, $tournament->mode, $tournament->formatOptions()->bestOf, $tournament->formatOptions()->finalBestOf])
-        ->toBe(['ea-sports-fc-27', '1v1', 1, 3]);
-});
+        ->toBe([$game, '1v1', 1, 3]);
+})->with([
+    'EA Sports FC 27, about 15 min a game' => ['ea-sports-fc-27', 15.0],
+    'Age of Empires II, about 21 min a game' => ['age-of-empires-2', 21.0],
+]);

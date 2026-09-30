@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ClanRole;
+use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\Lineup;
@@ -89,15 +90,36 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     }
 
     /**
-     * RL lineups in mode order.
+     * The lineups of every series game, keyed `<game>/<mode>`: the games in
+     * registry order, each game's biggest mode first.
      *
      * @return array<string, Lineup>
      */
     #[Computed]
     public function lineups(): array
     {
-        return $this->clan->lineups->where('game', 'rocket-league')->sortBy(fn (Lineup $lineup) => array_search($lineup->mode, ['3v3', '2v2', '1v1'], true))
-            ->keyBy('mode')->all();
+        $series = app(GameRegistry::class)->series();
+        $order = array_keys($series);
+
+        return $this->clan->lineups->filter(fn (Lineup $lineup): bool => isset($series[$lineup->game]))
+            ->sortBy(fn (Lineup $lineup): array => [array_search($lineup->game, $order, true), -($series[$lineup->game]->mode($lineup->mode)->teamSize ?? 0)])
+            ->keyBy(fn (Lineup $lineup): string => $lineup->game.'/'.$lineup->mode)->all();
+    }
+
+    /**
+     * The name of a lineup on this page: its mode ("3v3") while every lineup
+     * is of the first series game (Rocket League), else the game's short
+     * label with it ("AoE2 3v3").
+     */
+    public function lineupLabel(Lineup $lineup): string
+    {
+        $lead = array_key_first(app(GameRegistry::class)->series());
+
+        if (collect($this->lineups)->every(fn (Lineup $each): bool => $each->game === $lead)) {
+            return $lineup->mode;
+        }
+
+        return (app(GameRegistry::class)->find($lineup->game)?->assets()->shortLabel ?? $lineup->game).' '.$lineup->mode;
     }
 
     /**
@@ -109,8 +131,8 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         $clan = $this->clan;
         $rows = [[__('Clan record'), $clan->naddr().' · kind 32150']];
 
-        foreach ($this->lineups as $mode => $lineup) {
-            $rows[] = [__(':mode lineup', ['mode' => $mode]), NostrKeys::naddr(Lineup::KIND, $clan->owner_pubkey, $lineup->d()).' · kind 32151'];
+        foreach ($this->lineups as $lineup) {
+            $rows[] = [__(':mode lineup', ['mode' => $this->lineupLabel($lineup)]), NostrKeys::naddr(Lineup::KIND, $clan->owner_pubkey, $lineup->d()).' · kind 32151'];
         }
 
         $rows[] = [__('Memberships'), trans_choice(':count player confirmed with their own key|:count players confirmed with their own key', $clan->members->count()).' · kind 12150'];
@@ -138,10 +160,10 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
         }
 
         $mine = $user instanceof User && $user->clanMember !== null
-            ? Lineup::query()->where('clan_id', $user->clanMember->clan_id)->where('game', 'rocket-league')->whereIn('mode', $theirs->keys())->get()
-                ->first(fn (Lineup $lineup): bool => $lineup->isActingCaptain($user))
+            ? Lineup::query()->where('clan_id', $user->clanMember->clan_id)->get()
+                ->first(fn (Lineup $lineup): bool => $theirs->has($lineup->game.'/'.$lineup->mode) && $lineup->isActingCaptain($user))
             : null;
-        $target = $mine !== null ? $theirs[$mine->mode] : $theirs->first();
+        $target = $mine !== null ? $theirs[$mine->game.'/'.$mine->mode] : $theirs->first();
 
         return route('challenges.create', array_filter(['lineup' => $mine?->id, 'to' => $target->id]));
     }
@@ -158,7 +180,14 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
     $clan = $this->clan;
     $tag = $clan->clantag;
     $lineups = $this->lineups;
-    $lead = $lineups['3v3'] ?? reset($lineups) ?: null;
+    $lead = reset($lineups) ?: null;
+    // The seat chips: the three Rocket League modes as before while every lineup is of it, else the clan's own lineups.
+    $leadGame = array_key_first(app(GameRegistry::class)->series());
+    $chipKeys = collect($lineups)->every(fn (Lineup $lineup): bool => $lineup->game === $leadGame)
+        ? array_map(fn (string $mode): string => $leadGame.'/'.$mode, ['3v3', '2v2', '1v1'])
+        : array_keys($lineups);
+    // "Goals (team)" only for a clan that plays a game with goals (not Age of Empires II alone).
+    $withGoals = $lineups === [] || collect($lineups)->contains(fn (Lineup $lineup): bool => app(GameRegistry::class)->hasGoals($lineup->game));
     $stats = $this->stats;
     $live = $stats->seasonLive();
     $seasonName = $stats->seasonName() ?? __('Pre-Season');
@@ -198,7 +227,7 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                 @if ($leadStats)
                     <span class="inline-flex h-7 items-center rounded-sm border border-line bg-ground px-2.5"><x-rank-badge :tier="$leadStats['tier']" :level="$leadStats['level']" /></span>
                 @endif
-                <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ $lineups === [] ? __('No lineups yet') : __('Lineups :modes', ['modes' => implode(' · ', array_keys($lineups))]) }}</span>
+                <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ $lineups === [] ? __('No lineups yet') : __('Lineups :modes', ['modes' => implode(' · ', array_map($this->lineupLabel(...), $lineups))]) }}</span>
                 <span class="inline-flex h-7 items-center rounded-sm bg-well px-2.5 text-ink-2">{{ __('founded :date', ['date' => $clan->created_at?->translatedFormat('M j')]) }}</span>
                 @if ($clan->isMemberClan())
                     <span title="{{ __('Most players in this clan are EINUNDZWANZIG members') }}" class="inline-flex h-7 items-center rounded-sm border border-btc-deep px-2.5 font-bold text-btc">{{ __('EINUNDZWANZIG Member clan') }}</span>
@@ -233,11 +262,12 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
                         <span class="flex min-w-0 items-center gap-2"><x-player-link :user="$member->user" class="relative inline-flex min-h-6 min-w-0 items-center font-bold after:absolute after:inset-x-0 after:-inset-y-2.5" data-test="roster-name"><span class="truncate">{{ $member->user->displayName() }}</span></x-player-link>@if ($member->user->is_member)<x-member-badge />@endif</span>
                         <span class="text-[11px] text-ink-3">{{ $member->role === ClanRole::Captain ? __('captain') : __('player') }}</span>
                     </span>
-                    <span class="hidden gap-1 sm:flex">
-                        @foreach (['3v3', '2v2', '1v1'] as $mode)
-                            @php($seated = isset($lineups[$mode]) && $lineups[$mode]->seats->contains(fn (LineupSeat $seat) => $seat->user_id === $member->user_id && $seat->accepted_at !== null))
+                    <span class="hidden flex-wrap gap-1 sm:flex">
+                        @foreach ($chipKeys as $key)
+                            @php($mode = isset($lineups[$key]) ? $this->lineupLabel($lineups[$key]) : explode('/', $key)[1])
+                            @php($seated = isset($lineups[$key]) && $lineups[$key]->seats->contains(fn (LineupSeat $seat) => $seat->user_id === $member->user_id && $seat->accepted_at !== null))
                             <span title="{{ $seated ? __('in the :mode lineup', ['mode' => $mode]) : __('not in the :mode lineup', ['mode' => $mode]) }}"
-                                  @class(['inline-flex h-[22px] items-center rounded-sm border border-dash px-1.5 text-[11px]', 'text-ink' => $seated, 'border-dashed text-ink-3' => ! $seated])>{{ $mode }}</span>
+                                  @class(['inline-flex h-[22px] items-center rounded-sm border border-dash px-1.5 text-[11px] whitespace-nowrap', 'text-ink' => $seated, 'border-dashed text-ink-3' => ! $seated])>{{ $mode }}</span>
                         @endforeach
                     </span>
                     <span class="flex flex-col items-end gap-0.5 text-xs" title="{{ __('Block Height: rated games in any game') }}"><b class="text-sm" data-test="block-height">{{ $heights[$member->user_id] ?? 0 }}</b><span class="text-[11px] text-ink-3">{{ __('Block Height') }}</span></span>
@@ -251,14 +281,13 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
         <div class="flex flex-col">
             <div class="grid h-11 grid-cols-[minmax(0,1fr)_64px_72px] items-center border-b border-hairline text-xs text-ink-2 lg:text-[13px]"><span></span><span class="text-right">{{ __('30 days') }}</span><span class="text-right">{{ __('Total') }}</span></div>
-            @foreach ($record['stats'] ?? [['Series', 0, 0], ['Wins', 0, 0], ['Goals (team)', 0, 0]] as [$label, $days, $total])
+            @foreach ($record['stats'] ?? array_values(array_filter([['Series', 0, 0], ['Wins', 0, 0], $withGoals ? ['Goals (team)', 0, 0] : null])) as [$label, $days, $total])
                 <div class="grid h-11 grid-cols-[minmax(0,1fr)_64px_72px] items-center border-b border-hairline text-sm" data-test="record-row"><span class="text-ink-2">{{ __($label) }}</span><span class="text-right">{{ $days }}</span><b class="text-right">{{ $total }}</b></div>
             @endforeach
-            @foreach (['3v3', '2v2', '1v1'] as $mode)
-                @continue(! isset($lineups[$mode]))
-                @php($line = $stats->lineup($lineups[$mode]))
+            @foreach ($lineups as $lineup)
+                @php($line = $stats->lineup($lineup))
                 <div class="grid h-11 grid-cols-[minmax(0,1fr)_auto_48px] items-center gap-3 border-b border-hairline text-sm sm:grid-cols-[minmax(0,1fr)_auto_64px_136px]">
-                    <span class="text-ink-2">{{ __('Elo :mode', ['mode' => $mode]) }}</span>
+                    <span class="truncate text-ink-2">{{ __('Elo :mode', ['mode' => $this->lineupLabel($lineup)]) }}</span>
                     <span @class(['inline-flex h-6 items-center rounded-sm bg-ground px-2', 'border border-dashed border-edge' => $line['tier'] === 'provisional', 'border border-line' => $line['tier'] !== 'provisional'])><x-rank-badge :tier="$line['tier']" :level="$line['level']" /></span>
                     <b class="text-right">{{ $line['elo'] }}</b>
                     <span class="hidden text-right text-ink-2 sm:block">{{ $line['series'] === 0 ? __('no series yet') : __('#:rank of :of', ['rank' => $line['rank'], 'of' => $line['of']]) }}</span>

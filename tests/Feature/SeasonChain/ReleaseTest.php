@@ -84,7 +84,7 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
 
     expect($events->keys()->sort()->values()->all())->toBe([SeasonRelease::LABEL, SeasonChains::GENESIS, SeasonRelease::ADMIN_LIST, SeasonRelease::ANNOUNCEMENT, Ladders::KIND])
         // Every rated game and mode opens its ladder right after the genesis.
-        ->and($ladders)->toBe(['chess/blitz/pre-season', 'chess/correspondence/pre-season', 'ea-sports-fc-26/1v1/pre-season', 'ea-sports-fc-26/2v2/pre-season', 'ea-sports-fc-27/1v1/pre-season', 'ea-sports-fc-27/2v2/pre-season', 'rocket-league/1v1/pre-season', 'rocket-league/2v2/pre-season', 'rocket-league/3v3/pre-season'])
+        ->and($ladders)->toBe(['age-of-empires-2/1v1/pre-season', 'age-of-empires-2/2v2/pre-season', 'age-of-empires-2/3v3/pre-season', 'chess/blitz/pre-season', 'chess/correspondence/pre-season', 'ea-sports-fc-26/1v1/pre-season', 'ea-sports-fc-26/2v2/pre-season', 'ea-sports-fc-27/1v1/pre-season', 'ea-sports-fc-27/2v2/pre-season', 'rocket-league/1v1/pre-season', 'rocket-league/2v2/pre-season', 'rocket-league/3v3/pre-season'])
         ->and($genesis->pubkey)->toBe($this->league->pubkey)
         ->and($genesis->hasValidSignature())->toBeTrue()
         ->and($genesis->content)->toBe(RELEASE_MESSAGE)
@@ -106,8 +106,8 @@ test('a board admin releases Block 0 after retyping the supply: label, admin lis
         ->and(Seasons::state())->toBe('live')
         ->and(Ladders::address('rocket-league', '3v3'))->toBe('32152:'.$this->league->pubkey.':rocket-league/3v3/pre-season');
 
-    // Label, genesis, admin list, announcement and the nine ladders.
-    Queue::assertPushed(PublishNostrEvent::class, 13);
+    // Label, genesis, admin list, announcement and the twelve ladders.
+    Queue::assertPushed(PublishNostrEvent::class, 16);
 });
 
 test('Block 0 is refused for anyone not on the board list, even an admin of the admins table', function () {

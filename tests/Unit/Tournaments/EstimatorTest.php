@@ -214,6 +214,7 @@ test('free for all and leaderboard are disabled with a reason for chess and the 
     'chess' => ['chess', 'blitz', 'Chess is always one player against one.'],
     'rocket league' => ['rocket-league', '3v3', 'A series is always one side against the other.'],
     'ea sports fc' => ['ea-sports-fc-27', '1v1', 'A series is always one side against the other.'],
+    'age of empires ii' => ['age-of-empires-2', '3v3', 'A series is always one side against the other.'],
 ]);
 
 test('small fields disable the formats that need more players', function () {

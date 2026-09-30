@@ -59,6 +59,8 @@ final class GameChannels
         // Rev. 9.15: the board games, each only while switched on (has()).
         'nine-mens-morris' => 'Nine Men\'s Morris',
         'checkers' => 'Checkers',
+        // Rev. 9.16: Age of Empires II, always open like the other series games.
+        'age-of-empires-2' => 'Age of Empires II: Definitive Edition',
     ];
 
     /**

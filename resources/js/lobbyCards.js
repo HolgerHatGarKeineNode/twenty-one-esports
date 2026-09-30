@@ -14,16 +14,28 @@
  */
 
 /** Games whose host shares a private match (the NIP's game registry slugs). */
-export const LOBBY_GAMES = { 'rocket-league': 'Rocket League' };
+export const LOBBY_GAMES = { 'rocket-league': 'Rocket League', 'age-of-empires-2': 'Age of Empires II' };
 
 /** Services of the app's gamer tag list an account card may name. */
-export const ACCOUNT_SERVICES = { ea: 'EA ID' };
+export const ACCOUNT_SERVICES = { ea: 'EA ID', steam: 'Steam', xbox: 'Xbox' };
+
+/**
+ * The services an account card may name in a game's room, in the order the
+ * composer offers them: EA FC its EA ID, Age of Empires II the Steam or Xbox
+ * name (NIP rev. 9.16), only when the player sends it. Rocket League none.
+ */
+export const ACCOUNT_CARDS = {
+    'ea-sports-fc-26': ['ea'],
+    'ea-sports-fc-27': ['ea'],
+    'age-of-empires-2': ['steam', 'xbox'],
+};
 
 /** Which card is "the lobby" of a game: the host's card that sets `lobby_shared_at`. */
 export const HOST_CARD = {
     'rocket-league': { marker: 'lobby', value: 'rocket-league' },
     'ea-sports-fc-26': { marker: 'account', value: 'ea' },
     'ea-sports-fc-27': { marker: 'account', value: 'ea' },
+    'age-of-empires-2': { marker: 'lobby', value: 'age-of-empires-2' },
 };
 
 /** A value: 1 to 64 characters (code points), no control characters. */

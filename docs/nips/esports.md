@@ -48,14 +48,16 @@ season chain: rated games from each board game's rated queue and in rated tourna
 board game, their attestations and blocks, one share group `board-games`, and consensus rule 2 for
 board games; **revision 9.14** (2026-09-29): correspondence board games, one move a day, casual or rated
 from a challenge, with a ladder, a weight and a tournament profile of their own; **revision 9.15** (2026-09-30):
-a game channel for each board game, nine men's morris and checkers, while the league runs it). Not
+a game channel for each board game, nine men's morris and checkers, while the league runs it;
+**revision 9.16** (2026-09-30): Age of Empires II: Definitive Edition in the game registry as a series game
+whose games have a winner and no points, with its game channel and lobby cards). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14 and 9.15 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15 and 9.16 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -63,7 +65,8 @@ board games (their ladders, attestations and blocks), of the same shape as a rat
 prints none of them yet. Revision 9.14 adds a mode, not a shape: a correspondence board game's ladder,
 attestation and block differ from a blitz one's only in `d`, `mode`, `time_control` and the weight key.
 Revision 9.15 adds two kind `40` of the shape revision 9.3 fixes; their ids for a test creator are the test vectors in
-[Game channels](#game-channels-rev-93), computed and not published.
+[Game channels](#game-channels-rev-93), computed and not published. Revision 9.16 adds one more of that shape, with its
+test vector there, and a game whose events have the shape of the other series games'.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -120,6 +123,39 @@ No blitz board game, chess, Rocket League or EA Sports FC rule, ladder or event 
 The rules marked "rev. 9.15" add the game channels of the board games; the four channels of revision 9.3 keep their
 ids, and no ladder, league event or other rule changes. They apply from the day a league adopts revision 9.15, to
 each board game the league runs then or later.
+The rules marked "rev. 9.16" add Age of Empires II as a series game. No existing ladder, event or rule changes. Its
+ladders open like any ladder: at Block 0 of a season the league releases after adopting revision 9.16, or in a live
+season with the first parameter change after it; a genesis without a weight for `age-of-empires-2/<mode>` mines
+nothing for it (see the changelog of revision 9.16).
+
+### Changelog of revision 9.16 (2026-09-30)
+
+Age of Empires II: Definitive Edition joins the [game registry](#game-registry) as a series game. No new kind and no
+new tag.
+
+- **The game.** `age-of-empires-2`, modes `1v1` (`rates` `player`, as [Rocket League 1v1](#rocket-league-1v1-rev-71)),
+  `2v2` and `3v3` (`rates` `lineup`), `bo` 1 or 3, no draws and no flags. No `4v4`. Ladder `d` values follow the usual
+  form, e.g. `age-of-empires-2/1v1/<season>`, `age-of-empires-2/3v3/<season>`.
+- **A winner, no points.** A game of Age of Empires II ends with a winner and has no goals. Every `score` of an
+  `age-of-empires-2` series leaves both point values out (`["score","1","challenger"]`), and a report (`2152`) or an
+  attestation (`2154`) whose `score` carries points for this game is invalid (rule 13: not valid for the registry's
+  series rules). Statistics that use points skip such games as they skip "points unknown" today.
+- **Lobby and account cards.** In a casual 1v1 a player hosts a lobby in the game with a password and spectators
+  allowed and shares its name and password as a lobby card: `lobby` also takes the value `age-of-empires-2`. The app
+  proposes both (the name `e21-<match>`, a fresh random password). Either player may also send an account card with
+  their Steam or Xbox name, only by pressing Send card: `account` also takes the values `steam` and `xbox`
+  ([Lobby and account cards](#lobby-and-account-cards-rev-92)). The league learns only that a card went out; it never
+  shows a gamer tag or a game profile ID, keeps no mapping from a game profile to a player beyond the tags a player
+  saved privately in their own settings, and reads no match history of the game. The result is reported and
+  confirmed like every series game's.
+- **Game channel.** One more channel on the terms of revision 9.3, with `<game>` `Age of Empires II: Definitive
+  Edition` and the same `created_at` `1790553600` ([Game channels](#game-channels-rev-93)). It is open like the other
+  series games' channels, not behind a switch. The ids of the six existing channels do not change.
+- **Season chain.** A game and mode without a weight does not mine ([Season Genesis](#season-genesis-2156)). The
+  league proposes a weight per mode, a share and a daily limit for its board as draft values; until a Season Genesis
+  or a parameter change (`2158`, which may add a game since revision 9.5) signs them, no game of Age of Empires II
+  mines. Its ladders and attestations are those of any series game.
+- **Nothing else moves.** No chess, board game, Rocket League or EA Sports FC rule, ladder or event changes.
 
 ### Changelog of revision 9.15 (2026-09-30)
 
@@ -1006,19 +1042,20 @@ The league defines its games in code. This NIP needs the following fields per mo
 tag name in the "ladder" column are also published in every ladder of the mode, so that the ladder
 describes itself.
 
-| field | ladder | chess | Rocket League | EA Sports FC (rev. 8.2) |
-|---|---|---|---|---|
-| game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` | `ea-sports-fc-26`, `ea-sports-fc-27`: `1v1`, `2v2`; ladder `d` e.g. `ea-sports-fc-26/1v1/<season>` |
-| rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) | `player` for `1v1` (as Rocket League 1v1), `lineup` for `2v2` |
-| time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none | none |
-| variant | `variant` | `standard` | none | none |
-| rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes | yes |
-| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 | `bo` 1 or 3 |
-| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 | 1, 2 |
-| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) | as Rocket League |
-| draws | | yes, a game can end `1/2-1/2` | no | no; a game level after extra time is decided on penalties in the game and reported with its winner and points unknown |
-| result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) | `score` tags in the report (2152), no flags |
-| moves on Nostr | | none: blitz and correspondence moves stay on the league server (rev. 9.4; before, correspondence moves were notes) | none | none |
+| field | ladder | chess | Rocket League | EA Sports FC (rev. 8.2) | Age of Empires II (rev. 9.16) |
+|---|---|---|---|---|---|
+| game, mode | `game`, `mode` | `chess`: `blitz`, `correspondence` | `rocket-league`: `1v1`, `2v2`, `3v3` | `ea-sports-fc-26`, `ea-sports-fc-27`: `1v1`, `2v2`; ladder `d` e.g. `ea-sports-fc-26/1v1/<season>` | `age-of-empires-2`: `1v1`, `2v2`, `3v3`; ladder `d` e.g. `age-of-empires-2/1v1/<season>` |
+| rated entity | `rates` | `player`; there is no team rating | `lineup` for `2v2` and `3v3`; `player` for `1v1` (rev. 7.1, see [Rocket League 1v1](#rocket-league-1v1-rev-71)) | `player` for `1v1` (as Rocket League 1v1), `lineup` for `2v2` | as Rocket League |
+| time control | `time_control` | `300+3` (blitz 5+3), `1/86400` (correspondence, one move per day, in the PGN period form "moves/seconds") | none | none | none |
+| variant | `variant` | `standard` | none | none | none |
+| rated | only rated modes have ladders | yes; casual games stay off the ladder and at most become a plain NIP-64 note | yes | yes | yes |
+| match size | | a solo game, or a clan team match over `boards` 2 or 3 whose boards are rated solo games | `bo` 3 or 5 | `bo` 1 or 3 | `bo` 1 or 3 |
+| team size | | a chess lineup (`<clan>/chess/<mode>`) needs at least `boards` active players | 1, 2, 3 | 1, 2 | 1, 2, 3 |
+| clan standing | | derived: clan rating off Nostr; clan hashrate recomputable (rev. 4) | `2v2`, `3v3`: the lineup's own Elo; `1v1` (rev. 7.1): the player's Elo; clan hashrate recomputable (rev. 4) | as Rocket League | as Rocket League |
+| draws | | yes, a game can end `1/2-1/2` | no | no; a game level after extra time is decided on penalties in the game and reported with its winner and points unknown | no |
+| result per game | | a game record (kind `64`), see [Game Record](#game-record-64-reused-from-nip-64) | `score` tags in the report (2152) | `score` tags in the report (2152), no flags | `score` tags in the report (2152) with the winner only: the game has no goals, so both point values are always left out; no flags |
+| moves on Nostr | | none: blitz and correspondence moves stay on the league server (rev. 9.4; before, correspondence moves were notes) | none | none | none |
+| chat | | game channel `Chess` (rev. 9.3) | `Rocket League` | `EA Sports FC 26`, `EA Sports FC 27` | `Age of Empires II: Definitive Edition` (rev. 9.16) |
 
 A chess lineup exists only to field team matches; it has no rating of its own. Casual (unrated)
 games never produce match-flow events and get no league record (rev. 9.4); a player may post the
@@ -1309,7 +1346,8 @@ roster.
 - **Points per game.** Each `score` names the winner of the game. The points are the team goals of
   that game as shown on the end screen. If they are unknown, both point values are left out and the
   game counts with its winner only (`["score","2","challenged"]`). Statistics that use points skip
-  such games; they never read them as `0`.
+  such games; they never read them as `0`. A game without goals (Age of Empires II, rev. 9.16) always
+  leaves both out; points on it make the report invalid.
 - **Who played.** A player is on the roster if they played at least one game of the series. The
   lineup role in position 4 is copied from the lineup as it stands when the report is signed, so a
   substitute stays recognisable after the lineup changes. Per-game line-ups are not recorded.
@@ -3401,7 +3439,7 @@ an invite DM for the others ([Invite links](#invite-links)).
 
 ### Lobby and account cards (rev. 9.2)
 
-Casual 1v1 matches (Rocket League, EA Sports FC 26 and 27) have no lobby form on the server. What one
+Casual 1v1 matches (Rocket League, EA Sports FC 26 and 27, Age of Empires II since rev. 9.16) have no lobby form on the server. What one
 player needs to find the other in the game travels only as a **card**: a chat message as above with a
 few extra tags, which the app draws as a card. The league server never receives the data and stores
 none; it learns only that a card was sent. Lineup series keep the server-side lobby form for now.
@@ -3410,13 +3448,17 @@ none; it learns only that a card was sent. Lineup series keep the server-side lo
 
 - **Rocket League:** the host creates a private match and shares its name and password (lobby card).
   Rocket League plays across platforms, so no account ID is exchanged.
+- **Age of Empires II** (rev. 9.16): the host creates a lobby in the game with a password and spectators
+  allowed, and shares its name and password (lobby card). The guest finds it by name in the game's lobby
+  browser. Either player may add their Steam or Xbox name (account card, `steam` or `xbox`), so the two can
+  find each other if the lobby does not show up; it is sent only when the player presses Send card.
 - **EA Sports FC:** there is no lobby password; a friendly needs both players to be friends by EA ID.
   The host shares their EA ID (account card), the guest sends a friend request, the host accepts and
   sends the Play-a-Friend invite. The request shows the guest's EA ID to the host anyway, so one card
   is enough; the guest may send their own. The friendship outlives the match, and the app says so
   before the card is sent.
 
-In both games the host shares and the guest acts, so the lobby deadline has one owner.
+In every game the host shares and the guest acts, so the lobby deadline has one owner.
 
 **The rumor.** A card is a kind `14` rumor, sealed and wrapped like every chat message, to each member
 of the room and once to the sender. In a casual 1v1 room that is the opponent only; the client refuses
@@ -3428,10 +3470,10 @@ new rumor kind would be dropped or shown as unknown elsewhere.
 |---|---|---|---|
 | `p` | each recipient (NIP-17) | both | as for every chat message |
 | `match` | the league match number | both | as for every chat message |
-| `lobby` | game from the [registry](#game-registry): `rocket-league` | lobby | marks a lobby card |
+| `lobby` | game from the [registry](#game-registry): `rocket-league`; rev. 9.16 also `age-of-empires-2` | lobby | marks a lobby card |
 | `lobby-name` | name of the private match | lobby | with `lobby-password`; both absent = lobby closed |
 | `lobby-password` | password of the private match | lobby | with `lobby-name` |
-| `account` | service from the app's gamer tag list: `ea` | account | marks an account card |
+| `account` | service from the app's gamer tag list: `ea`; rev. 9.16 also `steam` and `xbox` (Age of Empires II) | account | marks an account card |
 | `account-id` | the player's ID on that service | account | absent = ID withdrawn |
 
 A rumor carries at most one marker (`lobby` or `account`) and each data tag at most once; a rumor that
@@ -3605,7 +3647,7 @@ and anyone can write into the channel from any client.
 |---|---|
 | `created_at` | `1790553600` (2026-09-28T00:00:00Z) |
 | `tags` | none |
-| `content` | `{"name":"TWENTY ONE esports · <game>","about":"The global chat of <game> in the TWENTY ONE esports league: talk and vote."}`, keys in this order, `<game>` one of `Chess`, `Rocket League`, `EA Sports FC 26`, `EA Sports FC 27`; rev. 9.15 also `Nine Men's Morris` (with the ASCII apostrophe) and `Checkers` |
+| `content` | `{"name":"TWENTY ONE esports · <game>","about":"The global chat of <game> in the TWENTY ONE esports league: talk and vote."}`, keys in this order, `<game>` one of `Chess`, `Rocket League`, `EA Sports FC 26`, `EA Sports FC 27`; rev. 9.15 also `Nine Men's Morris` (with the ASCII apostrophe) and `Checkers`; rev. 9.16 also `Age of Empires II: Definitive Edition` |
 
 The channel id is the event id, and the id is the hash of these fields and the creator's pubkey, not of
 the signature. So every client that knows the creator's pubkey computes the channel ids without
@@ -3621,6 +3663,9 @@ a repeat run sends the same ids (relays answer `duplicate:`); a changed relay li
 the league signs no kind `40` or `41` for it. The id does not depend on the switch, so the first daily publish after
 the switch goes on sends exactly the channel computed from the table.
 
+**Age of Empires II (rev. 9.16).** One more channel on the same terms and with the same `created_at`, open like the
+other series games' channels (no switch).
+
 **Test vectors** (computed, not published; equal to nostr-tools' `getEventHash` on 2026-09-30). For the creator
 pubkey `aaaa…aaaa` (64 × `a`):
 
@@ -3632,6 +3677,7 @@ pubkey `aaaa…aaaa` (64 × `a`):
 | `EA Sports FC 27` | `670278f922ed81489f1848a13303b17eeb0c94fca56b351d3efdc36399736506` |
 | `Nine Men's Morris` (rev. 9.15) | `136e4c7ed8a34dad000eb89ce942a8e2b34ed522ef6038b14475a71bfa3c8f68` |
 | `Checkers` (rev. 9.15) | `6e4221b5f8548e475e956cd73d43ef1a64b199c87abe2dd0b29162b70d093abd` |
+| `Age of Empires II: Definitive Edition` (rev. 9.16) | `7400cae2664605d1d134e74b9ba88f2c8743b8fa10b72f2d1615a3a05212d496` |
 
 **Messages.** A kind `42` with `["e", <channel id>, <relay>, "root"]` and the text, plus NIP-30 `emoji`
 tags for custom emoji in the text; no `t` tags. The app shows a kind `42` whose root `e` names the
@@ -6622,7 +6668,7 @@ record, and its post no `q`.
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
 - **Game channels (rev. 9.3)** are built (P21) and have no example yet: the kind `40` of every open channel (four;
-  rev. 9.15: one more per board game switched on) are published daily by `esports:game-channels` once
+  rev. 9.15: one more per board game switched on; rev. 9.16: one more for Age of Empires II) are published daily by `esports:game-channels` once
   `ESPORTS_LEAGUE_NSEC` is set. Open: whether the chat relays
   accept kind `40`-`44`, `1068` and `1018` from the production host, and whether they refuse backdated
   votes (NIP-88's advice); whether the league key or a separate channel key should be the creator.
