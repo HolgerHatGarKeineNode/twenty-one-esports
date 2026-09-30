@@ -5596,5 +5596,22 @@
     "Withdraw your name": "Namen zurückziehen",
     "Your name goes to your opponent only, so you find each other in the game. The league never sees it.": "Dein Name geht nur an deinen Gegner, damit ihr euch im Spiel findet. Die Liga sieht ihn nie.",
     "Steam or Xbox name to find each other": "Steam- oder Xbox-Name, um euch zu finden",
-    "Name withdrawn": "Name zurückgezogen"
+    "Name withdrawn": "Name zurückgezogen",
+    "Map": "Karte",
+    "Civilisations": "Zivilisationen",
+    "Spectator delay": "Zuschauer-Verzögerung",
+    "Restart after a disconnect": "Neustart nach Verbindungsabbruch",
+    "in the first :time": "in den ersten :time",
+    "free pick": "freie Wahl",
+    "any civilisation": "freie Zivilisationswahl",
+    "Map :map. Each player picks any civilisation.": "Karte :map. Jeder wählt seine Zivilisation frei.",
+    "Map :map. Civilisations: :civilizations.": "Karte :map. Zivilisationen: :civilizations.",
+    "Spectators are allowed, with a delay of :time. Watching your own match from a second account is a dispute.": "Zuschauer sind erlaubt, mit :time Verzögerung. Wer das eigene Match über ein Zweitkonto mitschaut, landet im Disput.",
+    "A player disconnects in the first :time of a game: restart it once, with the same civilisations and colours.": "Verliert ein Spieler in den ersten :time eines Spiels die Verbindung: einmal neu starten, mit denselben Zivilisationen und Farben.",
+    "A later disconnect loses the game, unless both agree to restart.": "Ein späterer Verbindungsabbruch verliert das Spiel, außer beide einigen sich auf einen Neustart.",
+    "League rules: map :map, :civilizations, spectators delayed by :delay, one restart after a disconnect in the first :restart, a later disconnect loses.": "Liga-Regeln: Karte :map, :civilizations, Zuschauer mit :delay Verzögerung, ein Neustart bei Verbindungsabbruch in den ersten :restart, ein späterer Abbruch verliert.",
+    "The league's defaults for every Age of Empires II lobby, casual 1v1 and clan series. The host sets them when creating the lobby.": "Die Vorgaben der Liga für jede Age-of-Empires-II-Lobby, Casual 1v1 und Clan-Serien. Der Host stellt sie beim Erstellen der Lobby ein.",
+    "League lobby rules": "Lobby-Regeln der Liga",
+    "All rules": "Alle Regeln",
+    "Sent with the card:": "Geht mit der Karte mit:"
 }

@@ -54,6 +54,16 @@ test('the fallback content is the NIP\'s plain English, from the tags', () => {
     assert.equal(cardContent(parseCard(rumor([['account', 'ea']]), NOW), 1234), 'EA ID withdrawn (match 1234)');
 });
 
+test('an Age of Empires II lobby card carries the league\'s lobby rules as one line of its text, a closed one does not', () => {
+    const rules = 'League rules: map Arabia, any civilisation, spectators delayed by 2 minutes.';
+    const lobby = parseCard(rumor(lobbyTags({ game: 'age-of-empires-2', name: 'e21-7', password: 'k7m2q9' })), NOW);
+    const closed = parseCard(rumor([['lobby', 'age-of-empires-2']]), NOW);
+
+    assert.equal(cardContent(lobby, 7, rules), `Age of Empires II private match\nName: e21-7\nPassword: k7m2q9\n${rules}\n(lobby card for match 7)`);
+    assert.equal(cardContent(lobby, 7), 'Age of Empires II private match\nName: e21-7\nPassword: k7m2q9\n(lobby card for match 7)');
+    assert.equal(cardContent(closed, 7, rules), 'Lobby closed (match 7)');
+});
+
 test('a card is read from its tags only; anything off the rules is a plain message', () => {
     assert.equal(parseCard(rumor([])), null, 'no marker: a text message');
     assert.deepEqual(parseCard(rumor([['lobby', 'rocket-league'], ['lobby-name', 'n'], ['lobby-password', 'p']], { content: 'Name: evil' }), NOW),

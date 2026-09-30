@@ -538,6 +538,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 // Prefills of the composer, for this player only: a lobby name, and the EA ID from the private gamer tags.
                 'lobbyName' => 'e21-'.$match->number,
                 'eaId' => (string) ($this->user()->gamer_tags['ea'] ?? ''),
+                // The league's lobby defaults, one English line in the lobby card's text (LobbyRules, P9).
+                'lobbyRules' => \App\Support\Series\LobbyRules::line($match->game, 'en'),
             ];
 
             // Age of Empires II: the player's own Steam and Xbox names from the private gamer tags, sent only on Send card.
@@ -1081,6 +1083,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @if ($captainSide !== null && $m->status->isRunning() && ! $editLobby)
                 <div><x-button variant="quiet" icon="brush" wire:click="openLobbyEditor" data-test="change-lobby">{{ $m->lobby_name === null ? __('Set lobby') : __('Change lobby') }}</x-button></div>
             @endif
+            @include('pages.matches.partials.lobby-rules')
             @if ($m->status === SeriesStatus::Accepted && $noshowFrom)
                 <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3">
                     <b class="text-[13px]">{{ __('Opponent not in the lobby?') }}</b>

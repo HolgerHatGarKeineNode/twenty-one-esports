@@ -192,4 +192,8 @@
             <p class="m-0">{{ __('Your score is sent. :name accepts it or reports a problem; without an answer the league confirms it.', ['name' => $otherName]) }}</p>
         @endif
     </div>
+
+    @unless ($m->status->hasResult())
+        @include('pages.matches.partials.lobby-rules')
+    @endunless
 </section>

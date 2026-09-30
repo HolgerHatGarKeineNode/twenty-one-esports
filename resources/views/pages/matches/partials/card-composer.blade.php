@@ -36,6 +36,8 @@
             </span>
         </label>
         <span class="text-xs text-ink-3">{{ __('A fresh random password for every match: an old one may still sit in stored messages.') }}</span>
+        {{-- The league's lobby rules travel in the card's text (LobbyRules, P9); shown as sent, in English. --}}
+        <span x-show="(casual?.lobbyRules ?? '') !== ''" x-cloak class="text-xs break-words text-ink-3" data-test="card-lobby-rules">{{ __('Sent with the card:') }} <span x-text="casual?.lobbyRules ?? ''"></span></span>
         <span class="flex flex-wrap gap-2">
             <x-button type="submit" icon="send" ::disabled="sending" data-test="send-lobby-card">{{ __('Send card') }}</x-button>
             <x-button variant="quiet" x-on:click="composer = ''">{{ __('Cancel') }}</x-button>

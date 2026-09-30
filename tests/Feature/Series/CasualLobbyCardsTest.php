@@ -22,7 +22,26 @@ test('the card rules hold in the client: build, parse, validation, newest wins, 
     $run = Process::path(base_path())->timeout(60)->run(['node', '--test', 'tests/js/lobbyCards.test.mjs']);
 
     expect($run->successful())->toBeTrue($run->output().$run->errorOutput())
-        ->and($run->output())->toContain('ℹ pass 12')->toContain('ℹ skipped 0');
+        ->and($run->output())->toContain('ℹ pass 13')->toContain('ℹ skipped 0');
+});
+
+test('Age of Empires II: the league\'s lobby rules stand in the casual steps and go with the lobby card as one English line', function () {
+    config(['esports.series.lobby_rules.age-of-empires-2.map' => 'Arena']);
+    [$match, $host] = casualStarted('age-of-empires-2');
+
+    $room = Livewire::actingAs($host)->test('pages::matches.room', ['match' => $match]);
+
+    expect($room->instance()->chatConfig()['casual']['lobbyRules'])->toBe('League rules: map Arena, any civilisation, spectators delayed by 2 minutes, one restart after a disconnect in the first 5 minutes, a later disconnect loses.')
+        ->and($room->html())->toContain('data-test="lobby-rules"')->toContain('Map Arena. Each player picks any civilisation.')
+        ->toContain('Spectators are allowed, with a delay of 2 minutes. Watching your own match from a second account is a dispute.')
+        ->toContain('data-test="card-lobby-rules"');
+
+    // Rocket League has no league lobby rules: no list, an empty line for the card.
+    [$rocket, $rocketHost] = casualStarted('rocket-league');
+    $rocketRoom = Livewire::actingAs($rocketHost)->test('pages::matches.room', ['match' => $rocket]);
+
+    expect($rocketRoom->instance()->chatConfig()['casual']['lobbyRules'])->toBe('')
+        ->and($rocketRoom->html())->not->toContain('data-test="lobby-rules"');
 });
 
 test('Age of Empires II lobby card: only the host composes it, with the proposed name, and nothing of it reaches another page', function () {
@@ -206,6 +225,7 @@ test('the room hands the chat the host, the flags, A + D and the player\'s own E
         'expiresFrom' => $match->casualChatExpiresFrom()?->getTimestamp(),
         'lobbyName' => 'e21-'.$match->number,
         'eaId' => 'Host_EA',
+        'lobbyRules' => '',
     ])
         ->and(array_column($config['members'], 'pubkey'))->toEqualCanonicalizing([$host->pubkey, $guest->pubkey]);
 

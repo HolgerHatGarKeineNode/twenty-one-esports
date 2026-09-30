@@ -330,6 +330,18 @@ return [
     | is not in the lobby can report a no-show (MatchRoom.dc.html: 15 min).
     | regions: the lobby regions offered in the match room.
     |
+    | lobby_rules: the league's defaults for the lobby a host creates in the
+    | game, per game (App\Support\Series\LobbyRules), for casual 1v1 and
+    | clan series alike. Shown on /rules, the game page and in the match
+    | room, and sent as one line with the host's lobby card. Age of Empires
+    | II (plan "AoE2 und Trackmania", P9): map `map`; `civilizations`
+    | `free` = each player picks any; spectators allowed with a delay of
+    | `spectator_delay_minutes` (a player watching their own match from a
+    | second account is a dispute); a disconnect within the first
+    | `restart_minutes` of a game restarts it once with the same
+    | civilisations and colours, a later one is a loss unless both agree.
+    | These values are defaults pending the user's confirmation.
+    |
     */
 
     'series' => [
@@ -338,6 +350,14 @@ return [
         'now_minutes' => 10,
         'noshow_minutes' => 15,
         'regions' => ['EU', 'US-East', 'US-West', 'South America', 'Middle East', 'Oceania', 'Asia'],
+        'lobby_rules' => [
+            'age-of-empires-2' => [
+                'map' => 'Arabia',
+                'civilizations' => 'free',
+                'spectator_delay_minutes' => 2,
+                'restart_minutes' => 5,
+            ],
+        ],
     ],
 
     /*

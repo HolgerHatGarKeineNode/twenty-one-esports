@@ -20,6 +20,7 @@ use App\Support\SeasonChain\RatedTrustGate;
 use App\Support\SeasonChain\SeasonRelease;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Series\Ladders;
+use App\Support\Series\LobbyRules;
 use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\TournamentDeadlines;
@@ -54,6 +55,7 @@ final class RulesPage
             ...self::nineMensMorris(),
             ...self::checkers(),
             self::series(),
+            ...self::ageOfEmpires2(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -386,6 +388,30 @@ final class RulesPage
             ],
             'links' => [[__('Challenge a clan'), route('challenges.create')], [__('Matches'), route('matches.index')]],
         ];
+    }
+
+    /**
+     * The league's lobby defaults for Age of Empires II (LobbyRules, P9),
+     * while the game is registered.
+     *
+     * @return list<Section>
+     */
+    private static function ageOfEmpires2(): array
+    {
+        $slug = 'age-of-empires-2';
+
+        if (app(GameRegistry::class)->find($slug) === null || LobbyRules::for($slug) === null) {
+            return [];
+        }
+
+        return [[
+            'id' => $slug,
+            'title' => GameNames::game($slug),
+            'lead' => __('The league\'s defaults for every Age of Empires II lobby, casual 1v1 and clan series. The host sets them when creating the lobby.'),
+            'facts' => LobbyRules::facts($slug),
+            'items' => LobbyRules::items($slug),
+            'links' => [[__('Play 1v1 casual'), route('play')], [GameNames::game($slug), route('games.series', $slug)]],
+        ]];
     }
 
     /**

@@ -77,12 +77,18 @@ export function accountTags({ service, id = '' }) {
     return [['account', service], ['account-id', id]];
 }
 
-/** The plain-text `content` for other NIP-17 clients, from the parsed card. */
-export function cardContent(card, match) {
+/**
+ * The plain-text `content` for other NIP-17 clients, from the parsed card.
+ * `rules`: the league's lobby rules as one line (Age of Empires II, from the
+ * room's config), added to an open lobby card; empty for none.
+ */
+export function cardContent(card, match, rules = '') {
     if (card.kind === 'lobby') {
+        const line = typeof rules === 'string' && rules.trim() !== '' ? `${rules.trim()}\n` : '';
+
         return card.closed
             ? `Lobby closed (match ${match})`
-            : `${LOBBY_GAMES[card.game]} private match\nName: ${card.name}\nPassword: ${card.password}\n(lobby card for match ${match})`;
+            : `${LOBBY_GAMES[card.game]} private match\nName: ${card.name}\nPassword: ${card.password}\n${line}(lobby card for match ${match})`;
     }
 
     return card.closed ? `${ACCOUNT_SERVICES[card.service]} withdrawn (match ${match})` : `${ACCOUNT_SERVICES[card.service]}: ${card.id}\n(add me as a friend for match ${match})`;
