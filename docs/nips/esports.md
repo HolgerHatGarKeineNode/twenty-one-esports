@@ -889,7 +889,7 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `40`, `41` | 28 | rev. 9.3: a game channel with fixed fields and its metadata, one per game; rev. 9.15: the board games' too, while the league runs them (see [Game channels](#game-channels-rev-93)) | league key (the channel creator) |
 | `42` | 28 | rev. 9.3: a message in a game channel | anyone |
 | `43`, `44` | 28 | rev. 9.3: the creator's moderation of the game channels (hide a message, mute a pubkey) | league key |
-| `1068`, `1018` | 88 | rev. 9.3: a poll in a game channel and a vote on it; shown and counted for league players only | anyone |
+| `1068`, `1018` | 88 | rev. 9.3: a poll in a game channel and a vote on it; shown and counted for members and players with a result in the league only | anyone |
 
 ## Identifiers
 
@@ -3609,7 +3609,12 @@ and anyone can write into the channel from any client.
 
 The channel id is the event id, and the id is the hash of these fields and the creator's pubkey, not of
 the signature. So every client that knows the creator's pubkey computes the channel ids without
-the secret and without a relay, and the chat works before the kind `40` is on any relay.
+the secret and without a relay, and the chat works before the kind `40` is on any relay. The content
+of a kind `40` never changes: a changed name would be another channel. Name, about and relays change
+with a kind `41` of the creator (`e` root to the channel), whose content adds `relays`: the chat relays.
+The league republishes both daily (`esports:game-channels`, scheduled): the kind `40` are the same
+events every time, and a kind `41` keeps its `created_at` while its content and tags stay the same, so
+a repeat run sends the same ids (relays answer `duplicate:`); a changed relay list is one new kind `41`.
 
 **Board games (rev. 9.15).** Nine men's morris and checkers have a channel each, on the same terms and with the same
 `created_at`, but only while the league runs the board game: while it is switched off, its page shows no chat and
@@ -3626,12 +3631,7 @@ pubkey `aaaa…aaaa` (64 × `a`):
 | `EA Sports FC 26` | `23dcfbae270a842ba81e8db3041a68c7aa95718a6827fad7cdf0cdd99ef6c339` |
 | `EA Sports FC 27` | `670278f922ed81489f1848a13303b17eeb0c94fca56b351d3efdc36399736506` |
 | `Nine Men's Morris` (rev. 9.15) | `136e4c7ed8a34dad000eb89ce942a8e2b34ed522ef6038b14475a71bfa3c8f68` |
-| `Checkers` (rev. 9.15) | `6e4221b5f8548e475e956cd73d43ef1a64b199c87abe2dd0b29162b70d093abd` | The content
-of a kind `40` never changes: a changed name would be another channel. Name, about and relays change
-with a kind `41` of the creator (`e` root to the channel), whose content adds `relays`: the chat relays.
-The league republishes both daily (`esports:game-channels`, scheduled): the kind `40` are the same
-events every time, and a kind `41` keeps its `created_at` while its content and tags stay the same, so
-a repeat run sends the same ids (relays answer `duplicate:`); a changed relay list is one new kind `41`.
+| `Checkers` (rev. 9.15) | `6e4221b5f8548e475e956cd73d43ef1a64b199c87abe2dd0b29162b70d093abd` |
 
 **Messages.** A kind `42` with `["e", <channel id>, <relay>, "root"]` and the text, plus NIP-30 `emoji`
 tags for custom emoji in the text; no `t` tags. The app shows a kind `42` whose root `e` names the

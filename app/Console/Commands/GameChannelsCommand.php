@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Cache;
  * events, and a kind 41 keeps its `created_at` while it does not change, so
  * a repeat run republishes the same ids. Without the league key it refuses
  * and publishes nothing (fail closed). Only open channels are signed
- * (GameChannels::has()): a board game switched off gets no kind 40 or 41,
+ * (GameChannels::open()): a board game switched off gets no kind 40 or 41,
  * and its channel goes out with the first daily run after the switch is on
  * (after the deploy's `optimize`, which caches the config the run reads).
  */
@@ -73,9 +73,11 @@ class GameChannelsCommand extends Command
                 $events[] = $league->sign(43, [['e', $hide]], '', $now)->toArray();
             }
         } else {
+            $open = GameChannels::open();
+
             foreach (array_keys(GameChannels::GAMES) as $game) {
                 // A board game switched off gets nothing signed: its kind 40 goes out with the first run after it is on.
-                if (! GameChannels::has($game)) {
+                if (! in_array($game, $open, true)) {
                     $this->line("{$game}: switched off, nothing signed");
 
                     continue;
