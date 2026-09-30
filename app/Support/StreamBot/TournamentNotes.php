@@ -41,10 +41,20 @@ use Throwable;
  * first looks for notes of tournaments in sign-up whose text lacks the
  * current start (stale()), sends a NIP-09 deletion of each (kind 5, `e` on
  * the note, `k` 1) and posts a fresh note in its place, with the same copy
- * path and the new id in the same bot_posts row (correctStart()). The text
- * is the record of the announced start: it carries LeagueTime::stamp() of
+ * path and the new id in the same bot_posts row (correct()). The text is the
+ * record of the announced start: it carries LeagueTime::stamp() of
  * starts_at, rendered here the same way, so no column is needed; a stored
  * note without the current stamp announced another start.
+ *
+ * The deletion has its own bot_posts row (kind 5, slot: the first 16
+ * characters of the deleted note's id). It is the claim of the correction
+ * (one run at a time, as for a note) and keeps the signed deletion: a relay
+ * that did not take it gets the same event again on later runs, until every
+ * relay took it or DELETION_ATTEMPTS ran out (logged). Before it signs, a
+ * run reads the note's row again and goes on only if the row still holds
+ * the stale note, so it never deletes a note another run just posted. A
+ * note signed with another key than the configured bot key is left alone
+ * (a deletion by this key would not delete it), with a warning.
  *
  * A tournament called off before its note went out gets none. Fail
  * closed: without `esports.stream_bot.enabled`, the bot key or a stream
@@ -53,6 +63,12 @@ use Throwable;
 class TournamentNotes
 {
     public const KIND_NOTE = 1;
+
+    /** NIP-09 deletion request. */
+    public const KIND_DELETION = 5;
+
+    /** Sends of one deletion before the relays that never took it are given up (logged). */
+    private const DELETION_ATTEMPTS = 12;
 
     /** Names get this many characters in a note (the chat gets 40). */
     private const NAME_LENGTH = 80;
@@ -80,13 +96,22 @@ class TournamentNotes
         [$key, $relays] = $setup;
         $lines = [];
 
-        foreach ($this->stale($this->perRun()) as $tournament) {
+        foreach ($this->stale($this->perRun(), $key) as $tournament) {
             try {
                 $lines[] = $this->correct($key, $tournament, $relays, $now);
             } catch (Throwable $e) {
                 // The old note stays in the row, so the next run finds it stale again and retries.
                 report($e);
                 $lines[] = 'tournament '.$tournament->id.': start correction failed, '.$e->getMessage();
+            }
+        }
+
+        foreach ($this->pendingDeletions($now) as $deletion) {
+            try {
+                $lines[] = $this->resendDeletion($deletion, $relays, $now);
+            } catch (Throwable $e) {
+                report($e);
+                $lines[] = 'tournament '.$deletion->subject_id.': deletion resend failed, '.$e->getMessage();
             }
         }
 
@@ -139,11 +164,13 @@ class TournamentNotes
 
     /**
      * Tournaments in sign-up whose stored note announces another start
-     * than the current one, by id, at most `$limit` (null: all).
+     * than the current one, by id, at most `$limit` (null: all). With the
+     * bot key, a note signed by another key is left out with a warning:
+     * this key cannot delete it, and it must not hold up the others.
      *
      * @return list<Tournament>
      */
-    public function stale(?int $limit = null): array
+    public function stale(?int $limit = null, ?LeagueKey $key = null): array
     {
         $posts = BotPost::query()
             ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'kind' => self::KIND_NOTE])
@@ -159,7 +186,8 @@ class TournamentNotes
         foreach ($posts as $post) {
             $tournament = $tournaments->get($post->subject_id);
 
-            if ($tournament instanceof Tournament && ! $this->announcesStart((string) $post->event, $tournament)) {
+            if ($tournament instanceof Tournament && ! $this->announcesStart((string) $post->event, $tournament)
+                && ($key === null || $this->signedBy((string) $post->event, $key, $tournament))) {
                 $stale[] = $tournament;
             }
 
@@ -169,54 +197,6 @@ class TournamentNotes
         }
 
         return $stale;
-    }
-
-    /**
-     * Every stale note corrected now (the data migration after the cups
-     * moved to their game slots). Fails loud: without the bot's setup while
-     * a note is stale, or when a correction did not reach a relay (the
-     * deletion or the new note), it throws after trying all; running it
-     * again is safe (a corrected note is no longer stale, and a new note no
-     * relay took is sent again by the scheduled run).
-     *
-     * @return list<string> a line per correction
-     */
-    public function correctStaleStarts(CarbonImmutable $now): array
-    {
-        $stale = $this->stale();
-
-        if ($stale === []) {
-            return [];
-        }
-
-        $setup = $this->setup();
-
-        if (is_string($setup)) {
-            throw new RuntimeException(count($stale).' stream bot notes announce an old start, but '.$setup);
-        }
-
-        [$key, $relays] = $setup;
-        $lines = [];
-        $failed = [];
-
-        foreach ($stale as $tournament) {
-            try {
-                $lines[] = $line = $this->correct($key, $tournament, $relays, $now);
-                $delivered = BotPost::query()->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])->whereNotNull('published_at')->exists();
-
-                if (! $delivered) {
-                    $failed[] = $line;
-                }
-            } catch (Throwable $e) {
-                $failed[] = 'tournament '.$tournament->id.': '.$e->getMessage();
-            }
-        }
-
-        if ($failed !== []) {
-            throw new RuntimeException('Stream bot start corrections failed: '.implode('; ', $failed));
-        }
-
-        return $lines;
     }
 
     /**
@@ -248,37 +228,177 @@ class TournamentNotes
      */
     public function deletion(LeagueKey $key, string $noteId, int $createdAt): SignedEvent
     {
-        return $key->sign(5, [['e', $noteId], ['k', (string) self::KIND_NOTE]], 'The start changed, a corrected note follows.', $createdAt);
+        return $key->sign(self::KIND_DELETION, [['e', $noteId], ['k', (string) self::KIND_NOTE]], 'The start changed, a corrected note follows.', $createdAt);
     }
 
     /**
      * Delete the stale note, then post the fresh one in its row; a line
-     * for the log. Throws when no relay took the deletion (the old note is
-     * kept in the row, so it is tried again).
+     * for the log. The deletion's row is claimed first and the note's row
+     * read again: only a run that holds the claim and still finds the stale
+     * note in the row signs (once; a retry sends the stored deletion) and
+     * sends. Throws when no relay took the deletion (the old note stays in
+     * its row, so it is tried again after the claim expires).
      *
      * @param  list<string>  $relays
      */
     private function correct(LeagueKey $key, Tournament $tournament, array $relays, CarbonImmutable $now): string
     {
-        $post = BotPost::query()->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])->firstOrFail();
+        $post = BotPost::query()->where($this->noteSubject($tournament))->firstOrFail();
         $old = SignedEvent::fromInput(json_decode((string) $post->event, true))
             ?? throw new LogicException('The stored note of tournament '.$tournament->id.' is not a valid event.');
 
-        $deletion = $this->deletion($key, $old->id, $now->getTimestamp());
-        $results = $this->publisher->publish($deletion->toArray(), $relays);
-        $accepted = count(array_filter($results, fn ($result): bool => $result->accepted));
+        if (! $this->signedBy((string) $post->event, $key, $tournament)) {
+            return 'tournament '.$tournament->id.': note '.$old->id.' is not signed by the bot key, left alone';
+        }
+
+        $subject = $this->deletionSubject($tournament, $old->id);
+        BotPost::query()->insertOrIgnore([...$subject, 'created_at' => $now, 'updated_at' => $now]);
+
+        if (! $this->claim($subject, $now)) {
+            return 'tournament '.$tournament->id.': correction of note '.$old->id.' taken by another run';
+        }
+
+        // Read again under the claim: another run may have corrected the note since stale() read it.
+        $fresh = BotPost::query()->where($this->noteSubject($tournament))->first();
+
+        if ($fresh === null || $fresh->event_id !== $old->id || $this->announcesStart((string) $fresh->event, $tournament->refresh())) {
+            return 'tournament '.$tournament->id.': note '.$old->id.' is no longer in its row or names the current start, nothing deleted';
+        }
+
+        $row = BotPost::query()->where($subject)->firstOrFail();
+
+        if ($row->event === null) {
+            $signed = $this->deletion($key, $old->id, $now->getTimestamp());
+            $row->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
+        }
+
+        [$deletion, $accepted, $total] = $this->sendDeletion($row, $relays, $now);
 
         if ($accepted === 0) {
             throw new RuntimeException('no relay took the deletion of note '.$old->id);
         }
 
-        Log::info('Stream bot tournament note announced an old start, deleted and renewed', ['tournament' => $tournament->id, 'deleted' => $old->id, 'deletion' => $deletion->id, 'starts_at' => $tournament->starts_at->toIso8601String()]);
+        Log::info('Stream bot tournament note announced an old start, deleted and renewed', ['tournament' => $tournament->id, 'deleted' => $old->id, 'deletion' => $deletion->id, 'relays' => $accepted.'/'.$total, 'starts_at' => $tournament->starts_at->toIso8601String()]);
 
         if (! $this->release($tournament, $old->id, $now)) {
             return 'tournament '.$tournament->id.': note '.$old->id.' deleted, renewed by another run already';
         }
 
-        return 'tournament '.$tournament->id.': note '.$old->id.' deleted (deletion '.$deletion->id.' to '.$accepted.'/'.count($results).' relays), '.$this->post($key, $tournament, $relays, $now);
+        return 'tournament '.$tournament->id.': note '.$old->id.' deleted (deletion '.$deletion->id.' to '.$accepted.'/'.$total.' relays), '.$this->post($key, $tournament, $relays, $now);
+    }
+
+    /**
+     * Deletions some relay took but not every relay, still within their
+     * attempts and not claimed within `retry_minutes`.
+     *
+     * @return list<BotPost>
+     */
+    private function pendingDeletions(CarbonImmutable $now): array
+    {
+        return array_values(BotPost::query()
+            ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'kind' => self::KIND_DELETION])
+            ->whereNotNull('event')
+            ->whereNull('published_at')
+            ->where('relays_accepted', '>', 0)
+            ->where('attempts', '<', self::DELETION_ATTEMPTS)
+            ->where(fn ($query) => $query->whereNull('attempted_at')->orWhere('attempted_at', '<=', $this->claimCutoff($now)))
+            ->orderBy('id')
+            ->get()
+            ->all());
+    }
+
+    /**
+     * The same signed deletion once more, to every relay (a relay that has
+     * it answers with a duplicate); a line for the log.
+     *
+     * @param  list<string>  $relays
+     */
+    private function resendDeletion(BotPost $row, array $relays, CarbonImmutable $now): string
+    {
+        $subject = ['subject_type' => $row->subject_type, 'subject_id' => $row->subject_id, 'kind' => $row->kind, 'slot' => $row->slot];
+
+        if (! $this->claim($subject, $now)) {
+            return 'tournament '.$row->subject_id.': deletion '.$row->event_id.' taken by another run';
+        }
+
+        [$deletion, $accepted, $total] = $this->sendDeletion($row->refresh(), $relays, $now);
+
+        return 'tournament '.$row->subject_id.': deletion '.$deletion->id.' sent again to '.$accepted.'/'.$total.' relays';
+    }
+
+    /**
+     * Send a deletion row's stored event and record the answer: done once
+     * every relay took it; a warning when its last attempt still missed a
+     * relay.
+     *
+     * @param  list<string>  $relays
+     * @return array{SignedEvent, int, int}
+     */
+    private function sendDeletion(BotPost $row, array $relays, CarbonImmutable $now): array
+    {
+        $deletion = SignedEvent::fromInput(json_decode((string) $row->event, true))
+            ?? throw new LogicException('The stored deletion '.$row->id.' is not a valid event.');
+        $results = $this->publisher->publish($deletion->toArray(), $relays);
+        $accepted = count(array_filter($results, fn ($result): bool => $result->accepted));
+        $everywhere = $accepted > 0 && $accepted === count($results);
+
+        $row->forceFill(['relays_accepted' => $accepted, 'relays_total' => count($results), 'published_at' => $everywhere ? $now : null])->save();
+
+        if (! $everywhere && $accepted > 0 && $row->attempts >= self::DELETION_ATTEMPTS) {
+            Log::warning('Stream bot deletion given up for the relays that did not take it', [
+                'tournament' => $row->subject_id,
+                'deletion' => $deletion->id,
+                'missing' => array_values(array_map(fn ($result): string => $result->relay.': '.$result->message, array_filter($results, fn ($result): bool => ! $result->accepted))),
+            ]);
+        }
+
+        return [$deletion, $accepted, count($results)];
+    }
+
+    /**
+     * Claim a row for this run: nobody delivered it and nobody claimed it
+     * within `retry_minutes`.
+     *
+     * @param  array<string, mixed>  $subject
+     */
+    private function claim(array $subject, CarbonImmutable $now): bool
+    {
+        return BotPost::query()->where($subject)->whereNull('published_at')
+            ->where(fn ($query) => $query->whereNull('attempted_at')->orWhere('attempted_at', '<=', $this->claimCutoff($now)))
+            ->update(['attempted_at' => $now, 'attempts' => DB::raw('attempts + 1'), 'updated_at' => $now]) === 1;
+    }
+
+    /**
+     * Whether the stored note is signed by the bot key; a warning with both
+     * public keys when it is not.
+     */
+    private function signedBy(string $storedEvent, LeagueKey $key, Tournament $tournament): bool
+    {
+        $note = SignedEvent::fromInput(json_decode($storedEvent, true));
+
+        if ($note === null || $note->pubkey === $key->pubkey()) {
+            return true;
+        }
+
+        Log::warning('Stream bot note announces an old start but is signed by another key, not deleted or renewed', ['tournament' => $tournament->id, 'note' => $note->id, 'note_pubkey' => $note->pubkey, 'bot_pubkey' => $key->pubkey()]);
+
+        return false;
+    }
+
+    /**
+     * @return array{subject_type: string, subject_id: int, kind: int}
+     */
+    private function noteSubject(Tournament $tournament): array
+    {
+        return ['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE];
+    }
+
+    /**
+     * @return array{subject_type: string, subject_id: int, kind: int, slot: string}
+     */
+    private function deletionSubject(Tournament $tournament, string $noteId): array
+    {
+        return ['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_DELETION, 'slot' => substr($noteId, 0, 16)];
     }
 
     /**

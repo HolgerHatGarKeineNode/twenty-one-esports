@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\StreamBot\TournamentNotes;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Attributes\Description;
@@ -33,7 +34,7 @@ class TwentyOneStreamBotTournamentsCommand extends Command
             return self::SUCCESS;
         }
 
-        foreach ($notes->stale() as $tournament) {
+        foreach ($notes->stale(null, LeagueKey::streamBot()) as $tournament) {
             $this->line('--- tournament '.$tournament->id.': its note names an old start, deleted and replaced by');
             $this->line($notes->content($tournament));
             $this->newLine();

@@ -13,6 +13,7 @@ use App\Support\TwentyOne\PublishResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
@@ -25,9 +26,10 @@ use function BitWasp\Bech32\decodeRaw;
  * tournament, the backlog a few per run, never twice (not across runs, not
  * with a rival run, not after a failed send), none for a tournament called
  * off first, nothing without the flag, the key or a relay; a note whose
- * start changed is deleted (NIP-09) and posted anew, by the scheduled run
- * and by the data migration after the cups moved to their slots. The relays
- * are stood in for.
+ * start changed is deleted (NIP-09) and posted anew by the scheduled run:
+ * once per note with a rival run, the same deletion again to a relay that
+ * refused it, never a note signed by another key. The relays are stood in
+ * for: each keeps the notes it took and drops the ones a deletion names.
  */
 
 beforeEach(function () {
@@ -45,15 +47,43 @@ beforeEach(function () {
 
     $this->published = [];
     $this->accepts = true;
+    // Relay => how many more events it refuses; relay => the ids of the notes it holds.
+    $this->refusals = [];
+    $this->held = [];
+    // A seam: called with each event before the relays answer (it disarms itself).
+    $this->onPublish = null;
     $this->app->instance(StreamBotPublisher::class, new class($this) extends StreamBotPublisher
     {
         public function __construct(private $test) {}
 
         public function publish(array $event, array $relays): array
         {
-            $this->test->published[] = SignedEvent::fromInput($event);
+            $signed = SignedEvent::fromInput($event);
+            $this->test->published[] = $signed;
 
-            return collect($relays)->mapWithKeys(fn (string $relay): array => [$relay => new PublishResult($relay, $this->test->accepts, $this->test->accepts ? '' : 'blocked: no')])->all();
+            if ($this->test->onPublish !== null) {
+                ($this->test->onPublish)($signed);
+            }
+
+            return collect($relays)->mapWithKeys(function (string $relay) use ($signed): array {
+                $ok = $this->test->accepts && ($this->test->refusals[$relay] ?? 0) === 0;
+
+                if (! $ok && ($this->test->refusals[$relay] ?? 0) > 0) {
+                    $this->test->refusals[$relay]--;
+                }
+
+                if ($ok && $signed->kind === 1) {
+                    $this->test->held[$relay][$signed->id] = true;
+                }
+
+                if ($ok && $signed->kind === 5) {
+                    foreach ($signed->tagsNamed('e') as $tag) {
+                        unset($this->test->held[$relay][$tag[0]]);
+                    }
+                }
+
+                return [$relay => new PublishResult($relay, $ok, $ok ? '' : 'blocked: no')];
+            })->all();
         }
     });
 
@@ -197,6 +227,12 @@ test('nothing is claimed, signed or sent without the flag, the key or a relay', 
     'no relay' => [['twentyone.stream.relays' => []]],
 ]);
 
+/** The tournament note rows (kind 1), not the deletions next to them. */
+function notePost(): BotPost
+{
+    return BotPost::query()->where('kind', 1)->sole();
+}
+
 test('a start change after the note went out: a NIP-09 deletion of the old note, then a fresh note with the new start in its row', function () {
     $tournament = openTournament(['name' => 'Moving Cup']);
     Artisan::call('twentyone:stream-bot:tournaments');
@@ -218,15 +254,18 @@ test('a start change after the note went out: a NIP-09 deletion of the old note,
         ->and($note->content)->toContain('starts Mon, 5 Oct 2026, 9:30 PM CEST')->not->toContain('3 Oct')->not->toContain('#')
         ->and($note->tags)->toBe($old->tags)
         ->and(StreamBotCopy::violations($body, $note->tags))->toBe([])
-        ->and(BotPost::query()->sole()->event_id)->toBe($note->id)
-        ->and(BotPost::query()->sole()->published_at)->not->toBeNull();
+        ->and(notePost()->event_id)->toBe($note->id)
+        ->and(notePost()->published_at)->not->toBeNull()
+        ->and(BotPost::query()->where('kind', 5)->sole()->event_id)->toBe($deletion->id)
+        ->and($this->held)->toBe(['wss://one.test' => [$note->id => true], 'wss://two.test' => [$note->id => true]]);
 
     // The corrected note names the current start: later runs leave it alone.
+    $this->travel(11)->minutes();
     Artisan::call('twentyone:stream-bot:tournaments');
     expect($this->published)->toHaveCount(3);
 });
 
-test('no relay takes the deletion: the old note stays in its row and the next run tries again', function () {
+test('no relay takes the deletion: the old note stays in its row and a later run sends the same deletion again', function () {
     $tournament = openTournament();
     Artisan::call('twentyone:stream-bot:tournaments');
     $old = $this->published[0];
@@ -234,16 +273,121 @@ test('no relay takes the deletion: the old note stays in its row and the next ru
 
     $this->accepts = false;
     Artisan::call('twentyone:stream-bot:tournaments');
-    expect(BotPost::query()->sole()->event_id)->toBe($old->id)
+    expect(notePost()->event_id)->toBe($old->id)
         ->and(collect($this->published)->pluck('kind')->all())->toBe([1, 5]);
 
     $this->accepts = true;
+    $this->travel(11)->minutes();
     Artisan::call('twentyone:stream-bot:tournaments');
     expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 5, 1])
-        ->and(BotPost::query()->sole()->event_id)->toBe($this->published[3]->id);
+        ->and($this->published[2]->id)->toBe($this->published[1]->id)
+        ->and(notePost()->event_id)->toBe($this->published[3]->id);
 });
 
-test('the data migration corrects the notes of cups moved to their game slot, leaves a current note alone and is idempotent', function () {
+test('a relay that refused the deletion gets the same deletion on the next run, then both relays hold only the new note', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    // two.test refuses the deletion once (the new note after it goes through).
+    $this->refusals = ['wss://two.test' => 1];
+    Artisan::call('twentyone:stream-bot:tournaments');
+    [$deletion, $note] = [$this->published[1], $this->published[2]];
+    expect($this->held['wss://two.test'])->toBe([$old->id => true, $note->id => true])
+        ->and(BotPost::query()->where('kind', 5)->sole()->published_at)->toBeNull();
+
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 1, 5])
+        ->and($this->published[3]->id)->toBe($deletion->id)
+        ->and($this->held)->toBe(['wss://one.test' => [$note->id => true], 'wss://two.test' => [$note->id => true]])
+        ->and(BotPost::query()->where('kind', 5)->sole()->published_at)->not->toBeNull();
+
+    // Done: nothing more goes out.
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect($this->published)->toHaveCount(4);
+});
+
+test('a deletion a relay never takes is given up after its attempts, with a warning', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+    $this->refusals = ['wss://two.test' => 1000];
+    Log::spy();
+
+    foreach (range(1, 14) as $run) {
+        Artisan::call('twentyone:stream-bot:tournaments');
+        $this->travel(11)->minutes();
+    }
+
+    // One send in the correction and eleven resends: twelve attempts, then no more.
+    expect(collect($this->published)->where('kind', 5)->count())->toBe(12)
+        ->and(BotPost::query()->where('kind', 5)->sole()->attempts)->toBe(12);
+    Log::shouldHaveReceived('warning')->with('Stream bot deletion given up for the relays that did not take it', Mockery::type('array'))->once();
+});
+
+test('a rival run that corrected the note after this run found it stale: this run deletes nothing (not the new note)', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    // Seam: the rival runs in full while this run reads the stale tournaments, after it read their notes.
+    $armed = true;
+    Tournament::retrieved(function () use (&$armed): void {
+        if ($armed) {
+            $armed = false;
+            app(TournamentNotes::class)->run(CarbonImmutable::now());
+        }
+    });
+    app(TournamentNotes::class)->run(CarbonImmutable::now());
+    $new = notePost()->event_id;
+
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 1])
+        ->and(collect($this->published)->where('kind', 5)->flatMap(fn (SignedEvent $deletion): array => array_column($deletion->tagsNamed('e'), 0))->all())->not->toContain($new)
+        ->and($this->held['wss://one.test'])->toBe([$new => true]);
+});
+
+test('a rival run while this run sends the deletion: the claim holds, one deletion and one new note', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    // Seam: the rival runs in full while this run's deletion is on its way to the relays.
+    $this->onPublish = function (SignedEvent $event): void {
+        if ($event->kind === 5) {
+            $this->onPublish = null;
+            app(TournamentNotes::class)->run(CarbonImmutable::now());
+        }
+    };
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 1])
+        ->and($this->held['wss://two.test'])->toBe([notePost()->event_id => true]);
+});
+
+test('a stale note signed by another key than the bot key is neither deleted nor renewed, with a warning naming both keys', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+    $other = new TestSigner;
+    config(['esports.stream_bot.nsec' => $other->secret]);
+    Log::spy();
+
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect($this->published)->toHaveCount(1)
+        ->and(notePost()->event_id)->toBe($old->id)
+        ->and(BotPost::query()->where('kind', 5)->count())->toBe(0);
+    Log::shouldHaveReceived('warning')->with('Stream bot note announces an old start but is signed by another key, not deleted or renewed', [
+        'tournament' => $tournament->id, 'note' => $old->id, 'note_pubkey' => $this->botKey->pubkey, 'bot_pubkey' => $other->pubkey,
+    ]);
+});
+
+test('the scheduled run corrects the note of a cup moved to its game slot and leaves a current note alone, no DM', function () {
     Queue::fake();
     Notification::fake();
     $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
@@ -259,8 +403,7 @@ test('the data migration corrects the notes of cups moved to their game slot, le
     expect(app(CasualCups::class)->moveToGameSlots())->toHaveCount(1)
         ->and(app(TournamentNotes::class)->stale())->toHaveCount(1);
 
-    $migration = require database_path('migrations/2026_09_30_233156_correct_stream_bot_notes_with_an_old_start.php');
-    $migration->up();
+    Artisan::call('twentyone:stream-bot:tournaments');
     [$deletion, $note] = array_slice($this->published, 2);
 
     expect($this->published)->toHaveCount(4)
@@ -269,31 +412,9 @@ test('the data migration corrects the notes of cups moved to their game slot, le
         ->and(notedTournaments([$note]))->toBe([$moved->id])
         ->and($note->content)->toContain('starts '.LeagueTime::stamp($moved->refresh()->starts_at, 'Europe/Berlin', 'en'))->toContain('Fri, 9 Oct 2026, 6:00 PM CEST')
         ->and(StreamBotCopy::violations(explode("\n\nnostr:", $note->content, 2)[0], $note->tags))->toBe([])
-        ->and(BotPost::query()->where('subject_id', $moved->id)->value('event_id'))->toBe($note->id)
-        ->and(BotPost::query()->where('subject_id', $kept->id)->value('event_id'))->toBe($notes[$kept->id]->id)
-        ->and($migration->withinTransaction)->toBeFalse();
+        ->and(BotPost::query()->where(['subject_id' => $moved->id, 'kind' => 1])->value('event_id'))->toBe($note->id)
+        ->and(BotPost::query()->where(['subject_id' => $kept->id, 'kind' => 1])->value('event_id'))->toBe($notes[$kept->id]->id)
+        ->and(app(TournamentNotes::class)->stale())->toBe([]);
 
-    // Idempotent: a second run finds nothing to correct.
-    $migration->up();
-    expect($this->published)->toHaveCount(4);
     Notification::assertNothingSent();
-});
-
-test('the data migration fails loud when a stale note cannot be corrected, and a run after the fix corrects it', function () {
-    $tournament = openTournament();
-    Artisan::call('twentyone:stream-bot:tournaments');
-    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
-    $migration = require database_path('migrations/2026_09_30_233156_correct_stream_bot_notes_with_an_old_start.php');
-
-    config(['esports.stream_bot.enabled' => false]);
-    expect(fn () => $migration->up())->toThrow(RuntimeException::class, '1 stream bot notes announce an old start, but no notes: ESPORTS_STREAM_BOT_ENABLED is off');
-
-    config(['esports.stream_bot.enabled' => true]);
-    $this->accepts = false;
-    expect(fn () => $migration->up())->toThrow(RuntimeException::class, 'no relay took the deletion');
-
-    $this->accepts = true;
-    $migration->up();
-    expect(app(TournamentNotes::class)->stale())->toBe([])
-        ->and(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 5, 1]);
 });

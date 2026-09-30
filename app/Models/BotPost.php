@@ -19,6 +19,9 @@ use Illuminate\Support\Carbon;
  * `slot` tells apart several notes of one kind on one subject: the
  * free-places notes (App\Support\StreamBot\FreePlaceNotes) have one row per
  * tournament and slot ("168h" … "3h"); the one-per-subject notes keep ''.
+ * A NIP-09 deletion of a tournament note whose start changed is a row of
+ * kind 5 on the same tournament, slot: the first 16 characters of the
+ * deleted note's id; `published_at` once every relay took it.
  *
  * @property int $id
  * @property string $subject_type
