@@ -218,7 +218,7 @@ final class RulesPage
     {
         $c = (array) LeagueSettings::get('esports.casual');
         $games = implode(', ', array_map(GameNames::game(...), (array) $c['games']));
-        $excluded = collect((array) $c['crossplay_excluded'])->map(fn (array $platforms, string $game) => GameNames::game($game).': '.implode(', ', $platforms))->implode('; ');
+        $excluded = collect((array) $c['crossplay_excluded'])->filter()->map(fn (array $platforms, string $game) => GameNames::game($game).': '.implode(', ', $platforms))->implode('; ');
 
         return [
             'id' => 'casual-1v1',

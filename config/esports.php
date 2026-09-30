@@ -350,7 +350,11 @@ return [
     |
     | Two players pair on the same platform, or on two platforms when both
     | allow crossplay; `crossplay_excluded` lists the platforms of a game
-    | that never play cross-platform (EA FC on Switch).
+    | that never play cross-platform (EA FC on Switch). An empty list says
+    | so on purpose: Age of Empires II excludes none, so PC, Xbox and
+    | PlayStation pair when both allow crossplay. That AoE2 DE plays across
+    | all three is game knowledge, not verified in the client (plan "AoE2
+    | und Trackmania", P9); a default pending the user's confirmation.
     |
     | ready_seconds: both players press Ready this long after the pairing;
     | a miss voids the match (not a no-show). invite_seconds: how long a
@@ -392,7 +396,7 @@ return [
     'casual' => [
         'games' => ['rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2'],
         'mode' => '1v1',
-        'crossplay_excluded' => ['ea-sports-fc-26' => ['switch'], 'ea-sports-fc-27' => ['switch']],
+        'crossplay_excluded' => ['ea-sports-fc-26' => ['switch'], 'ea-sports-fc-27' => ['switch'], 'age-of-empires-2' => []],
         'ready_seconds' => (int) env('ESPORTS_CASUAL_READY_SECONDS', 60),
         'invite_seconds' => (int) env('ESPORTS_CASUAL_INVITE_SECONDS', 120),
         'rematch_seconds' => (int) env('ESPORTS_CASUAL_REMATCH_SECONDS', 60),
