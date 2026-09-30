@@ -153,3 +153,15 @@ test('control: in a live season the same rated challenge is prepared and signed 
         ->and($plan['templates'])->toHaveCount(1)
         ->and($plan['templates'][0]['kind'])->toBe(2150);
 });
+
+test('the live season kept on the request is forgotten when a season is released or ends', function () {
+    expect(Seasons::live())->toBeNull();
+
+    $season = openSeason();
+
+    expect(Seasons::live()?->id)->toBe($season->id);
+
+    $season->forceFill(['ends_at' => now()->subSecond()])->save();
+
+    expect(Seasons::live())->toBeNull();
+});

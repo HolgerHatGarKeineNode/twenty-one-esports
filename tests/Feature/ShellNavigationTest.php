@@ -13,6 +13,7 @@ use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Matches\MempoolStrip;
 use App\Support\Navigation\ShellNavigation;
+use App\Support\SeasonChain\Seasons;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -195,6 +196,8 @@ test('the mempool count costs the same queries for 1, 5 and 25 waiting matches o
     };
     $count = function (): array {
         Cache::forget(ShellNavigation::MEMPOOL_KEY);
+        // Every count is a fresh request, which keeps no live season yet.
+        Seasons::forget();
         DB::flushQueryLog();
         DB::enableQueryLog();
         $waiting = ShellNavigation::current()->chain()[0]['count'];

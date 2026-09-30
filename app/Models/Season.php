@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\ConsensusParameters;
 use App\Support\SeasonChain\SeasonParameters;
+use App\Support\SeasonChain\Seasons;
 use Carbon\CarbonImmutable;
 use Database\Factories\SeasonFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -60,8 +61,14 @@ class Season extends Model
 
     protected static function booted(): void
     {
-        static::saved(fn () => RatingSettings::forget());
-        static::deleted(fn () => RatingSettings::forget());
+        static::saved(function (): void {
+            RatingSettings::forget();
+            Seasons::forget();
+        });
+        static::deleted(function (): void {
+            RatingSettings::forget();
+            Seasons::forget();
+        });
     }
 
     protected function casts(): array

@@ -254,7 +254,7 @@ dataset('no open frozen ladder at the pairing', [
     ],
     'frozen at publish, but the season ended before the pairing' => [
         fn () => openSeason(['slug' => 'season-1']),
-        fn () => Season::query()->update(['ends_at' => now()->subMinute()]),
+        fn () => Season::query()->get()->each->update(['ends_at' => now()->subMinute()]),
     ],
 ]);
 

@@ -12,6 +12,7 @@ use App\Enums\TournamentFormat;
 use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\User;
+use App\Support\SeasonChain\Seasons;
 use App\Support\Series\CasualMatches;
 use App\Support\Tournaments\CasualCups;
 use App\Support\TwentyOne\Stream\GameSpotlight;
@@ -134,6 +135,8 @@ test('a player\'s series in the mempool shows the player\'s name and avatar, not
     $match->forceFill(['start_at' => now()->subMinutes(3)])->save();
     $queries = function (): int {
         Cache::forget(MempoolSlides::CACHE_KEY);
+        // The daemon keeps no live season between reads (Seasons::live() asks in every console process).
+        Seasons::forget();
         DB::flushQueryLog();
         DB::enableQueryLog();
         app(MempoolSlides::class)->read();

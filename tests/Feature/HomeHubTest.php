@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TournamentStatus;
+use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
@@ -205,13 +206,18 @@ test('the queries do not grow with entrants, boards, results, newcomers or ladde
     $grow(8);
     $many = $queries();
 
-    expect($many)->toBe($few)->and($few)->toBeLessThanOrEqual(HOME_QUERY_BUDGET);
+    // One game less must not be one query less: the live season is kept per request (Seasons::live()).
+    app()->instance(GameRegistry::class, new GameRegistry(array_slice(array_values(app(GameRegistry::class)->all()), 0, -1)));
+    $fewerGames = $queries();
+    app()->forgetInstance(GameRegistry::class);
+
+    expect($many)->toBe($few)->and($fewerGames)->toBe($many)->and($few)->toBeLessThanOrEqual(HOME_QUERY_BUDGET);
 });
 
 /**
  * Measured 2026-09-27 for a guest with three open tournaments (one with a pot): 46 queries, shell included; the rest is headroom for the shell.
  * 51 since 2026-09-28 (P44): the league settings in force are one more query per request (LeagueSettings::overrides()), the headroom was used up.
- * 52 since 2026-09-30 (Age of Empires II): the strongest players ask Ladders::isOpen() once per game, and each asks
- * Seasons::live() again (not kept per request), so one more series game is one more query. It does not grow with entrants.
+ * 52 on 2026-09-30 (Age of Empires II): the strongest players asked Seasons::live() once per game. Back to 51 on
+ * 2026-10-01: the live season is kept per request, so a new game adds no query.
  */
-const HOME_QUERY_BUDGET = 52;
+const HOME_QUERY_BUDGET = 51;

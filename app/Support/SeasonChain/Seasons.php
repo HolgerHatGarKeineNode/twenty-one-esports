@@ -18,11 +18,57 @@ use Carbon\CarbonImmutable;
  */
 final class Seasons
 {
-    /** The season whose [Block 0, ends) contains $at. */
+    private const MEMO = 'seasons.live';
+
+    /**
+     * The season whose [Block 0, ends) contains $at.
+     *
+     * The live season now is looked up once per HTTP request: the home page
+     * asks it once per game (Ladders::isOpen()), so without the memo every
+     * new game was one more query. It is kept on the request (like
+     * LeagueSettings), forgotten when a season is saved or deleted, and only
+     * trusted while the kept season still contains now. Console processes
+     * (queue workers, the stream daemon, the scheduler) keep one request for
+     * their whole life and would never see Block 0 released by another
+     * process, so they always ask the database; the test runner keeps it
+     * because every test request is a fresh request. A moved test clock
+     * (travel()) is a different memo.
+     */
     public static function live(?CarbonImmutable $at = null): ?Season
     {
-        $at ??= CarbonImmutable::now();
+        if ($at !== null || (app()->runningInConsole() && ! app()->runningUnitTests())) {
+            return self::query($at ?? CarbonImmutable::now());
+        }
 
+        $now = CarbonImmutable::now();
+        $attributes = request()->attributes;
+        $memo = self::MEMO.'.'.(CarbonImmutable::hasTestNow() ? CarbonImmutable::getTestNow()?->format('U.u') : 'now');
+        $kept = $attributes->get($memo);
+
+        if (is_array($kept) && ($kept['season'] === null || $kept['season']->isLiveAt($now))) {
+            return $kept['season'];
+        }
+
+        $season = self::query($now);
+        $attributes->set($memo, ['season' => $season]);
+
+        return $season;
+    }
+
+    /** Forgets the live season kept on this request (a season was saved or deleted). */
+    public static function forget(): void
+    {
+        $attributes = request()->attributes;
+
+        foreach (array_keys($attributes->all()) as $key) {
+            if (str_starts_with((string) $key, self::MEMO.'.')) {
+                $attributes->remove($key);
+            }
+        }
+    }
+
+    private static function query(CarbonImmutable $at): ?Season
+    {
         return Season::query()
             ->where('genesis_at', '<=', $at)
             ->where('ends_at', '>', $at)
