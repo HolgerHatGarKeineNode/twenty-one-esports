@@ -1145,6 +1145,68 @@ S.livecup = [
   { html: endCard, update: endUpdate },
 ];
 
+/* ===== Age of Empires II (reel 18) =====
+   The hero's parts at reel scale (lib/heroes.js aoeFinal, aoeLobby, the cover's logo band). The
+   queue button and "Opponent found" are the game page's and the room's own strings; the cup
+   slot is config/esports.php casual_cups (Sunday 20:00 on the region's clock), four spots as
+   the first EU/US cups on prod (2026-10-01); the seats are kit players. Casual Elo +20 is a
+   first win at 1000 (season.casual, fact 54). */
+const AOE_WRAP = (inner, w = 900, fs = 34) => `<div class="h-aoe2" style="display:block;font-size:${fs}px"><div data-card class="card" style="width:${w}px;padding:0;border:0;background:none;display:grid">${inner}</div></div>`;
+const aoeCover = (h) => `<div class="ae-cover cube" style="--d:26px"><div class="ae-art" style="background-image:url('${HS().COVER}')"></div>
+  <div class="ae-tags" style="font-size:28px"><span class="mk">${HS().glyphOf('aoe2')}<b>AoE2</b></span><span>1v1</span><span>2v2</span><span>3v3</span><span>BO1/3</span></div></div>`;
+S.aoe2 = [
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${aoeCover()}
+      <div class="ui-card" style="margin-top:44px;padding:36px;display:grid;row-gap:28px">
+        <div class="btnx" data-btn style="width:100%">${E(UI('findOpponent1v1', l))}</div>
+        <div data-found class="row" style="justify-content:space-between;opacity:0">
+          <span class="row" style="gap:18px">${av('satsjaeger', 88)}<b style="font:800 34px/1.1 var(--disp)">satsjaeger</b></span>
+          <span class="dim" style="font:700 28px/1 var(--mono)">vs</span>
+          <span class="row" style="gap:18px"><b style="font:800 34px/1.1 var(--disp)">kai_blitz</b>${av('kai_blitz', 88)}</span>
+        </div>
+        <span data-ok class="row" style="gap:14px;font:700 30px/1.2 var(--mono);color:var(--win);opacity:0"><i class="dotlive"></i>${E(UI('opponentFound', l))}</span>
+      </div>`)}</div>`,
+    update(root, t) {
+      cardIn(root, t);
+      const btn = root.querySelector('[data-btn]'), b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
+      btn.classList.toggle('pressed', cursorTo(root, t, 0.4, 1.0, [860, 1040], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.4], 1.1));
+      const f = root.querySelector('[data-found]'), p = back(seg(t, 1.4, 1.9)); f.style.opacity = clamp(p * 1.5); f.style.transform = `scale(${0.8 + 0.2 * p})`;
+      root.querySelector('[data-ok]').style.opacity = eo(seg(t, 1.9, 2.2));
+    } },
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeLobby(l), 900, 38)}</div>`,
+    update(root, t) {
+      cardIn(root, t);
+      const card = root.querySelector('.al-card'), p = back(seg(t, 0.3, 0.8)); card.style.opacity = clamp(p * 1.5); card.style.transform = `translateX(${(1 - p) * 120}px)`;
+      root.querySelectorAll('.st').forEach((s, i) => { const on = i < 3 && t > 1.0 + i * 0.4; s.classList.toggle('done', on); const tk = s.querySelector('.tk'); if (tk) tk.style.opacity = on ? 1 : 0.15; });
+      card.style.boxShadow = t > 0.8 ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(217,70,239,.25)` : 'none';
+    } },
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${HS().aoeFinal(l)}
+      <div class="ui-card" style="margin-top:36px;padding:26px 30px;display:grid;row-gap:18px">
+        <div class="row" style="justify-content:space-between"><b style="font:800 36px/1.1 var(--disp)">${E(UI('modeLadder', l, { mode: '1v1' }))}</b><span class="dim" style="font:700 26px/1 var(--mono)">${E(UI('casual', l))}</span></div>
+        <div class="row" style="justify-content:space-between"><span class="row" style="gap:18px">${av('satsjaeger', 64)}<b style="font:800 34px/1 var(--disp)">satsjaeger</b></span><b data-elo style="font:800 40px/1 var(--disp);white-space:nowrap">1000</b></div>
+      </div>`, 900, 36)}</div>`,
+    update(root, t) {
+      cardIn(root, t);
+      root.querySelectorAll('.af-games .g').forEach((g, i) => { const p = back(seg(t, 0.4 + i * 0.35, 0.7 + i * 0.35)); g.style.opacity = clamp(p * 1.5); g.style.transform = `translateY(${(1 - p) * 40}px)`; });
+      const won = root.querySelector('.af-side.won'); won.style.background = t > 1.5 ? `rgba(74,222,128,${0.1 + 0.08 * Math.sin(t * 6)})` : '';
+      const q = eo(seg(t, 1.7, 2.4)), v = Math.round(1000 + 20 * q);
+      root.querySelector('[data-elo]').innerHTML = v + (q > 0.02 ? `<span class="delta up">+${v - 1000}</span>` : '');
+    } },
+  { html: (l) => {
+      const cup = (region, zone, i) => `<div data-r="${i}" class="card cube" style="padding:34px 40px;display:grid;row-gap:20px;--d:24px;--cube-face:#86198F">
+        <b style="font:800 48px/1.1 var(--disp);white-space:nowrap">AoE2 Casual Cup ${region}</b>
+        <div class="row" style="justify-content:space-between"><span style="font:700 36px/1.2 var(--mono);color:#F0ABFC;white-space:nowrap">${E(UI('sunday', l))} 20:00 ${zone}</span><span class="row" style="gap:10px;font:700 24px/1.2 var(--mono);color:var(--win);white-space:nowrap"><i class="dotlive"></i>${E(UI('signupOpen', l))}</span></div>
+        ${spotGrid(4, 2, 4, 88, l)}</div>`;
+      return `<div class="center" style="position:absolute"><div style="display:grid;row-gap:44px;width:900px">${cup('EU', 'Berlin', 0)}${cup('US', 'New York', 1)}</div></div>`;
+    },
+    update(root, t) {
+      root.querySelectorAll('[data-r]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.4, 0.55 + i * 0.4)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * (i ? 160 : -160)}px)`; });
+      root.querySelectorAll('[data-sp]').forEach((c, i) => { const p = eo(seg(t, 0.5 + (i % 4) * 0.1, 0.8 + (i % 4) * 0.1)); c.style.opacity = p; c.style.transform = `scale(${0.7 + 0.3 * p})`; });
+      root.querySelectorAll('[data-you]').forEach((y) => { const on = t > 1.4; y.style.borderColor = on ? 'var(--btc)' : ''; y.style.borderStyle = on ? 'solid' : 'dashed'; y.style.boxShadow = on ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(247,147,26,.25)` : 'none'; });
+      root.querySelectorAll('[data-sp]').forEach((c, i) => { if (i % 4 < 2) c.innerHTML = av(['kai_blitz', 'hodlqueen', 'zap_zoe', 'taproot_tim'][i < 4 ? i : i - 2], 56); });
+    } },
+  { html: endCard, update: endUpdate },
+];
+
 /* ---------- timeline ---------- */
 let BEATS = [], DUR = 0;
 function fitCaption(el) {

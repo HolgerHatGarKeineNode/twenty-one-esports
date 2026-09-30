@@ -341,6 +341,34 @@ esports.einundzwanzig.space
 
 ---
 
+## Age of Empires II
+
+Facts 45-60. Live on prod (game page, casual 1v1, the first EU and US cups, read 2026-10-01).
+No automatic result check is claimed (fact 53), no mining (fact 58).
+
+**Nostr (DE):**
+Age of Empires II: Definitive Edition ist in der Liga. Im Casual 1v1 findest du deinen Gegner über
+die Warteschlange. Der Host erstellt eine Lobby mit Passwort und teilt Name und Passwort im
+verschlüsselten Match-Chat, die Liga sieht sie nie. Nach dem Spiel trägt einer den Sieger ein, der
+andere bestätigt. Jede Serie bewegt dein Elo, und dein Name steigt in der 1v1-Ladder. Sonntags um
+20 Uhr läuft der AoE2 Casual Cup, einmal nach Berliner, einmal nach New Yorker Zeit. Dazu Turniere
+und Clan-Lineups im 2v2 und 3v3.
+esports.einundzwanzig.space
+
+**Nostr (EN):**
+Age of Empires II: Definitive Edition is in the league. In the casual 1v1 you find your opponent in
+the queue. The host sets up a lobby with a password and shares its name and password in the
+encrypted match chat; the league never sees them. After the game one of you enters the winner and
+the other confirms. Every series moves your Elo, and your name climbs the 1v1 ladder. On Sundays at
+8 pm the AoE2 Casual Cup runs, once on Berlin time, once on New York time. Plus tournaments, and clan
+lineups for 2v2 and 3v3.
+esports.einundzwanzig.space
+
+**X (DE):** Age of Empires II im 1v1: Gegner finden, Lobby teilen, Sieger eintragen. Sonntags 20 Uhr der Casual Cup. esports.einundzwanzig.space
+**X (EN):** Age of Empires II 1v1: find an opponent, share the lobby, enter the winner. Casual Cup on Sundays at 8 pm. esports.einundzwanzig.space
+
+---
+
 ## Hype-week plan
 
 Reihenfolge nach Ansprache-Priorität (casual, sofort spielbar zuerst; Aufbauendes

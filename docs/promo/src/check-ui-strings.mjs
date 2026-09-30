@@ -11,7 +11,9 @@ const REPO = path.resolve(SRC, '../../..');
 export function checkUiStrings() {
   const de = JSON.parse(fs.readFileSync(path.join(REPO, 'lang/de.json'), 'utf8'));
   const src = fs.readFileSync(path.join(SRC, 'lib/ui-strings.js'), 'utf8');
-  const keys = Object.keys(de), vals = Object.values(de);
+  // a pluralised entry (":count game won|:count games won") counts once per variant
+  const variants = (list) => list.flatMap((s) => (s.includes('|') ? s.split('|') : [s]));
+  const keys = variants(Object.keys(de)), vals = variants(Object.values(de));
   const tmpl = (s) => new RegExp('^' + s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:(\w+)/g, '.+') + '$');
   // a template counts only if its literal part covers at least half of the string:
   // a key made of placeholders (":name") would otherwise match anything

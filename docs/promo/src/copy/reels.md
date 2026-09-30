@@ -379,3 +379,27 @@ kind exists or is mentioned.
 3. (3s) One champion. One crown. — *the final is decided, kai_blitz gets the crown, Champion*
 4. (3s) The next one opens. Take a seat. — *Next tournament, sign-up open: the seats fill up, "Your spot?" lights up*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
+
+---
+
+## Reel 18 — Age of Empires II
+
+Sources: `facts.md` 45-60 (`app/Games/AgeOfEmpires2.php`, `config/esports.php` `casual` and
+`casual_cups`, `pages/matches/partials/casual-steps` and `card-composer`, `⚡room`, `lobbyCards.js`,
+prod /games/age-of-empires-2 and /tournaments read 2026-10-01). Five beats of 3 s, 18.4 s with the
+cuts, as every reel. The cup seats in beat 4 are kit players; the casual Elo is fact 54 (+20 for a
+first win). No automatic result check is shown or said (fact 53): players enter and confirm.
+
+**DE**
+1. (3s) Age of Empires II. Dein 1v1 wartet. — *das Cover-Logo, darunter „1v1-Gegner finden“; der Cursor klickt, „Gegner gefunden“: satsjaeger gegen kai_blitz*
+2. (3s) Lobby und Passwort, verschlüsselt im Chat — *Match-Chat: die Karte „Age-of-Empires-II-Lobby“ mit e21-58 und frischem Passwort, die Schritte haken ab: Bereit, Lobby geteilt, Beigetreten*
+3. (3s) Du gewinnst. Dein Name steigt. — *Sieger je Spiel: drei Linien, zwei fließen zu satsjaeger, 2 Spiele gewonnen; die 1v1-Ladder zählt +20*
+4. (3s) Sonntags 20 Uhr: der AoE2 Casual Cup — *zwei Cup-Karten, EU 20:00 Berlin und US 20:00 New York, die Plätze füllen sich, „Dein Platz?“ leuchtet*
+5. (3s) esports.einundzwanzig.space — *Logo + URL*
+
+**EN**
+1. (3s) Age of Empires II. Your 1v1 awaits. — *the cover logo, "Find a 1v1 opponent" below it; the cursor clicks, "Opponent found": satsjaeger vs kai_blitz*
+2. (3s) Lobby and password, encrypted in chat — *match chat: the "Age of Empires II lobby" card with e21-58 and a fresh password, the steps tick off: Ready, Lobby shared, Joined*
+3. (3s) You win. Your name climbs. — *winner per game: three lines, two flow to satsjaeger, 2 games won; the 1v1 ladder counts +20*
+4. (3s) Sundays at 8 pm: the AoE2 Casual Cup — *two cup cards, EU 20:00 Berlin and US 20:00 New York, the seats fill up, "Your spot?" lights up*
+5. (3s) esports.einundzwanzig.space — *logo + URL*

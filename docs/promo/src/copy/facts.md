@@ -102,6 +102,41 @@ and, where a number is shown, against prod's public pages read on 2026-09-29. **
 **Left out:** any date or countdown for Block 0; any claim that a season runs now; the supply
 ("not announced yet" on prod); pots of future tournaments; payouts to named players (none exist).
 
+## Added 2026-10-01 — Age of Empires II (motif 14)
+
+Written by the design lead, checked claim by claim against master `96d2cd41` (Age of Empires II
+added in `813bf8f2`, its cup slot in `beabfc89`) and against prod's public pages read on
+2026-10-01: `/games/age-of-empires-2` answers 200 and shows "1v1 2v2 3v3 BO1/3" and "Play alone
+or with your clan. Every series moves your Elo."; `/tournaments` lists "AoE2 Casual Cup EU #1"
+(Sun 4 Oct, 8:00 PM Berlin, 0 of 4 spots) and "AoE2 Casual Cup US #1" (starts
+`2026-10-05T00:00:00Z` = Sun 4 Oct, 8:00 PM New York). Pseudonymous throughout: players are
+their Nostr avatar and name, never a face (user, 2026-10-01).
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 45 | Age of Empires II: Definitive Edition ("AoE2") is a series game: 1v1 is a player ladder, 2v2 and 3v3 are clan lineups; best of 1 or 3 | `app/Games/AgeOfEmpires2.php` docblock ("1v1 is a player ladder … 2v2 and 3v3 are clan lineups") and `modes()` (`[1, 3]`, `'player' : 'lineup'`); prod game page "1v1 2v2 3v3 BO1/3" | prod |
+| 46 | A game has a winner and no score: each game is entered by its winner only, the series counts games won | `AgeOfEmpires2::hasGoals()` (false); `SeriesGame::validateResult()` refuses goals; `lang/de.json` "winner per game" / "Sieger je Spiel", ":count games won" / ":count Spiele gewonnen" | prod |
+| 47 | AoE2 is in the casual 1v1 (queue or invite), played best of 1 | `config/esports.php` `casual.games` (`'age-of-empires-2'`); `app/Support/Series/CasualMatches.php` (`'best_of' => … min($mode->bestOf)`); prod game page "searching 1v1" | prod |
+| 48 | The host is drawn, hosts a lobby in the game with a password and spectators allowed, and shares its name and password as a card in the encrypted match chat; the league never sees it | `resources/views/pages/matches/partials/casual-steps.blade.php` ("Host a lobby in Age of Empires II with a password and spectators allowed, then share its name and password in the chat."); `lang/de.json` "The host is drawn. The host shares the lobby (Rocket League, Age of Empires II) … in the encrypted match chat. The league never sees it."; card title "Age of Empires II lobby" / "Age-of-Empires-II-Lobby" (`⚡room.blade.php` `lobbyTitle`) | prod |
+| 49 | The lobby card comes pre-filled with the name `e21-<match number>` and a fresh six-character password for every new lobby | `pages/matches/⚡room.blade.php` (`'lobbyName' => 'e21-'.$match->number`); `resources/js/roomChat.js` `openComposer()` ("A fresh password for every new lobby"); `resources/js/lobbyCards.js` `randomPassword(length = 6)`, alphabet `abcdefghjkmnpqrstuvwxyz23456789` (the kit's `k7m2px` uses only these) | prod |
+| 50 | The guest finds the lobby by its name in the game's lobby browser, joins with the password, then confirms "I am in the lobby" | `casual-steps.blade.php` ("Find the lobby by its name in the lobby browser, join with the password from the card in the chat, then confirm here.", button "I am in the lobby") | prod |
+| 51 | Either player may send their Steam or Xbox name as a card, only on "Send card" | `card-composer.blade.php` (Steam / Xbox select, "Your name goes to your opponent only, so you find each other in the game. The league never sees it."); `lobbyCards.js` `ACCOUNT_CARDS['age-of-empires-2'] = ['steam', 'xbox']` | prod |
+| 52 | The steps of a casual 1v1: Ready, Lobby shared, Joined, Result (either player), Confirmed (the other player); a report nobody answers is confirmed by the league | `casual-steps.blade.php` step list (`'Ready'`, `'Lobby shared'`, `'Joined'`, `'Result'` "either player", `'Confirmed'` "the other player"); `lang/de.json` "Nobody reports: the match is void. A report nobody answers is confirmed by the league." | prod |
+| 53 | **Not built:** checking a result against the game's own match history. The copy never claims an automatic check; players report and confirm | `AgeOfEmpires2.php` docblock ("checking the result against the game's match history comes with a later phase") | not built |
+| 54 | Every series moves your Elo; before the season it is the casual Elo (start 1000, provisional K 40): a first win against a new player is +20 | prod game page "Play alone or with your clan. Every series moves your Elo."; `config/season.php` `casual` ("A second Elo per game and mode for casual play, the same arithmetic"); +20 as fact 37. The reel's cup final moving the 1v1 ladder rests on `app/Support/Rating/RatingService.php` docblock ("A tournament series between two single players … rates the two players", "A casual one goes to the permanent casual ladder"), read, not replayed | prod |
+| 55 | The AoE2 Casual Cup runs per region, EU and US, and starts on Sunday at 20:00 on its region's clock (Europe/Berlin, America/New_York); rounds best of 1, the final best of 3 | `config/esports.php` `casual_cups.games['age-of-empires-2']` (`'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'sunday', 'time' => '20:00']`), `casual_cups.regions`; commit `beabfc89`; prod `/tournaments` (EU #1 and US #1, above) | prod |
+| 56 | AoE2 can be picked for a tournament: planned at about 21 min a game, best-of-1 rounds and a best-of-3 final | `app/Support/Tournaments/GameProfile.php` (`'age-of-empires-2/1v1', … => new self(…, 21, 5, 5, 1, 3, [1, 3], …)`, "planned at about 21 min a game … Bo1 rounds and a Bo3 final") | prod |
+| 57 | Clans play AoE2 as 2v2 and 3v3 lineups; the clan page lists the lineups of every series game | `AgeOfEmpires2::modes()`; commit `813bf8f2` ("Clan page, clan list and clan invite list the lineups of every series game, not only Rocket League's") | prod |
+| 58 | **Not claimed:** mining. AoE2 mines only once the board takes up its draft proposal; the copy says nothing about blocks, rewards or the season | `config/season.php` `chain.age_of_empires_2_proposal` ("DRAFT values … AoE2 mines only once the board fills them in") | draft |
+| 59 | The game's cover art, used cropped to its logo on the marble band (no painted characters in the frame) | `AgeOfEmpires2::assets()` `GameCover('age-of-empires-2', [480, 800])`; `public/images/games/age-of-empires-2-800.jpg` (read by the kit from the app, as the upcoming-tournament reels do) | prod |
+| 60 | The game's colour and mark: fuchsia family `#F0ABFC` / `#D946EF` / `#86198F` / `#701A75`, the castle keep icon | `resources/css/app.css` (`--color-aoe`, `-aoe-2`, `-aoe-deep`, `-aoe-deep-2`); `resources/views/components/icon.blade.php` (`'castle'`) | prod |
+
+Players and the sample match in the kit (satsjaeger 2 : 1 kai_blitz, match #58) are the kit's
+factory names with their pixel avatars, not people. **Left out:** any automatic result check
+(53); mining or rewards for AoE2 (58); the 24/7 stream's latest-win slide, which covers series
+games (`PrideSlides::win()`), because it is the `onstream` motif's claim and is on master only
+(fact 35); a fixed cup date (the posters say "on Sundays", the date goes stale).
+
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 
 Round 1's clan copy said clans have a "Kader"/"lineup" and play chess "team matches

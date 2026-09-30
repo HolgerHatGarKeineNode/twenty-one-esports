@@ -342,6 +342,33 @@ crown) and the next tournament's sign-up card with one free seat marked "Your sp
 
 ---
 
+## 14. Age of Empires II
+
+**DE Headline:** Dein Imperium. Dein Name in der Ladder.
+**DE Subline:** Age of Empires II im 1v1: Gegner finden, Lobby mit Passwort im Match-Chat teilen, Sieger eintragen. Jede Serie bewegt dein Elo.
+**DE Bullets:**
+- Casual 1v1: Gegner über die Warteschlange
+- Der Host teilt Lobby-Name und Passwort, verschlüsselt
+- Casual Cup sonntags: 20 Uhr Berlin, 20 Uhr New York
+- Turniere, Ladder und Clan-Lineups im 2v2 und 3v3
+
+**EN Headline:** Your empire. Your name on the ladder.
+**EN Subline:** Age of Empires II 1v1: find an opponent, share a password lobby in the match chat, enter the winner. Every series moves your Elo.
+**EN Bullets:**
+- Casual 1v1: find an opponent in the queue
+- The host shares lobby name and password, encrypted
+- Casual Cup on Sundays: 8 pm Berlin, 8 pm New York
+- Tournaments, ladders and clan lineups in 2v2 and 3v3
+
+**CTA:** esports.einundzwanzig.space
+**Designer note:** the game's cover cropped to its logo (no painted characters in frame), the
+cup final as the match page words a game without goals ("2 games won", one line per game to its
+winner, the winner's pixel avatar lit), and the host's lobby card from the encrypted match chat
+with the casual steps. Players are avatars and names, never faces. Facts 45-60; live on prod
+(game page and the first EU/US cups read 2026-10-01).
+
+---
+
 ## Dropped or corrected since round 1 (see `facts.md` for full reasoning)
 
 - Clan logo moved from "at founding" to "on the manage page, after founding."

@@ -30,3 +30,4 @@ normalises to -14 LUFS integrated, true peak -1.5 dBTP (single-pass `loudnorm`).
 | mempool | `instrumental/13.mp3` |
 | onstream | `instrumental/02.mp3` |
 | livecup | `instrumental/07.mp3` |
+| aoe2 | `instrumental/19.mp3` |

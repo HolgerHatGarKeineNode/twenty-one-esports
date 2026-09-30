@@ -25,7 +25,7 @@ export const FORMATS = [
   { id: 'stream-banner', dir: 'stream', w: 1920, h: 480 },
 ];
 /* The stream banner only where a stream audience is the addressee. */
-export const STREAM_MOTIFS = ['blitz', 'watch', 'tournaments', 'mempool', 'onstream', 'livecup'];
+export const STREAM_MOTIFS = ['blitz', 'watch', 'tournaments', 'mempool', 'onstream', 'livecup', 'aoe2'];
 export const LANGS = ['de', 'en'];
 
 const bad = checkPositions();
