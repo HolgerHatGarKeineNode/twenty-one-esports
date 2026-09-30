@@ -107,7 +107,7 @@
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2" role="group" aria-label="{{ __('Filter the casual cups') }}" data-test="cup-filters">
                 <div class="flex items-center gap-2">
                     <label for="cup-game-select" id="cup-game" class="text-xs text-ink-2">{{ __('Game title') }}</label>
-                    {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, AoE2, Morris) below 2xl, cover and name from 2xl, as on /matches; seven games with covers overflowed 640, 1280 and 1440 px (1454 px at 1440, Age of Empires II). The name drops its subtitle, the button's aria-label keeps it. --}}
+                    {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, AoE2, Morris) below 2xl, cover and name from 2xl, as on /matches; seven games with covers overflowed 640, 1280 and 1440 px (1454 px at 1440, Age of Empires II). The name drops its subtitle; the accessible name starts with the visible text (x-games.filter-label). --}}
                     <select id="cup-game-select" x-model="game" class="h-11 w-[184px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden" data-test="cup-filter-game-select">
                         <option value="all">{{ __('All games') }}</option>
                         @foreach ($cupGroups as $group)
@@ -118,10 +118,9 @@
                         <button type="button" x-on:click="game = 'all'" x-bind:aria-pressed="game === 'all'" aria-pressed="true" data-test="cup-filter-game-all"
                                 class="{{ $segBtn }}" x-bind:class="game === 'all' ? 'bg-btc font-bold text-on-btc' : 'bg-ground text-ink-2 hover:text-ink'">{{ __('All') }}</button>
                         @foreach ($cupGroups as $group)
-                            <button type="button" x-on:click="game = @js($group['game'])" x-bind:aria-pressed="game === @js($group['game'])" aria-pressed="false" data-test="cup-filter-game-{{ $group['game'] }}" aria-label="{{ GameNames::game($group['game']) }}"
+                            <button type="button" x-on:click="game = @js($group['game'])" x-bind:aria-pressed="game === @js($group['game'])" aria-pressed="false" data-test="cup-filter-game-{{ $group['game'] }}"
                                     class="{{ $segBtn }} border-l border-line" x-bind:class="game === @js($group['game']) ? 'bg-btc font-bold text-on-btc' : 'bg-ground text-ink-2 hover:text-ink'">
-                                <x-game-cover :game="$group['game']" size="thumb" class="w-8 rounded-xs max-2xl:hidden" />
-                                <span class="2xl:hidden">{{ __(app(\App\Games\GameRegistry::class)->find($group['game'])?->assets()->shortLabel ?? GameNames::game($group['game'])) }}</span><span class="max-2xl:hidden">{{ \Illuminate\Support\Str::before(GameNames::game($group['game']), ':') }}</span>
+                                <x-games.filter-label :game="$group['game']" :short="__(app(\App\Games\GameRegistry::class)->find($group['game'])?->assets()->shortLabel ?? GameNames::game($group['game']))" />
                             </button>
                         @endforeach
                     </div>
