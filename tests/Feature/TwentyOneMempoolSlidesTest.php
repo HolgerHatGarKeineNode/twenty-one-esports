@@ -118,6 +118,19 @@ test('a win nobody played for stays on the slide, uncrowned and labelled a forfe
         ->and(substr_count($svg, 'd="M0 16L1.5 3.5L7 9L12 0L17 9L22.5 3.5L24 16Z"'))->toBe(1);
 });
 
+test('a director result that was played out keeps its crown on the slide', function () {
+    $this->freezeTime();
+    $winner = User::factory()->create(['name' => 'Winner']);
+    $loser = User::factory()->create(['name' => 'Loser']);
+    $match = runningChess(TournamentFormat::SingleElimination, 4)->matches()->firstOrFail();
+    ChessGame::factory()->finished('1-0')->create(['white_id' => $winner->id, 'black_id' => $loser->id, 'ended_at' => now(), 'end_reason' => ChessEndReason::Director, 'tournament_match_id' => $match->id]);
+
+    $finished = app(MempoolSlides::class)->read()['finished'];
+
+    expect(end($finished)['forfeit'])->toBeFalse()
+        ->and(mempoolSlide())->toContain('>beat Loser<');
+});
+
 test('while a season runs the slide shows its mined blocks with height, reward and miners, never a voided one, and the pending games', function () {
     $season = openSeason();
     $ada = User::factory()->create(['name' => 'Ada']);

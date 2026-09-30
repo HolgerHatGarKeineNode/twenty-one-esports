@@ -197,7 +197,9 @@ test('every live tournament slide renders a running and a finished tournament wi
     $running = runningChess(TournamentFormat::DoubleElimination, 8);
     $running->forceFill(['name' => 'Cup <script>alert(1)</script>'])->save();
     $finished = runningChess(TournamentFormat::SingleElimination, 4);
-    // Fixed names: a factory name may hold the words checked below ("isabel.feeney" once failed the fee check).
+    // Fixed names: a factory name may hold the words checked below ("isabel.feeney" once failed the fee check, and
+    // a faker city such as "Feestview" in the tournament name would too).
+    $finished->forceFill(['name' => 'Blitz Night Finished'])->save();
     foreach (User::query()->orderBy('id')->pluck('id') as $i => $id) {
         User::query()->whereKey($id)->update(['name' => 'Player '.($i + 1)]);
     }
