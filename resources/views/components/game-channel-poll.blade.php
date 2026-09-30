@@ -15,7 +15,7 @@
                     <li>
                         <button type="button" x-on:click="vote(poll, option.id)" :disabled="! me || r.closed || voting !== null"
                                 :aria-pressed="option.mine.toString()" data-test="game-chat-poll-option" :data-option="option.id"
-                                class="relative flex min-h-10 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-control border px-3 text-left text-[13px] text-ink disabled:cursor-default"
+                                class="relative flex min-h-10 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-control border px-3 py-2 text-left text-[13px] text-ink disabled:cursor-default"
                                 :class="option.mine ? 'border-btc' : (option.leading ? 'border-win' : 'border-line hover:border-edge')">
                             <span aria-hidden="true" class="absolute inset-y-0 left-0 transition-[width] duration-300 motion-reduce:transition-none" :class="option.mine ? 'bg-btc-press' : (option.leading ? 'bg-win-tint' : 'bg-raised')" :style="'width:' + option.share + '%'"></span>
                             <span class="relative min-w-0 grow break-words" x-text="option.label"></span>
