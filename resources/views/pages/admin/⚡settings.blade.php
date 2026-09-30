@@ -113,14 +113,38 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
     <form wire:submit="save" class="flex flex-col gap-6" data-test="settings-form">
         @foreach (LeagueSettings::groups() as $group => $groupLabel)
             @continue(! $byGroup->has($group))
+            @php
+                // Neighbouring fields with the same help text (the 14 cup start days and times, the six pinned casual deadlines) share one note above them, not one copy each (+2100 px at 375).
+                $sharedHelp = [];
+                $runs = [];
+                foreach ($byGroup[$group] as $key => $definition) {
+                    $last = array_key_last($runs);
+                    if ($last !== null && $runs[$last]['help'] === $definition['help']) {
+                        $runs[$last]['keys'][] = $key;
+                    } else {
+                        $runs[] = ['help' => $definition['help'], 'keys' => [$key]];
+                    }
+                }
+                foreach ($runs as $index => $run) {
+                    if (count($run['keys']) > 1) {
+                        foreach ($run['keys'] as $position => $key) {
+                            $sharedHelp[$key] = ['id' => 'settings-help-'.$group.'-'.$index, 'first' => $position === 0];
+                        }
+                    }
+                }
+            @endphp
             <x-admin.panel :title="$groupLabel" :id="'settings-'.$group" data-test="settings-group-{{ $group }}">
                 <div class="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
                     @foreach ($byGroup[$group] as $key => $definition)
                         @php
                             $field = $this->field($key);
+                            $shared = $sharedHelp[$key] ?? null;
                             $overridden = array_key_exists($key, $overrides);
                             $mayChange = $viewer instanceof \App\Models\User && LeagueSettings::mayChange($viewer, $key);
                         @endphp
+                        @if ($shared !== null && $shared['first'])
+                            <p id="{{ $shared['id'] }}" class="m-0 text-xs leading-normal text-ink-2 lg:col-span-2" data-test="settings-shared-help">{{ $definition['help'] }}</p>
+                        @endif
                         <div class="flex min-w-0 flex-col gap-1.5" wire:key="setting-{{ $field }}" data-test="setting-{{ $field }}">
                             <label for="setting-{{ $field }}" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-bold text-ink">
                                 {{ $definition['label'] }}
@@ -135,18 +159,20 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
                                 @endif
                             </label>
                             @if ($definition['type'] === 'weekday')
-                                <select id="setting-{{ $field }}" wire:model="form.{{ $field }}" class="{{ $input }}" @disabled(! $mayChange)>
+                                <select id="setting-{{ $field }}" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
                                     @foreach (LeagueSettings::WEEKDAYS as $weekday)
                                         <option value="{{ $weekday }}">{{ __(ucfirst($weekday)) }}</option>
                                     @endforeach
                                 </select>
                             @elseif ($definition['type'] === 'time')
-                                <input id="setting-{{ $field }}" type="time" wire:model="form.{{ $field }}" class="{{ $input }}" @disabled(! $mayChange)>
+                                <input id="setting-{{ $field }}" type="time" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
                             @else
-                                <input id="setting-{{ $field }}" type="text" inputmode="{{ $definition['type'] === 'int' ? 'numeric' : 'text' }}" wire:model="form.{{ $field }}" class="{{ $input }}" @disabled(! $mayChange)>
+                                <input id="setting-{{ $field }}" type="text" inputmode="{{ $definition['type'] === 'int' ? 'numeric' : 'text' }}" wire:model="form.{{ $field }}" class="{{ $input }}"@if ($shared !== null) aria-describedby="{{ $shared['id'] }}"@endif @disabled(! $mayChange)>
                             @endif
                             @error('form.'.$field)<span class="text-xs text-loss" role="alert" data-test="setting-error">{{ $message }}</span>@enderror
-                            <span class="text-xs leading-normal text-ink-2">{{ $definition['help'] }}</span>
+                            @if ($shared === null)
+                                <span class="text-xs leading-normal text-ink-2">{{ $definition['help'] }}</span>
+                            @endif
                             <span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-3">
                                 <span>{{ LeagueSettings::rule($definition) }}</span>
                                 <span data-test="setting-default">{{ __('Default: :value', ['value' => LeagueSettings::display(LeagueSettings::default($key))]) }}</span>
