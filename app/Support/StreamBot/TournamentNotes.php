@@ -50,7 +50,9 @@ use Throwable;
  * characters of the deleted note's id). It is the claim of the correction
  * (one run at a time, as for a note) and keeps the signed deletion: a relay
  * that did not take it gets the same event again on later runs, until every
- * relay took it or DELETION_ATTEMPTS ran out (logged). Before it signs, a
+ * relay took it or DELETION_ATTEMPTS ran out (logged); a run that stopped
+ * after some relay took the deletion leaves the new note to the next run,
+ * which posts it without waiting for the claim. Before it signs, a
  * run reads the note's row again and goes on only if the row still holds
  * the stale note, so it never deletes a note another run just posted. A
  * note signed with another key than the configured bot key is left alone
@@ -253,6 +255,21 @@ class TournamentNotes
 
         $subject = $this->deletionSubject($tournament, $old->id);
         BotPost::query()->insertOrIgnore([...$subject, 'created_at' => $now, 'updated_at' => $now]);
+        $sent = BotPost::query()->where($subject)->firstOrFail();
+
+        // A relay took this deletion already, but the run that sent it stopped before the note's row was
+        // released (a crash, a locked database): the old note is deleted out there, so the new note is
+        // due now, whatever the claim says. release() is a compare-and-set on the old id, so one run posts it;
+        // the relays that missed the deletion get it from pendingDeletions().
+        if ($sent->relays_accepted > 0) {
+            $this->storedDeletion($sent, $old->id);
+
+            if (! $this->release($tournament, $old->id, $now)) {
+                return 'tournament '.$tournament->id.': note '.$old->id.' deleted, renewed by another run already';
+            }
+
+            return 'tournament '.$tournament->id.': note '.$old->id.' deleted before, '.$this->post($key, $tournament, $relays, $now);
+        }
 
         if (! $this->claim($subject, $now)) {
             return 'tournament '.$tournament->id.': correction of note '.$old->id.' taken by another run';
@@ -272,6 +289,7 @@ class TournamentNotes
             $row->forceFill(['event_id' => $signed->id, 'event' => json_encode($signed->toArray(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)])->save();
         }
 
+        $this->storedDeletion($row, $old->id);
         [$deletion, $accepted, $total] = $this->sendDeletion($row, $relays, $now);
 
         if ($accepted === 0) {
@@ -285,6 +303,22 @@ class TournamentNotes
         }
 
         return 'tournament '.$tournament->id.': note '.$old->id.' deleted (deletion '.$deletion->id.' to '.$accepted.'/'.$total.' relays), '.$this->post($key, $tournament, $relays, $now);
+    }
+
+    /**
+     * The stored deletion of a row, refused unless it names the note it is
+     * meant to delete (the row's slot is only the id's first 16 characters).
+     */
+    private function storedDeletion(BotPost $row, string $noteId): SignedEvent
+    {
+        $deletion = SignedEvent::fromInput(json_decode((string) $row->event, true))
+            ?? throw new LogicException('The stored deletion '.$row->id.' is not a valid event.');
+
+        if (array_column($deletion->tagsNamed('e'), 0) !== [$noteId]) {
+            throw new LogicException('The stored deletion '.$deletion->id.' does not name note '.$noteId.'.');
+        }
+
+        return $deletion;
     }
 
     /**
@@ -328,8 +362,12 @@ class TournamentNotes
 
     /**
      * Send a deletion row's stored event and record the answer: done once
-     * every relay took it; a warning when its last attempt still missed a
-     * relay.
+     * every relay took it (a relay that has it answers with a duplicate).
+     * `relays_accepted` never goes down: once some relay took the deletion,
+     * a send that reached none (an outage) leaves it pending, not dropped.
+     * `attempts` restarts at the first send some relay took, so the claims
+     * of corrections no relay answered do not use up the resends. A warning
+     * when the last attempt still missed a relay, whatever that send reached.
      *
      * @param  list<string>  $relays
      * @return array{SignedEvent, int, int}
@@ -342,9 +380,16 @@ class TournamentNotes
         $accepted = count(array_filter($results, fn ($result): bool => $result->accepted));
         $everywhere = $accepted > 0 && $accepted === count($results);
 
-        $row->forceFill(['relays_accepted' => $accepted, 'relays_total' => count($results), 'published_at' => $everywhere ? $now : null])->save();
+        $firstTaken = $row->relays_accepted === 0 && $accepted > 0;
 
-        if (! $everywhere && $accepted > 0 && $row->attempts >= self::DELETION_ATTEMPTS) {
+        $row->forceFill([
+            'relays_accepted' => max($row->relays_accepted, $accepted),
+            'relays_total' => count($results),
+            'published_at' => $everywhere ? $now : null,
+            'attempts' => $firstTaken ? 1 : $row->attempts,
+        ])->save();
+
+        if (! $everywhere && $row->relays_accepted > 0 && $row->attempts >= self::DELETION_ATTEMPTS) {
             Log::warning('Stream bot deletion given up for the relays that did not take it', [
                 'tournament' => $row->subject_id,
                 'deletion' => $deletion->id,

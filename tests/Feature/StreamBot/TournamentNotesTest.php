@@ -11,8 +11,10 @@ use App\Support\StreamBot\TournamentNotes;
 use App\Support\Tournaments\CasualCups;
 use App\Support\TwentyOne\PublishResult;
 use Carbon\CarbonImmutable;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
@@ -417,4 +419,118 @@ test('the scheduled run corrects the note of a cup moved to its game slot and le
         ->and(app(TournamentNotes::class)->stale())->toBe([]);
 
     Notification::assertNothingSent();
+});
+
+test('a locked database after the deletion reached every relay: the next run posts the new note, without waiting for the claim', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    // Seam: the UPDATE that empties the note's row for the new note fails once, as SQLite does when another process holds the lock.
+    $armed = true;
+    DB::connection()->beforeExecuting(function (string $query) use (&$armed): void {
+        if ($armed && str_starts_with($query, 'update "bot_posts" set "event_id" = ?, "event" = ?, "published_at" = ?')) {
+            $armed = false;
+
+            throw new PDOException('SQLSTATE[HY000]: General error: 5 database is locked (seam)');
+        }
+    });
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect($armed)->toBeFalse()
+        ->and($this->held)->toBe(['wss://one.test' => [], 'wss://two.test' => []]);
+
+    $this->travel(5)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $new = notePost()->event_id;
+
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 1])
+        ->and($this->published[2]->id)->toBe($new)
+        ->and($this->held)->toBe(['wss://one.test' => [$new => true], 'wss://two.test' => [$new => true]])
+        ->and(app(TournamentNotes::class)->stale())->toBe([]);
+});
+
+test('a run that dies after its deletion reached every relay holds up neither that tournament nor the next one (one correction per run)', function () {
+    config(['esports.stream_bot.tournament_notes.per_run' => 1]);
+    $first = openTournament(['name' => 'Stuck Cup']);
+    $this->travel(1)->minutes();
+    $second = openTournament(['name' => 'Second Cup']);
+    Artisan::call('twentyone:stream-bot:tournaments');
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $first->forceFill(['starts_at' => $first->starts_at->addDay()])->save();
+    $second->forceFill(['starts_at' => $second->starts_at->addDay()])->save();
+
+    // Seam: the process dies at the log line between the sent deletion and the release of the note's row.
+    $armed = true;
+    Log::listen(function (MessageLogged $message) use (&$armed): void {
+        if ($armed && str_contains($message->message, 'deleted and renewed')) {
+            $armed = false;
+
+            throw new RuntimeException('the process died here (seam)');
+        }
+    });
+
+    foreach (range(1, 3) as $run) {
+        Artisan::call('twentyone:stream-bot:tournaments');
+        $this->travel(5)->minutes();
+    }
+
+    $notes = BotPost::query()->where('kind', 1)->orderBy('subject_id')->pluck('event_id')->all();
+
+    expect($armed)->toBeFalse()
+        ->and(collect($this->published)->pluck('kind')->all())->toBe([1, 1, 5, 1, 5, 1])
+        ->and(app(TournamentNotes::class)->stale())->toBe([])
+        ->and($this->held)->toBe(['wss://one.test' => array_fill_keys($notes, true), 'wss://two.test' => array_fill_keys($notes, true)]);
+});
+
+test('a resend of a half-taken deletion that reaches no relay keeps it pending: the next run sends it again', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    $this->refusals = ['wss://two.test' => 1];
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $new = notePost()->event_id;
+    expect($this->held['wss://two.test'])->toBe([$old->id => true, $new => true]);
+
+    // An outage: the resend reaches no relay.
+    $this->accepts = false;
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    $this->accepts = true;
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 1, 5, 5])
+        ->and($this->published[4]->id)->toBe($this->published[1]->id)
+        ->and($this->held)->toBe(['wss://one.test' => [$new => true], 'wss://two.test' => [$new => true]])
+        ->and(BotPost::query()->where('kind', 5)->sole()->published_at)->not->toBeNull();
+});
+
+test('corrections no relay answered do not use up the resends of the deletion a relay took later', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+    Log::spy();
+
+    // Twelve runs no relay answers, then one where two.test refuses the deletion.
+    $this->accepts = false;
+    foreach (range(1, 12) as $run) {
+        Artisan::call('twentyone:stream-bot:tournaments');
+        $this->travel(11)->minutes();
+    }
+    $this->accepts = true;
+    $this->refusals = ['wss://two.test' => 1];
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $new = notePost()->event_id;
+    expect($this->held['wss://two.test'])->toBe([$old->id => true, $new => true]);
+
+    $this->travel(11)->minutes();
+    Artisan::call('twentyone:stream-bot:tournaments');
+
+    expect($this->held)->toBe(['wss://one.test' => [$new => true], 'wss://two.test' => [$new => true]])
+        ->and(BotPost::query()->where('kind', 5)->sole()->published_at)->not->toBeNull();
+    Log::shouldNotHaveReceived('warning', ['Stream bot deletion given up for the relays that did not take it', Mockery::any()]);
 });
