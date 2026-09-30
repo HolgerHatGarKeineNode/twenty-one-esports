@@ -461,6 +461,8 @@ Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOver
  * game and its kind 41 with the chat relays, republished daily so a relay
  * that lost them or a new chat relay gets them without a manual step. The
  * same ids every run (GameChannelsCommand::metadataTime()); without the
- * league key the run fails and publishes nothing.
+ * league key the run fails and publishes nothing. A board game's channel
+ * (rev. 9.15) only while it is switched on: the first run after that is
+ * the first publish.
  */
 Schedule::command('esports:game-channels')->dailyAt('03:21')->withoutOverlapping()->onOneServer();

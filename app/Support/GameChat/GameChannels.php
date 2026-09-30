@@ -2,6 +2,8 @@
 
 namespace App\Support\GameChat;
 
+use App\Games\BoardGame;
+use App\Games\GameRegistry;
 use App\Models\LineupSeat;
 use App\Models\Rating;
 use App\Models\User;
@@ -31,10 +33,21 @@ use swentel\nostr\Sign\Sign;
  * The creator is `esports.game_chat.creator` (npub or hex) when set, else the
  * league key's pubkey. Without either there is no channel, and the page says
  * the chat is off.
+ *
+ * The board games (nine men's morris, checkers; NIP rev. 9.15) have their
+ * channels on the same terms, with the same `CREATED_AT`, but only while the
+ * board game is switched on (`esports.board_games`, GameRegistry::isBoard()):
+ * a switched-off board game shows no chat and the command signs nothing for
+ * it. Its id is fixed all the same, so switching it on later opens exactly
+ * the channel computed here.
  */
 final class GameChannels
 {
-    /** 2026-09-28T00:00:00Z: the day P21 started. Part of every channel id. */
+    /**
+     * 2026-09-28T00:00:00Z: the day P21 started. Part of every channel id, the
+     * board games' too (rev. 9.15): one fixed value for all channels, so a
+     * client computes every id from the creator and the name alone.
+     */
     public const CREATED_AT = 1790553600;
 
     /** Kind-40 names, frozen with the ids (never the registry's display name, which may change). */
@@ -43,11 +56,33 @@ final class GameChannels
         'rocket-league' => 'Rocket League',
         'ea-sports-fc-26' => 'EA Sports FC 26',
         'ea-sports-fc-27' => 'EA Sports FC 27',
+        // Rev. 9.15: the board games, each only while switched on (has()).
+        'nine-mens-morris' => 'Nine Men\'s Morris',
+        'checkers' => 'Checkers',
     ];
 
+    /**
+     * Whether the game's channel is open: shown on its page and published. A
+     * board game's only while it is switched on (the registry has it); the
+     * others always.
+     */
     public static function has(string $game): bool
     {
-        return array_key_exists($game, self::GAMES);
+        if (! array_key_exists($game, self::GAMES)) {
+            return false;
+        }
+
+        return ! in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game);
+    }
+
+    /**
+     * The games whose channel is open now, in the order of GAMES.
+     *
+     * @return list<string>
+     */
+    public static function open(): array
+    {
+        return array_values(array_filter(array_keys(self::GAMES), self::has(...)));
     }
 
     /** The channel creator's pubkey (hex), null when none is configured. */
@@ -74,7 +109,8 @@ final class GameChannels
     }
 
     /**
-     * The unsigned kind 40 of a game's channel, with its id.
+     * The unsigned kind 40 of a game's channel, with its id. Fixed by the
+     * creator and the game alone, whether or not the channel is open (has()).
      *
      * @return array{id: string, pubkey: string, created_at: int, kind: int, tags: list<list<string>>, content: string}|null
      */
@@ -82,7 +118,7 @@ final class GameChannels
     {
         $creator ??= self::creator();
 
-        if (! self::has($game) || ! NostrKeys::isHexPubkey($creator)) {
+        if (! array_key_exists($game, self::GAMES) || ! NostrKeys::isHexPubkey($creator)) {
             return null;
         }
 
@@ -142,14 +178,14 @@ final class GameChannels
 
     /**
      * The config for gameChannel() in the browser (resources/js/gameChannel.js),
-     * null when the game has no channel or there is no creator.
+     * null when the game has no open channel or there is no creator.
      *
      * @return array<string, mixed>|null
      */
     public static function config(string $game, ?User $viewer): ?array
     {
         $creator = self::creator();
-        $channel = self::createEvent($game, $creator);
+        $channel = self::has($game) ? self::createEvent($game, $creator) : null;
 
         if ($channel === null || $creator === null) {
             return null;

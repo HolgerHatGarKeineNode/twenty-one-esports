@@ -47,20 +47,23 @@ a ladder until they join the season chain; **revision 9.13** (2026-09-29): the b
 season chain: rated games from each board game's rated queue and in rated tournaments, a ladder per
 board game, their attestations and blocks, one share group `board-games`, and consensus rule 2 for
 board games; **revision 9.14** (2026-09-29): correspondence board games, one move a day, casual or rated
-from a challenge, with a ladder, a weight and a tournament profile of their own). Not
+from a challenge, with a ladder, a weight and a tournament profile of their own; **revision 9.15** (2026-09-30):
+a game channel for each board game, nine men's morris and checkers, while the league runs it). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13 and 9.14 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14 and 9.15 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
 board games (their ladders, attestations and blocks), of the same shape as a rated chess game's, but
 prints none of them yet. Revision 9.14 adds a mode, not a shape: a correspondence board game's ladder,
 attestation and block differ from a blitz one's only in `d`, `mode`, `time_control` and the weight key.
+Revision 9.15 adds two kind `40` of the shape revision 9.3 fixes; their ids for a test creator are the test vectors in
+[Game channels](#game-channels-rev-93), computed and not published.
 Revision 9.4 prints two, made by the app's own code and read back from a local `nak serve` relay, not
 from the ndak test bed.
 
@@ -114,6 +117,28 @@ season with the first parameter change after it, which must give `<board game>/c
 genesis signed earlier has no weight for it, so its wins do not mine there. Its tournaments follow the rules of
 revision 9.12 and 9.13 for every tournament whose first `31923` version the league signs after it adopts revision 9.14.
 No blitz board game, chess, Rocket League or EA Sports FC rule, ladder or event changes.
+The rules marked "rev. 9.15" add the game channels of the board games; the four channels of revision 9.3 keep their
+ids, and no ladder, league event or other rule changes. They apply from the day a league adopts revision 9.15, to
+each board game the league runs then or later.
+
+### Changelog of revision 9.15 (2026-09-30)
+
+Game channels for the board games ([Game channels](#game-channels-rev-93)). No new kind and no new tag.
+
+- **Two more channels.** `nine-mens-morris` and `checkers` each get a game channel on the terms of revision 9.3: a
+  kind `40` of the channel creator with `created_at` `1790553600`, no tags and the content of the table there, with
+  `<game>` `Nine Men's Morris` and `Checkers` (the English names, fixed with the ids; a name shown elsewhere may
+  change, these may not). The same polls, moderation and counting; a result in a board game counts like any other
+  result in the league.
+- **The same `created_at`.** Every channel of the league has one `created_at`, so a client computes any channel id
+  from the creator's pubkey and the name alone. A `created_at` of their own would be as fixed, but it would add a
+  field per channel for every implementer to carry; nothing in NIP-28 or NIP-01 ties `created_at` to the moment of
+  the first publish. A relay whose NIP-11 `created_at_lower_limit` lies after it refuses every channel of the league
+  alike, the four of revision 9.3 too; a `created_at` two days later would only put that off by two days.
+- **Only while the league runs the board game.** A board game the league has switched off has no channel on its
+  pages, and the league signs no kind `40` or `41` for it. Its channel id is fixed all the same: the kind `40` goes
+  out with the first daily publish after the board game is switched on, and it is the channel computed here.
+- **Nothing else moves.** The ids of `Chess`, `Rocket League`, `EA Sports FC 26` and `EA Sports FC 27` are unchanged.
 
 ### Changelog of revision 9.14 (2026-09-29)
 
@@ -860,6 +885,10 @@ no kind of their own; round 5 adds `2156` to `2158`):
 | `1111` | 22 | rev. 9.9: comment on a tournament (`31923`), a rated game's record (`64`) or a rated series' challenge (`2150`) | the player |
 | `7` | 25 | rev. 9.9: like (`+`) of the same | the player |
 | `31925` | 52 | rev. 9.9: RSVP to a tournament, `accepted` or `declined`; never a sign-up | the player |
+| `40`, `41` | 28 | rev. 9.3: a game channel with fixed fields and its metadata, one per game; rev. 9.15: the board games' too, while the league runs them (see [Game channels](#game-channels-rev-93)) | league key (the channel creator) |
+| `42` | 28 | rev. 9.3: a message in a game channel | anyone |
+| `43`, `44` | 28 | rev. 9.3: the creator's moderation of the game channels (hide a message, mute a pubkey) | league key |
+| `1068`, `1018` | 88 | rev. 9.3: a poll in a game channel and a vote on it; shown and counted for league players only | anyone |
 
 ## Identifiers
 
@@ -1009,6 +1038,7 @@ their own tables, next to chess and not built on it:
 | match size | one game; a knockout draw is replayed with the colours swapped | as nine men's morris |
 | draws | yes | yes |
 | moves on Nostr | none | none |
+| chat | rev. 9.15: game channel `Nine Men's Morris` (see [Game channels](#game-channels-rev-93)) | rev. 9.15: game channel `Checkers` |
 
 A board game's casual rating is league data under the same Elo parameters as every casual ladder.
 Its tournaments are ordinary tournaments (a `31923` whose summary names the game and mode). Revision
@@ -3574,11 +3604,28 @@ and anyone can write into the channel from any client.
 |---|---|
 | `created_at` | `1790553600` (2026-09-28T00:00:00Z) |
 | `tags` | none |
-| `content` | `{"name":"TWENTY ONE esports · <game>","about":"The global chat of <game> in the TWENTY ONE esports league: talk and vote."}`, keys in this order, `<game>` one of `Chess`, `Rocket League`, `EA Sports FC 26`, `EA Sports FC 27` |
+| `content` | `{"name":"TWENTY ONE esports · <game>","about":"The global chat of <game> in the TWENTY ONE esports league: talk and vote."}`, keys in this order, `<game>` one of `Chess`, `Rocket League`, `EA Sports FC 26`, `EA Sports FC 27`; rev. 9.15 also `Nine Men's Morris` (with the ASCII apostrophe) and `Checkers` |
 
 The channel id is the event id, and the id is the hash of these fields and the creator's pubkey, not of
-the signature. So every client that knows the creator's pubkey computes the four channel ids without
-the secret and without a relay, and the chat works before the kind `40` is on any relay. The content
+the signature. So every client that knows the creator's pubkey computes the channel ids without
+the secret and without a relay, and the chat works before the kind `40` is on any relay.
+
+**Board games (rev. 9.15).** Nine men's morris and checkers have a channel each, on the same terms and with the same
+`created_at`, but only while the league runs the board game: while it is switched off, its page shows no chat and
+the league signs no kind `40` or `41` for it. The id does not depend on the switch, so the first daily publish after
+the switch goes on sends exactly the channel computed from the table.
+
+**Test vectors** (computed, not published; equal to nostr-tools' `getEventHash` on 2026-09-30). For the creator
+pubkey `aaaa…aaaa` (64 × `a`):
+
+| `<game>` | channel id |
+|---|---|
+| `Chess` | `a7ad3cc08cb547a696b717dc05784bab2935184c43dc3214298151e9687cc3ba` |
+| `Rocket League` | `acbb95525755a5a247d5ae29a2cc6da3dcf7bdbaafdfeb6af9ed942cab7ede3a` |
+| `EA Sports FC 26` | `23dcfbae270a842ba81e8db3041a68c7aa95718a6827fad7cdf0cdd99ef6c339` |
+| `EA Sports FC 27` | `670278f922ed81489f1848a13303b17eeb0c94fca56b351d3efdc36399736506` |
+| `Nine Men's Morris` (rev. 9.15) | `136e4c7ed8a34dad000eb89ce942a8e2b34ed522ef6038b14475a71bfa3c8f68` |
+| `Checkers` (rev. 9.15) | `6e4221b5f8548e475e956cd73d43ef1a64b199c87abe2dd0b29162b70d093abd` | The content
 of a kind `40` never changes: a changed name would be another channel. Name, about and relays change
 with a kind `41` of the creator (`e` root to the channel), whose content adds `relays`: the chat relays.
 The league republishes both daily (`esports:game-channels`, scheduled): the kind `40` are the same
@@ -4088,7 +4135,7 @@ wanted protected player events would have to accept them from their authenticate
 | 22 | public discussion of a match: kind `1111` comments with the challenge as root, instead of a new chat kind; rev. 9.9: also on a tournament (`31923` by address) and on the league's record of a rated game (`64`), top-level, see [Comments, likes and RSVPs](#comments-likes-and-rsvps-rev-99) |
 | 25 | rev. 9.9: likes (`7`, `+`) of a tournament, a game record or a challenge |
 | 24 | `bot` in the notification key's kind `0` |
-| 28 | rev. 9.3: one public channel per game (`40` with fixed fields, `41` metadata, `42` messages, the creator's `43`/`44` as moderation), see [Game channels](#game-channels-rev-93) |
+| 28 | rev. 9.3: one public channel per game (`40` with fixed fields, `41` metadata, `42` messages, the creator's `43`/`44` as moderation); rev. 9.15: the board games' too, while the league runs them; see [Game channels](#game-channels-rev-93) |
 | 31 | `alt` on every event |
 | 32 | `L`/`l` labels that mark a report as a league report and give its reason; rev. 5: kind `1985` labels for the admins' release of Block 0 (`release-block-0`) and the corrections of the season review (`void-block`) |
 | 40 | deliberately **not** used on challenges (see [Relay behaviour](#relay-behaviour)) |
@@ -6573,8 +6620,9 @@ record, and its post no `q`.
   allowlist; a separate tournament key would keep the league key narrower but split the authority
   over draws and tournaments.
 - **Latency of remote signing** (queue pairings, chat) for Google logins was not measured.
-- **Game channels (rev. 9.3)** are built (P21) and have no example yet: the four kind `40` are
-  published daily by `esports:game-channels` once `ESPORTS_LEAGUE_NSEC` is set. Open: whether the chat relays
+- **Game channels (rev. 9.3)** are built (P21) and have no example yet: the kind `40` of every open channel (four;
+  rev. 9.15: one more per board game switched on) are published daily by `esports:game-channels` once
+  `ESPORTS_LEAGUE_NSEC` is set. Open: whether the chat relays
   accept kind `40`-`44`, `1068` and `1018` from the production host, and whether they refuse backdated
   votes (NIP-88's advice); whether the league key or a separate channel key should be the creator.
 - **Lobby and account cards (rev. 9.2)** are built (P23 S2) and have no example: they live

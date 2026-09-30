@@ -72,10 +72,13 @@ use Livewire\Component;
  * then Your games | Live now with who is online | the ladder, and the
  * weekly events. What stays different, in chess's slots: Correspondence in
  * Daily chess's tile; no invite link and no team match tile (board games
- * have neither); no "Your follows here" and no game chat (neither exists
- * for a board game yet); the rules link in the title row.
+ * have neither); no "Your follows here" (it has no board game context
+ * yet); the rules link in the title row. The game chat sits in chess's
+ * slot, under the lobby and above the weekly events (plan
+ * brettspiel-chat-und-follows, P1: the board game's own NIP-28 channel,
+ * GameChannels, NIP rev. 9.15).
  */
-new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
+new #[Layout('layouts::app', ['realtime' => true, 'scripts' => ['resources/js/gameChannel.js']])] class extends Component {
     #[Locked]
     public string $slug;
 
@@ -591,6 +594,9 @@ new #[Layout('layouts::app', ['realtime' => true])] class extends Component {
             @include('pages.board.partials.lobby-live', ['user' => $user, 'active' => $active, 'name' => $name])
             @include('pages.chess.partials.lobby-ladder', ['ladderGame' => $slug])
         </div>
+
+        {{-- The global chat of this board game (P1 of plan brettspiel-chat-und-follows): as chess's, under the lobby, above the weekly events. --}}
+        <livewire:game-channel :game="$slug" />
 
         {{-- Weekly events (P10): the next dates of the recurring slots, all games. --}}
         <x-weekly-events :events="app(App\Support\Engagement\WeeklySlots::class)->upcoming(4)" heading-id="lobby-weekly-h" class="rounded-lg bg-card px-4 py-5 lg:px-6" />

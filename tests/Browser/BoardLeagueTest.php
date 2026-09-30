@@ -3,10 +3,14 @@
 use App\Games\Checkers;
 use App\Games\NineMensMorris;
 use App\Models\BoardGame;
+use App\Models\ChatMute;
+use App\Models\Rating;
 use App\Models\User;
 use App\Support\Board\BoardGameService;
+use App\Support\GameChat\GameChannels;
 use App\Support\Tournaments\CasualCups;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
@@ -15,6 +19,7 @@ use Tests\Support\BrowserWait;
 use Tests\Support\CheckersGame;
 use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
+use Tests\Support\WaitForPort;
 
 pest()->group('browser');
 
@@ -336,12 +341,14 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
 
     $order = fn (array $rows): array => array_column($rows, 0);
     // Below lg one column; from lg Your games | Live now | ladder share a row, "Online now" sits in Live now under the boards.
-    $expected = $width >= 1024 ? ['title', 'play', 'next', 'cups', 'games', 'live', 'ladder', 'online'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder'];
+    // The game chat under all of it on both lobbies (P1 of plan brettspiel-chat-und-follows).
+    $expected = $width >= 1024 ? ['title', 'play', 'next', 'cups', 'games', 'live', 'ladder', 'online', 'chat'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder', 'chat'];
     // From lg the title is the header's context bar: the lobby's own title row is hidden on both.
     $expected = $width >= 1024 ? array_values(array_diff($expected, ['title'])) : $expected;
 
     expect($order($measured['board']['sections']))->toBe($expected)
-        ->and(array_values(array_diff($order($measured['chess']['sections']), ['follows', 'chat'])))->toBe($expected)
+        // The one known difference left: "Your follows here" is chess's only.
+        ->and(array_values(array_diff($order($measured['chess']['sections']), ['follows'])))->toBe($expected)
         ->and($online['tag'])->toBe($locale === 'de' ? 'sucht: Mühle' : "looking: Nine Men's Morris")
         ->and($online['tile'])->toBe($online['count'])
         ->and($waiting['text'])->toContain($long)
@@ -380,4 +387,171 @@ test('the board lobby has the chess lobby\'s arrangement, shows who is online an
     'phone 390, de' => [390, 844, 'de'],
     'desktop 1280, en' => [1280, 800, 'en'],
     'desktop 1280, de' => [1280, 800, 'de'],
+]);
+
+/*
+| P1 of plan brettspiel-chat-und-follows (user, 2026-09-30: "ich hätte genau
+| die selbe Anordnung erwartet"): each board game has its own game chat, in
+| chess's slot under the lobby and above the weekly events. Filled over a
+| real websocket to the in-memory relay (never a real relay) with 40
+| messages by league players whose names are 41 and 42 characters without a
+| break, by two keys the league does not know, a 280-character word, a long
+| link, and a poll with a long answer: nothing wider than the window, no
+| name squeezed below 48 px, no message wider than the list. A player mutes
+| an outsider (a Livewire round trip); a guest's page looks up the authors
+| (one too). Measured at 320, 375 and 1280 px, English and German, guest and
+| logged in; the collector stays empty, with a positive control.
+*/
+
+/** The chat as measured: widths, the narrowest name, and every row that is squeezed or wider than its list. */
+const BOARD_CHAT_MEASURE = <<<'JS'
+    () => {
+        const chat = document.querySelector('[data-test=game-chat]');
+        const box = chat.getBoundingClientRect();
+        const list = chat.querySelector('[data-test=game-chat-list]');
+        const rows = [...chat.querySelectorAll('[data-test=game-chat-message]')].filter((row) => row.checkVisibility());
+        const names = rows.map((row) => row.querySelector('button')).filter((name) => name.checkVisibility());
+        const cut = names.filter((name) => name.scrollWidth > name.clientWidth + 1);
+        return {
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            inside: box.left >= -0.5 && box.right <= innerWidth + 0.5,
+            listScroll: list.scrollWidth - list.clientWidth,
+            messages: rows.length,
+            // A name shows whole, or, cut, keeps at least 48 px; the narrowest cut one, and the names cut below that.
+            names: names.length,
+            narrowestCut: cut.length ? Math.round(Math.min(...cut.map((name) => name.getBoundingClientRect().width))) : null,
+            nameSqueezed: cut.filter((name) => name.getBoundingClientRect().width < 48).map((name) => name.textContent.slice(0, 20)),
+            outsideTag: Math.round(Math.min(...[...chat.querySelectorAll('[data-test=game-chat-outside]')].filter((tag) => tag.checkVisibility()).map((tag) => tag.getBoundingClientRect().width))),
+            squeezed: rows.filter((row) => row.querySelector('[data-test=game-chat-text]').getBoundingClientRect().width < 1).length,
+            wider: rows.filter((row) => row.getBoundingClientRect().right > list.getBoundingClientRect().right + 0.5 || row.querySelector('[data-test=game-chat-text]').scrollWidth > row.querySelector('[data-test=game-chat-text]').clientWidth + 1).length,
+            polls: [...chat.querySelectorAll('[data-test=game-chat-poll]')].filter((poll) => poll.checkVisibility()).map((poll) => Math.round(poll.getBoundingClientRect().right - box.right)),
+            // The room between an answer's text and its box, top or bottom, at its tightest: a long answer wraps inside the box.
+            optionRoom: Math.round(Math.min(...[...chat.querySelectorAll('[data-test=game-chat-poll-option]')].filter((option) => option.checkVisibility()).map((option) => {
+                const outer = option.getBoundingClientRect();
+                const label = option.querySelector('span.grow').getBoundingClientRect();
+                return Math.min(label.top - outer.top, outer.bottom - label.bottom);
+            }))),
+            heading: chat.querySelector('#game-chat-h').innerText,
+            guest: chat.querySelector('[data-test=game-chat-guest]')?.innerText ?? null,
+            form: chat.querySelector('[data-test=game-chat-form]') !== null,
+            livewire: performance.getEntriesByType('resource').filter((e) => e.initiatorType === 'fetch' && e.name.includes('/livewire')).length,
+        };
+    }
+    JS;
+
+test('each board game chat sits in chess\'s slot and holds long names, long words and a crowd at every width', function (int $width, int $height, string $locale, bool $signedIn) {
+    config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess', NineMensMorris::SLUG]]);
+    app(CasualCups::class)->tick();
+    $creator = new TestSigner;
+    config(['esports.game_chat.creator' => $creator->pubkey]);
+    $channel = (string) GameChannels::channelId(NineMensMorris::SLUG);
+    $root = ['e', $channel, '', 'root'];
+    $now = now()->getTimestamp();
+
+    // League players with names that do not break, and two keys the league does not know.
+    $keys = [new TestSigner, new TestSigner, new TestSigner];
+    $names = ['Satoshinakamotohalfinneyadambackszabonick', 'Donaudampfschifffahrtsgesellschaftskapitän', 'Anna'];
+    foreach ($keys as $i => $key) {
+        $user = User::factory()->create(['name' => $names[$i], 'pubkey' => $key->pubkey]);
+        Rating::query()->create(['pool' => 'casual', 'season' => '', 'game' => NineMensMorris::SLUG, 'mode' => 'blitz', 'subject' => 'user:'.$user->id, 'user_id' => $user->id, 'rating' => 1016, 'results' => 1, 'wins' => 1, 'draws' => 0, 'losses' => 0]);
+    }
+    $outsiders = [new TestSigner, new TestSigner];
+    $texts = [str_repeat('Mühle', 56), 'https://esports.einundzwanzig.space/games/nine-mens-morris/correspondence?from='.str_repeat('x', 180), 'gg, rematch at 21:00?', 'Who plays the flying phase better, with three men left?'];
+    $events = [];
+    for ($i = 0; $i < 40; $i++) {
+        $author = $i % 5 < 3 ? $keys[$i % 3] : $outsiders[$i % 2];
+        $events[] = $author->sign(42, [$root], $texts[$i % 4].' #'.$i, $now - 600 + $i * 10);
+    }
+    $events[] = $keys[0]->sign(1068, [$root, ['option', 'a', str_repeat('Zwickmühle', 6)], ['option', 'b', 'Mill'], ['polltype', 'singlechoice'], ['endsAt', (string) ($now + 3600)]], 'Best opening '.str_repeat('square', 12).'?', $now - 5);
+
+    $seed = (string) tempnam(sys_get_temp_dir(), 'board-chat-seed');
+    file_put_contents($seed, json_encode($events));
+    $port = (int) Process::run(['php', '-r', '$s = stream_socket_server("tcp://127.0.0.1:0"); echo explode(":", stream_socket_get_name($s, false))[1];'])->output();
+    $relay = Process::path(base_path())->start(['php', 'tests/Support/mini-relay.php', (string) $port, $seed]);
+
+    try {
+        WaitForPort::open('127.0.0.1', $port);
+        config(['esports.chat.relays' => ['ws://127.0.0.1:'.$port], 'esports.profile_relays' => []]);
+        $viewer = $signedIn ? User::factory()->create(['name' => 'Viewer']) : null;
+        $live = '() => window.Alpine && document.fonts.status === "loaded" && Alpine.$data(document.querySelector("[data-test=game-chat]"))?.status === "live"';
+
+        $chess = boardLeaguePage($viewer, route('chess.lobby', [], false), $width, $height, $locale);
+        BrowserWait::until($chess, $live, 10_000);
+        $page = boardLeaguePage($viewer, route('board.lobby', NineMensMorris::SLUG, false), $width, $height, $locale);
+        BrowserWait::until($page, $live, 10_000);
+        // All 40 in, each author looked up: the 16 messages of the two unknown keys carry "not in the league" once the answer is in.
+        BrowserWait::until($page, '() => document.querySelectorAll("[data-test=game-chat-message]").length === 40 && [...document.querySelectorAll("[data-test=game-chat-outside]")].filter((tag) => tag.checkVisibility()).length === 16', 10_000);
+        $page->evaluate('() => document.querySelector("[data-test=game-chat]").scrollIntoView({ block: "start" })');
+
+        $sections = ['chess' => array_column($chess->evaluate(BOARD_PARITY_SECTIONS), 0), 'board' => array_column($page->evaluate(BOARD_PARITY_SECTIONS), 0)];
+        $filled = $page->evaluate(BOARD_CHAT_MEASURE);
+        if ($locale === 'en') {
+            shellShot($page, 'board-chat-'.($signedIn ? 'player' : 'guest').'-'.$width);
+        }
+
+        // The Livewire round trip: a player mutes an outsider from the name menu; a guest's page has already asked for the authors.
+        if ($signedIn) {
+            $calls = (int) $page->evaluate('() => performance.getEntriesByType("resource").filter((e) => e.initiatorType === "fetch" && e.name.includes("/livewire") && e.responseStatus === 200).length');
+            $page->evaluate('() => [...document.querySelectorAll("[data-test=game-chat-message]")].find((row) => row.querySelector("[data-test=game-chat-outside]")?.checkVisibility()).querySelector("button").click()');
+            BrowserWait::until($page, '() => [...document.querySelectorAll("[data-test=game-chat-mute]")].some((button) => button.checkVisibility())', 5_000);
+            $page->evaluate('() => [...document.querySelectorAll("[data-test=game-chat-mute]")].find((button) => button.checkVisibility()).click()');
+            BrowserWait::until($page, '() => document.querySelector("[data-test=game-chat-muted]") !== null', 10_000);
+            // The mute is shown at once and saved by one more Livewire call.
+            BrowserWait::until($page, '() => performance.getEntriesByType("resource").filter((e) => e.initiatorType === "fetch" && e.name.includes("/livewire") && e.responseStatus === 200).length > '.$calls, 10_000);
+            expect(ChatMute::query()->where('user_id', $viewer->id)->count())->toBe(1);
+        }
+        $after = $page->evaluate(BOARD_CHAT_MEASURE);
+        $collected = ['chess' => boardLeagueMeasure($chess), 'board' => boardLeagueMeasure($page)];
+
+        fwrite(STDERR, 'board chat '.$locale.' '.$width.' '.($signedIn ? 'player' : 'guest').': '.json_encode(compact('sections', 'filled', 'after', 'collected')).PHP_EOL);
+
+        $expected = $width >= 1024 ? ['play', 'next', 'cups', 'games', 'live', 'ladder', 'online', 'chat'] : ['title', 'play', 'next', 'cups', 'games', 'live', 'online', 'ladder', 'chat'];
+        expect($sections['board'])->toBe($expected)
+            ->and(array_values(array_diff($sections['chess'], ['follows'])))->toBe($expected)
+            ->and($filled['heading'])->toBe($locale === 'de' ? 'Mühle-Chat' : "Nine Men's Morris chat")
+            ->and($signedIn ? $filled['guest'] : str_replace("\n", ' ', (string) $filled['guest']))->toBe($signedIn ? null : ($locale === 'de' ? 'Zum Chatten anmelden Mitlesen kann jeder.' : 'Log in to chat Reading is open to everyone.'))
+            ->and($filled['form'])->toBe($signedIn)
+            ->and($filled['messages'])->toBe(40)
+            ->and($filled['polls'])->not->toBe([])
+            ->and($after['livewire'])->toBeGreaterThanOrEqual($signedIn ? 2 : 1);
+
+        foreach (['filled' => $filled, 'after' => $after] as $where => $m) {
+            expect($m['overflow'])->toBe(0, $where)
+                ->and($m['inside'])->toBeTrue($where)
+                ->and($m['listScroll'])->toBe(0, $where)
+                ->and($m['names'])->toBeGreaterThan(0, $where)
+                ->and($m['nameSqueezed'])->toBe([], $where)
+                ->and($m['outsideTag'])->toBeGreaterThanOrEqual(48, $where)
+                ->and($m['squeezed'])->toBe(0, $where)
+                ->and($m['wider'])->toBe(0, $where)
+                ->and(max($m['polls'] ?: [0]))->toBeLessThanOrEqual(0, $where)
+                ->and($m['optionRoom'])->toBeGreaterThanOrEqual(6, $where);
+        }
+
+        foreach ($collected as $where => $m) {
+            expect($m['lang'])->toBe($locale, $where)
+                ->and($m['errors'])->toBe([], $where)
+                ->and($m['bad'])->toBe([], $where);
+        }
+
+        // Positive control: the collector sees a throw and a failed answer on this very page.
+        $page->evaluate('() => { setTimeout(() => { throw new Error("board chat positive control"); }); fetch("/board/0"); }');
+        BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("board chat positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+    } finally {
+        $relay->stop(1);
+        @unlink($seed);
+    }
+})->with([
+    'phone 320, en, guest' => [320, 700, 'en', false],
+    'phone 320, de, player' => [320, 700, 'de', true],
+    'phone 320, en, player' => [320, 700, 'en', true],
+    'phone 320, de, guest' => [320, 700, 'de', false],
+    'phone 375, en, guest' => [375, 667, 'en', false],
+    'phone 375, de, player' => [375, 667, 'de', true],
+    'phone 375, en, player' => [375, 667, 'en', true],
+    'phone 375, de, guest' => [375, 667, 'de', false],
+    'desktop 1280, en, guest' => [1280, 800, 'en', false],
+    'desktop 1280, de, player' => [1280, 800, 'de', true],
+    'desktop 1280, en, player' => [1280, 800, 'en', true],
+    'desktop 1280, de, guest' => [1280, 800, 'de', false],
 ]);
