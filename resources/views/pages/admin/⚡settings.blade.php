@@ -114,7 +114,7 @@ new #[Title('League settings')] #[Layout('layouts::app', ['section' => 'admin'])
         @foreach (LeagueSettings::groups() as $group => $groupLabel)
             @continue(! $byGroup->has($group))
             @php
-                // Neighbouring fields with the same help text (the 14 cup start days and times, the six pinned casual deadlines) share one note above them, not one copy each (+2100 px at 375).
+                // Neighbouring fields with the same help text (the 14 cup start days and times, the six pinned casual deadlines) share one note above them, not one copy each (measured at 375: the page 8177 → 7079 px, −1098).
                 $sharedHelp = [];
                 $runs = [];
                 foreach ($byGroup[$group] as $key => $definition) {
