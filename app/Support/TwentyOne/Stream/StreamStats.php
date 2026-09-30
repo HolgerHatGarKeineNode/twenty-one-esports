@@ -195,7 +195,7 @@ class StreamStats
 
         foreach (app(GameRegistry::class)->all() as $game) {
             foreach ($game->modes() as $slug => $mode) {
-                $ladders[] = ['game' => $game->slug(), 'mode' => (string) $slug, 'gameName' => $game->name(), 'modeName' => $mode->name, 'season' => Ratings::season(Rating::RATED, $game->slug(), (string) $slug)];
+                $ladders[] = ['game' => $game->slug(), 'mode' => (string) $slug, 'gameName' => GameTitle::short($game->name()), 'modeName' => $mode->name, 'season' => Ratings::season(Rating::RATED, $game->slug(), (string) $slug)];
             }
         }
 

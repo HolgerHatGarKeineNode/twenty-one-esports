@@ -112,7 +112,7 @@ final class TournamentPlaybook
         return $tournament->profile()->entersTeams() ? 'teams' : 'players';
     }
 
-    /** "One game a match", "Best of 3, the final best of 5", "One move a day". */
+    /** "One game a match", "Best of 3, the final best of 5", "One game a match, the final best of 3", "One move a day". */
     public static function matches(bool $series, int $bestOf, int $finalBestOf, bool $daily): string
     {
         if ($daily) {
@@ -123,7 +123,8 @@ final class TournamentPlaybook
             return 'One game a match';
         }
 
-        return 'Best of '.$bestOf.($finalBestOf !== $bestOf ? ', the final best of '.$finalBestOf : '');
+        // A best of 1 (Age of Empires II's cups, EA FC's rounds) is one game, said so.
+        return ($bestOf === 1 ? 'One game a match' : 'Best of '.$bestOf).($finalBestOf !== $bestOf ? ', the final best of '.$finalBestOf : '');
     }
 
     /**
@@ -145,7 +146,8 @@ final class TournamentPlaybook
         if ($series) {
             $minutes = $tournament->noshow_minutes ?? TournamentDeadlines::defaults($tournament->mode)['noshow_minutes'];
 
-            return 'Be there at kickoff, '.$minutes.' min grace';
+            // "At the start", not "at kickoff": the series games are not all football (Age of Empires II).
+            return 'Be there at the start, '.$minutes.' min grace';
         }
 
         $minutes = max(1, intdiv(TournamentDeadlines::checkinSeconds($tournament), 60));

@@ -223,7 +223,7 @@ class TournamentSlides
             'name' => PublicName::clean($tournament->name),
             'description' => $description === '' ? null : $description,
             'status' => 'Sign-up open',
-            'game' => $this->games->name($tournament->game),
+            'game' => GameTitle::of($tournament->game),
             'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
             'format' => $tournament->format->label(),
             'teamSize' => $tournament->teamSize(),
@@ -251,6 +251,9 @@ class TournamentSlides
             'cup' => $tournament->isCasualCup(),
             // "EU" / "US" for a casual cup (d2 lists every game's regions), null otherwise.
             'region' => $tournament->isCasualCup() ? CasualCups::regionLabel($tournament) : null,
+            // When a casual cup starts on its region's clock: the weekday ("sunday") d2 files it under, and the time.
+            'cupDay' => $tournament->isCasualCup() ? strtolower($tournament->starts_at->copy()->timezone($timezone)->format('l')) : null,
+            'cupTime' => $tournament->isCasualCup() ? $tournament->starts_at->copy()->timezone($timezone)->format('H:i') : null,
         ];
     }
 

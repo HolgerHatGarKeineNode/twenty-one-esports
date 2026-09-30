@@ -10,7 +10,7 @@ namespace App\Support\TwentyOne\Stream;
  * caller applies) a round is: MATCH in this round's look (A, B, C in turn;
  * the next game in turn, blitz first as the caller orders them), GALLERY in
  * the same look when two or more games run, then the EVERY_ROUND teasers
- * (sats to win, casual cups or the mempool, a player's pride moment), then TEASERS from the pool of eleven,
+ * (sats to win, casual cups or the mempool, a player's pride moment), then TEASERS from the pool of twelve,
  * continuing where the last round stopped. Without games a round is the
  * teasers alone, and every `loopEvery`-th such round (the first one
  * included, so the daemon starts on the loop) is one pass of the promo loop.
@@ -68,7 +68,8 @@ final class RotationPlanner
 
     public const LOOKS = ['a', 'b', 'c'];
 
-    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4'];
+    /** The pool, taken in turn: ladders, join, zaps, daily, clans, boards, scan, invites, Nostr, and the spotlight game (d6, GameSpotlight). */
+    public const TEASERS = ['a3', 'a4', 'a5', 'b3', 'b4', 'b5', 'c3', 'c4', 'c5', 'd3', 'd4', 'd6'];
 
     /**
      * Teasers in every round, before the pool's: one of each group, the groups
@@ -84,8 +85,8 @@ final class RotationPlanner
     /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes, block mined, strongest, rank-ups, streaks, payouts. */
     public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9'];
 
-    /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4). */
-    public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4'];
+    /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4), the spotlight game (d6). */
+    public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4', 'd6'];
 
     /** Scene id => its view (resources/views/stream/rotation). */
     public const VIEWS = [
@@ -100,7 +101,7 @@ final class RotationPlanner
         'tc3' => 'stream.rotation.tc3-how', 'tc4' => 'stream.rotation.tc4-live', 'tc5' => 'stream.rotation.tc5-standing', 'tc6' => 'stream.rotation.tc6-champion', 'tc7' => 'stream.rotation.tc7-next',
         'd1' => 'stream.rotation.d1-pots', 'd2' => 'stream.rotation.d2-cups', 'd3' => 'stream.rotation.d3-invite', 'd4' => 'stream.rotation.d4-nostr',
         'e1' => 'stream.rotation.e1-win', 'e2' => 'stream.rotation.e2-climbers', 'e3' => 'stream.rotation.e3-signups', 'e4' => 'stream.rotation.e4-prizes',
-        'd5' => 'stream.rotation.d5-board',
+        'd5' => 'stream.rotation.d5-board', 'd6' => 'stream.rotation.d6-spotlight',
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
         'm1' => 'stream.rotation.m1-mempool',
     ];

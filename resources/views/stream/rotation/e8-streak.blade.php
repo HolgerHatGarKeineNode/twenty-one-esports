@@ -1,6 +1,6 @@
 {{--
-    E8 · Arena · pride: on a streak. Full orange frame as a4-join; the longest win streak still running (chess and the
-    board games that are on, the last 30 days, three wins or more; a draw or a loss ends one) as the huge number, the
+    E8 · Arena · pride: on a streak. Full orange frame as a4-join; the longest win streak still running (chess, the
+    board games that are on and the series of every series game, forfeits left out, the last 30 days, three wins or more; a draw or a loss ends one) as the huge number, the
     player's face and name beside it, the games it came from; the next two streaks small below. Without a streak:
     the invitation to start one.
 

@@ -249,7 +249,7 @@ class TournamentLiveSlides
                 default => $paused ? 'Paused' : 'Live now',
             },
             'name' => PublicName::clean($tournament->name),
-            'game' => $this->games->name($tournament->game),
+            'game' => GameTitle::of($tournament->game),
             'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
             'format' => $tournament->format->label(),
             'teamSize' => $tournament->teamSize(),

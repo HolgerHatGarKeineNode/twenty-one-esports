@@ -1178,8 +1178,11 @@ final class RotationKit
      * first), each with its regions' cups (EU and US, user 2026-09-28), at most `$regions`, by region. The cover is
      * the game's `coverTile` (288x162, drawn 1:1) where it was built, else the full `cover`.
      *
+     * `day` and `time` are when the game's first cup starts on its region's clock (TournamentSlides `cupDay`,
+     * `cupTime`; '' when a frame does not say).
+     *
      * @param  list<array<string, mixed>>  $upcoming
-     * @return list<array{game: string, cover: string|null, regions: list<array{region: string, taken: int, places: int, closes: string}>}>
+     * @return list<array{game: string, cover: string|null, day: string, time: string, regions: list<array{region: string, taken: int, places: int, closes: string}>}>
      */
     public static function cups(array $upcoming, int $limit, int $regions = 2): array
     {
@@ -1199,6 +1202,8 @@ final class RotationKit
 
             $cups[$game]['game'] = $game;
             $cups[$game]['cover'] ??= self::coverUri($t['coverTile'] ?? null) ?? self::coverUri($t['cover'] ?? null);
+            $cups[$game]['day'] ??= in_array($day = self::text($t, 'cupDay'), LeagueSettings::WEEKDAYS, true) ? $day : '';
+            $cups[$game]['time'] ??= preg_match('/^\d{2}:\d{2}$/', $time = self::text($t, 'cupTime')) === 1 ? $time : '';
             $cups[$game]['regions'][$region] = [
                 'region' => $region,
                 'taken' => is_int($t['taken'] ?? null) ? $t['taken'] : 0,
@@ -1213,6 +1218,45 @@ final class RotationKit
 
             return $cup;
         }, $cups)), 0, $limit);
+    }
+
+    /**
+     * The weekend board of d2: the cups (cups()) filed under the weekday they start, Monday first, each day's games
+     * by start time (then name), at most `$rows` a day (`more` counts the rest), at most `$days` days; a cup without
+     * a day goes under ''. The columns share the width `$w` from `$x` with a `$gap` between them.
+     *
+     * @param  list<array{game: string, cover: string|null, day: string, time: string, regions: list<array{region: string, taken: int, places: int, closes: string}>}>  $cups
+     * @return list<array{day: string, label: string, x: float, w: float, more: int, cups: list<array{game: string, cover: string|null, day: string, time: string, regions: list<array{region: string, taken: int, places: int, closes: string}>}>}>
+     */
+    public static function cupDays(array $cups, int $rows, int $days, float $x = 40, float $w = 1200, float $gap = 24): array
+    {
+        $byDay = [];
+
+        foreach ($cups as $cup) {
+            $byDay[$cup['day']][] = $cup;
+        }
+
+        $order = array_flip(LeagueSettings::WEEKDAYS);
+        uksort($byDay, fn (string $a, string $b): int => ($order[$a] ?? 7) <=> ($order[$b] ?? 7));
+        $byDay = array_slice($byDay, 0, max(1, $days), true);
+        $count = count($byDay);
+        $width = $count === 0 ? $w : ($w - $gap * ($count - 1)) / $count;
+        $out = [];
+
+        foreach (array_keys($byDay) as $i => $day) {
+            $list = $byDay[$day];
+            usort($list, fn (array $a, array $b): int => [$a['time'], $a['game']] <=> [$b['time'], $b['game']]);
+            $out[] = [
+                'day' => (string) $day,
+                'label' => $day === '' ? 'Open now' : ucfirst((string) $day),
+                'x' => round($x + $i * ($width + $gap), 1),
+                'w' => round($width, 1),
+                'more' => max(0, count($list) - $rows),
+                'cups' => array_slice($list, 0, max(1, $rows)),
+            ];
+        }
+
+        return $out;
     }
 
     // ---------------------------------------------------------------------------------------------------------------

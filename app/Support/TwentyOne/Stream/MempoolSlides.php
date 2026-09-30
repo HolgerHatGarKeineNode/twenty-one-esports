@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -129,13 +130,15 @@ class MempoolSlides
             $running = array_slice($strip['running'], 0, max(self::RUNNING, self::COLUMNS - $left));
             // Without a running game the right side is one open cube (MempoolLayout), so it keeps a place too.
             $keep = self::COLUMNS - max(1, count($running));
+            $finished = array_slice($finished, max(0, count($finished) - $keep));
+            $players = $this->seriesPlayers([...($season === null ? $finished : []), ...$running]);
 
             return [
                 'mode' => $season === null ? 'casual' : 'season',
                 'rest' => $season === null ? Seasons::state() : 'live',
                 'season' => $season === null ? null : BadgeCopy::season($season->slug),
-                'finished' => $season === null ? array_map(fn (array $cube): array => $this->cube($cube, in_array($cube['key'], $outcomes['forfeit'], true)), array_slice($finished, max(0, count($finished) - $keep))) : [],
-                'running' => array_map(fn (array $cube): array => $this->cube($cube, false), $running),
+                'finished' => $season === null ? array_map(fn (array $cube): array => $this->cube($cube, in_array($cube['key'], $outcomes['forfeit'], true), $players), $finished) : [],
+                'running' => array_map(fn (array $cube): array => $this->cube($cube, false, $players), $running),
                 'blocks' => array_slice($blocks, max(0, count($blocks) - $keep)),
             ];
         } finally {
@@ -239,6 +242,50 @@ class MempoolSlides
     }
 
     /**
+     * The player behind each side of a series cube that seats one player
+     * without a clan (a casual or player-ladder 1v1 of Rocket League, EA FC,
+     * Age of Empires II): the strip names such a side by its four-letter tag
+     * and draws no picture; the stream shows the player's name and avatar,
+     * as for a chess game. Two queries for any number of cubes.
+     *
+     * @param  list<array<string, mixed>>  $cubes  MatchBlocks::shape()
+     * @return array<string, array<int, User>> cube key => side index => player
+     */
+    private function seriesPlayers(array $cubes): array
+    {
+        $ids = [];
+
+        foreach ($cubes as $cube) {
+            [$kind, $id] = array_pad(explode('-', (string) $cube['key'], 2), 2, '');
+            $clanless = array_filter((array) $cube['sides'], fn (mixed $side): bool => is_array($side) && ! (($side['clan'] ?? null) instanceof Clan) && ! (($side['user'] ?? null) instanceof User));
+
+            if ($kind === 'series' && ctype_digit($id) && $clanless !== []) {
+                $ids[] = (int) $id;
+            }
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $seats = DB::table('series_match_players')->whereIn('series_match_id', $ids)->get(['series_match_id', 'user_id', 'side'])->groupBy(fn ($seat): string => $seat->series_match_id.'|'.$seat->side);
+        $solo = $seats->filter(fn ($side): bool => $side->count() === 1)->map(fn ($side): int => (int) $side->first()->user_id);
+        $users = User::query()->whereKey($solo->values()->unique()->all())->get()->keyBy('id');
+        $out = [];
+
+        foreach ($solo as $key => $userId) {
+            [$id, $side] = explode('|', (string) $key, 2);
+            $user = $users->get($userId);
+
+            if ($user !== null) {
+                $out['series-'.$id][$side === 'challenger' ? 0 : 1] = $user;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * The latest mined blocks of the season, oldest first: never a voided one,
      * never a board game while it is switched off. The reward is the
      * attestation's (the sats /mining lists for the block); winners by the
@@ -278,7 +325,7 @@ class MempoolSlides
             return [
                 'game' => $family,
                 'slug' => $row->game,
-                'name' => GameNames::game($row->game),
+                'name' => GameTitle::short(GameNames::game($row->game)),
                 'icon' => app(GameRegistry::class)->find($row->game)?->assets()->icon ?? 'trophy',
                 'mode' => self::modeLabel($row->game, $row->mode),
                 'height' => (int) $row->height,
@@ -307,15 +354,19 @@ class MempoolSlides
      * `forfeit`: a win nobody played for (outcomes()), shown without a crown.
      *
      * @param  array<string, mixed>  $cube  MatchBlocks::shape()
+     * @param  array<string, array<int, User>>  $players  seriesPlayers()
      * @return array<string, mixed>
      */
-    private function cube(array $cube, bool $forfeit): array
+    private function cube(array $cube, bool $forfeit, array $players = []): array
     {
         $sides = [];
 
-        foreach ((array) $cube['sides'] as $side) {
-            $user = $side['user'] ?? null;
+        foreach (array_values((array) $cube['sides']) as $index => $side) {
             $clan = $side['clan'] ?? null;
+            $player = $clan instanceof Clan ? null : ($players[(string) $cube['key']][$index] ?? null);
+            $user = $player ?? $side['user'] ?? null;
+            // A series side of one player: the player's public name, not the strip's tag (seriesPlayers()).
+            $side['name'] = $player?->displayName() ?? $side['name'];
             $sides[] = [
                 // A clan lineup is its clan's name on the stream; the strip's tag is too short to be proud of.
                 'name' => PublicName::clean($clan instanceof Clan ? (string) $clan->name : (string) $side['name']),
@@ -336,7 +387,7 @@ class MempoolSlides
         return [
             'game' => (string) $cube['game'],
             'slug' => (string) $cube['slug'],
-            'name' => GameNames::game((string) $cube['slug']),
+            'name' => GameTitle::short(GameNames::game((string) $cube['slug'])),
             'icon' => (string) $cube['icon'],
             'mode' => (string) $cube['mode'],
             'score' => (string) $cube['score'],

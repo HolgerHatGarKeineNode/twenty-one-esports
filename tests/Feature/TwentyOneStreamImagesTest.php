@@ -379,6 +379,7 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
     $chessBackdrop = $images->backdrop(StreamImages::CHESS);
     $brandBackdrop = $images->backdrop(StreamImages::BRAND);
     $rlBackdrop = $images->backdrop('rocket-league');
+    $spotlightBackdrop = $images->backdrop('age-of-empires-2');
 
     // White has a cached picture, black only their Blockpile.
     $white = User::factory()->create(['picture' => 'https://cdn.example/white.png']);
@@ -459,11 +460,14 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'e1' => $brandBackdrop, 'e2' => $brandBackdrop, 'e3' => $brandBackdrop, 'e4' => $brandBackdrop,
             // The board scene without a live board game (plan "Mühle und Dame", P7): the teaser on the brand.
             'd5' => $brandBackdrop,
+            // The spotlight game's own cover (d6, GameSpotlight: Age of Empires II).
+            'd6' => $spotlightBackdrop,
             // The pride slides of plan "Stream-Slides: alle Spiele, Stolz-Momente" (P3): the brand, as e1-e4.
             'e5' => $brandBackdrop, 'e6' => $brandBackdrop, 'e7' => $brandBackdrop, 'e8' => $brandBackdrop, 'e9' => $brandBackdrop,
             // The mempool slide (plan "Stream-Slides", P7): the brand.
             'm1' => $brandBackdrop,
         ])
+        ->and($spotlightBackdrop)->toStartWith('data:image/jpeg;base64,/9j/')->not->toBe($brandBackdrop)
         // The fallback scene (gallery or single game) too.
         ->and($source->gallery($games, $more, $now)['backdrop'])->toBe($chessBackdrop)
         ->and($source->gallery([$game], 0, $now))->toMatchArray(['backdrop' => $chessBackdrop])
