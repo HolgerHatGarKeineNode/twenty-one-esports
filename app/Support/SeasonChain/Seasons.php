@@ -42,7 +42,7 @@ final class Seasons
 
         $now = CarbonImmutable::now();
         $attributes = request()->attributes;
-        $memo = self::MEMO.'.'.(CarbonImmutable::hasTestNow() ? CarbonImmutable::getTestNow()?->format('U.u') : 'now');
+        $memo = self::MEMO.'.'.(CarbonImmutable::hasTestNow() ? CarbonImmutable::getTestNow()->format('U.u') : 'now');
         $kept = $attributes->get($memo);
 
         if (is_array($kept) && ($kept['season'] === null || $kept['season']->isLiveAt($now))) {
