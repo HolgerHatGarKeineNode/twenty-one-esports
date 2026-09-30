@@ -166,9 +166,9 @@ poster. Pick the poster in the language of the post.
 From the repo root. The render scripts run the position and string checks first.
 
 ```bash
-node docs/promo/src/render-posters.mjs                 # all posters (116), DE+EN, probes on
+node docs/promo/src/render-posters.mjs                 # all posters (126), DE+EN, probes on
 node docs/promo/src/render-posters.mjs blitz clans     # some motifs
-node docs/promo/src/render-reels.mjs                   # all reels (17), DE+EN, with music
+node docs/promo/src/render-reels.mjs                   # all reels (18), DE+EN, with music
 node docs/promo/src/render-reels.mjs watch             # one reel
 node docs/promo/src/render-reels.mjs --stills          # review frames only, to reels/stills/
 python3 docs/promo/src/contact-sheet.py                # posters/contact-sheet.png
