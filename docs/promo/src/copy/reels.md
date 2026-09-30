@@ -322,14 +322,14 @@ app's own "draft, not released" label; the captions carry no figure. Casual cube
 Mühle and Dame cubes: post only once the board game switches are on in prod.
 
 **DE**
-1. (3s) Jede Partie landet im Mempool — *der Mempool-Streifen, Würfel aller fünf Spiele fallen hinein, casual entsättigt, Gesichter und Clan-Logos darunter*
+1. (3s) Jede Partie landet im Mempool — *der Mempool-Streifen, Würfel aller fünf Spiele fallen hinein, casual entsättigt, Avatare und Clan-Logos darunter*
 2. (3s) Läuft sie, füllt sich der Würfel — *rechts vom Trenner: laufende Partien, der Würfel füllt sich Zug für Zug, „live“ mit grünem Punkt*
 3. (3s) Season läuft? Dein gewerteter Sieg wird zum Block — *die Zeile über dem Streifen wechselt auf die Season-Fassung; das gewertete Rocket-League-1v1 endet 3 : 1, der Deckel wird orange, „Block 1“ fällt darunter*
 4. (3s) Jeder Block bringt Sats, halbiert je Epoche — */mining: Block 1 hängt an der Season-Chain, der Zähler läuft auf die Belohnung pro siegreichem Spieler, markiert „Entwurf, nicht freigegeben“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Every match lands in the mempool — *the mempool strip, cubes of all five games drop in, casual ones desaturated, faces and clan logos below*
+1. (3s) Every match lands in the mempool — *the mempool strip, cubes of all five games drop in, casual ones desaturated, avatars and clan logos below*
 2. (3s) While it's played, the cube fills up — *right of the divider: running games, the cube fills move by move, "live" with a green dot*
 3. (3s) Season running? Your rated win becomes a block — *the line above the strip switches to its season wording; the rated Rocket League 1v1 ends 3 : 1, the lid turns orange, "Block 1" drops in below*
 4. (3s) Every block pays sats, halving every era — */mining: Block 1 joins the season chain, the counter runs to the reward per winning player, labelled "draft, not released"*
@@ -347,15 +347,15 @@ The casual Elo is the app's `EloRating` with `season.casual`: +20 for one win, +
 **DE**
 1. (3s) Dein Matt. Dein Moment. — *Brett, Légals Matt (Paris 1750) landet, das Matt-Feld leuchtet*
 2. (3s) Rund um die Uhr: Sieger im Stream — *der Stream „LIVE“: LATEST WIN · GG, satsjaeger mit Krone, beat hodlqueen, +20 casual Elo*
-3. (3s) Dein Aufstieg, groß im Bild — *Climbers of the week: drei Gesichter, die Balken steigen auf +57, +39, +20 casual Elo*
-4. (3s) Dein Block in der Season. Dein Turnierlauf. — *zwei Stream-Slides: Block 1 mit Gesicht, und der Weg durchs Halbfinale ins Finale*
+3. (3s) Dein Aufstieg, groß im Bild — *Climbers of the week: drei Avatare, die Balken steigen auf +57, +39, +20 casual Elo*
+4. (3s) Dein Block in der Season. Dein Turnierlauf. — *zwei Stream-Slides: Block 1 mit Avatar, und der Weg durchs Halbfinale ins Finale*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
 1. (3s) Your mate. Your moment. — *board, Légal's mate (Paris 1750) lands, the mate square lights up*
 2. (3s) Around the clock, winners go on stream — *the stream, "LIVE": LATEST WIN · GG, satsjaeger with a crown, beat hodlqueen, +20 casual Elo*
-3. (3s) Your climb, big on screen — *Climbers of the week: three faces, the bars rise to +57, +39, +20 casual Elo*
-4. (3s) Your block in season. Your bracket run. — *two stream slides: Block 1 with a face, and the path through the semifinal into the final*
+3. (3s) Your climb, big on screen — *Climbers of the week: three avatars, the bars rise to +57, +39, +20 casual Elo*
+4. (3s) Your block in season. Your bracket run. — *two stream slides: Block 1 with an avatar, and the path through the semifinal into the final*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
 ---

@@ -275,8 +275,8 @@ Facts 28-33. Shows Mühle and Dame: post only once the board game switches are o
 figure in the text: until Block 0 it is the board's draft.
 
 **Nostr (DE):**
-Auf /matches wird jede Partie zum Würfel: Schach, Mühle, Dame, Rocket League, EA FC, mit den
-Gesichtern der Spieler darunter. Links steht, was gespielt ist, rechts, was gerade läuft und was
+Auf /matches wird jede Partie zum Würfel: Schach, Mühle, Dame, Rocket League, EA FC, mit Avatar
+und Namen der Spieler darunter. Links steht, was gespielt ist, rechts, was gerade läuft und was
 als Nächstes kommt. Casual ist zum Spaß da und schürft nie. Läuft eine Season, schürft dein fairer
 gewerteter Sieg einen Block der Season-Chain, mit seiner Höhe darunter, und jeder Block bringt Sats.
 Die Belohnung halbiert sich jede Epoche und wird einmal ausgezahlt, nach der Season-Prüfung.
@@ -284,7 +284,7 @@ esports.einundzwanzig.space
 
 **Nostr (EN):**
 On /matches, every game becomes a cube: chess, nine men's morris, checkers, Rocket League, EA FC,
-with the players' faces underneath. Left is what has been played, right is what is live and up next.
+with the players' avatars and names underneath. Left is what has been played, right is what is live and up next.
 Casual is for fun and never mines. While a season runs, your fair rated win mines a block of the
 season chain, with its height stamped underneath, and every block pays sats. The reward halves every
 era and is paid once, after the season review.
@@ -301,21 +301,21 @@ Facts 34-39. The block slide and the tournament-run slide are plan P3/P5: post o
 the prod stream.
 
 **Nostr (DE):**
-Unser Livestream läuft rund um die Uhr und zeigt, wer gewinnt. Dein letzter Sieg kommt mit Gesicht,
-Krone und Casual-Elo ins Bild. Die drei größten Aufsteiger der Woche stehen oben. Läuft eine Season,
+Unser Livestream läuft rund um die Uhr und zeigt, wer gewinnt. Dein letzter Sieg kommt ins Bild: dein
+Name, dein Avatar mit Krone, deine Casual-Elo. Die drei größten Aufsteiger der Woche stehen oben. Läuft eine Season,
 kommt dein Block der Season-Chain dazu, und dein Weg durch den Turnierbaum, Runde für Runde.
 Spiel mit, dann kann der nächste Name im Stream deiner sein.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
-Our live stream runs around the clock and shows who wins. Your latest win goes on screen with your
-face, a crown and your casual Elo. The week's three biggest climbers are up top. While a season runs,
+Our live stream runs around the clock and shows who wins. Your latest win goes on screen: your
+name, your avatar with a crown, your casual Elo. The week's three biggest climbers are up top. While a season runs,
 your season chain block joins in, and so does your path through the bracket, round by round. Join in,
 and the next name on stream can be yours.
 esports.einundzwanzig.space
 
-**X (DE):** Dein Sieg. Dein Gesicht. Im Stream, rund um die Uhr, mit Krone und Casual-Elo. esports.einundzwanzig.space
-**X (EN):** Your win. Your face. On stream, around the clock, with a crown and casual Elo. esports.einundzwanzig.space
+**X (DE):** Dein Sieg. Dein Name. Im Stream, rund um die Uhr, dein Avatar mit Krone. esports.einundzwanzig.space
+**X (EN):** Your win. Your name. On stream, around the clock, your avatar with a crown. esports.einundzwanzig.space
 
 ---
 
