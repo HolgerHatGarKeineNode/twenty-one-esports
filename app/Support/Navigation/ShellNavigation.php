@@ -520,8 +520,13 @@ final class ShellNavigation
         return is_numeric($boardGame) ? BoardGame::query()->whereKey((int) $boardGame)->value('game') : null;
     }
 
+    /** The room's `{match}` arrives bound (its mount takes a SeriesMatch), the match page's as the number. */
     private function gameOfMatch(mixed $number): ?string
     {
+        if ($number instanceof SeriesMatch) {
+            return $number->game;
+        }
+
         if (! is_numeric($number)) {
             return null;
         }

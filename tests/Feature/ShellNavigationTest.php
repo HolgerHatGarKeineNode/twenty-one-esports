@@ -71,11 +71,20 @@ test('row 2 names the game of the page, else the game opened last, else the firs
         ->and($contextOf(route('matches.index', ['game' => 'not-a-game'])))->toBe('chess');
 });
 
-test('a match page belongs to the game of its match', function () {
+test('a match page and its room belong to the game of the match, not to the game opened last', function () {
     $series = SeriesMatch::factory()->create();
 
     $this->get(route('matches.show', $series->number))->assertOk()
         ->assertSee('data-test="context-bar" data-game="'.$series->game.'"', false);
+
+    // The room binds {match} to the model before the header reads it.
+    foreach (['rocket-league' => '3v3', 'age-of-empires-2' => '1v1'] as $game => $mode) {
+        $match = SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => Lineup::factory()->game($game, $mode)->ready()]);
+        $this->actingAs($match->challengerLineup->clan->owner)->get(route('ladder.show', ['chess', 'blitz']))->assertOk();
+
+        $this->get(route('matches.room', $match->number))->assertOk()
+            ->assertSee('data-test="context-bar" data-game="'.$game.'"', false);
+    }
 });
 
 test('the Season item carries the Block 0 tag before the first season', function () {
