@@ -33,6 +33,12 @@ class TwentyOneStreamBotTournamentsCommand extends Command
             return self::SUCCESS;
         }
 
+        foreach ($notes->stale() as $tournament) {
+            $this->line('--- tournament '.$tournament->id.': its note names an old start, deleted and replaced by');
+            $this->line($notes->content($tournament));
+            $this->newLine();
+        }
+
         $due = $notes->due($now);
 
         foreach ($due as $tournament) {

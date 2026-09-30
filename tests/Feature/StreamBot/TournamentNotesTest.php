@@ -3,11 +3,18 @@
 use App\Enums\TournamentStatus;
 use App\Models\BotPost;
 use App\Models\Tournament;
+use App\Support\LeagueTime;
 use App\Support\Nostr\SignedEvent;
+use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotPublisher;
+use App\Support\StreamBot\TournamentNotes;
+use App\Support\Tournaments\CasualCups;
 use App\Support\TwentyOne\PublishResult;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
 use function BitWasp\Bech32\convertBits;
@@ -17,8 +24,10 @@ use function BitWasp\Bech32\decodeRaw;
  * The stream bot's notes on its own profile: one kind-1 note per published
  * tournament, the backlog a few per run, never twice (not across runs, not
  * with a rival run, not after a failed send), none for a tournament called
- * off first, nothing without the flag, the key or a relay. The relays are
- * stood in for.
+ * off first, nothing without the flag, the key or a relay; a note whose
+ * start changed is deleted (NIP-09) and posted anew, by the scheduled run
+ * and by the data migration after the cups moved to their slots. The relays
+ * are stood in for.
  */
 
 beforeEach(function () {
@@ -187,3 +196,104 @@ test('nothing is claimed, signed or sent without the flag, the key or a relay', 
     'no key' => [['esports.stream_bot.nsec' => null]],
     'no relay' => [['twentyone.stream.relays' => []]],
 ]);
+
+test('a start change after the note went out: a NIP-09 deletion of the old note, then a fresh note with the new start in its row', function () {
+    $tournament = openTournament(['name' => 'Moving Cup']);
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDays(2)->setTime(19, 30)])->save();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    [$deletion, $note] = [$this->published[1], $this->published[2]];
+    $body = explode("\n\nnostr:", $note->content, 2)[0];
+
+    expect($this->published)->toHaveCount(3)
+        ->and($old->content)->toContain('starts Sat, 3 Oct 2026, 9:00 PM CEST')
+        ->and($deletion->kind)->toBe(5)
+        ->and($deletion->pubkey)->toBe($this->botKey->pubkey)
+        ->and($deletion->hasValidSignature())->toBeTrue()
+        ->and($deletion->tags)->toBe([['e', $old->id], ['k', '1']])
+        ->and($note->kind)->toBe(1)
+        ->and($note->hasValidSignature())->toBeTrue()
+        ->and($note->content)->toContain('starts Mon, 5 Oct 2026, 9:30 PM CEST')->not->toContain('3 Oct')->not->toContain('#')
+        ->and($note->tags)->toBe($old->tags)
+        ->and(StreamBotCopy::violations($body, $note->tags))->toBe([])
+        ->and(BotPost::query()->sole()->event_id)->toBe($note->id)
+        ->and(BotPost::query()->sole()->published_at)->not->toBeNull();
+
+    // The corrected note names the current start: later runs leave it alone.
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect($this->published)->toHaveCount(3);
+});
+
+test('no relay takes the deletion: the old note stays in its row and the next run tries again', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $old = $this->published[0];
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+
+    $this->accepts = false;
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect(BotPost::query()->sole()->event_id)->toBe($old->id)
+        ->and(collect($this->published)->pluck('kind')->all())->toBe([1, 5]);
+
+    $this->accepts = true;
+    Artisan::call('twentyone:stream-bot:tournaments');
+    expect(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 5, 1])
+        ->and(BotPost::query()->sole()->event_id)->toBe($this->published[3]->id);
+});
+
+test('the data migration corrects the notes of cups moved to their game slot, leaves a current note alone and is idempotent', function () {
+    Queue::fake();
+    Notification::fake();
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
+    config(['esports.casual_cups.enabled' => ['ea-sports-fc-26', 'chess']]);
+    // The FC cup opened on the old Saturday slot; chess stays on its slot.
+    config(['esports.casual_cups.games.ea-sports-fc-26.slot' => ['weekday' => 'saturday', 'time' => '20:00']]);
+    $moved = app(CasualCups::class)->ensure('ea-sports-fc-26', 'eu');
+    $kept = app(CasualCups::class)->ensure('chess', 'eu');
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $notes = collect($this->published)->keyBy(fn (SignedEvent $note): int => notedTournaments([$note])[0]);
+
+    config(['esports.casual_cups.games.ea-sports-fc-26.slot' => ['weekday' => 'friday', 'time' => '18:00']]);
+    expect(app(CasualCups::class)->moveToGameSlots())->toHaveCount(1)
+        ->and(app(TournamentNotes::class)->stale())->toHaveCount(1);
+
+    $migration = require database_path('migrations/2026_09_30_233156_correct_stream_bot_notes_with_an_old_start.php');
+    $migration->up();
+    [$deletion, $note] = array_slice($this->published, 2);
+
+    expect($this->published)->toHaveCount(4)
+        ->and($notes[$moved->id]->content)->toContain('starts Sat, 3 Oct 2026, 8:00 PM CEST')
+        ->and($deletion->tags)->toBe([['e', $notes[$moved->id]->id], ['k', '1']])
+        ->and(notedTournaments([$note]))->toBe([$moved->id])
+        ->and($note->content)->toContain('starts '.LeagueTime::stamp($moved->refresh()->starts_at, 'Europe/Berlin', 'en'))->toContain('Fri, 9 Oct 2026, 6:00 PM CEST')
+        ->and(StreamBotCopy::violations(explode("\n\nnostr:", $note->content, 2)[0], $note->tags))->toBe([])
+        ->and(BotPost::query()->where('subject_id', $moved->id)->value('event_id'))->toBe($note->id)
+        ->and(BotPost::query()->where('subject_id', $kept->id)->value('event_id'))->toBe($notes[$kept->id]->id)
+        ->and($migration->withinTransaction)->toBeFalse();
+
+    // Idempotent: a second run finds nothing to correct.
+    $migration->up();
+    expect($this->published)->toHaveCount(4);
+    Notification::assertNothingSent();
+});
+
+test('the data migration fails loud when a stale note cannot be corrected, and a run after the fix corrects it', function () {
+    $tournament = openTournament();
+    Artisan::call('twentyone:stream-bot:tournaments');
+    $tournament->forceFill(['starts_at' => $tournament->starts_at->addDay()])->save();
+    $migration = require database_path('migrations/2026_09_30_233156_correct_stream_bot_notes_with_an_old_start.php');
+
+    config(['esports.stream_bot.enabled' => false]);
+    expect(fn () => $migration->up())->toThrow(RuntimeException::class, '1 stream bot notes announce an old start, but no notes: ESPORTS_STREAM_BOT_ENABLED is off');
+
+    config(['esports.stream_bot.enabled' => true]);
+    $this->accepts = false;
+    expect(fn () => $migration->up())->toThrow(RuntimeException::class, 'no relay took the deletion');
+
+    $this->accepts = true;
+    $migration->up();
+    expect(app(TournamentNotes::class)->stale())->toBe([])
+        ->and(collect($this->published)->pluck('kind')->all())->toBe([1, 5, 5, 1]);
+});

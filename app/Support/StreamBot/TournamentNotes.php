@@ -18,6 +18,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use LogicException;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -34,6 +35,16 @@ use Throwable;
  * again, so a relay that took the first try sees a duplicate, never a
  * second note. At most `per_run` notes per run, oldest published first, so
  * the backlog goes out a few at a time.
+ *
+ * A start that changes after the note went out (a cup extended or moved to
+ * its game's slot, an organizer's edit) makes the note wrong: every run
+ * first looks for notes of tournaments in sign-up whose text lacks the
+ * current start (stale()), sends a NIP-09 deletion of each (kind 5, `e` on
+ * the note, `k` 1) and posts a fresh note in its place, with the same copy
+ * path and the new id in the same bot_posts row (correctStart()). The text
+ * is the record of the announced start: it carries LeagueTime::stamp() of
+ * starts_at, rendered here the same way, so no column is needed; a stored
+ * note without the current stamp announced another start.
  *
  * A tournament called off before its note went out gets none. Fail
  * closed: without `esports.stream_bot.enabled`, the bot key or a stream
@@ -68,6 +79,16 @@ class TournamentNotes
 
         [$key, $relays] = $setup;
         $lines = [];
+
+        foreach ($this->stale($this->perRun()) as $tournament) {
+            try {
+                $lines[] = $this->correct($key, $tournament, $relays, $now);
+            } catch (Throwable $e) {
+                // The old note stays in the row, so the next run finds it stale again and retries.
+                report($e);
+                $lines[] = 'tournament '.$tournament->id.': start correction failed, '.$e->getMessage();
+            }
+        }
 
         foreach ($this->due($now) as $tournament) {
             try {
@@ -107,18 +128,169 @@ class TournamentNotes
 
         [$key, $relays] = $setup;
 
-        $reset = BotPost::query()
-            ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])
-            ->where('event_id', $deletedId)
-            ->update(['event_id' => null, 'event' => null, 'published_at' => null, 'attempted_at' => null, 'relays_accepted' => 0, 'relays_total' => 0, 'updated_at' => $now]);
-
-        if ($reset !== 1) {
+        if (! $this->release($tournament, $deletedId, $now)) {
             return 'tournament '.$tournament->id.': its note is not '.$deletedId.' (renewed already)';
         }
 
         Log::info('Stream bot tournament note deleted by its author, renewing', ['tournament' => $tournament->id, 'deleted' => $deletedId]);
 
         return $this->post($key, $tournament, $relays, $now);
+    }
+
+    /**
+     * Tournaments in sign-up whose stored note announces another start
+     * than the current one, by id, at most `$limit` (null: all).
+     *
+     * @return list<Tournament>
+     */
+    public function stale(?int $limit = null): array
+    {
+        $posts = BotPost::query()
+            ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'kind' => self::KIND_NOTE])
+            ->whereNotNull('event')
+            ->whereIn('subject_id', Tournament::query()->select('id')->where('status', TournamentStatus::Signup))
+            ->orderBy('subject_id')
+            ->get(['subject_id', 'event']);
+        $tournaments = Tournament::query()->with('event')->whereKey($posts->pluck('subject_id')->all())
+            ->whereNotNull('event_id')->whereNotNull('slug')->get()->keyBy('id');
+
+        $stale = [];
+
+        foreach ($posts as $post) {
+            $tournament = $tournaments->get($post->subject_id);
+
+            if ($tournament instanceof Tournament && ! $this->announcesStart((string) $post->event, $tournament)) {
+                $stale[] = $tournament;
+            }
+
+            if ($limit !== null && count($stale) >= $limit) {
+                break;
+            }
+        }
+
+        return $stale;
+    }
+
+    /**
+     * Every stale note corrected now (the data migration after the cups
+     * moved to their game slots). Fails loud: without the bot's setup while
+     * a note is stale, or when a correction did not reach a relay (the
+     * deletion or the new note), it throws after trying all; running it
+     * again is safe (a corrected note is no longer stale, and a new note no
+     * relay took is sent again by the scheduled run).
+     *
+     * @return list<string> a line per correction
+     */
+    public function correctStaleStarts(CarbonImmutable $now): array
+    {
+        $stale = $this->stale();
+
+        if ($stale === []) {
+            return [];
+        }
+
+        $setup = $this->setup();
+
+        if (is_string($setup)) {
+            throw new RuntimeException(count($stale).' stream bot notes announce an old start, but '.$setup);
+        }
+
+        [$key, $relays] = $setup;
+        $lines = [];
+        $failed = [];
+
+        foreach ($stale as $tournament) {
+            try {
+                $lines[] = $line = $this->correct($key, $tournament, $relays, $now);
+                $delivered = BotPost::query()->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])->whereNotNull('published_at')->exists();
+
+                if (! $delivered) {
+                    $failed[] = $line;
+                }
+            } catch (Throwable $e) {
+                $failed[] = 'tournament '.$tournament->id.': '.$e->getMessage();
+            }
+        }
+
+        if ($failed !== []) {
+            throw new RuntimeException('Stream bot start corrections failed: '.implode('; ', $failed));
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Whether a stored note (the signed event as JSON) names the
+     * tournament's current start. A note that cannot be read counts as
+     * current: it is never replaced on a guess.
+     */
+    public function announcesStart(string $storedEvent, Tournament $tournament): bool
+    {
+        $note = SignedEvent::fromInput(json_decode($storedEvent, true));
+
+        if ($note === null) {
+            return true;
+        }
+
+        $previous = app()->getLocale();
+        app()->setLocale(self::LOCALE);
+
+        try {
+            return str_contains($note->content, $this->startStamp($tournament));
+        } finally {
+            app()->setLocale($previous);
+        }
+    }
+
+    /**
+     * The NIP-09 deletion of a note: kind 5 with the note's id in an `e`
+     * and its kind in a `k` tag, signed with the bot key.
+     */
+    public function deletion(LeagueKey $key, string $noteId, int $createdAt): SignedEvent
+    {
+        return $key->sign(5, [['e', $noteId], ['k', (string) self::KIND_NOTE]], 'The start changed, a corrected note follows.', $createdAt);
+    }
+
+    /**
+     * Delete the stale note, then post the fresh one in its row; a line
+     * for the log. Throws when no relay took the deletion (the old note is
+     * kept in the row, so it is tried again).
+     *
+     * @param  list<string>  $relays
+     */
+    private function correct(LeagueKey $key, Tournament $tournament, array $relays, CarbonImmutable $now): string
+    {
+        $post = BotPost::query()->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])->firstOrFail();
+        $old = SignedEvent::fromInput(json_decode((string) $post->event, true))
+            ?? throw new LogicException('The stored note of tournament '.$tournament->id.' is not a valid event.');
+
+        $deletion = $this->deletion($key, $old->id, $now->getTimestamp());
+        $results = $this->publisher->publish($deletion->toArray(), $relays);
+        $accepted = count(array_filter($results, fn ($result): bool => $result->accepted));
+
+        if ($accepted === 0) {
+            throw new RuntimeException('no relay took the deletion of note '.$old->id);
+        }
+
+        Log::info('Stream bot tournament note announced an old start, deleted and renewed', ['tournament' => $tournament->id, 'deleted' => $old->id, 'deletion' => $deletion->id, 'starts_at' => $tournament->starts_at->toIso8601String()]);
+
+        if (! $this->release($tournament, $old->id, $now)) {
+            return 'tournament '.$tournament->id.': note '.$old->id.' deleted, renewed by another run already';
+        }
+
+        return 'tournament '.$tournament->id.': note '.$old->id.' deleted (deletion '.$deletion->id.' to '.$accepted.'/'.count($results).' relays), '.$this->post($key, $tournament, $relays, $now);
+    }
+
+    /**
+     * Empty the note's row for a new note, compare-and-set on the old id:
+     * false when the row holds another note already.
+     */
+    private function release(Tournament $tournament, string $oldId, CarbonImmutable $now): bool
+    {
+        return BotPost::query()
+            ->where(['subject_type' => BotPost::SUBJECT_TOURNAMENT, 'subject_id' => $tournament->id, 'kind' => self::KIND_NOTE])
+            ->where('event_id', $oldId)
+            ->update(['event_id' => null, 'event' => null, 'published_at' => null, 'attempted_at' => null, 'relays_accepted' => 0, 'relays_total' => 0, 'updated_at' => $now]) === 1;
     }
 
     /**
@@ -168,7 +340,7 @@ class TournamentNotes
                     ->orWhere('bot_posts.attempted_at', '>', $this->claimCutoff($now))))
             ->orderBy('published_at')
             ->orderBy('id')
-            ->limit(max(0, (int) config('esports.stream_bot.tournament_notes.per_run', 3)))
+            ->limit($this->perRun())
             ->get()
             ->all());
     }
@@ -192,8 +364,7 @@ class TournamentNotes
             $body = StreamBotCopy::render($template, 0, [
                 'name' => StreamBotCopy::clean($tournament->name, self::NAME_LENGTH),
                 'game' => $this->gameLine($tournament),
-                // A casual cup on its region's clock (a US cup in New York time), everything else in the league's.
-                'starts' => LeagueTime::stamp($tournament->starts_at, $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : null),
+                'starts' => $this->startStamp($tournament),
                 'pot' => $this->pot($tournament),
                 'url' => route('tournaments.show', $tournament),
             ]);
@@ -282,6 +453,17 @@ class TournamentNotes
         ]);
 
         return sprintf('tournament %d: %s id=%s to %d/%d relays', $tournament->id, $accepted > 0 ? 'posted' : 'not accepted, retried later', $event->id, $accepted, count($results));
+    }
+
+    /** A casual cup's start on its region's clock (a US cup in New York time), everything else in the league's. */
+    private function startStamp(Tournament $tournament): string
+    {
+        return LeagueTime::stamp($tournament->starts_at, $tournament->isCasualCup() ? CasualCups::timezoneOf($tournament) : null);
+    }
+
+    private function perRun(): int
+    {
+        return max(0, (int) config('esports.stream_bot.tournament_notes.per_run', 3));
     }
 
     /** A claim older than this is released: its run failed or crashed. */
