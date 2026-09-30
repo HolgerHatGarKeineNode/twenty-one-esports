@@ -762,7 +762,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <x-clan-tag :clan="$m->sideClan($cell)" :tag="$m->sideTag($cell)" :tile="64" class="cube hidden size-16 shrink-0 items-center justify-center font-display text-[15px] font-extrabold lg:mt-2.5 lg:flex {{ $sideInk[$cell] }}" style="background: {{ $sideColor[$cell] }}" />
                     <span @class(['flex min-w-0 flex-col gap-1', 'lg:ml-2.5' => $cell === 'challenger', 'items-end lg:mr-6' => $cell === 'challenged'])>
                         <b class="font-display text-[26px] font-extrabold lg:hidden" style="color: {{ $cell === 'challenger' ? '#F7931A' : '#ADADB0' }}">{{ $m->sideTag($cell) }}</b>
-                        <b class="truncate text-[13px] lg:font-display lg:text-xl">{{ $m->sideName($cell) }}</b>
+                        {{-- max-w-full: the right side's column aligns its items to the end, so a long name grew past its cell over the score (375 px, "Velit Consequatur"); below lg a long name wraps to two lines instead of losing most of it. --}}
+                        <b class="max-w-full text-[13px] max-lg:line-clamp-2 max-lg:[overflow-wrap:anywhere] lg:truncate lg:font-display lg:text-xl">{{ $m->sideName($cell) }}</b>
                         <span class="text-xs text-ink-2 lg:text-[13px]">{{ $captainSide === $cell ? __('you are captain') : __('captain :name', ['name' => $captainOf($cell)]) }}</span>
                     </span>
                 </span>
