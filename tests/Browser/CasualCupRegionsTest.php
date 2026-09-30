@@ -13,6 +13,8 @@ use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
+use Tests\Support\CheckersGame;
+use Tests\Support\NineMensMorrisOn;
 use Tests\Support\TestSigner;
 
 pest()->group('browser');
@@ -255,6 +257,53 @@ test('by start orders the game groups by their earliest cup and the rows by star
         ->and($state['groups'][1]['rows'])->toBe(['us', 'eu'])
         ->and($page->evaluate('() => document.querySelector("[data-test=cup-sort-start]").getAttribute("aria-pressed")'))->toBe('true')
         ->and($page->evaluate('() => window.__errors'))->toBe([]);
+});
+
+test('the game filter of the cup board stays inside the window with seven games, from 640 to 1920 px in English and German', function () {
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    config(['esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2', 'nine-mens-morris', 'checkers']]);
+    app(CasualCups::class)->tick();
+
+    $page = cupRegionsPage('/tournaments', 640, 900, '[data-test=cup-filters]');
+    cupRegionsControl($page);
+    $measured = [];
+
+    foreach (['en', 'de'] as $lang) {
+        if ($lang === 'de') {
+            $page->goto(ComputeUrl::from('/locale/de'));
+            $page->goto(ComputeUrl::from('/tournaments'));
+            BrowserWait::until($page, '() => window.Alpine && document.querySelector("[data-test=cup-filters]") !== null && document.fonts.status === "loaded"', 10_000);
+        }
+
+        foreach ([640, 1024, 1280, 1440, 1536, 1920] as $width) {
+            $page->setViewportSize($width, 900);
+            // Past: px of a button beyond the window or cut off by its overflow-hidden group; clipped: a label cut inside its button; the buttons' names.
+            $measured["{$lang} {$width}"] = $page->evaluate('() => {
+                const buttons = [...document.querySelectorAll("[data-test^=cup-filter-game-]:not([data-test=cup-filter-game-select])")];
+                const edge = Math.min(window.innerWidth, buttons[0].parentElement.getBoundingClientRect().right);
+                return {
+                    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                    past: Math.max(0, ...buttons.map((b) => Math.round(b.getBoundingClientRect().right - edge))),
+                    clipped: buttons.filter((b) => b.scrollWidth > b.clientWidth + 1 || [...b.querySelectorAll("span")].some((s) => s.checkVisibility() && s.scrollWidth > s.clientWidth + 1)).map((b) => b.dataset.test),
+                    names: buttons.slice(1).map((b) => b.getAttribute("aria-label")),
+                };
+            }');
+            cupRegionsShot($page, "cup-filter-seven-{$width}-{$lang}");
+        }
+    }
+
+    fwrite(STDERR, json_encode($measured).PHP_EOL);
+    $names = ['Chess', 'Rocket League', 'EA Sports FC 26', 'EA Sports FC 27', 'Age of Empires II: Definitive Edition', "Nine Men's Morris", 'Checkers'];
+
+    foreach ($measured as $at => $state) {
+        expect([$at, $state['overflow'], $state['past'], $state['clipped']])->toBe([$at, 0, 0, []])
+            ->and(count($state['names']))->toBe(7);
+    }
+
+    expect($measured['en 1440']['names'])->toBe($names)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
 
 /*
