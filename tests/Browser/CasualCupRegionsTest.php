@@ -400,7 +400,8 @@ test('the cups\' head says tournament and brings the winner and the next cup und
     // 39 characters without a break (review of P3: a long name widened the page from 21 characters at 320 px).
     wonCasualCup(User::factory()->create(['name' => 'SatoshiNakamotoTheFirstMinerOfBlockZero']), User::factory()->create(['name' => 'hal_finney']));
     app(CasualCups::class)->tick();
-    cupSignups(openCup(), 3);
+    // The FC 26 EU cup (Friday 18:00 Berlin) starts first, so it is the head's next cup.
+    cupSignups(Tournament::query()->where('cup_open_series', 'ea-sports-fc-26-eu')->sole(), 3);
     $now = CarbonImmutable::now();
     $made = function (string $name, TournamentStatus $status, CarbonImmutable $startsAt, array $attributes = []): Tournament {
         $tournament = Tournament::factory()->create(['name' => $name, 'starts_at' => $startsAt, 'created_by_id' => organizer()->id, ...$attributes]);

@@ -90,8 +90,8 @@ test('a value of the wrong type or out of range is refused, and nothing of the b
     'not a number' => ['esports.casual.lobby_minutes', 'five', 'A whole number from 1 to 60.'],
     'a fraction' => ['esports.casual.join_minutes', '2.5', 'A whole number from 1 to 60.'],
     'an array for an int' => ['esports.casual.join_minutes', [5], 'A whole number from 1 to 60.'],
-    'hour 24' => ['esports.casual_cups.regions.eu.time', '24:00', 'A time as HH:MM, from 00:00 to 23:59.'],
-    'no weekday' => ['esports.casual_cups.regions.us.weekday', 'someday', 'A day of the week.'],
+    'hour 24' => ['esports.casual_cups.games.chess.slot.time', '24:00', 'A time as HH:MM, from 00:00 to 23:59.'],
+    'no weekday' => ['esports.casual_cups.games.rocket-league.slot.weekday', 'someday', 'A day of the week.'],
     'size too small' => ['esports.casual_cups.sizes', '2, 8', '1 to 5 whole numbers from 4 to 64, separated by commas.'],
     'size twice' => ['esports.casual_cups.sizes', '4, 4, 8', '1 to 5 whole numbers from 4 to 64, separated by commas.'],
     'too many slots' => ['esports.stream_bot.free_places.cup_slots_hours', '1, 2, 3, 4, 5, 6, 7', '1 to 6 whole numbers from 1 to 720, separated by commas.'],
@@ -101,7 +101,7 @@ test('each change is one log row with who, before and after; an unchanged value 
     $saved = LeagueSettings::save($this->admin, [
         'esports.fair_play.false_reports' => ' 3 ',
         'esports.casual_cups.sizes' => '4, 8, 16, 32',
-        'esports.casual_cups.regions.eu.time' => '19:30',
+        'esports.casual_cups.games.chess.slot.time' => '19:30',
         // Unchanged: no row.
         'esports.casual.lock.minutes' => '30',
     ]);
@@ -109,7 +109,7 @@ test('each change is one log row with who, before and after; an unchanged value 
     expect(collect($saved)->map->only(['key', 'before', 'after', 'changed_by_id', 'changed_by_pubkey'])->all())->toBe([
         ['key' => 'esports.fair_play.false_reports', 'before' => 2, 'after' => 3, 'changed_by_id' => $this->admin->id, 'changed_by_pubkey' => $this->admin->pubkey],
         ['key' => 'esports.casual_cups.sizes', 'before' => [4, 8, 16], 'after' => [4, 8, 16, 32], 'changed_by_id' => $this->admin->id, 'changed_by_pubkey' => $this->admin->pubkey],
-        ['key' => 'esports.casual_cups.regions.eu.time', 'before' => '20:00', 'after' => '19:30', 'changed_by_id' => $this->admin->id, 'changed_by_pubkey' => $this->admin->pubkey],
+        ['key' => 'esports.casual_cups.games.chess.slot.time', 'before' => '20:00', 'after' => '19:30', 'changed_by_id' => $this->admin->id, 'changed_by_pubkey' => $this->admin->pubkey],
     ])->and(LeagueSettings::save($this->admin, ['esports.fair_play.false_reports' => '3']))->toBe([]);
 
     $reset = LeagueSettings::save($this->admin, ['esports.fair_play.false_reports' => null]);
@@ -137,17 +137,18 @@ test('the readers use the value in force: fair play, the casual 1v1 lock and pin
         'esports.fair_play.window_days' => '60',
         'esports.fair_play.lock_days' => '14',
         'esports.casual.ready_seconds' => '90',
-        'esports.casual_cups.regions.eu.weekday' => 'friday',
-        'esports.casual_cups.regions.eu.time' => '19:30',
+        'esports.casual_cups.games.chess.slot.weekday' => 'friday',
+        'esports.casual_cups.games.chess.slot.time' => '19:30',
         'esports.casual_cups.min_signup_hours' => '24',
         'esports.casual_cups.sizes' => '8, 16',
     ]);
 
-    // Monday 2026-10-05 12:00 UTC + 24 h: the next Friday 19:30 in Berlin (CEST, UTC+2).
+    // Monday 2026-10-05 12:00 UTC + 24 h: the next Friday 19:30 in Berlin (CEST, UTC+2) and in New York (EDT, UTC-4).
     expect([FairPlay::threshold(), FairPlay::windowDays(), FairPlay::lockDays()])->toBe([4, 60, 14])
         ->and(CasualMatches::pinned()['ready_seconds'])->toBe(90)
-        ->and(CasualCups::startFor('eu', CarbonImmutable::parse('2026-10-05 12:00', 'UTC'))->toIso8601String())->toBe('2026-10-09T17:30:00+00:00')
-        ->and(CasualCups::regions()['us'])->toMatchArray(['weekday' => 'saturday', 'hour' => 20, 'minute' => 0])
+        ->and(CasualCups::startFor('chess', 'eu', CarbonImmutable::parse('2026-10-05 12:00', 'UTC'))->toIso8601String())->toBe('2026-10-09T17:30:00+00:00')
+        ->and(CasualCups::startFor('chess', 'us', CarbonImmutable::parse('2026-10-05 12:00', 'UTC'))->toIso8601String())->toBe('2026-10-09T23:30:00+00:00')
+        ->and(CasualCups::slotOf('checkers'))->toBe(['weekday' => 'sunday', 'hour' => 15, 'minute' => 0])
         ->and(CasualCups::sizes())->toBe([8, 16]);
 });
 
@@ -188,6 +189,7 @@ test('a stored value that no longer passes its definition, or a key no longer on
 });
 
 test('/rules states the values in force after an admin change', function () {
+    config(['esports.casual_cups.enabled' => ['chess']]);
     LeagueSettings::save($this->admin, [
         'esports.fair_play.false_reports' => '3',
         'esports.fair_play.window_days' => '45',
@@ -197,7 +199,7 @@ test('/rules states the values in force after an admin change', function () {
         'esports.casual.lock.minutes' => '90',
         'esports.casual.ready_seconds' => '75',
         'esports.casual_cups.sizes' => '4, 8, 16, 32',
-        'esports.casual_cups.regions.eu.time' => '19:30',
+        'esports.casual_cups.games.chess.slot.time' => '19:30',
         'esports.casual_cups.evening.start' => '21:15',
     ]);
 

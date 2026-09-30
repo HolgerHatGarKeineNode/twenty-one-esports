@@ -488,18 +488,23 @@ return [
     | enabled: the games whose cup series run (comma-separated
     | `ESPORTS_CASUAL_CUP_GAMES`). All four games run by default (Rocket
     | League and EA Sports FC since P25 S3, on the casual scheduled flow).
-    | games: the mode each series plays, its name, and the series lengths
-    | (finals = grand final).
+    | games: the mode each series plays, its name, the series lengths
+    | (finals = grand final) and its weekly `slot` (user, 2026-09-30: the
+    | cups spread over the weekend, Friday evening to Sunday, the two FC
+    | games on Friday, the board games in the afternoon, chess and Rocket
+    | League on Saturday evening, AoE2 on Sunday evening). slot: the cups'
+    | default for a game without one of its own.
     |
     | regions (user, 2026-09-28: separate EU and US cups): every enabled game
     | runs one cup series per region, keyed "<game>-<region>" and named
     | "<Game> Casual Cup <label> #n"; per game and region at most one cup is
-    | open at a time. A cup starts at its region's slot (`weekday` at `time`
-    | in `timezone`, daylight saving included): the first one that leaves at
-    | least min_signup_hours of sign-up. Sign-up closes at the start. The
-    | first region is where the cups opened before the regions went.
-    | timezone: the zone of a cup without a region and of a player without
-    | one.
+    | open at a time. A cup starts at its game's slot (`weekday` at `time`)
+    | on its region's clock (`timezone`, daylight saving included), so an EU
+    | and a US cup of a game start at the same local time: the first slot
+    | that leaves at least min_signup_hours of sign-up. Sign-up closes at the
+    | start. The first region is where the cups opened before the regions
+    | went. timezone: the zone of a cup without a region and of a player
+    | without one.
     |
     | sizes (P27): a cup opens with the first size of places; whenever only
     | one place is left (3/4, 7/8 ...) the league raises it to the next size,
@@ -507,7 +512,7 @@ return [
     | A cup full at its last size, or full once growth is frozen, starts at
     | once. At the close it plays with whoever signed up: min_players or more
     | a double elimination, 2 to min_players - 1 a small cup's live evening
-    | (below); fewer than 2 extend sign-up once to the region's next slot,
+    | (below); fewer than 2 extend sign-up once to the game's next slot,
     | then the cup is called off. More than 8 players play a 16-slot bracket; the top
     | seeds get the byes. gap_hours: the next cup of a game opens this long
     | after the previous final or call-off.
@@ -541,21 +546,22 @@ return [
     'casual_cups' => [
         'enabled' => array_values(array_filter(array_map('trim', explode(',', (string) env('ESPORTS_CASUAL_CUP_GAMES', 'chess,rocket-league,ea-sports-fc-26,ea-sports-fc-27,age-of-empires-2,nine-mens-morris,checkers'))))),
         'games' => [
-            'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
-            'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3],
-            'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
-            'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
-            'age-of-empires-2' => ['name' => 'AoE2', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3],
+            'chess' => ['name' => 'Chess', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
+            'rocket-league' => ['name' => 'Rocket League', 'mode' => '1v1', 'best_of' => 3, 'final_best_of' => 3, 'slot' => ['weekday' => 'saturday', 'time' => '20:00']],
+            'ea-sports-fc-26' => ['name' => 'EA FC 26', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '18:00']],
+            'ea-sports-fc-27' => ['name' => 'EA FC 27', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'friday', 'time' => '20:00']],
+            'age-of-empires-2' => ['name' => 'AoE2', 'mode' => '1v1', 'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'sunday', 'time' => '20:00']],
             // Board games (plan "Mühle und Dame", P5): a cup runs only while the board game is switched on.
-            'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
-            'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1],
+            'nine-mens-morris' => ['name' => "Nine Men's Morris", 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'saturday', 'time' => '15:00']],
+            'checkers' => ['name' => 'Checkers', 'mode' => 'blitz', 'best_of' => 1, 'final_best_of' => 1, 'slot' => ['weekday' => 'sunday', 'time' => '15:00']],
         ],
+        'slot' => ['weekday' => 'saturday', 'time' => '20:00'],
         'sizes' => [4, 8, 16],
         'growth_freeze_minutes' => 60,
         'min_players' => 6,
         'regions' => [
-            'eu' => ['label' => 'EU', 'timezone' => 'Europe/Berlin', 'weekday' => 'saturday', 'time' => '20:00'],
-            'us' => ['label' => 'US', 'timezone' => 'America/New_York', 'weekday' => 'saturday', 'time' => '20:00'],
+            'eu' => ['label' => 'EU', 'timezone' => 'Europe/Berlin'],
+            'us' => ['label' => 'US', 'timezone' => 'America/New_York'],
         ],
         'min_signup_hours' => 48,
         'gap_hours' => 24,

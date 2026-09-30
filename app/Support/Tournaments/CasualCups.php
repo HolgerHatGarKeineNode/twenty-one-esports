@@ -28,6 +28,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use LogicException;
 use Throwable;
@@ -50,8 +51,8 @@ use Throwable;
  *   one; a called-off cup gives its number back, so there are no gaps. The
  *   unique indexes on (series, number) and on the open series keep two runs
  *   from ever opening two cups (SQLite has no row locks). It starts at its
- *   region's slot ({@see nextSlot()}), the first one at least
- *   `min_signup_hours` away; sign-up closes at the start.
+ *   game's slot on its region's clock ({@see nextSlot()}), the first one
+ *   at least `min_signup_hours` away; sign-up closes at the start.
  * - Sign-up (P27): the cup opens small (`sizes`, 4 places) and grows to the
  *   next size whenever only one place is left, until `growth_freeze_minutes`
  *   before sign-up closes ({@see grow()}); each growth is a new version of
@@ -59,7 +60,7 @@ use Throwable;
  *   once growth is frozen, it starts at once. At the close it plays with
  *   whoever signed up: `min_players` or more a double elimination, 2 and more
  *   a small cup's live evening; fewer than 2 extend sign-up once to
- *   the region's next slot, then the cup is called off and its players are told.
+ *   the game's next slot, then the cup is called off and its players are told.
  * - Rounds: a round opens as soon as the one before it is done and gets a
  *   window (48 h, 36 h with more than 8 players), capped at `max_days` after
  *   the start. A chess match starts when one player invites the other and
@@ -132,28 +133,56 @@ final class CasualCups
     /**
      * The regions every game runs a cup series in, in config order; the
      * first one is where the cups opened before the regions went. A region
-     * with an unknown zone or weekday is left out (it opens no cup).
+     * with an unknown zone is left out (it opens no cup).
      *
-     * @return array<string, array{label: string, timezone: string, weekday: string, hour: int, minute: int}>
+     * @return array<string, array{label: string, timezone: string}>
      */
     public static function regions(): array
     {
         $regions = [];
 
-        foreach ((array) LeagueSettings::get('esports.casual_cups.regions') as $key => $region) {
+        foreach ((array) config('esports.casual_cups.regions', []) as $key => $region) {
             $region = (array) $region;
             $timezone = (string) ($region['timezone'] ?? '');
-            $weekday = strtolower((string) ($region['weekday'] ?? ''));
-            [$hour, $minute] = array_map(intval(...), explode(':', (string) ($region['time'] ?? '20:00')) + [1 => '0']);
 
-            if (! is_string($key) || $key === '' || ! in_array($timezone, timezone_identifiers_list(), true) || ! in_array($weekday, self::WEEKDAYS, true)) {
+            if (! is_string($key) || $key === '' || ! in_array($timezone, timezone_identifiers_list(), true)) {
                 continue;
             }
 
-            $regions[$key] = ['label' => (string) ($region['label'] ?? strtoupper($key)), 'timezone' => $timezone, 'weekday' => $weekday, 'hour' => $hour, 'minute' => $minute];
+            $regions[$key] = ['label' => (string) ($region['label'] ?? strtoupper($key)), 'timezone' => $timezone];
         }
 
         return $regions;
+    }
+
+    /**
+     * A game's weekly cup slot (user, 2026-09-30: the cups spread over the
+     * weekend): its `slot`, else the cups' default `slot`, the same local
+     * time in every region. Throws for a slot that names no weekday or
+     * time, so such a game opens no cup (fail closed; the clock reports it).
+     *
+     * @return array{weekday: string, hour: int, minute: int}
+     */
+    public static function slotOf(string $game): array
+    {
+        $slot = (array) (LeagueSettings::get("esports.casual_cups.games.{$game}.slot") ?? LeagueSettings::get('esports.casual_cups.slot'));
+        $weekday = strtolower((string) ($slot['weekday'] ?? ''));
+        $time = (string) ($slot['time'] ?? '');
+
+        if (! in_array($weekday, self::WEEKDAYS, true) || preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $time, $parts) !== 1) {
+            throw new InvalidArgumentException("No valid casual cup slot for game [{$game}].");
+        }
+
+        return ['weekday' => $weekday, 'hour' => (int) $parts[1], 'minute' => (int) $parts[2]];
+    }
+
+    /** Whether this instant is a slot of the game on the region's clock. */
+    public static function isSlot(string $game, string $region, CarbonInterface $at): bool
+    {
+        $slot = self::slotOf($game);
+        $local = CarbonImmutable::instance($at)->setTimezone(self::regions()[$region]['timezone'] ?? throw new InvalidArgumentException("Unknown casual cup region [{$region}]."));
+
+        return strtolower($local->englishDayOfWeek) === $slot['weekday'] && $local->hour === $slot['hour'] && $local->minute === $slot['minute'] && $local->second === 0;
     }
 
     /** The series of a game in a region: "chess-eu". */
@@ -202,14 +231,16 @@ final class CasualCups
     }
 
     /**
-     * The region's first slot at or after `$notBefore`: its weekday at its
-     * time on the region's own clock, so the hour stays put across daylight
-     * saving (Europe and the US switch on different dates).
+     * The game's first slot in the region at or after `$notBefore`: the
+     * game's weekday and time ({@see slotOf()}) on the region's own clock,
+     * so the hour stays put across daylight saving (Europe and the US
+     * switch on different dates).
      */
-    public static function nextSlot(string $region, CarbonInterface $notBefore): CarbonImmutable
+    public static function nextSlot(string $game, string $region, CarbonInterface $notBefore): CarbonImmutable
     {
-        $slot = self::regions()[$region] ?? throw new InvalidArgumentException("Unknown casual cup region [{$region}].");
-        $day = CarbonImmutable::instance($notBefore)->setTimezone($slot['timezone'])->startOfDay();
+        $timezone = self::regions()[$region]['timezone'] ?? throw new InvalidArgumentException("Unknown casual cup region [{$region}].");
+        $slot = self::slotOf($game);
+        $day = CarbonImmutable::instance($notBefore)->setTimezone($timezone)->startOfDay();
 
         // The weekday comes round within eight days, the eighth for a slot earlier that same weekday.
         foreach (range(0, 7) as $offset) {
@@ -220,13 +251,13 @@ final class CasualCups
             }
         }
 
-        throw new LogicException("No slot of region [{$region}] within a week.");
+        throw new LogicException("No slot of game [{$game}] in region [{$region}] within a week.");
     }
 
-    /** When a cup of this region opened at `$from` starts, and its sign-up closes. */
-    public static function startFor(string $region, CarbonInterface $from): CarbonImmutable
+    /** When a cup of this game and region opened at `$from` starts, and its sign-up closes. */
+    public static function startFor(string $game, string $region, CarbonInterface $from): CarbonImmutable
     {
-        return self::nextSlot($region, CarbonImmutable::instance($from)->addHours(self::minSignupHours()));
+        return self::nextSlot($game, $region, CarbonImmutable::instance($from)->addHours(self::minSignupHours()));
     }
 
     /**
@@ -459,7 +490,8 @@ final class CasualCups
     /**
      * Open the next cup of this game in this region unless one is open or
      * the last one ended less than `gap_hours` ago; it starts at the
-     * region's next slot at least `min_signup_hours` away. Null when nothing
+     * game's next slot on the region's clock at least `min_signup_hours`
+     * away. Null when nothing
      * was opened. Fail closed: without the league key (or with an unknown
      * region) nothing is created or published.
      */
@@ -480,7 +512,7 @@ final class CasualCups
         }
 
         $number = (int) Tournament::query()->where('cup_series', $series)->max('cup_number') + 1;
-        $closesAt = self::startFor($region, now());
+        $closesAt = self::startFor($game, $region, now());
         $profile = GameProfile::for($game, $setup['mode']);
 
         try {
@@ -633,7 +665,7 @@ final class CasualCups
      * - every such cup joins its game's series in the first region (EU), so
      *   the numbering goes on there; one that ended keeps its name;
      * - an open one is renamed "<Game> Casual Cup EU #n", and one still in
-     *   sign-up moves to the region's next slot at least `min_signup_hours`
+     *   sign-up moves to the game's next EU slot at least `min_signup_hours`
      *   from now, never earlier than it was once somebody signed up; the
      *   calendar event gets a new version, the players who signed up hear
      *   the new start once;
@@ -692,7 +724,7 @@ final class CasualCups
                         $notBefore = $notBefore->max($locked->starts_at);
                     }
 
-                    $startsAt = self::nextSlot($first, $notBefore);
+                    $startsAt = self::nextSlot($locked->game, $first, $notBefore);
 
                     if (! $startsAt->equalTo($locked->starts_at) || ! $startsAt->equalTo($locked->signup_closes_at)) {
                         $locked->forceFill(['starts_at' => $startsAt, 'signup_closes_at' => $startsAt]);
@@ -722,6 +754,60 @@ final class CasualCups
         }
 
         return $done;
+    }
+
+    /**
+     * Move the open cups nobody signed up for to their game's slot (user,
+     * 2026-09-30: the cups spread over the weekend, the ones opened before
+     * too): a cup in sign-up with no active sign-up whose start is not a
+     * slot of its game on its region's clock starts at the game's next slot
+     * that leaves `min_signup_hours` of sign-up from now; sign-up closes
+     * there, so the growth freeze follows. Its calendar event gets a new
+     * version (as an extension does); nobody is told, as nobody signed up.
+     * A cup with a sign-up, a live evening, a cup past its close and a cup
+     * without a region keep their start. One log line per moved cup.
+     *
+     * Idempotent: a moved cup starts on a slot, so a second run skips it.
+     *
+     * @return list<array{id: int, name: string, from: string, to: string}>
+     */
+    public function moveToGameSlots(): array
+    {
+        $moved = [];
+        $cups = Tournament::query()->whereNotNull('cup_open_series')->where('status', TournamentStatus::Signup)
+            ->where('signup_closes_at', '>', now())->orderBy('id')->get();
+
+        foreach ($cups as $cup) {
+            $region = self::regionOf($cup);
+
+            if ($region === null || self::isEvening($cup) || self::isSlot($cup->game, $region, $cup->starts_at) || $this->signedUp($cup) > 0) {
+                continue;
+            }
+
+            $move = DB::transaction(function () use ($cup, $region): ?array {
+                $locked = Tournament::query()->with('event')->lockForUpdate()->findOrFail($cup->id);
+
+                // Checked again under the lock: a sign-up that landed meanwhile keeps the cup where it is.
+                if ($locked->status !== TournamentStatus::Signup || ! $locked->signup_closes_at?->isFuture() || $this->signedUp($locked) > 0) {
+                    return null;
+                }
+
+                $from = $locked->starts_at->toImmutable();
+                $startsAt = self::startFor($locked->game, $region, now());
+                $locked->forceFill(['starts_at' => $startsAt, 'signup_closes_at' => $startsAt])->save();
+                // The new start is a new version of the 31923 (NIP "Tournaments": a change of time).
+                $this->publisher->republish($locked);
+
+                return ['id' => $locked->id, 'name' => $locked->name, 'from' => $from->toIso8601String(), 'to' => $startsAt->toIso8601String()];
+            });
+
+            if ($move !== null) {
+                Log::info('Casual cup moved to its game slot', $move);
+                $moved[] = $move;
+            }
+        }
+
+        return $moved;
     }
 
     /**
@@ -775,8 +861,8 @@ final class CasualCups
     }
 
     /**
-     * Extend sign-up once, to the region's next slot after the close (a
-     * cup without a region: the first region's).
+     * Extend sign-up once, to the game's next slot on the region's clock
+     * after the close (a cup without a region: the first region's).
      */
     private function extend(Tournament $cup): bool
     {
@@ -789,7 +875,7 @@ final class CasualCups
 
             $region = self::regionOf($locked) ?? (string) array_key_first(self::regions());
             // Strictly after the close, and never in the past (a clock that was down for a week).
-            $closesAt = self::nextSlot($region, CarbonImmutable::now()->max($locked->signup_closes_at ?? now())->addSecond());
+            $closesAt = self::nextSlot($locked->game, $region, CarbonImmutable::now()->max($locked->signup_closes_at ?? now())->addSecond());
             $locked->forceFill(['signup_closes_at' => $closesAt, 'starts_at' => $closesAt, 'cup_extended_at' => now()])->save();
             // The new close is a new version of the 31923 (NIP "Tournaments": a change of time).
             $this->publisher->republish($locked);

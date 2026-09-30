@@ -32,7 +32,8 @@ use Tests\Support\TestSigner;
 beforeEach(function () {
     Queue::fake();
     config(['esports.league.nsec' => (new TestSigner)->secret, 'esports.casual_cups.enabled' => ['chess', 'rocket-league', 'ea-sports-fc-26']]);
-    // Monday 5 October 2026: every cup starts Saturday 20:00 on its region's clock.
+    // Monday 5 October 2026: every cup starts at its game's slot on its region's clock (chess and Rocket League
+    // Saturday 20:00, FC 26 Friday 18:00).
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
     cupTick();
 });
@@ -158,7 +159,7 @@ function cupHead(string $html): string
 }
 
 test('with a cup open for sign-up the head says tournament and what a cup is, and brings the next cup with its faces, countdown and sign-up', function () {
-    $next = Tournament::query()->where('cup_open_series', 'chess-eu')->sole();
+    $next = Tournament::query()->where('cup_open_series', 'ea-sports-fc-26-eu')->sole();
     boardSignups($next, 3);
 
     $html = $this->get(route('tournaments.index'))->assertOk()
@@ -166,11 +167,11 @@ test('with a cup open for sign-up the head says tournament and what a cup is, an
         ->getContent();
     $head = cupHead($html);
 
-    // Chess EU and US and the other games all start Saturday 20:00 on their clock: Berlin's is the earliest.
+    // FC 26 starts Friday 18:00, the others Saturday 20:00, each on its clock: FC 26 in Berlin is the earliest.
     expect($head)->toContain('data-tournament="'.$next->id.'"', 'data-test="cup-next-name">'.$next->name.'</a>')
         // No format before the close: CasualCups::formatFor() picks it by the field, and 4 places never play the stored double elimination.
-        ->toContain('Chess Blitz 5+3 tournament, 4 places', 'The format is set at the start, by how many play.')
-        ->toContain('role="timer"', 'data-test="cup-next-countdown">5 days 08:00:00</span>')
+        ->toContain('EA Sports FC 26 1v1 tournament, 4 places', 'The format is set at the start, by how many play.')
+        ->toContain('role="timer"', 'data-test="cup-next-countdown">4 days 06:00:00</span>')
         ->toContain('href="'.route('login').'"')
         ->and(substr_count($head, 'data-test="cup-next-face"'))->toBe(3)
         ->and($head)->toContain('title="cup_player_'.$next->id.'_1"')
@@ -201,7 +202,7 @@ test('in German the head says Turnier and Casual-Elo', function () {
     $head = cupHead(Blade::render('<x-tournaments.cup-mentions heading filters />'));
     app()->setLocale('en');
 
-    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier Schach Blitz 5+3, 4 Plätze', 'Das Format steht zum Start fest, je nachdem, wie viele spielen.', 'Anmeldung offen');
+    expect($head)->toContain('Turniere', 'Die Liga eröffnet für jedes Spiel und jede Region selbst einen Cup. Seine Partien sind casual und bewegen nur dein Casual-Elo.', 'Turnier EA Sports FC 26 1v1, 4 Plätze', 'Das Format steht zum Start fest, je nachdem, wie viele spielen.', 'Anmeldung offen');
 });
 
 test('when every cup is running the head has no next cup, and each running row shows the format its field got', function () {
