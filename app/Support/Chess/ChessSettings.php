@@ -83,6 +83,12 @@ final readonly class ChessSettings
             $triggers[$trigger] = is_bool($stored[$trigger] ?? null) ? $stored[$trigger] : true;
         }
 
+        // The live cup calls went out as tournament news until they got their own kind: a player
+        // who switched tournament news off and never chose the new switch keeps them off.
+        if (! is_bool($stored[NotificationKind::CupGameNow->value] ?? null) && ($stored[NotificationKind::TournamentNews->value] ?? null) === false) {
+            $triggers[NotificationKind::CupGameNow->value] = false;
+        }
+
         $volume = $values['volume'] ?? null;
         $storedDigest = is_array($values['digest'] ?? null) ? $values['digest'] : [];
         $digest = [];

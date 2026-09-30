@@ -21,6 +21,7 @@ use App\Models\User;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessInvites;
+use App\Support\Chess\ChessSettings;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\Notice;
@@ -463,4 +464,15 @@ test('each settings row says how far its kind reaches, and says it true', functi
         ->and($reach['reminder'])->toBe('bell, push and DM, even while you are here')
         ->and($reach['cup_game_now'])->toBe('bell and push')
         ->and($reach['game_started'])->toBe('bell and push');
+});
+
+test('a player who switched tournament news off keeps the live cup calls off until they choose that switch', function () {
+    $off = ChessSettings::fromArray(['triggers' => ['tournament_news' => false]]);
+    $chosen = ChessSettings::fromArray(['triggers' => ['tournament_news' => false, 'cup_game_now' => true]]);
+    $fresh = ChessSettings::fromArray([]);
+
+    expect($off->wants(NotificationKind::CupGameNow->value))->toBeFalse()
+        ->and($chosen->wants(NotificationKind::CupGameNow->value))->toBeTrue()
+        ->and($fresh->wants(NotificationKind::CupGameNow->value))->toBeTrue()
+        ->and(ChessSettings::fromArray(['triggers' => ['tournament_news' => true]])->wants(NotificationKind::CupGameNow->value))->toBeTrue();
 });
