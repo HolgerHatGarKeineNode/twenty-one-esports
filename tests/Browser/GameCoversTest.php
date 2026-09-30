@@ -173,7 +173,7 @@ test('covers show on /tournaments, the games menu, the challenge form and the ma
 
     // Positive control: the same collector and cover check see a thrown error and a broken cover.
     $page = gameCoverPage($captain, route('matches.index', absolute: false), 1440);
-    $page->evaluate('() => { setTimeout(() => { throw new Error("cover positive control"); }); const picture = document.querySelector("[data-test=matches] picture[data-game-cover]"); picture.scrollIntoView(); picture.querySelector("source").remove(); const img = picture.querySelector("img"); img.removeAttribute("srcset"); img.loading = "eager"; img.src = "/images/games/missing-480.jpg"; }');
+    $page->evaluate('() => { setTimeout(() => { throw new Error("cover positive control"); }); const picture = document.querySelector("[data-test=matches] [data-test=match-row] picture[data-game-cover]"); picture.scrollIntoView(); picture.querySelector("source").remove(); const img = picture.querySelector("img"); img.removeAttribute("srcset"); img.loading = "eager"; img.src = "/images/games/missing-480.jpg"; }');
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("cover positive control")) && window.__errors.some((e) => e.includes("missing-480.jpg"))', 5_000);
     $broken = array_values(array_filter($page->evaluate(GAME_COVERS_SCRIPT, null), fn (array $cover): bool => ! $cover['loaded']));
 

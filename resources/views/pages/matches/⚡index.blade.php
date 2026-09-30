@@ -353,7 +353,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-3">
                 <div class="flex items-center gap-2">
                     <label for="f-game-select" id="f-game" class="text-xs text-ink-3">{{ __('Game title') }}</label>
-                    {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, Morris) below xl, cover and full name from xl; seven buttons with covers overflowed 640 px (754 px document). --}}
+                    {{-- Below sm a select (the buttons do not fit a phone), from sm the buttons: short labels (RL, FC27, AoE2, Morris) below 2xl, cover and name from 2xl; seven buttons with covers overflowed 640 px (754 px document), five with full names 1280 px (1486 px document, Age of Empires II). The name drops its subtitle ("Age of Empires II"), the button's aria-label keeps it. --}}
                     <select id="f-game-select" wire:change="pickGame($event.target.value)" data-test="game-filter-select"
                             class="h-11 w-[200px] rounded-md border border-edge bg-ground px-3 text-[13px] text-ink sm:hidden">
                         <option value="all" @selected($game === 'all')>{{ __('All') }}</option>
@@ -366,7 +366,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                                 @class([$filterBtn, 'bg-btc font-bold text-on-btc' => $game === 'all', 'bg-ground text-ink-2 hover:text-ink' => $game !== 'all'])>{{ __('All') }}</button>
                         @foreach ($gameFilters as $key => $option)
                             <button type="button" wire:click="pickGame('{{ $key }}')" aria-pressed="{{ $game === $key ? 'true' : 'false' }}" data-test="game-{{ $key }}" aria-label="{{ GameNames::game($key) }}"
-                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-xl:hidden" /><span class="xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-xl:hidden">{{ GameNames::game($key) }}</span></button>
+                                    @class([$filterBtn, 'inline-flex items-center gap-2 border-l border-line', 'bg-btc font-bold text-on-btc' => $game === $key, 'bg-ground text-ink-2 hover:text-ink' => $game !== $key])><x-game-cover :game="$key" size="thumb" class="w-8 rounded-xs max-2xl:hidden" /><span class="2xl:hidden">{{ __($option->assets()->shortLabel) }}</span><span class="max-2xl:hidden">{{ \Illuminate\Support\Str::before(GameNames::game($key), ':') }}</span></button>
                         @endforeach
                     </div>
                 </div>

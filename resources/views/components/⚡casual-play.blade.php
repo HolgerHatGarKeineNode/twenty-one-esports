@@ -320,13 +320,13 @@ new class extends Component
     </div>
 
     @if ($choose)
-        {{-- /play: the game first. --}}
-        <div role="radiogroup" aria-label="{{ __('Game') }}" class="grid grid-cols-3 gap-2" data-test="casual-games">
+        {{-- /play: the game first, one row from sm whatever the number of games (a fourth, Age of Empires II, wrapped the covers into a second row and pushed the board games below the first screen); two columns of names on a phone. --}}
+        <div role="radiogroup" aria-label="{{ __('Game') }}" class="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(var(--games),minmax(0,1fr))]" style="--games: {{ max(1, count($games)) }}" data-test="casual-games">
             @foreach ($games as $slug)
                 <button type="button" role="radio" aria-checked="{{ $slug === $game ? 'true' : 'false' }}" wire:click="pickGame('{{ $slug }}')" data-test="casual-game-{{ $slug }}"
                         @class(['flex min-h-11 min-w-0 cursor-pointer flex-col items-stretch gap-1.5 rounded-md p-1.5 text-left text-xs', 'bg-raised shadow-[inset_0_0_0_2px_var(--color-btc)]' => $slug === $game, 'bg-well shadow-ring hover:bg-row-hover' => $slug !== $game])>
                     <x-game-cover :game="$slug" size="thumb" loading="eager" class="w-full rounded-sm max-sm:hidden" />
-                    <b class="truncate px-1 leading-5">{{ GameNames::game($slug) }}</b>
+                    <b class="truncate px-1 leading-5" title="{{ GameNames::game($slug) }}">{{ \Illuminate\Support\Str::before(GameNames::game($slug), ':') }}</b>
                 </button>
             @endforeach
         </div>
