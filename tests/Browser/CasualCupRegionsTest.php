@@ -278,15 +278,17 @@ test('the game filter of the cup board stays inside the window with seven games,
 
         foreach ([640, 1024, 1280, 1440, 1536, 1920] as $width) {
             $page->setViewportSize($width, 900);
-            // Past: px of a button beyond the window or cut off by its overflow-hidden group; clipped: a label cut inside its button; the buttons' names.
+            // Past: px of a button beyond the window or cut off by its overflow-hidden group; clipped: a label cut inside its button (the sr-only name is
+            // cut on purpose); the buttons' names as a screen reader gets them (an aria-label, else the text outside aria-hidden) and the text they show.
             $measured["{$lang} {$width}"] = $page->evaluate('() => {
                 const buttons = [...document.querySelectorAll("[data-test^=cup-filter-game-]:not([data-test=cup-filter-game-select])")];
                 const edge = Math.min(window.innerWidth, buttons[0].parentElement.getBoundingClientRect().right);
                 return {
                     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
                     past: Math.max(0, ...buttons.map((b) => Math.round(b.getBoundingClientRect().right - edge))),
-                    clipped: buttons.filter((b) => b.scrollWidth > b.clientWidth + 1 || [...b.querySelectorAll("span")].some((s) => s.checkVisibility() && s.scrollWidth > s.clientWidth + 1)).map((b) => b.dataset.test),
-                    names: buttons.slice(1).map((b) => b.getAttribute("aria-label")),
+                    clipped: buttons.filter((b) => b.scrollWidth > b.clientWidth + 1 || [...b.querySelectorAll("span:not(.sr-only)")].some((s) => s.checkVisibility() && s.scrollWidth > s.clientWidth + 1)).map((b) => b.dataset.test),
+                    names: buttons.slice(1).map((b) => b.getAttribute("aria-label") ?? [...b.querySelectorAll("span")].filter((s) => s.checkVisibility() && !s.closest("[aria-hidden=true]")).map((s) => s.textContent).join("")),
+                    shown: buttons.slice(1).map((b) => [...b.querySelectorAll("span:not(.sr-only)")].filter((s) => s.checkVisibility()).map((s) => s.textContent).join("")),
                 };
             }');
             cupRegionsShot($page, "cup-filter-seven-{$width}-{$lang}");
@@ -294,14 +296,19 @@ test('the game filter of the cup board stays inside the window with seven games,
     }
 
     fwrite(STDERR, json_encode($measured).PHP_EOL);
-    $names = ['Chess', 'Rocket League', 'EA Sports FC 26', 'EA Sports FC 27', 'Age of Empires II: Definitive Edition', "Nine Men's Morris", 'Checkers'];
 
     foreach ($measured as $at => $state) {
         expect([$at, $state['overflow'], $state['past'], $state['clipped']])->toBe([$at, 0, 0, []])
             ->and(count($state['names']))->toBe(7);
+
+        // Label in name (WCAG 2.5.3): every name starts with the text its button shows.
+        foreach ($state['names'] as $index => $name) {
+            expect(str_starts_with($name, $state['shown'][$index]))->toBeTrue("{$at}: \"{$name}\" does not start with \"{$state['shown'][$index]}\"");
+        }
     }
 
-    expect($measured['en 1440']['names'])->toBe($names)
+    expect($measured['en 1440']['names'])->toBe(['Chess', 'RL, Rocket League', 'FC26, EA Sports FC 26', 'FC27, EA Sports FC 27', 'AoE2, Age of Empires II: Definitive Edition', "Morris, Nine Men's Morris", 'Checkers'])
+        ->and($measured['en 1536']['names'])->toBe(['Chess', 'Rocket League', 'EA Sports FC 26', 'EA Sports FC 27', 'Age of Empires II: Definitive Edition', "Nine Men's Morris", 'Checkers'])
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 });
