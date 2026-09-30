@@ -14,7 +14,9 @@ use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Tests\Support\TestSigner;
 
@@ -23,9 +25,9 @@ use Tests\Support\TestSigner;
 | Casual cups per region (user, 2026-09-28: separate EU and US cups)
 |--------------------------------------------------------------------------
 |
-| Every game runs an EU and a US cup series. A cup starts at its region's
-| slot (Saturday 20:00 on the region's own clock, across daylight saving:
-| Europe and the US switch on different dates) with at least
+| Every game runs an EU and a US cup series. A cup starts at its game's
+| slot on its region's own clock (chess: Saturday 20:00, across daylight
+| saving: Europe and the US switch on different dates) with at least
 | min_signup_hours of sign-up; its evening and its extension stay on that
 | clock. The data migration moves the cups opened before into the EU series
 | and opens the US ones.
@@ -38,10 +40,10 @@ beforeEach(function () {
     $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00:00', 'UTC'));
 });
 
-/** A region's slot as "<weekday> <local date and time>" and the UTC instant. */
-function regionSlot(string $region, string $notBeforeUtc): string
+/** A game's slot in a region as "<weekday> <local date and time>" and the UTC instant. */
+function regionSlot(string $region, string $notBeforeUtc, string $game = 'chess'): string
 {
-    $slot = CasualCups::nextSlot($region, CarbonImmutable::parse($notBeforeUtc, 'UTC'));
+    $slot = CasualCups::nextSlot($game, $region, CarbonImmutable::parse($notBeforeUtc, 'UTC'));
 
     return $slot->setTimezone(CasualCups::regions()[$region]['timezone'])->format('D Y-m-d H:i T').' = '.$slot->utc()->format('Y-m-d H:i').' UTC';
 }
@@ -91,9 +93,14 @@ function splitMigration(): void
 
 /* ---------- Slots --------------------------------------------------------------------------------------------- */
 
-test('a region\'s slot stays Saturday 20:00 on its own clock across both daylight saving changes', function (string $region, string $notBefore, string $slot) {
-    expect(regionSlot($region, $notBefore))->toBe($slot);
+test('a game\'s slot stays put on each region\'s own clock across both daylight saving changes', function (string $region, string $notBefore, string $slot, string $game = 'chess') {
+    expect(regionSlot($region, $notBefore, $game))->toBe($slot);
 })->with([
+    // Checkers (Sunday 15:00) on the very Sunday Europe goes back: 15:00 is already winter time.
+    'checkers EU on the change day' => ['eu', '2026-10-24 00:00', 'Sun 2026-10-25 15:00 CET = 2026-10-25 14:00 UTC', 'checkers'],
+    // FC 27 (Friday 20:00) in New York the Friday before the US changes, and the Friday after.
+    'FC 27 US before its change' => ['us', '2026-10-26 00:00', 'Fri 2026-10-30 20:00 EDT = 2026-10-31 00:00 UTC', 'ea-sports-fc-27'],
+    'FC 27 US after its change' => ['us', '2026-10-31 01:00', 'Fri 2026-11-06 20:00 EST = 2026-11-07 01:00 UTC', 'ea-sports-fc-27'],
     // Autumn: Europe goes back on 25 October, the US on 1 November; in between the two are five hours apart, not six.
     'EU before its change' => ['eu', '2026-10-19 00:00', 'Sat 2026-10-24 20:00 CEST = 2026-10-24 18:00 UTC'],
     'EU after its change' => ['eu', '2026-10-25 00:00', 'Sat 2026-10-31 20:00 CET = 2026-10-31 19:00 UTC'],
@@ -130,7 +137,37 @@ test('a cup opens at the first slot of its region that leaves at least min_signu
     // A longer minimum pushes the US cup a week on as well.
     config(['esports.casual_cups.min_signup_hours' => 60]);
 
-    expect(CasualCups::startFor('us', now())->setTimezone('America/New_York')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-17 20:00');
+    expect(CasualCups::startFor('chess', 'us', now())->setTimezone('America/New_York')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-17 20:00');
+});
+
+test('every game opens its EU and US cups at its own slot, the same local time on each region\'s clock', function () {
+    // Wednesday 30 September 21:00 UTC: 48 h of sign-up reach Friday 2 October 21:00 UTC, after the EU Friday slots.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
+    $starts = [];
+
+    foreach (['ea-sports-fc-26', 'ea-sports-fc-27', 'nine-mens-morris', 'rocket-league', 'chess', 'checkers', 'age-of-empires-2'] as $game) {
+        foreach (['eu', 'us'] as $region) {
+            $cup = app(CasualCups::class)->ensure($game, $region);
+            $starts[] = "{$game} {$region}: ".$cup->starts_at->setTimezone(CasualCups::regions()[$region]['timezone'])->format('D Y-m-d H:i T').' = '.$cup->starts_at->utc()->format('Y-m-d H:i').' UTC';
+        }
+    }
+
+    expect($starts)->toBe([
+        'ea-sports-fc-26 eu: Fri 2026-10-09 18:00 CEST = 2026-10-09 16:00 UTC',
+        'ea-sports-fc-26 us: Fri 2026-10-02 18:00 EDT = 2026-10-02 22:00 UTC',
+        'ea-sports-fc-27 eu: Fri 2026-10-09 20:00 CEST = 2026-10-09 18:00 UTC',
+        'ea-sports-fc-27 us: Fri 2026-10-02 20:00 EDT = 2026-10-03 00:00 UTC',
+        'nine-mens-morris eu: Sat 2026-10-03 15:00 CEST = 2026-10-03 13:00 UTC',
+        'nine-mens-morris us: Sat 2026-10-03 15:00 EDT = 2026-10-03 19:00 UTC',
+        'rocket-league eu: Sat 2026-10-03 20:00 CEST = 2026-10-03 18:00 UTC',
+        'rocket-league us: Sat 2026-10-03 20:00 EDT = 2026-10-04 00:00 UTC',
+        'chess eu: Sat 2026-10-03 20:00 CEST = 2026-10-03 18:00 UTC',
+        'chess us: Sat 2026-10-03 20:00 EDT = 2026-10-04 00:00 UTC',
+        'checkers eu: Sun 2026-10-04 15:00 CEST = 2026-10-04 13:00 UTC',
+        'checkers us: Sun 2026-10-04 15:00 EDT = 2026-10-04 19:00 UTC',
+        'age-of-empires-2 eu: Sun 2026-10-04 20:00 CEST = 2026-10-04 18:00 UTC',
+        'age-of-empires-2 us: Sun 2026-10-04 20:00 EDT = 2026-10-05 00:00 UTC',
+    ]);
 });
 
 test('a game has one open cup per region: two open cups of a game are allowed, a second one in a region is not', function () {
@@ -174,22 +211,22 @@ test('a US cup with three players plays its evening at 20:00 New York the next d
         ->and($player->notifications()->get()->pluck('data.title')->last())->toBe('Chess Casual Cup US #1: live evening Sun 11 Oct, 20:00 EDT');
 });
 
-test('a US cup with a lone player is extended to the next US slot, across the US clock change', function () {
-    // Opened Tuesday 27 October: its slot is Saturday 31 October, still daylight time in New York.
+test('a US cup with a lone player is extended to its game\'s next US slot, across the US clock change', function () {
+    // FC 27 (Friday 20:00), opened Tuesday 27 October: its slot is Friday 30 October, still daylight time in New York.
     $this->travelTo(CarbonImmutable::parse('2026-10-27 12:00', 'UTC'));
-    $cup = app(CasualCups::class)->ensure('chess', 'us');
+    $cup = app(CasualCups::class)->ensure('ea-sports-fc-27', 'us');
     cupSignups($cup, 1);
 
-    expect($cup->refresh()->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-11-01 00:00');
+    expect($cup->refresh()->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-10-31 00:00');
 
     $this->travelTo($cup->signup_closes_at);
     cupTick();
     $cup->refresh();
 
-    // A week later on the New York clock: 20:00 EST is one hour later in UTC.
+    // A week later on the New York clock, the game's Friday again: 20:00 EST is one hour later in UTC.
     expect($cup->cup_extended_at)->not->toBeNull()
-        ->and($cup->signup_closes_at->setTimezone('America/New_York')->format('D Y-m-d H:i T'))->toBe('Sat 2026-11-07 20:00 EST')
-        ->and($cup->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-11-08 01:00')
+        ->and($cup->signup_closes_at->setTimezone('America/New_York')->format('D Y-m-d H:i T'))->toBe('Fri 2026-11-06 20:00 EST')
+        ->and($cup->signup_closes_at->utc()->format('Y-m-d H:i'))->toBe('2026-11-07 01:00')
         ->and($cup->starts_at->equalTo($cup->signup_closes_at))->toBeTrue();
 });
 
@@ -227,10 +264,11 @@ test('the migration moves the old cups into the EU series, re-slots them, tells 
     expect([$chess->name, $rlDone->name, $rl->name, $fc->name])->toBe(['Chess Casual Cup EU #1', 'Rocket League Casual Cup #1', 'Rocket League Casual Cup EU #2', 'EA FC 26 Casual Cup EU #1'])
         ->and([$chess->cup_series, $rlDone->cup_series, $rl->cup_series, $fc->cup_series])->toBe(['chess-eu', 'rocket-league-eu', 'rocket-league-eu', 'ea-sports-fc-26-eu'])
         ->and([$chess->cup_open_series, $rlDone->cup_open_series, $rl->cup_open_series, $fc->cup_open_series])->toBe(['chess-eu', null, 'rocket-league-eu', 'ea-sports-fc-26-eu'])
-        // The next EU slot at least 48 h away is Saturday 10 October 20:00 Berlin, for the Rocket League cup the one after its old start.
+        // The game's next EU slot at least 48 h away: chess Saturday 10 October 20:00 Berlin, FC 26 Friday 9 October
+        // 18:00, for the Rocket League cup the one after its old start.
         ->and($chess->starts_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-10 20:00')
         ->and($rl->starts_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-17 20:00')
-        ->and($fc->starts_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-10 20:00')
+        ->and($fc->starts_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Fri 2026-10-09 18:00')
         ->and($chess->signup_closes_at->equalTo($chess->starts_at) && $rl->signup_closes_at->equalTo($rl->starts_at))->toBeTrue()
         ->and($chess->signups()->active()->count() + $rl->signups()->active()->count())->toBe(3)
         // One new version of each open cup's 31923 with the new name and start; the ended cup keeps its history.
@@ -299,6 +337,98 @@ test('the migration keeps a cup with players on its start when that is a slot, a
         ->and(User::query()->findOrFail($cup->signups()->firstOrFail()->members[0])->notifications()->count())->toBe(0);
 });
 
+test('the slot migration moves every empty cup to its game\'s slot, republishes it without a notice, keeps cups with players and runs once', function () {
+    // As on 30 September 2026: all 14 cups open for Saturday 3 October 20:00 on their region's clock; three have players.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
+    $games = ['chess', 'rocket-league', 'ea-sports-fc-26', 'ea-sports-fc-27', 'age-of-empires-2', 'nine-mens-morris', 'checkers'];
+    $cups = [];
+
+    foreach ($games as $game) {
+        foreach (['eu' => 'Europe/Berlin', 'us' => 'America/New_York'] as $region => $zone) {
+            $setup = CasualCups::setup($game);
+            $profile = GameProfile::for($game, $setup['mode']);
+            $startsAt = CarbonImmutable::parse('2026-10-03 20:00', $zone)->utc();
+            $cup = Tournament::factory()->create([
+                'name' => CasualCups::cupName($setup['name'], strtoupper($region), 1), 'game' => $game, 'mode' => $setup['mode'],
+                'format' => TournamentFormat::DoubleElimination, 'capacity' => 4, 'starts_at' => $startsAt, 'signup_closes_at' => null,
+                'options' => FormatOptions::fromArray(['bestOf' => $setup['best_of'], 'finalBestOf' => $setup['final_best_of'], 'grandFinal' => 'single'], $profile)->toArray(),
+                'time_window' => CasualCups::maxDays() * ($profile->isDaily() ? 1 : 1440), 'on_site' => false,
+                'results_mode' => TournamentResultsMode::Players, 'status' => TournamentStatus::Draft, 'created_by_id' => null,
+                'cup_series' => "{$game}-{$region}", 'cup_number' => 1, 'cup_open_series' => "{$game}-{$region}",
+            ]);
+            $cups["{$game}-{$region}"] = app(TournamentPublisher::class)->openSignup($cup, $startsAt);
+        }
+    }
+
+    foreach (['chess-eu' => 2, 'rocket-league-eu' => 1, 'chess-us' => 1] as $series => $players) {
+        cupSignups($cups[$series], $players);
+    }
+
+    $versions = array_map(fn (Tournament $cup): int => regionVersions($cup), $cups);
+    $notifications = DB::table('notifications')->count();
+    Log::spy();
+
+    (require database_path('migrations/2026_09_30_223953_move_empty_casual_cups_to_their_game_slots.php'))->up();
+
+    $starts = array_map(function (Tournament $cup): string {
+        $cup->refresh();
+
+        return $cup->starts_at->setTimezone(CasualCups::timezoneOf($cup))->format('D Y-m-d H:i T').($cup->signup_closes_at->equalTo($cup->starts_at) ? '' : ' (close differs)');
+    }, $cups);
+
+    // 48 h of sign-up from Wednesday 21:00 UTC miss the EU Friday slots: the FC cups in Europe go to the next Friday.
+    expect($starts)->toBe([
+        'chess-eu' => 'Sat 2026-10-03 20:00 CEST',
+        'chess-us' => 'Sat 2026-10-03 20:00 EDT',
+        'rocket-league-eu' => 'Sat 2026-10-03 20:00 CEST',
+        'rocket-league-us' => 'Sat 2026-10-03 20:00 EDT',
+        'ea-sports-fc-26-eu' => 'Fri 2026-10-09 18:00 CEST',
+        'ea-sports-fc-26-us' => 'Fri 2026-10-02 18:00 EDT',
+        'ea-sports-fc-27-eu' => 'Fri 2026-10-09 20:00 CEST',
+        'ea-sports-fc-27-us' => 'Fri 2026-10-02 20:00 EDT',
+        'age-of-empires-2-eu' => 'Sun 2026-10-04 20:00 CEST',
+        'age-of-empires-2-us' => 'Sun 2026-10-04 20:00 EDT',
+        'nine-mens-morris-eu' => 'Sat 2026-10-03 15:00 CEST',
+        'nine-mens-morris-us' => 'Sat 2026-10-03 15:00 EDT',
+        'checkers-eu' => 'Sun 2026-10-04 15:00 CEST',
+        'checkers-us' => 'Sun 2026-10-04 15:00 EDT',
+    ]);
+
+    // One new version of each moved cup's 31923 with the new start; the cups with players and the one on its slot keep theirs.
+    $kept = ['chess-eu', 'chess-us', 'rocket-league-eu', 'rocket-league-us'];
+
+    foreach ($cups as $series => $cup) {
+        expect(regionVersions($cup))->toBe($versions[$series] + (in_array($series, $kept, true) ? 0 : 1))
+            ->and((int) collect(NostrEvent::query()->findOrFail($cup->event_id)->payload()['tags'])->firstWhere(0, 'start')[1])->toBe($cup->starts_at->getTimestamp());
+    }
+
+    // Nobody signed up for a moved cup, so nobody is told; one log line per moved cup.
+    expect(DB::table('notifications')->count())->toBe($notifications);
+    Log::shouldHaveReceived('info')->with('Casual cup moved to its game slot', Mockery::type('array'))->times(10);
+
+    // A second run moves nothing.
+    $state = Tournament::query()->orderBy('id')->get(['id', 'starts_at', 'signup_closes_at', 'event_id'])->toArray();
+    $events = NostrEvent::query()->count();
+
+    expect(app(CasualCups::class)->moveToGameSlots())->toBe([])
+        ->and(Tournament::query()->orderBy('id')->get(['id', 'starts_at', 'signup_closes_at', 'event_id'])->toArray())->toBe($state)
+        ->and(NostrEvent::query()->count())->toBe($events);
+});
+
+test('the slot migration keeps a cup off its game\'s slot once somebody signed up', function () {
+    // Opened for Saturday 20:00 before the FC cups moved to Friday; one player signed up for that time.
+    $this->travelTo(CarbonImmutable::parse('2026-09-30 21:00', 'UTC'));
+    config(['esports.casual_cups.games.ea-sports-fc-26.slot' => ['weekday' => 'saturday', 'time' => '20:00']]);
+    $cup = app(CasualCups::class)->ensure('ea-sports-fc-26', 'eu');
+    config(['esports.casual_cups.games.ea-sports-fc-26.slot' => ['weekday' => 'friday', 'time' => '18:00']]);
+    cupSignups($cup, 1);
+    $before = regionVersions($cup);
+
+    expect(app(CasualCups::class)->moveToGameSlots())->toBe([])
+        ->and($cup->refresh()->starts_at->setTimezone('Europe/Berlin')->format('D Y-m-d H:i'))->toBe('Sat 2026-10-03 20:00')
+        ->and(regionVersions($cup))->toBe($before);
+});
+
 /* ---------- Where cups show ----------------------------------------------------------------------------------- */
 
 test('the game page, home, the index and a cup\'s own page show both regions\' cups, each start in the viewer\'s zone', function () {
@@ -329,10 +459,12 @@ test('the game page, home, the index and a cup\'s own page show both regions\' c
     expect($other)->toContain('Chess Casual Cup US #1', route('tournaments.show', $us))->not->toContain('Chess Casual Cup EU #1');
 });
 
-test('the rules name each region\'s start and the minimum sign-up; a bot note gives a US cup\'s start in New York time', function () {
+test('the rules name each game\'s start, the regions\' clocks and the minimum sign-up; a bot note gives a US cup\'s start in New York time', function () {
+    config(['esports.casual_cups.enabled' => ['chess', 'ea-sports-fc-27']]);
+
     $this->get(route('rules'))->assertOk()
         ->assertSee('The league opens a casual cup per game and region (EU, US) on its own')
-        ->assertSeeInOrder(['Start (EU)', 'Saturday 20:00 (Europe/Berlin)', 'Start (US)', 'Saturday 20:00 (America/New_York)', 'at least 2 days'], false);
+        ->assertSeeInOrder(['Start (Chess)', 'Saturday 20:00', 'Start (EA Sports FC 27)', 'Friday 20:00', 'Time zones', 'EU Europe/Berlin, US America/New_York', 'at least 2 days'], false);
 
     $us = app(CasualCups::class)->ensure('chess', 'us');
 

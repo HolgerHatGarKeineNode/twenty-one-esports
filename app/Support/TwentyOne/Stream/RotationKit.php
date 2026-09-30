@@ -2,6 +2,9 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Support\Settings\LeagueSettings;
+use App\Support\Tournaments\CasualCups;
+use InvalidArgumentException;
 use Normalizer;
 
 /**
@@ -1369,22 +1372,40 @@ final class RotationKit
     }
 
     /**
-     * The casual cup slots of `esports.casual_cups.regions`: "EU Saturdays 20:00 Berlin time", one per region.
+     * The casual cup slots (one per game, the same local time in each region; user, 2026-09-30) in two lines: the days
+     * the enabled games' cups start on, "Fridays to Sundays, a slot per game", and the regions' clocks, "Local time: EU
+     * Berlin, US New York". A game without a valid slot is left out; without any the first line is left out.
      *
      * @return list<string>
      */
     public static function cupSlots(): array
     {
-        $slots = [];
+        $days = [];
 
-        foreach ((array) config('esports.casual_cups.regions', []) as $region) {
-            if (! is_array($region) || ! is_string($region['label'] ?? null) || ! is_string($region['weekday'] ?? null) || ! is_string($region['time'] ?? null)) {
+        foreach (CasualCups::enabledGames() as $game) {
+            try {
+                $days[] = array_search(CasualCups::slotOf($game)['weekday'], LeagueSettings::WEEKDAYS, true);
+            } catch (InvalidArgumentException) {
                 continue;
             }
+        }
 
-            $zone = is_string($region['timezone'] ?? null) ? $region['timezone'] : 'UTC';
-            $city = str_replace('_', ' ', (string) (explode('/', $zone)[1] ?? $zone));
-            $slots[] = self::clean($region['label']).' '.ucfirst(self::clean($region['weekday'])).'s '.self::clean($region['time']).' '.$city.' time';
+        $slots = [];
+        $days = array_values(array_filter($days, is_int(...)));
+
+        if ($days !== []) {
+            [$first, $last] = [ucfirst(LeagueSettings::WEEKDAYS[min($days)]).'s', ucfirst(LeagueSettings::WEEKDAYS[max($days)]).'s'];
+            $slots[] = ($first === $last ? $first : $first.' to '.$last).', a slot per game';
+        }
+
+        $clocks = array_map(function (array $region): string {
+            $city = str_replace('_', ' ', (string) (explode('/', $region['timezone'])[1] ?? $region['timezone']));
+
+            return self::clean($region['label']).' '.$city;
+        }, array_values(CasualCups::regions()));
+
+        if ($clocks !== []) {
+            $slots[] = 'Local time: '.implode(', ', $clocks);
         }
 
         return $slots;

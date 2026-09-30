@@ -70,14 +70,19 @@ final class LeagueSettings
     public static function definitions(): array
     {
         $pinned = __('Pinned when a match is paired: running matches keep their deadline, new matches get the new one.');
-        $cupStart = __('A cup gets its start when it opens: open cups keep theirs, the next cup of the region opens on the new slot.');
+        $cupStart = __('A cup gets its start when it opens: open cups keep theirs, the game’s next cup in each region opens on the new slot.');
+        $cupSlots = [];
+
+        // One start day and time per cup game (user, 2026-09-30), the same local time on each region's clock.
+        foreach ((array) config('esports.casual_cups.games', []) as $game => $setup) {
+            $name = (string) (((array) $setup)['name'] ?? $game);
+            $cupSlots["esports.casual_cups.games.{$game}.slot.weekday"] = self::weekday('casual_cups', __(':game start day', ['game' => $name]), $cupStart, newOnly: true);
+            $cupSlots["esports.casual_cups.games.{$game}.slot.time"] = self::time('casual_cups', __(':game start time (each region’s own clock)', ['game' => $name]), $cupStart, newOnly: true);
+        }
 
         return [
-            'esports.casual_cups.regions.eu.weekday' => self::weekday('casual_cups', __('EU start day'), $cupStart, newOnly: true),
-            'esports.casual_cups.regions.eu.time' => self::time('casual_cups', __('EU start time (Europe/Berlin)'), $cupStart, newOnly: true),
-            'esports.casual_cups.regions.us.weekday' => self::weekday('casual_cups', __('US start day'), $cupStart, newOnly: true),
-            'esports.casual_cups.regions.us.time' => self::time('casual_cups', __('US start time (America/New_York)'), $cupStart, newOnly: true),
-            'esports.casual_cups.min_signup_hours' => self::int('casual_cups', __('Sign-up at least (hours)'), 1, 336, __('A new cup starts at its region’s next start time that leaves at least this much sign-up. Open cups keep their start.'), newOnly: true),
+            ...$cupSlots,
+            'esports.casual_cups.min_signup_hours' => self::int('casual_cups', __('Sign-up at least (hours)'), 1, 336, __('A new cup starts at its game’s next start time in its region that leaves at least this much sign-up. Open cups keep their start.'), newOnly: true),
             'esports.casual_cups.sizes' => self::ints('casual_cups', __('Places a cup grows through'), 4, 64, [1, 5], __('Smallest first, separated by commas. A new cup opens with the first size; a cup in sign-up grows along the new sizes from its next step.')),
             'esports.casual_cups.evening.start' => self::time('casual_cups', __('Start of a small cup’s evening'), __('In the cup’s region zone, the day after sign-up closed. Applies to every cup whose sign-up closes after the change; a planned evening keeps its start.')),
 

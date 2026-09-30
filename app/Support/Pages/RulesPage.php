@@ -430,10 +430,13 @@ final class RulesPage
         $c = (array) LeagueSettings::get('esports.casual_cups');
         $e = (array) $c['evening'];
         $sizes = (array) $c['sizes'];
-        $slots = array_map(fn (array $region): array => [
-            __('Start (:region)', ['region' => $region['label']]),
-            __(':weekday :time (:zone)', ['weekday' => __(ucfirst($region['weekday'])), 'time' => sprintf('%02d:%02d', $region['hour'], $region['minute']), 'zone' => __($region['timezone'])]),
-        ], array_values(CasualCups::regions()));
+        // One slot per game (user, 2026-09-30), the same local time on each region's clock.
+        $slots = array_map(function (string $game): array {
+            $slot = CasualCups::slotOf($game);
+
+            return [__('Start (:game)', ['game' => GameNames::game($game)]), __(':weekday :time', ['weekday' => __(ucfirst($slot['weekday'])), 'time' => sprintf('%02d:%02d', $slot['hour'], $slot['minute'])])];
+        }, CasualCups::enabledGames());
+        $clocks = implode(', ', array_map(fn (array $region): string => $region['label'].' '.__($region['timezone']), CasualCups::regions()));
         $labels = implode(', ', array_column(CasualCups::regions(), 'label'));
 
         return [
@@ -443,16 +446,17 @@ final class RulesPage
             'facts' => [
                 [__('Places'), implode(' → ', $sizes)],
                 ...$slots,
+                [__('Time zones'), $clocks],
                 [__('Sign-up'), __('at least :duration', ['duration' => self::minutes(CasualCups::minSignupHours() * 60)])],
                 [__('Round window'), self::minutes((int) $c['window_hours'] * 60)],
                 [__('Longest cup'), self::minutes((int) $c['max_days'] * 1440)],
             ],
             'items' => [
-                __('Each cup starts at its region’s next start time that leaves at least :duration of sign-up; sign-up closes at the start.', ['duration' => self::minutes(CasualCups::minSignupHours() * 60)]),
+                __('Each cup starts at its game’s next start time on its region’s clock that leaves at least :duration of sign-up; sign-up closes at the start.', ['duration' => self::minutes(CasualCups::minSignupHours() * 60)]),
                 __('A cup opens with :first places. When only one place is left, it grows to the next size, up to :last, until :freeze before sign-up closes.', ['first' => $sizes[0] ?? 0, 'last' => end($sizes) ?: 0, 'freeze' => self::minutes((int) $c['growth_freeze_minutes'])]),
                 __('A full cup starts at once. At the close, :min or more players play a double elimination; more than 8 play a 16-slot bracket with byes for the top seeds.', ['min' => (int) $c['min_players']]),
                 __('2 to :max players play one live evening at :start in the cup’s region, the day after sign-up closed: 2 players one match, 3 to 5 a round robin, about :budget of play each.', ['max' => (int) $c['min_players'] - 1, 'start' => $e['start'], 'budget' => self::minutes((int) $e['max_play_minutes'])]),
-                __('Fewer than 2 players: sign-up is extended once to the region’s next start time, then the cup is called off. The next cup opens :gap after a final or a call-off.', ['gap' => self::minutes((int) $c['gap_hours'] * 60)]),
+                __('Fewer than 2 players: sign-up is extended once to the game’s next start time, then the cup is called off. The next cup opens :gap after a final or a call-off.', ['gap' => self::minutes((int) $c['gap_hours'] * 60)]),
                 __('A round opens when the round before is done and lasts :window (:large with more than 8 players).', ['window' => self::minutes((int) $c['window_hours'] * 60), 'large' => self::minutes((int) $c['large_window_hours'] * 60)]),
                 __('Rocket League, EA FC and Age of Empires II players propose one to three times in the window; the other answers within :answer. Without an agreement the match starts at :slot in the cup’s region on the window’s last evening.', ['answer' => self::minutes((int) $c['answer_hours'] * 60), 'slot' => $c['auto_slot']]),
                 __('Cup matches are casual and use the casual 1v1 check-in and deadlines.'),
