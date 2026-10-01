@@ -344,6 +344,20 @@ test('an admin publishes a draft from its orange button on the tournaments list,
         ->and($after['errors'])->toBe([])
         ->and($after['bad'])->toBe([]);
 
+    // The edit page's Save and publish keeps a typed name: it saves, then lands on the banner.
+    $page->goto(ComputeUrl::from(route('admin.tournaments.edit', $second)));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=edit-publish-top]") !== null', 10_000);
+    $page->locator('[data-test=edit-name]')->fill('Blitz Night Kempten II');
+    $page->locator('[data-test=edit-publish-top]')->click();
+    BrowserWait::until($page, '() => location.hash === "#publish" && document.querySelector("[data-test=draft-banner]") !== null', 10_000);
+    $saved = $state();
+
+    expect($second->refresh()->name)->toBe('Blitz Night Kempten II')
+        ->and($saved['path'])->toBe(parse_url(route('tournaments.show', $second), PHP_URL_PATH))
+        ->and($saved['banner']['top'])->toBeLessThan($saved['viewport'])
+        ->and($saved['errors'])->toBe([])
+        ->and($saved['bad'])->toBe([]);
+
     // German: the banner of the other draft.
     $page->goto(ComputeUrl::from(route('locale.switch', 'de', false)));
     $page->setViewportSize(1440, 900);

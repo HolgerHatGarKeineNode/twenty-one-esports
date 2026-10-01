@@ -207,11 +207,12 @@ test('a draft puts Publish tournament first on the admin list, in a banner at th
         ->assertDontSeeHtml('data-test="manage-publish"');
     $this->get(route('tournaments.show', $published))->assertOk()->assertDontSeeHtml('data-test="draft-banner"')->assertDontSeeHtml('data-test="publish-form"');
 
-    // The edit page: Publish at the top in the actions and beside the save, both to the banner.
+    // The edit page: Save and publish at the top in the actions and beside the save, both a save first, never a plain link that drops edits.
     $edit = $this->get(route('admin.tournaments.edit', $draft))->assertOk()->getContent();
-    expect(str($edit)->after('data-test="admin-actions"')->before('</header>')->toString())->toContain('data-test="manage-publish"')->toContain($publishHref)
-        ->and(str($edit)->after('data-test="edit-save"')->before('</span>')->toString())->toContain('data-test="edit-publish"')->toContain($publishHref);
-    $this->get(route('admin.tournaments.edit', $published))->assertOk()->assertDontSeeHtml('data-test="manage-publish"')->assertDontSeeHtml('data-test="edit-publish"');
+    $top = str($edit)->after('data-test="admin-actions"')->before('</header>')->toString();
+    expect($top)->toContain('wire:click="saveAndPublish"')->toContain('data-test="edit-publish-top"')->not->toContain('manage-publish')->not->toContain('#publish')
+        ->and(str($edit)->after('data-test="edit-save"')->before('</span>')->toString())->toContain('data-test="edit-publish"')->toContain('wire:click="saveAndPublish"')->not->toContain('#publish');
+    $this->get(route('admin.tournaments.edit', $published))->assertOk()->assertDontSeeHtml('saveAndPublish')->assertDontSeeHtml('data-test="manage-publish"');
 
     // A tournament director who may not manage it sees the draft, but no banner and no Publish.
     $director = User::factory()->create();
@@ -244,4 +245,28 @@ test('a new draft lands on its page with the notice in the banner, and saving a 
         ->assertSeeHtml('data-test="edit-publish"');
 
     expect($draft->refresh()->name)->toBe('Draft Cup Renamed')->and($draft->status)->toBe(TournamentStatus::Draft);
+});
+
+test('Save and publish on the edit page stores the edits before it opens the publish form, and a refused save stays with its errors', function () {
+    $draft = Tournament::factory()->create(['created_by_id' => organizer()->id, 'status' => TournamentStatus::Draft, 'name' => 'Draft Cup']);
+
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $draft])
+        ->set('name', '')
+        ->call('saveAndPublish')
+        ->assertHasErrors(['name' => 'required'])
+        ->assertNoRedirect();
+    expect($draft->refresh()->name)->toBe('Draft Cup');
+
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $draft])
+        ->set('name', 'Draft Cup Renamed')
+        ->call('saveAndPublish')
+        ->assertHasNoErrors()
+        ->assertSet('error', '')
+        ->assertRedirect(route('tournaments.show', $draft).'#publish');
+    expect($draft->refresh()->name)->toBe('Draft Cup Renamed')->and($draft->status)->toBe(TournamentStatus::Draft);
+
+    // Only a draft has it.
+    $open = Tournament::factory()->signup()->create(['created_by_id' => $draft->created_by_id, 'published_at' => now()]);
+    Livewire::actingAs($draft->creator)->test('pages::admin.tournament-edit', ['tournament' => $open])
+        ->call('saveAndPublish')->assertForbidden();
 });

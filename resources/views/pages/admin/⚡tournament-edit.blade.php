@@ -301,6 +301,24 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
         };
     }
 
+    /**
+     * A draft's "Save and publish" (user, 2026-10-01): the normal save with its
+     * validation, then on to the publish form at the top of the tournament page.
+     * A refused save stays here with its errors, so no edit is ever dropped.
+     */
+    public function saveAndPublish(): void
+    {
+        abort_unless($this->tournament->status === TournamentStatus::Draft, 403);
+
+        $this->save();
+
+        if ($this->error !== '') {
+            return;
+        }
+
+        $this->redirect(route('tournaments.show', $this->tournament).'#publish');
+    }
+
     public function startRemove(int $signupId): void
     {
         $this->removing = $signupId;
@@ -433,7 +451,11 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
     </x-slot:badge>
     <x-slot:actions>
         <x-button variant="quiet" :href="route('tournaments.show', $tournament)" data-test="to-tournament">{{ __('Tournament page') }}</x-button>
-        <x-tournaments.manage-actions :tournament="$tournament" :except="['edit']" />
+        {{-- A draft's Publish saves first (saveAndPublish), so the manage actions' plain link is left out here. --}}
+        @if ($tournament->status === TournamentStatus::Draft)
+            <x-button wire:click="saveAndPublish" icon="send" class="whitespace-nowrap" data-test="edit-publish-top">{{ __('Save and publish') }}</x-button>
+        @endif
+        <x-tournaments.manage-actions :tournament="$tournament" :except="['edit', 'publish']" />
     </x-slot:actions>
 
     @include('pages.admin.partials.tournament-round-times')
@@ -500,9 +522,9 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             <span class="hidden grow lg:block"></span>
             <span class="flex shrink-0 flex-wrap gap-3">
                 <x-button wire:click="save" class="shrink-0" data-test="edit-save">{{ __('Save changes') }}</x-button>
-                {{-- A draft's next step beside its save (user, 2026-10-01); the top of the page has it too, in the actions. --}}
+                {{-- A draft's next step beside its save (user, 2026-10-01): it saves first, then opens the publish form; the top of the page has it too. --}}
                 @if ($tournament->status === TournamentStatus::Draft)
-                    <x-button variant="secondary" :href="route('tournaments.show', $tournament).'#publish'" icon="send" class="shrink-0" data-test="edit-publish">{{ __('Publish tournament') }}</x-button>
+                    <x-button variant="secondary" wire:click="saveAndPublish" icon="send" class="shrink-0" data-test="edit-publish">{{ __('Save and publish') }}</x-button>
                 @endif
             </span>
         </div>
