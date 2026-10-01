@@ -1322,8 +1322,11 @@ return [
     | to 0.83 per tick). The played time is the player's choice, so a replay
     | can still reach ~33 KB at the 36,000-tick limit. Storage: a verified
     | run keeps its replay only while it is among the replay_keep_top
-    | fastest of its week (Monday 00:00 Berlin), so at most that many
-    | replays are kept per week; every other run keeps ticks and hash only,
+    | fastest of its week (Monday 00:00 Berlin), or among the
+    | replay_keep_shared fastest of that week that are moments or were
+    | shared (a moment's page plays the replay, so a shared link keeps
+    | working), so at most the sum of both is kept per week; every other run
+    | keeps ticks and hash only,
     | practice and rejected runs keep no replay. Runs waiting for the
     | verifier (verifying, pending) hold their submitted replay; at most
     | replay_inflight_max of them at once, inflight_per_account per account
@@ -1357,6 +1360,7 @@ return [
         'submits_per_ip_per_minute' => 90,
         'issue_global_per_minute' => 3000,
         'replay_keep_top' => 100,
+        'replay_keep_shared' => 500,
         'replay_inflight_max' => 2000,
         'inflight_per_account' => 3,
         'inflight_per_network' => 50,

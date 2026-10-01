@@ -350,7 +350,8 @@ function submitReplay(string $token, string $replay, int $ticks, string $hash): 
 
 test('a verified run keeps its replay only among the week\'s fastest; a run stretched to 36,000 ticks outside them stores none', function () {
     BlockfillOn::play();
-    config(['esports.blockfill.replay_keep_top' => 2]);
+    // Moments and shared runs have a bound of their own (replay_keep_shared, BlockfillShareTest); 0 here: only the fastest keep theirs.
+    config(['esports.blockfill.replay_keep_top' => 2, 'esports.blockfill.replay_keep_shared' => 0]);
     $kilobyte = str_repeat('A', 1000);
     $first = StackerRun::factory()->verified(900)->create(['replay' => $kilobyte]);
     $second = StackerRun::factory()->verified(1000)->create(['replay' => $kilobyte]);
@@ -366,7 +367,8 @@ test('a verified run keeps its replay only among the week\'s fastest; a run stre
 
 test('a run among the week\'s fastest keeps its replay until faster runs push it out; another week is not touched', function () {
     BlockfillOn::play();
-    config(['esports.blockfill.replay_keep_top' => 2]);
+    // Moments and shared runs have a bound of their own (replay_keep_shared, BlockfillShareTest); 0 here: only the fastest keep theirs.
+    config(['esports.blockfill.replay_keep_top' => 2, 'esports.blockfill.replay_keep_shared' => 0]);
     $kilobyte = str_repeat('A', 1000);
     $lastWeek = StackerRun::factory()->verified(800)->create(['replay' => $kilobyte, 'submitted_at' => now()->subWeek(), 'week' => StackerRuns::weekOf(now()->subWeek())]);
     $fast = StackerRun::factory()->verified(900)->create(['replay' => $kilobyte]);

@@ -4,12 +4,15 @@ use App\Enums\SeriesStatus;
 use App\Models\Admin;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Navigation\AdminNavigation;
+use App\Support\Stacker\BlockfillWeeks;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserWait;
 
@@ -379,4 +382,55 @@ test('the admin nav: groups on top, only the active group\'s pages below, the wh
     BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("admin nav control"))', 5_000);
 
     expect($failures)->toBe([])->and($problems)->toBe([]);
+});
+
+test('Blockfill\'s replays: a tab of its context bar and its tab bar, marked on the replays page, on a replay and on a shared moment, at 375 and 1440 px', function () {
+    BlockfillOn::play();
+    $player = User::factory()->create(['name' => 'Replay Walker']);
+    $forty = BlockfillOn::fixture('forty-lines');
+    $run = StackerRun::factory()->for($player)->verified(958)->create(['replay' => $forty['replay'], 'state_hash' => '6102773e', 'seed' => $forty['seed']]);
+    app(BlockfillWeeks::class)->record($run, now());
+    $problems = [];
+
+    foreach ([1440, 375] as $width) {
+        $page = navPage($player, $width);
+
+        foreach (['replays' => route('stacker.replays', absolute: false), 'replay' => route('stacker.replay', $run, false), 'moment' => route('stacker.moment', $run->id, false)] as $key => $url) {
+            navOpen($page, $url, $problems);
+            // [the bar shown, its Replays link: href, aria-current, height, left, right; how many links of the bar are current]
+            $bar = $page->evaluate(<<<'JS'
+                () => {
+                    const shown = [...document.querySelectorAll('[data-test=context-bar], [data-test=tab-bar]')].find((bar) => bar.checkVisibility());
+                    const link = shown?.querySelector('[data-test=ctx-replays], [data-test=tab-replays]');
+                    const r = link?.getBoundingClientRect();
+                    return link ? [shown.dataset.test, link.getAttribute('href'), link.getAttribute('aria-current'), Math.round(r.height), Math.round(r.left), Math.round(r.right),
+                        shown.querySelectorAll('a[aria-current=page]').length, document.documentElement.scrollWidth <= document.documentElement.clientWidth] : null;
+                }
+                JS);
+            fwrite(STDERR, "\n[nav-replays] {$width}px {$key}: ".json_encode($bar));
+
+            expect($bar)->not->toBeNull("{$key} at {$width}px: no Replays in the shown bar")
+                ->and($bar[0])->toBe($width >= 1024 ? 'context-bar' : 'tab-bar')
+                ->and($bar[1])->toBe(route('stacker.replays'))
+                ->and($bar[2])->toBe('page')
+                ->and($bar[3])->toBeGreaterThanOrEqual(44)
+                ->and($bar[4])->toBeGreaterThanOrEqual(0)
+                ->and($bar[5])->toBeLessThanOrEqual($width)
+                ->and($bar[6])->toBe(1)
+                ->and($bar[7])->toBeTrue();
+            navShot($page, "replays-nav-{$key}-{$width}");
+        }
+
+        // From the game page the Replays tab leads to the replays page.
+        navOpen($page, route('stacker.play', absolute: false), $problems);
+        $page->locator($width >= 1024 ? '[data-test=ctx-replays]' : '[data-test=tab-replays]')->click();
+        BrowserWait::until($page, '() => location.pathname === "/blockfill/replays" && document.readyState === "complete"', 10_000);
+        expect($page->evaluate('() => !! document.querySelector("[data-test=replays-page]")'))->toBeTrue();
+    }
+
+    // Positive control on the same page and collector: a throw is caught.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("replays nav control"); }); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("replays nav control"))', 5_000);
+
+    expect($problems)->toBe([]);
 });

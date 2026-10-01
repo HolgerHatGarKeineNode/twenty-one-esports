@@ -6,6 +6,7 @@ use App\Support\Cards\ShareCard;
 use App\Support\PageMeta;
 use App\Support\Stacker\BlockfillMoments;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\Stacker\StackerReplays;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -17,8 +18,15 @@ use Livewire\Component;
  * share card as the link preview; never indexed (one page per run). Only a
  * verified run that is a moment has one: anything else is a 404. Its owner
  * gets the share button; everyone else the way to play.
+ *
+ * The page is the run's replay (components/stacker/replay-viewer) under the
+ * moment's headline: sharing a moment is its owner's consent to show that
+ * one run, so this URL plays it for anyone, guests included. It opens no
+ * other run: StackerReplays::canView() and `stacker.replay` stay as they
+ * are. A shared moment keeps its replay (StackerRuns::keepWeekTop()); a run
+ * that has none any more shows its share card and Play instead.
  */
-new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
+new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component {
     #[Locked]
     public int $runId;
 
@@ -85,32 +93,30 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $card = ShareCard::blockfill($run, $moment);
     $week = $this->week;
     $own = auth()->id() === $run->user_id;
+    $headline = BlockfillMoments::headline($moment['kind'], $moment['place']);
+    $time = BlockfillMoments::time((int) $run->ticks);
 @endphp
 
-<div class="mx-auto flex w-full max-w-[960px] flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="blockfill-moment">
-    <header class="flex min-w-0 flex-col gap-2">
-        <span class="text-[13px] font-bold text-btc" data-test="blockfill-moment-headline">{{ BlockfillMoments::headline($moment['kind'], $moment['place']) }}</span>
-        <h1 class="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">
-            <x-avatar :user="$user" :size="40" class="shrink-0 rounded-sm" />
-            <a href="{{ route('players.show', $user->npub) }}" class="min-w-0 text-ink [overflow-wrap:anywhere] hover:text-btc-hi">{{ $user->displayName() }}</a>
-        </h1>
-        <p class="m-0 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <b class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" data-test="blockfill-moment-time">{{ BlockfillMoments::time((int) $run->ticks) }}</b>
-            <span class="text-[13px] text-ink-2">{{ __('40 blocks mined') }} · @if ($week)<a href="{{ route('tournaments.show', $week) }}" class="text-ink-2 underline decoration-edge underline-offset-4 hover:text-ink">{{ BlockfillMoments::weekTitle($moment['week']) }}</a>@else{{ BlockfillMoments::weekTitle($moment['week']) }}@endif</span>
-        </p>
-    </header>
-
-    <img src="{{ $card->path('wide') }}" alt="{{ BlockfillMoments::headline($moment['kind'], $moment['place']) }} · {{ $user->displayName() }} · {{ BlockfillMoments::time((int) $run->ticks) }}" width="1200" height="630"
-         class="aspect-[1200/630] h-auto w-full rounded-lg shadow-ring" data-test="blockfill-moment-card">
-
-    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('Verified: the league replayed every input of this run and reached the same time.') }}</p>
-
-    <div class="flex flex-wrap gap-2">
-        @if ($own)
-            <x-button icon="send" x-data x-on:click="window.dispatchEvent(new CustomEvent('blockfill-share', { detail: { moment: @js((string) $run->id) } }))" data-test="blockfill-moment-share">{{ __('Share this moment') }}</x-button>
-        @endif
-        <x-button :href="route('stacker.play')" :variant="$own ? 'secondary' : 'primary'" data-test="blockfill-moment-play">{{ __('Play Blockfill') }}</x-button>
-    </div>
+<div class="flex grow flex-col px-4 pb-10 lg:px-12" data-test="blockfill-moment">
+    @if (StackerReplays::watchable($run))
+        <x-stacker.replay-viewer :run="$run">
+            @include('pages.stacker.partials.moment-head')
+            @if ($week)
+                <x-slot:actions>
+                    <x-button variant="quiet" :href="route('tournaments.scores', $week)">{{ __('Week\'s board') }}</x-button>
+                </x-slot:actions>
+            @endif
+        </x-stacker.replay-viewer>
+    @else
+        {{-- The replay is gone: the moment's card and the way to play --}}
+        <div class="mx-auto flex w-full max-w-[960px] flex-col gap-6 pt-6 lg:gap-8 lg:pt-8">
+            <header class="flex min-w-0 flex-col gap-3">
+                @include('pages.stacker.partials.moment-head')
+            </header>
+            <img src="{{ $card->path('wide') }}" alt="{{ $headline }} · {{ $user->displayName() }} · {{ $time }}" width="1200" height="630"
+                 class="aspect-[1200/630] h-auto w-full rounded-lg shadow-ring" data-test="blockfill-moment-card">
+        </div>
+    @endif
 
     @if ($own)
         <livewire:blockfill-share key="blockfill-share" />

@@ -53,7 +53,9 @@ use Illuminate\Support\Str;
  * submitted replay only while a run is verifying or pending, and for a
  * verified run the replay the verifier answered with, but only while the
  * run is among the `replay_keep_top` fastest of its week (keepWeekTop()):
- * at most that many replays per week. Rejected runs keep none. Runs
+ * that many replays per week, plus at most `replay_keep_shared` runs that
+ * are moments or were shared (a moment's page plays them). Rejected runs
+ * keep none. Runs
  * without a verified time are pruned after `prune_days`
  * (StackerRun::prunable()). sweepStale() gives up verifications that never
  * came back, reverifyPending() sends pending runs again (console only).
@@ -439,28 +441,67 @@ final class StackerRuns
 
     /**
      * Only the `replay_keep_top` fastest verified runs of a week keep their
-     * replay; every other verified run of that week drops it. One indexed
-     * query for the week's fastest (week, status, ticks) and one update over
-     * the week's runs that still hold a replay, in one transaction.
+     * replay, and the `replay_keep_shared` fastest that are moments
+     * (BlockfillMoments::of(), marked `flags.moment` when first judged) or
+     * were shared (`flags.shared`, markShared()): a moment's page plays its
+     * replay to whoever follows a shared link, so the replay has to be there
+     * when its player shares it and stay there after. Every other verified
+     * run of that week drops it. Both lists are bounded per week, so
+     * storage stays bounded however many accounts play. The runs outside
+     * the fastest not judged yet are a few (the rest dropped theirs or were
+     * marked before); then one indexed query per keep list (week, status,
+     * ticks) and one update, in one transaction.
      */
     public function keepWeekTop(string $week): void
     {
         // one transaction: a second worker's verification cannot fall between the top and the update
         DB::transaction(function () use ($week): void {
-            $keep = StackerRun::query()
+            $fastest = fn (int $limit) => StackerRun::query()
                 ->where('week', $week)
                 ->where('status', StackerRunStatus::Verified)
                 ->orderBy('ticks')
                 ->orderBy('id')
-                ->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))
-                ->pluck('id')
-                ->all();
+                ->limit(max(0, $limit));
+            $top = $fastest((int) config('esports.blockfill.replay_keep_top'))->pluck('id')->all();
+            $moments = app(BlockfillMoments::class);
+
+            $unjudged = StackerRun::query()
+                ->whereIn('id', $this->weekReplayHolders($week))
+                ->when($top !== [], fn ($outside) => $outside->whereNotIn('id', $top))
+                ->whereNull('flags->moment')->whereNull('flags->shared')
+                ->get(['id', 'user_id', 'status', 'ticks', 'submitted_at', 'week', 'flags']);
+
+            foreach ($unjudged as $run) {
+                if ($moments->of($run) !== null) {
+                    StackerRun::query()->whereKey($run->id)->update(['flags' => json_encode([...(array) $run->flags, 'moment' => true])]);
+                }
+            }
+
+            $keep = [
+                ...$top,
+                ...$fastest((int) config('esports.blockfill.replay_keep_shared'))
+                    ->where(fn ($kept) => $kept->whereNotNull('flags->moment')->orWhereNotNull('flags->shared'))->pluck('id')->all(),
+            ];
 
             StackerRun::query()
                 ->whereIn('id', $this->weekReplayHolders($week))
                 ->when($keep !== [], fn ($outside) => $outside->whereNotIn('id', $keep))
                 ->update(['replay' => null]);
         });
+    }
+
+    /**
+     * Its owner opened the share sheet of this moment: the run keeps its
+     * replay from now on (keepWeekTop()), as its link may be out there.
+     */
+    public function markShared(StackerRun $run): void
+    {
+        $flags = (array) $run->flags;
+
+        if (! isset($flags['shared'])) {
+            StackerRun::query()->whereKey($run->id)->update(['flags' => json_encode([...$flags, 'shared' => now()->getTimestamp()])]);
+            $run->flags = [...$flags, 'shared' => now()->getTimestamp()];
+        }
     }
 
     /**

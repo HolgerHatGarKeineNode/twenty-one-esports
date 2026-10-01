@@ -4,7 +4,9 @@ use App\Enums\StackerRunStatus;
 use App\Models\Admin;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
@@ -49,16 +51,17 @@ beforeEach(function () {
 });
 
 /**
- * The player's verified reference run with its replay; `$hints` holds it for review instead.
+ * The player's verified reference run with its replay; `$hints` holds it for review instead; `$ownSeed` for a second copy.
  *
  * @param  list<string>  $hints
  */
-function replayFixtureRun(User $user, array $hints = []): StackerRun
+function replayFixtureRun(User $user, array $hints = [], bool $ownSeed = false): StackerRun
 {
     $forty = BlockfillOn::fixture('forty-lines');
 
     return StackerRun::factory()->for($user)->create([
-        'seed' => $forty['seed'],
+        // Seeds are unique: a second copy of the run takes the factory's own (the viewer plays the replay, not the seed).
+        ...($ownSeed ? [] : ['seed' => $forty['seed']]),
         'status' => $hints === [] ? StackerRunStatus::Verified : StackerRunStatus::Review,
         'ticks' => 958,
         'state_hash' => '6102773e',
@@ -214,4 +217,216 @@ test('the admin review list shows a held run with its hints and its replay link,
 })->with([
     'phone 375' => [375, 812],
     'desktop 1440' => [1440, 900],
+]);
+
+/*
+| The replays page, the board's play squares and a shared moment's page
+| (the Replays tab, 2026-10-01). Week 40 (2026-09-28 to 2026-10-04) has
+| ended with eleven players, the longest name the profile allows among them;
+| it is Wednesday of week 41.
+*/
+
+/**
+ * Week 40's board of eleven, the admin second; this week one run of the admin and one held run of another player.
+ *
+ * @return array{admin: User, lastWeek: list<StackerRun>, adminNow: StackerRun, held: StackerRun}
+ */
+function replayShelfWorld(): array
+{
+    $forty = BlockfillOn::fixture('forty-lines');
+    $admin = User::factory()->create(['name' => 'Ada Admin Who Watches Every Replay Here']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $names = ['SatoshiNakamotoStackedFortyBlocksFirst', 'Ada Admin Who Watches Every Replay Here', 'Hal Finney Fan', 'Lightning Larry', 'HalvingHodler21',
+        'Nakamoto Institute Night Shift', 'Orange Pill Academy', 'Blockspace Bob', 'Mempool Mia', 'Tenth Place Tim', 'Eleventh Place Eve'];
+
+    test()->travelTo(CarbonImmutable::parse('2026-09-30 12:00:00'));
+    $lastWeek = [];
+
+    foreach ($names as $i => $name) {
+        $user = $i === 1 ? $admin : User::factory()->create(['name' => $name]);
+        $run = StackerRun::factory()->for($user)->verified(958 + 7 * $i)->create([
+            'replay' => $forty['replay'], 'settings' => $forty['settings'], 'state_hash' => '6102773e',
+            'submitted_at' => now()->subHours(20 - $i),
+        ]);
+        app(BlockfillWeeks::class)->record($run, now());
+        $lastWeek[] = $run;
+    }
+
+    test()->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    $adminNow = replayFixtureRun($admin);
+    $held = replayFixtureRun(User::factory()->create(['name' => 'Fast Fingers']), ['pps', 'finesse'], ownSeed: true);
+
+    return compact('admin', 'lastWeek', 'adminNow', 'held');
+}
+
+/** The page's measure: widths, every link and button smaller than 44 px or outside the window, and the names squeezed below 48 px. */
+const REPLAYS_MEASURE = <<<'JS'
+    () => {
+        const width = document.documentElement.clientWidth;
+        const main = document.querySelector('[data-test=replays-page]');
+        const small = [...main.querySelectorAll('a, button')].filter((el) => el.checkVisibility())
+            .map((el) => ({ test: el.dataset.test || el.textContent.trim().slice(0, 24), r: el.getBoundingClientRect() }))
+            .filter(({ r }) => r.height < 44 || r.width < 44 || r.left < 0 || r.right > width)
+            .map(({ test, r }) => `${test} ${Math.round(r.width)}x${Math.round(r.height)} @${Math.round(r.left)}`);
+        const names = [...main.querySelectorAll('[data-test=replays-top-row] b.truncate, [data-test=replays-featured-name], [data-test=replays-held-row] b.truncate')]
+            .map((b) => Math.round(b.getBoundingClientRect().width));
+        const squares = [...main.querySelectorAll('[data-test$=-row] .size-11')].map((s) => [Math.round(s.getBoundingClientRect().width), Math.round(s.getBoundingClientRect().height)]);
+        return { scroll: document.documentElement.scrollWidth, client: width, small, names, squares,
+            words: (main.innerText.match(/\S+/g) || []).length };
+    }
+    JS;
+
+test('the replays page: your replays, the ended week\'s first ten with the winner large, the held runs; measured, clean console', function (string $locale, int $width, int $height) {
+    ['admin' => $admin, 'lastWeek' => $lastWeek, 'adminNow' => $adminNow, 'held' => $held] = replayShelfWorld();
+
+    $page = replayPage($admin, $locale, $width, $height, route('stacker.replays', absolute: false));
+    BrowserWait::until($page, '() => document.querySelector("[data-test=replays-page]") !== null && document.readyState === "complete"', 10_000);
+
+    $shelves = $page->evaluate(<<<'JS'
+        () => ({
+            mine: [...document.querySelectorAll('[data-test=replays-mine-row]')].map((a) => [a.getAttribute('href'), a.dataset.place ?? null]),
+            featured: document.querySelector('[data-test=replays-featured]')?.getAttribute('href'),
+            top: [...document.querySelectorAll('[data-test=replays-top-row]')].map((a) => [a.getAttribute('href'), a.dataset.place]),
+            held: [...document.querySelectorAll('[data-test=replays-held-row]')].map((a) => a.getAttribute('href')),
+            title: document.querySelector('#top-h').innerText.trim(),
+        })
+        JS);
+    $measure = $page->evaluate(REPLAYS_MEASURE);
+    fwrite(STDERR, "replays {$locale} {$width}: ".json_encode([$shelves, $measure]).PHP_EOL);
+
+    expect($shelves['mine'])->toBe([[route('stacker.replay', $adminNow), null], [route('stacker.replay', $lastWeek[1]), '2']])
+        ->and($shelves['featured'])->toBe(route('stacker.replay', $lastWeek[0]))
+        ->and($shelves['top'])->toBe(array_map(fn (int $i): array => [route('stacker.replay', $lastWeek[$i]), (string) ($i + 1)], range(1, 9)))
+        ->and($shelves['held'])->toBe([route('stacker.replay', $held)])
+        ->and($shelves['title'])->toBe($locale === 'de' ? 'Top-Replays der Woche 40, 2026' : 'Top replays of Week 40, 2026')
+        ->and($measure['scroll'])->toBeLessThanOrEqual($measure['client'])
+        ->and($measure['small'])->toBe([])
+        ->and(min($measure['names']))->toBeGreaterThanOrEqual(48)
+        ->and(array_unique(array_map('json_encode', $measure['squares'])))->toBe(['[44,44]'])
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    $page->evaluate('() => window.scrollTo(0, 0)');
+    shellShot($page, "blockfill-replays-{$locale}-{$width}");
+    $page->evaluate('() => document.querySelector("[data-test=replays-top]").scrollIntoView({ block: "start" })');
+    shellShot($page, "blockfill-replays-{$locale}-{$width}-top");
+
+    // The winner's tile opens the replay, and it plays.
+    $page->locator('[data-test=replays-featured]')->click();
+    BrowserWait::until($page, '() => window.__stackerReplay !== undefined && window.__stackerReplay.state().total === 958', 10_000);
+    expect($page->evaluate('() => location.pathname'))->toBe(route('stacker.replay', $lastWeek[0], false))
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
+
+    // positive control: the collector sees a throw and a failed answer
+    $page->evaluate('() => { setTimeout(() => { throw new Error("replays positive control"); }); fetch("/blockfill/replays/nothing-here"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("replays positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+]);
+
+test('an ended week\'s board: a 44 px play square in each of the first ten rows, none in the eleventh; measured, clean console', function (string $locale, int $width, int $height) {
+    ['lastWeek' => $lastWeek] = replayShelfWorld();
+    $guest = visit(BrowserLogin::LANDING)->page();
+    $guest->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $guest->setViewportSize($width, $height);
+    $guest->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+    $week = app(BlockfillWeeks::class)->find(BlockfillWeeks::startOf($lastWeek[0]->submitted_at));
+    $guest->goto(ComputeUrl::from(route('tournaments.scores', $week, false)));
+    BrowserWait::until($guest, '() => document.querySelectorAll("[data-test=score-row]").length === 11', 10_000);
+
+    $rows = $guest->evaluate(<<<'JS'
+        () => [...document.querySelectorAll('[data-test=score-row]')].map((row) => {
+            const play = row.querySelector('[data-test=score-replay]');
+            const r = play?.getBoundingClientRect();
+            const name = row.querySelector('a.truncate, span.truncate');
+            return [row.dataset.place, play ? [Math.round(r.width), Math.round(r.height), Math.round(r.left), Math.round(r.right), play.getAttribute('aria-label')] : null,
+                Math.round(name.getBoundingClientRect().width)];
+        })
+        JS);
+    $hero = $guest->evaluate('() => { const a = document.querySelector("[data-test=hero-replays]"); const r = a.getBoundingClientRect(); return [a.getAttribute("href"), Math.round(r.height), Math.round(r.right)]; }');
+    [$scroll, $client] = $guest->evaluate(BrowserConsole::WIDTHS);
+    fwrite(STDERR, "board replays {$locale} {$width}: ".json_encode([$rows, $hero]).PHP_EOL);
+
+    foreach (array_slice($rows, 0, 10) as $i => $row) {
+        expect($row[1])->not->toBeNull("place {$row[0]} has no play square")
+            ->and([$row[1][0], $row[1][1]])->toBe([44, 44])
+            ->and($row[1][2])->toBeGreaterThanOrEqual(0)
+            ->and($row[1][3])->toBeLessThanOrEqual($width)
+            ->and($row[2])->toBeGreaterThanOrEqual(40);
+    }
+
+    expect($rows[0][1][4])->toBe(($locale === 'de' ? 'Replay von ' : 'Watch the replay of ').'SatoshiNakamotoStackedFortyBlocksFirst'.($locale === 'de' ? ' ansehen' : ''))
+        ->and($rows[10][1])->toBeNull()
+        ->and($hero[0])->toBe(route('stacker.replays', ['week' => $week->slug]))
+        ->and($hero[1])->toBeGreaterThanOrEqual(44)
+        ->and($hero[2])->toBeLessThanOrEqual($width)
+        ->and($scroll)->toBeLessThanOrEqual($client)
+        ->and($guest->evaluate('() => window.__errors'))->toBe([])
+        ->and($guest->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    $guest->evaluate('() => document.querySelector("[data-test=score-leaderboard]").scrollIntoView({ block: "start" })');
+    shellShot($guest, "blockfill-board-replays-{$locale}-{$width}");
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+]);
+
+test('a shared moment\'s link plays the run for a guest, under its headline with Play; measured, clean console', function (string $locale, int $width, int $height) {
+    $player = User::factory()->create(['name' => 'SatoshiNakamotoStackedFortyBlocksFirst']);
+    $run = replayFixtureRun($player);
+    app(BlockfillWeeks::class)->record($run, now());
+    $other = replayFixtureRun(User::factory()->create(), ownSeed: true);
+
+    $guest = visit(BrowserLogin::LANDING)->page();
+    $guest->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $guest->setViewportSize($width, $height);
+    $guest->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+    $guest->goto(ComputeUrl::from(route('stacker.moment', $run->id, false)));
+    BrowserWait::until($guest, '() => window.__stackerReplay !== undefined && window.__stackerReplay.state().total === 958', 10_000);
+
+    // it plays: 4x, then the end is the verified hash
+    $guest->locator('[data-test=replay-speed-4]')->click();
+    $guest->locator('[data-test=replay-play]')->click();
+    BrowserWait::until($guest, '() => window.__stackerReplay.state().tick >= 200', 5_000);
+    $guest->locator('[data-test=replay-play]')->click();
+    $guest->locator('[data-test=replay-chain]')->press('End');
+    $end = $guest->evaluate('() => window.__stackerReplay.state()');
+
+    $head = $guest->evaluate(<<<'JS'
+        () => {
+            const box = (s) => { const r = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right), Math.round(r.top), Math.round(r.bottom), Math.round(r.height)]; };
+            const name = document.querySelector('[data-test=blockfill-moment-player]');
+            return { headline: document.querySelector('[data-test=blockfill-moment-headline]').innerText.trim(), play: box('[data-test=blockfill-moment-play]'),
+                well: box('[data-test=replay-well]'), nameClipped: name.scrollWidth > name.clientWidth, nameWidth: Math.round(name.getBoundingClientRect().width),
+                share: !! document.querySelector('[data-test=blockfill-moment-share]') };
+        }
+        JS);
+    [$scroll, $client] = $guest->evaluate(BrowserConsole::WIDTHS);
+    fwrite(STDERR, "moment {$locale} {$width}: ".json_encode([$head, $end['tick'], $end['hash']]).PHP_EOL);
+
+    expect([$end['tick'], $end['hash']])->toBe([958, '6102773e'])
+        ->and($head['headline'])->toBe($locale === 'de' ? 'Neuer erster Platz der Woche' : 'New first place of the week')
+        ->and($head['play'][4])->toBeGreaterThanOrEqual(44)
+        ->and($head['play'][0])->toBeGreaterThanOrEqual(0)
+        ->and($head['play'][1])->toBeLessThanOrEqual($width)
+        ->and($head['well'][1])->toBeLessThanOrEqual($width)
+        ->and($head['nameWidth'])->toBeGreaterThanOrEqual(48)
+        ->and($head['share'])->toBeFalse()
+        ->and($scroll)->toBeLessThanOrEqual($client)
+        ->and($guest->evaluate('() => window.__errors'))->toBe([])
+        ->and($guest->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    $guest->evaluate('() => { window.__stackerReplay.seek(560); window.scrollTo(0, 0); }');
+    shellShot($guest, "blockfill-moment-{$locale}-{$width}");
+
+    // The moment opens its own run only: another run's replay stays closed to the guest.
+    expect($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $other, false)))->toBe(403)
+        ->and($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $run, false)))->toBe(403);
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
 ]);

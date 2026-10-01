@@ -6,6 +6,7 @@ use App\Support\Cards\SharePost;
 use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
 use App\Support\Stacker\BlockfillMoments;
+use App\Support\Stacker\StackerRuns;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -32,6 +33,11 @@ new class extends Component {
         $id = is_scalar($moment) ? (string) $moment : '';
         $this->moment = ctype_digit($id) && strlen($id) <= 18 ? $id : null;
         unset($this->run, $this->post);
+
+        // The link may leave the site from here (Nostr, the system sheet, a copy): the run keeps its replay.
+        if ($this->run !== null) {
+            app(StackerRuns::class)->markShared($this->run);
+        }
     }
 
     public function closeSheet(): void

@@ -162,7 +162,9 @@ test('only the owner is offered the share: not another player, not a guest, not 
     auth()->logout();
     $this->get('/scores/blockfill/moment/'.$id)->assertOk()->assertDontSee('data-test="blockfill-moment-share"', false);
     $this->actingAs($stranger)->get('/scores/blockfill/moment/'.$id)->assertOk()->assertDontSee('data-test="blockfill-moment-share"', false);
-    $this->actingAs($m['bert'])->get('/scores/blockfill/moment/'.$id)->assertOk()->assertSee('data-test="blockfill-moment-share"', false);
+    // Its click names the run in plain script: a Blade directive inside a component's attribute is never compiled.
+    $this->actingAs($m['bert'])->get('/scores/blockfill/moment/'.$id)->assertOk()->assertSee('data-test="blockfill-moment-share"', false)
+        ->assertSee("{ detail: { moment: '".$id."' } }", false)->assertDontSee('@js(', false);
 
     // scores/blockfill, the week page and the game page: one share button, in the viewer's own row, with their own run.
     $week = app(BlockfillWeeks::class)->current();
@@ -270,4 +272,88 @@ test('with Blockfill switched off a moment has no page, no share and no share bu
         ->and(fn () => app(SharePosts::class)->prepare($player, 'blockfill', (string) $run->id))->toThrow(ShareRefused::class)
         ->and(app(BlockfillMoments::class)->shareableOn($player, Tournament::query()->where('game', 'blockfill')->sole()))->toBeNull();
     Livewire::actingAs($player)->test('blockfill-share')->call('openSheet', (string) $run->id)->assertDontSeeHtml('data-test="blockfill-share-sheet"');
+});
+
+/*
+| The moment's page plays the run (the user, 2026-10-01: a shared link lands on
+| the replay). Sharing is the owner's consent for that one run only.
+*/
+
+test('a guest opening a moment\'s link sees that run\'s replay under the moment, with the link preview unchanged', function () {
+    $player = User::factory()->create(['name' => 'Satoshi Nakamoto']);
+    $run = shareRun($player, 3000, 2);
+    $moment = app(BlockfillMoments::class)->of($run);
+    $card = ShareCard::blockfill($run, $moment);
+
+    $html = $this->get('/scores/blockfill/moment/'.$run->id)->assertOk()
+        ->assertSee('data-test="replay"', false)
+        ->assertSee('data-test="replay-chain"', false)
+        ->assertSee('data-test="blockfill-moment-headline"', false)
+        ->assertSee('data-test="blockfill-moment-play"', false)
+        ->assertDontSee('data-test="blockfill-moment-card"', false)
+        ->getContent();
+    // The viewer starts from this run (its config, rendered as JSON.parse('…') by @js).
+    preg_match("~stackerReplay\\(JSON\\.parse\\('(.*?)'\\)\\)~s", $html, $config);
+    preg_match('~<meta property="og:image" content="([^"]+)"~', $html, $image);
+    preg_match('~<meta property="og:title" content="([^"]+)"~', $html, $title);
+    preg_match('~<meta property="og:description" content="([^"]+)"~', $html, $description);
+
+    expect(json_decode(json_decode('"'.($config[1] ?? '').'"'), true))->toMatchArray(['replay' => 'AAAA', 'ticks' => 3000])
+        ->and($image[1] ?? null)->toBe($card->url('wide'))
+        ->and($title[1] ?? null)->toBe('Satoshi Nakamoto in Blockfill: 0:50.000')
+        ->and(html_entity_decode($description[1] ?? ''))->toBe('New first place of the week: Satoshi Nakamoto mined 40 blocks in 0:50.000 in Blockfill Week 41, 2026. Every run is replayed by the league before it counts.')
+        ->and($html)->toContain('<meta name="robots" content="noindex, nofollow">');
+});
+
+test('a moment opens only its own run: the replay page of it and of any other run stays closed to a guest', function () {
+    $m = shareMomentsOfWeek();
+    $other = shareRun($m['ada'], 3300, 1);
+
+    $this->get('/scores/blockfill/moment/'.$m['first']->id)->assertOk()->assertSee('data-test="replay"', false);
+    $this->get(route('stacker.replay', $m['first']))->assertForbidden();
+    $this->get(route('stacker.replay', $other))->assertForbidden();
+    // a run that is no moment has no moment page, so no replay through it
+    expect(app(BlockfillMoments::class)->of($other))->toBeNull();
+    $this->get('/scores/blockfill/moment/'.$other->id)->assertNotFound();
+});
+
+test('a moment keeps its replay when its week\'s fastest push it out, up to its own bound per week; any other run drops it', function () {
+    config(['esports.blockfill.replay_keep_top' => 1, 'esports.blockfill.replay_keep_shared' => 2]);
+    [$ada, $bert, $carl, $dora] = User::factory()->count(4)->create();
+
+    $adas = shareRun($ada, 3000, 5);
+    // slower than her best, no record, not her place: no moment, so no replay outside the fastest
+    $slower = shareRun($ada, 3300, 4.5);
+    expect(app(BlockfillMoments::class)->of($slower->refresh()))->toBeNull()
+        ->and($slower->replay)->toBeNull();
+
+    // Bert's faster run takes the one place of the fastest; Ada's run, her best, stays watchable from her moment's link.
+    shareRun($bert, 2000, 4);
+    $carls = shareRun($carl, 3100, 3.5);
+    expect($adas->refresh()->replay)->toBe('AAAA')
+        ->and($adas->flags['moment'] ?? null)->toBeTrue()
+        ->and($carls->refresh()->replay)->toBe('AAAA');
+
+    // Opening the share sheet marks a run shared: every way out (Nostr, the system sheet, the link) starts there.
+    Livewire::actingAs($carl)->test('blockfill-share')->call('openSheet', (string) $carls->id)->assertSeeHtml('data-test="blockfill-share-sheet"');
+    expect($carls->refresh()->flags)->toHaveKey('shared');
+
+    // Bounded per week: Dora's faster moment takes the second place of the kept moments, Carl's slowest drops out.
+    $doras = shareRun($dora, 2900, 3);
+    expect($doras->refresh()->replay)->toBe('AAAA')
+        ->and($adas->refresh()->replay)->toBe('AAAA')
+        ->and($carls->refresh()->replay)->toBeNull()
+        ->and(StackerRun::query()->where('week', StackerRuns::weekOf(now()))->whereNotNull('replay')->count())->toBe(3);
+});
+
+test('a moment whose replay is gone shows its card and Play, no viewer and no error', function () {
+    $player = User::factory()->create(['name' => 'Satoshi Nakamoto']);
+    $run = shareRun($player, 3000, 2);
+    $run->forceFill(['replay' => null])->save();
+
+    $this->get('/scores/blockfill/moment/'.$run->id)->assertOk()
+        ->assertSee('data-test="blockfill-moment-card"', false)
+        ->assertSee('data-test="blockfill-moment-play"', false)
+        ->assertSee('0:50.000')
+        ->assertDontSee('data-test="replay"', false);
 });
