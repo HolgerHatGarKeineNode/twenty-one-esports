@@ -228,6 +228,33 @@ describe('mining', function () {
             ->and($event->tagsNamed('clan'))->toHaveCount(5);
     });
 
+    test('without trust facts for the live season the league signs nothing and tries again on the next tick (audit F3)', function () {
+        app()->bind(TrustFacts::class, fn () => new class implements TrustFacts
+        {
+            public function available(): bool
+            {
+                return false;
+            }
+
+            public function at(array $players, array $gatekeepers): array
+            {
+                return ['trust' => [], 'anchors' => [], 'connected' => false];
+            }
+        });
+        [$tournament, $users] = soloWindow(5);
+        soloPlay($tournament, $users);
+        $this->travelTo(ScoreWindow::of($tournament)->end->addHours(49));
+        app(ScoreLeaderboards::class)->tick();
+        app(ScoreLeaderboards::class)->tick();
+
+        expect(SeasonAttestation::query()->count())->toBe(0);
+
+        app()->bind(TrustFacts::class, TrustedFacts::class);
+        app(ScoreLeaderboards::class)->tick();
+
+        expect(SeasonAttestation::query()->sole()->height)->toBe(1);
+    });
+
     test('attesting the same window twice keeps one attestation', function () {
         [$tournament, $users] = soloWindow(5);
         soloPlay($tournament, $users);

@@ -645,11 +645,13 @@ final class SeasonChains
 
     /**
      * The solo candidate of a finished score window: its first place, the
-     * facts of the winning value, and the other placed entrants whose value
-     * a source verified inside the window (the field). Trust ranks and
+     * facts of the winning value, and the other placed entrants whose own
+     * value a source verified inside the window (the field). Trust ranks and
      * anchors are pinned now, for the winner and the field, by the trust
      * gate of rated play (a player barred by fair play is left out, so he
-     * counts as untrusted); clans are those of now. Null when nobody placed.
+     * counts as untrusted); clans are those of now, plus every clan held
+     * since the window's start for the solo rules (audit F2). Null when
+     * nobody placed, or while the live season has no trust facts (audit F3).
      *
      * @return array{0: Candidate, 1: GatePin}|null the candidate and the pin its `gate` rows show
      */
@@ -691,6 +693,12 @@ final class SeasonChains
         $entrants = array_values(array_unique($entrants));
         $winningRun = $first->runId === null ? null : $runs->get($first->runId);
         $all = [$winner, ...$entrants];
+
+        // Audit F3: without trust facts for the live season nothing is pinned or signed; the next tick tries again.
+        if (! app(TrustFacts::class)->available()) {
+            return null;
+        }
+
         $pin = app(RatedTrustGate::class)->pin($all, [$winner, $winner]);
         $now = ClanMember::query()->with(['clan', 'user'])->whereIn('user_id', $users->keys()->all())->get()
             ->mapWithKeys(fn (ClanMember $member): array => [(string) $member->user->pubkey => $member->clan->address()])->all();
