@@ -28,8 +28,8 @@ use LogicException;
  * - Mapped by the privately stored account id (users.gamer_tags under the
  *   game's account service): exactly one player with that id takes the run;
  *   none, or more than one, leaves it pending (`user_id` null), which no page
- *   ever shows. ScoreAccounts::claim() hands pending runs over once a player
- *   stores the id.
+ *   ever shows. Only an admin hands pending runs to a player
+ *   (ScoreAccounts::confirm(), security gate F4).
  * - Trusted as read: our own server's record is verified at once (source
  *   `server`); admins still correct a leaderboard through its directors.
  */

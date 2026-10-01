@@ -8,7 +8,9 @@ use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
+use App\Support\LeagueTime;
 use App\Support\Scores\Contracts\ScoreSource;
+use App\Support\Tournaments\TournamentInterest;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +30,9 @@ use Throwable;
  *
  * The league finalizes on its own once the window closed and
  * `esports.score_games.review_hours` passed with no manual submission left
- * for an admin; a director or admin can finalize as soon as the window closed.
+ * for an admin; a director or admin without a stake in it can finalize
+ * earlier, but never before submissions closed (window end plus the manual
+ * grace) nor while one still waits for an admin (security gate F3).
  */
 final class ScoreLeaderboards
 {
@@ -40,6 +44,30 @@ final class ScoreLeaderboards
     public static function mayDirect(Tournament $tournament, ?User $user): bool
     {
         return $user !== null && ($user->isAdmin() || $tournament->isDirectedBy($user));
+    }
+
+    /**
+     * Whether the user has a stake in the leaderboard and so may neither
+     * correct a value, nor review a submission, nor end it (security gate F1):
+     * the tournament gate P8b (App\Support\Tournaments\TournamentInterest) on
+     * the leaderboard's one board, which holds every entry, so playing in it,
+     * a clan in it, or being named by someone who does counts. Admins are
+     * checked without the chain of appointments, as everywhere.
+     */
+    public static function interested(Tournament $tournament, User $user): bool
+    {
+        $board = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('bracket', 'board')->first();
+
+        if ($board === null) {
+            return $tournament->participants()->get()->contains(fn ($participant): bool => in_array($user->id, $participant->memberIds(), true));
+        }
+
+        return TournamentInterest::of($tournament, $board, $user, followAppointers: ! $user->isAdmin());
+    }
+
+    public static function interestMessage(): string
+    {
+        return __('You have an interest in this leaderboard (you play in it, belong to a clan in it, or were named by someone who does), so another director or an admin has to do this.');
     }
 
     /**
@@ -80,8 +108,8 @@ final class ScoreLeaderboards
             throw new TournamentRuleViolation('not_running', __('Only a running leaderboard can be corrected.'));
         }
 
-        if ($director->id === $userId) {
-            throw new TournamentRuleViolation('interested', __('You play in this leaderboard, so another director or an admin has to enter your value.'));
+        if ($director->id === $userId || self::interested($tournament, $director)) {
+            throw new TournamentRuleViolation('interested', self::interestMessage());
         }
 
         if (! $tournament->participants()->where('user_id', $userId)->exists()) {
@@ -176,6 +204,10 @@ final class ScoreLeaderboards
     {
         if ($actor !== null) {
             $this->assertDirector($tournament, $actor);
+
+            if (self::interested($tournament, $actor)) {
+                throw new TournamentRuleViolation('interested', self::interestMessage());
+            }
         }
 
         if ($tournament->status !== TournamentStatus::Running) {
@@ -184,6 +216,15 @@ final class ScoreLeaderboards
 
         if (! ScoreWindow::of($tournament)->hasEnded()) {
             throw new TournamentRuleViolation('window_open', __('The window is still open.'));
+        }
+
+        // Security gate F3: a value may still come in, and every waiting one is decided first.
+        if (now()->lessThan(ManualSubmissions::closesAt($tournament))) {
+            throw new TournamentRuleViolation('grace', __('Submissions are still taken until :at. End the leaderboard after that.', ['at' => LeagueTime::stamp(ManualSubmissions::closesAt($tournament))]));
+        }
+
+        if (ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
+            throw new TournamentRuleViolation('pending', __('Submissions still wait for an admin. End the leaderboard once every one is decided.'));
         }
 
         DB::transaction(function () use ($tournament, $actor): void {
@@ -250,7 +291,7 @@ final class ScoreLeaderboards
                 // Once more after the window closed: a best set in its last hour is read before the end is written.
                 $snapshots += $this->snapshot($tournament)['stored'];
 
-                if (! $window->hasEnded() || now()->lessThan($window->end->addHours($review)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
+                if (! $window->hasEnded() || now()->lessThan($window->end->addHours($review)) || now()->lessThan(ManualSubmissions::closesAt($tournament)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
                     continue;
                 }
 

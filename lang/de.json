@@ -5716,5 +5716,21 @@
     "Highscore": "Highscore",
     "Score Demo": "Score-Demo",
     "Demo": "Demo",
-    "Needs players who meet in a match. In a score game everyone plays alone for the best value.": "Braucht Spieler, die in einem Match aufeinandertreffen. In einem Highscore-Spiel spielt jeder allein um den besten Wert."
+    "Needs players who meet in a match. In a score game everyone plays alone for the best value.": "Braucht Spieler, die in einem Match aufeinandertreffen. In einem Highscore-Spiel spielt jeder allein um den besten Wert.",
+    "Only an admin confirms an account.": "Nur ein Admin bestätigt ein Konto.",
+    "This is your own account, so another admin has to confirm it.": "Das ist dein eigenes Konto, also muss ein anderer Admin es bestätigen.",
+    "This player has not stored that account id.": "Dieser Spieler hat diese Konto-ID nicht hinterlegt.",
+    "You have an interest in this leaderboard (you play in it, belong to a clan in it, or were named by someone who does), so another director or an admin has to do this.": "Du hast ein Interesse an diesem Leaderboard (du spielst mit, gehörst zu einem Clan darin oder wurdest von jemandem ernannt, auf den das zutrifft), also muss das eine andere Turnierleitung oder ein Admin tun.",
+    "Submissions are still taken until :at. End the leaderboard after that.": "Einreichungen werden noch bis :at angenommen. Beende das Leaderboard danach.",
+    "Submissions still wait for an admin. End the leaderboard once every one is decided.": "Einreichungen warten noch auf einen Admin. Beende das Leaderboard, sobald jede entschieden ist.",
+    "Confirmed for :name: :count finish handed over.|Confirmed for :name: :count finishes handed over.": "Für :name bestätigt: :count Zielankunft übergeben.|Für :name bestätigt: :count Zielankünfte übergeben.",
+    "Unconfirmed accounts": "Unbestätigte Konten",
+    ":count account|:count accounts": ":count Konto|:count Konten",
+    "Finishes our servers reported for a game account no player owns for sure: nobody stored the id, or more than one player did. Nothing here counts until you confirm the account for the player it belongs to. Ids are private: never copy them anywhere public.": "Zielankünfte, die unsere Server für ein Spielkonto gemeldet haben, das keinem Spieler sicher gehört: niemand hat die ID hinterlegt, oder mehr als ein Spieler. Nichts davon zählt, bis du das Konto für den Spieler bestätigst, dem es gehört. IDs sind privat: kopiere sie nie an einen öffentlichen Ort.",
+    "No finish waits for an account.": "Keine Zielankunft wartet auf ein Konto.",
+    ":count finish waits|:count finishes wait": ":count Zielankunft wartet|:count Zielankünfte warten",
+    "no player stored this id": "kein Spieler hat diese ID hinterlegt",
+    ":count player stored this id|:count players stored this id": ":count Spieler hat diese ID hinterlegt|:count Spieler haben diese ID hinterlegt",
+    "Confirm this account for :name?": "Dieses Konto für :name bestätigen?",
+    "Confirm for :name": "Für :name bestätigen"
 }

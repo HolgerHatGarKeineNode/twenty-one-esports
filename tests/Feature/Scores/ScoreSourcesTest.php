@@ -9,6 +9,7 @@
 */
 
 use App\Games\GameRegistry;
+use App\Models\Admin;
 use App\Models\ScoreRun;
 use App\Models\ScoreServer;
 use App\Models\User;
@@ -116,10 +117,14 @@ test('a server reports finishes with its token: stored once, mapped by the priva
         ->and(ScoreRun::query()->where('external_id', 'e1')->value('user_id'))->toBe($player->id)
         ->and(ScoreRun::query()->where('external_id', 'e2')->value('user_id'))->toBeNull();
 
-    // The stranger stores the id later: the pending finish becomes theirs.
+    // The stranger stores the id later: the pending finish becomes theirs only once an admin confirms it (gate F4).
     $stranger = User::factory()->create(['gamer_tags' => ['score-demo' => 'acct-stranger']]);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
 
-    expect(ScoreAccounts::claim($stranger))->toBe(1)
+    expect(ScoreAccounts::settle($stranger))->toBe(0)
+        ->and(ScoreRun::query()->where('external_id', 'e2')->value('user_id'))->toBeNull()
+        ->and(ScoreAccounts::confirm(app(GameRegistry::class)->get('score-demo'), 'acct-stranger', $stranger, $admin))->toBe(1)
         ->and(ScoreRun::query()->where('external_id', 'e2')->value('user_id'))->toBe($stranger->id);
 });
 

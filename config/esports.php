@@ -254,7 +254,8 @@ return [
     | admin can finalize earlier).
     | poller: the polite defaults of every HTTP source (user agent with a
     | contact, at most one request per `min_interval_ms`, `retries` with
-    | exponential backoff from `backoff_ms`, a `Retry-After` wins).
+    | exponential backoff from `backoff_ms`, a `Retry-After` wins up to
+    | `max_retry_after_seconds`, no redirect, answers up to `max_body_bytes`).
     |
     */
 
@@ -273,6 +274,8 @@ return [
             'timeout_seconds' => 10,
             'retries' => 3,
             'backoff_ms' => 2000,
+            'max_retry_after_seconds' => 60,
+            'max_body_bytes' => 1_048_576,
         ],
     ],
 

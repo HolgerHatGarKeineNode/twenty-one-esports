@@ -25,7 +25,9 @@ use Illuminate\Support\Sleep;
  *   caller waits (Sleep, fakeable) instead of sending faster. The spacing is
  *   kept in the cache, which holds for the one scheduled job that polls.
  * - Backoff: a 429, a 5xx or no connection is retried `retries` times, the
- *   wait doubling from `backoff_ms`; a `Retry-After` in seconds wins.
+ *   wait doubling from `backoff_ms`; a `Retry-After` in seconds wins, up to
+ *   `max_retry_after_seconds` (above it the source counts as down).
+ * - No redirect is followed, and an answer over `max_body_bytes` is refused.
  * - Failing: any other answer, or the last retry failing, throws
  *   ScoreSourceUnavailable. "Could not ask" is never "no record".
  */
@@ -84,6 +86,8 @@ abstract class HttpScorePoller implements ScoreSource
                 $response = Http::withUserAgent((string) config('esports.score_games.poller.user_agent'))
                     ->withHeaders($this->headers())
                     ->timeout(max(1, (int) config('esports.score_games.poller.timeout_seconds', 10)))
+                    // A redirect is no answer (security gate F5): it could lead anywhere, the league follows none.
+                    ->withoutRedirecting()
                     ->acceptJson()
                     ->get($this->url($account, $course), $this->query($account, $course));
             } catch (ConnectionException $e) {
@@ -92,6 +96,13 @@ abstract class HttpScorePoller implements ScoreSource
             }
 
             if ($response !== null && $response->successful()) {
+                $limit = max(1, (int) config('esports.score_games.poller.max_body_bytes', 1_048_576));
+                $length = $response->header('Content-Length');
+
+                if ((is_numeric($length) && (int) $length > $limit) || strlen($response->body()) > $limit) {
+                    throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: an answer larger than {$limit} bytes.");
+                }
+
                 return $response;
             }
 
@@ -103,7 +114,14 @@ abstract class HttpScorePoller implements ScoreSource
             }
 
             $retryAfter = $response?->header('Retry-After');
-            $wait = is_numeric($retryAfter) ? (int) $retryAfter * 1000 : $backoff * (2 ** $attempt);
+            $cap = max(0, (int) config('esports.score_games.poller.max_retry_after_seconds', 60));
+
+            // A source that asks for a longer wait than the cap is down for now (security gate F5): never sleep for it.
+            if (is_numeric($retryAfter) && (int) $retryAfter > $cap) {
+                throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: Retry-After {$retryAfter} s is over {$cap} s.");
+            }
+
+            $wait = is_numeric($retryAfter) ? max(0, (int) $retryAfter) * 1000 : $backoff * (2 ** $attempt);
             Sleep::for($wait)->milliseconds();
         }
     }

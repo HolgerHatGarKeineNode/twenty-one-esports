@@ -156,7 +156,8 @@ test('a director corrects a value with a public reason and ends the leaderboard 
         ->assertHasNoErrors()
         ->assertSee('Slow-motion cheat, seen in the replay.');
 
-    $this->travelTo($start->addDays(7)->addMinute());
+    // After the submission grace (gate F3).
+    $this->travelTo($start->addDays(7)->addMinutes(61));
 
     Livewire::actingAs($tournament->creator)->test('pages::scores.tournament', ['tournament' => $tournament])
         ->call('finalize')->assertHasNoErrors();

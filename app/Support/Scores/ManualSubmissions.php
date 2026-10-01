@@ -7,6 +7,7 @@ use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Support\Tournaments\TournamentRuleViolation;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 
@@ -33,13 +34,12 @@ final class ManualSubmissions
         $game = $this->runs->gameOf($tournament);
         $course = $this->runs->courseOf($tournament);
         $window = ScoreWindow::of($tournament);
-        $grace = max(0, (int) config('esports.score_games.manual.grace_minutes', 60));
 
         if (! $game->acceptsManual()) {
             throw new TournamentRuleViolation('manual_off', __('This game takes no submissions: its values are read automatically.'));
         }
 
-        if ($tournament->status !== TournamentStatus::Running || $course === null || ! $window->hasStarted() || now()->greaterThanOrEqualTo($window->end->addMinutes($grace))) {
+        if ($tournament->status !== TournamentStatus::Running || $course === null || ! $window->hasStarted() || now()->greaterThanOrEqualTo(self::closesAt($tournament))) {
             throw new TournamentRuleViolation('closed', __('Submissions are closed for this leaderboard.'));
         }
 
@@ -129,6 +129,15 @@ final class ManualSubmissions
         $run->refresh();
     }
 
+    /**
+     * Until when a leaderboard takes submissions: its window's end plus
+     * `esports.score_games.manual.grace_minutes`.
+     */
+    public static function closesAt(Tournament $tournament): CarbonImmutable
+    {
+        return ScoreWindow::of($tournament)->end->addMinutes(max(0, (int) config('esports.score_games.manual.grace_minutes', 60)));
+    }
+
     public static function isProofUrl(string $url): bool
     {
         $url = trim($url);
@@ -151,6 +160,11 @@ final class ManualSubmissions
 
         if ($run->user_id === $admin->id) {
             throw new TournamentRuleViolation('interested', __('This is your own submission, so another admin has to review it.'));
+        }
+
+        // Security gate F1: no admin reviews a submission of a leaderboard they have a stake in.
+        if ($run->tournament !== null && ScoreLeaderboards::interested($run->tournament, $admin)) {
+            throw new TournamentRuleViolation('interested', ScoreLeaderboards::interestMessage());
         }
     }
 }

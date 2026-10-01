@@ -36,8 +36,8 @@ new #[Title('Gamer tags')] class extends Component {
 
         $this->store(array_filter(array_map('trim', $validated['gamerTags'] ?? [])));
         $this->gamerTags = $this->fields($this->user()->gamer_tags ?? []);
-        // A score game's finishes our server reported before the player stored the account id (plan "AoE2 und Trackmania", P4).
-        \App\Support\Scores\ScoreAccounts::claim($this->user());
+        // A score game's account id another player stored too goes to an admin, with its runs (plan "AoE2 und Trackmania", P4, F4).
+        \App\Support\Scores\ScoreAccounts::settle($this->user());
 
         $this->dispatch('gamer-tags-saved');
     }

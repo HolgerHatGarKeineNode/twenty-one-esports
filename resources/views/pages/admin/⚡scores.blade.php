@@ -3,7 +3,10 @@
 use App\Models\ScoreRun;
 use App\Models\User;
 use App\Support\LeagueTime;
+use App\Games\GameRegistry;
+use App\Games\ScoreGame;
 use App\Support\Scores\ManualSubmissions;
+use App\Support\Scores\ScoreAccounts;
 use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -61,6 +64,46 @@ new #[Title('Score submissions')] #[Layout('layouts::app', ['section' => 'admin'
     {
         return ScoreRun::query()->where('source', ScoreRun::MANUAL)->where(fn ($query) => $query->whereNotNull('verified_at')->orWhereNotNull('rejected_at'))
             ->with(['user', 'verifiedBy', 'tournament'])->latest('updated_at')->latest('id')->limit(20)->get();
+    }
+
+    /**
+     * Finishes our servers reported for a game account id no player owns
+     * for sure yet, grouped by id, with the players who stored it.
+     *
+     * @return list<array{game: \App\Games\ScoreGame, account: string, runs: int, claimers: list<User>}>
+     */
+    #[Computed]
+    public function accounts(): array
+    {
+        return ScoreAccounts::pending();
+    }
+
+    /**
+     * Confirm a stored account id as one player's (security gate F4): it maps to them from now on, and its
+     * pending finishes are handed over.
+     */
+    public function confirmAccount(string $game, string $account, int $userId): void
+    {
+        Gate::authorize('admin');
+        $this->flash = '';
+        $this->error = '';
+        $score = app(GameRegistry::class)->find($game);
+        $player = User::query()->find($userId);
+
+        if (! $score instanceof ScoreGame || $player === null) {
+            return;
+        }
+
+        try {
+            $moved = ScoreAccounts::confirm($score, $account, $player, $this->admin());
+        } catch (TournamentRuleViolation $violation) {
+            $this->error = $violation->getMessage();
+
+            return;
+        }
+
+        $this->flash = trans_choice('Confirmed for :name: :count finish handed over.|Confirmed for :name: :count finishes handed over.', $moved, ['name' => $player->displayName()]);
+        unset($this->accounts);
     }
 
     public function approve(int $runId, ManualSubmissions $submissions): void
@@ -154,6 +197,32 @@ new #[Title('Score submissions')] #[Layout('layouts::app', ['section' => 'admin'
                                 </label>
                                 <x-button type="submit" variant="secondary" data-test="score-reject-confirm">{{ __('Reject') }}</x-button>
                             </form>
+                        @endif
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </x-admin.panel>
+
+    <x-admin.panel :title="__('Unconfirmed accounts')" :meta="trans_choice(':count account|:count accounts', count($this->accounts))" data-test="scores-accounts">
+        <p class="m-0 max-w-[80ch] text-[13px] leading-normal text-ink-2">{{ __('Finishes our servers reported for a game account no player owns for sure: nobody stored the id, or more than one player did. Nothing here counts until you confirm the account for the player it belongs to. Ids are private: never copy them anywhere public.') }}</p>
+        @if ($this->accounts === [])
+            <x-admin.empty :text="__('No finish waits for an account.')" />
+        @else
+            <ul class="m-0 flex list-none flex-col p-0">
+                @foreach ($this->accounts as $group)
+                    <li wire:key="account-{{ $group['game']->slug() }}-{{ md5($group['account']) }}" class="flex flex-col gap-2 border-t border-hairline py-3 first:border-t-0" data-test="score-account">
+                        <span class="flex flex-col gap-0.5">
+                            <b class="font-mono text-[13px] [overflow-wrap:anywhere]">{{ $group['account'] }}</b>
+                            <span class="text-xs text-ink-2">{{ \App\Support\GameNames::game($group['game']->slug()) }} · {{ trans_choice(':count finish waits|:count finishes wait', $group['runs']) }} · {{ $group['claimers'] === [] ? __('no player stored this id') : trans_choice(':count player stored this id|:count players stored this id', count($group['claimers'])) }}</span>
+                        </span>
+                        @if ($group['claimers'] !== [])
+                            <span class="flex flex-wrap gap-2">
+                                @foreach ($group['claimers'] as $claimer)
+                                    <x-button variant="secondary" wire:click="confirmAccount('{{ $group['game']->slug() }}', @js($group['account']), {{ $claimer->id }})"
+                                              wire:confirm="{{ __('Confirm this account for :name?', ['name' => $claimer->displayName()]) }}" data-test="score-account-confirm">{{ __('Confirm for :name', ['name' => $claimer->displayName()]) }}</x-button>
+                                @endforeach
+                            </span>
                         @endif
                     </li>
                 @endforeach
