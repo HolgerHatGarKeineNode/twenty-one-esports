@@ -27,7 +27,7 @@ import { keyLabel, keyMap, normalizeControls } from './keys.js';
 import { drawPreview, drawWell, SHOWN_ROWS } from './renderer.js';
 import { encodeReplay, REPLAY_VERSION } from './replay.js';
 import { createSession } from './session.js';
-import { createSound, normalizeSound } from './sound.js';
+import { createSound, cuesFor, normalizeSound } from './sound.js';
 import { createTicker, formatTicks } from './ticker.js';
 
 const COUNTDOWN_MS = 3000;
@@ -432,24 +432,13 @@ document.addEventListener('alpine:init', () => {
                 this.updateHud();
             },
 
-            /** The effect for one tick, the most telling thing first; the run's end has its own. */
+            /** The effects for one tick, several where they belong together; the run's end has its own. */
             sounds(outcome) {
                 if (rt.session.over()) {
                     return;
                 }
-                if (outcome.cleared >= 4) {
-                    rt.sound.effect('halving');
-                } else if (outcome.cleared > 0) {
-                    rt.sound.effect('mined', outcome.cleared);
-                }
-                if (outcome.dropped) {
-                    rt.sound.effect('drop');
-                } else if (outcome.locked > 0) {
-                    rt.sound.effect('lock');
-                } else if (outcome.rotated) {
-                    rt.sound.effect('rotate');
-                } else if (outcome.moved) {
-                    rt.sound.effect('move');
+                for (const [name, arg] of cuesFor(outcome)) {
+                    rt.sound.effect(name, arg);
                 }
             },
 
@@ -506,6 +495,10 @@ document.addEventListener('alpine:init', () => {
                         this.practiceBest = outcome.ticks;
                         writeStored(STORE_BEST, outcome.ticks);
                     }
+                    if (previous !== null && outcome.ticks < previous) {
+                        // beat a time of its own: a flourish after the fanfare
+                        rt.sound.effect('best');
+                    }
                     this.result = { ...base, status: 'practice', previous };
 
                     return;
@@ -552,6 +545,9 @@ document.addEventListener('alpine:init', () => {
                     }
                 }
                 if (this.result.status === 'verified') {
+                    if (this.result.previous !== null && this.result.previous !== undefined && this.result.ticks < this.result.previous) {
+                        rt.sound.effect('best');
+                    }
                     // the weekly leaderboard below the game reads itself again (P4). Sent on window itself:
                     // `$dispatch` starts at the element that called this method (the start button, gone by now)
                     window.dispatchEvent(new CustomEvent('stacker-verified'));
