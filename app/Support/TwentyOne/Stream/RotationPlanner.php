@@ -2,6 +2,9 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Games\Blockfill;
+use App\Games\GameRegistry;
+
 /**
  * Which rotation scene the stream shows now: a pure state machine over time
  * and the games on show, deterministic and without ffmpeg.
@@ -44,6 +47,10 @@ namespace App\Support\TwentyOne\Stream;
  * after match and gallery (first in a round without games); while board
  * games are switched on but none runs, every BOARD_IDLE_EVERY-th round
  * shows it as a teaser; switched off, never. The loop is not cut short for it.
+ *
+ * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
+ * BlockfillSlide): while it is registered it joins the end of the pool
+ * (teasers()); switched off, never.
  */
 final class RotationPlanner
 {
@@ -85,6 +92,9 @@ final class RotationPlanner
     /** The pride and prize slides (PrideSlides): latest win, climbers, new sign-ups, a pot's prizes, block mined, strongest, rank-ups, streaks, payouts. */
     public const PRIDE_SCENES = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9'];
 
+    /** Blockfill's week (BlockfillSlide), in the pool only while Blockfill is registered. */
+    public const BLOCKFILL_SCENE = 'f1';
+
     /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4), the spotlight game (d6). */
     public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4', 'd6'];
 
@@ -104,6 +114,7 @@ final class RotationPlanner
         'd5' => 'stream.rotation.d5-board', 'd6' => 'stream.rotation.d6-spotlight',
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
         'm1' => 'stream.rotation.m1-mempool',
+        'f1' => 'stream.rotation.f1-blockfill',
     ];
 
     /**
@@ -172,6 +183,7 @@ final class RotationPlanner
         private int $loopEvery = 3,
         private float $loopSeconds = 60,
         private float $tournamentSeconds = 15,
+        private bool $blockfill = false,
     ) {}
 
     public static function fromConfig(float $loopSeconds): self
@@ -185,7 +197,18 @@ final class RotationPlanner
             (int) config('twentyone.stream.rotation.loop_every_rounds', 3),
             $loopSeconds,
             (float) config('twentyone.stream.rotation.tournament_seconds', 15),
+            app(GameRegistry::class)->find(Blockfill::SLUG) !== null,
         );
+    }
+
+    /**
+     * The teaser pool, taken in turn: TEASERS, and Blockfill's week at the end while it is registered.
+     *
+     * @return non-empty-list<string>
+     */
+    public function teasers(): array
+    {
+        return $this->blockfill ? [...self::TEASERS, self::BLOCKFILL_SCENE] : self::TEASERS;
     }
 
     /**
@@ -416,7 +439,8 @@ final class RotationPlanner
                 return $this->boards === BoardScene::OFF ? null
                     : $this->slot(self::BOARD, self::BOARD_SCENE, null, $start + ($this->boards === BoardScene::LIVE ? $this->matchSeconds : $this->teaserSeconds));
             default:
-                $scene = $entry['scene'] ?? self::TEASERS[$this->teaser++ % count(self::TEASERS)];
+                $pool = $this->teasers();
+                $scene = $entry['scene'] ?? $pool[$this->teaser++ % count($pool)];
 
                 return $this->slot(self::TEASER, $scene, null, $start + $this->teaserSeconds);
         }

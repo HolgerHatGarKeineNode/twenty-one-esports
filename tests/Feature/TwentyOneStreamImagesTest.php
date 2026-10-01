@@ -466,6 +466,8 @@ test('every person on a scene has an avatar, a clan its logo, every scene its ba
             'e5' => $brandBackdrop, 'e6' => $brandBackdrop, 'e7' => $brandBackdrop, 'e8' => $brandBackdrop, 'e9' => $brandBackdrop,
             // The mempool slide (plan "Stream-Slides", P7): the brand.
             'm1' => $brandBackdrop,
+            // Blockfill's week (plan "Blockfill", P6), switched off here: the brand.
+            'f1' => $brandBackdrop,
         ])
         ->and($spotlightBackdrop)->toStartWith('data:image/jpeg;base64,/9j/')->not->toBe($brandBackdrop)
         // The fallback scene (gallery or single game) too.

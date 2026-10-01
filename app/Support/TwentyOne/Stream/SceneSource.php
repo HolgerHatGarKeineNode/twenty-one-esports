@@ -4,6 +4,7 @@ namespace App\Support\TwentyOne\Stream;
 
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\ChessQueueEntry;
@@ -140,6 +141,14 @@ class SceneSource
         // The board games next to chess (plan "Mühle und Dame", P7): a live board game, else the teaser.
         if ($scene === RotationPlanner::BOARD_SCENE) {
             return ($this->board ??= app(BoardScene::class))->data($nowMs, $stats);
+        }
+
+        // Blockfill's week (plan "Blockfill", P6): its top 5 and its leader's chain, over its own blurred cover.
+        if ($scene === BlockfillSlide::SCENE) {
+            $blockfill = app(BlockfillSlide::class)->cached();
+
+            return ['blockfill' => $blockfill, 'stats' => $stats,
+                'backdrop' => ($blockfill === null ? null : $this->images->backdrop(Blockfill::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND)];
         }
 
         // The mempool of every game, and the season chain's blocks while a season runs (MempoolSlides).
