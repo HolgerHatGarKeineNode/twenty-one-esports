@@ -16,6 +16,7 @@ use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\Entrant;
 use App\Support\Tournaments\Engine\MatchResult;
 use App\Support\Tournaments\Engine\Slot;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -47,7 +48,11 @@ final class TournamentBrackets
         $bracket = BracketBuilder::build($tournament->format, $entrants, $options, $seed);
         $state = Advancement::resolve($bracket, [], $options);
 
-        DB::transaction(function () use ($tournament, $bracket, $state, $seed, $options): void {
+        // A lobby tournament (P10) fixes each lobby's settings, name and password with the draw.
+        $lobbies = Lobbies::isLobby($tournament);
+        $reportBy = $lobbies ? Lobbies::reportBy($tournament, CarbonImmutable::now())->toIso8601String() : null;
+
+        DB::transaction(function () use ($tournament, $bracket, $state, $seed, $options, $lobbies, $reportBy): void {
             $tournament->forceFill(['seed' => $seed])->save();
             $groupOf = [];
 
@@ -77,6 +82,7 @@ final class TournamentBrackets
             }
 
             foreach ($bracket->matches as $match) {
+                $lobby = $lobbies && $match->bracket === 'heat';
                 $row = $tournament->matches()->create([
                     'tournament_round_id' => $rounds["{$match->stage}-{$match->round}"]->id,
                     'key' => $match->key,
@@ -85,6 +91,8 @@ final class TournamentBrackets
                     'position' => $match->position,
                     'if_needed' => $match->ifNeeded,
                     'status' => $match->bracket === 'bye' ? 'done' : $state[$match->key]['status'],
+                    'lobby' => $lobby ? [...Lobbies::settings($tournament->game, count($match->slots)), 'name' => Lobbies::name($tournament, $match->position), 'report_by' => $reportBy] : null,
+                    'lobby_password' => $lobby ? Lobbies::password() : null,
                 ]);
 
                 foreach ($match->slots as $index => $slot) {

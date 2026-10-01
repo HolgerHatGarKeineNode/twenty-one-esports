@@ -28,7 +28,8 @@ use Throwable;
  *    order), and the P8a engine builds and stores the bracket with the
  *    block hash as its seed. Then the first matches start (TournamentRunner).
  *
- * Fewer than two entries after the close calls the tournament off, with a
+ * Fewer than two entries after the close (three for a lobby tournament,
+ * Lobbies::minEntriesOf()) calls the tournament off, with a
  * new version of its 31923 that says so (as an admin's abort). Fail
  * closed: without the league key or a readable block nothing moves; the
  * scheduler tries again (`tournaments:tick`).
@@ -115,11 +116,12 @@ final class TournamentDraws
 
             // A casual cup short of players stays in sign-up: CasualCups extends it once, switches it to a
             // small format (then 2 are enough) or calls it off (P25).
-            if ($locked->isCasualCup() && $entries < (CasualCups::isEvening($locked) ? 2 : CasualCups::minPlayers())) {
+            if ($locked->isCasualCup() && $entries < CasualCups::minEntries($locked)) {
                 return false;
             }
 
-            if ($entries < 2) {
+            // A lobby tournament (P10) needs its lobby's minimum, every other format two entries.
+            if ($entries < Lobbies::minEntriesOf($locked)) {
                 $locked->forceFill(['status' => TournamentStatus::Cancelled])->save();
                 // A new version of the 31923 says it is called off (NIP-52 has no status for it).
                 $this->publisher->republish($locked);
@@ -215,7 +217,7 @@ final class TournamentDraws
 
             $this->createParticipants($locked, $hash);
 
-            if ($locked->participants()->count() < 2) {
+            if ($locked->participants()->count() < Lobbies::minEntriesOf($locked)) {
                 $locked->forceFill(['status' => TournamentStatus::Cancelled, 'draw_hash' => $hash])->save();
                 $this->publisher->republish($locked);
 

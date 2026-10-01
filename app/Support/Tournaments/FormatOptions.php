@@ -29,6 +29,8 @@ final readonly class FormatOptions
      * @param  list<string>  $roundRobinTieBreaks
      * @param  'round-robin'|'single-elimination'|'double-elimination'  $groupStage
      * @param  'single-elimination'|'double-elimination'  $finalStage
+     * @param  int  $lobbyMinutes  Free for All as lobbies (P10, Lobbies): one round, nobody advances, each lobby
+     *                             planned at this many minutes; 0 = heats whose best move on
      */
     public function __construct(
         public int $bestOf = 1,
@@ -50,10 +52,18 @@ final readonly class FormatOptions
         public string $finalStage = 'single-elimination',
         public int $heatSize = 4,
         public int $heatAdvance = 2,
+        public int $lobbyMinutes = 0,
     ) {}
 
     public static function defaults(GameProfile $profile): self
     {
+        // A lobby game (P10) always plays Free for All as lobbies: its heat options come from the game, never the form.
+        if (Lobbies::isLobbyGame($profile->game)) {
+            $lobby = Lobbies::options($profile->game);
+
+            return new self(bestOf: $profile->bestOf, finalBestOf: $profile->finalBestOf, heatSize: $lobby['heatSize'], heatAdvance: $lobby['heatAdvance'], lobbyMinutes: $lobby['lobbyMinutes']);
+        }
+
         return new self(bestOf: $profile->bestOf, finalBestOf: $profile->finalBestOf);
     }
 
@@ -101,8 +111,10 @@ final readonly class FormatOptions
             advance: $int('advance', $defaults->advance, 1, 4),
             groupStage: $groupStage,
             finalStage: $finalStage,
-            heatSize: $int('heatSize', $defaults->heatSize, 3, 16),
-            heatAdvance: $int('heatAdvance', $defaults->heatAdvance, 1, 8),
+            // A lobby game's lobbies are the game's (P10): stored or submitted heat values are not read.
+            heatSize: $defaults->lobbyMinutes > 0 ? $defaults->heatSize : $int('heatSize', $defaults->heatSize, 3, 16),
+            heatAdvance: $defaults->lobbyMinutes > 0 ? $defaults->heatAdvance : $int('heatAdvance', $defaults->heatAdvance, 1, 8),
+            lobbyMinutes: $defaults->lobbyMinutes,
         );
     }
 
@@ -129,7 +141,7 @@ final readonly class FormatOptions
     {
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
-            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance);
+            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes);
     }
 
     /**
@@ -141,7 +153,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int}
      */
     public function toArray(): array
     {
@@ -165,6 +177,7 @@ final readonly class FormatOptions
             'finalStage' => $this->finalStage,
             'heatSize' => $this->heatSize,
             'heatAdvance' => $this->heatAdvance,
+            'lobbyMinutes' => $this->lobbyMinutes,
         ];
     }
 }

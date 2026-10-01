@@ -609,6 +609,18 @@ final class TournamentRunner
             ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
 
         foreach ($matches as $match) {
+            // A lobby (P10) with at most one entry left that is not out: the league decides it (LobbyResults).
+            if ($match->lobby !== null) {
+                $out = array_values(array_filter($match->slots->all(), fn ($slot): bool => self::isOut($tournament, $slot->participant)));
+
+                if ($out !== [] && count($match->slots) - count($out) <= 1) {
+                    $this->store($match, LobbyResults::leagueDecision($match, array_map(fn ($slot): int => $slot->slot, $out)));
+                    $decided = true;
+                }
+
+                continue;
+            }
+
             // A score leaderboard (plan "AoE2 und Trackmania", P4) is no duel: a withdrawn or disqualified entry stays
             // without a place when it is finalized (ScoreRuns), even with two entries.
             if (count($match->slots) !== 2 || $match->bracket === 'board') {
@@ -824,8 +836,8 @@ final class TournamentRunner
                 ->where('bracket', '!=', 'bye')->with(['slots.participant', 'seriesMatch', 'round.stage'])->get();
 
             foreach ($matches as $match) {
-                // A board game played elsewhere has no game record here and rates nothing (P5).
-                if ($match->isDirectorResult() && ! $locked->profile()->isBoard()) {
+                // A board game played elsewhere has no game record here and rates nothing (P5); a lobby (P10) neither.
+                if ($match->isDirectorResult() && ! $locked->profile()->isBoard() && $match->lobby === null) {
                     $locked->profile()->isChess() ? $this->finishChess($locked, $match) : $this->finishSeries($locked, $match);
                 }
             }
@@ -977,6 +989,11 @@ final class TournamentRunner
         // corrected per player, with a reason (ScoreLeaderboards::correct()), and the league writes the end.
         if ($tournament->profile()->isScore()) {
             throw new TournamentRuleViolation('score', __('A leaderboard has no match result. Enter or correct the players\' values on its scores page.'));
+        }
+
+        // A lobby (P10) has places, not a winner of two sides: they are entered on its lobby card (LobbyResults).
+        if ($match->lobby !== null) {
+            throw new TournamentRuleViolation('lobby', __('A lobby has places, not a winner. Enter them on its lobby card on the tournament page.'));
         }
 
         return $tournament->profile()->isChess() || $tournament->profile()->isBoard() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);

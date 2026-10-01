@@ -11,6 +11,7 @@ use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\MatchResult;
 use App\Support\Tournaments\Engine\Standings;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentBrackets;
 
 /**
@@ -30,11 +31,17 @@ use App\Support\Tournaments\TournamentBrackets;
  * - a final stage that ends in one heat (Free for All, Leaderboard): the
  *   heat's ranking, without the entries its result names `unplaced` (a score
  *   leaderboard's entries without a valid value, App\Support\Scores);
+ * - a lobby tournament (P10, App\Support\Tournaments\Lobbies), one round
+ *   of one or more lobbies: the places inside each lobby, ties kept (the
+ *   allies who share place 1), and across lobbies the same place shared:
+ *   every lobby's winners are place 1 together, then the next place number
+ *   of any lobby, and so on; `unplaced` entries are left out;
  * - a final stage that is a table (round robin, Swiss): the table's ranks,
  *   ties shared as the tie-breaks leave them.
  *
  * Only sides of the final stage are placed. Null while the tournament is not
- * finished or when its end cannot be read (parallel heats).
+ * finished or when its end cannot be read (parallel heats that feed nothing
+ * else are read as lobbies).
  */
 final class TournamentPlacements
 {
@@ -74,6 +81,11 @@ final class TournamentPlacements
 
         $final = array_values(array_filter($bracket->matches, fn (BracketMatch $match): bool => $match->stage === $stage));
         $terminal = array_values(array_filter($final, fn (BracketMatch $match): bool => ! isset($fed[$match->key]) && $match->bracket !== 'third-place'));
+
+        // Lobbies (P10): every heat ends the tournament for its players.
+        if (Lobbies::isLobby($tournament) && $terminal !== [] && array_all($terminal, fn (BracketMatch $match): bool => $match->bracket === 'heat')) {
+            return self::lobbies($tournament, $terminal, $state);
+        }
 
         if (count($terminal) === 1) {
             $last = $state[$terminal[0]->key] ?? null;
@@ -206,6 +218,53 @@ final class TournamentPlacements
         ksort($groups);
 
         return self::numbered(array_values($groups));
+    }
+
+    /**
+     * The places of a lobby tournament: the place number each entry has in
+     * its lobby (shared places kept), the same number in every lobby shared;
+     * null until every lobby is decided.
+     *
+     * @param  list<BracketMatch>  $lobbies
+     * @param  array<string, array{entrants: list<int|null>, status: string, winner: int|null, loser: int|null, ranking: list<int>}>  $state
+     * @return list<array{place: int, participants: list<int>}>|null
+     */
+    private static function lobbies(Tournament $tournament, array $lobbies, array $state): ?array
+    {
+        $stored = TournamentMatch::query()->where('tournament_id', $tournament->id)->whereIn('key', array_map(fn (BracketMatch $match): string => $match->key, $lobbies))
+            ->get()->keyBy('key');
+        $byPlace = [];
+
+        foreach ($lobbies as $lobby) {
+            $row = $state[$lobby->key] ?? null;
+            $result = $stored->get($lobby->key)?->result;
+
+            if (($row['status'] ?? null) !== 'done' || ! is_array($result)) {
+                return null;
+            }
+
+            $unplaced = array_map(intval(...), (array) ($result['unplaced'] ?? []));
+            $ranks = array_values(array_map(intval(...), (array) ($result['ranks'] ?? [])));
+
+            foreach ($row['entrants'] as $slot => $entrant) {
+                if ($entrant === null || in_array($entrant, $unplaced, true)) {
+                    continue;
+                }
+
+                // A lobby without ranks (decided another way) ranks by its winner first, the others as they stand.
+                $position = array_search($entrant, $row['ranking'], true);
+                $place = $ranks[$slot] ?? (is_int($position) ? $position + 1 : count($row['entrants']));
+                $byPlace[$place][] = $entrant;
+            }
+        }
+
+        ksort($byPlace);
+
+        return self::numbered(array_values(array_map(function (array $ids): array {
+            sort($ids);
+
+            return $ids;
+        }, $byPlace)));
     }
 
     /**

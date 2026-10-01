@@ -530,6 +530,25 @@ new #[Layout('layouts::app', ['section' => 'matches', 'scripts' => ['resources/j
                 </details>
             @endif
 
+            {{-- Its tournaments and cups as one lobby match (P10, Lobbies), behind a disclosure like the one above. --}}
+            @php($lobbyFormat = \App\Support\Tournaments\Lobbies::rules($slug))
+            @if ($lobbyFormat !== [])
+                <details id="game-lobby-tournaments" class="group rounded-lg bg-card" data-test="game-lobby-tournaments">
+                    <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2 lg:px-5 [&::-webkit-details-marker]:hidden">
+                        <h2 class="m-0 text-[15px] font-bold">{{ __('Tournaments: one lobby match') }}</h2>
+                        <x-icon name="chevron-down" :size="16" class="shrink-0 text-ink-2 transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none" />
+                    </summary>
+                    <div class="flex flex-col gap-2 border-t border-hairline px-4 py-4 lg:px-5">
+                        <ul role="list" class="m-0 flex list-disc flex-col gap-1 pl-4 text-[13px] leading-normal break-words text-ink-2">
+                            @foreach ($lobbyFormat as $rule)
+                                <li>{{ $rule }}</li>
+                            @endforeach
+                        </ul>
+                        <a href="{{ route('rules') }}#{{ $slug }}-tournaments" class="inline-flex min-h-11 items-center self-start text-[13px]">{{ __('All rules') }}</a>
+                    </div>
+                </details>
+            @endif
+
             {{-- What a series is worth: the Elo arithmetic, behind a disclosure (P56: explanations never open by default). --}}
             <details id="game-worth" class="group rounded-lg bg-card" data-test="game-worth">
                 <summary class="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-4 py-2 lg:px-5 [&::-webkit-details-marker]:hidden">

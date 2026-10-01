@@ -233,8 +233,18 @@ final class Estimator
         );
     }
 
-    public function freeForAll(int $n, int $heatSize, int $advance): Structure
+    /**
+     * `$lobbies` (P10): one round of the fewest heats of at most `$heatSize`,
+     * nobody advances; every entry plays one match.
+     */
+    public function freeForAll(int $n, int $heatSize, int $advance, bool $lobbies = false): Structure
     {
+        if ($lobbies) {
+            $count = max(1, (int) ceil($n / max(1, $heatSize)));
+
+            return new Structure([['m' => $count, 'final' => true, 'ifNeeded' => false]], $count, 1, 1, 1);
+        }
+
         $rounds = [];
         $left = $n;
         $guard = 0;
@@ -258,7 +268,13 @@ final class Estimator
      */
     public function disabledReason(TournamentFormat $format, GameProfile $profile, int $n): ?string
     {
+        $lobbyGame = Lobbies::isLobbyGame($profile->game);
+
         return match (true) {
+            // A lobby game (P10) plays its tournaments only as one lobby match, everyone starting alone.
+            $lobbyGame && $profile->teamSize > 1 => 'Lobby tournaments are played one player each: pick the 1v1 mode.',
+            $lobbyGame && $format !== TournamentFormat::FreeForAll => 'This game plays its tournaments as one lobby match of up to 8 players.',
+            $lobbyGame => $n < Lobbies::minEntries($profile->game) ? 'Needs at least 3 players.' : null,
             // A score game (plan "AoE2 und Trackmania", P4) runs only as a leaderboard: nobody plays against anyone.
             $profile->isScore() && $format !== TournamentFormat::Leaderboard => 'Needs players who meet in a match. In a score game everyone plays alone for the best value.',
             $format === TournamentFormat::Leaderboard && $profile->isScore() => $n < 2 ? 'Needs at least 2 players.' : null,
@@ -289,7 +305,7 @@ final class Estimator
             TournamentFormat::RoundRobin => $this->roundRobin($n, $options->iterations),
             TournamentFormat::Swiss => $this->swiss($n, $options->swissRounds ?? self::swissDefault($n)),
             TournamentFormat::TwoStage => $this->twoStage($n, $options),
-            TournamentFormat::FreeForAll => $this->freeForAll($n, $options->heatSize, $options->heatAdvance),
+            TournamentFormat::FreeForAll => $this->freeForAll($n, $options->heatSize, $options->heatAdvance, $options->lobbyMinutes > 0),
             TournamentFormat::Leaderboard => new Structure([['m' => $n, 'final' => true, 'ifNeeded' => false]], $n, 1, 3, 1),
         };
     }
@@ -307,6 +323,12 @@ final class Estimator
     public function duration(TournamentFormat $format, Structure $structure, GameProfile $profile, FormatOptions $options, ?int $stations, ?Closure $slotOf = null): Duration
     {
         $slotOf ??= $profile->slot(...);
+
+        // A lobby (P10) runs to its time limit whatever the series plan says: planned, typical and latest alike.
+        if ($format === TournamentFormat::FreeForAll && $options->lobbyMinutes > 0) {
+            $slotOf = fn (int $bestOf): float => (float) $options->lobbyMinutes;
+        }
+
         $slot = $slotOf($options->bestOf);
         $finalSlot = $slotOf($options->finalBestOf);
         $rounds = array_map(fn (array $round): array => [...$round, 'merged' => 0], $structure->rounds);

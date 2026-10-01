@@ -162,7 +162,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             return null;
         }
 
-        $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->where('status', 'ready')->whereNull('result')
+        // A lobby cup (P10) shows the viewer's lobby on its lobby card instead (tournament-lobbies).
+        $match = TournamentMatch::query()->where('tournament_id', $this->tournament->id)->where('status', 'ready')->whereNull('result')->whereNull('lobby')
             ->where('bracket', '!=', 'bye')->whereHas('round', fn ($query) => $query->whereNotNull('window_ends_at'))
             ->whereHas('slots.participant', fn ($query) => $query->where('user_id', $user->id))
             ->with(['round', 'slots.participant', 'chessGame', 'seriesMatch', 'boardGame'])->first();
@@ -416,6 +417,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
     $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
     $status = $tournament->status;
+    // A lobby tournament (plan "AoE2 und Trackmania", P10): one lobby match, its lobby cards instead of a bracket.
+    $lobbies = \App\Support\Tournaments\Lobbies::isLobby($tournament);
     $drawn = $landing->drawn();
     $published = $status !== TournamentStatus::Draft && $tournament->published_at !== null;
     $places = $landing->places();
@@ -492,6 +495,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             ? __('Play your match; the tournament directors enter the result. Winners move on until the last match decides.')
             : ($playsHere ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
     ];
+
+    if ($lobbies) {
+        $steps = [
+            $steps[0],
+            [__('The draw'), __('When sign-up closes, players are seeded by Elo, and the hash of the next Bitcoin block splits them evenly into lobbies of up to :max.', ['max' => \App\Support\Tournaments\Lobbies::maxPlayers($tournament->game)])],
+            [__('Play'), __('Join your lobby with the name and password on its card. One diplomacy game; then report the places with a screenshot of the end screen, and a director confirms them.')],
+        ];
+    }
 
     if ($score) {
         $steps = [
@@ -853,7 +864,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     <section id="bracket" aria-labelledby="bracket-h" class="flex scroll-mt-24 flex-col gap-4 px-4 lg:px-12" data-test="bracket">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="flex flex-wrap items-center gap-3">
-                <h2 id="bracket-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Bracket') }}</h2>
+                <h2 id="bracket-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ $lobbies ? __('Lobbies') : __('Bracket') }}</h2>
                 @if ($projection !== null)
                     <span class="inline-flex h-6 items-center rounded-xs border border-dashed border-edge px-2 text-[11px] text-ink-2" data-test="projected-chip">{{ __('Projected') }}</span>
                 @endif
@@ -873,7 +884,21 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </span>
         </div>
 
-        @if ($drawn)
+        @if ($lobbies)
+            {{-- How every lobby is played (P10): the same sentences as /rules and the game page (Lobbies::rules()). --}}
+            <div class="flex flex-col gap-2 rounded-card bg-card p-4 lg:p-5" data-test="lobby-rules">
+                <h3 class="m-0 text-[15px] font-bold">{{ __('How the lobbies are played') }}</h3>
+                <ul role="list" class="m-0 flex list-disc flex-col gap-1 pl-4 text-[13px] leading-normal break-words text-ink-2">
+                    @foreach (\App\Support\Tournaments\Lobbies::rules($tournament->game) as $rule)
+                        <li>{{ $rule }}</li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+
+        @if ($drawn && $lobbies)
+            <livewire:tournament-lobbies :tournament="$tournament" :key="'lobbies-'.$tournament->id" />
+        @elseif ($drawn)
             @include('pages.tournaments.partials.stages', ['stages' => $this->stages, 'tournament' => $tournament])
         @elseif ($projection !== null)
             <div class="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start" data-test="bracket-preview" data-format="{{ $tournament->format->value }}">
@@ -902,7 +927,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </figure>
 
                 <div class="flex min-w-0 flex-col gap-3 rounded-card bg-card p-4">
-                    <h3 class="m-0 text-[15px] font-bold">{{ $projection['groups'] !== [] ? __('Groups if sign-up closed now') : __('Round 1 if sign-up closed now') }}</h3>
+                    <h3 class="m-0 text-[15px] font-bold">{{ $projection['groups'] !== [] ? __('Groups if sign-up closed now') : ($lobbies ? __('Lobbies if sign-up closed now') : __('Round 1 if sign-up closed now')) }}</h3>
                     @if ($projection['groups'] !== [])
                         <div class="grid grid-cols-2 gap-2 sm:gap-3">
                             @foreach ($projection['groups'] as $number => $members)

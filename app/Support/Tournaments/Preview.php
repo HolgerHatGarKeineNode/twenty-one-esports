@@ -49,6 +49,7 @@ final class Preview
             TournamentFormat::RoundRobin => $preview->roundRobin($n),
             TournamentFormat::TwoStage => $preview->twoStage($n, $options),
             TournamentFormat::Swiss => $preview->swiss($n, $options),
+            TournamentFormat::FreeForAll => $options->lobbyMinutes > 0 ? $preview->lobbies($n, $options->heatSize) : $preview->board(),
             default => $preview->board(),
         };
 
@@ -172,6 +173,26 @@ final class Preview
 
             if ($rounds <= 9) {
                 $this->text($r * $column, 10, 'R:round', 'start', ['round' => $r + 1]);
+            }
+        }
+    }
+
+    /**
+     * Lobbies (P10): one column per lobby, one bar per player, as the draw
+     * splits them (the fewest lobbies of at most `$size`, as even as they come).
+     */
+    private function lobbies(int $n, int $size): void
+    {
+        $count = max(1, (int) ceil($n / max(1, $size)));
+        $column = $this->width / $count;
+        $bar = min(14.0, ($this->height - 24) / max(1, $size) - 4);
+
+        for ($lobby = 0; $lobby < $count; $lobby++) {
+            $players = intdiv($n, $count) + ($lobby < $n % $count ? 1 : 0);
+            $this->text($lobby * $column + 2, 10, 'Lobby :number', 'start', ['number' => $lobby + 1]);
+
+            for ($player = 0; $player < $players; $player++) {
+                $this->rect($lobby * $column + 2, 18 + $player * ($bar + 4), $column - 8, $bar, $lobby + $player * 0.15);
             }
         }
     }

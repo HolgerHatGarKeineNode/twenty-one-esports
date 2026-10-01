@@ -225,7 +225,12 @@ final class TournamentPublisher
         // a small cup's live evening (S2) at its planned end.
         $end = $tournament->pool_closed_at?->getTimestamp()
             ?? ($tournament->isCasualCup()
-                ? $start + (CasualCups::isEvening($tournament) ? CasualCups::planOf($tournament)['span_minutes'] * 60 : CasualCups::maxDays() * 86400)
+                ? $start + match (true) {
+                    CasualCups::isEvening($tournament) => CasualCups::planOf($tournament)['span_minutes'] * 60,
+                    // A lobby cup (P10) is one lobby match: it ends with the time limit.
+                    Lobbies::isLobby($tournament) => Lobbies::plannedMinutes($tournament->game) * 60,
+                    default => CasualCups::maxDays() * 86400,
+                }
                 : $start + (int) ceil($tournament->plannedDuration() * ($profile->isDaily() ? 86400 : 60)));
         $page = route('tournaments.show', $tournament);
         // NIP-52 has no status for a called-off event (P18): the new version says it in title and summary.
@@ -277,6 +282,11 @@ final class TournamentPublisher
 
     private function summary(Tournament $tournament): string
     {
+        // A lobby tournament (P10) has no mode to name: everyone plays alone in one lobby.
+        if (Lobbies::isLobby($tournament)) {
+            return app(GameRegistry::class)->name($tournament->game).', one lobby match, free for all.';
+        }
+
         $mode = $tournament->profile()->isChess() ? 'Chess '.($tournament->mode === 'correspondence' ? 'daily' : $tournament->mode) : app(GameRegistry::class)->name($tournament->game).' '.$tournament->mode;
 
         return $mode.', '.strtolower(str_replace('-', ' ', $tournament->format->value)).'.';
@@ -294,6 +304,8 @@ final class TournamentPublisher
         // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no pairing, no match, no Elo.
         if ($profile->isScore()) {
             $lines = [...$lines, ...$this->scoreLines($tournament)];
+        } elseif (Lobbies::isLobby($tournament)) {
+            $lines = [...$lines, ...$this->lobbyLines($tournament)];
         } else {
             $lines = [...$lines, ...$this->matchLines($tournament)];
         }
@@ -335,6 +347,32 @@ final class TournamentPublisher
             'Values are read from the game or submitted with a proof link an admin checks; the directors can correct a value, always with a reason.',
             'Unrated: a leaderboard has no Elo ladder. Its places score points on the game\'s points ladder.',
         ];
+    }
+
+    /**
+     * How a lobby tournament is played, in words (P10, Lobbies): the lobbies,
+     * the diplomacy settings, the shared place 1, the report, unrated.
+     *
+     * @return list<string>
+     */
+    private function lobbyLines(Tournament $tournament): array
+    {
+        $game = $tournament->game;
+        $hours = Lobbies::timeLimit($game) % 60 === 0 ? (Lobbies::timeLimit($game) / 60).' h' : Lobbies::timeLimit($game).' min';
+        $lines = [
+            ($tournament->isCasualCup() ? 'A casual cup the league opens on its own, played as one lobby match: ' : 'One lobby match: ')
+                .'every player is in one lobby of '.min(Lobbies::minEntries($game), Lobbies::maxPlayers($game)).' to '.Lobbies::maxPlayers($game)
+                .', the lobbies split evenly and seeded from the draw\'s block hash; nobody moves on.',
+            'A diplomacy game: everyone starts alone, Lock Teams off, Allied Victory on, victory by Time Limit after '.$hours.'; the map size follows the lobby\'s players. The allies still standing at the end share place 1, everyone else ranks by the order they were defeated.',
+            'A player reports the places with a screenshot of the end screen and a tournament director confirms them.',
+            'Unrated: a lobby has no Elo ladder.',
+        ];
+
+        if ($tournament->isCasualCup()) {
+            $lines[] = "Places: {$tournament->capacity}.";
+        }
+
+        return $lines;
     }
 
     /**

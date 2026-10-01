@@ -392,6 +392,21 @@ return [
     | civilisations and colours, a later one is a loss unless both agree.
     | These values are defaults pending the user's confirmation.
     |
+    | `lobby`: the game's tournaments are lobby tournaments (plan "AoE2 und
+    | Trackmania", P10, user 2026-10-01: "Es soll nur ein einziges Match
+    | sein"), App\Support\Tournaments\Lobbies. Free for All in one round:
+    | every entry plays one match in a lobby of at most `max_players`, the
+    | entries split evenly over the fewest lobbies; nobody advances. At
+    | least `min_entries` sign-ups, else the tournament is called off. A
+    | diplomacy game: everyone starts alone (an odd number is no special
+    | case), `lock_teams` off, `allied_victory` on, victory by `victory`
+    | after `time_limit_minutes`. The map size follows the lobby's player
+    | count (`map_sizes`), fixed with the lobby at the draw. Players report
+    | the places with a screenshot of the end screen until
+    | `report_minutes` after the time limit; a director confirms. A casual
+    | cup of the game holds `cup_capacity` places. `setup_minutes` plans
+    | the time to fill the lobby before the game starts.
+    |
     */
 
     'series' => [
@@ -406,6 +421,24 @@ return [
                 'civilizations' => 'free',
                 'spectator_delay_minutes' => 2,
                 'restart_minutes' => 5,
+                'lobby' => [
+                    'min_entries' => 3,
+                    'max_players' => 8,
+                    'map' => 'Arabia',
+                    'civilizations' => 'free',
+                    'population' => 200,
+                    'lock_teams' => false,
+                    'allied_victory' => true,
+                    'victory' => 'time-limit',
+                    'time_limit_minutes' => 120,
+                    'spectator_delay_minutes' => 2,
+                    'restarts' => 1,
+                    'restart_minutes' => 5,
+                    'setup_minutes' => 15,
+                    'report_minutes' => 60,
+                    'cup_capacity' => 40,
+                    'map_sizes' => [2 => 'Tiny', 3 => 'Small', 4 => 'Medium', 5 => 'Normal', 6 => 'Normal', 7 => 'Large', 8 => 'Large'],
+                ],
             ],
         ],
     ],
