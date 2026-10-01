@@ -153,3 +153,67 @@ test('a player\'s ranked run is started, submitted after the played time and ver
 
     shellShot($page, 'stacker-1440-ranked-verified');
 });
+
+test('a guest practises with the real Practice button and real keys: the well moves and the clock runs, clean console, in English and German', function (string $locale) {
+    $page = visit(BrowserLogin::LANDING)->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(1440, 900);
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+
+    $wellImage = '() => document.querySelector("[data-test=well]").toDataURL()';
+    $idle = $page->evaluate($wellImage);
+    $page->locator('[data-test=start-practice]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "playing" && window.__stacker.state().ticks > 2', 6_000);
+    $started = $page->evaluate($wellImage);
+    $startedAt = $page->evaluate('() => window.__stacker.state().ticks');
+
+    // Real key presses through the browser (no hook): moves, a turn and three hard drops.
+    foreach (['ArrowLeft', 'ArrowLeft', 'Space', 'ArrowRight', 'KeyX', 'Space', 'ArrowRight', 'ArrowRight', 'ArrowRight', 'Space'] as $key) {
+        $page->locator('body')->press($key);
+        $page->evaluate('() => new Promise((resolve) => setTimeout(resolve, 80))');
+    }
+    BrowserWait::until($page, '() => window.__stacker.state().ticks > 60', 5_000);
+    $state = $page->evaluate('() => window.__stacker.state()');
+    $final = $page->evaluate($wellImage);
+    fwrite(STDERR, "stacker real keys {$locale}: started at tick {$startedAt} (".md5($started)."), now tick {$state['ticks']} (".md5($final).'), hash '.$state['hash'].PHP_EOL);
+
+    expect([$state['kind'], $state['mode']])->toBe(['practice', 'playing'])
+        ->and($started)->not->toBe($idle)
+        ->and($final)->not->toBe($started)
+        ->and($page->evaluate('() => document.querySelector("[data-test=time]").innerText'))->not->toBe('0:00.00')
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    shellShot($page, "stacker-1440-{$locale}-playing");
+    fwrite(STDERR, "stacker real keys {$locale}: ticks {$state['ticks']}, time ".$page->evaluate('() => document.querySelector("[data-test=time]").innerText').PHP_EOL);
+})->with(['en', 'de']);
+
+test('leaving the tab during a ranked run stops it; the next ranked run abandons it on the server', function () {
+    $this->freezeTime();
+    $page = stackerPage(User::factory()->create(), 1440, 900);
+
+    $page->locator('[data-test=start-ranked]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "playing" && window.__stacker.state().kind === "ranked"', 8_000);
+    $run = StackerRun::query()->sole();
+    expect($run->started_at)->not->toBeNull();
+
+    $page->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); }');
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "aborted"', 3_000);
+    expect($page->evaluate('() => document.querySelector("[data-test=result-status]").innerText'))->toBe('Run stopped: you left the tab')
+        ->and($run->refresh()->status->value)->toBe('issued')
+        ->and($run->submitted_at)->toBeNull();
+
+    // Back on the tab, the next ranked run replaces the stopped one: abandoned, never scored.
+    $page->evaluate('() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => false }); document.dispatchEvent(new Event("visibilitychange")); }');
+    $this->travel(3)->seconds();
+    $page->locator('[data-test=play-again]')->click();
+    BrowserWait::until($page, '() => performance.getEntriesByType("resource").filter((e) => e.name.endsWith("/stacker/runs")).length === 2', 5_000);
+
+    fwrite(STDERR, 'stacker visibility network failures: '.json_encode($page->evaluate('() => window.__stackerNetwork ?? []')).' trace '.json_encode(array_column($page->evaluate('() => window.__stacker.state().trace'), 'event')).PHP_EOL);
+    expect($run->refresh())->status->value->toBe('abandoned')->reason->toBe('replaced')
+        ->and(StackerRun::query()->count())->toBe(2)
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+});

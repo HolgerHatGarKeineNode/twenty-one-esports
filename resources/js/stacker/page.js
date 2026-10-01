@@ -36,13 +36,25 @@ function csrfHeaders() {
     return token ? { 'X-CSRF-TOKEN': token } : {};
 }
 
+/**
+ * A JSON call to the run endpoints. A network failure answers status 0 instead of
+ * throwing, so every caller handles it as a failed call (a run that cannot start,
+ * a submission left for the verdict poll) and no promise rejects unhandled.
+ */
 async function request(method, url, body) {
-    const response = await fetch(url, {
-        method,
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        credentials: 'same-origin',
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            method,
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...csrfHeaders() },
+            body: body === undefined ? undefined : JSON.stringify(body),
+            credentials: 'same-origin',
+        });
+    } catch (error) {
+        (window.__stackerNetwork ??= []).push(`${method} ${url}: ${error}`);
+
+        return { status: 0, data: null };
+    }
     let data = null;
     if (response.status !== 204) {
         try {
@@ -231,6 +243,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             async startRanked() {
+                trace(config, 'startRanked');
                 if (!this.signedIn) {
                     window.location.href = config.urls.login;
 

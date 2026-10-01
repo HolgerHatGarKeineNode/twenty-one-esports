@@ -190,7 +190,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 </section>
 
                 <section class="flex flex-col gap-3" aria-labelledby="stacker-keys-h">
-                    <h2 id="stacker-keys-h" class="m-0 font-display text-[18px] font-bold">{{ __('Keys') }}</h2>
+                    <h2 id="stacker-keys-h" class="m-0 font-display text-[18px] font-bold">{{ __('Keyboard') }}</h2>
                     <dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-sm text-ink-2" data-test="keys">
                         @foreach ($actions as $action => $label)
                             <dt><kbd class="rounded-sm border border-b-2 border-line px-1.5 font-mono text-[12px] text-ink" x-text="keyText('{{ $action }}')"></kbd></dt>
