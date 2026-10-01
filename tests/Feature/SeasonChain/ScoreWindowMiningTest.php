@@ -19,6 +19,7 @@ use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Nostr\NostrKeys;
@@ -253,6 +254,28 @@ describe('mining', function () {
         app(ScoreLeaderboards::class)->tick();
 
         expect(SeasonAttestation::query()->sole()->height)->toBe(1);
+    });
+
+    test('an entry whose frozen standing points at another player\'s run is no verified entrant (audit N1)', function () {
+        [$tournament, $users] = soloWindow(5);
+        soloPlay($tournament, $users);
+        $this->travelTo(ScoreWindow::of($tournament)->end->addHours(25));
+        app(ScoreLeaderboards::class)->tick();
+
+        // The last entry's frozen row borrows the winner's run.
+        $board = TournamentMatch::query()->where(['tournament_id' => $tournament->id, 'bracket' => 'board'])->sole();
+        $result = $board->result;
+        $winnerRun = $result['standings'][0]['run'];
+        $result['standings'][4]['run'] = $winnerRun;
+        $board->forceFill(['result' => $result])->save();
+
+        $this->travelTo(ScoreWindow::of($tournament)->end->addHours(49));
+        app(ScoreLeaderboards::class)->tick();
+
+        $attestation = SeasonAttestation::query()->sole();
+
+        expect([$attestation->height, $attestation->reason])->toBe([null, 'too-few-entrants'])
+            ->and($attestation->candidate['solo']['entrants'])->toHaveCount(3);
     });
 
     test('attesting the same window twice keeps one attestation', function () {

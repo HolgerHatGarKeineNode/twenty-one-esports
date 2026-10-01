@@ -670,7 +670,9 @@ final class SeasonChains
         $verified = function (ScoreStanding $standing) use ($runs, $window): bool {
             $run = $standing->runId === null ? null : $runs->get($standing->runId);
 
-            return $run instanceof ScoreRun && $run->source !== ScoreRun::DIRECTOR && $run->verified_at !== null && $run->rejected_at === null
+            // The run is the entry's own (audit N1): a standing never counts another player's value.
+            return $run instanceof ScoreRun && $run->user_id !== null && $run->user_id === $standing->participant->user_id
+                && $run->source !== ScoreRun::DIRECTOR && $run->verified_at !== null && $run->rejected_at === null
                 && $run->value !== null && $window->contains($run->achieved_at);
         };
 
