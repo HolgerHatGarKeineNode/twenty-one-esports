@@ -12,6 +12,7 @@ use App\Support\SeasonChain\SeasonChains;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Vite;
 use Tests\Integration\Support\Stack;
 use Tests\Support\BrowserAssets;
@@ -31,10 +32,15 @@ use Tests\TestCase;
 
 pest()->tia()->defaultBranch('master');
 
+// Before anything can autoload swentel\nostr\Sign\Sign: see the header of FastSign.php.
+require_once __DIR__.'/Support/FastSign.php';
+// Per-test timings, only when TEST_PROFILE_FILE is set: see scripts/test-profile.php.
+require_once __DIR__.'/Support/TestProfile.php';
 require_once __DIR__.'/Support/tournaments.php';
 require_once __DIR__.'/Support/casual.php';
 require_once __DIR__.'/Support/casual_cups.php';
 require_once __DIR__.'/Support/wallet.php';
+require_once __DIR__.'/Support/twentyone_stream.php';
 require_once __DIR__.'/Support/season_settlement.php';
 require_once __DIR__.'/Support/shares.php';
 require_once __DIR__.'/Support/navigation.php';
@@ -45,8 +51,16 @@ require_once __DIR__.'/Support/mempool.php';
 require_once __DIR__.'/Support/scores.php';
 require_once __DIR__.'/Integration/Support/helpers.php';
 
+// No test of the default suite may reach the real network: an unfaked
+// Http call (App\Support\Membership asked the live Verein API at
+// verein.einundzwanzig.space on every page that shows a member badge) costs a
+// DNS lookup plus a TLS handshake, makes the result depend on the outside
+// world, and was measured at ~7 % of one test's wall time. A stray request now
+// throws; the app code that guards its calls treats that like an unreachable
+// host, exactly as before, only instantly.
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    ->beforeEach(fn () => Http::preventStrayRequests())
     ->group('feature')
     ->in('Feature');
 
