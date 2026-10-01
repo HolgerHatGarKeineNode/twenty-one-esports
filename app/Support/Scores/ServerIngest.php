@@ -25,11 +25,10 @@ use LogicException;
  *   future (five minutes of clock skew allowed). A bad event is refused on
  *   its own; the others of the batch are stored.
  * - Idempotent by (server, event id): the same event sent twice is stored once.
- * - Mapped by the privately stored account id (users.gamer_tags under the
- *   game's account service): exactly one player with that id takes the run;
- *   none, or more than one, leaves it pending (`user_id` null), which no page
- *   ever shows. Only an admin hands pending runs to a player
- *   (ScoreAccounts::confirm(), security gate F4).
+ * - Mapped only by an account id an admin confirmed for a player
+ *   (ScoreAccounts::userFor(), re-audit F4): any other finish stays pending
+ *   (`user_id` null) with its account id, which no public page ever shows,
+ *   until an admin confirms the claim on /admin/scores.
  * - Trusted as read: our own server's record is verified at once (source
  *   `server`); admins still correct a leaderboard through its directors.
  */

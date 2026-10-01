@@ -21,8 +21,8 @@ final readonly class ScoreAccount
         $service = $game->accountService();
         $accountId = $service === null ? '' : trim((string) ($user->gamer_tags[$service] ?? ''));
 
-        // Only an id that is this player's (confirmed, or stored by nobody else) is read for them (security gate F4):
-        // a player who stores another's id gets no records of it.
+        // Only an id an admin confirmed as this player's is read for them (re-audit F4): a stored id is a claim, and a
+        // player who stores another's id gets no records of it.
         return new self($user->id, $accountId !== '' && ScoreAccounts::userFor($game, $accountId) === $user->id ? $accountId : null);
     }
 }

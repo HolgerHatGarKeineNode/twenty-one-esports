@@ -2,40 +2,44 @@
 
 namespace App\Support\Scores;
 
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Games\ScoreGame;
+use App\Models\ScoreAccountChange;
 use App\Models\ScoreAccountClaim;
 use App\Models\ScoreRun;
+use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Tournaments\TournamentRuleViolation;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
  * The private link between a league player and their account in a score
- * game (plan "AoE2 und Trackmania", P4). The account id is stored like a
- * gamer tag (users.gamer_tags, under ScoreGame::accountService()) and, like
- * one, never leaves the settings: no public page, no Nostr event names it.
- * The league reads it only to ask a game's API or to map a server's finish.
+ * game (plan "AoE2 und Trackmania", P4). A player stores the account id like
+ * a gamer tag (users.gamer_tags, under ScoreGame::accountService()); like
+ * one, it never leaves the settings: no public page, no Nostr event names it.
  *
- * A player's own claim is not proven (a later phase logs in with the game),
- * so (security gate F4):
- * - an id an admin confirmed for one player is that player's, whoever else
- *   stores it (ScoreAccountClaim);
- * - otherwise an id maps to a player only while exactly one player stores
- *   it, in every path: the server ingest and the pollers alike;
- * - a run already pending is never handed over by a player's own claim:
- *   an admin confirms the claim on /admin/scores (confirm());
- * - when a second player stores an id that is not confirmed, the runs mapped
- *   to it go back to pending for an admin (settle()), instead of the first
- *   claimer keeping them and the next finishes going nowhere unseen.
+ * A stored id is a claim, nothing more: it is not proven (re-audit F4,
+ * decided 2026-10-01). So:
+ * - only a claim an admin confirmed maps: a server's finish and a poller's
+ *   read go to a player only through a ScoreAccountClaim. An unconfirmed
+ *   claim, single or contested, maps nothing; such finishes stay pending
+ *   with their account id and show on /admin/scores;
+ * - an admin confirms, reassigns or revokes a claim with a reason, every
+ *   claimer of the id side by side; reassigning or revoking moves the runs
+ *   already mapped with it (to the new owner, or back to pending);
+ * - no admin decides an id they claim themselves, or one claimed by a player
+ *   of a running leaderboard of the game they have an interest in
+ *   (ScoreLeaderboards::interested(): they play in it, a clan in it, ...);
+ * - every decision is a line in score_account_changes.
  */
 final class ScoreAccounts
 {
     /**
-     * The league player this account id of the game belongs to: the confirmed
-     * claim, else the one player who stored it; null when nobody, or more than
-     * one player without a confirmed claim, did.
+     * The player this account id of the game was confirmed for, or null.
      */
     public static function userFor(ScoreGame $game, string $accountId): ?int
     {
@@ -47,13 +51,7 @@ final class ScoreAccounts
 
         $confirmed = ScoreAccountClaim::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->value('user_id');
 
-        if ($confirmed !== null) {
-            return (int) $confirmed;
-        }
-
-        $ids = self::claimers($game, $accountId, 2);
-
-        return count($ids) === 1 ? $ids[0] : null;
+        return $confirmed === null ? null : (int) $confirmed;
     }
 
     /**
@@ -111,67 +109,83 @@ final class ScoreAccounts
     }
 
     /**
-     * After a player saved their tags: an account id of theirs that another
-     * player stored too, and that no admin confirmed, is contested. Every run
-     * mapped to it goes back to pending (and shows on /admin/scores), nobody
-     * keeps it. Returns how many runs went back.
-     */
-    public static function settle(User $user): int
-    {
-        $moved = 0;
-
-        foreach (app(GameRegistry::class)->scores() as $game) {
-            $service = $game->accountService();
-            $accountId = $service === null ? '' : trim((string) ($user->gamer_tags[$service] ?? ''));
-
-            if ($accountId === '' || count(self::claimers($game, $accountId, 2)) < 2
-                || ScoreAccountClaim::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->exists()) {
-                continue;
-            }
-
-            $moved += ScoreRun::query()->whereNotNull('user_id')->where(['game' => $game->slug(), 'account_id' => $accountId])->update(['user_id' => null]);
-        }
-
-        return $moved;
-    }
-
-    /**
-     * An admin confirms that the account id is this player's: it maps to the
-     * player from now on, and every pending run of it is handed over. Only a
-     * player who stored the id can get it, and no admin confirms their own.
+     * Confirm an unconfirmed account id as one claimer's: it maps to them from
+     * now on, and its pending runs are handed over.
      *
      * @throws TournamentRuleViolation
      */
-    public static function confirm(ScoreGame $game, string $accountId, User $player, User $admin): int
+    public static function confirm(ScoreGame $game, string $accountId, User $player, User $admin, string $reason): int
     {
         $accountId = trim($accountId);
+        $reason = self::reason($reason);
+        self::assertMayDecide($game, $accountId, [$player->id], $admin);
 
-        if (! $admin->isAdmin()) {
-            throw new TournamentRuleViolation('not_admin', __('Only an admin confirms an account.'));
+        if (! in_array($player->id, self::claimers($game, $accountId), true)) {
+            throw new TournamentRuleViolation('not_claimed', __('This player has not stored that account id.'));
         }
 
-        if ($player->id === $admin->id) {
-            throw new TournamentRuleViolation('interested', __('This is your own account, so another admin has to confirm it.'));
+        return DB::transaction(function () use ($game, $accountId, $player, $admin, $reason): int {
+            if (ScoreAccountClaim::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->lockForUpdate()->exists()) {
+                throw new TournamentRuleViolation('confirmed', __('This account is confirmed already. Reassign or revoke it instead.'));
+            }
+
+            ScoreAccountClaim::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $player->id, 'confirmed_by_id' => $admin->id]);
+            $moved = self::move($game, $accountId, null, $player->id);
+            self::log($game, $accountId, 'confirm', null, $player->id, $admin, $reason, $moved);
+
+            return $moved;
+        });
+    }
+
+    /**
+     * Move a confirmed account id to another of its claimers, with every run
+     * mapped with it and every pending one.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public static function reassign(ScoreGame $game, string $accountId, User $player, User $admin, string $reason): int
+    {
+        $accountId = trim($accountId);
+        $reason = self::reason($reason);
+        $claim = self::claim($game, $accountId);
+        self::assertMayDecide($game, $accountId, [$claim->user_id, $player->id], $admin);
+
+        if ($claim->user_id === $player->id) {
+            throw new TournamentRuleViolation('same', __('The account is confirmed for this player already.'));
         }
 
         if (! in_array($player->id, self::claimers($game, $accountId), true)) {
             throw new TournamentRuleViolation('not_claimed', __('This player has not stored that account id.'));
         }
 
-        return DB::transaction(function () use ($game, $accountId, $player, $admin): int {
-            ScoreAccountClaim::query()->updateOrCreate(['game' => $game->slug(), 'account_id' => $accountId], ['user_id' => $player->id, 'confirmed_by_id' => $admin->id]);
+        return DB::transaction(function () use ($game, $accountId, $player, $admin, $reason, $claim): int {
+            $from = $claim->user_id;
+            $claim->forceFill(['user_id' => $player->id, 'confirmed_by_id' => $admin->id])->save();
+            $moved = self::move($game, $accountId, $from, $player->id) + self::move($game, $accountId, null, $player->id);
+            self::log($game, $accountId, 'reassign', $from, $player->id, $admin, $reason, $moved);
 
-            $moved = 0;
+            return $moved;
+        });
+    }
 
-            foreach (ScoreRun::query()->whereNull('user_id')->where(['game' => $game->slug(), 'account_id' => $accountId])->orderBy('id')->get() as $run) {
-                try {
-                    $run->forceFill(['user_id' => $player->id])->save();
-                    $moved++;
-                } catch (UniqueConstraintViolationException) {
-                    // The player already has this very record (same source, course, value and time): a second copy counts nothing.
-                    $run->delete();
-                }
-            }
+    /**
+     * Take a confirmation back: the id maps to nobody again, and the runs
+     * mapped with it go back to pending.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public static function revoke(ScoreGame $game, string $accountId, User $admin, string $reason): int
+    {
+        $accountId = trim($accountId);
+        $reason = self::reason($reason);
+        $claim = self::claim($game, $accountId);
+        self::assertMayDecide($game, $accountId, [$claim->user_id], $admin);
+
+        return DB::transaction(function () use ($game, $accountId, $admin, $reason, $claim): int {
+            $from = $claim->user_id;
+            $claim->delete();
+            $moved = ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId, 'user_id' => $from])->update(['user_id' => null]);
+            self::log($game, $accountId, 'revoke', $from, null, $admin, $reason, $moved);
 
             return $moved;
         });
@@ -179,7 +193,7 @@ final class ScoreAccounts
 
     /**
      * The pending runs of each game account id, for the admin review: the
-     * game, the id, how many runs wait, and who stored the id.
+     * game, the id, how many runs wait, and every player who stored the id.
      *
      * @return list<array{game: ScoreGame, account: string, runs: int, claimers: list<User>}>
      */
@@ -202,5 +216,127 @@ final class ScoreAccounts
         }
 
         return $groups;
+    }
+
+    /**
+     * How many account ids have finishes waiting for an admin (the admin nav badge).
+     */
+    public static function pendingAccounts(): int
+    {
+        return ScoreRun::query()->whereNull('user_id')->whereNotNull('account_id')->distinct()->count('account_id');
+    }
+
+    /**
+     * The confirmed claims, newest first, for the admin review.
+     *
+     * @return Collection<int, ScoreAccountClaim>
+     */
+    public static function confirmed(): Collection
+    {
+        return ScoreAccountClaim::query()->with('user')->latest('updated_at')->latest('id')->limit(100)->get();
+    }
+
+    /**
+     * Whether a finish of an id a player of this leaderboard stored waits for
+     * an admin inside its window: the leaderboard is not ended before (an
+     * unconfirmed claim maps nothing, so the end would leave that value out).
+     */
+    public static function waitsFor(Tournament $tournament, ScoreGame $game): bool
+    {
+        $service = $game->accountService();
+
+        if ($service === null) {
+            return false;
+        }
+
+        $ids = User::query()->whereIn('id', TournamentParticipant::query()->where('tournament_id', $tournament->id)->pluck('user_id')->filter()->all())
+            ->get(['id', 'gamer_tags'])->map(fn (User $user): string => trim((string) ($user->gamer_tags[$service] ?? '')))->filter()->unique()->values()->all();
+        $window = ScoreWindow::of($tournament);
+
+        return $ids !== [] && ScoreRun::query()->whereNull('user_id')
+            ->where(['game' => $game->slug(), 'mode' => $tournament->mode, 'course' => (string) $tournament->score_course])
+            ->whereIn('account_id', $ids)->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)->exists();
+    }
+
+    /**
+     * No admin decides an id they claim, nor one claimed by a player of a
+     * running leaderboard of this game they have an interest in.
+     *
+     * @param  list<int>  $involved  the players the decision moves runs from or to
+     *
+     * @throws TournamentRuleViolation
+     */
+    private static function assertMayDecide(ScoreGame $game, string $accountId, array $involved, User $admin): void
+    {
+        if (! $admin->isAdmin()) {
+            throw new TournamentRuleViolation('not_admin', __('Only an admin decides an account.'));
+        }
+
+        $players = array_values(array_unique([...$involved, ...self::claimers($game, $accountId)]));
+
+        if (in_array($admin->id, $players, true)) {
+            throw new TournamentRuleViolation('interested', __('You stored this account id yourself, so another admin has to decide it.'));
+        }
+
+        $tournaments = Tournament::query()->where(['game' => $game->slug(), 'status' => TournamentStatus::Running])
+            ->whereHas('participants', fn ($query) => $query->whereIn('user_id', $players))->get();
+
+        foreach ($tournaments as $tournament) {
+            if (ScoreLeaderboards::interested($tournament, $admin)) {
+                throw new TournamentRuleViolation('interested', __('You have an interest in a running leaderboard of this game that a claimer plays in, so another admin has to decide this account.'));
+            }
+        }
+    }
+
+    /**
+     * @throws TournamentRuleViolation
+     */
+    private static function claim(ScoreGame $game, string $accountId): ScoreAccountClaim
+    {
+        return ScoreAccountClaim::query()->where(['game' => $game->slug(), 'account_id' => $accountId])->first()
+            ?? throw new TournamentRuleViolation('unconfirmed', __('This account is not confirmed for anybody.'));
+    }
+
+    /**
+     * @throws TournamentRuleViolation
+     */
+    private static function reason(string $reason): string
+    {
+        $reason = trim($reason);
+
+        if (mb_strlen($reason) < 3 || mb_strlen($reason) > 500) {
+            throw new TournamentRuleViolation('reason', __('Give a reason of 3 to 500 characters: how you know whose account it is. It is kept in the log.'));
+        }
+
+        return $reason;
+    }
+
+    /**
+     * Move the runs of an account id from one player (null: pending) to
+     * another; a run the target has already (same source, course, value and
+     * time) is a second copy and goes.
+     */
+    private static function move(ScoreGame $game, string $accountId, ?int $from, int $to): int
+    {
+        $moved = 0;
+        $runs = ScoreRun::query()->where(['game' => $game->slug(), 'account_id' => $accountId])
+            ->when($from === null, fn ($query) => $query->whereNull('user_id'), fn ($query) => $query->where('user_id', $from))->orderBy('id')->get();
+
+        foreach ($runs as $run) {
+            try {
+                $run->forceFill(['user_id' => $to])->save();
+                $moved++;
+            } catch (UniqueConstraintViolationException) {
+                $run->delete();
+            }
+        }
+
+        return $moved;
+    }
+
+    private static function log(ScoreGame $game, string $accountId, string $action, ?int $from, ?int $to, User $admin, string $reason, int $moved): void
+    {
+        ScoreAccountChange::query()->create(['game' => $game->slug(), 'account_id' => $accountId, 'action' => $action, 'from_user_id' => $from, 'to_user_id' => $to,
+            'admin_id' => $admin->id, 'reason' => $reason, 'runs_moved' => $moved, 'created_at' => now()]);
     }
 }

@@ -179,10 +179,12 @@ final class ScoreLeaderboards
                 try {
                     $record = $source->bestFor($account, $course, $window->start, $window->end);
                 } catch (ScoreSourceUnavailable $e) {
+                    // A source that is down is not asked again for every other entry in this snapshot (re-audit: one
+                    // stalling source held a snapshot of four entries for 12 minutes). Its earlier reads stay.
                     report($e);
                     $failed++;
 
-                    continue;
+                    continue 2;
                 }
 
                 if ($record !== null && $this->runs->store($record, $user->id, $course, $window, $account->accountId) !== null) {
@@ -225,6 +227,11 @@ final class ScoreLeaderboards
 
         if (ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
             throw new TournamentRuleViolation('pending', __('Submissions still wait for an admin. End the leaderboard once every one is decided.'));
+        }
+
+        // Re-audit F4: a finish of an id a player stored waits for an admin to confirm whose it is.
+        if (ScoreAccounts::waitsFor($tournament, $this->runs->gameOf($tournament))) {
+            throw new TournamentRuleViolation('accounts', __('Finishes of an account a player stored wait for an admin to confirm whose it is. End the leaderboard once they are decided.'));
         }
 
         DB::transaction(function () use ($tournament, $actor): void {
@@ -291,7 +298,8 @@ final class ScoreLeaderboards
                 // Once more after the window closed: a best set in its last hour is read before the end is written.
                 $snapshots += $this->snapshot($tournament)['stored'];
 
-                if (! $window->hasEnded() || now()->lessThan($window->end->addHours($review)) || now()->lessThan(ManualSubmissions::closesAt($tournament)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()) {
+                if (! $window->hasEnded() || now()->lessThan($window->end->addHours($review)) || now()->lessThan(ManualSubmissions::closesAt($tournament)) || ScoreRun::query()->pendingReview()->where('tournament_id', $tournament->id)->exists()
+                    || ScoreAccounts::waitsFor($tournament, $this->runs->gameOf($tournament))) {
                     continue;
                 }
 

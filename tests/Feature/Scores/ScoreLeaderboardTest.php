@@ -94,7 +94,8 @@ test('a source that cannot be asked changes nothing and is no "no record"', func
 
     $this->fake->down();
 
-    expect(app(ScoreLeaderboards::class)->snapshot($tournament))->toBe(['stored' => 0, 'failed' => 2])
+    // Down once, not asked again for the second entry in the same snapshot.
+    expect(app(ScoreLeaderboards::class)->snapshot($tournament))->toBe(['stored' => 0, 'failed' => 1])
         ->and(app(ScoreRuns::class)->standings($tournament)[0]->value)->toBe(55_000);
 });
 

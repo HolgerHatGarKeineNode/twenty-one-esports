@@ -8,6 +8,7 @@ use App\Support\Scores\ScoreCourse;
 use App\Support\Scores\ScoreRecord;
 use App\Support\Scores\ScoreSourceUnavailable;
 use Carbon\CarbonInterface;
+use GuzzleHttp\Psr7\Response as PsrResponse;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
@@ -27,7 +28,8 @@ use Illuminate\Support\Sleep;
  * - Backoff: a 429, a 5xx or no connection is retried `retries` times, the
  *   wait doubling from `backoff_ms`; a `Retry-After` in seconds wins, up to
  *   `max_retry_after_seconds` (above it the source counts as down).
- * - No redirect is followed, and an answer over `max_body_bytes` is refused.
+ * - No redirect is followed; the answer is streamed, uncompressed, and
+ *   refused once it passes `max_body_bytes`, without reading the rest.
  * - Failing: any other answer, or the last retry failing, throws
  *   ScoreSourceUnavailable. "Could not ask" is never "no record".
  */
@@ -88,6 +90,10 @@ abstract class HttpScorePoller implements ScoreSource
                     ->timeout(max(1, (int) config('esports.score_games.poller.timeout_seconds', 10)))
                     // A redirect is no answer (security gate F5): it could lead anywhere, the league follows none.
                     ->withoutRedirecting()
+                    // Re-audit N3: the answer is streamed and read only up to the cap; no compression, so a small
+                    // answer on the wire can never unpack into a big one.
+                    ->withHeaders(['Accept-Encoding' => 'identity'])
+                    ->withOptions(['stream' => true, 'decode_content' => false])
                     ->acceptJson()
                     ->get($this->url($account, $course), $this->query($account, $course));
             } catch (ConnectionException $e) {
@@ -96,14 +102,7 @@ abstract class HttpScorePoller implements ScoreSource
             }
 
             if ($response !== null && $response->successful()) {
-                $limit = max(1, (int) config('esports.score_games.poller.max_body_bytes', 1_048_576));
-                $length = $response->header('Content-Length');
-
-                if ((is_numeric($length) && (int) $length > $limit) || strlen($response->body()) > $limit) {
-                    throw new ScoreSourceUnavailable("Score source [{$this->key()}] refused: an answer larger than {$limit} bytes.");
-                }
-
-                return $response;
+                return $this->bounded($response);
             }
 
             $retryable = $response === null || $response->status() === 429 || $response->serverError();
@@ -124,6 +123,44 @@ abstract class HttpScorePoller implements ScoreSource
             $wait = is_numeric($retryAfter) ? max(0, (int) $retryAfter) * 1000 : $backoff * (2 ** $attempt);
             Sleep::for($wait)->milliseconds();
         }
+    }
+
+    /**
+     * The answer read up to `max_body_bytes`, never further: a larger or a
+     * compressed one is refused before more than the cap and one chunk were
+     * read (re-audit N3).
+     *
+     * @throws ScoreSourceUnavailable
+     */
+    private function bounded(Response $response): Response
+    {
+        $limit = max(1, (int) config('esports.score_games.poller.max_body_bytes', 1_048_576));
+        $encoding = strtolower(trim($response->header('Content-Encoding')));
+        $length = $response->header('Content-Length');
+        $refuse = fn (string $why): ScoreSourceUnavailable => new ScoreSourceUnavailable("Score source [{$this->key()}] refused: {$why}.");
+
+        if ($encoding !== '' && $encoding !== 'identity') {
+            throw $refuse("a {$encoding} answer, asked for none");
+        }
+
+        if (is_numeric($length) && (int) $length > $limit) {
+            throw $refuse("an answer larger than {$limit} bytes");
+        }
+
+        $stream = $response->toPsrResponse()->getBody();
+        $body = '';
+
+        while (! $stream->eof()) {
+            $body .= $stream->read(8192);
+
+            if (strlen($body) > $limit) {
+                $stream->close();
+
+                throw $refuse("an answer larger than {$limit} bytes");
+            }
+        }
+
+        return new Response(new PsrResponse($response->status(), $response->headers(), $body));
     }
 
     private function waitForTurn(): void

@@ -32,7 +32,6 @@ use App\Support\Tournaments\TournamentWaits;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
-use Livewire\Livewire;
 use Tests\Support\FixtureScorePoller;
 use Tests\Support\ScoreDemoOn;
 
@@ -77,6 +76,7 @@ test('M2: a server finish counts from the window\'s start up to just before its 
 
     foreach ($players as $index => $player) {
         $player->forceFill(['gamer_tags' => ['score-demo' => "acct-{$index}"]])->save();
+        ScoreAccounts::confirm(app(GameRegistry::class)->get('score-demo'), "acct-{$index}", $player, scoreAdmin(), 'Checked in the game.');
     }
 
     $this->travelTo($end->addHour());
@@ -175,63 +175,6 @@ test('F3: a director ends a leaderboard neither inside the submission grace nor 
 
     expect(scoreRefusal(fn () => app(ScoreLeaderboards::class)->finalize($tournament, $director)))->toBeNull()
         ->and($tournament->refresh()->status)->toBe(TournamentStatus::Finished);
-});
-
-test('F4: a claim taken first is no theft: the owner\'s claim sends the finishes to an admin, who confirms the owner', function () {
-    [$tournament, [$attacker, $owner]] = runningScoreBoard(2);
-    ['token' => $token] = ScoreServers::issue('box', 'score-demo');
-    $send = fn (string $id) => $this->postJson(route('scores.ingest'), ['events' => [['id' => $id, 'mode' => 'time-trial', 'course' => 'demo-1', 'account' => 'acct-owner',
-        'value' => 45_000, 'achieved_at' => now()->getTimestamp()]]], ['Authorization' => 'Bearer '.$token])->assertOk();
-
-    Livewire::actingAs($attacker)->test('pages::settings.gaming')->set('gamerTags.score-demo', 'acct-owner')->call('save');
-    $send('f1');
-
-    expect(ScoreRun::query()->sole()->user_id)->toBe($attacker->id);
-
-    Livewire::actingAs($owner)->test('pages::settings.gaming')->set('gamerTags.score-demo', 'acct-owner')->call('save');
-    $send('f2');
-
-    expect(ScoreRun::query()->pluck('user_id')->all())->toBe([null, null])
-        ->and(collect(app(ScoreRuns::class)->standings($tournament))->pluck('value')->filter()->all())->toBe([])
-        ->and(array_map(fn ($user) => $user->id, ScoreAccounts::pending()[0]['claimers']))->toBe([$attacker->id, $owner->id]);
-
-    ScoreAccounts::confirm(app(GameRegistry::class)->get('score-demo'), 'acct-owner', $owner, scoreAdmin());
-    $send('f3');
-
-    expect(ScoreRun::query()->pluck('user_id')->unique()->values()->all())->toBe([$owner->id])
-        ->and(ScoreAccount::of($attacker->refresh(), app(GameRegistry::class)->get('score-demo'))->accountId)->toBeNull()
-        ->and(ScoreAccount::of($owner->refresh(), app(GameRegistry::class)->get('score-demo'))->accountId)->toBe('acct-owner');
-});
-
-test('F4: a pending finish is never handed over by the player\'s own claim, only by an admin', function () {
-    ['token' => $token] = ScoreServers::issue('box', 'score-demo');
-    $player = User::factory()->create();
-    $this->postJson(route('scores.ingest'), ['events' => [['id' => 'p1', 'mode' => 'time-trial', 'course' => 'demo-1', 'account' => 'acct-late',
-        'value' => 45_000, 'achieved_at' => now()->getTimestamp()]]], ['Authorization' => 'Bearer '.$token])->assertOk()->assertJsonPath('pending', 1);
-
-    Livewire::actingAs($player)->test('pages::settings.gaming')->set('gamerTags.score-demo', 'acct-late')->call('save');
-
-    expect(ScoreRun::query()->sole()->user_id)->toBeNull();
-
-    Livewire::actingAs(scoreAdmin())->test('pages::admin.scores')
-        ->assertSee('acct-late')
-        ->call('confirmAccount', 'score-demo', 'acct-late', $player->id)
-        ->assertSet('error', '');
-
-    expect(ScoreRun::query()->sole()->user_id)->toBe($player->id)
-        ->and(scoreRefusal(fn () => ScoreAccounts::confirm(app(GameRegistry::class)->get('score-demo'), 'acct-late', User::factory()->create(), scoreAdmin())))->toBe('not_claimed');
-});
-
-test('F4: a player who stores another player\'s id gets no records of it from a poller, nor does the owner until it is settled', function () {
-    $game = app(GameRegistry::class)->get('score-demo');
-    $honest = User::factory()->create(['gamer_tags' => ['score-demo' => 'acct-honest']]);
-
-    expect(ScoreAccount::of($honest, $game)->accountId)->toBe('acct-honest');
-
-    $attacker = User::factory()->create(['gamer_tags' => ['score-demo' => 'acct-honest']]);
-
-    expect(ScoreAccount::of($attacker, $game)->accountId)->toBeNull()
-        ->and(ScoreAccount::of($honest, $game)->accountId)->toBeNull();
 });
 
 test('F5: the poller follows no redirect, waits no Retry-After over the cap, and reads no answer over the size cap', function () {
