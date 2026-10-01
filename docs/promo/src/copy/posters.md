@@ -345,11 +345,11 @@ crown) and the next tournament's sign-up card with one free seat marked "Your sp
 ## 14. Age of Empires II
 
 **DE Headline:** Eine Lobby. Bis zu acht Imperien.
-**DE Subline:** Turniere in Age of Empires II sind ein einziges Match: „Lock Teams“ aus, „Allied Victory“ an. Wer am Ende verbündet steht, teilt sich Platz 1 und seinen Pot.
+**DE Subline:** Turniere in Age of Empires II sind ein einziges Match: „Teams sperren“ aus, „Bündnissieg“ an. Wer am Ende verbündet steht, teilt sich Platz 1 und seinen Pot.
 **DE Bullets:**
 - 3 bis 8 Spieler je Lobby, 9 werden 5 + 4
 - Arabia, Kartengröße nach Lobbygröße
-- 2 h Zeitlimit, dann zählt der Punktestand
+- Sieg: Zeitlimit, 2 Stunden
 - Screenshot als Beleg, Turnierleitung bestätigt
 
 **EN Headline:** One lobby. Up to eight empires.
@@ -357,17 +357,17 @@ crown) and the next tournament's sign-up card with one free seat marked "Your sp
 **EN Bullets:**
 - 3 to 8 players a lobby, 9 split into 5 + 4
 - Arabia, map size follows the lobby size
-- 2 h time limit, then the in-game score
+- Victory: Time Limit, 2 hours
 - Screenshot as proof, the director confirms
 
 **CTA:** esports.einundzwanzig.space
 **Designer note:** the game's cover cropped to its logo (no painted characters in frame), one
-lobby of six players on its result: the two allied survivors share 1st place (lit, linked),
-the other four dimmed in the order they went out, the proof below (end-screen screenshot,
-confirmed by the tournament director); beside it the lobby settings card, with the map-size
-scale Tiny to Large stopped at Normal for six. Players are pixel avatars and names. Facts 67-78.
-The lobby tournament is plan step 10 (P10), **not built when this was written: post only once
-it is live on prod.**
+lobby of six players on its result, worded as the app's lobby card: the two allied survivors
+are #1 together ("Shared place 1: …", lit, linked), the other four #3 to #6 in the order they
+went out, the proof below (screenshot of the end screen, reported, decided); beside it the
+card's settings, with the map-size scale Tiny to Large stopped at Normal for six. Players are
+pixel avatars and names. Facts 67-79. The lobby tournament (P10) is built on its branch
+(`210edd80`) but not on prod: **post only once it is live on prod.**
 
 ---
 

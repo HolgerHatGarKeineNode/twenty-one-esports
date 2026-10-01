@@ -396,14 +396,22 @@
 .h-aoe2 .ar-win { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: .4em; row-gap: .5em; align-content: center; padding: .7em .5em .55em; background: var(--well); box-shadow: inset 0 .25em 0 var(--win); }
 .h-aoe2 .ar-w { display: grid; justify-items: center; row-gap: .35em; min-width: 0; }
 .h-aoe2 .ar-w .av { width: 3.2em; height: 3.2em; box-shadow: 0 0 0 .2em var(--aoe), 0 0 1.4em rgba(217,70,239,.55); }
+.h-aoe2 .ar-w .nm { display: flex; align-items: center; gap: .35em; min-width: 0; }
 .h-aoe2 .ar-w b { font: 800 .9em/1.15 var(--disp); white-space: nowrap; }
-.h-aoe2 .ar-win .p1 { grid-column: 1 / -1; justify-self: center; font: 700 max(11px, .8em)/1.2 var(--mono); color: var(--win); white-space: nowrap; }
+.h-aoe2 .ar-win .sh { grid-column: 1 / -1; justify-self: center; text-align: center; font: 700 max(11px, .8em)/1.25 var(--mono); color: var(--win); }
+/* the place badges as the lobby card draws them: place 1 on the orange chip, the rest raised */
+.h-aoe2 .pl { display: inline-flex; align-items: center; justify-content: center; min-width: 2.3em; padding: .2em .35em; font: 700 max(11px, .72em)/1.1 var(--mono); background: var(--raised); color: var(--ink-2); flex: none; white-space: nowrap; }
+.h-aoe2 .pl.p1 { background: var(--btc); color: var(--on-btc); }
+.h-aoe2 .ar-h .chip { font: 700 max(11px, .75em)/1 var(--mono); padding: .35em .5em; background: rgba(74,222,128,.14); color: var(--win); white-space: nowrap; }
 .h-aoe2 .ar-link { color: var(--aoe); filter: drop-shadow(0 0 .35em rgba(217,70,239,.7)); }
 .h-aoe2 .lk { width: 3em; height: auto; display: block; }
 .h-aoe2 .ar-out { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35em .6em; }
 .h-aoe2 .ar-o { display: flex; align-items: center; gap: .45em; min-width: 0; opacity: .55; }
 .h-aoe2 .ar-o .av { width: 1.7em; height: 1.7em; flex: none; }
 .h-aoe2 .ar-o b { font: 700 max(11px, .78em)/1.2 var(--mono); white-space: nowrap; }
+/* a tall zone (the X poster) makes a narrow result card: the four who went out one under the
+   other, so badge, avatar and name fit (the small zone below does the same) */
+@container (max-aspect-ratio: 1/1) { .h-aoe2 .ar-out { grid-template-columns: minmax(0, 1fr); } .h-aoe2 .ar-w .nm { flex-direction: column; gap: .2em; } }
 .h-aoe2 .ar-proof { display: grid; row-gap: .3em; padding-top: .55em; border-top: 2px solid var(--line); }
 .h-aoe2 .st { display: flex; align-items: center; gap: .5em; font: 700 max(11px, .8em)/1.2 var(--mono); color: var(--ink); }
 .h-aoe2 .st .tk { width: 1.1em; height: 1.1em; color: var(--win); flex: none; display: block; }
@@ -413,7 +421,10 @@
 .h-aoe2 .ae-settings { display: grid; align-content: space-between; row-gap: .45em; padding: .85em 1em; }
 .h-aoe2 .as-r { display: flex; justify-content: space-between; align-items: baseline; gap: .6em; font: 700 max(11px, .82em)/1.25 var(--mono); }
 .h-aoe2 .as-r .k { color: var(--ink-3); white-space: nowrap; }
-.h-aoe2 .as-r b { color: var(--ink); white-space: nowrap; }
+.h-aoe2 .as-r b { color: var(--ink); text-align: right; }
+/* the restart row only where the card has the room (the reels); the posters keep nine rows */
+.h-aoe2 .as-extra { display: none; }
+.h-aoe2.full .as-extra { display: flex; }
 .h-aoe2 .as-size b { color: var(--aoe); }
 .h-aoe2 .as-dip { padding: .35em .5em; background: var(--well); box-shadow: inset .25em 0 0 var(--aoe-2); }
 .h-aoe2 .as-dip .k { color: var(--ink-2); }
@@ -430,12 +441,13 @@
   .h-aoe2 .ar-proof, .h-aoe2 .as-minor, .h-aoe2 .as-h span { display: none; }
   .h-aoe2 .ar-w .av { width: 2.8em; height: 2.8em; }
   .h-aoe2 .ar-w b { font-size: max(11px, .65em); }
+  .h-aoe2 .ar-w .nm { flex-direction: column; gap: .2em; }
+  .h-aoe2 .ar-out { grid-template-columns: minmax(0, 1fr); }
   .h-aoe2 .ar-win { column-gap: .15em; padding-left: .3em; padding-right: .3em; }
   .h-aoe2 .lk { width: 1.5em; }
   .h-aoe2 .ar-out { column-gap: .4em; }
   .h-aoe2 .ar-o { gap: .3em; }
   .h-aoe2 .ar-o .av { width: 1.3em; height: 1.3em; }
-  .h-aoe2 .ar-win .p1 { white-space: normal; text-align: center; }
   .h-aoe2 .sz b { display: none; }
 }
 
@@ -448,9 +460,10 @@
   .h-aoe2 .ar-win { grid-column: 1; grid-row: 2; padding: .45em .4em; }
   .h-aoe2 .ar-w .av { width: 2.4em; height: 2.4em; box-shadow: 0 0 0 .15em var(--aoe); }
   .h-aoe2 .ar-w b { font-size: .8em; }
+  .h-aoe2 .ar-w .nm { flex-direction: column; gap: .2em; }
   .h-aoe2 .ar-win { column-gap: .25em; }
   .h-aoe2 .lk { width: 2em; }
-  .h-aoe2 .ar-out { grid-column: 2; grid-row: 2; align-content: center; grid-template-columns: 1fr; }
+  .h-aoe2 .ar-out { grid-column: 2; grid-row: 2; align-content: center; grid-template-columns: 1fr; row-gap: .15em; }
   .h-aoe2 .ar-proof, .h-aoe2 .as-minor, .h-aoe2 .as-h span { display: none; }
   .h-aoe2 .ae-settings { grid-column: 2; grid-row: 1 / 3; padding: .8em .9em; row-gap: .4em; }
 }

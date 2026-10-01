@@ -388,21 +388,21 @@ kind exists or is mentioned.
 
 ## Reel 18 — Age of Empires II
 
-Sources: `facts.md` 53, 58-60, 67-76 (plan step 10 "AoE2-Lobby-Turnier", `TournamentFormat::FreeForAll`,
+Sources: `facts.md` 53, 58-60, 67-79 (plan step 10 "AoE2-Lobby-Turnier", `TournamentFormat::FreeForAll`,
 `lang/de.json`). Five beats of 3 s, 18.4 s with the cuts, as every reel. The six players are kit
-names with their pixel avatars. The lobby tournament is P10, **not built when this was written:
-post only once it is live on prod.** No automatic result check is shown or said (fact 53).
+names with their pixel avatars. The lobby tournament (P10) is built on its branch (`210edd80`), not on prod
+yet: **post only once it is live on prod.** The card's strings are the app's (lang/de.json on that branch). No automatic result check is shown or said (fact 53).
 
 **DE**
-1. (3s) Age of Empires II. Ein Match, eine Lobby. — *das Cover-Logo mit „Free for All, 3–8 Spieler, ein Match“; acht Plätze einer Lobby, sechs Pixel-Avatare mit Namen springen hinein*
-2. (3s) Die Karte wächst mit der Lobby — *die Lobby-Einstellungen: die Spielerzahl zählt von 2 bis 6, die Kartengröße wandert Tiny, Small, Medium, Normal; darunter „Lock Teams“ aus, „Allied Victory“ an*
-3. (3s) Verbündet überleben, Platz 1 teilen — *das Ergebnis der Lobby: vier Spieler scheiden nacheinander aus, die Kette zwischen satsjaeger und hodlqueen leuchtet, „Platz 1, Pot zu gleichen Teilen“*
-4. (3s) Screenshot hoch, die Turnierleitung bestätigt — *dasselbe Ergebnis, die Schritte haken ab: Screenshot vom Endbildschirm, von der Turnierleitung bestätigt*
+1. (3s) Age of Empires II. Ein Match, eine Lobby. — *das Cover-Logo mit „Free for All, Bündnissieg, Zeitlimit, 2 Stunden“; acht Plätze von „Lobby 1“, sechs Pixel-Avatare mit Namen springen hinein*
+2. (3s) Die Karte wächst mit der Lobby — *die Lobby-Einstellungen: die Spielerzahl zählt von 2 bis 6, die Kartengröße wandert Winzig, Klein, Mittel, Normal; darunter „Teams sperren“ aus, „Bündnissieg“ an*
+3. (3s) Verbündet überleben, Platz 1 teilen — *das Ergebnis der Lobby: vier Spieler scheiden nacheinander aus, die Kette zwischen satsjaeger und hodlqueen leuchtet, beide #1, „Geteilter Platz 1: satsjaeger, hodlqueen“*
+4. (3s) Screenshot hoch, die Turnierleitung bestätigt — *dasselbe Ergebnis, die Schritte haken ab: „Screenshot des Endbildschirms“, „gemeldet, wartet auf die Turnierleitung“, dann „entschieden“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Age of Empires II. One match, one lobby. — *the cover logo with "Free for All, 3–8 players, one match"; eight seats of one lobby, six pixel avatars with names jump in*
+1. (3s) Age of Empires II. One match, one lobby. — *the cover logo with "Free for All, Allied Victory, Time Limit, 2 hours"; eight seats of "Lobby 1", six pixel avatars with names jump in*
 2. (3s) The map grows with the lobby — *the lobby settings: the player count runs from 2 to 6, the map size steps Tiny, Small, Medium, Normal; below it Lock Teams off, Allied Victory on*
-3. (3s) Survive allied, share 1st place — *the lobby's result: four players go out one by one, the link between satsjaeger and hodlqueen lights up, "1st place, pot split equally"*
-4. (3s) Upload the screenshot, the director confirms — *the same result, the steps tick: screenshot of the end screen, confirmed by the tournament director*
+3. (3s) Survive allied, share 1st place — *the lobby's result: four players go out one by one, the link between satsjaeger and hodlqueen lights up, both #1, "Shared place 1: satsjaeger, hodlqueen"*
+4. (3s) Upload the screenshot, the director confirms — *the same result, the steps tick: "Screenshot of the end screen", "reported, waiting for a director", then "decided"*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

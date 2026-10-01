@@ -3,7 +3,7 @@
 // (":placeholders" may be filled). Usage: node docs/promo/src/check-ui-strings.mjs
 // Entries tagged `plan: '<phase>'` draw a feature that is planned, not built: they are listed
 // as pending while lang/de.json lacks them (UI_STRICT=1 makes a pending string fail), and an
-// untagged entry must always be in lang/de.json.
+// untagged entry must always be in lang/de.json. UI_LANG_JSON=<path> reads another lang/de.json.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -12,7 +12,8 @@ const SRC = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(SRC, '../../..');
 
 export function checkUiStrings() {
-  const de = JSON.parse(fs.readFileSync(path.join(REPO, 'lang/de.json'), 'utf8'));
+  // UI_LANG_JSON checks against another tree's lang/de.json (a feature branch not merged yet)
+  const de = JSON.parse(fs.readFileSync(process.env.UI_LANG_JSON || path.join(REPO, 'lang/de.json'), 'utf8'));
   const src = fs.readFileSync(path.join(SRC, 'lib/ui-strings.js'), 'utf8');
   // a pluralised entry (":count game won|:count games won") counts once per variant
   const variants = (list) => list.flatMap((s) => (s.includes('|') ? s.split('|') : [s]));

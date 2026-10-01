@@ -1177,21 +1177,22 @@ S.livecup = [
 
 /* ===== Age of Empires II (reel 18) =====
    The hero's parts at reel scale (lib/heroes.js aoeTags, aoeSettings, aoeResult, the cover's
-   logo band): the lobby tournament of plan step 10 (P10, facts 67-76). One lobby of eight
-   seats takes six kit players; the map size steps with the player count (2 Tiny, 3 Small,
-   4 Medium, 5-6 Normal); four go out, the two allied survivors share 1st place; the result is
-   a screenshot of the end screen, confirmed by the tournament director. */
-const AOE_WRAP = (inner, w = 900, fs = 34) => `<div class="h-aoe2" style="display:block;font-size:${fs}px"><div data-card class="card" style="width:${w}px;padding:0;border:0;background:none;display:grid">${inner}</div></div>`;
+   logo band): the lobby tournament (P10 branch 210edd80, facts 67-79), in the lobby card's
+   own words. One lobby of eight seats takes six kit players; the map size steps with the
+   player count (Lobbies::mapSize: 2 Tiny, 3 Small, 4 Medium, 5-6 Normal); four go out, the
+   two allies still standing are #1 together; the result is a screenshot of the end screen,
+   reported, then decided by a director. */
+const AOE_WRAP = (inner, w = 900, fs = 34) => `<div class="h-aoe2 full" style="display:block;font-size:${fs}px"><div data-card class="card" style="width:${w}px;padding:0;border:0;background:none;display:grid">${inner}</div></div>`;
 const aoeCover = (l) => `<div class="ae-cover cube" style="--d:26px"><div class="ae-art" style="background-image:url('${HS().COVER}')"></div>
   <div style="font-size:28px">${HS().aoeTags(l)}</div></div>`;
-const AOE_SIX = () => [...HS().AOE.winners, ...HS().AOE.out];
-const aoeHeadN = (l, n) => `${UI('lobbyN', l, { n: 1 })}, ${n} ${UI('playersWord', l)}`;
+const AOE_SIX = () => [...HS().AOE.winners, ...HS().AOE.out.map(([n]) => n)];
+const aoeHeadN = (l, n) => `${UI('lobbyNumber', l, { number: 1 })} · ${UI('countPlayers', l, { count: n })}`;
 // the size index for a player count, as plan step 10 sets it (fact 71)
 const aoeSizeOf = (n) => (n <= 2 ? 0 : n === 3 ? 1 : n === 4 ? 2 : n <= 6 ? 3 : 4);
 S.aoe2 = [
   { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${aoeCover(l)}
       <div class="ui-card" style="margin-top:44px;padding:32px;display:grid;row-gap:24px">
-        <div class="row" style="justify-content:space-between"><b style="font:800 38px/1.1 var(--disp)">${E(UI('lobbyTournament', l))}</b><span data-n class="dim" style="font:700 28px/1 var(--mono);white-space:nowrap">${E(aoeHeadN(l, 0))}</span></div>
+        <div class="row" style="justify-content:space-between"><b data-n style="font:800 38px/1.1 var(--disp);white-space:nowrap">${E(aoeHeadN(l, 0))}</b><span class="dim" style="font:700 28px/1 var(--mono);white-space:nowrap">${E(UI('freeForAll', l))}</span></div>
         <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">${Array.from({ length: 8 }, (_, i) => {
           const n = AOE_SIX()[i];
           return n ? `<div data-seat style="display:grid;justify-items:center;row-gap:10px;padding:16px 4px;background:var(--well);border:3px solid var(--line)">${av(n, 96)}<b style="font:700 22px/1.1 var(--mono);white-space:nowrap">${E(n)}</b></div>`
@@ -1211,6 +1212,7 @@ S.aoe2 = [
       root.querySelectorAll('.sz').forEach((z, j) => z.classList.toggle('on', j === i));
       root.querySelector('.as-size b').textContent = UI(HS().AOE.sizes[i][0], lang);
       root.querySelector('.as-h span').textContent = aoeHeadN(lang, n);
+      root.querySelector('.as-h span').style.whiteSpace = 'nowrap';
       root.querySelectorAll('.as-dip').forEach((r, j) => { const p = eo(seg(t, 2.0 + j * 0.3, 2.4 + j * 0.3)); r.style.boxShadow = `inset ${0.25 + 0.5 * p}em 0 0 var(--aoe-2)`; });
     } },
   { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeResult(l), 900, 40)}</div>`,
@@ -1220,14 +1222,19 @@ S.aoe2 = [
       root.querySelectorAll('.ar-o').forEach((o, i) => { const p = eo(seg(t, 0.3 + i * 0.35, 0.6 + i * 0.35)); o.style.opacity = 1 - 0.55 * p; o.style.filter = `grayscale(${p})`; });
       const q = eo(seg(t, 1.8, 2.2));
       root.querySelector('.ar-link').style.opacity = 0.25 + 0.75 * q;
-      root.querySelector('.ar-win .p1').style.opacity = q;
+      root.querySelector('.ar-win .sh').style.opacity = q;
+      root.querySelectorAll('.ar-win .pl, .ar-o .pl').forEach((b) => { b.style.opacity = q; });
+      root.querySelector('.ar-h .chip').style.opacity = q;
       root.querySelector('.ar-win').style.background = t > 2.0 ? `rgba(74,222,128,${0.08 + 0.06 * Math.sin(t * 6)})` : '';
     } },
   { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeResult(l), 900, 40)}</div>`,
-    update(root, t) {
+    update(root, t, len, lang) {
       cardIn(root, t);
       root.querySelectorAll('.ar-o').forEach((o) => { o.style.opacity = 0.45; o.style.filter = 'grayscale(1)'; });
       root.querySelectorAll('.ar-proof .st').forEach((s, i) => { const on = t > 0.6 + i * 0.7; s.style.color = on ? 'var(--ink)' : 'var(--ink-3)'; s.querySelector('.tk').style.opacity = on ? 1 : 0.15; s.style.transform = `scale(${on ? 1 + 0.06 * Math.max(0, 1 - (t - 0.6 - i * 0.7) * 3) : 1})`; s.style.transformOrigin = 'left center'; });
+      const chip = root.querySelector('.ar-h .chip'), done = t > 2.0;
+      chip.textContent = UI(done ? 'decided' : 'reportedWaiting', lang);
+      chip.style.background = done ? '' : 'rgba(247,147,26,.16)'; chip.style.color = done ? '' : 'var(--btc)';
       const pr = root.querySelector('.ar-proof'); pr.style.boxShadow = t > 1.4 ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(74,222,128,.18)` : 'none';
     } },
   { html: endCard, update: endUpdate },

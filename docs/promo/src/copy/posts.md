@@ -352,19 +352,19 @@ esports.einundzwanzig.space
 
 ## Age of Empires II
 
-Facts 53, 58-60, 67-76. The lobby tournament is plan step 10 (P10), not built when this was
-written: **post only once it is live on prod**, after re-reading the claims against it. No
+Facts 53, 58-60, 67-79. The lobby tournament (P10) is built on its branch (`210edd80`), not on
+prod yet: **post only once it is live on prod.** No
 automatic result check is claimed (fact 53), no mining (fact 58), no fee for players (fact 44).
 
 **Nostr (DE):**
 Age of Empires II bekommt sein eigenes Turnierformat: ein einziges Match. Alle Angemeldeten
 spielen in Lobbys mit 3 bis 8 Spielern, größere Felder werden gleichmäßig geteilt, aus 9 werden
-5 und 4. Diplomatie wie im Spiel: „Lock Teams“ aus, „Allied Victory“ an, jeder startet allein.
+5 und 4. Diplomatie wie im Spiel: „Teams sperren“ aus, „Bündnissieg“ an, jeder startet allein.
 Wer am Ende verbündet überlebt, teilt sich Platz 1; hat das Turnier einen Pot, geht der Anteil
 für Platz 1 zu gleichen Teilen an sie.
-Nach 2 Stunden entscheidet der Punktestand im Spiel. Karte Arabia, freie Völker, Bevölkerung
+Sieg per Zeitlimit nach 2 Stunden. Karte Arabia, Zivilisationen freie Wahl, Bevölkerung
 200, 2 Minuten Zuschauer-Verzögerung, und die Kartengröße passt zur Lobby: zu sechst spielt ihr
-auf Normal. Das Ergebnis meldest du mit einem Screenshot vom Endbildschirm, die Turnierleitung
+auf Normal. Das Ergebnis meldest du mit einem Screenshot des Endbildschirms, die Turnierleitung
 bestätigt es.
 esports.einundzwanzig.space
 
@@ -374,12 +374,12 @@ in lobbies of 3 to 8 players; bigger fields are split evenly, so 9 become 5 and 
 as in the game: Lock Teams off, Allied Victory on, everyone starts alone. Whoever survives
 allied at the end shares 1st place; if the tournament has a pot, the place-1 share is split
 equally between them. After
-2 hours the in-game score decides. Map Arabia, free civilisations, population 200, a 2 minute
+2 hours the time limit ends the game. Map Arabia, civilisations free pick, population 200, a 2 minute
 spectator delay, and the map size fits the lobby: six of you play on Normal. You report the
 result with a screenshot of the end screen, and the tournament director confirms it.
 esports.einundzwanzig.space
 
-**X (DE):** Age of Empires II als Turnier: ein Match, bis zu 8 Spieler pro Lobby, „Allied Victory“ an. Wer verbündet überlebt, teilt sich Platz 1. esports.einundzwanzig.space
+**X (DE):** Age of Empires II als Turnier: ein Match, bis zu 8 Spieler pro Lobby, „Bündnissieg“ an. Wer verbündet überlebt, teilt sich Platz 1. esports.einundzwanzig.space
 **X (EN):** Age of Empires II as a tournament: one match, up to 8 players a lobby, Allied Victory on. Survive allied and share 1st place. esports.einundzwanzig.space
 
 ---

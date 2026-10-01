@@ -336,20 +336,22 @@
     </div>`;
   };
 
-  /* ---- Age of Empires II (motif 14): the lobby tournament of plan step 10 (P10, not built
-     when this was drawn, 2026-10-01): one match per lobby, 3-8 players, Lock Teams off,
-     Allied Victory on, 2 h time limit then the in-game score; allied survivors share 1st place
-     and split its pot equally; the result is a screenshot of the end screen, confirmed by the
-     tournament director. The map size follows the lobby size (2 Tiny, 3 Small, 4 Medium,
-     5-6 Normal, 7-8 Large); Arabia, free civilisations, population 200, 2 min spectator delay.
-     The cover is cropped to its logo band (no painted characters). Players are kit names with
-     their pixel avatars. ---- */
+  /* ---- Age of Empires II (motif 14): the lobby tournament (P10, branch 210edd80), drawn as
+     its lobby card renders it (components/⚡tournament-lobbies, App\Support\Tournaments\Lobbies
+     ::facts(), LobbyResults): one lobby of six, decided. The two allies still standing are #1
+     together ("Shared place 1: …"), the others ranked by the order they were defeated (#3 …
+     #6, as the app ranks a shared place 1); the proof is the end-screen screenshot, then the
+     director's decision. The settings are config/esports.php lobby_rules.age-of-empires-2.lobby;
+     the map size follows the players (2 Tiny … 7-8 Large). The cover is cropped to its logo
+     band. Players are kit names with their pixel avatars. ---- */
   const AOE = {
     lobby: 1,
     winners: ['satsjaeger', 'hodlqueen'],
-    // the others, in the order they went out (the last one out first)
-    out: ['kai_blitz', 'zap_zoe', 'taproot_tim', 'orange_olga'],
+    // the others with their place, the last one out first
+    out: [['kai_blitz', 3], ['zap_zoe', 4], ['taproot_tim', 5], ['orange_olga', 6]],
     sizes: [['sizeTiny', '2'], ['sizeSmall', '3'], ['sizeMedium', '4'], ['sizeNormal', '5–6'], ['sizeLarge', '7–8']],
+    // config values the card prints as they are (lobby_rules.age-of-empires-2.lobby)
+    map: 'Arabia', population: 200, hours: 2, delayMinutes: 2, restartMinutes: 5,
   };
   AOE.players = AOE.winners.length + AOE.out.length;
   AOE.size = 3; // index in sizes: 6 players play on Normal
@@ -357,36 +359,40 @@
   const TICK = '<svg class="tk" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M6 1h1v2H6v1H5v1H4v1H3v1H2V6H1V4h1v1h1V4h1V3h1V2h1z"/></svg>';
   // two pixel chain links: the alliance between the two winners
   const LINK = '<svg class="lk" viewBox="0 0 14 6" shape-rendering="crispEdges" aria-hidden="true"><g fill="none" stroke="currentColor"><rect x="1.5" y="1.5" width="6" height="3"/><rect x="6.5" y="1.5" width="6" height="3"/></g></svg>';
-  const aoeHead = (lang) => `${K.esc(U('lobbyN', lang, { n: AOE.lobby }))}, ${AOE.players} ${K.esc(U('playersWord', lang))}`;
+  // "Lobby 1 · 6 players", as the card's header
+  const aoeHead = (lang, n = AOE.players) => `${K.esc(U('lobbyNumber', lang, { number: AOE.lobby }))} · ${K.esc(U('countPlayers', lang, { count: n }))}`;
+  const place = (n) => `<span class="pl${n === 1 ? ' p1' : ''}">#${n}</span>`;
   function aoeResult(lang) {
-    const win = (n) => `<div class="ar-w">${av(n)}<b>${K.esc(n)}</b></div>`;
-    const out = AOE.out.map((n) => `<span class="ar-o">${av(n)}<b>${K.esc(n)}</b></span>`).join('');
-    const proof = ['endScreen', 'directorConfirms'].map((k) => `<span class="st done">${TICK}<span>${K.esc(U(k, lang))}</span></span>`).join('');
+    const win = (n) => `<div class="ar-w">${av(n)}<span class="nm">${place(1)}<b>${K.esc(n)}</b></span></div>`;
+    const out = AOE.out.map(([n, p]) => `<span class="ar-o">${place(p)}${av(n)}<b>${K.esc(n)}</b></span>`).join('');
+    const proof = ['endScreen', 'reportedWaiting'].map((k) => `<span class="st done">${TICK}<span>${K.esc(U(k, lang))}</span></span>`).join('');
     return `<div class="ae-result ui-card">
-      <div class="ar-h"><b>${K.esc(U('lobbyTournament', lang))}</b></div>
+      <div class="ar-h"><b>${aoeHead(lang)}</b><span class="chip">${K.esc(U('decided', lang))}</span></div>
       <div class="ar-win">${win(AOE.winners[0])}<div class="ar-link">${LINK}</div>${win(AOE.winners[1])}
-        <span class="p1">${K.esc(U('firstPlace', lang))}, ${K.esc(U('potSplit', lang))}</span></div>
+        <span class="sh">${K.esc(U('sharedPlace1', lang, { names: AOE.winners.join(', ') }))}</span></div>
       <div class="ar-out">${out}</div>
       <div class="ar-proof">${proof}</div>
     </div>`;
   }
   function aoeSettings(lang) {
-    const row = (k, v, cls = '') => `<div class="as-r${cls}"><span class="k">${K.esc(U(k, lang))}</span><b>${v}</b></div>`;
+    const row = (k, v, cls = '') => `<div class="as-r${cls}"><span class="k">${K.esc(U(k, lang))}</span><b>${K.esc(v)}</b></div>`;
     const sizes = AOE.sizes.map(([k, n], i) => `<span class="sz${i === AOE.size ? ' on' : ''}"><b>${K.esc(U(k, lang))}</b><i>${n}</i></span>`).join('');
+    const minutes = (m) => U('countMinutes', lang, { count: m });
     return `<div class="ae-settings ui-card">
-      <div class="as-h"><b>${K.esc(U('lobbySettings', lang))}</b><span>${aoeHead(lang)}</span></div>
-      ${row('mapWord', K.esc(U('arabia', lang)))}
-      ${row('mapSize', K.esc(U(AOE.sizes[AOE.size][0], lang)), ' as-size')}
+      <div class="as-h"><b>${K.esc(U('settingsWord', lang))}</b><span>${aoeHead(lang)}</span></div>
+      ${row('mapWord', AOE.map)}
+      ${row('mapSize', U(AOE.sizes[AOE.size][0], lang), ' as-size')}
       <div class="as-scale">${sizes}</div>
-      ${row('lockTeams', K.esc(U('off', lang)), ' as-dip')}
-      ${row('alliedVictory', K.esc(U('on', lang)), ' as-dip')}
-      ${row('timeLimit', K.esc(U('timeLimitVal', lang)))}
-      ${row('civs', K.esc(U('civsFree', lang)), ' as-minor')}
-      ${row('population', '200', ' as-minor')}
-      ${row('spectatorDelay', K.esc(U('minutes2', lang)), ' as-minor')}
+      ${row('lockTeams', U('off', lang), ' as-dip')}
+      ${row('alliedVictory', U('on', lang), ' as-dip')}
+      ${row('victory', U('timeLimitAt', lang, { time: U('countHours', lang, { count: AOE.hours }) }))}
+      ${row('civs', U('civsFree', lang), ' as-minor')}
+      ${row('population', String(AOE.population), ' as-minor')}
+      ${row('spectatorDelay', minutes(AOE.delayMinutes), ' as-minor')}
+      ${row('restart', U('restartOnce', lang, { time: minutes(AOE.restartMinutes) }), ' as-minor as-extra')}
     </div>`;
   }
-  const aoeTags = (lang) => `<div class="ae-tags"><span class="mk">${glyphOf('aoe2')}<b>AoE2</b></span><span>${K.esc(U('freeForAll', lang))}</span><span>${K.esc(U('playersRange', lang))}</span><span>${K.esc(U('oneMatch', lang))}</span></div>`;
+  const aoeTags = (lang) => `<div class="ae-tags"><span class="mk">${glyphOf('aoe2')}<b>AoE2</b></span><span>${K.esc(U('freeForAll', lang))}</span><span>${K.esc(U('alliedVictory', lang))}</span><span>${K.esc(U('timeLimitAt', lang, { time: U('countHours', lang, { count: AOE.hours }) }))}</span></div>`;
   H.aoe2 = (lang) => `
     <div class="h-aoe2">
       <div class="ae-cover cube"><div class="ae-art" style="background-image:url('${COVER}')"></div>
@@ -399,5 +405,5 @@
     if (!H[motif]) throw new Error('no hero for motif ' + motif);
     return H[motif](lang);
   }
-  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags };
+  window.Heroes = { build, boardHTML, hudTag, av, crest, H, STRIP, stripCol, stripHTML, legendHTML, tvHTML, bigFace, glyphOf, GAME, AOE, COVER, TICK, aoeResult, aoeSettings, aoeTags, aoeHead };
 })();
