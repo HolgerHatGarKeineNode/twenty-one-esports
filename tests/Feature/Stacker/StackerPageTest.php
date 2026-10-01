@@ -77,7 +77,10 @@ test('a player saves handling and keys on the gaming page; a key used twice is r
     $page->assertSeeHtml('data-test="stacker-slot-hard-0">J</button>')->assertSeeHtml('data-test="stacker-slot-left-0">←</button>');
 
     // a refused binding goes back to what is saved, the form never shows it
-    $page->set('stacker.keys.hold.1', 'KeyJ')->call('saveStacker')->assertHasErrors('stacker.keys')->assertSet('stacker.keys.hold.1', 'ShiftLeft');
+    // ... and only the keys: an unsaved DAS stays as typed
+    $page->set('stacker.das', 7)->set('stacker.keys.hold.1', 'KeyJ')->call('saveStacker')->assertHasErrors('stacker.keys')
+        ->assertSet('stacker.keys.hold.1', 'ShiftLeft')->assertSet('stacker.das', 7);
+    expect($user->refresh()->stacker_settings['das'])->toBe(6);
     $page->set('stacker.das', 21)->call('saveStacker')->assertHasErrors('stacker.das');
     expect($user->refresh()->stacker_settings['keys']['hard'])->toBe(['KeyJ']);
 

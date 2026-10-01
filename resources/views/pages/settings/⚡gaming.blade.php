@@ -52,8 +52,8 @@ new #[Title('Gamer tags')] class extends Component {
 
         // normalize() falls back to the defaults for anything off: a difference means the input was off.
         if (StackerSettings::normalize($wanted) !== $wanted) {
-            // back to what is saved, so the form never shows a binding that was refused
-            $this->stacker = StackerSettings::of($this->user());
+            // the keys back to what is saved, so the form never shows a binding that was refused; DAS/ARR/SDF stay as typed
+            $this->stacker['keys'] = StackerSettings::of($this->user())['keys'];
             $this->addError('stacker.keys', __('Give every action one or two keys, and use each key only once.'));
 
             return;

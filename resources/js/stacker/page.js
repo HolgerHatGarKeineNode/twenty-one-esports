@@ -24,6 +24,8 @@ import { createSession } from './session.js';
 import { createTicker, formatTicks } from './ticker.js';
 
 const COUNTDOWN_MS = 3000;
+/** Height of the touch panel above the tab bar (the spacer in the page matches it). */
+const TOUCH_PANEL = 136;
 const FLASH_MS = 420;
 const POLL_MS = 1000;
 const POLL_TRIES = 40;
@@ -192,12 +194,46 @@ document.addEventListener('alpine:init', () => {
                 document.removeEventListener('visibilitychange', runtime.onVisibility);
             },
 
+            coarse() {
+                return window.matchMedia?.('(pointer: coarse)').matches ?? false;
+            },
+
+            tabBarHeight() {
+                const bar = document.querySelector('[data-test=tab-bar]');
+
+                return bar && bar.offsetParent !== null ? bar.getBoundingClientRect().height : 0;
+            },
+
+            /**
+             * A new run starts with the well in view: after a result the page may have
+             * scrolled down to it. On a touch screen the well goes to the top, above the
+             * touch panel; with a keyboard just far enough to be seen.
+             */
+            revealWell() {
+                const slot = rt.el?.wellSlot;
+                if (!slot) {
+                    return;
+                }
+                // after Alpine has shown the touch panel's spacer, so the page can scroll that far
+                requestAnimationFrame(() => {
+                    const rect = slot.getBoundingClientRect();
+                    const bottom = window.innerHeight - (this.coarse() ? this.tabBarHeight() + TOUCH_PANEL : 0);
+                    if (rect.top >= 0 && rect.bottom <= bottom) {
+                        return;
+                    }
+                    slot.scrollIntoView({ block: this.coarse() ? 'start' : 'nearest', behavior: this.reducedMotion ? 'auto' : 'smooth' });
+                });
+            },
+
             /** Cell size from the room the well has: its slot's width and the window's height. */
             layout() {
                 const slot = rt.el.wellSlot;
                 const width = slot ? slot.clientWidth : 240;
                 const byWidth = Math.floor(width / 10);
-                const byHeight = Math.floor((window.innerHeight - 200) / SHOWN_ROWS);
+                // on a touch screen the well has to fit between the top of the viewport and the touch
+                // panel above the tab bar (the panel is fixed there while a practice run is on)
+                const reserved = this.coarse() ? this.tabBarHeight() + TOUCH_PANEL + 16 : 200;
+                const byHeight = Math.floor((window.innerHeight - reserved) / SHOWN_ROWS);
                 rt.cell = Math.max(12, Math.min(30, byWidth, byHeight));
                 this.sizeCanvas(rt.el.well, rt.cell * 10, rt.cell * SHOWN_ROWS);
                 for (const canvas of [rt.el.hold, ...rt.el.next]) {
@@ -294,6 +330,7 @@ document.addEventListener('alpine:init', () => {
 
             beginCountdown(id, then) {
                 this.mode = 'countdown';
+                this.revealWell();
                 rt.countdownUntil = performance.now() + COUNTDOWN_MS;
                 const step = () => {
                     if (id !== rt.runId || this.mode !== 'countdown') {
@@ -577,7 +614,7 @@ document.addEventListener('alpine:init', () => {
 
             bestLine() {
                 const r = this.result;
-                if (!r || r.status === 'toppedOut' || r.status === 'aborted') {
+                if (!r || ['toppedOut', 'aborted', 'busy', 'unsent'].includes(r.status)) {
                     return '';
                 }
                 if (r.previous === null || r.previous === undefined) {

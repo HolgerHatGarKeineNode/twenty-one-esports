@@ -262,7 +262,9 @@ test('on a phone every touch button is in reach above the tab bar, and ranked ru
 
     expect($page->evaluate('() => matchMedia("(pointer: coarse)").matches'))->toBeTrue()
         ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=start-ranked]")).display'))->toBe('none')
-        ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=ranked-needs-keyboard]")).display'))->toBe('block');
+        ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=ranked-needs-keyboard]")).display'))->toBe('block')
+        // one note only: no "log in for ranked runs" next to "ranked runs need a keyboard"
+        ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=guest-login-note]")).display'))->toBe('none');
 
     $page->locator('[data-test=start-practice]')->click();
     BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 6_000);
@@ -317,5 +319,58 @@ test('a ranked run the league turns away as busy says it was not saved, never th
         ->and(StackerRun::query()->sole())->status->value->toBe('issued')->replay->toBeNull()
         // the only failed answer is the 503 itself
         ->and(count($errors))->toBe(1)
-        ->and($errors[0])->toStartWith('503 ')->toContain('/stacker/runs/');
+        ->and($errors[0])->toStartWith('503 ')->toContain('/stacker/runs/')
+        // no "your first time" under a run that was not saved, and the status in the warning tone
+        ->and($page->evaluate('() => document.querySelector("[data-test=result-best]").innerText.trim()'))->toBe('')
+        ->and($page->evaluate('() => document.querySelector("[data-test=result-status]").classList.contains("text-btc")'))->toBeTrue();
+});
+
+/** Whether the well lies inside the viewport, above the touch panel when that is shown. */
+const STACKER_WELL_IN_VIEW = '() => { const w = document.querySelector("[data-test=well]").getBoundingClientRect(); const panel = document.querySelector("[data-test=touch]"); const floor = panel && getComputedStyle(panel).display !== "none" ? panel.getBoundingClientRect().top : innerHeight; return w.top >= 0 && w.bottom <= floor; }';
+
+test('the next run starts with the well in view, after the result had scrolled the page down', function (string $device, int $width, int $height) {
+    $page = $device === 'touch' ? visit(BrowserLogin::LANDING)->on()->mobile()->page() : visit(BrowserLogin::LANDING)->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize($width, $height);
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+
+    $forty = stackerFixture('forty-lines');
+    $page->evaluate('([inputs, seed, settings]) => window.__stacker.feed(inputs, { seed, settings })', [$forty['inputs'], $forty['seed'], $forty['settings']]);
+    BrowserWait::until($page, '() => { const top = document.querySelector("[data-test=result]").getBoundingClientRect().top; return top >= 0 && top < innerHeight / 2; }', 3_000);
+    expect($page->evaluate(STACKER_WELL_IN_VIEW))->toBeFalse();
+
+    // the touch player taps Play again, the keyboard player presses R
+    if ($device === 'touch') {
+        $page->locator('[data-test=play-again]')->tap();
+    } else {
+        $page->locator('body')->press('KeyR');
+    }
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown"', 3_000);
+    BrowserWait::until($page, STACKER_WELL_IN_VIEW, 3_000);
+    shellShot($page, "stacker-{$width}-restart");
+
+    expect($page->evaluate('() => window.__errors'))->toBe([]);
+})->with([
+    'touch 375' => ['touch', 375, 812],
+    'keyboard 1023' => ['keyboard', 1023, 800],
+]);
+
+test('on a small phone (360x640) the whole well stays above the touch panel', function () {
+    $page = visit(BrowserLogin::LANDING)->on()->mobile()->page();
+    $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+    $page->setViewportSize(360, 640);
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+
+    $page->locator('[data-test=start-practice]')->tap();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "playing"', 6_000);
+    BrowserWait::until($page, STACKER_WELL_IN_VIEW, 3_000);
+    $rects = $page->evaluate('() => ({ well: document.querySelector("[data-test=well]").getBoundingClientRect().toJSON(), panel: document.querySelector("[data-test=touch]").getBoundingClientRect().toJSON() })');
+    fwrite(STDERR, 'stacker 360x640: well '.round($rects['well']['top']).'..'.round($rects['well']['bottom']).', panel from '.round($rects['panel']['top']).PHP_EOL);
+    shellShot($page, 'stacker-360-playing');
+
+    expect($rects['well']['bottom'])->toBeLessThanOrEqual($rects['panel']['top'])
+        ->and($rects['well']['top'])->toBeGreaterThanOrEqual(0)
+        ->and($page->evaluate('() => window.__errors'))->toBe([]);
 });
