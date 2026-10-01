@@ -10,6 +10,7 @@ use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\LobbyResults;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Contracts\Http\Kernel as HttpKernel;
@@ -407,4 +408,28 @@ test('the create page swaps the deadlines with the game: Age of Empires II shows
     }
 
     expect($problems)->toBe([]);
+})->with(['en', 'de']);
+
+test('a director\'s reject reason of one long unbroken word wraps inside the lobby card, at 375 in English and German', function (string $locale) {
+    [$tournament, $director] = aoeLobbyTournament();
+    $lobby = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('position', 1)->with('slots.participant')->sole();
+    $reporter = User::query()->find($lobby->slots[0]->participant->user_id);
+    $lobby->forceFill(['lobby_report' => ['places' => $lobby->slots->mapWithKeys(fn ($slot, int $index): array => [$slot->tournament_participant_id => $index + 1])->all(),
+        'user_id' => $reporter->id, 'name' => $reporter->name, 'at' => now()->toIso8601String(), 'screenshot' => null]])->save();
+    $lobby->refresh();
+    app(LobbyResults::class)->reject($lobby, $director, 'Wrong end screen. '.str_repeat('x', 70).' Please report again.', LobbyResults::reportIdentity(LobbyResults::currentReport($lobby->lobby_report)));
+
+    $problems = [];
+    $page = shellPage($reporter, 375, 812);
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+    shellOpen($page, route('tournaments.show', $tournament, false), $problems);
+    $measured = $page->evaluate('() => { const el = document.querySelector("[data-lobby=\\"1\\"] [data-test=lobby-rejected]");
+        return { lang: document.documentElement.lang, text: el.innerText, scroll: el.scrollWidth, client: el.clientWidth,
+            page: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }; }');
+
+    expect($measured['lang'])->toBe($locale)
+        ->and($measured['text'])->toContain(str_repeat('x', 70))
+        ->and($measured['scroll'])->toBeLessThanOrEqual($measured['client'])
+        ->and($measured['page'])->toBeLessThanOrEqual($measured['viewport'])
+        ->and($problems)->toBe([]);
 })->with(['en', 'de']);
