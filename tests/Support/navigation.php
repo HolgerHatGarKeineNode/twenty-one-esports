@@ -126,6 +126,7 @@ const NAV_NOT_PAGES = [
     'lnurl.callback' => 'JSON for Lightning wallets: the invoice of a zap (LUD-06)',
     'robots' => 'file for crawlers',
     'tournaments.calendar' => 'file: the calendar download, linked from the tournament page',
+    'tournaments.lobby-screenshot' => 'file: a lobby report\'s end screen, for the tournament\'s deciders only',
     'sitemap' => 'file for crawlers',
     'sitemap.section' => 'file for crawlers',
     'avatars.generated' => 'image',
