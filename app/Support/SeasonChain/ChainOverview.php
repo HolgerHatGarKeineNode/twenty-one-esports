@@ -53,15 +53,16 @@ final class ChainOverview
      * its reward as achievable: chess only while rated chess is offered
      * (RatedChess::offered()), a board game other than chess only while it
      * is switched on and its rated queue is offered (RatedBoard::offered(),
-     * plan "Mühle und Dame", P6), every other game while it has rated play.
+     * plan "Mühle und Dame", P6), a score game while it is switched on (plan
+     * "AoE2 und Trackmania", P7: the windows the league opens itself mine one
+     * solo block each), every other game while it has rated play.
      */
     public static function mines(string $key): bool
     {
         $game = explode('/', $key, 2)[0];
 
-        // A score game mines nothing yet (plan "AoE2 und Trackmania", P7 is a concept).
         if (app(GameRegistry::class)->isScore($game)) {
-            return false;
+            return true;
         }
 
         if (in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game)) {
@@ -94,6 +95,14 @@ final class ChainOverview
             'same-subtree' => __('same trust circle'),
             'pairing-season-limit' => __('pairing limit for the season'),
             'share-cap' => __('the game used up its share of the era'),
+            // The solo rules of a score window (NIP rev. 9.18).
+            'window-outside-season' => __('the window began before Block 0'),
+            'too-few-entrants' => __('too few trusted players in the window'),
+            'unverified' => __('the winning value is not verified'),
+            'outside-window' => __('the winning value lies outside the window'),
+            'not-reviewed' => __('the review time of the window is not over'),
+            'window-block' => __('this window already mined a block'),
+            'window-wins-limit' => __('the winner reached the window wins of the season'),
             default => $reason,
         };
     }

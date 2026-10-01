@@ -26,8 +26,8 @@ use Illuminate\Support\Str;
  *   once this call has been answered, so the bracket below never undercuts
  *   an honest run.
  * - submit(): single-use (a compare-and-set out of `issued`). Checked here,
- *   in this order: body size (before the replay is looked at), shape of
- *   replay/ticks/hash, the wall-clock bracket (time from start, or issue if
+ *   in this order: body size (before the replay is looked at), played with
+ *   the keyboard (P7: `input`), shape of replay/ticks/hash, the wall-clock bracket (time from start, or issue if
  *   never started, to submission at least the played time and at most
  *   `slack_seconds` more). Every run that passes is `verifying` and goes
  *   to the verifier's own queue (VerifyStackerRun), a run slower than the
@@ -61,6 +61,13 @@ use Illuminate\Support\Str;
 final class StackerRuns
 {
     public const TOKEN_LENGTH = 40;
+
+    /**
+     * The only way a ranked run may be played (plan "Blockfill", P7: ranked
+     * needs a keyboard, touch is practice). The page says it; it proves
+     * nothing, as the input log proves no human.
+     */
+    public const INPUT_KEYBOARD = 'keyboard';
 
     /** Cache key of the newest verdict: when, and whether the verifier answered. */
     public const LAST_VERDICT_KEY = 'stacker:last-verdict';
@@ -149,8 +156,11 @@ final class StackerRuns
     /**
      * Takes the submission; null if the token was used already (or the run
      * is otherwise no longer issued). The returned run carries the outcome.
+     * `$input` is how the page says the run was played: a ranked run counts
+     * only played with the keyboard (plan "Blockfill", P7, INPUT_KEYBOARD);
+     * touch, or no answer, is rejected (`input`) before the verifier.
      */
-    public function submit(StackerRun $run, string $body, mixed $replay, mixed $ticks, mixed $hash, CarbonInterface $now, ?string $network = null): ?StackerRun
+    public function submit(StackerRun $run, string $body, mixed $replay, mixed $ticks, mixed $hash, mixed $input, CarbonInterface $now, ?string $network = null): ?StackerRun
     {
         if ($this->expireIfDue($run, $now)) {
             return $run->refresh();
@@ -161,6 +171,8 @@ final class StackerRuns
 
         if (strlen($body) > (int) $limits['bytes']) {
             $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'oversize'];
+        } elseif ($input !== self::INPUT_KEYBOARD) {
+            $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'input'];
         } elseif (! is_string($replay) || $replay === '' || preg_match('/^[A-Za-z0-9_-]+$/', $replay) !== 1
             || ! is_int($ticks) || $ticks < 1 || $ticks > (int) $limits['ticks']
             || ! is_string($hash) || preg_match('/^[0-9a-f]{8}$/', $hash) !== 1

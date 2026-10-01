@@ -5,8 +5,10 @@ namespace App\Support\SeasonChain;
 /**
  * The counters of the chain that rules 0, 4, 5, 8 and 9 read: everything
  * mined so far, per share key (the game, or its share group) and era, per
- * pairing (day and season) and per winning player, share key and UTC day.
- * Voided blocks keep their place in every counter.
+ * pairing (day and season) and per winning player, share key and UTC day,
+ * and the blocks of score windows per winning player and share key (solo
+ * rule 8; a score window's pairing is the window, solo rule 4). Voided
+ * blocks keep their place in every counter.
  */
 final class ChainState
 {
@@ -23,6 +25,9 @@ final class ChainState
 
     /** @var array<string, int> player|share key|day => blocks */
     private array $playerDay = [];
+
+    /** @var array<string, int> player|share key => blocks of score windows in the season */
+    private array $windowWins = [];
 
     public function mined(): int
     {
@@ -55,6 +60,12 @@ final class ChainState
         return $this->playerDay[$player.'|'.$shareKey.'|'.$utcDay] ?? 0;
     }
 
+    /** Solo rule 8: the score windows this player won with a block, for this share key. */
+    public function windowWins(string $player, string $shareKey): int
+    {
+        return $this->windowWins[$player.'|'.$shareKey] ?? 0;
+    }
+
     /** $shareKey: the candidate's game, or its share group (ConsensusParameters::shareKey()). */
     public function record(Candidate $candidate, Verdict $verdict, string $shareKey): void
     {
@@ -69,6 +80,10 @@ final class ChainState
         foreach ($candidate->winners as $player) {
             $key = $player.'|'.$shareKey.'|'.$day;
             $this->playerDay[$key] = ($this->playerDay[$key] ?? 0) + 1;
+
+            if ($candidate->isSolo()) {
+                $this->windowWins[$player.'|'.$shareKey] = $this->windowWins($player, $shareKey) + 1;
+            }
         }
     }
 }

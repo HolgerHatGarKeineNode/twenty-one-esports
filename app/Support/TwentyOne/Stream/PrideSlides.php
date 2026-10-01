@@ -27,6 +27,7 @@ use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
 use App\Support\Payouts\TournamentPlacements;
+use App\Support\Cards\ShareMoments;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\StrongestList;
@@ -633,15 +634,22 @@ class PrideSlides
         $miners = array_map($person, array_slice($block->winners(), 0, 3));
         $first = $block->winners()[0] ?? null;
         $mined = SeasonAttestation::query()->where('season_id', $block->season_id)->whereNotNull('height')->whereNotIn('id', $voided);
+        // A score window's block (plan "Blockfill", P7): no ladder and no loser, but the window, the winning value and
+        // the next two places. Stream slides are English: the window's stored name, not its translated title.
+        $window = $block->source === SeasonAttestation::SCORE ? ShareMoments::scoreWindow($block) : null;
+        $windowName = PublicName::clean($window['tournament']->name ?? $block->label);
 
         return [
             'height' => (int) $block->height,
             'season' => $block->season->slug,
             'reward' => $block->reward_per_player,
             'label' => $block->label,
-            'ladder' => GameTitle::ladder($block->game, $block->mode),
+            'ladder' => $window === null ? GameTitle::ladder($block->game, $block->mode) : GameTitle::of($block->game),
+            ...($window === null ? [] : ['line' => 'won '.$windowName.($window['value'] === null ? '' : ' with '.$window['value'])]),
             'miners' => $miners,
-            'beat' => array_map(fn (array $loser): string => $loser['name'], array_map($person, array_slice(array_map(strval(...), (array) ($block->candidate['losers'] ?? [])), 0, 3))),
+            'beat' => $window !== null
+                ? array_map(fn (string $name): string => PublicName::clean($name), $window['next'])
+                : array_map(fn (array $loser): string => $loser['name'], array_map($person, array_slice(array_map(strval(...), (array) ($block->candidate['losers'] ?? [])), 0, 3))),
             'seasonBlocks' => $mined->count(),
             // The first miner's blocks this season, this one included.
             'minerBlocks' => $first === null ? null : (clone $mined)->where('candidate', 'like', '%'.$first.'%')->get(['candidate'])

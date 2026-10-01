@@ -16,7 +16,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property int $season_id
- * @property string $source `series`, `chess` or `board` (a board game other than chess, P6)
+ * @property string $source `series`, `chess`, `board` (a board game other than chess, P6) or `score` (a score window, P7 of plan "AoE2 und Trackmania")
  * @property int $source_id
  * @property int $board
  * @property int|null $match_number
@@ -53,6 +53,13 @@ class SeasonAttestation extends Model
 
     /** A board game other than chess (plan "Mühle und Dame", P6); `source_id` is the board_games row. */
     public const BOARD = 'board';
+
+    /**
+     * The winner of a score window the league opened itself (plan "AoE2 und
+     * Trackmania", P7; NIP rev. 9.18): `source_id` is the leaderboard
+     * tournament, `ladder_address` its `31923` (a score game has no ladder).
+     */
+    public const SCORE = 'score';
 
     protected function casts(): array
     {

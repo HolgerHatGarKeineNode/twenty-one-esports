@@ -70,6 +70,16 @@ final class Blockfill extends ScoreGame
     }
 
     /**
+     * A ranked week mines only once an admin reviewed its top 3 (plan
+     * "Blockfill", P7): a valid input log proves no human, so the fastest
+     * runs are looked at before the league signs a block for one of them.
+     */
+    public function reviewedPlaces(): int
+    {
+        return 3;
+    }
+
+    /**
      * Milliseconds of a run of `$ticks` (60 ticks a second), rounded down
      * as the wall-clock bracket counts them (StackerRuns).
      */

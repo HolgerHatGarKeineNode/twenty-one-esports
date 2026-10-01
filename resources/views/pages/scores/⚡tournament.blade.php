@@ -25,7 +25,9 @@ use Livewire\Component;
  * link), the submission form and the player's own submissions for its
  * entries, and for its directors and admins the course, a correction with a
  * reason (the log below is public, as a director log is), and the end once
- * the window closed. Routed only while a score game is registered.
+ * the window closed; for a game that asks for it (Blockfill, plan
+ * "Blockfill", P7) also the review of the top places before the window may
+ * mine. Routed only while a score game is registered.
  */
 new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Component {
     public Tournament $tournament;
@@ -221,6 +223,31 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         unset($this->standings);
     }
 
+    /**
+     * Whether the top places a game asks to be reviewed (plan "Blockfill", P7) are reviewed.
+     */
+    #[Computed]
+    public function reviewed(): bool
+    {
+        return app(ScoreLeaderboards::class)->reviewed($this->tournament);
+    }
+
+    public function confirmReview(ScoreLeaderboards $leaderboards): void
+    {
+        $this->resetErrorBag();
+
+        try {
+            $leaderboards->confirmReview($this->tournament->refresh(), $this->viewer());
+        } catch (TournamentRuleViolation $violation) {
+            $this->addError('review', $violation->getMessage());
+
+            return;
+        }
+
+        $this->flash = __('The top :places are reviewed.', ['places' => $this->game->reviewedPlaces()]);
+        unset($this->reviewed);
+    }
+
     private function viewer(): User
     {
         $user = auth()->user();
@@ -402,6 +429,19 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     <x-button wire:click="finalize" wire:confirm="{{ __('End the leaderboard with these places?') }}" data-test="score-finalize">{{ __('End the leaderboard') }}</x-button>
                 </div>
                 @error('finalize')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
+            @endif
+
+            {{-- Plan "Blockfill", P7: a window that may mine waits for an admin's review of its top places. --}}
+            @if ($game->reviewedPlaces() > 0 && $window->hasEnded() && $standings !== [])
+                <div class="flex flex-col gap-2 border-t border-hairline pt-4 sm:flex-row sm:items-center sm:justify-between" data-test="score-review">
+                    <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ $this->reviewed
+                        ? __('The runs of the top :places are reviewed. The window can mine its block once the review time of the season chain is over.', ['places' => $game->reviewedPlaces()])
+                        : __('Before this window can mine its block, an admin reviews the runs of its top :places. A correction that moves another run into them needs a new review.', ['places' => $game->reviewedPlaces()]) }}</p>
+                    @unless ($this->reviewed)
+                        <x-button wire:click="confirmReview" wire:confirm="{{ __('Have you looked at the runs of the top :places?', ['places' => $game->reviewedPlaces()]) }}" data-test="score-review-confirm">{{ __('Top :places reviewed', ['places' => $game->reviewedPlaces()]) }}</x-button>
+                    @endunless
+                </div>
+                @error('review')<p class="m-0 text-[13px] text-loss" role="alert">{{ $message }}</p>@enderror
             @endif
         </section>
     @endif

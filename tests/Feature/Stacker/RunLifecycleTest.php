@@ -61,6 +61,7 @@ function submitForty(string $token, int $extraMs = 500, array $overrides = []): 
         'replay' => $forty['replay'],
         'ticks' => $forty['expected']['ticks'],
         'hash' => $forty['expected']['stateHash'],
+        'input' => 'keyboard',
     ]);
 }
 
@@ -200,6 +201,25 @@ test('an oversized or malformed submission is rejected without the verifier', fu
     expect($this->verifier->asked)->toBe([]);
 });
 
+test('a ranked run played without the keyboard, or that does not say how it was played, is rejected before the verifier', function () {
+    BlockfillOn::play();
+    Queue::fake();
+
+    foreach (['touch', null, ['keyboard']] as $input) {
+        // past the per-network issue limit of the minute before
+        $this->travel(61)->seconds();
+        $issued = issueRun(User::factory()->create());
+        submitForty($issued['token'], overrides: ['input' => $input])->assertStatus(202)->assertJson(['status' => 'rejected', 'reason' => 'input']);
+
+        expect(runOf($issued)->only(['status', 'reason', 'replay']))->toBe(['status' => StackerRunStatus::Rejected, 'reason' => 'input', 'replay' => null]);
+    }
+
+    Queue::assertNotPushed(VerifyStackerRun::class);
+    $this->travel(61)->seconds();
+    $issued = issueRun(User::factory()->create());
+    submitForty($issued['token'])->assertStatus(202)->assertJson(['status' => 'verifying']);
+});
+
 test('a rejection keeps the verifier\'s reason; a verifier that is unavailable or fails leaves the run pending', function () {
     BlockfillOn::play();
 
@@ -325,7 +345,7 @@ function submitReplay(string $token, string $replay, int $ticks, string $hash): 
 {
     test()->travel(intdiv($ticks * 1000, 60) + 500)->milliseconds();
 
-    return test()->postJson(route('stacker.runs.submit', $token), ['replay' => $replay, 'ticks' => $ticks, 'hash' => $hash]);
+    return test()->postJson(route('stacker.runs.submit', $token), ['replay' => $replay, 'ticks' => $ticks, 'hash' => $hash, 'input' => 'keyboard']);
 }
 
 test('a verified run keeps its replay only among the week\'s fastest; a run stretched to 36,000 ticks outside them stores none', function () {

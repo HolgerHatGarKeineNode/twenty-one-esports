@@ -10,6 +10,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\Contracts\ScoreSource;
+use App\Support\SeasonChain\SeasonChains;
 use App\Support\Tournaments\TournamentInterest;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
@@ -299,6 +300,76 @@ final class ScoreLeaderboards
     }
 
     /**
+     * An admin's review of the top places of a window whose game asks for
+     * one (ScoreGame::reviewedPlaces(), plan "Blockfill", P7): the runs
+     * behind them as they stand now are marked as looked at by this admin
+     * (`verified_by_id`; a director's entry carries its director already).
+     * Once the window has closed, while the board runs or after its end; a
+     * correction that moves another run into the top places needs a review
+     * of its own. Returns how many runs were newly marked.
+     *
+     * @throws TournamentRuleViolation
+     */
+    public function confirmReview(Tournament $tournament, User $admin): int
+    {
+        $this->assertDirector($tournament, $admin);
+
+        if (self::interested($tournament, $admin)) {
+            throw new TournamentRuleViolation('interested', self::interestMessage());
+        }
+
+        if ($this->runs->gameOf($tournament)->reviewedPlaces() === 0) {
+            throw new TournamentRuleViolation('no_review', __('This leaderboard needs no review of its top places.'));
+        }
+
+        if (! in_array($tournament->status, [TournamentStatus::Running, TournamentStatus::Finished], true) || ! ScoreWindow::of($tournament)->hasEnded()) {
+            throw new TournamentRuleViolation('not_ended', __('The top places are reviewed once the window has closed.'));
+        }
+
+        $runIds = array_values(array_filter(array_map(fn (ScoreStanding $standing): ?int => $standing->runId, $this->reviewedStandings($tournament))));
+
+        if ($runIds === []) {
+            throw new TournamentRuleViolation('nobody_placed', __('Nobody has a place to review yet.'));
+        }
+
+        return ScoreRun::query()->whereKey($runIds)->whereNull('verified_by_id')->update(['verified_by_id' => $admin->id]);
+    }
+
+    /**
+     * Whether an admin reviewed every run behind the top places a game asks
+     * to be reviewed (confirmReview()); true for a game that asks for none,
+     * false while nobody is placed. Fails closed: a place without its run,
+     * or a run not looked at, is not reviewed.
+     */
+    public function reviewed(Tournament $tournament): bool
+    {
+        if ($this->runs->gameOf($tournament)->reviewedPlaces() === 0) {
+            return true;
+        }
+
+        $top = $this->reviewedStandings($tournament);
+        $runIds = array_map(fn (ScoreStanding $standing): ?int => $standing->runId, $top);
+
+        if ($top === [] || in_array(null, $runIds, true)) {
+            return false;
+        }
+
+        return ScoreRun::query()->whereKey($runIds)->whereNotNull('verified_by_id')->count() === count(array_unique($runIds));
+    }
+
+    /**
+     * The placed standings a review covers: places 1 to the game's reviewedPlaces().
+     *
+     * @return list<ScoreStanding>
+     */
+    private function reviewedStandings(Tournament $tournament): array
+    {
+        $places = $this->runs->gameOf($tournament)->reviewedPlaces();
+
+        return array_values(array_filter($this->runs->standings($tournament), fn (ScoreStanding $standing): bool => $standing->place !== null && $standing->place <= $places));
+    }
+
+    /**
      * Whether the review time after the window (`review_hours`) is over.
      */
     public static function reviewOver(Tournament $tournament): bool
@@ -308,7 +379,9 @@ final class ScoreLeaderboards
 
     /**
      * Take the snapshots of every running leaderboard, then finalize those
-     * whose review time is over and that have no manual submission waiting.
+     * whose review time is over and that have no manual submission waiting,
+     * and attest the league's own finished windows that are due for the
+     * season chain (their count is not part of the return).
      *
      * @return array{finalized: int, snapshots: int}
      */
@@ -335,6 +408,10 @@ final class ScoreLeaderboards
                 report($e);
             }
         }
+
+        // Plan "AoE2 und Trackmania", P7: the windows the league opened itself go to the season chain once final and
+        // reviewed (SeasonChains::attestDueScoreWindows(), each on its own; nothing without a live season).
+        app(SeasonChains::class)->attestDueScoreWindows();
 
         return ['finalized' => $finalized, 'snapshots' => $snapshots];
     }

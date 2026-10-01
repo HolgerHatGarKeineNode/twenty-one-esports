@@ -1,5 +1,6 @@
 <?php
 
+use App\Games\GameRegistry;
 use App\Models\Rating;
 use App\Models\Season;
 use App\Models\SeasonPlan;
@@ -187,14 +188,15 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
     }
 
     /**
-     * Fill one late game's proposal (ChainDraft::PROPOSALS: the board games,
-     * Age of Empires II) into the draft form, as fillBoardGamesProposal().
+     * Fill one late game's proposal (ChainDraft::proposalNames(): the board
+     * games, Age of Empires II, each score game that is switched on) into the
+     * draft form, as fillBoardGamesProposal().
      */
     public function fillProposal(string $which): void
     {
         Gate::authorize('admin');
 
-        $proposal = array_key_exists($which, ChainDraft::PROPOSALS) ? ChainDraft::proposal($which, ChainDraft::current()) : null;
+        $proposal = in_array($which, ChainDraft::proposalNames(), true) ? ChainDraft::proposal($which, ChainDraft::current()) : null;
 
         if ($proposal === null) {
             return;
@@ -937,6 +939,26 @@ new #[Title('Seasons')] #[Layout('layouts::app', ['section' => 'admin'])] class 
                             <span><button type="button" wire:click="fillProposal('age-of-empires-2')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-age-of-empires-2-proposal">{{ __('Fill in the proposal') }}</button></span>
                         </div>
                     @endif
+                    {{-- Score games (plan "AoE2 und Trackmania", P7): one solo block per window the league opens; draft values, only a proposal. --}}
+                    @foreach (array_keys(app(GameRegistry::class)->scores()) as $scoreGame)
+                        @if (! $draftLocked && ($proposal = ChainDraft::proposal($scoreGame, $draftChain)) !== null)
+                            <div class="flex flex-col gap-2 rounded-md bg-ground p-3 shadow-ring" data-test="{{ $scoreGame }}-proposal" wire:key="score-proposal-{{ $scoreGame }}">
+                                <p class="m-0 text-xs text-ink-2">{{ __(':game does not mine in this draft. Draft proposal, not decided yet: weight :weight per mode, :share % share and :daily a day; the other shares shrink in proportion to make room: :others. Nothing changes until you save the draft.', [
+                                    'game' => ChainDraft::shareLabel($scoreGame),
+                                    'weight' => SeasonRelease::factor((int) collect($proposal['weights'])->first()),
+                                    'share' => (int) collect($proposal['shares'])->only(array_keys($proposal['daily']))->first(),
+                                    'daily' => (int) collect($proposal['daily'])->first(),
+                                    'others' => collect($proposal['shares'])->except(array_keys($proposal['daily']))->map(fn (int $share, string $key): string => ChainDraft::shareLabel($key).' '.$share.' %')->implode(', '),
+                                ]) }}</p>
+                                <p class="m-0 text-xs text-ink-3">{{ __('A score game mines one block per window the league opens itself, for its winner, when at least :entrants trusted players have a verified value in it, after a review of :hours hours, and at most :wins window wins per player and season.', [
+                                    'entrants' => ConsensusParameters::SOLO_ENTRANTS,
+                                    'hours' => intdiv(ConsensusParameters::SOLO_REVIEW, 3600),
+                                    'wins' => ConsensusParameters::SOLO_WINS,
+                                ]) }}</p>
+                                <span><button type="button" wire:click="fillProposal('{{ $scoreGame }}')" class="inline-flex min-h-11 cursor-pointer items-center rounded-md border border-line bg-well px-4 text-[13px] font-bold text-ink hover:border-btc" data-test="fill-{{ $scoreGame }}-proposal">{{ __('Fill in the proposal') }}</button></span>
+                            </div>
+                        @endif
+                    @endforeach
                 </fieldset>
                 <fieldset class="m-0 grid grid-cols-2 gap-3 border-0 p-0 lg:grid-cols-4" data-test="draft-fields-rules" @disabled($draftLocked)>
                     <legend class="mb-2 text-xs font-bold text-ink">{{ __('Consensus rules 4, 8, 7 and 2') }}</legend>

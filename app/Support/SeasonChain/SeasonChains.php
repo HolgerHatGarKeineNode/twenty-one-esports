@@ -7,21 +7,33 @@ use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesResolution;
+use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
+use App\Models\Clan;
+use App\Models\ClanDeparture;
+use App\Models\ClanMember;
 use App\Models\RatingChange;
+use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonParameterChange;
 use App\Models\SeriesMatch;
+use App\Models\Tournament;
 use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Rating\RatingService;
+use App\Support\Scores\ScoreLeaderboards;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
 use App\Support\Series\Ladders;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * The season chain of the app (P7c): every rated result inside a live chain
@@ -502,6 +514,270 @@ final class SeasonChains
     }
 
     /**
+     * Attest every score window that is due (plan "AoE2 und Trackmania", P7):
+     * the finished leaderboards of a score game that the league opened itself
+     * in the live season and that have no attestation yet. Each on its own:
+     * one that fails is reported, the others go on. Called by `scores:tick`.
+     *
+     * @return int the attestations signed
+     */
+    public function attestDueScoreWindows(): int
+    {
+        $live = Seasons::live();
+        $games = array_keys(app(GameRegistry::class)->scores());
+
+        if ($live === null || $games === []) {
+            return 0;
+        }
+
+        $attested = 0;
+        $due = Tournament::query()->where('status', TournamentStatus::Finished)->where('format', TournamentFormat::Leaderboard)
+            ->whereIn('game', $games)->where('opened_by_league', true)->whereNull('created_by_id')->where('starts_at', '>=', $live->genesis_at)
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('season_attestations')
+                ->where('season_attestations.source', SeasonAttestation::SCORE)->whereColumn('season_attestations.source_id', 'tournaments.id'))
+            ->orderBy('id')->get();
+
+        foreach ($due as $tournament) {
+            try {
+                if ($this->attestScoreWindow($tournament) !== null) {
+                    $attested++;
+                }
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $attested;
+    }
+
+    /**
+     * Attest the winner of a score window (NIP rev. 9.18, "Solo blocks"): one
+     * `2154` on the window's `31923`, with the winner, the window, the trust
+     * gate of the winner and the field pinned now, and the `block` tag; the
+     * solo rules (ConsensusRules) decide whether it mines.
+     *
+     * Only a window the league opened itself (`opened_by_league`, set by the
+     * league's own code only, such as a Blockfill week; and still without an
+     * organizer) is a candidate: every other tournament never mines, an
+     * organizer's leaderboard included, also once the organizer deleted the
+     * account and `created_by_id` became null (audit F1). Null when
+     * nothing is due: not such a window, not finished, its `31923` not
+     * signed, no live season, a window that began before Block 0 (it belongs
+     * to no chain), the review time `solo` after its end not over yet, its
+     * top places not reviewed by an admin where the game asks for that
+     * (ScoreGame::reviewedPlaces(); the next tick tries again for both), or
+     * nobody placed.
+     */
+    public function attestScoreWindow(Tournament $tournament): ?SeasonAttestation
+    {
+        if (! app(GameRegistry::class)->isScore($tournament->game) || $tournament->format !== TournamentFormat::Leaderboard
+            || ! $tournament->opened_by_league || $tournament->created_by_id !== null || $tournament->status !== TournamentStatus::Finished) {
+            return null;
+        }
+
+        $live = Seasons::live();
+        $address = $tournament->loadMissing('event')->address();
+        $window = ScoreWindow::of($tournament);
+
+        if ($live === null || $address === null || $window->start->lt(CarbonImmutable::instance($live->genesis_at))) {
+            return null;
+        }
+
+        // A game that asks for it (Blockfill, plan "Blockfill", P7): no attestation before an admin reviewed its top
+        // places. Not a consensus rule: the league signs nothing yet, and the next tick tries again.
+        if (! app(ScoreLeaderboards::class)->reviewed($tournament)) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($tournament, $live, $address, $window): ?SeasonAttestation {
+            $season = Season::query()->whereKey($live->id)->lockForUpdate()->firstOrFail();
+            $existing = $season->attestations()->where(['source' => SeasonAttestation::SCORE, 'source_id' => $tournament->id, 'board' => 1])->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            $attestedAt = $this->nextAttestationTime($season);
+            $parameters = $season->chainParameters()->inForceAt($attestedAt);
+
+            // Solo rule 2: the league signs nothing about a window before its review time is over.
+            if ($attestedAt->lt($window->end->addSeconds($parameters->soloReview))) {
+                return null;
+            }
+
+            [$candidate, $pin] = $this->scoreCandidate($tournament, $window, $attestedAt) ?? [null, null];
+
+            if ($candidate === null || $pin === null) {
+                return null;
+            }
+
+            $verdict = $this->chain($season)->attest($candidate);
+            $tip = $this->tip($season);
+            $row = [
+                'season_id' => $season->id,
+                'source' => SeasonAttestation::SCORE,
+                'source_id' => $tournament->id,
+                'board' => 1,
+                'match_number' => null,
+                'label' => $candidate->label,
+                'game' => $tournament->game,
+                'mode' => $tournament->mode,
+                'ladder_address' => $address,
+                'attested_at' => $attestedAt,
+                'candidate' => $candidate->toArray(),
+                'height' => $verdict->mines() ? ($tip['height'] ?? 0) + 1 : null,
+                'rule' => $verdict->rule?->value,
+                'reason' => $verdict->reason,
+                'subject' => $verdict->subject === null ? null : mb_substr($verdict->subject, 0, 200),
+                'era' => $verdict->era,
+                'reward_per_player' => $verdict->rewardPerPlayer,
+                'reward' => $verdict->mines() ? $verdict->reward : 0,
+                'link_event_id' => $tip['id'],
+            ];
+            $block = ['block', $verdict->mines() ? (string) $row['height'] : '', $tip['id']];
+            $hours = intdiv($parameters->soloReview, 3600);
+            $content = "Score window opened by the league: the best verified value set inside the window wins. Attested after a review of {$hours} hours; the values stay league data.";
+            $event = LeagueKey::required()->publish(self::ATTESTATION, $this->scoreTags($candidate, $pin, $address, $block), $content, $attestedAt->getTimestamp());
+
+            return SeasonAttestation::query()->create($row + ['event_id' => $event->event_id, 'nostr_event_id' => $event->id]);
+        });
+    }
+
+    /**
+     * The solo candidate of a finished score window: its first place, the
+     * facts of the winning value, and the other placed entrants whose own
+     * value a source verified inside the window (the field). Trust ranks and
+     * anchors are pinned now, for the winner and the field, by the trust
+     * gate of rated play (a player barred by fair play is left out, so he
+     * counts as untrusted); clans are those of now, plus every clan held
+     * since the window's start for the solo rules (audit F2). Null when
+     * nobody placed, or while the live season has no trust facts (audit F3).
+     *
+     * @return array{0: Candidate, 1: GatePin}|null the candidate and the pin its `gate` rows show
+     */
+    private function scoreCandidate(Tournament $tournament, ScoreWindow $window, CarbonImmutable $attestedAt): ?array
+    {
+        $standings = array_values(array_filter(app(ScoreRuns::class)->standings($tournament), fn (ScoreStanding $standing): bool => $standing->place !== null));
+        $first = array_values(array_filter($standings, fn (ScoreStanding $standing): bool => $standing->place === 1))[0] ?? null;
+
+        if ($first === null || $first->participant->user_id === null) {
+            return null;
+        }
+
+        $runs = ScoreRun::query()->whereKey(array_values(array_filter(array_map(fn (ScoreStanding $standing): ?int => $standing->runId, $standings))))->get()->keyBy('id');
+        $users = User::query()->whereKey(array_values(array_filter(array_map(fn (ScoreStanding $standing): ?int => $standing->participant->user_id, $standings))))->pluck('pubkey', 'id');
+        // A value counts when a source read it (never a director's entry), it is verified and not rejected, inside the window.
+        $verified = function (ScoreStanding $standing) use ($runs, $window): bool {
+            $run = $standing->runId === null ? null : $runs->get($standing->runId);
+
+            // The run is the entry's own (audit N1): a standing never counts another player's value.
+            return $run instanceof ScoreRun && $run->user_id !== null && $run->user_id === $standing->participant->user_id
+                && $run->source !== ScoreRun::DIRECTOR && $run->verified_at !== null && $run->rejected_at === null
+                && $run->value !== null && $window->contains($run->achieved_at);
+        };
+
+        $winner = (string) $users->get($first->participant->user_id);
+
+        if ($winner === '') {
+            return null;
+        }
+
+        $entrants = [];
+
+        foreach ($standings as $standing) {
+            $pubkey = (string) $users->get((int) $standing->participant->user_id);
+
+            if ($standing !== $first && $pubkey !== '' && $pubkey !== $winner && $verified($standing)) {
+                $entrants[] = $pubkey;
+            }
+        }
+
+        $entrants = array_values(array_unique($entrants));
+        $winningRun = $first->runId === null ? null : $runs->get($first->runId);
+        $all = [$winner, ...$entrants];
+
+        // Audit F3: without trust facts for the live season nothing is pinned or signed; the next tick tries again.
+        if (! app(TrustFacts::class)->available()) {
+            return null;
+        }
+
+        $pin = app(RatedTrustGate::class)->pin($all, [$winner, $winner]);
+        $now = ClanMember::query()->with(['clan', 'user'])->whereIn('user_id', $users->keys()->all())->get()
+            ->mapWithKeys(fn (ClanMember $member): array => [(string) $member->user->pubkey => $member->clan->address()])->all();
+        $clans = $this->clans($all, $now);
+        $held = $this->clansHeldSince($all, $now, $window->start);
+
+        return [new Candidate(
+            mb_substr($tournament->name, 0, 32),
+            'score:'.$tournament->id,
+            $tournament->game,
+            $tournament->game.'/'.$tournament->mode,
+            $attestedAt,
+            Resolution::Admin,
+            null,
+            [$winner],
+            [],
+            $clans[$winner],
+            [$winner, $winner],
+            [$winner, $winner],
+            false,
+            $pin->ranks($all),
+            $clans,
+            $pin->anchors($all),
+            [
+                'start' => $window->start->utc()->toIso8601ZuluString(),
+                'end' => $window->end->utc()->toIso8601ZuluString(),
+                'achieved_at' => CarbonImmutable::instance($winningRun->achieved_at ?? $window->end)->utc()->toIso8601ZuluString(),
+                'source' => (string) ($winningRun->source ?? ScoreRun::DIRECTOR),
+                'verified' => $verified($first),
+                'entrants' => $entrants,
+                'clans' => $held,
+            ],
+        ), $pin];
+    }
+
+    /**
+     * The `2154` of a score window (NIP rev. 9.18): the window's `31923`, the
+     * game and mode, the winner, the window, the trust gate pinned at the
+     * attestation for the winner and the field, their clans, and the block.
+     * No `elo`, no `prev`, no `winner` side and no values: a score game has
+     * no ladder, and its values stay league data.
+     *
+     * @param  list<string>  $block
+     * @return list<list<string>>
+     */
+    private function scoreTags(Candidate $candidate, GatePin $pin, string $address, array $block): array
+    {
+        $winner = $candidate->winners[0];
+        $field = array_values(array_unique([$winner, ...array_map(strval(...), (array) ($candidate->solo['entrants'] ?? []))]));
+        [$game, $mode] = explode('/', $candidate->weightKey, 2);
+        $tags = [
+            ['a', $address, ''],
+            ['game', $game],
+            ['mode', $mode],
+            ['p', $winner, '', 'winner'],
+            ['resolution', Resolution::Admin->value],
+            ['window', (string) $candidate->windowStart()->getTimestamp(), (string) $candidate->windowEnd()->getTimestamp()],
+        ];
+
+        foreach ($pin->tags($field) as $tag) {
+            $tags[] = $tag;
+        }
+
+        // One row per clan a player held from the window's start to the attestation (audit F2), the clans rule 3 read.
+        foreach ((array) ($candidate->solo['clans'] ?? array_map(fn (?string $clan): array => $clan === null ? [] : [$clan], $candidate->clans)) as $pubkey => $held) {
+            foreach ((array) $held as $clan) {
+                $tags[] = ['clan', (string) $pubkey, (string) $clan];
+            }
+        }
+
+        $tags[] = $block;
+        $tags[] = ['alt', "Esports league attestation: score window {$candidate->label}, {$game} {$mode}"];
+
+        return $tags;
+    }
+
+    /**
      * A Parameter Change (`2158`) of the live season by a board admin: in
      * force for every attestation from `effective` on, never before (NIP
      * "Parameter changes"; the core refuses an `effective` at or before the
@@ -779,6 +1055,45 @@ final class SeasonChains
         }
 
         return $clans;
+    }
+
+    /**
+     * Every clan each player held from `$since` (a score window's start) to
+     * now (audit F2): the clan they are in, and every clan they left since,
+     * by account or pubkey, as TournamentInterest reads departures. Only
+     * players with at least one clan; each list without repeats. A
+     * departure without its address keeps the clan's id, so it still
+     * matches nobody else's address but its own.
+     *
+     * @param  list<string>  $pubkeys
+     * @param  array<string, string>  $now  pubkey => clan address now
+     * @return array<string, list<string>>
+     */
+    private function clansHeldSince(array $pubkeys, array $now, CarbonImmutable $since): array
+    {
+        $held = [];
+
+        foreach ($pubkeys as $pubkey) {
+            if (isset($now[$pubkey])) {
+                $held[$pubkey] = [$now[$pubkey]];
+            }
+        }
+
+        $ids = User::query()->whereIn('pubkey', $pubkeys)->pluck('pubkey', 'id');
+        $departures = ClanDeparture::query()->where('left_at', '>=', $since)
+            ->where(fn ($query) => $query->whereIn('user_id', $ids->keys()->all())->orWhereIn('pubkey', $pubkeys))
+            ->orderBy('id')->get();
+
+        foreach ($departures as $departure) {
+            $pubkey = (string) ($departure->pubkey ?? $ids->get((int) $departure->user_id) ?? '');
+            $address = $departure->clan_address ?? Clan::query()->whereKey($departure->clan_id)->first()?->address() ?? 'clan-id:'.$departure->clan_id;
+
+            if (in_array($pubkey, $pubkeys, true) && ! in_array($address, $held[$pubkey] ?? [], true)) {
+                $held[$pubkey][] = $address;
+            }
+        }
+
+        return $held;
     }
 
     /**

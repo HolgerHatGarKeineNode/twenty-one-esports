@@ -6,7 +6,7 @@
     block: how blocks are mined, as an invitation.
 
     Data contract:
-      $pride     array{block: array{height: int, season: string, reward: int, label: string, ladder: string,
+      $pride     array{block: array{height: int, season: string, reward: int, label: string, ladder: string, line?: string,
                  miners: list<array{name: string, avatar: ?string}>, beat: list<string>, seasonBlocks: int,
                  minerBlocks: ?int, ago: string, live: bool}|null, …} (PrideSlides::all())
       $stats     array: the stats bar counts (c-chrome)
@@ -22,8 +22,10 @@
         $others = count($miners) > 1 ? 'with '.K::listing(array_column(array_slice($miners, 1), 'name'), 2) : null;
         $beat = K::listing($block['beat'] ?? [], 2);
         $ladder = K::clean($block['ladder'] ?? '');
-        $line = K::fit(($beat !== '' ? 'beat '.$beat : 'won').($ladder !== '' ? ' in '.$ladder : ''), K::MONO, 22, 600);
-        $sub = K::fit(implode(', ', array_filter([$others, K::clean($block['ago'] ?? '')])), K::MONO, 20, 600);
+        // A score window's block (plan "Blockfill", P7) brings its own line; whom it beat are the next places.
+        $window = is_string($block['line'] ?? null) ? K::clean($block['line']) : '';
+        $line = K::fit($window !== '' ? $window : ($beat !== '' ? 'beat '.$beat : 'won').($ladder !== '' ? ' in '.$ladder : ''), K::MONO, 22, 600);
+        $sub = K::fit(implode(', ', array_filter([$others, $window !== '' && $beat !== '' ? 'ahead of '.$beat : null, K::clean($block['ago'] ?? '')])), K::MONO, 20, 600);
         $reward = is_int($block['reward'] ?? null) && $block['reward'] > 0 ? '+'.K::sats($block['reward']).' sats' : null;
         $mine = is_int($block['minerBlocks'] ?? null) && $block['minerBlocks'] > 0 ? K::ordinal($block['minerBlocks']).' block this season' : null;
         $heights = K::chainHeights($block['height'], 5);

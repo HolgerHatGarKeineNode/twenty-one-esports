@@ -271,7 +271,7 @@ test('a player with a faster all-time best still gets the first run of a new wee
     $issued = $this->actingAs($user)->postJson(route('stacker.runs.issue'))->assertCreated()->assertJson(['best' => null, 'best_all_time' => 500])->json();
     $this->postJson(route('stacker.runs.start', $issued['token']))->assertNoContent();
     $this->travel(intdiv($forty['expected']['ticks'] * 1000, 60) + 500)->milliseconds();
-    $this->postJson(route('stacker.runs.submit', $issued['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash']])
+    $this->postJson(route('stacker.runs.submit', $issued['token']), ['replay' => $forty['replay'], 'ticks' => $forty['expected']['ticks'], 'hash' => $forty['expected']['stateHash'], 'input' => 'keyboard'])
         ->assertStatus(202)->assertJson(['status' => 'verifying']);
 
     $run = StackerRun::query()->where('seed', $issued['seed'])->sole();

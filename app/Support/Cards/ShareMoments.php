@@ -17,6 +17,8 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
@@ -59,24 +61,60 @@ final class ShareMoments
     }
 
     /**
-     * @return array{name: string, pubkey: string, avatar_path: string|null, height: int, reward: int, label: string, ladder: string, opponents: list<string>, personal_height: int, era: int, pending: bool}
+     * A block of a score window (plan "Blockfill", P7) has no ladder and no
+     * loser: `ladder` is the game, `window` the window's name in the page's
+     * language and `value` the winning value; `opponents` are the next two
+     * places of the window (scoreWindow()).
+     *
+     * @return array{name: string, pubkey: string, avatar_path: string|null, height: int, reward: int, label: string, ladder: string, opponents: list<string>, personal_height: int, era: int, pending: bool, window?: string, value?: string|null}
      */
     public static function block(SeasonAttestation $block, User $miner): array
     {
         $losers = (array) ($block->candidate['losers'] ?? []);
         $names = User::query()->whereIn('pubkey', $losers)->get()->keyBy('pubkey');
         $opponents = array_map(fn (string $pubkey): string => $names->get($pubkey)?->displayName() ?? 'npub1…'.substr($pubkey, -4), array_slice(array_values(array_map(strval(...), $losers)), 0, 3));
+        $window = $block->source === SeasonAttestation::SCORE ? self::scoreWindow($block) : null;
 
         return [
             ...self::person($miner, $miner->pubkey),
             'height' => (int) $block->height,
             'reward' => $block->reward_per_player,
             'label' => $block->label,
-            'ladder' => BadgeCopy::ladder($block->game, $block->mode),
-            'opponents' => $opponents,
+            'ladder' => $window === null ? BadgeCopy::ladder($block->game, $block->mode) : app(GameRegistry::class)->name($block->game),
+            'opponents' => $window['next'] ?? $opponents,
             'personal_height' => self::minedBy($miner, $block->season_id, (int) $block->height)->count(),
             'era' => (int) $block->era,
             'pending' => ! $block->season->ends_at->isPast(),
+            ...($window === null ? [] : ['window' => $window['tournament']?->title() ?? $block->label, 'value' => $window['value']]),
+        ];
+    }
+
+    /**
+     * What a score window's block names besides its miner: the window's
+     * tournament (null once it is gone), the winning value as its game
+     * writes it (null when the board kept none), and the players on places
+     * 2 and 3 as the end froze them.
+     *
+     * @return array{tournament: Tournament|null, value: string|null, next: list<string>}
+     */
+    public static function scoreWindow(SeasonAttestation $block): array
+    {
+        $tournament = Tournament::query()->find($block->source_id);
+
+        if ($tournament === null) {
+            return ['tournament' => null, 'value' => null, 'next' => []];
+        }
+
+        $runs = app(ScoreRuns::class);
+        $placed = array_values(array_filter($runs->standings($tournament), fn (ScoreStanding $standing): bool => $standing->place !== null));
+        $next = array_slice($placed, 1, 2);
+        $users = User::query()->whereKey(array_filter(array_map(fn (ScoreStanding $standing): ?int => $standing->participant->user_id, $next)))->get()->keyBy('id');
+        $value = $placed[0]->value ?? null;
+
+        return [
+            'tournament' => $tournament,
+            'value' => $value === null ? null : $runs->metricOf($tournament)->format($value),
+            'next' => array_map(fn (ScoreStanding $standing): string => $users->get($standing->participant->user_id)?->displayName() ?? $standing->participant->name, $next),
         ];
     }
 

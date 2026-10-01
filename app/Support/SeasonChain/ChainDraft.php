@@ -187,9 +187,10 @@ final class ChainDraft
         $parameters = new ConsensusParameters([], groups: $chain['groups']);
         $rows = [];
 
-        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no score
-        // game: whether its places mine is a concept still (plan "AoE2 und Trackmania", P7).
-        foreach (app(GameRegistry::class)->versus() as $game) {
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6), and the
+        // score games that are switched on: their windows mine one solo block each (plan "AoE2 und Trackmania", P7). A
+        // row without a weight does not mine; the score games start that way and come in only through their proposal.
+        foreach (app(GameRegistry::class)->all() as $game) {
             foreach (array_keys($game->modes()) as $mode) {
                 $rows[$parameters->shareKey($game->slug())][] = $game->slug().'/'.$mode;
             }
@@ -242,6 +243,27 @@ final class ChainDraft
     ];
 
     /**
+     * The proposal for every score game that is switched on (plan "AoE2 und
+     * Trackmania", P7), keyed by its slug: weight 1 per mode, a small share
+     * and one block a day. DRAFT values nobody decided yet, kept low on
+     * purpose: a window mines at most one block (solo rule 4), so the share
+     * only caps what a weight raised later could pay. The board fills them
+     * in (or its own) and saves, or the score games do not mine.
+     */
+    public const SCORE_PROPOSAL = ['weights' => [], 'share' => 5, 'daily' => 1];
+
+    /**
+     * The names of every proposal the admin season page may show: the late
+     * games of PROPOSALS and each score game that is switched on.
+     *
+     * @return list<string>
+     */
+    public static function proposalNames(): array
+    {
+        return [...array_keys(self::PROPOSALS), ...array_keys(app(GameRegistry::class)->scores())];
+    }
+
+    /**
      * What the admin season page proposes for the board games (plan "Mühle
      * und Dame", P6) on top of this draft, or null while no board game is
      * switched on or they mine already; proposal() says how.
@@ -263,17 +285,23 @@ final class ChainDraft
      * all of them add up to at most 100 % (largest remainder; a tie goes to
      * the larger share). Nothing is saved: the board fills it into the form
      * and saves it, or not. Age of Empires II (plan "AoE2 und Trackmania",
-     * P1) proposes DRAFT values the board has not decided yet.
+     * P1) proposes DRAFT values the board has not decided yet, and so does
+     * every score game (SCORE_PROPOSAL, P7).
      *
-     * @param  key-of<self::PROPOSALS>  $which
+     * @param  string  $which  one of proposalNames()
      * @param  Chain  $chain
      * @return array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>}|null
      */
     public static function proposal(string $which, array $chain): ?array
     {
-        /** @var array{weights: array<string, int>, share: int, daily: int} $proposal */
-        $proposal = config(self::PROPOSALS[$which]);
         $registry = app(GameRegistry::class);
+
+        if (! isset(self::PROPOSALS[$which]) && ! $registry->isScore($which)) {
+            return null;
+        }
+
+        /** @var array{weights: array<string, int>, share: int, daily: int} $proposal */
+        $proposal = isset(self::PROPOSALS[$which]) ? config(self::PROPOSALS[$which]) : self::SCORE_PROPOSAL;
         $ofProposal = fn (string $game): bool => $which === 'board-games' ? $registry->isBoard($game) : $game === $which;
         $keys = [];
 

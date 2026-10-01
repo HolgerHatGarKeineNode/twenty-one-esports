@@ -97,7 +97,7 @@ test('its page is its leaderboards, in the navigation and the sitemap, never the
     $this->get(route('scores.show', 'chess'))->assertNotFound();
 });
 
-test('it has no Elo ladder, no ladder event, no mining share and no stream bot announcement', function () {
+test('it has no Elo ladder, no ladder event, no mining share by default and no stream bot announcement', function () {
     ScoreDemoOn::play();
     $season = openSeason();
 
@@ -108,8 +108,13 @@ test('it has no Elo ladder, no ladder event, no mining share and no stream bot a
 
     expect(NostrEvent::query()->where('kind', Ladders::KIND)->pluck('d')->filter(fn ($d) => str_starts_with((string) $d, ScoreDemo::SLUG.'/'))->all())->toBe([])
         ->and(NostrEvent::query()->where('kind', Ladders::KIND)->count())->toBeGreaterThan(0)
-        ->and(collect(ChainDraft::table(ChainDraft::defaults()))->flatten()->filter(fn ($key) => str_starts_with((string) $key, ScoreDemo::SLUG))->all())->toBe([])
-        ->and(ChainOverview::mines(ScoreDemo::SLUG.'/time-trial'))->toBeFalse();
+        // P7 of the plan: a score game is a row of the chain draft without a weight, share or daily limit, and mines
+        // (one solo block per window the league opens) only once the board saves its proposal.
+        ->and(ChainDraft::table(ChainDraft::defaults())[ScoreDemo::SLUG] ?? null)->toBe([ScoreDemo::SLUG.'/time-trial', ScoreDemo::SLUG.'/highscore'])
+        ->and(collect(ChainDraft::defaults()['weights'])->keys()->filter(fn ($key) => str_starts_with((string) $key, ScoreDemo::SLUG))->all())->toBe([])
+        ->and(ChainDraft::defaults()['shares'])->not->toHaveKey(ScoreDemo::SLUG)
+        ->and(ChainDraft::defaults()['daily'])->not->toHaveKey(ScoreDemo::SLUG)
+        ->and(ChainOverview::mines(ScoreDemo::SLUG.'/time-trial'))->toBeTrue();
 
     $names = json_encode(app(StreamBotBuilders::class)->build('all_games', now()->toImmutable()));
 
