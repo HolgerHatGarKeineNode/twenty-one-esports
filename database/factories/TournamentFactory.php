@@ -57,6 +57,24 @@ class TournamentFactory extends Factory
         ]);
     }
 
+    /**
+     * A leaderboard of the score demo game (plan "AoE2 und Trackmania", P4) on
+     * course `demo-1`, with its week-long window; needs the demo switched on.
+     */
+    public function scoreDemo(string $mode = 'time-trial'): static
+    {
+        return $this->state(fn (): array => [
+            'name' => 'Score Week',
+            'game' => 'score-demo',
+            'mode' => $mode,
+            'format' => TournamentFormat::Leaderboard,
+            'options' => FormatOptions::defaults(GameProfile::for('score-demo', $mode))->toArray(),
+            'capacity' => 8,
+            'time_window' => 90,
+            'score_course' => 'demo-1',
+        ]);
+    }
+
     public function signup(): static
     {
         return $this->state(fn (): array => ['status' => TournamentStatus::Signup]);

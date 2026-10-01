@@ -114,6 +114,10 @@ Route::livewire('games/{game}', 'pages::games.show')->whereNumber('game')->name(
 if (config('esports.board_games.enabled')) {
     require __DIR__.'/board.php';
 }
+// Score games (plan "AoE2 und Trackmania", P4): no route at all while no score game is registered.
+if (app(GameRegistry::class)->scores() !== []) {
+    require __DIR__.'/score.php';
+}
 // The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
 Route::livewire('live', 'pages::live')->name('live');
 // Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.
