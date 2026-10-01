@@ -74,7 +74,9 @@ it('runs everything for a file that shapes every test, and nothing for a file no
     expect(changedTestsPicked($this->root, 'default', ['config/app.php']))->toBe(['ALL'])
         ->and(changedTestsPicked($this->root, 'default', ['database/migrations/2026_01_01_create_x.php']))->toBe(['ALL'])
         ->and(changedTestsPicked($this->root, 'default', ['tests/Pest.php']))->toBe(['ALL'])
-        ->and(changedTestsPicked($this->root, 'browser', ['resources/css/app.css']))->toBe(['ALL'])
+        ->and(changedTestsPicked($this->root, 'browser', ['package.json']))->toBe(['ALL'])
+        ->and(changedTestsPicked($this->root, 'browser', ['resources/css/app.css'], '--wide'))->toBe(['ALL'])
+        ->and(changedTestsPicked($this->root, 'browser', ['resources/css/app.css']))->toBe([])
         ->and(changedTestsPicked($this->root, 'default', ['docs/plans/x.md', 'scripts/test-browser.sh']))->toBe([])
         ->and(changedTestsPicked($this->root, 'default', ['app/Support/Quiet/QuietHours.php']))->toBe([]);
 });

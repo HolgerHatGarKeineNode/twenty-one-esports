@@ -39,7 +39,7 @@
 |   a changed lang key is searched, as written, in views and app/;
 | - global: config/, migrations, composer files, phpunit.xml, tests/Pest.php,
 |   the base TestCase, a tests/Support function file without any name in it,
-|   and, for the browser suite, package files, vite config and CSS. They run
+|   and, for the browser suite, package files and vite config (stylesheets only with --wide). They run
 |   everything, and so does a chain that grows past MAX_REACH files (a layout,
 |   a base model: too wide to select from).
 | - docs, scripts, dot-directories and the like are ignored; a changed source
@@ -192,7 +192,10 @@ function refsOf(string $path): array
         return [basename($path, '.php')];
     }
 
-    return [basename($path), preg_replace('/\.[^.]+$/', '', basename($path))];
+    // js, css, json ...: by file name, and by the name without its extension unless that is a common word
+    $bare = preg_replace('/\.[^.]+$/', '', basename($path));
+
+    return strlen($bare) >= 6 ? [basename($path), $bare] : [basename($path)];
 }
 
 /**
@@ -281,7 +284,10 @@ function everything(string $because): void
 
 $ignore = '#^(docs/|scripts/|\.[a-z]|storage/|LICENSE|THIRD-PARTY|README|AGENTS|CLAUDE|opencode\.json|boost\.json|pint\.json|phpstan\.neon|artisan$|tests/js/|tests/Integration/|tests/Relay/|.*\.md$)#i';
 $globalDefault = '#^(phpunit\.xml|composer\.(json|lock)|tests/Pest\.php|tests/TestCase\.php|bootstrap/|config/|database/migrations/)#';
-$globalBrowser = '#^(package(-lock)?\.json|vite\.config\.js|resources/css/|tailwind)#';
+$globalBrowser = '#^(package(-lock)?\.json|vite\.config\.js|tailwind)#';
+// A stylesheet shapes every page, but a one-rule tweak is judged by the test that was changed with it
+// and the tests that quote its selectors; only --wide treats it as global.
+$stylesheet = '#^resources/css/#';
 
 /** @var list<array{0: string, 1: int}> $queue the source files to follow upwards, with how many class hops they may still climb */
 $queue = [];
@@ -299,7 +305,7 @@ foreach ($changed as $file) {
         continue;
     }
 
-    if ($suite === 'browser' && preg_match($globalBrowser, $file) === 1) {
+    if ($suite === 'browser' && ($wide && preg_match($stylesheet, $file) === 1 || preg_match($globalBrowser, $file) === 1)) {
         everything("{$file}: shapes every page");
 
         continue;
@@ -430,6 +436,7 @@ function diffLiterals(string $file): array
             '/"((?:[^"\\\\]|\\\\.){8,})"/',
             '/(?:->|::)([a-z]+[A-Z]\w{5,})\b/',
             '/>([^<>{}@$]{8,})</',
+            '/(?:^|[\s,>+~(])\.([a-z][\w-]{5,})/',
         ] as $pattern) {
             if (preg_match_all($pattern, $code, $matches) > 0) {
                 array_push($found, ...array_map('stripcslashes', $matches[1]));
