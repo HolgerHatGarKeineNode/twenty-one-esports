@@ -46,13 +46,20 @@ use Illuminate\Support\Facades\Route;
  *
  * `runs` adds the highscore attempts of the score games (ScoreAttempts):
  * a verified run on the finished side, an unconfirmed one on the waiting
- * side, merged by time as every other kind; never on the `season` chain,
- * they mine nothing. /matches asks for them; the stream's mempool slide
+ * side, merged by time as every other kind, but at most ATTEMPTS_PER_SIDE
+ * of them a side, so matches always keep the rest; never on the `season`
+ * chain, they mine nothing. /matches asks for them; the stream's mempool slide
  * (App\Support\TwentyOne\Stream\MempoolSlides) does not.
  */
 final class MempoolStrip
 {
     public const SIDE = 5;
+
+    /**
+     * Highscore attempts take at most this many cubes a side: a busy
+     * Blockfill week would otherwise push every match out of the strip.
+     */
+    public const ATTEMPTS_PER_SIDE = 2;
 
     /** The `chain` filter values of /matches, with whether they keep rated matches. */
     public const CHAINS = ['season' => true, 'casual' => false];
@@ -84,7 +91,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
-            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('done', self::SIDE)) : []),
+            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('done', self::ATTEMPTS_PER_SIDE)) : []),
         ];
 
         $running = [
@@ -97,7 +104,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
-            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('waiting', self::SIDE)) : []),
+            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('waiting', self::ATTEMPTS_PER_SIDE)) : []),
         ];
 
         usort($finished, fn (array $a, array $b): int => $b['at'] <=> $a['at']);
@@ -121,19 +128,24 @@ final class MempoolStrip
     }
 
     /**
-     * How many matches wait in the mempool: the waiting side of the strip
-     * uncut, every game, casual and rated (scheduled and playing series,
-     * reported and disputed ones, running chess and board games). One query
-     * for any number of matches, a count per kind as its columns; row 1 of
-     * the header caches it (App\Support\Navigation\ShellNavigation::chain()).
+     * How many matches and highscore attempts wait in the mempool: the
+     * waiting side of the strip uncut, every game, casual and rated
+     * (scheduled and playing series, reported and disputed ones, running
+     * chess and board games, attempts waiting for the verifier or an admin,
+     * ScoreAttempts). One query for any number of them, a count per kind as
+     * its columns; row 1 of the header caches it
+     * (App\Support\Navigation\ShellNavigation::chain()).
      */
     public static function waiting(): int
     {
         $boards = self::boardSlugs();
+        $scores = ScoreAttempts::scoreSlugs(ScoreAttempts::slugs());
         $counts = DB::query()
             ->selectSub(SeriesMatch::query()->whereIn('status', self::WAITING_SERIES)->selectRaw('count(*)'), 'series')
             ->selectSub(ChessGame::query()->where('status', ChessGameStatus::Active)->selectRaw('count(*)'), 'chess')
             ->when($boards !== [], fn ($query) => $query->selectSub(BoardGame::query()->whereIn('game', $boards)->where('status', BoardGameStatus::Active)->selectRaw('count(*)'), 'boards'))
+            ->when(ScoreAttempts::blockfill(), fn ($query) => $query->selectSub(ScoreAttempts::stacker('waiting')->selectRaw('count(*)'), 'stacker'))
+            ->when($scores !== [], fn ($query) => $query->selectSub(ScoreAttempts::scores($scores, 'waiting')->selectRaw('count(*)'), 'scores'))
             ->first();
 
         return array_sum(array_map('intval', (array) $counts));

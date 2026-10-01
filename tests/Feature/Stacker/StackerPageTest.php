@@ -50,6 +50,30 @@ test('a guest gets the page to practise, a player gets their controls and best t
     $this->actingAs($user)->get(route('stacker.play'))->assertOk()->assertSee('data-test="controls-link"', false);
 });
 
+test('a logged-in player with a keyboard starts a ranked run by default: the main button issues its token at the click, practice is the quiet one and stays one click away', function () {
+    BlockfillOn::play();
+    $user = User::factory()->create();
+
+    $html = $this->actingAs($user)->get(route('stacker.play'))->assertOk()->getContent();
+    // The start overlay: the main button starts a ranked run (hidden on a touch screen), the practice button follows, quiet.
+    preg_match('/data-test="overlay".*?data-test="error"/s', $html, $overlay);
+    preg_match_all('/<button[^>]*x-on:click="(start\w+)\(\)"[^>]*>/', $overlay[0] ?? '', $starts);
+    expect($starts[1])->toBe(['startRanked', 'startPractice'])
+        ->and($starts[0][0])->toContain('pointer-coarse:hidden')->toContain('data-test="start-ranked"')
+        ->and($starts[0][1])->toContain('data-test="start-practice"')
+        // After a practice run the result screen offers the ranked run again, never only practice.
+        ->and($html)->toMatch('/<button[^>]*x-on:click="startRanked\(\)"[^>]*x-show="kind === \'practice\'"[^>]*data-test="result-ranked"/');
+
+    // The click issues the token: a ranked run with its seed, nothing chosen before.
+    $issued = $this->postJson(route('stacker.runs.issue'))->assertCreated()->json();
+    expect($issued['token'])->toHaveLength(40)
+        ->and(StackerRun::query()->sole())->user_id->toBe($user->id)->status->value->toBe('issued');
+
+    // A guest has no ranked run: practice, and the way to log in.
+    auth()->logout();
+    $this->get(route('stacker.play'))->assertOk()->assertDontSee('data-test="result-ranked"', false)->assertSee('Practice needs no login. Log in for ranked runs.');
+});
+
 test('the result screen reads its own run\'s status, nobody else\'s', function () {
     BlockfillOn::play();
     config(['esports.blockfill.testing_seed' => str_repeat('ab', 16)]);

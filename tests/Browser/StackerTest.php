@@ -180,6 +180,58 @@ test('a player\'s ranked run is started, submitted after the played time and ver
     shellShot($page, 'stacker-1440-ranked-verified');
 });
 
+test('a player\'s practice stays in the browser and leads back to a ranked run; a slower ranked run is verified and says it is not faster than the week\'s best', function (string $locale, int $width, int $height) {
+    $this->freezeTime();
+    $forty = stackerFixture('forty-lines');
+    config(['esports.blockfill.testing_seed' => $forty['seed']]);
+    $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
+    // This week's best: 0:15.000, faster than the reference run's 0:15.966.
+    StackerRun::factory()->for($user)->verified(900)->create();
+
+    $page = stackerPage($user, $width, $height);
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+    $page->goto(ComputeUrl::from(route('stacker.play', [], false)));
+    BrowserWait::until($page, '() => window.__stacker !== undefined', 10_000);
+    $runRequests = '() => performance.getEntriesByType("resource").filter((e) => e.name.includes("/stacker/runs")).length';
+
+    // Practice: the quiet button, played in the browser alone.
+    $page->locator('[data-test=start-practice]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().kind === "practice" && window.__stacker.state().mode === "countdown"', 3_000);
+    $page->evaluate('([inputs, seed, settings]) => window.__stacker.feed(inputs, { seed, settings })', [$forty['inputs'], $forty['seed'], $forty['settings']]);
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "practice"', 5_000);
+    expect($page->evaluate($runRequests))->toBe(0)
+        ->and(StackerRun::query()->count())->toBe(1)
+        ->and($page->evaluate('() => getComputedStyle(document.querySelector("[data-test=result-ranked]")).display'))->not->toBe('none');
+
+    // From the practice result straight back to a ranked run.
+    $page->locator('[data-test=result-ranked]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
+    expect($page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']))->toBe('queued');
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
+    $this->travel(17)->seconds();
+    $page->evaluate('() => window.__stacker.release()');
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "verified"', 15_000);
+
+    $run = StackerRun::query()->where('ticks', 958)->sole();
+    $status = $page->evaluate('() => document.querySelector("[data-test=result-status]").innerText');
+    fwrite(STDERR, "stacker slower ranked {$locale} {$width}: {$status}".PHP_EOL);
+    expect($run->status->value)->toBe('verified')
+        ->and($status)->toBe(__('Verified, not faster than your best :best', ['best' => '0:15.000'], $locale))
+        // the best is named once, in the status line
+        ->and($page->evaluate('() => document.querySelector("[data-test=result-best]").innerText.trim()'))->toBe('')
+        ->and($page->evaluate('() => document.querySelector("[data-test=result-status]").classList.contains("text-win")'))->toBeTrue()
+        ->and($page->evaluate(BrowserConsole::WIDTHS)[0])->toBeLessThanOrEqual($page->evaluate(BrowserConsole::WIDTHS)[1])
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    shellShot($page, "stacker-{$width}-{$locale}-slower-verified");
+})->with([
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+    'en 375' => ['en', 375, 812],
+    'de 1440' => ['de', 1440, 900],
+]);
+
 test('a guest practises with the real Practice button and real keys: the well moves and the clock runs, clean console, in English and German', function (string $locale) {
     $page = visit(BrowserLogin::LANDING)->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);

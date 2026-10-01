@@ -11,6 +11,7 @@
 
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Models\Admin;
 use App\Models\NostrEvent;
 use App\Models\ScoreRun;
@@ -23,12 +24,14 @@ use App\Support\Scores\ManualSubmissions;
 use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreServers;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\TournamentBrackets;
 use App\Support\Tournaments\TournamentPublisher;
 use App\Support\Tournaments\TournamentRunner;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+use Tests\Support\BlockfillOn;
 use Tests\Support\ScoreDemoOn;
 use Tests\Support\TestSigner;
 
@@ -210,4 +213,33 @@ test('a pending finish of an unknown account is never on a leaderboard', functio
 
     expect(collect(app(ScoreRuns::class)->standings($tournament))->pluck('value')->filter()->all())->toBe([]);
     $this->get(route('tournaments.scores', $tournament))->assertOk()->assertDontSee('acct-nobody');
+});
+
+test('a game the league checks itself (Blockfill) offers Play instead of a submission on every page of it; a game with manual submissions keeps the button', function () {
+    BlockfillOn::play();
+    $player = User::factory()->create();
+    $week = app(BlockfillWeeks::class)->open();
+    app(BlockfillWeeks::class)->join($week, $player);
+    $this->actingAs($player);
+
+    foreach ([route('tournaments.show', $week), route('tournaments.scores', $week), route('scores.show', Blockfill::SLUG)] as $url) {
+        $html = $this->get($url)->assertOk()->getContent();
+        expect($html)->not->toContain('data-test="to-submit"', $url)
+            ->not->toContain('data-test="score-submit"')
+            ->not->toContain(__('Submit your value'))
+            ->toMatch('/<a[^>]*href="'.preg_quote(route('stacker.play'), '/').'"[^>]*data-test="score-play-button"/')
+            ->toContain(__('Your best verified run counts automatically'));
+    }
+    // The week's full table is named as one, not as "all values".
+    expect($this->get(route('tournaments.show', $week))->getContent())->toMatch('/data-test="to-scores">(\s|<!--.*?-->)*'.__('Full table').'\s*</')->not->toContain(__('All values'));
+
+    // The score demo takes manual submissions: an entered player keeps "Submit your value" and the form, no Play.
+    [$tournament, [$racer]] = publishedScoreBoard();
+    $this->travelTo($tournament->starts_at->addHours(2));
+    $this->actingAs($racer);
+    $this->get(route('tournaments.show', $tournament))->assertOk()
+        ->assertSee('data-test="to-submit"', false)->assertSee(__('All values'))->assertDontSee('data-test="score-play"', false);
+    $this->get(route('tournaments.scores', $tournament))->assertOk()
+        ->assertSee('data-test="score-submit"', false)->assertDontSee('data-test="score-play"', false);
+    $this->get(route('scores.show', 'score-demo'))->assertOk()->assertDontSee('data-test="score-play"', false);
 });

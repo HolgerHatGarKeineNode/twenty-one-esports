@@ -710,14 +710,25 @@ document.addEventListener('alpine:init', () => {
                     return '';
                 }
 
-                const status = this.result.kind === 'ranked' && this.result.status === 'practice' ? 'practice_rank' : this.result.status;
+                // every ranked run is verified: one that did not beat the week's best says so, with that best
+                if (this.slowerVerified()) {
+                    return this.t.status.verifiedSlower.replace(':best', formatTicks(this.result.previous, 3));
+                }
 
-                return this.t.status[status] ?? status;
+                return this.t.status[this.result.status] ?? this.result.status;
+            },
+
+            /** A verified ranked run that is not faster than the week's best it had to beat. */
+            slowerVerified() {
+                const r = this.result;
+
+                return r?.kind === 'ranked' && r.status === 'verified' && r.previous !== null && r.previous !== undefined && r.ticks >= r.previous;
             },
 
             bestLine() {
                 const r = this.result;
-                if (!r || ['toppedOut', 'aborted', 'busy', 'unsent'].includes(r.status)) {
+                // a slower verified run names the best in its status line already
+                if (!r || ['toppedOut', 'aborted', 'busy', 'unsent'].includes(r.status) || this.slowerVerified()) {
                     return '';
                 }
                 if (r.previous === null || r.previous === undefined) {

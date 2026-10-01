@@ -287,7 +287,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff])
     </section>
 
-    @if ($this->entered)
+    {{-- A game the league checks itself (Blockfill) takes no submission: Play instead, for everyone while it runs --}}
+    @if ($running && ! $game->acceptsManual())
+        @include('pages.scores.partials.play-auto', ['slug' => $tournament->game])
+    @endif
+
+    @if ($this->entered && $game->acceptsManual())
         <section id="submit" aria-labelledby="submit-h" class="flex scroll-mt-24 flex-col gap-4 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="score-submit">
             <div class="flex flex-col gap-1">
                 <h2 id="submit-h" class="m-0 text-[15px] font-bold">{{ __('Submit your value') }}</h2>
@@ -313,7 +318,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 </form>
             @else
                 <p class="m-0 text-[13px] text-ink-2" data-test="score-submit-closed">{{ match (true) {
-                    ! $game->acceptsManual() => __('This game takes no submissions: its values are read automatically.'),
                     ! $running && $tournament->status !== TournamentStatus::Finished => __('Submissions open with the window, once sign-up has closed.'),
                     ! $window->hasStarted() => __('Submissions open with the window.'),
                     default => __('Submissions are closed for this leaderboard.'),

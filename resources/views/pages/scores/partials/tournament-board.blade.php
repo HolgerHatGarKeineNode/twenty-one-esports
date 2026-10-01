@@ -22,11 +22,19 @@
             <span class="text-xs text-ink-2" data-test="score-window">{{ __('Window :state', ['state' => $windowState]) }}@if ($tournament->score_course === $tournament->mode) · {{ \App\Support\GameNames::mode($tournament->game, $tournament->mode) }}@elseif ($tournament->score_course !== null) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
         </span>
         @if (\Illuminate\Support\Facades\Route::has('tournaments.scores') && $tournament->status !== \App\Enums\TournamentStatus::Draft)
+            @php($manual = app(\App\Games\GameRegistry::class)->find($tournament->game)?->acceptsManual() ?? true)
             <span class="flex flex-wrap items-center gap-2">
-                @if ($entered && $tournament->status === \App\Enums\TournamentStatus::Running)
-                    <x-button :href="route('tournaments.scores', $tournament).'#submit'" icon="send" data-test="to-submit">{{ __('Submit your value') }}</x-button>
+                {{-- A game the league checks itself (Blockfill) takes no submission: Play instead, and its runs are the full table --}}
+                @if ($tournament->status === \App\Enums\TournamentStatus::Running)
+                    @if ($manual)
+                        @if ($entered)
+                            <x-button :href="route('tournaments.scores', $tournament).'#submit'" icon="send" data-test="to-submit">{{ __('Submit your value') }}</x-button>
+                        @endif
+                    @else
+                        @include('pages.scores.partials.play-auto', ['slug' => $tournament->game])
+                    @endif
                 @endif
-                <x-button variant="secondary" :href="route('tournaments.scores', $tournament)" data-test="to-scores">{{ __('All values') }}</x-button>
+                <x-button variant="secondary" :href="route('tournaments.scores', $tournament)" data-test="to-scores">{{ $manual ? __('All values') : __('Full table') }}</x-button>
             </span>
         @endif
     </div>
