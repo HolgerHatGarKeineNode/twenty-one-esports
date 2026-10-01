@@ -240,7 +240,8 @@ test('the note tags the player (nostr:npub1… and p), names the time, the gap t
         ->and($note->tags)->toBe([['p', User::query()->where('name', 'Ben')->sole()->pubkey], ['q', $week->address(), app(TournamentNotes::class)->relayHint() ?? '']])
         ->and($note->content)->not->toContain(': Ben')
         ->and($note->tagsNamed('t'))->toBe([])
-        ->and(mb_strtolower($note->content))->not->toContain('fee')->not->toContain('face')->not->toContain('#');
+        // The wording only: a bech32 npub or naddr may spell "fee" or "face" by chance.
+        ->and(mb_strtolower((string) preg_replace('~nostr:\S+~', '', $note->content)))->not->toContain('fee')->not->toContain('face')->not->toContain('#');
 });
 
 test('a failed send is retried with the same signed event after the retry time, and a delivered note is never sent again', function () {

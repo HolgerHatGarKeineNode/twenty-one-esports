@@ -288,7 +288,8 @@ test('the bot announces a new week once, and after the week its winner with the 
         expect($note->kind)->toBe(1)
             ->and(StreamBotCopy::violations($note->content, $note->tags))->toBe([])
             ->and($note->content)->not->toContain('#')
-            ->and(strtolower($note->content))->not->toContain('fee')
+            // The wording only: a bech32 npub or naddr may spell "fee" by chance.
+            ->and(strtolower((string) preg_replace('~nostr:\S+~', '', $note->content)))->not->toContain('fee')
             ->and($note->tagsNamed('t'))->toBe([]);
     }
 

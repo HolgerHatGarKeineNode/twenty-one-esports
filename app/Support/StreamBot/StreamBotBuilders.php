@@ -35,6 +35,11 @@ use LogicException;
  * Fact builders report what is going on (tournaments, live games, results);
  * feature builders explain what one can do on the site. The engine prefers
  * facts (FACT_WEIGHT) and keeps both from repeating.
+ *
+ * A player named for an achievement (a tournament win, a rank up, the
+ * ladder's top 3) is tagged as the bot's notes tag them (PrideNotes,
+ * BlockfillNotes): `nostr:npub1…` in place of the name and a `p` tag on the
+ * message; the plain name without a valid Nostr key.
  */
 final class StreamBotBuilders
 {
@@ -342,11 +347,12 @@ final class StreamBotBuilders
                 continue;
             }
 
+            $tags = [];
             $messages[] = $this->message('tournament_winner', 'tournament-winner:'.$tournament->id, [
-                'winner' => $winner,
+                'winner' => $this->mention($champion?->user, $winner, $tags),
                 'name' => $name,
                 'url' => route('tournaments.show', $tournament),
-            ]);
+            ], tags: $tags);
         }
 
         return $messages;
@@ -372,12 +378,13 @@ final class StreamBotBuilders
                 continue;
             }
 
+            $tags = [];
             $messages[] = $this->message('rank_up', 'rank-up:'.$version->id, [
-                'player' => $player,
+                'player' => $this->mention($user, $player, $tags),
                 'tier' => RankTiers::label($version->tier),
                 'game' => $this->gameLine($version->badge->game, $version->badge->mode),
                 'url' => route('players.show', NostrKeys::hexToNpub($user->pubkey)),
-            ]);
+            ], tags: $tags);
         }
 
         return $messages;
@@ -427,12 +434,13 @@ final class StreamBotBuilders
             ->limit(3)->get();
 
         $podium = [];
+        $tags = [];
 
         foreach ($rows->values() as $index => $row) {
             $name = StreamBotCopy::clean($row->user?->displayName(), 20);
 
             if ($name !== '') {
-                $podium[] = ['🥇', '🥈', '🥉'][$index].' '.$name.' '.$row->rating;
+                $podium[] = ['🥇', '🥈', '🥉'][$index].' '.$this->mention($row->user, $name, $tags).' '.$row->rating;
             }
         }
 
@@ -443,7 +451,7 @@ final class StreamBotBuilders
         return [$this->message('ladder_top', 'ladder-top:'.$now->format('Y-m-d').':'.implode(',', $rows->pluck('user_id')->all()), [
             'podium' => implode(' · ', $podium),
             'url' => route('ladder.show', ['chess', 'blitz']),
-        ])];
+        ], tags: $tags)];
     }
 
     /**
@@ -555,13 +563,42 @@ final class StreamBotBuilders
 
     /**
      * @param  array<string, string|int|null>  $values
+     * @param  list<list<string>>  $tags  the `p` tags of the players it names
      */
-    private function message(string $template, string $factKey, array $values, ?string $builder = null): StreamBotMessage
+    private function message(string $template, string $factKey, array $values, ?string $builder = null, array $tags = []): StreamBotMessage
     {
         $variants = StreamBotCopy::variants($template);
         $variant = $this->variantPicker !== null ? ($this->variantPicker)($variants) : random_int(0, max(0, $variants - 1));
 
-        return new StreamBotMessage($builder ?? $template, $factKey, StreamBotCopy::render($template, $variant, $values));
+        return new StreamBotMessage($builder ?? $template, $factKey, StreamBotCopy::render($template, $variant, $values), $tags);
+    }
+
+    /**
+     * A player named for an achievement, as PrideNotes names them:
+     * `nostr:npub1…` of their Nostr key, its `p` tag added once, while the
+     * message tags fewer than PrideNotes::LOBBY_MENTIONS players; `$name`
+     * (already cleaned) for a player without a valid key or past the cap.
+     * Only the account's Nostr key, never a game account.
+     *
+     * @param  list<list<string>>  $tags
+     */
+    private function mention(?User $user, string $name, array &$tags): string
+    {
+        $pubkey = (string) $user?->pubkey;
+
+        if (preg_match('/^[0-9a-f]{64}$/', $pubkey) !== 1) {
+            return $name;
+        }
+
+        if (! in_array(['p', $pubkey], $tags, true)) {
+            if (count($tags) >= PrideNotes::LOBBY_MENTIONS) {
+                return $name;
+            }
+
+            $tags[] = ['p', $pubkey];
+        }
+
+        return 'nostr:'.NostrKeys::hexToNpub($pubkey);
     }
 
     /**
