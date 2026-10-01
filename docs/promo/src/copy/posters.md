@@ -344,28 +344,30 @@ crown) and the next tournament's sign-up card with one free seat marked "Your sp
 
 ## 14. Age of Empires II
 
-**DE Headline:** Dein Imperium. Dein Name in der Ladder.
-**DE Subline:** Age of Empires II im 1v1: Gegner finden, Lobby mit Passwort im Match-Chat teilen, Sieger eintragen. Jede Serie bewegt dein Elo.
+**DE Headline:** Eine Lobby. Bis zu acht Imperien.
+**DE Subline:** Turniere in Age of Empires II sind ein einziges Match: „Teams sperren“ aus, „Bündnissieg“ an. Wer am Ende verbündet steht, teilt sich Platz 1 und seinen Pot.
 **DE Bullets:**
-- Casual 1v1: Gegner über die Warteschlange
-- Der Host teilt Lobby-Name und Passwort, verschlüsselt
-- Casual Cup sonntags: 20 Uhr Berlin, 20 Uhr New York
-- Turniere, Ladder und Clan-Lineups im 2v2 und 3v3
+- 3 bis 8 Spieler je Lobby, 9 werden 5 + 4
+- Arabia, Kartengröße nach Lobbygröße
+- Sieg: Zeitlimit, 2 Stunden
+- Screenshot als Beleg, Turnierleitung bestätigt
 
-**EN Headline:** Your empire. Your name on the ladder.
-**EN Subline:** Age of Empires II 1v1: find an opponent, share a password lobby in the match chat, enter the winner. Every series moves your Elo.
+**EN Headline:** One lobby. Up to eight empires.
+**EN Subline:** Age of Empires II tournaments are one single match: Lock Teams off, Allied Victory on. Whoever stands allied at the end shares 1st place and its pot.
 **EN Bullets:**
-- Casual 1v1: find an opponent in the queue
-- The host shares lobby name and password, encrypted
-- Casual Cup on Sundays: 8 pm Berlin, 8 pm New York
-- Tournaments, ladders and clan lineups in 2v2 and 3v3
+- 3 to 8 players a lobby, 9 split into 5 + 4
+- Arabia, map size follows the lobby size
+- Victory: Time Limit, 2 hours
+- Screenshot as proof, the director confirms
 
 **CTA:** esports.einundzwanzig.space
-**Designer note:** the game's cover cropped to its logo (no painted characters in frame), the
-cup final as the match page words a game without goals ("2 games won", one line per game to its
-winner, the winner's pixel avatar lit), and the host's lobby card from the encrypted match chat
-with the casual steps. Players are avatars and names, never faces. Facts 45-60; live on prod
-(game page and the first EU/US cups read 2026-10-01).
+**Designer note:** the game's cover cropped to its logo (no painted characters in frame), one
+lobby of six players on its result, worded as the app's lobby card: the two allied survivors
+are #1 together ("Shared place 1: …", lit, linked), the other four #3 to #6 in the order they
+went out, the proof below (screenshot of the end screen, reported, decided); beside it the
+card's settings, with the map-size scale Tiny to Large stopped at Normal for six. Players are
+pixel avatars and names. Facts 67-79. The lobby tournament (P10) is built on its branch
+(`210edd80`) but not on prod: **post only once it is live on prod.**
 
 ---
 

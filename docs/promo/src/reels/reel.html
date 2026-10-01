@@ -821,7 +821,8 @@ const UP = {
     { g: 'Chess', gde: 'Schach', m: 'Blitz 5+3', c: 'chess-480.jpg', d: 'saturday', t: '20:00' },
     { g: 'Rocket League', m: '1v1', c: 'rocket-league-382.jpg', d: 'saturday', t: '20:00' },
     { g: 'Checkers', gde: 'Dame', m: 'Blitz 5+3', c: 'checkers-480.jpg', d: 'sunday', t: '15:00' },
-    { g: 'AoE2', m: '1v1', c: 'age-of-empires-2-800.jpg', pos: '50% 100%', size: '142.86% auto', d: 'sunday', t: '20:00' },
+    // AoE2's cup runs the lobby format of plan step 10 (P10, facts 61, 64-67): Free for All, one round
+    { g: 'AoE2', m: 'Free for All', c: 'age-of-empires-2-800.jpg', pos: '50% 100%', size: '142.86% auto', d: 'sunday', t: '20:00' },
   ],
   cupSizes: [4, 8, 16],
 };
@@ -932,6 +933,8 @@ S.fifa = [
 
 const cupName = (x, l) => (l === 'de' && x.gde ? x.gde : x.g);
 const cupCover = (x, h) => `<div style="height:${h}px;background:#000 url('${COV}${x.c}') ${x.pos || 'center'}/${x.size || 'cover'} no-repeat"></div>`;
+/* Beat 3 grows a chess cup: the AoE2 cup is a lobby cup with 40 fixed places and no growth
+   (P10, fact 64), so it can no longer stand for "the cup grows". */
 S.cups = [
   { html: (l) => `<div class="center" style="position:absolute"><div style="width:920px;display:grid;grid-template-columns:1fr 1fr;gap:24px">${UP.cups.map((x, i) => `<div data-t="${i}" class="card" style="display:grid;overflow:hidden">${cupCover(x, 150)}<div style="padding:14px 22px 18px;display:grid;row-gap:6px"><b style="font:800 32px/1.1 var(--disp);white-space:nowrap">${E(cupName(x, l))}</b><span class="muted" style="font:700 22px/1.2 var(--mono)">${E(x.m)}</span></div></div>`).join('')}
       <div data-t="7" class="card" style="display:grid;place-items:center;align-content:center;row-gap:14px;border-color:var(--btc)"><b style="font:800 64px/1 var(--disp);color:var(--btc)">EU</b><b style="font:800 64px/1 var(--disp);color:var(--btc)">US</b></div></div></div>`,
@@ -955,7 +958,7 @@ S.cups = [
   { html: (l) => {
       const who = ['kai_blitz', 'hodlqueen', 'taproot_tim', 'lnurl_lena', 'orange_olga', 'sat_sepp'];
       return `<div class="center" style="position:absolute"><div data-card class="card cube" style="width:900px;padding:44px;display:grid;row-gap:30px;--d:28px">
-        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp);white-space:nowrap">AoE2 Casual Cup EU</b><b data-n style="font:800 56px/1 var(--disp);color:var(--btc);white-space:nowrap">0 / 4</b></div>
+        <div class="row" style="justify-content:space-between"><b style="font:800 44px/1.1 var(--disp);white-space:nowrap">Chess Casual Cup EU</b><b data-n style="font:800 56px/1 var(--disp);color:var(--btc);white-space:nowrap">0 / 4</b></div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">${Array.from({ length: 8 }, (_, i) => `<div data-sp="${i}" style="height:150px;border:3px dashed var(--dash);display:grid;place-items:center">${i < who.length ? `<span data-f style="opacity:0">${av(who[i], 88)}</span>` : ''}</div>`).join('')}</div>
         <span class="muted" style="font:700 28px/1.3 var(--mono)">${E(UI('formatAtStart', l))}</span>
       </div></div>`;
@@ -1173,63 +1176,66 @@ S.livecup = [
 ];
 
 /* ===== Age of Empires II (reel 18) =====
-   The hero's parts at reel scale (lib/heroes.js aoeFinal, aoeLobby, the cover's logo band). The
-   queue button and "Opponent found" are the game page's and the room's own strings; the cup
-   slot is config/esports.php casual_cups (Sunday 20:00 on the region's clock), four spots as
-   the first EU/US cups on prod (2026-10-01); the seats are kit players. Casual Elo +20 is a
-   first win at 1000 (season.casual, fact 54). */
-const AOE_WRAP = (inner, w = 900, fs = 34) => `<div class="h-aoe2" style="display:block;font-size:${fs}px"><div data-card class="card" style="width:${w}px;padding:0;border:0;background:none;display:grid">${inner}</div></div>`;
-const aoeCover = (h) => `<div class="ae-cover cube" style="--d:26px"><div class="ae-art" style="background-image:url('${HS().COVER}')"></div>
-  <div class="ae-tags" style="font-size:28px"><span class="mk">${HS().glyphOf('aoe2')}<b>AoE2</b></span><span>1v1</span><span>2v2</span><span>3v3</span><span>BO1/3</span></div></div>`;
+   The hero's parts at reel scale (lib/heroes.js aoeTags, aoeSettings, aoeResult, the cover's
+   logo band): the lobby tournament (P10 branch 210edd80, facts 67-79), in the lobby card's
+   own words. One lobby of eight seats takes six kit players; the map size steps with the
+   player count (Lobbies::mapSize: 2 Tiny, 3 Small, 4 Medium, 5-6 Normal); four go out, the
+   two allies still standing are #1 together; the result is a screenshot of the end screen,
+   reported, then decided by a director. */
+const AOE_WRAP = (inner, w = 900, fs = 34) => `<div class="h-aoe2 full" style="display:block;font-size:${fs}px"><div data-card class="card" style="width:${w}px;padding:0;border:0;background:none;display:grid">${inner}</div></div>`;
+const aoeCover = (l) => `<div class="ae-cover cube" style="--d:26px"><div class="ae-art" style="background-image:url('${HS().COVER}')"></div>
+  <div style="font-size:28px">${HS().aoeTags(l)}</div></div>`;
+const AOE_SIX = () => [...HS().AOE.winners, ...HS().AOE.out.map(([n]) => n)];
+const aoeHeadN = (l, n) => `${UI('lobbyNumber', l, { number: 1 })} · ${UI('countPlayers', l, { count: n })}`;
+// the size index for a player count, as plan step 10 sets it (fact 71)
+const aoeSizeOf = (n) => (n <= 2 ? 0 : n === 3 ? 1 : n === 4 ? 2 : n <= 6 ? 3 : 4);
 S.aoe2 = [
-  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${aoeCover()}
-      <div class="ui-card" style="margin-top:44px;padding:36px;display:grid;row-gap:28px">
-        <div class="btnx" data-btn style="width:100%">${E(UI('findOpponent1v1', l))}</div>
-        <div data-found class="row" style="justify-content:space-between;opacity:0">
-          <span class="row" style="gap:18px">${av('satsjaeger', 88)}<b style="font:800 34px/1.1 var(--disp)">satsjaeger</b></span>
-          <span class="dim" style="font:700 28px/1 var(--mono)">vs</span>
-          <span class="row" style="gap:18px"><b style="font:800 34px/1.1 var(--disp)">kai_blitz</b>${av('kai_blitz', 88)}</span>
-        </div>
-        <span data-ok class="row" style="gap:14px;font:700 30px/1.2 var(--mono);color:var(--win);opacity:0"><i class="dotlive"></i>${E(UI('opponentFound', l))}</span>
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${aoeCover(l)}
+      <div class="ui-card" style="margin-top:44px;padding:32px;display:grid;row-gap:24px">
+        <div class="row" style="justify-content:space-between"><b data-n style="font:800 38px/1.1 var(--disp);white-space:nowrap">${E(aoeHeadN(l, 0))}</b><span class="dim" style="font:700 28px/1 var(--mono);white-space:nowrap">${E(UI('freeForAll', l))}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px">${Array.from({ length: 8 }, (_, i) => {
+          const n = AOE_SIX()[i];
+          return n ? `<div data-seat style="display:grid;justify-items:center;row-gap:10px;padding:16px 4px;background:var(--well);border:3px solid var(--line)">${av(n, 96)}<b style="font:700 22px/1.1 var(--mono);white-space:nowrap">${E(n)}</b></div>`
+            : `<div style="padding:16px 4px;border:3px dashed var(--dash);min-height:150px"></div>`;
+        }).join('')}</div>
       </div>`)}</div>`,
+    update(root, t, len, lang) {
+      cardIn(root, t);
+      let k = 0;
+      root.querySelectorAll('[data-seat]').forEach((c, i) => { const p = back(seg(t, 0.5 + i * 0.22, 0.85 + i * 0.22)); c.style.opacity = clamp(p * 1.5); c.style.transform = `translateY(${(1 - p) * -60}px) scale(${0.8 + 0.2 * p})`; if (p > 0.5) k++; });
+      root.querySelector('[data-n]').textContent = aoeHeadN(lang, k);
+    } },
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeSettings(l), 900, 38)}</div>`,
+    update(root, t, len, lang) {
+      cardIn(root, t);
+      const n = Math.min(6, 2 + Math.floor(clamp((t - 0.4) / 1.6) * 5)), i = aoeSizeOf(n);
+      root.querySelectorAll('.sz').forEach((z, j) => z.classList.toggle('on', j === i));
+      root.querySelector('.as-size b').textContent = UI(HS().AOE.sizes[i][0], lang);
+      root.querySelector('.as-h span').textContent = aoeHeadN(lang, n);
+      root.querySelector('.as-h span').style.whiteSpace = 'nowrap';
+      root.querySelectorAll('.as-dip').forEach((r, j) => { const p = eo(seg(t, 2.0 + j * 0.3, 2.4 + j * 0.3)); r.style.boxShadow = `inset ${0.25 + 0.5 * p}em 0 0 var(--aoe-2)`; });
+    } },
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeResult(l), 900, 40)}</div>`,
     update(root, t) {
       cardIn(root, t);
-      const btn = root.querySelector('[data-btn]'), b = btn.getBoundingClientRect(), R = root.getBoundingClientRect();
-      btn.classList.toggle('pressed', cursorTo(root, t, 0.4, 1.0, [860, 1040], [b.left - R.left + b.width * 0.55, b.top - R.top + b.height * 0.4], 1.1));
-      const f = root.querySelector('[data-found]'), p = back(seg(t, 1.4, 1.9)); f.style.opacity = clamp(p * 1.5); f.style.transform = `scale(${0.8 + 0.2 * p})`;
-      root.querySelector('[data-ok]').style.opacity = eo(seg(t, 1.9, 2.2));
+      root.querySelector('.ar-proof').style.opacity = 0;
+      root.querySelectorAll('.ar-o').forEach((o, i) => { const p = eo(seg(t, 0.3 + i * 0.35, 0.6 + i * 0.35)); o.style.opacity = 1 - 0.55 * p; o.style.filter = `grayscale(${p})`; });
+      const q = eo(seg(t, 1.8, 2.2));
+      root.querySelector('.ar-link').style.opacity = 0.25 + 0.75 * q;
+      root.querySelector('.ar-win .sh').style.opacity = q;
+      root.querySelectorAll('.ar-win .pl, .ar-o .pl').forEach((b) => { b.style.opacity = q; });
+      root.querySelector('.ar-h .chip').style.opacity = q;
+      root.querySelector('.ar-win').style.background = t > 2.0 ? `rgba(74,222,128,${0.08 + 0.06 * Math.sin(t * 6)})` : '';
     } },
-  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeLobby(l), 900, 38)}</div>`,
-    update(root, t) {
+  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(HS().aoeResult(l), 900, 40)}</div>`,
+    update(root, t, len, lang) {
       cardIn(root, t);
-      const card = root.querySelector('.al-card'), p = back(seg(t, 0.3, 0.8)); card.style.opacity = clamp(p * 1.5); card.style.transform = `translateX(${(1 - p) * 120}px)`;
-      root.querySelectorAll('.st').forEach((s, i) => { const on = i < 3 && t > 1.0 + i * 0.4; s.classList.toggle('done', on); const tk = s.querySelector('.tk'); if (tk) tk.style.opacity = on ? 1 : 0.15; });
-      card.style.boxShadow = t > 0.8 ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(217,70,239,.25)` : 'none';
-    } },
-  { html: (l) => `<div class="center" style="position:absolute">${AOE_WRAP(`${HS().aoeFinal(l)}
-      <div class="ui-card" style="margin-top:36px;padding:26px 30px;display:grid;row-gap:18px">
-        <div class="row" style="justify-content:space-between"><b style="font:800 36px/1.1 var(--disp)">${E(UI('modeLadder', l, { mode: '1v1' }))}</b><span class="dim" style="font:700 26px/1 var(--mono)">${E(UI('casual', l))}</span></div>
-        <div class="row" style="justify-content:space-between"><span class="row" style="gap:18px">${av('satsjaeger', 64)}<b style="font:800 34px/1 var(--disp)">satsjaeger</b></span><b data-elo style="font:800 40px/1 var(--disp);white-space:nowrap">1000</b></div>
-      </div>`, 900, 36)}</div>`,
-    update(root, t) {
-      cardIn(root, t);
-      root.querySelectorAll('.af-games .g').forEach((g, i) => { const p = back(seg(t, 0.4 + i * 0.35, 0.7 + i * 0.35)); g.style.opacity = clamp(p * 1.5); g.style.transform = `translateY(${(1 - p) * 40}px)`; });
-      const won = root.querySelector('.af-side.won'); won.style.background = t > 1.5 ? `rgba(74,222,128,${0.1 + 0.08 * Math.sin(t * 6)})` : '';
-      const q = eo(seg(t, 1.7, 2.4)), v = Math.round(1000 + 20 * q);
-      root.querySelector('[data-elo]').innerHTML = v + (q > 0.02 ? `<span class="delta up">+${v - 1000}</span>` : '');
-    } },
-  { html: (l) => {
-      const cup = (region, zone, i) => `<div data-r="${i}" class="card cube" style="padding:34px 40px;display:grid;row-gap:20px;--d:24px;--cube-face:#86198F">
-        <b style="font:800 48px/1.1 var(--disp);white-space:nowrap">AoE2 Casual Cup ${region}</b>
-        <div class="row" style="justify-content:space-between"><span style="font:700 36px/1.2 var(--mono);color:#F0ABFC;white-space:nowrap">${E(UI('sunday', l))} 20:00 ${zone}</span><span class="row" style="gap:10px;font:700 24px/1.2 var(--mono);color:var(--win);white-space:nowrap"><i class="dotlive"></i>${E(UI('signupOpen', l))}</span></div>
-        ${spotGrid(4, 2, 4, 88, l)}</div>`;
-      return `<div class="center" style="position:absolute"><div style="display:grid;row-gap:44px;width:900px">${cup('EU', 'Berlin', 0)}${cup('US', 'New York', 1)}</div></div>`;
-    },
-    update(root, t) {
-      root.querySelectorAll('[data-r]').forEach((e, i) => { const p = back(seg(t, 0.1 + i * 0.4, 0.55 + i * 0.4)); e.style.opacity = clamp(p * 1.5); e.style.transform = `translateX(${(1 - p) * (i ? 160 : -160)}px)`; });
-      root.querySelectorAll('[data-sp]').forEach((c, i) => { const p = eo(seg(t, 0.5 + (i % 4) * 0.1, 0.8 + (i % 4) * 0.1)); c.style.opacity = p; c.style.transform = `scale(${0.7 + 0.3 * p})`; });
-      root.querySelectorAll('[data-you]').forEach((y) => { const on = t > 1.4; y.style.borderColor = on ? 'var(--btc)' : ''; y.style.borderStyle = on ? 'solid' : 'dashed'; y.style.boxShadow = on ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(247,147,26,.25)` : 'none'; });
-      root.querySelectorAll('[data-sp]').forEach((c, i) => { if (i % 4 < 2) c.innerHTML = av(['kai_blitz', 'hodlqueen', 'zap_zoe', 'taproot_tim'][i < 4 ? i : i - 2], 56); });
+      root.querySelectorAll('.ar-o').forEach((o) => { o.style.opacity = 0.45; o.style.filter = 'grayscale(1)'; });
+      root.querySelectorAll('.ar-proof .st').forEach((s, i) => { const on = t > 0.6 + i * 0.7; s.style.color = on ? 'var(--ink)' : 'var(--ink-3)'; s.querySelector('.tk').style.opacity = on ? 1 : 0.15; s.style.transform = `scale(${on ? 1 + 0.06 * Math.max(0, 1 - (t - 0.6 - i * 0.7) * 3) : 1})`; s.style.transformOrigin = 'left center'; });
+      const chip = root.querySelector('.ar-h .chip'), done = t > 2.0;
+      chip.textContent = UI(done ? 'decided' : 'reportedWaiting', lang);
+      chip.style.background = done ? '' : 'rgba(247,147,26,.16)'; chip.style.color = done ? '' : 'var(--btc)';
+      const pr = root.querySelector('.ar-proof'); pr.style.boxShadow = t > 1.4 ? `0 0 0 ${Math.round(8 * (0.5 + 0.5 * Math.sin(t * 6)))}px rgba(74,222,128,.18)` : 'none';
     } },
   { html: endCard, update: endUpdate },
 ];

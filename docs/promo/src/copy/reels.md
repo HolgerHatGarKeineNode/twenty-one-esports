@@ -252,18 +252,21 @@ EU and US, each at its weekend slot, 0 of 4 spots). Rewritten 2026-10-01 by the 
 previous cut (four games on Saturday evening, "two losses and out", "no rating") went stale with
 `beabfc89` and was partly wrong (double elimination only from six players; a cup series moves the
 casual Elo). No date in the copy: the slots repeat, the cup numbers do not.
+Changed 2026-10-01 for P10: AoE2's cup is a lobby cup (Free for All, one round, 40 places, no
+growth, facts 61 and 77), so beat 1 names its format and beat 3 grows the chess cup instead.
+**Posting gate: post only once P10 is live on prod.**
 
 **DE**
-1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover: Schach, Rocket League, FC 26, FC 27, AoE2, Mühle, Dame*
+1. (3s) Sieben Spiele, sieben Casual Cups — *sieben Cover mit Modus: Schach, Rocket League, FC 26, FC 27, AoE2 als Free for All, Mühle, Dame*
 2. (3s) Freitag bis Sonntag, in EU und US — *das Wochenende: Fr 18:00 FC 26, 20:00 FC 27; Sa 15:00 Mühle, 20:00 Schach und Rocket League; So 15:00 Dame, 20:00 AoE2; dieselbe Uhrzeit in Berlin und New York*
-3. (3s) Wird es voll, wächst der Cup — *vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
+3. (3s) Wird es voll, wächst der Cup — *der Chess Casual Cup EU: vier Plätze füllen sich, bei einem freien Platz wächst der Cup auf acht*
 4. (3s) Platz nehmen, mit deinem Nostr-Schlüssel — *Anmelden, Bestätigung mit dem Nostr-Schlüssel, „zap_zoe ist dabei.“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Seven games, seven casual cups — *seven covers: chess, Rocket League, FC 26, FC 27, AoE2, nine men's morris, checkers*
+1. (3s) Seven games, seven casual cups — *seven covers with their mode: chess, Rocket League, FC 26, FC 27, AoE2 as Free for All, nine men's morris, checkers*
 2. (3s) Friday to Sunday, in the EU and US — *the weekend: Fri 18:00 FC 26, 20:00 FC 27; Sat 15:00 morris, 20:00 chess and Rocket League; Sun 15:00 checkers, 20:00 AoE2; the same time in Berlin and New York*
-3. (3s) Fills up? The cup grows. — *four spots fill, with one left the cup grows to eight*
+3. (3s) Fills up? The cup grows. — *the Chess Casual Cup EU: four spots fill, with one left the cup grows to eight*
 4. (3s) Take a seat with your Nostr key — *sign up, confirm with the Nostr key, "zap_zoe is in."*
 5. (3s) esports.einundzwanzig.space — *logo + URL*
 
@@ -385,22 +388,21 @@ kind exists or is mentioned.
 
 ## Reel 18 — Age of Empires II
 
-Sources: `facts.md` 45-60 (`app/Games/AgeOfEmpires2.php`, `config/esports.php` `casual` and
-`casual_cups`, `pages/matches/partials/casual-steps` and `card-composer`, `⚡room`, `lobbyCards.js`,
-prod /games/age-of-empires-2 and /tournaments read 2026-10-01). Five beats of 3 s, 18.4 s with the
-cuts, as every reel. The cup seats in beat 4 are kit players; the casual Elo is fact 54 (+20 for a
-first win). No automatic result check is shown or said (fact 53): players enter and confirm.
+Sources: `facts.md` 53, 58-60, 67-79 (plan step 10 "AoE2-Lobby-Turnier", `TournamentFormat::FreeForAll`,
+`lang/de.json`). Five beats of 3 s, 18.4 s with the cuts, as every reel. The six players are kit
+names with their pixel avatars. The lobby tournament (P10) is built on its branch (`210edd80`), not on prod
+yet: **post only once it is live on prod.** The card's strings are the app's (lang/de.json on that branch). No automatic result check is shown or said (fact 53).
 
 **DE**
-1. (3s) Age of Empires II. Dein 1v1 wartet. — *das Cover-Logo, darunter „1v1-Gegner finden“; der Cursor klickt, „Gegner gefunden“: satsjaeger gegen kai_blitz*
-2. (3s) Lobby und Passwort, verschlüsselt im Chat — *Match-Chat: die Karte „Age-of-Empires-II-Lobby“ mit e21-58 und frischem Passwort, die Schritte haken ab: Bereit, Lobby geteilt, Beigetreten*
-3. (3s) Du gewinnst. Dein Name steigt. — *Sieger je Spiel: drei Linien, zwei fließen zu satsjaeger, 2 Spiele gewonnen; die 1v1-Ladder zählt +20*
-4. (3s) Sonntags 20 Uhr: der AoE2 Casual Cup — *zwei Cup-Karten, EU 20:00 Berlin und US 20:00 New York, die Plätze füllen sich, „Dein Platz?“ leuchtet*
+1. (3s) Age of Empires II. Ein Match, eine Lobby. — *das Cover-Logo mit „Free for All, Bündnissieg, Zeitlimit, 2 Stunden“; acht Plätze von „Lobby 1“, sechs Pixel-Avatare mit Namen springen hinein*
+2. (3s) Die Karte wächst mit der Lobby — *die Lobby-Einstellungen: die Spielerzahl zählt von 2 bis 6, die Kartengröße wandert Winzig, Klein, Mittel, Normal; darunter „Teams sperren“ aus, „Bündnissieg“ an*
+3. (3s) Verbündet überleben, Platz 1 teilen — *das Ergebnis der Lobby: vier Spieler scheiden nacheinander aus, die Kette zwischen satsjaeger und hodlqueen leuchtet, beide #1, „Geteilter Platz 1: satsjaeger, hodlqueen“*
+4. (3s) Screenshot hoch, die Turnierleitung bestätigt — *dasselbe Ergebnis, die Schritte haken ab: „Screenshot des Endbildschirms“, „gemeldet, wartet auf die Turnierleitung“, dann „entschieden“*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Age of Empires II. Your 1v1 awaits. — *the cover logo, "Find a 1v1 opponent" below it; the cursor clicks, "Opponent found": satsjaeger vs kai_blitz*
-2. (3s) Lobby and password, encrypted in chat — *match chat: the "Age of Empires II lobby" card with e21-58 and a fresh password, the steps tick off: Ready, Lobby shared, Joined*
-3. (3s) You win. Your name climbs. — *winner per game: three lines, two flow to satsjaeger, 2 games won; the 1v1 ladder counts +20*
-4. (3s) Sundays at 8 pm: the AoE2 Casual Cup — *two cup cards, EU 20:00 Berlin and US 20:00 New York, the seats fill up, "Your spot?" lights up*
+1. (3s) Age of Empires II. One match, one lobby. — *the cover logo with "Free for All, Allied Victory, Time Limit, 2 hours"; eight seats of "Lobby 1", six pixel avatars with names jump in*
+2. (3s) The map grows with the lobby — *the lobby settings: the player count runs from 2 to 6, the map size steps Tiny, Small, Medium, Normal; below it Lock Teams off, Allied Victory on*
+3. (3s) Survive allied, share 1st place — *the lobby's result: four players go out one by one, the link between satsjaeger and hodlqueen lights up, both #1, "Shared place 1: satsjaeger, hodlqueen"*
+4. (3s) Upload the screenshot, the director confirms — *the same result, the steps tick: "Screenshot of the end screen", "reported, waiting for a director", then "decided"*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

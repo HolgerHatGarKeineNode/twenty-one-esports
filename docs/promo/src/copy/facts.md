@@ -102,40 +102,44 @@ and, where a number is shown, against prod's public pages read on 2026-09-29. **
 **Left out:** any date or countdown for Block 0; any claim that a season runs now; the supply
 ("not announced yet" on prod); pots of future tournaments; payouts to named players (none exist).
 
-## Added 2026-10-01 — Age of Empires II (motif 14)
+## Rewritten 2026-10-01 — Age of Empires II (motif 14): the lobby tournament
 
-Written by the design lead, checked claim by claim against master `96d2cd41` (Age of Empires II
-added in `813bf8f2`, its cup slot in `beabfc89`) and against prod's public pages read on
-2026-10-01: `/games/age-of-empires-2` answers 200 and shows "1v1 2v2 3v3 BO1/3" and "Play alone
-or with your clan. Every series moves your Elo."; `/tournaments` lists "AoE2 Casual Cup EU #1"
-(Sun 4 Oct, 8:00 PM Berlin, 0 of 4 spots) and "AoE2 Casual Cup US #1" (starts
-`2026-10-05T00:00:00Z` = Sun 4 Oct, 8:00 PM New York). Pseudonymous throughout: players are
-their Nostr avatar and name, never a face (user, 2026-10-01).
+Written by the design lead against master `82efb81a` and the plan text, then re-sourced on
+2026-10-01 against the built feature: P10 branch `210edd80` (worktree `agent-a1fa5f230f4c56867`, not merged to
+master when written, not on prod). Every claim below now cites that code; the lobby card's
+strings are the app's own (`lang/de.json` on that branch, checked by `check-ui-strings.mjs`
+with `UI_LANG_JSON` until the branch is merged). **Post the motif only once P10 is live on
+prod.** The plan (`docs/plans/2026-09-28T2048-aoe2-und-trackmania.md`, "Schritt 10", local
+only) set the format; the code below is what was built from it.
+
+Facts 45-52 and 54-57 described the motif's first cut (casual matchmaking, the cup final,
+commit `585b8ca0`); they were retired with this rewrite and are in the git history. Facts
+53, 58, 59 and 60 still hold and keep their numbers. Pseudonymous throughout: players are
+their pixel avatar and their name (user, 2026-10-01).
 
 | # | Claim | Source | Live? |
 |---|---|---|---|
-| 45 | Age of Empires II: Definitive Edition ("AoE2") is a series game: 1v1 is a player ladder, 2v2 and 3v3 are clan lineups; best of 1 or 3 | `app/Games/AgeOfEmpires2.php` docblock ("1v1 is a player ladder … 2v2 and 3v3 are clan lineups") and `modes()` (`[1, 3]`, `'player' : 'lineup'`); prod game page "1v1 2v2 3v3 BO1/3" | prod |
-| 46 | A game has a winner and no score: each game is entered by its winner only, the series counts games won | `AgeOfEmpires2::hasGoals()` (false); `SeriesGame::validateResult()` refuses goals; `lang/de.json` "winner per game" / "Sieger je Spiel", ":count games won" / ":count Spiele gewonnen" | prod |
-| 47 | AoE2 is in the casual 1v1 (queue or invite), played best of 1 | `config/esports.php` `casual.games` (`'age-of-empires-2'`); `app/Support/Series/CasualMatches.php` (`'best_of' => … min($mode->bestOf)`); prod game page "searching 1v1" | prod |
-| 48 | The host is drawn, hosts a lobby in the game with a password and spectators allowed, and shares its name and password as a card in the encrypted match chat; the league never sees it | `resources/views/pages/matches/partials/casual-steps.blade.php` ("Host a lobby in Age of Empires II with a password and spectators allowed, then share its name and password in the chat."); `lang/de.json` "The host is drawn. The host shares the lobby (Rocket League, Age of Empires II) … in the encrypted match chat. The league never sees it."; card title "Age of Empires II lobby" / "Age-of-Empires-II-Lobby" (`⚡room.blade.php` `lobbyTitle`) | prod |
-| 49 | The lobby card comes pre-filled with the name `e21-<match number>` and a fresh six-character password for every new lobby | `pages/matches/⚡room.blade.php` (`'lobbyName' => 'e21-'.$match->number`); `resources/js/roomChat.js` `openComposer()` ("A fresh password for every new lobby"); `resources/js/lobbyCards.js` `randomPassword(length = 6)`, alphabet `abcdefghjkmnpqrstuvwxyz23456789` (the kit's `k7m2px` uses only these) | prod |
-| 50 | The guest finds the lobby by its name in the game's lobby browser, joins with the password, then confirms "I am in the lobby" | `casual-steps.blade.php` ("Find the lobby by its name in the lobby browser, join with the password from the card in the chat, then confirm here.", button "I am in the lobby") | prod |
-| 51 | Either player may send their Steam or Xbox name as a card, only on "Send card" | `card-composer.blade.php` (Steam / Xbox select, "Your name goes to your opponent only, so you find each other in the game. The league never sees it."); `lobbyCards.js` `ACCOUNT_CARDS['age-of-empires-2'] = ['steam', 'xbox']` | prod |
-| 52 | The steps of a casual 1v1: Ready, Lobby shared, Joined, Result (either player), Confirmed (the other player); a report nobody answers is confirmed by the league | `casual-steps.blade.php` step list (`'Ready'`, `'Lobby shared'`, `'Joined'`, `'Result'` "either player", `'Confirmed'` "the other player"); `lang/de.json` "Nobody reports: the match is void. A report nobody answers is confirmed by the league." | prod |
-| 53 | **Not built:** checking a result against the game's own match history. The copy never claims an automatic check; players report and confirm | `AgeOfEmpires2.php` docblock ("checking the result against the game's match history comes with a later phase") | not built |
-| 54 | Every series moves your Elo; before the season it is the casual Elo (start 1000, provisional K 40): a first win against a new player is +20 | prod game page "Play alone or with your clan. Every series moves your Elo."; `config/season.php` `casual` ("A second Elo per game and mode for casual play, the same arithmetic"); +20 as fact 37. The reel's cup final moving the 1v1 casual ladder: a cup series is unrated without an open frozen ladder, and `SeriesService::rateAndAttest()` sends every confirmed series, tournament ones included, through `RatingService::applySeries()`, which rates a `'player'` mode (AoE2 1v1 as RL 1v1) on the casual pool; shown by `tests/Feature/Tournaments/TournamentRunTest.php` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo" (run 2026-10-01 in the main checkout at `8f5c099e`, whose rating and series code equals `96d2cd41`: passed, 4 assertions; the same `GameMode(…, 'player')` path as AoE2 1v1, no AoE2-specific test) | prod |
-| 55 | The AoE2 Casual Cup runs per region, EU and US, and starts on Sunday at 20:00 on its region's clock (Europe/Berlin, America/New_York); rounds best of 1, the final best of 3 | `config/esports.php` `casual_cups.games['age-of-empires-2']` (`'best_of' => 1, 'final_best_of' => 3, 'slot' => ['weekday' => 'sunday', 'time' => '20:00']`), `casual_cups.regions`; commit `beabfc89`; prod `/tournaments` (EU #1 and US #1, above) | prod |
-| 56 | AoE2 can be picked for a tournament: planned at about 21 min a game, best-of-1 rounds and a best-of-3 final | `app/Support/Tournaments/GameProfile.php` (`'age-of-empires-2/1v1', … => new self(…, 21, 5, 5, 1, 3, [1, 3], …)`, "planned at about 21 min a game … Bo1 rounds and a Bo3 final") | prod |
-| 57 | Clans play AoE2 as 2v2 and 3v3 lineups; the clan page lists the lineups of every series game | `AgeOfEmpires2::modes()`; commit `813bf8f2` ("Clan page, clan list and clan invite list the lineups of every series game, not only Rocket League's") | prod |
+| 53 | **Not built:** checking a result against the game's own match history. The copy never claims an automatic check: the result is a screenshot, confirmed by the tournament director (fact 74) | `app/Games/AgeOfEmpires2.php` docblock ("checking the result against the game's match history comes with a later phase") | not built |
 | 58 | **Not claimed:** mining. AoE2 mines only once the board takes up its draft proposal; the copy says nothing about blocks, rewards or the season | `config/season.php` `chain.age_of_empires_2_proposal` ("DRAFT values … AoE2 mines only once the board fills them in") | draft |
-| 59 | The game's cover art, used cropped to its logo on the marble band (no painted characters in the frame) | `AgeOfEmpires2::assets()` `GameCover('age-of-empires-2', [480, 800])`; `public/images/games/age-of-empires-2-800.jpg` (read by the kit from the app, as the upcoming-tournament reels do) | prod |
+| 59 | The game's cover art, used cropped to its logo on the marble band (no painted characters in the frame); the square poster shows only the tag strip | `AgeOfEmpires2::assets()` `GameCover('age-of-empires-2', [480, 800])`; `public/images/games/age-of-empires-2-800.jpg` | prod |
 | 60 | The game's colour and mark: fuchsia family `#F0ABFC` / `#D946EF` / `#86198F` / `#701A75`, the castle keep icon | `resources/css/app.css` (`--color-aoe`, `-aoe-2`, `-aoe-deep`, `-aoe-deep-2`); `resources/views/components/icon.blade.php` (`'castle'`) | prod |
+| 67 | An AoE2 tournament runs only as Free for All in **one round**: every entry plays one match in a lobby of at most 8, split evenly over the fewest lobbies (9 → 5 + 4, 17 → 6 + 6 + 5); nobody advances | `app/Support/Tournaments/Lobbies.php` docblock ("plays its tournaments only as Free for All in one round … the draw splits the entries evenly over the fewest lobbies (9 = 5 + 4, 17 = 6 + 6 + 5) and nobody advances"), `split()`; `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `max_players` 8 | P10 branch `210edd80` |
+| 68 | At least 3 entries, else the tournament is called off; "3 to 8 players a lobby" | `app/Support/Tournaments/Lobbies.php` `minEntries()`; `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `min_entries` 3; rules line "every player is in one lobby of :min to :max" | P10 branch `210edd80` |
+| 69 | A diplomacy game: everyone starts alone, Lock Teams off ("Teams sperren": Aus), Allied Victory on ("Bündnissieg": An) | `app/Support/Tournaments/Lobbies.php` `rules()` ("A diplomacy game: everyone starts alone, Lock Teams off, Allied Victory on."), `facts()`; `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `lock_teams` false, `allied_victory` true; `lang/de.json` "Lock Teams" → "Teams sperren", "Allied Victory" → "Bündnissieg" | P10 branch `210edd80` |
+| 70 | Victory: Time Limit, 2 hours; allies still standing when it ends share place 1 | `app/Support/Tournaments/Lobbies.php` `rules()` ("Victory: Time Limit, :time. Allies still standing when it ends … share place 1"), `facts()` ("Time Limit, :time"); `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `time_limit_minutes` 120. The plan's "then the in-game score" is not in the code, so the copy does not say it | P10 branch `210edd80` |
+| 71 | The map size follows the lobby's players: 2 Tiny, 3 Small, 4 Medium, 5-6 Normal, 7-8 Large (DE: Winzig, Klein, Mittel, Normal, Groß), fixed at the draw; a lobby of six plays Normal | `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `map_sizes`; `app/Support/Tournaments/Lobbies.php` `mapSize()`, `mapSizesLine()`; `lang/de.json` "Tiny" → "Winzig" … "Large" → "Groß" | P10 branch `210edd80` |
+| 72 | Map Arabia, civilisations free pick, population 200, spectator delay 2 minutes, restart once in the first 5 minutes | `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` (`map`, `civilizations` free, `population`, `spectator_delay_minutes` 2, `restarts` 1, `restart_minutes` 5); `app/Support/Tournaments/Lobbies.php` `facts()` | P10 branch `210edd80` |
+| 73 | Several players share place 1 (the allies still standing); the others rank by the order they were defeated, the first one out last; the card shows "#1" for each and "Shared place 1: …"; a shared place 1 splits its prize equally (a pot exists only where the tournament has one, `app/Support/Prizes/PrizePool.php`) | `app/Support/Tournaments/Lobbies.php` `rules()` ("… share place 1; everyone else ranks by the order they were defeated", "A shared place 1 splits its prize equally."); `resources/views/components/⚡tournament-lobbies.blade.php` ("Place 1 for every ally still standing at the end; everyone else by the order they were defeated, the first one out last."); `app/Support/Tournaments/LobbyResults.php` ("Shared place 1: :names") | P10 branch `210edd80` |
+| 74 | One player reports the places with a screenshot of the end screen; a tournament director confirms (the card reads "reported, waiting for a director", then "decided") | `app/Support/Tournaments/Lobbies.php` `rules()` ("One player reports the places with a screenshot of the end screen, within :time after the time limit; a tournament director confirms."); `resources/views/components/⚡tournament-lobbies.blade.php` status chips; `app/Support/Tournaments/LobbyResults.php` docblock | P10 branch `210edd80` |
+| 75 | The hero's and the reels' mock-up strings are the lobby card's own, EN and DE ("Lobby :number", ":count players", "Map size", "Lock Teams"/"Teams sperren", "Allied Victory"/"Bündnissieg", "Victory"/"Sieg", "Time Limit, :time", "Spectator delay", "Restart", "Shared place 1: :names", "Screenshot of the end screen", "decided" …); "Arabia" and "200" are config values the card prints as they are | `src/lib/ui-strings.js` (no entry is tagged `plan` any more); `lang/de.json` on P10 branch `210edd80`; `resources/views/components/⚡tournament-lobbies.blade.php`; `app/Support/Tournaments/Lobbies.php` `facts()` | P10 branch `210edd80` |
+| 76 | The league names each lobby and sets its password at the draw; both show only to the lobby's players and the directors (not drawn on the posters) | `app/Support/Tournaments/Lobbies.php` `rules()`, `name()`, `password()`; `resources/views/components/⚡tournament-lobbies.blade.php` ("Only this lobby's players and the directors see this. It is never published.") | P10 branch `210edd80` |
 
-Players and the sample match in the kit (satsjaeger 2 : 1 kai_blitz, match #58) are the kit's
-factory names with their pixel avatars, not people. **Left out:** any automatic result check
-(53); mining or rewards for AoE2 (58); the 24/7 stream's latest-win slide, which covers series
-games (`PrideSlides::win()`), because it is the `onstream` motif's claim and is on master only
-(fact 35); a fixed cup date (the posters say "on Sundays", the date goes stale).
+Players in the kit (satsjaeger and hodlqueen allied, kai_blitz, zap_zoe, taproot_tim and
+orange_olga out) are the kit's factory names with their pixel avatars, not people. **Left
+out:** any automatic result check (53); mining or rewards (58); any Elo or ladder effect (a
+lobby result carries none, fact 79); the casual matchmaking and the weekend cup, which are not
+this motif's subject (the weekend cup becomes a lobby cup with P10, facts 61 and 77, shown in
+reel 12); players never pay to sign up (fact 44).
 
 ## Added 2026-10-01 — the casual cups on the weekend (reel 12, rewritten)
 
@@ -145,15 +149,27 @@ Saturday evening), stale since `beabfc89`.
 
 | # | Claim | Source | Live? |
 |---|---|---|---|
-| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 1v1, nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each | prod |
+| 61 | The league runs casual cups for seven games: chess (blitz), Rocket League 1v1, EA FC 26 1v1, EA FC 27 1v1, AoE2 as a lobby cup (Free for All, one round, fact 77), nine men's morris (blitz), checkers (blitz); the board game cups only while their game is on | `config/esports.php` `casual_cups.enabled` default and `casual_cups.games` ("a cup runs only while the board game is switched on"); prod `/tournaments`: Chess, Rocket League, EA FC 26, EA FC 27, AoE2, Nine Men's Morris and Checkers Casual Cup, EU #1 and US #1 each. AoE2's format: `app/Support/Tournaments/CasualCups.php` on P10 branch `210edd80` (fact 77) | prod; AoE2's format P10 branch `210edd80` |
 | 62 | Weekend slots: Friday 18:00 EA FC 26, 20:00 EA FC 27; Saturday 15:00 nine men's morris, 20:00 chess and Rocket League; Sunday 15:00 checkers, 20:00 AoE2 | `casual_cups.games.*.slot` (`friday 18:00`, `friday 20:00`, `saturday 15:00`, `saturday 20:00` ×2, `sunday 15:00`, `sunday 20:00`); commit `beabfc89`; prod start times (e.g. "8:00 PM Sat, Oct 3, Berlin" chess EU, "3:00 PM Sun, Oct 4, New York" checkers US) | prod |
 | 63 | One cup per game and region, EU and US, at the same local time (Europe/Berlin, America/New_York) | `casual_cups.regions`; config docblock ("an EU and a US cup of a game start at the same local time") | prod |
-| 64 | A cup opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
-| 65 | The format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
-| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said) | fact 54 (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
+| 64 | A cup (except AoE2's, fact 77) opens with 4 places and grows to 8, then 16, whenever one place is left, until 60 minutes before sign-up closes | `casual_cups.sizes` `[4, 8, 16]`, `growth_freeze_minutes` 60; docblock ("whenever only one place is left (3/4, 7/8 ...) the league raises it to the next size") | prod |
+| 65 | Except AoE2's cup (fact 77), the format is set at the start by how many play: 6 or more a double elimination, 2 to 5 one live evening (a match or a round robin) | docblock ("min_players or more a double elimination, 2 to min_players - 1 a small cup's live evening"), `min_players` 6; `lang/de.json` "The format is set at the start, by how many play." (shown on prod) | prod |
+| 66 | No prizes; a cup series moves the casual Elo (not "no rating", as the old cut said); AoE2's lobby results move no Elo (fact 79) | (`TournamentRunTest` "an RL 1v1 tournament series reported by its players moves the two players' casual Elo"); casual cups set no pot | prod |
 
 **Corrected:** the 2026-09-28 cut said "Four players, two losses and out" and "No rating". A
 double elimination needs six players (fact 65), and cup results move the casual Elo (fact 66).
+
+**Changed 2026-10-01 (P10):** AoE2's weekend cup becomes a lobby cup. First recorded as P10's
+assumptions, then re-sourced against the built code on its branch (`210edd80`, not on prod):
+
+| # | Claim | Source | Live? |
+|---|---|---|---|
+| 77 | An AoE2 casual cup is a lobby cup from the start: Free for All in one round, 40 places (5 lobbies of 8), no growth; the open cups are converted | `app/Support/Tournaments/CasualCups.php` docblock ("a lobby game's cup (Age of Empires II) is Free for All in one round from the start, with Lobbies::cupCapacity() places and no growth"), `'capacity' => $lobby ? Lobbies::cupCapacity($game) …`; `app/Support/Tournaments/Lobbies.php` `cupCapacity()` ("5 lobbies of 8 by default"); `config/esports.php` `series.lobby_rules.age-of-empires-2.lobby` `cup_capacity` 40; conversion: coordinator 2026-10-01 | P10 branch `210edd80` |
+| 78 | With several lobbies, every lobby's winners are place 1 together, then the next place number of any lobby, and so on | `app/Support/Payouts/TournamentPlacements.php` docblock ("every lobby's winners are place 1 together, then the next place number of any lobby") | P10 branch `210edd80` |
+| 79 | Lobby results move no Elo and are not attested on the chain | `app/Support/Tournaments/LobbyResults.php` docblock ("Lobby results move no Elo and are not attested: a rating is between two sides.") | P10 branch `210edd80` |
+
+**Posting gate for reel 12:** it now shows AoE2's cup as Free for All, so post it only once P10 is
+live on prod, like motif 14.
 
 ## Corrected in round 2 — clan "lineup" is Rocket League only, not a chess feature
 

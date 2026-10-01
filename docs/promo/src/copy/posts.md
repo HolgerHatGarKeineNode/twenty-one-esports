@@ -207,23 +207,26 @@ https://esports.einundzwanzig.space/tournaments/1
 
 ## Casual cups
 
-Facts 61-66. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
+Facts 61-66, 77-79. Evergreen: the weekend slots repeat, so no date and no cup number. Post the
 board game cups (Mühle, Dame) only while those games are on in prod (they have cups on prod
-since at least 2026-10-01).
+since at least 2026-10-01). AoE2's cup is a lobby cup from P10 on: **post only once P10 is live
+on prod.**
 
 **Nostr (DE):**
 Jedes Wochenende Casual Cups in sieben Spielen, jeweils einer für die EU und einer für die USA,
 zur selben Uhrzeit in Berlin und New York. Freitag 18 Uhr EA FC 26, 20 Uhr EA FC 27. Samstag
 15 Uhr Mühle, 20 Uhr Schach und Rocket League. Sonntag 15 Uhr Dame, 20 Uhr Age of Empires II.
 Ein Cup öffnet mit vier Plätzen und wächst, wenn er voll wird. Das Format steht zum Start fest,
-je nachdem, wie viele spielen. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
+je nachdem, wie viele spielen. Age of Empires II spielt seinen Cup als ein einziges Match in
+Lobbys mit bis zu 8 Spielern, 40 Plätze. Anmelden mit deinem Nostr-Schlüssel, keine Preise, nur das Spiel.
 https://esports.einundzwanzig.space/tournaments
 
 **Nostr (EN):**
 Casual cups every weekend in seven games, one for the EU and one for the US, at the same time in
 Berlin and New York. Friday 18:00 EA FC 26, 20:00 EA FC 27. Saturday 15:00 nine men's morris,
 20:00 chess and Rocket League. Sunday 15:00 checkers, 20:00 Age of Empires II. A cup opens with
-four spots and grows when it fills up. The format is set at the start, by how many play. Sign up
+four spots and grows when it fills up. The format is set at the start, by how many play.
+Age of Empires II plays its cup as one single match in lobbies of up to 8 players, 40 places. Sign up
 with your Nostr key, no prizes, just the game.
 https://esports.einundzwanzig.space/tournaments
 
@@ -349,29 +352,35 @@ esports.einundzwanzig.space
 
 ## Age of Empires II
 
-Facts 45-60. Live on prod (game page, casual 1v1, the first EU and US cups, read 2026-10-01).
-No automatic result check is claimed (fact 53), no mining (fact 58).
+Facts 53, 58-60, 67-79. The lobby tournament (P10) is built on its branch (`210edd80`), not on
+prod yet: **post only once it is live on prod.** No
+automatic result check is claimed (fact 53), no mining (fact 58), no fee for players (fact 44).
 
 **Nostr (DE):**
-Age of Empires II: Definitive Edition ist in der Liga. Im Casual 1v1 findest du deinen Gegner über
-die Warteschlange. Der Host erstellt eine Lobby mit Passwort und teilt Name und Passwort im
-verschlüsselten Match-Chat, die Liga sieht sie nie. Nach dem Spiel trägt einer den Sieger ein, der
-andere bestätigt. Jede Serie bewegt dein Elo, und dein Name steigt in der 1v1-Ladder. Sonntags um
-20 Uhr läuft der AoE2 Casual Cup, einmal nach Berliner, einmal nach New Yorker Zeit. Dazu Turniere
-und Clan-Lineups im 2v2 und 3v3.
+Age of Empires II bekommt sein eigenes Turnierformat: ein einziges Match. Alle Angemeldeten
+spielen in Lobbys mit 3 bis 8 Spielern, größere Felder werden gleichmäßig geteilt, aus 9 werden
+5 und 4. Diplomatie wie im Spiel: „Teams sperren“ aus, „Bündnissieg“ an, jeder startet allein.
+Wer am Ende verbündet überlebt, teilt sich Platz 1; hat das Turnier einen Pot, geht der Anteil
+für Platz 1 zu gleichen Teilen an sie.
+Sieg per Zeitlimit nach 2 Stunden. Karte Arabia, Zivilisationen freie Wahl, Bevölkerung
+200, 2 Minuten Zuschauer-Verzögerung, und die Kartengröße passt zur Lobby: zu sechst spielt ihr
+auf Normal. Das Ergebnis meldest du mit einem Screenshot des Endbildschirms, die Turnierleitung
+bestätigt es.
 esports.einundzwanzig.space
 
 **Nostr (EN):**
-Age of Empires II: Definitive Edition is in the league. In the casual 1v1 you find your opponent in
-the queue. The host sets up a lobby with a password and shares its name and password in the
-encrypted match chat; the league never sees them. After the game one of you enters the winner and
-the other confirms. Every series moves your Elo, and your name climbs the 1v1 ladder. On Sundays at
-8 pm the AoE2 Casual Cup runs, once on Berlin time, once on New York time. Plus tournaments, and clan
-lineups for 2v2 and 3v3.
+Age of Empires II gets its own tournament format: one single match. Everyone signed up plays
+in lobbies of 3 to 8 players; bigger fields are split evenly, so 9 become 5 and 4. Diplomacy
+as in the game: Lock Teams off, Allied Victory on, everyone starts alone. Whoever survives
+allied at the end shares 1st place; if the tournament has a pot, the place-1 share is split
+equally between them. After
+2 hours the time limit ends the game. Map Arabia, civilisations free pick, population 200, a 2 minute
+spectator delay, and the map size fits the lobby: six of you play on Normal. You report the
+result with a screenshot of the end screen, and the tournament director confirms it.
 esports.einundzwanzig.space
 
-**X (DE):** Age of Empires II im 1v1: Gegner finden, Lobby teilen, Sieger eintragen. Sonntags 20 Uhr der Casual Cup. esports.einundzwanzig.space
-**X (EN):** Age of Empires II 1v1: find an opponent, share the lobby, enter the winner. Casual Cup on Sundays at 8 pm. esports.einundzwanzig.space
+**X (DE):** Age of Empires II als Turnier: ein Match, bis zu 8 Spieler pro Lobby, „Bündnissieg“ an. Wer verbündet überlebt, teilt sich Platz 1. esports.einundzwanzig.space
+**X (EN):** Age of Empires II as a tournament: one match, up to 8 players a lobby, Allied Victory on. Survive allied and share 1st place. esports.einundzwanzig.space
 
 ---
 
