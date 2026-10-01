@@ -149,7 +149,7 @@ class StreamBot
                     continue;
                 }
 
-                $problems = StreamBotCopy::violations($message->content);
+                $problems = StreamBotCopy::violations($message->content, $message->tags);
 
                 if ($problems !== []) {
                     Log::warning('Stream bot message dropped', ['builder' => $message->builder, 'problems' => $problems]);
@@ -189,12 +189,15 @@ class StreamBot
 
     /**
      * The kind-1311 event for a message: one `a` tag (NIP-53) with the
-     * stream's first relay as hint and the `root` marker, nothing else (no
-     * `t` tags: a standing rule of this project).
+     * stream's first relay as hint and the `root` marker, then the `p` tags
+     * of the players the message names (no `t` tags: a standing rule of
+     * this project).
+     *
+     * @param  list<list<string>>  $mentions
      */
-    public function event(LeagueKey $key, StreamCoordinates $stream, string $content, int $createdAt): SignedEvent
+    public function event(LeagueKey $key, StreamCoordinates $stream, string $content, int $createdAt, array $mentions = []): SignedEvent
     {
-        return $key->sign(self::KIND_LIVE_CHAT, [['a', $stream->address(), $stream->relayHint(), 'root']], $content, $createdAt);
+        return $key->sign(self::KIND_LIVE_CHAT, [['a', $stream->address(), $stream->relayHint(), 'root'], ...$mentions], $content, $createdAt);
     }
 
     /**
@@ -202,7 +205,7 @@ class StreamBot
      */
     public function post(LeagueKey $key, StreamCoordinates $stream, StreamBotMessage $message, CarbonImmutable $now): StreamBotPost
     {
-        $event = $this->event($key, $stream, $message->content, $now->getTimestamp());
+        $event = $this->event($key, $stream, $message->content, $now->getTimestamp(), $message->tags);
         $problems = StreamBotCopy::violations($event->content, $event->tags);
 
         if ($problems !== []) {

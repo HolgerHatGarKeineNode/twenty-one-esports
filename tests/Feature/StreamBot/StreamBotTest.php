@@ -1,10 +1,15 @@
 <?php
 
+use App\Models\RankBadge;
+use App\Models\RankBadgeVersion;
 use App\Models\StreamBotPost;
+use App\Models\User;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\RelayReader;
 use App\Support\Nostr\SignedEvent;
+use App\Support\SeasonChain\LeagueKey;
 use App\Support\StreamBot\StreamBot;
+use App\Support\StreamBot\StreamBotBuilders;
 use App\Support\StreamBot\StreamBotChat;
 use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotPublisher;
@@ -123,6 +128,23 @@ test('a post is a kind-1311 live chat message under the stream, signed by the bo
         ->and($post->content)->toBe($event->content)
         ->and($post->relays_accepted)->toBe(2)
         ->and($post->next_due_at->getTimestamp())->toBe(now()->addMinutes(20)->getTimestamp());
+});
+
+test('a message that names a player for an achievement goes out with their p tag after the stream\'s a tag', function () {
+    $alice = User::factory()->create(['name' => 'Alice']);
+    $badge = RankBadge::query()->create(['user_id' => $alice->id, 'pubkey' => $alice->pubkey, 'game' => 'chess', 'mode' => 'blitz',
+        'd' => 'rank/chess-blitz/'.$alice->pubkey, 'badge_pubkey' => str_repeat('b', 64), 'tier' => 'gold-2', 'season' => '']);
+    RankBadgeVersion::query()->create(['rank_badge_id' => $badge->id, 'tier' => 'gold-2', 'previous_tier' => 'silver-1', 'season' => '', 'rating' => 1612, 'signed_at' => time()]);
+    $message = app(StreamBotBuilders::class)->build('rank_up', CarbonImmutable::now())[0];
+
+    $post = app(StreamBot::class)->post(LeagueKey::streamBot(), StreamCoordinates::fromConfig(), $message, CarbonImmutable::now());
+    $event = SignedEvent::fromInput($this->published[0]['event']);
+
+    expect($event->tags)->toBe([['a', '30311:'.$this->streamKey->pubkey.':twentyone-247', 'wss://one.test', 'root'], ['p', $alice->pubkey]])
+        ->and($event->content)->toContain('nostr:'.NostrKeys::hexToNpub($alice->pubkey).' ')
+        ->and($event->hasValidSignature())->toBeTrue()
+        ->and(StreamBotCopy::violations($event->content, $event->tags))->toBe([])
+        ->and($post->event_id)->toBe($event->id);
 });
 
 test('the stream key comes from the stream nsec when no npub is configured', function () {

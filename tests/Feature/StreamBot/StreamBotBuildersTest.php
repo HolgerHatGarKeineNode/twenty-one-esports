@@ -9,7 +9,9 @@ use App\Models\RankBadgeVersion;
 use App\Models\Rating;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
+use App\Support\Nostr\NostrKeys;
 use App\Support\StreamBot\StreamBotBuilders;
 use App\Support\StreamBot\StreamBotCopy;
 use App\Support\StreamBot\StreamBotMessage;
@@ -21,7 +23,9 @@ use Illuminate\Support\Facades\URL;
 /*
  * The stream chat bot's builders (P22): each one offers messages only when
  * its facts are in the database, and every message keeps the copy rules
- * (no `#`, a direct link, 1-4 lines).
+ * (no `#`, a direct link, 1-4 lines). A player named for an achievement is
+ * tagged as the bot's notes tag them: `nostr:npub1…` and a `p` tag, the plain
+ * name without a valid Nostr key.
  */
 
 beforeEach(function () {
@@ -40,6 +44,12 @@ beforeEach(function () {
 function botBuild(string $builder): array
 {
     return test()->builders->build($builder, CarbonImmutable::now());
+}
+
+/** How a chat message names a player with a Nostr key: their `nostr:npub1…`. */
+function botNpub(User $user): string
+{
+    return 'nostr:'.NostrKeys::hexToNpub($user->pubkey);
 }
 
 /** Data for every fact builder at once. */
@@ -181,13 +191,53 @@ test('a daily game is not a live board, and one live game is not a list', functi
         ->and(botBuild('live_games'))->toBe([]);
 });
 
-test('pride: the latest winner, a rank up, a new clan and the top of the ladder', function () {
+test('pride: the latest winner, a rank up, a new clan and the top of the ladder, the player tagged', function () {
     botFacts();
+    $alice = User::query()->where('name', 'Alice')->sole();
 
-    expect(botBuild('tournament_winner')[0]->content)->toStartWith('🥇 Alice won Testnet Cup')
-        ->and(botBuild('rank_up')[0]->content)->toStartWith('📈 Rank up! Alice reached Gold II in Chess Blitz 5+3')
+    expect(botBuild('tournament_winner')[0]->content)->toStartWith('🥇 '.botNpub($alice).' won Testnet Cup')
+        ->and(botBuild('rank_up')[0]->content)->toStartWith('📈 Rank up! '.botNpub($alice).' reached Gold II in Chess Blitz 5+3')
         ->and(botBuild('new_clan')[0]->content)->toStartWith('🛡️ New clan: Stacking Sats [SATS]')
-        ->and(botBuild('ladder_top')[0]->content)->toContain('🥇 Alice 1612');
+        ->and(botBuild('ladder_top')[0]->content)->toContain('🥇 '.botNpub($alice).' 1612');
+
+    foreach (['tournament_winner', 'rank_up', 'ladder_top'] as $builder) {
+        $message = botBuild($builder)[0];
+
+        expect($message->tags)->toBe([['p', $alice->pubkey]], $builder)
+            ->and($message->content)->not->toContain('Alice')
+            ->and(StreamBotCopy::violations($message->content, $message->tags))->toBe([], $builder);
+    }
+
+    expect(botBuild('new_clan')[0]->tags)->toBe([]);
+});
+
+test('the ladder top tags each player with a Nostr key once and names one without a valid key plainly', function () {
+    $alice = User::factory()->create(['name' => 'Alice']);
+    $bob = User::factory()->create(['name' => 'Bob']);
+    $cy = User::factory()->create(['name' => 'Cy']);
+    botRating($alice, 1612, 9);
+    botRating($bob, 1580, 7);
+    botRating($cy, 1550, 5);
+    // A stand-in for an account without a usable key: the pubkey column cannot be empty.
+    DB::table('users')->where('id', $bob->id)->update(['pubkey' => 'not-a-nostr-key']);
+
+    $message = botBuild('ladder_top')[0];
+
+    expect($message->content)->toContain('🥇 '.botNpub($alice).' 1612 · 🥈 Bob 1580 · 🥉 '.botNpub($cy).' 1550')
+        ->and($message->tags)->toBe([['p', $alice->pubkey], ['p', $cy->pubkey]])
+        ->and(StreamBotCopy::violations($message->content, $message->tags))->toBe([]);
+});
+
+test('a tournament winner without an account (a team, a deleted player) keeps the plain name and no p tag', function () {
+    $alice = User::factory()->create(['name' => 'Alice']);
+    $tournament = shareTournament($alice, User::factory()->create());
+    TournamentParticipant::query()->where(['tournament_id' => $tournament->id, 'user_id' => $alice->id])->update(['user_id' => null]);
+
+    $message = botBuild('tournament_winner')[0];
+
+    expect($message->content)->toStartWith('🥇 Alice won Testnet Cup')
+        ->and($message->content)->not->toContain('nostr:')
+        ->and($message->tags)->toBe([]);
 });
 
 test('old news is no news: an old win, a rank down, an old clan', function () {

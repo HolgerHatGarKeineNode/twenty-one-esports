@@ -8,7 +8,9 @@ use App\Games\ScoreMetric;
 use App\Models\BotPost;
 use App\Models\ScoreRun;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Support\LeagueTime;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
@@ -49,8 +51,11 @@ use Throwable;
  * same time skips it, a failed send is retried with the same signed event
  * after `retry_minutes`. With the week's 31923 published, the note carries
  * its `nostr:naddr1…` and a NIP-18 `q` tag; without it the note stands on
- * its link alone. No `t` tag, no `#`, no `p` (players are named, not
- * pinged), and nothing about fees: the copy rules of StreamBotCopy.
+ * its link alone. The players it names are tagged as PrideNotes tags them:
+ * `nostr:npub1…` in place of the name and a `p` tag, at most
+ * PrideNotes::LOBBY_MENTIONS; a player without a Nostr key, or past the cap,
+ * keeps the plain name. No `t` tag, no `#`, and nothing about fees: the copy
+ * rules of StreamBotCopy.
  *
  * Fail closed: without `esports.stream_bot.enabled`, the bot key or a
  * stream relay (TournamentNotes::setup), or while Blockfill is not
@@ -174,13 +179,24 @@ final class BlockfillNotes
      */
     public function content(Tournament $week, string $slot): string
     {
+        return $this->compose($week, $slot)['content'];
+    }
+
+    /**
+     * The note's content and the `p` tags of the players it names.
+     *
+     * @return array{content: string, tags: list<list<string>>}
+     */
+    private function compose(Tournament $week, string $slot): array
+    {
         $previous = app()->getLocale();
         app()->setLocale(self::LOCALE);
+        $tags = [];
 
         try {
             $body = match (true) {
-                $slot === self::SLOT_WINNER => $this->winner($week),
-                str_starts_with($slot, self::SLOT_TOP) => $this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP))),
+                $slot === self::SLOT_WINNER => $this->winner($week, $tags),
+                str_starts_with($slot, self::SLOT_TOP) => $this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP)), $tags),
                 default => StreamBotCopy::render('blockfill_note_week', 0, [
                     'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
                     'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
@@ -191,19 +207,19 @@ final class BlockfillNotes
             app()->setLocale($previous);
         }
 
-        return $week->address() === null ? $body : $body."\n\nnostr:".$this->notes->naddr($week);
+        return ['content' => $week->address() === null ? $body : $body."\n\nnostr:".$this->notes->naddr($week), 'tags' => $tags];
     }
 
     /**
-     * The kind-1 note: the content and, once the week's 31923 is published,
-     * one NIP-18 `q` tag on its address. Refused when the text breaks the
-     * copy rules.
+     * The kind-1 note: the content, a `p` tag per tagged player and, once
+     * the week's 31923 is published, one NIP-18 `q` tag on its address.
+     * Refused when the text breaks the copy rules.
      */
     public function event(LeagueKey $key, Tournament $week, string $slot, int $createdAt): SignedEvent
     {
-        $content = $this->content($week, $slot);
+        ['content' => $content, 'tags' => $tags] = $this->compose($week, $slot);
         $address = $week->address();
-        $tags = $address === null ? [] : [['q', $address, $this->notes->relayHint() ?? '']];
+        $tags = $address === null ? $tags : [...$tags, ['q', $address, $this->notes->relayHint() ?? '']];
         $problems = StreamBotCopy::violations(explode("\n\nnostr:", $content, 2)[0], $tags);
 
         if ($problems !== []) {
@@ -213,17 +229,24 @@ final class BlockfillNotes
         return $key->sign(TournamentNotes::KIND_NOTE, $tags, $content, $createdAt);
     }
 
-    private function winner(Tournament $week): string
+    /**
+     * @param  list<list<string>>  $tags
+     */
+    private function winner(Tournament $week, array &$tags): string
     {
         $standings = array_values(array_filter($this->runs->standings($week), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null));
         $first = $standings[0] ?? throw new LogicException('A week without a placed player has no winner note.');
         $metric = ScoreMetric::time();
-        $podium = array_map(fn (ScoreStanding $row): string => $row->place.'. '.StreamBotCopy::clean($row->participant->name, self::NAME_LENGTH).' '.$metric->format((int) $row->value),
-            array_slice($standings, 0, self::PODIUM));
+        $winner = $this->mention($first->participant, $tags);
+        $podium = [];
+
+        foreach (array_slice($standings, 0, self::PODIUM) as $row) {
+            $podium[] = $row->place.'. '.$this->mention($row->participant, $tags).' '.$metric->format((int) $row->value);
+        }
 
         return StreamBotCopy::render('blockfill_note_winner', 0, [
             'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
-            'winner' => StreamBotCopy::clean($first->participant->name, self::NAME_LENGTH),
+            'winner' => $winner,
             'time' => $metric->format((int) $first->value),
             'podium' => implode(' · ', $podium),
             'url' => route('scores.show', Blockfill::SLUG),
@@ -234,8 +257,10 @@ final class BlockfillNotes
      * The running week's first place by a verified run: the player, the time,
      * how much faster than the first place before it (none for the week's
      * first), the week's end and the game page.
+     *
+     * @param  list<list<string>>  $tags
      */
-    private function firstPlace(Tournament $week, int $runId): string
+    private function firstPlace(Tournament $week, int $runId, array &$tags): string
     {
         $run = ScoreRun::query()->find($runId) ?? throw new LogicException('The first place of Blockfill week '.$week->id.' has no score run '.$runId.'.');
         $userIds = $week->participants()->pluck('user_id')->filter()->all();
@@ -255,12 +280,40 @@ final class BlockfillNotes
 
         return StreamBotCopy::render('blockfill_note_top', 0, [
             'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
-            'player' => StreamBotCopy::clean($participant->name, self::NAME_LENGTH),
+            'player' => $this->mention($participant, $tags),
             'time' => $metric->format((int) $run->value),
             'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster than the first place before' : '',
             'ends' => LeagueTime::stamp($window->end),
             'url' => route('stacker.play'),
         ]);
+    }
+
+    /**
+     * A player as PrideNotes names them: `nostr:npub1…` of their Nostr key,
+     * its `p` tag added once, while the note tags fewer than
+     * PrideNotes::LOBBY_MENTIONS players; the plain name for a player
+     * without a valid key (an entry whose account is gone) or past the cap.
+     * Only the account's Nostr key, never a game account.
+     *
+     * @param  list<list<string>>  $tags
+     */
+    private function mention(TournamentParticipant $participant, array &$tags): string
+    {
+        $pubkey = (string) $participant->user?->pubkey;
+
+        if (preg_match('/^[0-9a-f]{64}$/', $pubkey) !== 1) {
+            return StreamBotCopy::clean($participant->name, self::NAME_LENGTH);
+        }
+
+        if (! in_array(['p', $pubkey], $tags, true)) {
+            if (count($tags) >= PrideNotes::LOBBY_MENTIONS) {
+                return StreamBotCopy::clean($participant->name, self::NAME_LENGTH);
+            }
+
+            $tags[] = ['p', $pubkey];
+        }
+
+        return 'nostr:'.NostrKeys::hexToNpub($pubkey);
     }
 
     /**
