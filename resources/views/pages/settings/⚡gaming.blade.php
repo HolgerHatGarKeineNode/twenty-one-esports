@@ -2,6 +2,7 @@
 
 use App\Games\GameRegistry;
 use App\Models\User;
+use App\Support\Stacker\StackerSettings;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -15,14 +16,60 @@ use Livewire\Component;
  * 1v1 room (`ea`, pages/matches/⚡room), where it is a prefill the player
  * still sends, sealed to the opponent. No flow requires a saved tag.
  * Avatar, platform, time zone and language moved to the account tab.
+ *
+ * Blockfill controls (plan "Blockfill", P3), only while Blockfill is on:
+ * handling (DAS/ARR/SDF) and keys, one or two per action, each key once
+ * (StackerSettings); the game page reads them.
  */
 new #[Title('Gamer tags')] class extends Component {
     /** @var array<string, string> */
     public array $gamerTags = [];
 
+    /** @var array{das: int, arr: int, sdf: int, keys: array<string, list<string>>} */
+    public array $stacker = StackerSettings::DEFAULT_HANDLING + ['keys' => StackerSettings::DEFAULT_KEYS];
+
     public function mount(): void
     {
         $this->gamerTags = $this->fields($this->user()->gamer_tags ?? []);
+        $this->stacker = StackerSettings::of($this->user());
+    }
+
+    public function saveStacker(): void
+    {
+        abort_unless((bool) config('esports.blockfill.enabled'), 404);
+
+        $rules = ['stacker.keys' => ['required', 'array']];
+        foreach (StackerSettings::LIMITS as $key => [$low, $high]) {
+            $rules['stacker.'.$key] = ['required', 'integer', 'min:'.$low, 'max:'.$high];
+        }
+        $this->validate($rules);
+
+        $keys = array_map(
+            fn (mixed $codes): array => array_values(array_filter((array) $codes, fn (mixed $code): bool => is_string($code) && $code !== '')),
+            (array) $this->stacker['keys'],
+        );
+        $wanted = ['das' => (int) $this->stacker['das'], 'arr' => (int) $this->stacker['arr'], 'sdf' => (int) $this->stacker['sdf'], 'keys' => $keys];
+
+        // normalize() falls back to the defaults for anything off: a difference means the input was off.
+        if (StackerSettings::normalize($wanted) !== $wanted) {
+            // back to what is saved, so the form never shows a binding that was refused
+            $this->stacker = StackerSettings::of($this->user());
+            $this->addError('stacker.keys', __('Give every action one or two keys, and use each key only once.'));
+
+            return;
+        }
+
+        $this->user()->forceFill(['stacker_settings' => $wanted])->save();
+        $this->stacker = $wanted;
+        $this->dispatch('stacker-saved');
+    }
+
+    public function resetStacker(): void
+    {
+        abort_unless((bool) config('esports.blockfill.enabled'), 404);
+
+        $this->user()->forceFill(['stacker_settings' => null])->save();
+        $this->stacker = StackerSettings::of(null);
     }
 
     public function save(): void
@@ -233,4 +280,51 @@ new #[Title('Gamer tags')] class extends Component {
                   x-on:gamer-tags-saved.window="shown = true; setTimeout(() => shown = false, 2000)" data-test="gamer-tags-saved"><x-icon name="check" :size="16" />{{ __('Saved.') }}</span>
         </div>
     </form>
+
+    @if (config('esports.blockfill.enabled'))
+        {{-- Blockfill controls: a key is set by clicking its slot and pressing the key (KeyboardEvent.code). --}}
+        <form wire:submit="saveStacker" id="blockfill" class="flex flex-col gap-5 rounded-lg bg-card px-4 py-5 lg:px-6" aria-labelledby="stacker-h" data-test="stacker-settings"
+              x-data="{ listening: null, listen(action, slot) { this.listening = [action, slot]; }, isListening(action, slot) { return this.listening !== null && this.listening[0] === action && this.listening[1] === slot; } }"
+              x-on:keydown.window="if (listening !== null) { $event.preventDefault(); const [action, slot] = listening; listening = null; if ($event.code !== 'Escape') { $wire.set(`stacker.keys.${action}.${slot}`, $event.code); } }">
+            <div class="flex min-w-0 flex-col gap-1">
+                <h2 id="stacker-h" class="m-0 font-display text-lg font-bold lg:text-xl">Blockfill</h2>
+                <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('How the pieces move for you, in ticks of 1/60 s. Saved with your account; a ranked run carries the values it was played with.') }}</p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                @foreach (['das' => __('DAS: ticks before a held key repeats'), 'arr' => __('ARR: ticks between repeats (0 = to the wall)'), 'sdf' => __('Soft drop speed (41 = instant)')] as $field => $label)
+                    <label class="flex flex-col gap-1.5 text-sm">{{ $label }}
+                        <input type="number" min="{{ StackerSettings::LIMITS[$field][0] }}" max="{{ StackerSettings::LIMITS[$field][1] }}" wire:model="stacker.{{ $field }}" class="h-11 w-28 rounded-md border border-edge bg-ground px-3 text-[13px] text-ink" data-test="stacker-{{ $field }}">
+                        @error('stacker.'.$field)<span class="text-xs text-loss" role="alert">{{ $message }}</span>@enderror
+                    </label>
+                @endforeach
+            </div>
+
+            <div class="flex flex-col gap-2 border-t border-hairline pt-4">
+                <span class="text-sm">{{ __('Keys: click a slot, then press the key. Escape keeps the old one.') }}</span>
+                <dl class="m-0 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+                    @foreach (['left' => __('Move left'), 'right' => __('Move right'), 'soft' => __('Soft drop'), 'hard' => __('Hard drop'), 'ccw' => __('Turn left'), 'cw' => __('Turn right'), 'flip' => __('Turn 180°'), 'hold' => __('Hold'), 'restart' => __('Restart at once')] as $action => $label)
+                        <div class="flex items-center justify-between gap-3" data-test="stacker-key-{{ $action }}">
+                            <dt class="text-[13px] text-ink-2">{{ $label }}</dt>
+                            <dd class="m-0 flex gap-2">
+                                @foreach ([0, 1] as $slot)
+                                    <button type="button" class="h-11 min-w-[88px] rounded-md border border-line bg-well px-2 font-mono text-[12px] text-ink"
+                                            x-on:click="listen('{{ $action }}', {{ $slot }})" x-bind:class="isListening('{{ $action }}', {{ $slot }}) && 'border-btc text-btc'"
+                                            data-test="stacker-slot-{{ $action }}-{{ $slot }}">{{ isset($stacker['keys'][$action][$slot]) ? StackerSettings::label($stacker['keys'][$action][$slot]) : '–' }}</button>
+                                @endforeach
+                            </dd>
+                        </div>
+                    @endforeach
+                </dl>
+                @error('stacker.keys')<span class="text-xs text-loss" role="alert" data-test="stacker-keys-error">{{ $message }}</span>@enderror
+            </div>
+
+            <div class="flex flex-wrap items-center gap-4">
+                <x-button type="submit" data-test="stacker-save">{{ __('Save Blockfill controls') }}</x-button>
+                <x-button variant="quiet" wire:click="resetStacker" data-test="stacker-reset">{{ __('Back to the defaults') }}</x-button>
+                <span role="status" class="flex items-center gap-1.5 text-[13px] text-win" x-data="{ shown: false }" x-show="shown" x-cloak
+                      x-on:stacker-saved.window="shown = true; setTimeout(() => shown = false, 2000)" data-test="stacker-saved"><x-icon name="check" :size="16" />{{ __('Saved.') }}</span>
+            </div>
+        </form>
+    @endif
 </div>

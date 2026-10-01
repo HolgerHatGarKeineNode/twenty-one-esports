@@ -18,6 +18,9 @@ use App\Support\Rating\RatingSettings;
 use App\Support\SeasonChain\AnchoredTrustFacts;
 use App\Support\SeasonChain\TrustFacts;
 use App\Support\Settings\LeagueSettings;
+use App\Support\Stacker\NodeVerifier;
+use App\Support\Stacker\StackerRuns;
+use App\Support\Stacker\Verifier;
 use App\Support\Tournaments\TournamentPrizePool;
 use App\Support\TwentyOne\Stream\StreamImages;
 use App\Support\Wallet\NwcTransport;
@@ -87,6 +90,9 @@ class AppServiceProvider extends ServiceProvider
 
         // The tournament page's prize pool section reads the league's pools (P9).
         $this->app->bind(TournamentPrizePool::class, WalletPrizePool::class);
+
+        // Blockfill runs are replayed in Node (plan "Blockfill", P2); the feature tests bind a fake.
+        $this->app->bind(Verifier::class, NodeVerifier::class);
     }
 
     /**
@@ -133,6 +139,23 @@ class AppServiceProvider extends ServiceProvider
 
         // Share cards and badge art (P11): drawn with GD on a miss, so a tight limit per IP.
         RateLimiter::for('cards', fn (Request $request): Limit => Limit::perMinute((int) config('esports.badges.cards_per_minute'))->by($request->ip()));
+
+        // Blockfill (plan "Blockfill", P2): per player (the routes need a login), per network (IPv6 by /64, so many
+        // accounts behind one address share it) and, for issues, one budget for everyone, which caps what the league
+        // stores per minute. Defined here, not in routes/stacker.php, so a cached route table finds them.
+        RateLimiter::for('stacker-issue', fn (Request $request): array => [
+            Limit::perSecond(1, (int) config('esports.blockfill.issue_every_seconds'))->by('stacker-issue-gap:'.$request->user()?->getAuthIdentifier()),
+            Limit::perHour((int) config('esports.blockfill.issue_per_hour'))->by('stacker-issue-hour:'.$request->user()?->getAuthIdentifier()),
+            Limit::perHour((int) config('esports.blockfill.issue_per_ip_per_hour'))->by('stacker-issue-net:'.StackerRuns::network($request->ip())),
+            Limit::perMinute((int) config('esports.blockfill.issue_per_ip_per_minute'))->by('stacker-issue-net-minute:'.StackerRuns::network($request->ip())),
+            Limit::perMinute((int) config('esports.blockfill.issue_global_per_minute'))->by('stacker-issue-global'),
+        ]);
+        // The result screen asks for a submitted run's verdict about once a second until it has one.
+        RateLimiter::for('stacker-status', fn (Request $request): Limit => Limit::perMinute(120)->by('stacker-status:'.$request->user()?->getAuthIdentifier()));
+        RateLimiter::for('stacker-submit', fn (Request $request): array => [
+            Limit::perMinute((int) config('esports.blockfill.submits_per_minute'))->by('stacker-submit:'.$request->user()?->getAuthIdentifier()),
+            Limit::perMinute((int) config('esports.blockfill.submits_per_ip_per_minute'))->by('stacker-submit-net:'.StackerRuns::network($request->ip())),
+        ]);
 
         RateLimiter::for('profiles', fn (Request $request): Limit => Limit::perMinute((int) config('esports.profiles.throttle_per_minute'))
             ->by($request->user()?->getAuthIdentifier() ?? $request->ip()));

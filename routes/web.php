@@ -118,6 +118,10 @@ if (config('esports.board_games.enabled')) {
 if (app(GameRegistry::class)->scores() !== []) {
     require __DIR__.'/score.php';
 }
+// Blockfill runs (plan "Blockfill", P2): no route at all while the switch is off.
+if (config('esports.blockfill.enabled')) {
+    require __DIR__.'/stacker.php';
+}
 // The 24/7 stream (P20): the big player, what is on it, the zap QR code. nginx serves the HLS files under /live/, not /live.
 Route::livewire('live', 'pages::live')->name('live');
 // Its status for the page's poller (P20b): JSON, public, no session. Not under /live/, which nginx serves from hls_dir.

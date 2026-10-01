@@ -1234,4 +1234,83 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Blockfill (plan "Blockfill", P2)
+    |--------------------------------------------------------------------------
+    |
+    | Our own stacking game: the league hands out a run (one-time token and
+    | seed), the browser plays it on resources/js/stacker, and a queued Node
+    | verifier replays the submitted inputs (App\Support\Stacker\StackerRuns).
+    | enabled: the switch (`ESPORTS_BLOCKFILL`, off by default); off, the
+    | routes in routes/stacker.php are not registered at all. engine: the
+    | engine version new runs are issued on (frozen versions stay playable
+    | for replays). start_seconds: a token that is not started within this
+    | long expires; the page asks for a run right before its countdown, so
+    | the seed is known at most this long before the clock runs. limits:
+    | what a submission may carry (ticks of play, inputs, bytes of the
+    | request body). slack_seconds: the wall-clock bracket, the time between
+    | start and submission must be at least the played time and at most
+    | this much more. verifier: the Node process (binary, heap limit,
+    | timeout), the queue its job runs on (the queue worker must listen on
+    | it too) and stale_minutes, after which a verification still running is
+    | given up as pending (`stacker:sweep`; `stacker:reverify` sends pending
+    | runs again). Rate limits: per player (issue_per_hour plus one issue per
+    | issue_every_seconds, submits_per_minute), per network (IPv4 address
+    | or IPv6 /64: issue_per_ip_per_hour and issue_per_ip_per_minute,
+    | submits_per_ip_per_minute; the main control) and for everyone together
+    | (issue_global_per_minute, only a circuit breaker with a fixed window:
+    | with 30 issues per network and minute, a burst has to come from at
+    | least 100 networks to reach it, and while it is reached nobody can
+    | start a run until the minute is over). limits.inputs_per_tick and
+    | limits.input_slack bound a run's inputs by its played time (at most
+    | ceil(ticks * inputs_per_tick) + input_slack; measured bot runs use 0.76
+    | to 0.83 per tick). The played time is the player's choice, so a replay
+    | can still reach ~33 KB at the 36,000-tick limit. Storage: a verified
+    | run keeps its replay only while it is among the replay_keep_top
+    | fastest of its week (Monday 00:00 Berlin), so at most that many
+    | replays are kept per week; every other run keeps ticks and hash only,
+    | practice and rejected runs keep no replay. Runs waiting for the
+    | verifier (verifying, pending) hold their submitted replay; at most
+    | replay_inflight_max of them at once (a submission beyond that is
+    | answered 503 and nothing is stored), and a pending run drops its replay
+    | after pending_replay_hours (it can then not be verified any more; the
+    | player plays again). prune_days, after which runs
+    | without a verified time are deleted (`model:prune`, daily).
+    |
+    */
+
+    'blockfill' => [
+        'enabled' => (bool) env('ESPORTS_BLOCKFILL', false),
+        'engine' => 'bf1',
+        'start_seconds' => 10,
+        'limits' => [
+            'ticks' => 36000,
+            'inputs' => 20000,
+            'bytes' => 65536,
+            'inputs_per_tick' => 1.0,
+            'input_slack' => 64,
+        ],
+        'slack_seconds' => 20,
+        'issue_every_seconds' => 2,
+        'issue_per_hour' => 400,
+        'submits_per_minute' => 30,
+        'issue_per_ip_per_hour' => 1200,
+        'issue_per_ip_per_minute' => 30,
+        'submits_per_ip_per_minute' => 90,
+        'issue_global_per_minute' => 3000,
+        'replay_keep_top' => 100,
+        'replay_inflight_max' => 2000,
+        'pending_replay_hours' => 24,
+        'prune_days' => 30,
+        'verifier' => [
+            'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),
+            'script' => 'js/stacker/verify.mjs',
+            'heap_mb' => 64,
+            'timeout_seconds' => 5,
+            'queue' => 'stacker-verify',
+            'stale_minutes' => 10,
+        ],
+    ],
+
 ];

@@ -8,6 +8,7 @@ use App\Support\Chess\ChessSettings;
 use App\Support\Nostr\Nip05Names;
 use App\Support\Nostr\PlayerProfile;
 use App\Support\Scores\ScoreAccounts;
+use App\Support\Stacker\StackerSettings;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -56,6 +57,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $block0_heads_up_for the planned Block 0 date the player was last told about
  * @property array<string, mixed>|null $chess_settings see {@see ChessSettings}; null = all defaults
  * @property array<string, array{platform: string, crossplay: bool}>|null $casual_settings last casual 1v1 choice per game (App\Support\Series\CasualLobby)
+ * @property array<string, mixed>|null $stacker_settings Blockfill handling and keys, see {@see StackerSettings}; null = defaults
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read ClanMember|null $clanMember
@@ -118,6 +120,7 @@ class User extends Authenticatable
             'block0_heads_up_for' => 'datetime',
             'chess_settings' => 'array',
             'casual_settings' => 'array',
+            'stacker_settings' => 'array',
         ];
     }
 

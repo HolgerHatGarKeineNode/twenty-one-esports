@@ -1,0 +1,239 @@
+<?php
+
+use App\Models\User;
+use App\Support\PageMeta;
+use App\Support\Stacker\StackerRuns;
+use App\Support\Stacker\StackerSettings;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
+
+/*
+ * Blockfill, the league's own stacking game (plan "Blockfill", P3): mine 40
+ * blocks (clear 40 rows) as fast as you can. The game is Alpine around the
+ * shared engine (resources/js/stacker/page.js) inside `wire:ignore`; this
+ * component only hands it the player's controls, their best verified time
+ * and the run endpoints, and never re-renders it.
+ *
+ * Practice for everyone, guests included (a local seed, nothing is sent);
+ * ranked runs need a login and go through StackerRuns (issue, start, submit,
+ * verdict). The route exists only while `esports.blockfill.enabled` is on
+ * (routes/stacker.php). No weekly board yet (P4).
+ */
+new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component {
+    public function rendering(\Illuminate\View\View $view): void
+    {
+        $view->title('Blockfill');
+        app(PageMeta::class)->describe('Blockfill', __('Mine 40 blocks as fast as you can: the league\'s own stacking game, every run replayed by the league before it counts.'));
+    }
+
+    /**
+     * What the Alpine component starts from.
+     *
+     * @return array<string, mixed>
+     */
+    public function config(): array
+    {
+        $user = Auth::user();
+        $signedIn = $user instanceof User;
+        $token = '__TOKEN__';
+
+        return [
+            'signedIn' => $signedIn,
+            'controls' => StackerSettings::of($signedIn ? $user : null),
+            'best' => $signedIn ? app(StackerRuns::class)->best($user) : null,
+            'testing' => app()->environment('testing'),
+            'urls' => [
+                'issue' => route('stacker.runs.issue'),
+                'start' => route('stacker.runs.start', $token),
+                'submit' => route('stacker.runs.submit', $token),
+                'show' => route('stacker.runs.show', $token),
+                'login' => route('login'),
+            ],
+            't' => [
+                'tooFast' => __('Too many runs at once. Wait a moment and try again.'),
+                'noRun' => __('The run could not be started. Try again.'),
+                'firstTime' => __('Your first time.'),
+                'newBest' => __('New best, :delta s faster than :previous'),
+                'yourBest' => __('Your best: :best'),
+                'status' => [
+                    'practice' => __('Practice run, not sent'),
+                    'held' => __('Held for the test'),
+                    'submitting' => __('Sending your run…'),
+                    'verifying' => __('The league is replaying your run…'),
+                    'verified' => __('Verified: the league replayed your run to the same time'),
+                    'practice_rank' => __('Slower than your best: kept as practice'),
+                    'pending' => __('Received, not checked yet: it counts once the league has replayed it'),
+                    'rejected' => __('Not counted: the replay did not match'),
+                    'toppedOut' => __('Topped out: the stack reached the top'),
+                    'aborted' => __('Run stopped: you left the tab'),
+                    'busy' => __('The league is busy: your run was not sent. Play it again in a moment.'),
+                ],
+            ],
+        ];
+    }
+}; ?>
+
+@php
+    $config = $this->config();
+    $actions = [
+        'left' => __('Move left'),
+        'right' => __('Move right'),
+        'soft' => __('Soft drop'),
+        'hard' => __('Hard drop'),
+        'ccw' => __('Turn left'),
+        'cw' => __('Turn right'),
+        'flip' => __('Turn 180°'),
+        'hold' => __('Hold'),
+        'restart' => __('Restart at once'),
+    ];
+    $fees = ['#7383A6', '#3B82E0', '#0FA394', '#5AAE3C', '#F2D45C', '#F7931A', '#F9A8D4'];
+@endphp
+
+<div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
+    <div wire:ignore x-data="stackerGame(@js($config))" class="mx-auto flex w-full max-w-[1340px] flex-col gap-5 lg:gap-8" data-test="stacker">
+        <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
+            <h1 class="m-0 font-display text-[28px] leading-[1.1] font-extrabold lg:text-[30px]">Blockfill</h1>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine 40 blocks as fast as you can.') }}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
+            <section class="flex min-w-0 flex-col gap-5" aria-label="{{ __('Game') }}">
+                <div class="flex items-start justify-center gap-3 lg:gap-10">
+                    {{-- Hold and the clock --}}
+                    <div class="flex w-[76px] shrink-0 flex-col gap-4 lg:w-[184px] lg:gap-6">
+                        <div class="flex flex-col gap-2 bg-card p-2 lg:p-4">
+                            <span class="text-[12px] font-bold text-ink-2 lg:text-sm">{{ __('Hold') }}</span>
+                            <canvas x-ref="hold" class="block h-[36px] w-full lg:h-[56px]" aria-hidden="true"></canvas>
+                        </div>
+                        <dl class="m-0 flex flex-col gap-3 lg:gap-4" data-test="hud">
+                            <div>
+                                <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Time') }}</dt>
+                                <dd class="m-0 text-[17px] leading-tight font-bold tabular-nums lg:text-[36px]" x-ref="time" data-test="time">0:00.00</dd>
+                            </div>
+                            <div>
+                                <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Pieces per second') }}</dt>
+                                <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[30px]" x-ref="pps">0.00</dd>
+                            </div>
+                            <div>
+                                <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Your best') }}</dt>
+                                <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[20px]" x-text="time(kind === 'ranked' || signedIn ? (rankedBest ?? practiceBest) : practiceBest)" data-test="best"></dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    {{-- The well: the mempool block template the pieces fill --}}
+                    <div x-ref="wellSlot" class="relative flex min-w-0 max-w-[300px] grow justify-center pt-3 lg:pt-6">
+                        <div class="relative border-2 border-[#24242B] bg-[#0E0E11]" style="box-shadow: -8px -8px 0 #141418;">
+                            <canvas x-ref="well" class="block" role="img" aria-label="{{ __('The well with the falling piece') }}" data-test="well"></canvas>
+
+                            {{-- Start, countdown --}}
+                            <div x-show="mode === 'idle' || mode === 'countdown'" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0A0A0B]/80 p-3 text-center" data-test="overlay">
+                                <template x-if="mode === 'countdown'">
+                                    <span class="font-display text-[56px] font-extrabold text-btc" x-text="countdown" data-test="countdown"></span>
+                                </template>
+                                <template x-if="mode === 'idle'">
+                                    <div class="flex flex-col items-stretch gap-2">
+                                        {{-- Ranked runs need a keyboard (plan): on a touch screen only practice --}}
+                                        <x-button x-on:click="startRanked()" class="pointer-coarse:hidden" data-test="start-ranked">{{ __('Ranked run') }}</x-button>
+                                        <p class="m-0 hidden max-w-[24ch] text-[12px] leading-normal text-ink-2 pointer-coarse:block" data-test="ranked-needs-keyboard">{{ __('Ranked runs need a keyboard. Here you can practise with touch.') }}</p>
+                                        <x-button variant="quiet" x-on:click="startPractice()" data-test="start-practice">{{ __('Practice') }}</x-button>
+                                        <p x-show="!signedIn" class="m-0 max-w-[24ch] text-[12px] leading-normal text-ink-2">{{ __('Practice needs no login. Log in for ranked runs.') }}</p>
+                                        <p x-show="error" x-text="error" class="m-0 max-w-[24ch] text-[12px] leading-normal text-loss" role="alert" data-test="error"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        <div x-show="minedTag > 0 && mode === 'playing'" class="pointer-events-none absolute right-0 bottom-6 hidden translate-x-full flex-col pl-3 text-sm font-bold text-btc lg:flex" aria-hidden="true">
+                            <b class="font-display text-[20px] text-ink" x-text="'+' + minedTag"></b>{{ __('blocks mined') }}
+                        </div>
+                    </div>
+
+                    {{-- Next --}}
+                    <div class="flex w-[56px] shrink-0 flex-col gap-2 pt-0 lg:w-[136px] lg:gap-4 lg:pt-4">
+                        <span class="text-[12px] font-bold text-ink-2 lg:text-sm">{{ __('Next') }}</span>
+                        @foreach (range(0, 4) as $i)
+                            <canvas data-next="{{ $i }}" @class(['block w-full bg-card', 'h-[44px] lg:h-[72px]' => $i === 0, 'h-[34px] lg:h-[56px]' => $i > 0]) aria-hidden="true"></canvas>
+                        @endforeach
+                    </div>
+                </div>
+
+                {{-- The chain: one cube per mined block --}}
+                <div class="flex items-center justify-center gap-3" data-test="chain">
+                    <span class="shrink-0 text-[15px] font-bold whitespace-nowrap tabular-nums lg:text-[20px]" data-test="chain-count"><span x-text="lines" data-test="lines">0</span><span class="font-normal text-ink-3"> / 40</span></span>
+                    <div class="flex min-w-0 flex-wrap gap-[3px]" role="progressbar" aria-valuemin="0" aria-valuemax="40" x-bind:aria-valuenow="lines" aria-label="{{ __('Blocks mined') }}">
+                        <template x-for="(state, i) in chain()" :key="i">
+                            <i class="block size-[7px] lg:size-[12px]" x-bind:class="state === 'done' ? 'bg-btc' : 'border border-dashed border-[#63636A]'"></i>
+                        </template>
+                    </div>
+                </div>
+
+                {{-- Touch controls: practice on a phone or tablet --}}
+                {{--
+                    Touch controls: practice on a phone or tablet. Fixed right above the tab bar
+                    (--tabbar-h holds its height and the safe area), so all of them are in reach
+                    without scrolling; the spacer keeps the page's end clear of them.
+                --}}
+                <div class="hidden h-[136px] pointer-coarse:block" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" aria-hidden="true"></div>
+                <div class="fixed inset-x-0 bottom-[var(--tabbar-h)] z-30 hidden grid-cols-4 gap-2 border-t border-hairline bg-bar px-4 py-2 pointer-coarse:grid" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" data-test="touch">
+                    @foreach (['left' => '←', 'soft' => '↓', 'right' => '→', 'hard' => '⤓', 'ccw' => '↺', 'flip' => '180', 'cw' => '↻', 'hold' => __('Hold')] as $action => $label)
+                        <button type="button" class="h-12 rounded-md border border-line bg-well text-[15px] font-bold text-ink select-none" data-test="touch-{{ $action }}"
+                                x-on:pointerdown.prevent="touch('{{ $action }}', true)" x-on:pointerup.prevent="touch('{{ $action }}', false)" x-on:pointerleave="touch('{{ $action }}', false)"
+                                aria-label="{{ $actions[$action] }}">{{ $label }}</button>
+                    @endforeach
+                </div>
+            </section>
+
+            <aside class="flex min-w-0 flex-col gap-6">
+                {{-- The result of the last run --}}
+                <section x-ref="result" x-show="mode === 'result' && result" class="flex scroll-mt-4 flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
+                    <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__('40 blocks mined in')) : @js(__('Run over at'))"></span>
+                    <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
+                    <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': result?.status === 'verifying' || result?.status === 'pending' || result?.status === 'submitting' }" x-text="statusText()" data-test="result-status"></span>
+                    <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <x-button x-on:click="restart()" data-test="play-again">{{ __('Play again') }} <kbd class="rounded-sm border border-on-btc/40 px-1.5 text-[11px]" x-text="keyText('restart')"></kbd></x-button>
+                        <x-button variant="quiet" x-on:click="startPractice()" x-show="kind === 'ranked'">{{ __('Practice') }}</x-button>
+                    </div>
+                    <p class="m-0 text-[12px] leading-normal text-ink-3" x-show="kind === 'ranked'">{{ __('A ranked run counts once the league has replayed its inputs and reached the same time.') }}</p>
+                </section>
+
+                <section class="flex flex-col gap-3" aria-labelledby="stacker-keys-h">
+                    <h2 id="stacker-keys-h" class="m-0 font-display text-[18px] font-bold">{{ __('Keyboard') }}</h2>
+                    <dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5 text-sm text-ink-2" data-test="keys">
+                        @foreach ($actions as $action => $label)
+                            <dt><kbd class="rounded-sm border border-b-2 border-line px-1.5 font-mono text-[12px] text-ink" x-text="keyText('{{ $action }}')"></kbd></dt>
+                            <dd class="m-0">{{ $label }}</dd>
+                        @endforeach
+                    </dl>
+                    @auth
+                        <a href="{{ route('gaming.edit') }}#blockfill" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="controls-link">{{ __('Change keys and handling') }}</a>
+                    @else
+                        <details class="text-[13px] text-ink-2" data-test="guest-controls">
+                            <summary class="inline-flex min-h-11 cursor-pointer items-center font-bold text-ink">{{ __('Handling (this browser)') }}</summary>
+                            <div class="flex flex-col gap-3 pt-2" x-data="{ das: controls.das, arr: controls.arr, sdf: controls.sdf }">
+                                @foreach (['das' => [__('DAS: ticks before a held key repeats'), 1, 20], 'arr' => [__('ARR: ticks between repeats (0 = to the wall)'), 0, 5], 'sdf' => [__('Soft drop speed (41 = instant)'), 5, 41]] as $field => [$label, $min, $max])
+                                    <label class="flex flex-col gap-1">{{ $label }}
+                                        <input type="number" min="{{ $min }}" max="{{ $max }}" x-model.number="{{ $field }}" class="h-11 w-24 rounded-md border border-edge bg-ground px-3 text-ink" data-test="guest-{{ $field }}">
+                                    </label>
+                                @endforeach
+                                <x-button variant="quiet" x-on:click="saveControls({ ...controls, das, arr, sdf })" data-test="guest-save">{{ __('Save in this browser') }}</x-button>
+                            </div>
+                        </details>
+                    @endauth
+                </section>
+
+                <section class="flex flex-col gap-2" aria-labelledby="stacker-fees-h">
+                    <h2 id="stacker-fees-h" class="m-0 text-sm font-bold text-ink-2">{{ __('Fee rate of a piece') }}</h2>
+                    <div class="flex items-center gap-1 text-[12px] text-ink-3">
+                        {{ __('low') }}
+                        @foreach ($fees as $fee)
+                            <i class="block h-3 w-5" style="background: {{ $fee }}"></i>
+                        @endforeach
+                        {{ __('high sat/vB') }}
+                    </div>
+                </section>
+            </aside>
+        </div>
+    </div>
+</div>
