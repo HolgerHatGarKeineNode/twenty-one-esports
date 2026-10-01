@@ -75,7 +75,9 @@ final class StackerReplays
 
         return array_values(array_map(fn (string $flag): string => match ($flag) {
             'pps' => __('More than 5 pieces per second (:value)', ['value' => number_format((float) ($hints['pps'] ?? 0), 2)]),
-            'same-tick' => __('More than 3 key presses in one tick (:value)', ['value' => (int) ($hints['maxPressesPerTick'] ?? 0)]),
+            'same-tick' => isset($hints['sameTickBursts'])
+                ? __('More than 3 key presses in one tick, in :ticks ticks (up to :value)', ['ticks' => (int) $hints['sameTickBursts'], 'value' => (int) ($hints['maxPressesPerTick'] ?? 0)])
+                : __('More than 3 key presses in one tick (:value)', ['value' => (int) ($hints['maxPressesPerTick'] ?? 0)]),
             'timing' => __('An even key rhythm (variation :value)', ['value' => number_format((float) ($hints['timingCv'] ?? 0), 2)]),
             'finesse' => __('Every piece placed with the fewest presses (:perfect of :of)', ['perfect' => (int) ($finesse['perfect'] ?? 0), 'of' => (int) ($finesse['of'] ?? 0)]),
             default => $flag,

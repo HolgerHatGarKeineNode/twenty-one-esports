@@ -18,7 +18,7 @@ final readonly class StackerVerdict
     /**
      * @param  array{das: int, arr: int, sdf: int}|null  $settings
      * @param  string|null  $replay  the replay as the verifier re-encoded it from its inputs (verified only)
-     * @param  array{flags: list<string>, pps?: float|int, maxPressesPerTick?: int, timingCv?: float|int|null, finesse?: array{perfect: int, of: int}}|null  $hints  cheat hints of a verified run (P5): flags and the numbers behind them
+     * @param  array{flags: list<string>, pps?: float|int, maxPressesPerTick?: int, sameTickBursts?: int, timingCv?: float|int|null, finesse?: array{perfect: int, of: int}}|null  $hints  cheat hints of a verified run (P5): flags and the numbers behind them
      */
     private function __construct(
         public string $outcome,
@@ -30,7 +30,7 @@ final readonly class StackerVerdict
 
     /**
      * @param  array{das: int, arr: int, sdf: int}  $settings
-     * @param  array{flags: list<string>, pps?: float|int, maxPressesPerTick?: int, timingCv?: float|int|null, finesse?: array{perfect: int, of: int}}|null  $hints
+     * @param  array{flags: list<string>, pps?: float|int, maxPressesPerTick?: int, sameTickBursts?: int, timingCv?: float|int|null, finesse?: array{perfect: int, of: int}}|null  $hints
      */
     public static function verified(array $settings, string $replay, ?array $hints = null): self
     {

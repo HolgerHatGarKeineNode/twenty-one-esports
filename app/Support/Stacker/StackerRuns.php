@@ -11,6 +11,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
 /**
  * The life of a Blockfill run (plan "Blockfill", P2): issue, start, submit,
@@ -38,9 +39,13 @@ use Illuminate\Support\Str;
  *   beat the week's best was kept unverified.
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked). A verified run
- *   with cheat hints (P5) is held as `review` with its replay (keepHeld()
- *   bounds them) until an admin approves it (approve(): verified, on the
- *   board) or rejects it (reject()).
+ *   with cheat hints (P5) that would place in its week's first HELD_PLACES
+ *   (wouldPlace()) is held as `review` with its replay (keepHeld() bounds
+ *   them) until an admin approves it (approve(): verified, on the board) or
+ *   rejects it (reject()); a run with hints that would not place there is
+ *   verified as any other, as a look at it could change nothing. A held run
+ *   that no longer qualifies is released by releaseHeld()
+ *   (`blockfill:release-held`).
  *
  * Storage stays bounded (security audits F1, N1, R1, round 3). Before
  * anything is stored the whole replay is read (replayInputCount(): canonical
@@ -70,6 +75,13 @@ final class StackerRuns
      * nothing, as the input log proves no human.
      */
     public const INPUT_KEYBOARD = 'keyboard';
+
+    /**
+     * The places of a week's board a run with cheat hints is held for (P5):
+     * the first ten are public and the first three can mine, so only there a
+     * hint is worth an admin's look.
+     */
+    public const HELD_PLACES = 10;
 
     /** Cache key of the newest verdict: when, and whether the verifier answered. */
     public const LAST_VERDICT_KEY = 'stacker:last-verdict';
@@ -220,8 +232,10 @@ final class StackerRuns
      */
     public function finish(StackerRun $run, StackerVerdict $verdict, CarbonInterface $now): void
     {
-        // P5: a run with cheat hints is held for an admin's look (Review) and counts nowhere until approved
-        $held = $verdict->outcome === StackerVerdict::VERIFIED && ($verdict->hints['flags'] ?? []) !== [];
+        // P5: a run with cheat hints is held for an admin's look (Review) and counts nowhere until approved, but only
+        // when it would place among its week's first HELD_PLACES: below them the look could change nothing
+        $held = $verdict->outcome === StackerVerdict::VERIFIED && ($verdict->hints['flags'] ?? []) !== []
+            && $this->wouldPlace($run, self::weekOf($run->submitted_at ?? $now));
         $fields = match ($verdict->outcome) {
             StackerVerdict::VERIFIED => [
                 'status' => $held ? StackerRunStatus::Review : StackerRunStatus::Verified,
@@ -254,6 +268,104 @@ final class StackerRuns
             'at' => $now->getTimestamp(),
             'answered' => $verdict->outcome !== StackerVerdict::UNAVAILABLE,
         ], now()->addDay());
+    }
+
+    /**
+     * Whether `$run`'s time would give its player one of the first
+     * HELD_PLACES of week `$week`: the player has no verified time as fast
+     * in that week yet, and fewer than HELD_PLACES other players have one
+     * strictly faster. A tie counts for the run (it may take the place), and
+     * runs still held count for nobody, so in doubt the run is held.
+     */
+    public function wouldPlace(StackerRun $run, string $week): bool
+    {
+        $ticks = (int) $run->ticks;
+        $own = $this->best((int) $run->user_id, $week);
+
+        if ($own !== null && $own <= $ticks) {
+            return false;
+        }
+
+        return StackerRun::query()
+            ->where('week', $week)
+            ->where('status', StackerRunStatus::Verified)
+            ->where('user_id', '!=', $run->user_id)
+            ->where('ticks', '<', $ticks)
+            ->distinct()
+            ->count('user_id') < self::HELD_PLACES;
+    }
+
+    /**
+     * Re-runs the hold rules of today over the runs held for a check,
+     * fastest first (a released run may push a slower one out of the first
+     * places): a held run that would no longer place (wouldPlace()) is
+     * released as it is; one that would goes to the verifier again and is
+     * released when today's hints.js finds no hint in it, else it stays held
+     * with the new numbers. A verifier that does not answer, or rejects, and a
+     * run that would place without a replay to check, leave the run held as
+     * it was. Released runs are verified from now on, marked
+     * `review.decision` = `released` (the review list shows it), keep their
+     * replay among their week's fastest and join their week's board. Safe to
+     * run again: only runs still `review` are read. Returns how many were
+     * released.
+     */
+    public function releaseHeld(CarbonInterface $now, ?Verifier $verifier = null): int
+    {
+        $verifier ??= app(Verifier::class);
+        $released = 0;
+
+        foreach (StackerRun::query()->where('status', StackerRunStatus::Review)->orderBy('ticks')->orderBy('id')->pluck('id') as $id) {
+            $run = StackerRun::query()->find($id);
+
+            if ($run === null || $run->status !== StackerRunStatus::Review) {
+                continue;
+            }
+
+            $flags = (array) $run->flags;
+
+            if ($this->wouldPlace($run, (string) $run->week)) {
+                // without its replay nothing can be checked again: it stays held
+                $verdict = $run->replay === null ? StackerVerdict::unavailable('replay-dropped') : $verifier->verify($run);
+
+                if ($verdict->outcome !== StackerVerdict::VERIFIED) {
+                    continue;
+                }
+
+                $flags['hints'] = $verdict->hints ?? ['flags' => []];
+
+                if ($flags['hints']['flags'] !== []) {
+                    StackerRun::query()->whereKey($run->id)->where('status', StackerRunStatus::Review)
+                        ->update(['flags' => json_encode($flags), 'updated_at' => $now->format('Y-m-d H:i:s.v')]);
+
+                    continue;
+                }
+            }
+
+            $taken = StackerRun::query()
+                ->whereKey($run->id)
+                ->where('status', StackerRunStatus::Review)
+                ->update($this->stored([
+                    'status' => StackerRunStatus::Verified,
+                    'verified_at' => $now,
+                    'flags' => json_encode([...$flags, 'review' => ['decision' => 'released', 'at' => $now->toIso8601ZuluString()]]),
+                    'updated_at' => $now,
+                ])) === 1;
+
+            if ($taken) {
+                $run->refresh();
+                $this->keepWeekTop((string) $run->week);
+                $released++;
+
+                try {
+                    app(BlockfillWeeks::class)->record($run, $now);
+                } catch (Throwable $exception) {
+                    // the release stands; the hourly `blockfill:weeks` sweep joins the run to its board
+                    report($exception);
+                }
+            }
+        }
+
+        return $released;
     }
 
     /**

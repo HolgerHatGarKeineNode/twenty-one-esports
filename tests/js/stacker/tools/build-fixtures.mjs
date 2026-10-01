@@ -79,8 +79,12 @@ function bestPlacement(board, piece) {
     return best;
 }
 
-/** Closed-loop player: rotate, slide (taps, or DAS for long slides), hard drop; uses hold when it pays. */
-function smartRun(seed, settings, maxTicks) {
+/**
+ * Closed-loop player: rotate, slide (taps, or DAS for long slides), hard drop; uses hold when it pays.
+ * `pace(n)` is how many ticks it waits before its n-th action (none by default); at the start of piece
+ * `burstAt` it presses seven keys in one tick, as a browser hands over the keys of a dropped frame.
+ */
+function smartRun(seed, settings, maxTicks, { pace = () => 0, burstAt = -1 } = {}) {
     const game = E.createGame({ seed, settings });
     const log = [];
     let plan = null;
@@ -90,6 +94,8 @@ function smartRun(seed, settings, maxTicks) {
     let lastX = null;
     let stuck = 0;
     let holdWait = 0;
+    let wait = 0;
+    let actions = 0;
     while (!E.isOver(game) && game.tick < maxTicks) {
         const t = game.tick;
         const inputs = [];
@@ -97,7 +103,19 @@ function smartRun(seed, settings, maxTicks) {
         if (tapDown !== null) {
             inputs.push([tapDown, 0]);
             tapDown = null;
+        } else if (wait > 0) {
+            wait--;
+        } else if (game.pieces === burstAt && planFor !== key) {
+            for (const a of [ACTION.CW, ACTION.CCW, ACTION.CW, ACTION.CCW, ACTION.CW, ACTION.CCW, ACTION.FLIP]) {
+                inputs.push([a, 1], [a, 0]);
+            }
+            planFor = key;
+            plan = { ...bestPlacement(game.board, game.current.piece), hold: false };
+            stuck = 0;
+            lastX = null;
+            burstAt = -1;
         } else {
+            wait = pace(actions++);
             if (planFor !== key) {
                 const c = game.current;
                 const here = bestPlacement(game.board, c.piece);
@@ -198,8 +216,14 @@ function hardRun(seed, settings, maxTicks) {
 }
 
 const out = `${root}/tests/Fixtures/stacker`;
+/** A person's slow 40 lines: an uneven pause before every action, and one dropped frame with seven keys in it. */
+function personRun(seed, settings, maxTicks) {
+    return smartRun(seed, settings, maxTicks, { pace: (n) => 40 + ((n * 37) % 83), burstAt: 50 });
+}
+
 const cases = [
     ['forty-lines', '5eed0b10c0ff11ce4a7f3b2d9e8c1a60', { das: 8, arr: 1, sdf: 20 }, smartRun],
+    ['seven-minutes', '7a1e5b0c4d2f6e8a9b3c1d0e2f4a6b8c', { das: 10, arr: 2, sdf: 20 }, personRun],
     ['top-out', 'b10cf111deadbeef0123456789abcdef', { das: 10, arr: 2, sdf: 10 }, wallRun],
     ['hard-drops', '0000000000000000000000000000002a', { das: 10, arr: 2, sdf: 20 }, hardRun],
 ];
@@ -223,7 +247,7 @@ for (const [name, seed, settings, play] of cases) {
 // The encoded replays the PHP tests submit: each run as the verifier stores it (only the inputs it
 // used), the 40-line run padded with inputs after its end, and with an overlong varint inside.
 const R = await import(`${root}/resources/js/stacker/replay.js`);
-for (const name of ['forty-lines', 'top-out']) {
+for (const name of ['forty-lines', 'top-out', 'seven-minutes']) {
     const [, seed, settings, play] = cases.find(([n]) => n === name);
     const { log, result } = play(seed, settings, E.MAX_TICKS);
     const used = log.filter(([tick]) => tick < result.ticks);

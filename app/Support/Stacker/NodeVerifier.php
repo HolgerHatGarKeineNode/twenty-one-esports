@@ -109,7 +109,7 @@ final class NodeVerifier implements Verifier
      * The hints of an answer, kept to known flags and plain numbers; null when
      * the answer has none in the expected shape.
      *
-     * @return array{flags: list<string>, pps: float, maxPressesPerTick: int, timingCv: float|null, finesse: array{perfect: int, of: int}}|null
+     * @return array{flags: list<string>, pps: float, maxPressesPerTick: int, sameTickBursts: int, timingCv: float|null, finesse: array{perfect: int, of: int}}|null
      */
     private static function hints(mixed $hints): ?array
     {
@@ -123,6 +123,7 @@ final class NodeVerifier implements Verifier
             'flags' => array_values(array_intersect(self::HINTS, $hints['flags'])),
             'pps' => round((float) ($hints['pps'] ?? 0), 2),
             'maxPressesPerTick' => (int) ($hints['maxPressesPerTick'] ?? 0),
+            'sameTickBursts' => (int) ($hints['sameTickBursts'] ?? 0),
             'timingCv' => is_int($timing) || is_float($timing) ? round((float) $timing, 2) : null,
             'finesse' => ['perfect' => (int) ($hints['finesse']['perfect'] ?? 0), 'of' => (int) ($hints['finesse']['of'] ?? 0)],
         ];

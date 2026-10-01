@@ -9,7 +9,8 @@
  * - forty-lines.json: a full 40-line run (taps, DAS slides, all three turns, hold,
  *   hard drops); top-out.json: a run without hard drops (soft drop, gravity, lock
  *   delay, DAS to the walls) that tops out at an exact tick; hard-drops.json: hard
- *   drops only, until the stack tops out.
+ *   drops only, until the stack tops out; seven-minutes.json: a person's slow 40 lines
+ *   (7:07.516) with one dropped frame that hands seven key presses to one tick.
  * - The input logs were produced once by the scripted players in
  *   tests/js/stacker/tools/build-fixtures.mjs (not part of the test run); the logs
  *   themselves are the reference, not the players.
@@ -26,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { ACTION, ENGINE_VERSION, run } from '../../../resources/js/stacker/engine.js';
 
-const NAMES = ['forty-lines', 'top-out', 'hard-drops'];
+const NAMES = ['forty-lines', 'top-out', 'hard-drops', 'seven-minutes'];
 
 function fixture(name) {
     return JSON.parse(readFileSync(new URL(`../../Fixtures/stacker/${name}.json`, import.meta.url), 'utf8'));

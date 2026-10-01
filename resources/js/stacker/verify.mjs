@@ -15,8 +15,9 @@
  * refused by the decoder). Within that bound no-op inputs can still pad a run up to its
  * played time; the league limits what it keeps instead (StackerRuns::keepWeekTop()).
  * `hints` (P5, hints.js): what in a verified run looks like a program ({flags, pps,
- * maxPressesPerTick, timingCv, finesse}); `request.hints` may lower or raise its bounds.
- * A hint never rejects: the league holds a run with flags for an admin's look.
+ * maxPressesPerTick, sameTickBursts, timingCv, finesse}); `request.hints` may lower or raise
+ * its bounds. A hint never rejects: the league holds a run with flags for an admin's look
+ * when it would place in its week's top 10 (StackerRuns::finish()).
  * `crash` is the engine throwing on this replay, caught here: the only crash that
  * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
  * a signal) says nothing about the run, so the caller leaves it pending.

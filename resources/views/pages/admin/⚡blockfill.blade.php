@@ -18,8 +18,9 @@ use Livewire\Component;
 /*
  * Blockfill runs held for cheat hints (plan "Blockfill", P5): the verifier
  * replayed them to exactly the claimed time, but something in them looks
- * like a program (StackerReplays::hintLines()). Fastest first, each with its
- * replay. "Approve" makes it count (StackerRuns::approve(): verified, on its
+ * like a program (StackerReplays::hintLines()), and they would place in
+ * their week's top 10 (StackerRuns::wouldPlace()); every other run counts
+ * without an admin. Fastest first, each with its replay. "Approve" makes it count (StackerRuns::approve(): verified, on its
  * week's board), "Reject" keeps it off for good. Admins only (route
  * middleware `admin` and Gate `admin` on every action); routed only while
  * Blockfill is switched on.
@@ -97,7 +98,12 @@ new #[Title('Blockfill runs')] #[Layout('layouts::app', ['section' => 'admin'])]
         $review = (array) ($run->flags['review'] ?? []);
         $name = $this->reviewers->get((int) ($review['by'] ?? 0))?->displayName() ?? '?';
 
-        return ($review['decision'] ?? '') === 'approved' ? __('Approved by :name', ['name' => $name]) : __('Rejected by :name', ['name' => $name]);
+        return match ($review['decision'] ?? '') {
+            'approved' => __('Approved by :name', ['name' => $name]),
+            // StackerRuns::releaseHeld(): today's rules would not hold it
+            'released' => __('Released: the rules no longer hold it'),
+            default => __('Rejected by :name', ['name' => $name]),
+        };
     }
 
     private function decide(int $runId, Closure $decision, string $done): void
@@ -124,7 +130,7 @@ new #[Title('Blockfill runs')] #[Layout('layouts::app', ['section' => 'admin'])]
     }
 }; ?>
 
-<x-admin.page active="blockfill" :title="__('Blockfill review')" :lead="__('Runs the league replayed to the claimed time that still look like a program. Watch the replay, then approve the run so it counts, or reject it. A held run counts nowhere until you approve it.')" data-test="admin-blockfill">
+<x-admin.page active="blockfill" :title="__('Blockfill review')" :lead="__('Only suspicious runs that would land in their week\'s top 10 wait here: the league replayed them to the claimed time, but they still look like a program. Every other run counts on its own, a run with hints outside the top 10 too. Watch the replay, then approve the run so it counts, or reject it. A held run counts nowhere until you approve it.')" data-test="admin-blockfill">
     <x-admin.panel :title="__('Held for a check')" :meta="trans_choice(':count run|:count runs', $this->total)" data-test="blockfill-held">
         @if ($flash !== '')
             <p class="m-0 text-[13px] text-win" role="status" data-test="blockfill-flash">{{ $flash }}</p>

@@ -5,7 +5,9 @@
 | resources/js/stacker/verify.mjs) on the reference runs of
 | tests/Fixtures/stacker: it accepts the 40-line run at its exact time and
 | rejects everything else; a verifier that does not answer leaves the run
-| pending. The only tests that start Node for a run; the
+| pending. Its cheat hints hold the 40-line program, never a person's slow
+| run with one dropped frame, and the runs held under older rules go through
+| the new ones (`blockfill:release-held`). The only tests that start Node for a run; the
 | lifecycle tests use a fake. The timeout case waits about one second (the
 | smallest timeout the process API takes) on a script that sleeps; a timeout
 | leaves the run pending.
@@ -13,8 +15,12 @@
 
 use App\Enums\StackerRunStatus;
 use App\Jobs\VerifyStackerRun;
+use App\Models\Admin;
+use App\Models\ScoreRun;
 use App\Models\StackerRun;
+use App\Models\User;
 use App\Support\Stacker\NodeVerifier;
+use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerVerdict;
 use Tests\Support\BlockfillOn;
 
@@ -37,7 +43,7 @@ function referenceRun(string $name, array $overrides = []): StackerRun
     ]);
 }
 
-test('the 40-line reference run is a program at 6.45 pieces per second: replayed exactly, held for review with its hint (P5)', function () {
+test('the 40-line reference run is a program at 6.45 pieces per second: replayed exactly, held for review with its hint, as it would place in its week\'s top 10 (P5)', function () {
     $run = referenceRun('forty-lines');
 
     VerifyStackerRun::dispatchSync($run->id);
@@ -49,6 +55,52 @@ test('the 40-line reference run is a program at 6.45 pieces per second: replayed
         ->settings->toBe(['das' => 8, 'arr' => 1, 'sdf' => 20])
         ->replay->toBe(BlockfillOn::fixture('forty-lines')['replay'])
         ->and($run->flags['hints'])->toMatchArray(['flags' => ['pps'], 'pps' => 6.45, 'maxPressesPerTick' => 1]);
+});
+
+test('a person\'s 7-minute run with one dropped frame of seven key presses is verified on its own, with no hint', function () {
+    $run = referenceRun('seven-minutes');
+
+    VerifyStackerRun::dispatchSync($run->id);
+
+    expect($run->refresh())
+        ->status->toBe(StackerRunStatus::Verified)
+        ->verified_at->not->toBeNull()
+        ->ticks->toBe(25651)
+        ->and($run->flags['hints'])->toMatchArray(['flags' => [], 'pps' => 0.24, 'maxPressesPerTick' => 7, 'sameTickBursts' => 1]);
+});
+
+test('the runs held under the older rules go through the new ones once: the slow run is released, the program stays held', function () {
+    BlockfillOn::play();
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    // as the older rules held them: the slow run for its one tick of seven presses, the program for its pace
+    $held = fn (string $name, array $hints): StackerRun => referenceRun($name, [
+        'status' => StackerRunStatus::Review, 'week' => StackerRuns::weekOf(now()),
+        'flags' => ['hints' => ['flags' => $hints, 'pps' => 0, 'maxPressesPerTick' => 7, 'timingCv' => 0.3, 'finesse' => ['perfect' => 0, 'of' => 0]]],
+    ]);
+    $slow = $held('seven-minutes', ['same-tick']);
+    $program = $held('forty-lines', ['pps']);
+
+    $this->artisan('blockfill:release-held')->expectsOutput('Released 1 held run(s).')->assertSuccessful();
+
+    expect($slow->refresh())
+        ->status->toBe(StackerRunStatus::Verified)
+        ->verified_at->not->toBeNull()
+        ->replay->not->toBeNull()
+        ->and($slow->flags['hints'])->toMatchArray(['flags' => [], 'maxPressesPerTick' => 7, 'sameTickBursts' => 1])
+        ->and($slow->flags['review']['decision'])->toBe('released')
+        ->and(app(StackerRuns::class)->best($slow->user_id))->toBe(25651)
+        ->and(ScoreRun::query()->where(['user_id' => $slow->user_id, 'external_id' => (string) $slow->id])->exists())->toBeTrue()
+        ->and($program->refresh())
+        ->status->toBe(StackerRunStatus::Review)
+        ->and($program->flags['hints'])->toMatchArray(['flags' => ['pps'], 'pps' => 6.45, 'sameTickBursts' => 0]);
+
+    $this->actingAs($admin)->get(route('admin.blockfill'))->assertOk()
+        ->assertSee('Released: the rules no longer hold it');
+
+    // once more: nothing left to release, nothing changed
+    $this->artisan('blockfill:release-held')->expectsOutput('Released 0 held run(s).')->assertSuccessful();
+    expect($program->refresh()->status)->toBe(StackerRunStatus::Review);
 });
 
 test('the 40-line reference run is verified at its exact time, with its settings', function () {

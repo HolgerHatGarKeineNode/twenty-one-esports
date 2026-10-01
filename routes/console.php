@@ -558,6 +558,16 @@ Artisan::command('stacker:reverify {--limit=50 : at most this many pending runs}
 })->purpose('Send pending Blockfill runs to the verifier again');
 
 /*
+ * Blockfill runs held for a check under older rules (plan "Blockfill", P5):
+ * each is released once it would no longer place in its week's first ten,
+ * or once today's hints find nothing in its replay (StackerRuns::releaseHeld()).
+ * Run once by the migration that brought the rules; safe to run again.
+ */
+Artisan::command('blockfill:release-held', function (StackerRuns $runs) {
+    $this->info('Released '.$runs->releaseHeld(now()).' held run(s).');
+})->purpose('Release the Blockfill runs held for a check that today\'s rules would not hold');
+
+/*
  * The casual weekly hunt of Blockfill (plan "Blockfill", P4, BlockfillWeeks):
  * opens this week's leaderboard (Monday 00:00 Europe/Berlin, which every
  * hourly run at minute 0 hits), joins verified players a run's own hook

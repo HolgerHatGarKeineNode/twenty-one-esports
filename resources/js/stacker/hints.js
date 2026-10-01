@@ -7,7 +7,11 @@
  *
  * Four hints, each against a fixed bound:
  * - `pps`: more than 5 pieces per second over the whole run;
- * - `same-tick`: more than 3 key presses in one tick (1/60 s);
+ * - `same-tick`: more than 3 key presses in one tick (1/60 s), in at least
+ *   10 ticks of the run, or in any tick of a run above 3 pieces per second.
+ *   One such tick alone is no hint: a browser that drops a frame hands the
+ *   keys pressed meanwhile to the next tick together, so a person's slow run
+ *   shows one now and then;
  * - `timing`: the gaps between key presses hardly vary (coefficient of
  *   variation below 0.25 over at least 50 presses): a person's rhythm wobbles;
  * - `finesse`: every judged piece placed with the fewest possible presses
@@ -27,6 +31,8 @@ import { SHAPES, SPAWN_X, SPAWN_Y, kicksFor } from './pieces.js';
 export const LIMITS = Object.freeze({
     pps: 5,
     pressesPerTick: 3,
+    sameTickRepeat: 10,
+    sameTickPps: 3,
     timingCv: 0.25,
     timingMinPresses: 50,
     finesseMinPieces: 20,
@@ -109,7 +115,7 @@ function fewestPresses(piece) {
  * @param {{das: number, arr: number, sdf: number}} settings
  * @param {Array<[number, number, number]>} inputs [tick, action, down], in order
  * @param {Partial<typeof LIMITS>} [bounds] other bounds than LIMITS (finite numbers only)
- * @returns {{flags: string[], pps: number, maxPressesPerTick: number, timingCv: number|null, finesse: {perfect: number, of: number}}}
+ * @returns {{flags: string[], pps: number, maxPressesPerTick: number, sameTickBursts: number, timingCv: number|null, finesse: {perfect: number, of: number}}}
  */
 export function hintsFor(seed, settings, inputs, bounds = {}) {
     const limit = { ...LIMITS };
@@ -121,13 +127,17 @@ export function hintsFor(seed, settings, inputs, bounds = {}) {
     const game = createGame({ seed, settings });
     const presses = inputs.filter(([, , down]) => down === 1);
 
-    // presses per tick
+    // presses per tick, and the ticks with more than the bound
     let maxPressesPerTick = 0;
+    let sameTickBursts = 0;
     for (let i = 0, j = 0; i < presses.length; i = j) {
         while (j < presses.length && presses[j][0] === presses[i][0]) {
             j++;
         }
         maxPressesPerTick = Math.max(maxPressesPerTick, j - i);
+        if (j - i > limit.pressesPerTick) {
+            sameTickBursts++;
+        }
     }
 
     // rhythm: gaps between presses in different ticks
@@ -206,7 +216,7 @@ export function hintsFor(seed, settings, inputs, bounds = {}) {
     if (pps > limit.pps) {
         flags.push('pps');
     }
-    if (maxPressesPerTick > limit.pressesPerTick) {
+    if (sameTickBursts >= limit.sameTickRepeat || (sameTickBursts > 0 && pps > limit.sameTickPps)) {
         flags.push('same-tick');
     }
     if (timingCv !== null && presses.length >= limit.timingMinPresses && timingCv < limit.timingCv) {
@@ -216,5 +226,5 @@ export function hintsFor(seed, settings, inputs, bounds = {}) {
         flags.push('finesse');
     }
 
-    return { flags, pps, maxPressesPerTick, timingCv, finesse: { perfect, of: judged } };
+    return { flags, pps, maxPressesPerTick, sameTickBursts, timingCv, finesse: { perfect, of: judged } };
 }

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { hintsFor } from '../../../resources/js/stacker/hints.js';
+import { decodeReplay } from '../../../resources/js/stacker/replay.js';
 import { verify } from '../../../resources/js/stacker/verify.mjs';
 
 const read = (file) => readFileSync(new URL(`../../Fixtures/stacker/${file}`, import.meta.url), 'utf8');
@@ -33,13 +34,48 @@ test('the bounds can be moved: the same run is clean under a higher pps bound', 
     assert.deepEqual(hintsFor(f.seed, f.settings, f.inputs, { pps: 'x' }).flags, ['pps']);
 });
 
-test('four presses in one tick mark same-tick; an even rhythm marks timing', () => {
+test('a person\'s slow 40 lines with one dropped frame of seven keys has no hint', () => {
+    const f = fixture('seven-minutes');
+    const hints = hintsFor(f.seed, f.settings, f.inputs);
+
+    assert.ok(f.expected.ticks >= 7 * 60 * 60 && f.expected.finished, JSON.stringify(f.expected));
+    assert.equal(hints.maxPressesPerTick, 7);
+    assert.equal(hints.pps, 0.24);
+    assert.deepEqual(hints.flags, []);
+    assert.equal(hints.sameTickBursts, 1);
+});
+
+test('more than 3 presses in one tick mark same-tick only when it repeats, or in a fast run', () => {
     const settings = { das: 10, arr: 2, sdf: 20 };
     const seed = '0123456789abcdef0123456789abcdef';
-    // four turns pressed in tick 5, released in tick 6
+    // four turns pressed in tick 5, released in tick 6: one dropped frame says nothing
     const burst = [[5, 4, 1], [5, 5, 1], [5, 4, 0], [5, 6, 1], [5, 5, 0], [5, 4, 1], [6, 4, 0], [6, 6, 0]];
-    assert.ok(hintsFor(seed, settings, burst).flags.includes('same-tick'));
+    assert.ok(!hintsFor(seed, settings, burst).flags.includes('same-tick'));
     assert.equal(hintsFor(seed, settings, burst).maxPressesPerTick, 4);
+    assert.equal(hintsFor(seed, settings, burst).sameTickBursts, 1);
+
+    // the same four presses in ten ticks: a program
+    const repeated = [];
+    for (let i = 0; i < 10; i++) {
+        const tick = 5 + i * 3;
+        repeated.push([tick, 4, 1], [tick, 4, 0], [tick, 5, 1], [tick, 5, 0], [tick, 4, 1], [tick, 4, 0], [tick, 5, 1], [tick + 1, 4, 0], [tick + 1, 5, 0]);
+    }
+    const ten = hintsFor(seed, settings, repeated);
+    assert.equal(ten.sameTickBursts, 10, JSON.stringify(ten));
+    assert.ok(ten.flags.includes('same-tick'));
+    assert.ok(!hintsFor(seed, settings, repeated.slice(0, 9 * 9)).flags.includes('same-tick'), 'nine ticks: no hint');
+
+    // the 40-line program at 6.45 pieces per second with 1,200 holds in its finishing tick: one burst is enough
+    const finishing = decodeReplay(read('forty-lines-finishing-tick.replay').trim());
+    const fast = hintsFor(finishing.header.seed, finishing.header.settings, finishing.inputs);
+    assert.equal(fast.sameTickBursts, 1);
+    assert.deepEqual(fast.flags, ['pps', 'same-tick']);
+    assert.deepEqual(hintsFor(finishing.header.seed, finishing.header.settings, finishing.inputs, { pps: 7 }).flags, ['same-tick']);
+});
+
+test('an even rhythm marks timing', () => {
+    const settings = { das: 10, arr: 2, sdf: 20 };
+    const seed = '0123456789abcdef0123456789abcdef';
 
     // a hard drop every 12 ticks, 60 times: a metronome
     const metronome = [];
