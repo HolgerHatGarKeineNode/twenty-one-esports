@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentLanding;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -249,6 +250,8 @@ class TournamentSlides
             // The feature slides (d1 prize pots, d2 casual cups) read these.
             'pot' => app(PrizePool::class)->shownPotSats($tournament),
             'cup' => $tournament->isCasualCup(),
+            // A lobby tournament's format in a few words (P10, Lobbies::pitch()); d2 names it for a lobby cup. Null otherwise.
+            'lobby' => Lobbies::isLobby($tournament) ? Lobbies::pitch($tournament->game) : null,
             // "EU" / "US" for a casual cup (d2 lists every game's regions), null otherwise.
             'region' => $tournament->isCasualCup() ? CasualCups::regionLabel($tournament) : null,
             // When a casual cup starts on its region's clock: the weekday ("sunday") d2 files it under, and the time.

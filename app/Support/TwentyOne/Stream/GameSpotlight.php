@@ -6,6 +6,7 @@ use App\Games\GameRegistry;
 use App\Games\SeriesGame;
 use App\Support\Matches\MatchBlocks;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Lobbies;
 use InvalidArgumentException;
 
 /**
@@ -14,6 +15,10 @@ use InvalidArgumentException;
  * `twentyone.stream.rotation.spotlight` (Age of Empires II since 813bf8f2),
  * else the newest series game (the last in the registry's order); none
  * without a series game.
+ *
+ * A lobby game (P10, Age of Empires II) sells its tournaments in the claim:
+ * lobbies of 3 to 8, diplomacy, the time limit, shared wins; its cups line
+ * says they are one lobby match.
  *
  * Every line is read from the code that runs the game: the casual 1v1 queue
  * (`esports.casual.games`), the host's room card (resources/js/lobbyCards.js
@@ -86,6 +91,14 @@ final class GameSpotlight
      */
     public function claim(SeriesGame $game): string
     {
+        // A lobby game (P10): its tournaments and cups are one lobby match, and that is what the slide sells.
+        if (Lobbies::isLobbyGame($game->slug())) {
+            $slug = $game->slug();
+
+            return 'Lobbies of '.min(Lobbies::minEntries($slug), Lobbies::maxPlayers($slug)).' to '.Lobbies::maxPlayers($slug).'. Diplomacy, '
+                .(Lobbies::timeLimit($slug) % 60 === 0 ? intdiv(Lobbies::timeLimit($slug), 60).' h' : Lobbies::timeLimit($slug).' min').', shared wins.';
+        }
+
         $bestOf = [];
         $draws = false;
 
@@ -123,7 +136,9 @@ final class GameSpotlight
             try {
                 $slot = CasualCups::slotOf($slug);
                 $regions = array_values(array_map(fn (array $region): string => (string) $region['label'], CasualCups::regions()));
-                $facts[] = ['label' => 'Cups', 'line' => ucfirst($slot['weekday']).'s at '.sprintf('%02d:%02d', $slot['hour'], $slot['minute']).' local time'.($regions === [] ? '' : ', '.RotationKit::listing($regions, 3)).'.'];
+                $facts[] = ['label' => 'Cups', 'line' => ucfirst($slot['weekday']).'s at '.sprintf('%02d:%02d', $slot['hour'], $slot['minute']).' local time'.($regions === [] ? '' : ', '.RotationKit::listing($regions, 3))
+                    // A lobby game's cup (P10) is one lobby match, never a bracket.
+                    .(Lobbies::isLobbyGame($slug) ? ': one lobby match.' : '.')];
             } catch (InvalidArgumentException) {
                 // A game without a valid slot opens no cup: nothing to promise.
             }

@@ -1221,6 +1221,25 @@ final class RotationKit
     }
 
     /**
+     * The pitch line of d2: with an open lobby cup (P10, Lobbies::pitch() in
+     * the frame's `lobby`) it names the first one's format, "One per region.
+     * Age of Empires II: one 2 h diplomacy lobby, 3 to 8, wins shared.";
+     * else the sign-up call, for one cup game or many.
+     *
+     * @param  list<mixed>  $upcoming  TournamentSlides frames
+     */
+    public static function cupPitch(array $upcoming, int $shown): string
+    {
+        foreach ($upcoming as $t) {
+            if (is_array($t) && ($t['cup'] ?? false) === true && is_string($t['lobby'] ?? null) && $t['lobby'] !== '') {
+                return 'One per region. '.self::text($t, 'game').': '.self::text($t, 'lobby').'.';
+            }
+        }
+
+        return $shown === 1 ? 'Open now, one per region. Sign up on the site.' : 'One per region in every game. Sign up on the site.';
+    }
+
+    /**
      * The weekend board of d2: the cups (cups()) filed under the weekday they start, Monday first, each day's games
      * by start time (then name), at most `$rows` a day (`more` counts the rest), at most `$days` days; a cup without
      * a day goes under ''. The columns share the width `$w` from `$x` with a `$gap` between them.
