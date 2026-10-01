@@ -5646,5 +5646,7 @@
     "How the pieces move for you, in ticks of 1/60 s. Saved with your account; a ranked run carries the values it was played with.": "Wie sich die Steine für dich bewegen, in Ticks zu 1/60 s. Gespeichert mit deinem Konto; ein gewerteter Lauf trägt die Werte, mit denen er gespielt wurde.",
     "Keys: click a slot, then press the key. Escape keeps the old one.": "Tasten: Klick auf ein Feld, dann drück die Taste. Escape behält die alte.",
     "Save Blockfill controls": "Blockfill-Steuerung speichern",
-    "Back to the defaults": "Zurück zu den Standardwerten"
+    "Back to the defaults": "Zurück zu den Standardwerten",
+    "Ranked runs need a keyboard. Here you can practise with touch.": "Gewertete Läufe brauchen eine Tastatur. Hier kannst du mit Touch üben.",
+    "The league is busy: your run was not sent. Play it again in a moment.": "Die Liga ist ausgelastet: Dein Lauf wurde nicht gesendet. Spiel ihn gleich noch einmal."
 }

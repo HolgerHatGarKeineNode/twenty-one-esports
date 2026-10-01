@@ -153,6 +153,7 @@ document.addEventListener('alpine:init', () => {
                     time: this.$refs.time,
                     pps: this.$refs.pps,
                     next: [...this.$el.querySelectorAll('[data-next]')],
+                    result: this.$refs.result,
                 };
                 this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
                 rt.keys = keyMap(this.controls.keys);
@@ -228,6 +229,8 @@ document.addEventListener('alpine:init', () => {
                 this.lines = 0;
                 this.minedTag = 0;
                 this.updateHud();
+                // the new game at once: during the countdown the well is empty and Next shows its own pieces
+                this.draw(performance.now());
             },
 
             // ---- flow --------------------------------------------------------
@@ -379,6 +382,13 @@ document.addEventListener('alpine:init', () => {
                 this.lines = outcome.lines;
                 this.updateHud();
                 this.draw(performance.now());
+                // on a narrow screen the result sits below the well: bring it into view (it is set below, before any await)
+                if (window.innerWidth < 1024) {
+                    // after Alpine has shown the result (x-show) and the browser has laid it out
+                    this.$nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                        rt.el.result.scrollIntoView({ block: 'start', behavior: this.reducedMotion ? 'auto' : 'smooth' });
+                    })));
+                }
                 const base = { ticks: outcome.ticks, hash: outcome.stateHash, kind: this.kind, lines: outcome.lines };
                 if (!outcome.finished) {
                     this.result = { ...base, status: 'toppedOut' };
@@ -407,6 +417,12 @@ document.addEventListener('alpine:init', () => {
                 const replay = encodeReplay({ v: REPLAY_VERSION, engine: ENGINE_VERSION, seed: rt.seed, settings: rt.session.game.settings }, rt.session.log);
                 const submitted = await request('POST', this.tokenUrl(config.urls.submit), { replay, ticks: outcome.ticks, hash: outcome.stateHash });
                 if (id !== rt.runId) {
+                    return;
+                }
+                if (submitted.status === 503) {
+                    // the verifier's queue is full: the run was not taken
+                    this.result = { ...this.result, status: 'busy', reason: 'busy' };
+
                     return;
                 }
                 if (submitted.status !== 202 || !submitted.data) {
@@ -515,10 +531,11 @@ document.addEventListener('alpine:init', () => {
 
             draw(now) {
                 const game = rt.session?.game;
-                const well = rt.el.well;
+                const well = rt.el?.well;
                 if (!game || !well) {
                     return;
                 }
+                rt.drawn = { seed: rt.seed, tick: game.tick };
                 const flash = rt.flashUntil > now ? (rt.flashUntil - now) / FLASH_MS : 0;
                 drawWell(well.getContext('2d'), game, { cell: rt.cell, mined: rt.flashRows, flash });
                 const hold = rt.el.hold;
@@ -617,6 +634,11 @@ document.addEventListener('alpine:init', () => {
                             ticks: game?.tick ?? 0,
                             lines: game?.lines ?? 0,
                             hash: game ? stateHash(game) : null,
+                            pieces: game?.pieces ?? 0,
+                            piece: game?.current ? { x: game.current.x, y: game.current.y, rot: game.current.rot } : null,
+                            boardEmpty: game ? game.board.every((cell) => cell === 0) : null,
+                            seed: rt.seed,
+                            drawn: rt.drawn ?? null,
                             trace: window.__stackerTrace ?? [],
                         };
                     },

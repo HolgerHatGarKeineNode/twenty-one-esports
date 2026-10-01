@@ -67,6 +67,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     'rejected' => __('Not counted: the replay did not match'),
                     'toppedOut' => __('Topped out: the stack reached the top'),
                     'aborted' => __('Run stopped: you left the tab'),
+                    'busy' => __('The league is busy: your run was not sent. Play it again in a moment.'),
                 ],
             ],
         ];
@@ -133,7 +134,9 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                                 </template>
                                 <template x-if="mode === 'idle'">
                                     <div class="flex flex-col items-stretch gap-2">
-                                        <x-button x-on:click="startRanked()" data-test="start-ranked">{{ __('Ranked run') }}</x-button>
+                                        {{-- Ranked runs need a keyboard (plan): on a touch screen only practice --}}
+                                        <x-button x-on:click="startRanked()" class="pointer-coarse:hidden" data-test="start-ranked">{{ __('Ranked run') }}</x-button>
+                                        <p class="m-0 hidden max-w-[24ch] text-[12px] leading-normal text-ink-2 pointer-coarse:block" data-test="ranked-needs-keyboard">{{ __('Ranked runs need a keyboard. Here you can practise with touch.') }}</p>
                                         <x-button variant="quiet" x-on:click="startPractice()" data-test="start-practice">{{ __('Practice') }}</x-button>
                                         <p x-show="!signedIn" class="m-0 max-w-[24ch] text-[12px] leading-normal text-ink-2">{{ __('Practice needs no login. Log in for ranked runs.') }}</p>
                                         <p x-show="error" x-text="error" class="m-0 max-w-[24ch] text-[12px] leading-normal text-loss" role="alert" data-test="error"></p>
@@ -157,7 +160,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
 
                 {{-- The chain: one cube per mined block --}}
                 <div class="flex items-center justify-center gap-3" data-test="chain">
-                    <span class="w-[72px] shrink-0 text-[15px] font-bold tabular-nums lg:text-[20px]"><span x-text="lines" data-test="lines">0</span><span class="font-normal text-ink-3"> / 40</span></span>
+                    <span class="shrink-0 text-[15px] font-bold whitespace-nowrap tabular-nums lg:text-[20px]" data-test="chain-count"><span x-text="lines" data-test="lines">0</span><span class="font-normal text-ink-3"> / 40</span></span>
                     <div class="flex min-w-0 flex-wrap gap-[3px]" role="progressbar" aria-valuemin="0" aria-valuemax="40" x-bind:aria-valuenow="lines" aria-label="{{ __('Blocks mined') }}">
                         <template x-for="(state, i) in chain()" :key="i">
                             <i class="block size-[7px] lg:size-[12px]" x-bind:class="state === 'done' ? 'bg-btc' : 'border border-dashed border-[#63636A]'"></i>
@@ -166,9 +169,15 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 </div>
 
                 {{-- Touch controls: practice on a phone or tablet --}}
-                <div class="hidden grid-cols-4 gap-2 pointer-coarse:grid" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" data-test="touch">
+                {{--
+                    Touch controls: practice on a phone or tablet. Fixed right above the tab bar
+                    (--tabbar-h holds its height and the safe area), so all of them are in reach
+                    without scrolling; the spacer keeps the page's end clear of them.
+                --}}
+                <div class="hidden h-[136px] pointer-coarse:block" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" aria-hidden="true"></div>
+                <div class="fixed inset-x-0 bottom-[var(--tabbar-h)] z-30 hidden grid-cols-4 gap-2 border-t border-hairline bg-bar px-4 py-2 pointer-coarse:grid" x-show="kind === 'practice' && (mode === 'playing' || mode === 'countdown')" data-test="touch">
                     @foreach (['left' => '←', 'soft' => '↓', 'right' => '→', 'hard' => '⤓', 'ccw' => '↺', 'flip' => '180', 'cw' => '↻', 'hold' => __('Hold')] as $action => $label)
-                        <button type="button" class="h-12 rounded-md border border-line bg-well text-[15px] font-bold text-ink select-none"
+                        <button type="button" class="h-12 rounded-md border border-line bg-well text-[15px] font-bold text-ink select-none" data-test="touch-{{ $action }}"
                                 x-on:pointerdown.prevent="touch('{{ $action }}', true)" x-on:pointerup.prevent="touch('{{ $action }}', false)" x-on:pointerleave="touch('{{ $action }}', false)"
                                 aria-label="{{ $actions[$action] }}">{{ $label }}</button>
                     @endforeach
@@ -177,7 +186,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
 
             <aside class="flex min-w-0 flex-col gap-6">
                 {{-- The result of the last run --}}
-                <section x-show="mode === 'result' && result" class="flex flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
+                <section x-ref="result" x-show="mode === 'result' && result" class="flex scroll-mt-4 flex-col gap-3 bg-card p-4 lg:p-5" aria-live="polite" data-test="result">
                     <span class="text-sm text-ink-2" x-text="result && result.status !== 'toppedOut' && result.status !== 'aborted' ? @js(__('40 blocks mined in')) : @js(__('Run over at'))"></span>
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
                     <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': result?.status === 'verifying' || result?.status === 'pending' || result?.status === 'submitting' }" x-text="statusText()" data-test="result-status"></span>

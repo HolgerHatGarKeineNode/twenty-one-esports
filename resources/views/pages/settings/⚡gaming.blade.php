@@ -52,6 +52,8 @@ new #[Title('Gamer tags')] class extends Component {
 
         // normalize() falls back to the defaults for anything off: a difference means the input was off.
         if (StackerSettings::normalize($wanted) !== $wanted) {
+            // back to what is saved, so the form never shows a binding that was refused
+            $this->stacker = StackerSettings::of($this->user());
             $this->addError('stacker.keys', __('Give every action one or two keys, and use each key only once.'));
 
             return;
@@ -305,7 +307,7 @@ new #[Title('Gamer tags')] class extends Component {
                                 @foreach ([0, 1] as $slot)
                                     <button type="button" class="h-11 min-w-[88px] rounded-md border border-line bg-well px-2 font-mono text-[12px] text-ink"
                                             x-on:click="listen('{{ $action }}', {{ $slot }})" x-bind:class="isListening('{{ $action }}', {{ $slot }}) && 'border-btc text-btc'"
-                                            data-test="stacker-slot-{{ $action }}-{{ $slot }}">{{ $stacker['keys'][$action][$slot] ?? '–' }}</button>
+                                            data-test="stacker-slot-{{ $action }}-{{ $slot }}">{{ isset($stacker['keys'][$action][$slot]) ? StackerSettings::label($stacker['keys'][$action][$slot]) : '–' }}</button>
                                 @endforeach
                             </dd>
                         </div>

@@ -34,6 +34,25 @@ final class StackerSettings
     public const KEYS_PER_ACTION = 2;
 
     /**
+     * A key code as people read it, as resources/js/stacker/keys.js keyLabel():
+     * "ArrowLeft" as "←", "KeyJ" as "J", "Digit4" as "4", "ShiftLeft" as "Shift Left".
+     */
+    public static function label(string $code): string
+    {
+        $arrows = ['ArrowLeft' => '←', 'ArrowRight' => '→', 'ArrowUp' => '↑', 'ArrowDown' => '↓'];
+
+        if (isset($arrows[$code])) {
+            return $arrows[$code];
+        }
+
+        if (preg_match('/^(?:Key([A-Z])|Digit([0-9]))$/', $code, $match) === 1) {
+            return $match[1] !== '' ? $match[1] : $match[2];
+        }
+
+        return trim((string) preg_replace('/(Left|Right)$/', ' $1', $code));
+    }
+
+    /**
      * @return array{das: int, arr: int, sdf: int, keys: array<string, list<string>>}
      */
     public static function of(?User $user): array

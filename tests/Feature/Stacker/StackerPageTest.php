@@ -73,8 +73,12 @@ test('a player saves handling and keys on the gaming page; a key used twice is r
         ->call('saveStacker')->assertHasNoErrors()->assertDispatched('stacker-saved');
     expect($user->refresh()->stacker_settings)->toBe(['das' => 6, 'arr' => 0, 'sdf' => 41, 'keys' => array_replace(StackerSettings::DEFAULT_KEYS, ['hard' => ['KeyJ']])]);
 
-    $page->set('stacker.keys.hold.1', 'KeyJ')->call('saveStacker')->assertHasErrors('stacker.keys');
-    $page->set('stacker.keys.hold.1', 'ShiftLeft')->set('stacker.das', 21)->call('saveStacker')->assertHasErrors('stacker.das');
+    // the slots read like the keys: "J", "←", "Space"
+    $page->assertSeeHtml('data-test="stacker-slot-hard-0">J</button>')->assertSeeHtml('data-test="stacker-slot-left-0">←</button>');
+
+    // a refused binding goes back to what is saved, the form never shows it
+    $page->set('stacker.keys.hold.1', 'KeyJ')->call('saveStacker')->assertHasErrors('stacker.keys')->assertSet('stacker.keys.hold.1', 'ShiftLeft');
+    $page->set('stacker.das', 21)->call('saveStacker')->assertHasErrors('stacker.das');
     expect($user->refresh()->stacker_settings['keys']['hard'])->toBe(['KeyJ']);
 
     $page->call('resetStacker');
