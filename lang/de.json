@@ -5613,5 +5613,8 @@
     "The league's defaults for every Age of Empires II lobby, casual 1v1 and clan series. The host sets them when creating the lobby.": "Die Vorgaben der Liga für jede Age-of-Empires-II-Lobby, Casual 1v1 und Clan-Serien. Der Host stellt sie beim Erstellen der Lobby ein.",
     "League lobby rules": "Lobby-Regeln der Liga",
     "All rules": "Alle Regeln",
-    "Sent with the card:": "Geht mit der Karte mit:"
+    "Sent with the card:": "Geht mit der Karte mit:",
+    "per lineup and rated series": "pro Lineup und gewerteter Serie",
+    ":game :mode lineup": ":mode-Lineup · :game",
+    "Elo of the :lineup over :n series, from :start to :elo": "Elo des :lineup über :n Serien, von :start auf :elo"
 }

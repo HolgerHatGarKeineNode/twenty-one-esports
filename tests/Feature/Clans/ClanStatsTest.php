@@ -138,11 +138,44 @@ test('the Elo line of a clan runs in the order the results happened, also after 
         $series[] = $match;
     }
 
-    expect(app(ClanStats::class)->record($lead->clan)['line'])->toBe([1000, 1020, 1036]);
+    expect(app(ClanStats::class)->record($lead->clan)['lines'][0]['line'])->toBe([1000, 1020, 1036]);
 
     // The first series corrected to a loss: -20 instead of +20; the second keeps its +16.
     app(RatingService::class)->correct($series[0], 0.0);
 
     expect($a->refresh()->rating)->toBe(996)
-        ->and((new ClanStats(app(ClanHashrate::class)))->record($lead->clan)['line'])->toBe([1000, 980, 996]);
+        ->and((new ClanStats(app(ClanHashrate::class)))->record($lead->clan)['lines'][0]['line'])->toBe([1000, 980, 996]);
+});
+
+test('a clan gets an Elo line per series game it has a lineup in, also without Rocket League', function () {
+    Queue::fake();
+    openSeason(['slug' => 'season-1']);
+    $clan = Clan::factory()->create();
+    // One rated series won by the lineup: +20 from 1000.
+    $won = function (Lineup $lineup): void {
+        $other = Lineup::factory()->game($lineup->game, $lineup->mode)->ready()->create();
+        $key = ['pool' => Rating::RATED, 'season' => 'season-1', 'game' => $lineup->game, 'mode' => $lineup->mode];
+        $own = Rating::query()->create($key + ['subject' => 'lineup:'.$lineup->id, 'lineup_id' => $lineup->id, 'rating' => 1020, 'results' => 1, 'wins' => 1]);
+        $theirs = Rating::query()->create($key + ['subject' => 'lineup:'.$other->id, 'lineup_id' => $other->id, 'rating' => 980, 'results' => 1, 'losses' => 1]);
+        $match = SeriesMatch::factory()->create(['game' => $lineup->game, 'mode' => $lineup->mode, 'challenger_lineup_id' => $lineup->id, 'challenged_lineup_id' => $other->id, 'status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'rated' => true]);
+        (new RatingChange)->forceFill(['rating_id' => $own->id, 'opponent_rating_id' => $theirs->id, 'source' => RatingChange::SERIES, 'source_id' => $match->id,
+            'score' => 1.0, 'before' => 1000, 'after' => 1020, 'delta' => 20, 'results_before' => 0])->save();
+    };
+
+    // Age of Empires II only: its line, where there was none before.
+    $won(Lineup::factory()->game('age-of-empires-2', '2v2')->ready()->create(['clan_id' => $clan->id]));
+
+    expect(app(ClanStats::class)->record($clan)['lines'])->toBe([['game' => 'age-of-empires-2', 'mode' => '2v2', 'line' => [1000, 1020]]]);
+
+    // With Rocket League and a larger Age of Empires II lineup too: one line per game, its largest lineup, registry order.
+    $won(Lineup::factory()->mode('3v3')->ready()->create(['clan_id' => $clan->id]));
+    $won(Lineup::factory()->game('age-of-empires-2', '3v3')->ready()->create(['clan_id' => $clan->id]));
+
+    expect(array_map(fn (array $line): string => $line['game'].'/'.$line['mode'], (new ClanStats(app(ClanHashrate::class)))->record($clan)['lines']))
+        ->toBe(['rocket-league/3v3', 'age-of-empires-2/3v3']);
+
+    $html = $this->get(route('clans.show', $clan))->assertOk()->getContent();
+
+    expect(substr_count($html, 'data-test="elo-line"'))->toBe(2)
+        ->and($html)->toContain('Age of Empires II: Definitive Edition 3v3 lineup')->toContain('Rocket League 3v3 lineup');
 });
