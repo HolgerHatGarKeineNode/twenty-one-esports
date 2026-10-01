@@ -709,7 +709,7 @@
     display: block;
     overflow: hidden;
     font-family: var(--tv-display);
-    font-size: clamp(calc(var(--u) * 1.25), calc(100cqi / (var(--chars) * 0.8)), calc(var(--u) * var(--face) * 0.45));
+    font-size: clamp(calc(var(--u) * 1.25), calc(100cqi / (var(--chars) * 0.8)), calc(var(--u) * var(--name-max)));
     font-weight: 800;
     line-height: 1.1;
     white-space: nowrap;
@@ -725,6 +725,33 @@
     border-radius: calc(var(--u) * 0.2);
     background: var(--tv-raised);
     font-weight: 700;
+}
+
+/* Three lobbies and more: narrower panels, a smaller head, one player a line. */
+.tv-rooms.is-compact {
+    gap: calc(var(--u) * 1);
+}
+
+.tv-rooms.is-compact .tv-room {
+    gap: calc(var(--u) * 0.5);
+    padding: calc(var(--u) * 0.75) calc(var(--u) * 0.9);
+}
+
+.tv-rooms.is-compact .tv-room-head {
+    gap: calc(var(--u) * 0.5);
+    font-size: calc(var(--u) * 1.25);
+}
+
+.tv-rooms.is-compact .tv-room-count {
+    font-size: calc(var(--u) * 1);
+}
+
+.tv-rooms.is-compact .tv-room-players {
+    gap: calc(var(--u) * 0.25);
+}
+
+.tv-rooms.is-compact .tv-room-player {
+    gap: calc(var(--u) * 0.5);
 }
 
 .tv-room-player.is-won .tv-room-place {

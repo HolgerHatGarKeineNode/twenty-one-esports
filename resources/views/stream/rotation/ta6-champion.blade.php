@@ -35,7 +35,10 @@
             $rest[] = $f;
         }
     }
-    $rest = array_slice($rest, 0, 3);
+    // More on the podium than three cards (a shared place 1): two cards and "+N more" in the third place.
+    $podiumTotal = count($rest) + (is_int($t['podiumMore'] ?? null) ? max(0, $t['podiumMore']) : 0);
+    $rest = array_slice($rest, 0, $podiumTotal > 3 ? 2 : 3);
+    $podiumMore = $podiumTotal - count($rest);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
@@ -76,6 +79,7 @@
 <text data-unit="podium-name-{{ $i }}" data-box="{{ $px - 1 }} 640 {{ $px + 168 }} 664" x="{{ $px }}" y="658" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#FFFFFF">{{ K::fit($f['name'] === '' ? 'Player' : $f['name'], K::MONO, 16, 168) }}</text>
 <text data-unit="podium-place-{{ $i }}" x="{{ $px + 68 }}" y="610" font-family="Unbounded" font-weight="800" font-size="22" fill="#F7931A">{{ $f['place'] === null ? '' : K::ordinal($f['place']) }}</text>
 @endforeach
+@if ($podiumMore > 0)<text data-unit="podium-more" x="1060" y="626" font-family="Unbounded" font-weight="800" font-size="24" fill="#F7931A">+{{ $podiumMore }} more</text>@endif
 @endif
 @php($vb = K::viewerBadge($viewers ?? null, 1024, 64, K::DISPLAY, 24, 18))
 @if ($vb)@include('stream.rotation.partials.viewers', ['vb' => $vb, 'eyeInk' => '#17120A', 'countInk' => '#17120A', 'wordInk' => '#17120A'])@endif

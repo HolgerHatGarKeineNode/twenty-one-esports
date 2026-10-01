@@ -281,6 +281,7 @@ class TournamentLiveSlides
             'finishedAt' => null,
             'finishedMs' => null,
             'sharedFirst' => [],
+            'podiumMore' => 0,
         ];
 
         if ($phase === 'drawing') {
@@ -361,14 +362,21 @@ class TournamentLiveSlides
             $snapshot['path'] = $champion === null ? [] : $this->path($boxes, $champion['id'], $name);
 
             foreach ($this->placements->of($tournament) ?? [] as $row) {
-                if ($row['place'] > 3 || count($snapshot['podium']) >= 4) {
+                if ($row['place'] > 3) {
                     break;
                 }
 
                 foreach ($row['participants'] as $id) {
+                    if (count($snapshot['podium']) >= 4) {
+                        // A shared place (P10: up to 8 allies per lobby share place 1) holds more than the slide shows.
+                        $snapshot['podiumMore']++;
+
+                        continue;
+                    }
+
                     $entry = $name($tv->entry($id));
 
-                    if ($entry !== null && count($snapshot['podium']) < 4) {
+                    if ($entry !== null) {
                         $snapshot['podium'][] = ['place' => $row['place'], ...$entry];
                     }
                 }

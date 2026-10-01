@@ -131,5 +131,40 @@ test('every tournament slide of an AoE2 lobby tournament, upcoming, running and 
         ->and(slideWords($svgs['finished-tc4']))->toContain('shared 1st place: '.mb_strtolower(implode(', ', $winners)));
 
     // The check sees what it looks for: a bracket tournament's slides do name them.
-    expect(pairingWords("final bracket\nhal vs adam\nage of empires ii, 1v1"))->toBe(['1v1', 'bracket', 'vs']);
+    expect(pairingWords("final bracket\nhal vs adam\nage of empires ii, 1v1"))->toBe(['1v1', 'bracket', 'vs'])
+        // Three on place 1 fit the three podium cards: nothing hidden.
+        ->and(slideWords($svgs['finished-ta6'].$svgs['finished-tb6'].$svgs['finished-tc6']))->not->toContain('more');
+});
+
+test('the join steps keep Age of Empires II among the casual 1v1 games: its queue is still there', function () {
+    $now = (int) now()->getTimestampMs();
+    $svg = SceneRenderer::fromConfig()->svg([...app(SceneSource::class)->rotation('a4', null, [], 0, $now, app(StreamStats::class)->all()), 'viewers' => null], RotationPlanner::VIEWS['a4']);
+
+    expect(slideWords($svg))->toContain('rocket league, ea fc, aoe2')->toContain('as a casual 1v1.')
+        ->not->toContain('lobbies of up to 8');
+});
+
+test('the champion slides show two podium cards and "+N more" when more share place 1 than three cards hold', function () {
+    $tournament = slideLobby(9);
+    [$a, $b] = TournamentMatch::query()->where('tournament_id', $tournament->id)->with('slots')->orderBy('position')->get()->all();
+    $places = fn (TournamentMatch $match, array $places): array => $match->slots->mapWithKeys(fn ($slot, int $i): array => [$slot->tournament_participant_id => $places[$i]])->all();
+    // Five allies on place 1 across the two lobbies.
+    app(LobbyResults::class)->enter($a, $tournament->creator, $places($a, [1, 1, 1, 4, 5]));
+    app(LobbyResults::class)->enter($b, $tournament->creator, $places($b, [1, 1, 3, 4]));
+
+    $now = (int) now()->getTimestampMs();
+    $frame = app(TournamentLiveSlides::class)->data($tournament->refresh(), $now);
+    $source = app(SceneSource::class);
+    $renderer = SceneRenderer::fromConfig();
+
+    expect($frame['champion'])->toBeNull()
+        ->and($frame['podium'])->toHaveCount(4)
+        ->and($frame['podiumMore'])->toBe(1);
+
+    foreach (['ta6', 'tb6', 'tc6'] as $scene) {
+        $svg = $renderer->svg([...$source->rotation($scene, null, [], 0, $now, [], $frame, []), 'viewers' => null], RotationPlanner::VIEWS[$scene]);
+
+        expect(slideWords($svg))->toContain('+3 more')
+            ->and(substr_count($svg, 'data-unit="podium-face-'))->toBe(2, $scene);
+    }
 });

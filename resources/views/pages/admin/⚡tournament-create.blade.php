@@ -173,7 +173,10 @@ new #[Title('New tournament')] #[Layout('layouts::app', ['section' => 'admin'])]
         @include('pages.admin.partials.tournament-chooser')
     @endisland
 
-    @include('pages.admin.partials.tournament-deadlines')
+    {{-- Its own island, rendered with every chooser change (game, mode, where) and with the page (errors). --}}
+    @island(name: 'deadlines', always: true)
+        @include('pages.admin.partials.tournament-deadlines')
+    @endisland
 
     @include('pages.admin.partials.prize-pot', ['potTournament' => null, 'potSave' => null])
 

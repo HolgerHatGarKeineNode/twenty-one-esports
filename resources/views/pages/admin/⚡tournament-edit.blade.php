@@ -497,7 +497,10 @@ new #[Layout('layouts::app', ['section' => 'admin'])] class extends TournamentFo
             </section>
         @endif
 
-        @include('pages.admin.partials.tournament-deadlines')
+        {{-- Its own island, rendered with every chooser change (game, mode, where) and with the page (errors). --}}
+        @island(name: 'deadlines', always: true)
+            @include('pages.admin.partials.tournament-deadlines')
+        @endisland
 
         <div class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:flex-row lg:items-center lg:gap-4 lg:px-6 lg:py-5">
             @island(name: 'summary')

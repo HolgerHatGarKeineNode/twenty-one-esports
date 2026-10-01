@@ -69,6 +69,15 @@ const AOE_LOBBY_MEASURE = <<<'JS'
     }
     JS;
 
+/** 64 player names (a tournament's most), real campaign heroes, short and long. */
+const AOE_LOBBY_NAMES = ['Saladin', 'Joan of Arc', 'Genghis Khan', 'Barbarossa', 'Tamerlane', 'El Cid', 'Attila', 'Bari', 'Gajah Mada',
+    'Richard the Lionheart', 'Frederick', 'Yodit', 'Kotyan Khan', 'Tariq ibn Ziyad', 'Dagnajan', 'Prithviraj', 'Sundjata', 'Francesco Sforza',
+    'Babur', 'Edward Longshanks', 'Alaric', 'Bayinnaung', 'Cuauhtemoc', 'Pachacuti', 'Vlad Dracula', 'Lac Long Quan', 'Suryavarman',
+    'Le Loi', 'Ivaylo', 'Thoros', 'Constantine', 'Jadwiga', 'Algirdas', 'Gedimino', 'Dmitry Donskoy', 'Ivan the Terrible', 'Hautevilles',
+    'Tamar', 'Ismail', 'Rajendra', 'Devapala', 'Shivaji', 'Kushluk', 'Sargis', 'Hannibal', 'Scipio', 'Xerxes', 'Cyrus the Great',
+    'Darius', 'Ashoka', 'Ragnar', 'Erik the Red', 'Harald Hardrada', 'Sigurd', 'Ingrid', 'Grimhild', 'Theodoric', 'Odoacer',
+    'Clovis', 'Charlemagne', 'Alfred the Great', 'Godfrey', 'Baldwin', 'Bohemond of Taranto'];
+
 /** A TV scene's lobbies against the stage: every panel and player inside it, nothing cut, no duel. */
 const AOE_LOBBY_TV = <<<'JS'
     (scene) => {
@@ -86,6 +95,9 @@ const AOE_LOBBY_TV = <<<'JS'
             viewport: [window.innerWidth, window.innerHeight],
             overflowing: panels.filter((panel) => panel.scrollHeight > panel.clientHeight + 1).length,
             cut: [...box.querySelectorAll('.tv-room-name')].filter((name) => name.scrollWidth > name.clientWidth + 1).map((name) => name.textContent),
+            // An ellipsised name: how many of its characters still show (its width over the width of one character).
+            fewestShown: Math.min(99, ...[...box.querySelectorAll('.tv-room-name')].filter((name) => name.scrollWidth > name.clientWidth + 1)
+                .map((name) => Math.floor(name.clientWidth / (name.scrollWidth / name.textContent.length)))),
             nameSize: Math.round(Math.min(...[...box.querySelectorAll('.tv-room-name')].map((name) => parseFloat(getComputedStyle(name).fontSize)))),
             duels: box.querySelectorAll('.tv-duel').length,
             text: box.innerText,
@@ -110,7 +122,7 @@ function aoeLobbyTournament(int $players = 9): array
         'published_at' => now(), 'slug' => 'diplomacy-night', 'created_by_id' => $organizer->id,
     ]);
 
-    foreach (array_slice(['Saladin', 'Joan of Arc', 'Genghis Khan', 'Barbarossa', 'Tamerlane', 'El Cid', 'Attila', 'Bari', 'Gajah Mada'], 0, $players) as $index => $name) {
+    foreach (array_slice(AOE_LOBBY_NAMES, 0, $players) as $index => $name) {
         $user = User::factory()->create(['name' => $name]);
         TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $user->id, 'name' => $name, 'rating' => 1500 - 10 * $index, 'members' => [$user->id]]);
     }
@@ -302,3 +314,97 @@ test('the TV shows each lobby as a grid of its players inside the stage at 1920�
     'one lobby of 8' => [8, [8]],
     'lobbies of 5 and 4' => [9, [5, 4]],
 ]);
+
+test('the TV keeps every name readable with many lobbies: 24, 32 and 40 players (a full cup) and 64, at 1920×1080 and 1280×720', function (int $players, array $lobbies) {
+    [$tournament] = aoeLobbyTournament($players);
+    $problems = [];
+    $measured = [];
+
+    foreach ([[1920, 1080], [1280, 720]] as [$width, $height]) {
+        $page = visit('/robots.txt')->page();
+        $page->context()->addInitScript(BrowserConsole::COLLECTOR);
+        $page->setViewportSize($width, $height);
+        $page->goto(ComputeUrl::from(route('tournaments.tv', $tournament)));
+        BrowserWait::until($page, '() => window.Alpine !== undefined && document.querySelector(".tv-stage") !== null && document.fonts.status === "loaded"', 10_000);
+
+        foreach (['spotlight', 'bracket'] as $scene) {
+            $page->evaluate('() => { document.querySelector(".tv-stage").dataset.scene = "'.$scene.'"; return new Promise((resolve) => setTimeout(resolve, 700)); }');
+            $measured["{$width}-{$scene}"] = $page->evaluate('() => ('.AOE_LOBBY_TV.')("'.$scene.'")');
+            aoeLobbyTvShot($page, "aoe-lobby-tv-{$players}-{$scene}-{$width}");
+        }
+
+        foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
+            $problems[] = "tv {$width}: {$problem}";
+        }
+    }
+
+    fwrite(STDERR, "\n[aoe lobby tv {$players}] ".json_encode(array_map(fn (array $m): array => array_diff_key($m, ['text' => true]), $measured)));
+
+    foreach ($measured as $key => $m) {
+        expect($m['panels'])->toBe($lobbies, $key)
+            ->and($m['players'])->toBe($players, $key)
+            ->and($m['bottom'])->toBeLessThanOrEqual($m['stageBottom'], $key)
+            ->and($m['stageBottom'])->toBeLessThanOrEqual($m['viewport'][1], $key)
+            ->and($m['right'])->toBeLessThanOrEqual($m['stageRight'], $key)
+            ->and($m['overflowing'])->toBe(0, $key)
+            // A long name may end in "…", but never before its eighth character.
+            ->and($m['fewestShown'])->toBeGreaterThanOrEqual(8, $key)
+            ->and($m['duels'])->toBe(0, $key);
+    }
+
+    expect($problems)->toBe([]);
+})->with([
+    '24 players, 3 lobbies' => [24, [8, 8, 8]],
+    '32 players, 4 lobbies' => [32, [8, 8, 8, 8]],
+    '40 players, 5 lobbies' => [40, [8, 8, 8, 8, 8]],
+    '64 players, 8 lobbies' => [64, [8, 8, 8, 8, 8, 8, 8, 8]],
+]);
+
+test('the create page swaps the deadlines with the game: Age of Empires II shows the lobby line and no series fields, chess brings its deadlines back, in English and German at 390 and 1440', function (string $locale) {
+    $organizer = User::factory()->create(['name' => 'Lobby Director']);
+    TournamentOrganizer::query()->create(['pubkey' => $organizer->pubkey]);
+    $problems = [];
+    $measured = [];
+    $page = shellPage($organizer, 1440, 900);
+    // The language switch answers with a redirect; the pages below are opened (and checked) after it.
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+
+    foreach ([[390, 844], [1440, 900]] as [$width, $height]) {
+        $page->setViewportSize($width, $height);
+        shellOpen($page, route('admin.tournaments.create', [], false), $problems);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=deadline-noshow_minutes]") !== null', 8_000);
+
+        $page->locator('[data-test=game-age-of-empires-2] button')->first()->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=tournament-deadlines-lobby]") !== null', 8_000);
+        $page->evaluate('() => document.querySelector("[data-test=tournament-deadlines-lobby]").scrollIntoView({ block: "center" })');
+        $lobby = $page->evaluate('() => { const box = document.querySelector("[data-test=tournament-deadlines-lobby]"); const r = box.getBoundingClientRect();
+            return { lang: document.documentElement.lang, text: box.innerText, fields: document.querySelectorAll("[data-test^=deadline-]").length,
+                visible: box.checkVisibility(), left: r.left, right: r.right, vw: window.innerWidth, scroll: document.documentElement.scrollWidth - document.documentElement.clientWidth }; }');
+        shellShot($page, "aoe-lobby-create-deadlines-{$locale}-{$width}");
+
+        $page->locator('[data-test=game-chess] button')->first()->click();
+        BrowserWait::until($page, '() => document.querySelector("[data-test=deadline-checkin_minutes]") !== null', 8_000);
+        $chess = $page->evaluate('() => ({ lobby: document.querySelector("[data-test=tournament-deadlines-lobby]") !== null, checkin: document.querySelector("[data-test=deadline-checkin_minutes]")?.checkVisibility() ?? false })');
+
+        foreach ([...$page->evaluate('() => window.__errors'), ...$page->evaluate(BrowserConsole::BAD_RESPONSES)] as $problem) {
+            $problems[] = "create {$width}: {$problem}";
+        }
+
+        $measured[$width] = compact('lobby', 'chess');
+    }
+
+    fwrite(STDERR, "\n[aoe create deadlines {$locale}] ".json_encode($measured));
+
+    foreach ($measured as $width => $m) {
+        expect($m['lobby']['lang'])->toBe($locale, (string) $width)
+            ->and($m['lobby']['visible'])->toBeTrue()
+            ->and($m['lobby']['fields'])->toBe(0)
+            ->and($m['lobby']['text'])->toContain($locale === 'de' ? 'Eine Lobby hat keine Serien-Fristen' : 'A lobby has no series deadlines')
+            ->and($m['lobby']['left'])->toBeGreaterThanOrEqual(0)
+            ->and($m['lobby']['right'])->toBeLessThanOrEqual($m['lobby']['vw'])
+            ->and($m['lobby']['scroll'])->toBeLessThanOrEqual(0)
+            ->and($m['chess'])->toBe(['lobby' => false, 'checkin' => true]);
+    }
+
+    expect($problems)->toBe([]);
+})->with(['en', 'de']);

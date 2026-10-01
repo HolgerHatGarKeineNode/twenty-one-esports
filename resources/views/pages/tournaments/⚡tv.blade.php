@@ -75,7 +75,8 @@ new #[Layout('layouts::tv')] class extends Component {
     $current = TournamentTv::currentStage($stages);
     // A lobby tournament (P10): its lobbies are no duels; every live lobby is in the spotlight, on its own grid.
     $lobbyTv = \App\Support\Tournaments\Lobbies::isLobby($tournament);
-    $spotlight = TournamentTv::spotlight($stages, $lobbyTv ? 6 : 2);
+    // At most 64 players are 8 lobbies; the lobby layout holds 10 (partials/tv-lobbies).
+    $spotlight = TournamentTv::spotlight($stages, $lobbyTv ? 10 : 2);
     $tables = $tv->tables($stages);
     $ticker = $tv->ticker();
     $progress = $tv->progress();

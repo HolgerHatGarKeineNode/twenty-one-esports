@@ -488,11 +488,14 @@ abstract class TournamentFormatChooser extends Component
     }
 
     /**
-     * The chooser changed: the summary island shows the new choice too.
+     * The chooser changed: the summary island shows the new choice too, and
+     * the deadlines island the deadlines of the game now picked (a lobby game
+     * has none of a series, P10).
      */
     protected function changed(): void
     {
         unset($this->evaluation, $this->format, $this->durationRange);
         $this->renderIsland('summary');
+        $this->renderIsland('deadlines');
     }
 }
