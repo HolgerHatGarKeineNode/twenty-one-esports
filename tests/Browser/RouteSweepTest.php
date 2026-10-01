@@ -86,11 +86,13 @@ const SWEEP_CRAWLER_FILES = ['robots', 'sitemap', 'sitemap.section'];
  * Downloads, not pages: a browser saves them instead of showing them. The
  * tournament calendar file is checked in tests/Feature/Tournaments/
  * TournamentTimeZoneTest and fetched from its link in tests/Browser/
- * TournamentTimeTest.
+ * TournamentTimeTest. A lobby report's end screen (P10) is a private image
+ * for the directors of a lobby tournament, fetched from its link in
+ * tests/Browser/AoeLobbyTest; the sweep's fixtures have no lobby.
  *
  * @var list<string>
  */
-const SWEEP_DOWNLOADS = ['tournaments.calendar'];
+const SWEEP_DOWNLOADS = ['tournaments.calendar', 'tournaments.lobby-screenshot'];
 
 /**
  * JSON endpoints, not pages: the player picker's suggestions

@@ -266,6 +266,11 @@ final class TournamentLanding
         $known = array_values(array_filter($this->roster(), fn (array $row): bool => $row['seed'] !== null));
         $mixTeams = $tournament->profile()->entersTeams() ? intdiv($this->places()['solos'], max(1, $tournament->teamSize())) : 0;
 
+        // Lobbies (P10) are split by who is in, not by the places: a cup of 40 places with 9 in plays 5 + 4.
+        if (Lobbies::isLobby($tournament)) {
+            $capacity = min($capacity, max(Lobbies::minEntries($tournament->game), count($known)));
+        }
+
         // Entrant id = projected seed: known entries first, then mix teams, then open seats.
         $seats = [];
 

@@ -37,7 +37,7 @@ function slidePlayer(Tournament $tournament, string $name, int $elo): User
 
 /** The contract's keys (resources/views/stream/rotation/ta1-hero.blade.php); SceneSource lifts `backdrop` onto the scene. */
 const SLIDE_KEYS = ['id', 'name', 'description', 'status', 'game', 'mode', 'format', 'teamSize', 'rated', 'where', 'startsAt', 'signupClosesAt',
-    'countdown', 'countdownLabel', 'taken', 'places', 'spotsLeft', 'roster', 'solos', 'openSpots', 'preview', 'cover', 'coverTile', 'backdrop', 'url', 'pot', 'cup', 'region', 'cupDay', 'cupTime', 'howItRuns'];
+    'countdown', 'countdownLabel', 'taken', 'places', 'spotsLeft', 'roster', 'solos', 'openSpots', 'preview', 'cover', 'coverTile', 'backdrop', 'url', 'pot', 'cup', 'region', 'cupDay', 'cupTime', 'howItRuns', 'lobby'];
 
 /**
  * Roster rows or preview sides without `avatar` and `logo` (TwentyOneStreamImagesTest checks those).
@@ -68,6 +68,7 @@ test('a two stage tournament: every contract field, the seeds by Elo, the projec
     expect(array_keys($data))->toEqualCanonicalizing(SLIDE_KEYS)
         ->and($data)->toMatchArray([
             'id' => $tournament->id,
+            'lobby' => null,
             'pot' => null,
             'cup' => false,
             'region' => null,

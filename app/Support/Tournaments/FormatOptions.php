@@ -29,6 +29,8 @@ final readonly class FormatOptions
      * @param  list<string>  $roundRobinTieBreaks
      * @param  'round-robin'|'single-elimination'|'double-elimination'  $groupStage
      * @param  'single-elimination'|'double-elimination'  $finalStage
+     * @param  int  $lobbyMinutes  Free for All as lobbies (P10, Lobbies): one round, nobody advances, each lobby
+     *                             planned at this many minutes; 0 = heats whose best move on
      */
     public function __construct(
         public int $bestOf = 1,
@@ -50,10 +52,18 @@ final readonly class FormatOptions
         public string $finalStage = 'single-elimination',
         public int $heatSize = 4,
         public int $heatAdvance = 2,
+        public int $lobbyMinutes = 0,
     ) {}
 
     public static function defaults(GameProfile $profile): self
     {
+        // A lobby game (P10) always plays Free for All as lobbies: its heat options come from the game, never the form.
+        if (Lobbies::isLobbyGame($profile->game)) {
+            $lobby = Lobbies::options($profile->game);
+
+            return new self(bestOf: $profile->bestOf, finalBestOf: $profile->finalBestOf, heatSize: $lobby['heatSize'], heatAdvance: $lobby['heatAdvance'], lobbyMinutes: $lobby['lobbyMinutes']);
+        }
+
         return new self(bestOf: $profile->bestOf, finalBestOf: $profile->finalBestOf);
     }
 
@@ -62,11 +72,18 @@ final readonly class FormatOptions
      * range falls back to the default of the game, so a stale draft never
      * breaks the chooser.
      *
+     * `$lobbyFromGame` (P10): a lobby game's heat options come from the game
+     * (Lobbies::options()), whatever is stored; false for a tournament
+     * already drawn, whose stored options keep holding (a Free for All drawn
+     * before the game became a lobby game keeps its heats, see
+     * Tournament::formatOptions()).
+     *
      * @param  array<string, mixed>  $values
      */
-    public static function fromArray(array $values, GameProfile $profile): self
+    public static function fromArray(array $values, GameProfile $profile, bool $lobbyFromGame = true): self
     {
         $defaults = self::defaults($profile);
+        $forced = $lobbyFromGame && $defaults->lobbyMinutes > 0;
         $int = fn (string $key, int $default, int $min, int $max): int => is_numeric($values[$key] ?? null) && (int) $values[$key] >= $min && (int) $values[$key] <= $max ? (int) $values[$key] : $default;
         $float = fn (string $key, float $default): float => is_numeric($values[$key] ?? null) && (float) $values[$key] >= 0 && (float) $values[$key] <= 10 ? (float) $values[$key] : $default;
         $pick = fn (string $key, string $default, array $allowed): string => in_array($values[$key] ?? null, $allowed, true) ? (string) $values[$key] : $default;
@@ -101,8 +118,12 @@ final readonly class FormatOptions
             advance: $int('advance', $defaults->advance, 1, 4),
             groupStage: $groupStage,
             finalStage: $finalStage,
-            heatSize: $int('heatSize', $defaults->heatSize, 3, 16),
-            heatAdvance: $int('heatAdvance', $defaults->heatAdvance, 1, 8),
+            // A lobby game's lobbies are the game's (P10): stored or submitted heat values are not read.
+            heatSize: $forced ? $defaults->heatSize : $int('heatSize', 4, 3, 16),
+            heatAdvance: $forced ? $defaults->heatAdvance : $int('heatAdvance', 2, 1, 8),
+            // Not forced: what is stored; a tournament stored without it has heats, never lobbies.
+            // A game that plays no lobbies never has lobby minutes, whatever is stored (re-audit P10, R9b).
+            lobbyMinutes: $defaults->lobbyMinutes === 0 ? 0 : ($forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000)),
         );
     }
 
@@ -129,7 +150,7 @@ final readonly class FormatOptions
     {
         return new self($this->bestOf, $this->finalBestOf, $this->thirdPlace, $this->grandFinal, $this->split, $this->iterations,
             $this->rankBy, $rounds, $this->pointsWin, $this->pointsTie, $this->pointsBye, $this->swissTieBreaks, $this->roundRobinTieBreaks,
-            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance);
+            $this->groupSize, $this->advance, $this->groupStage, $this->finalStage, $this->heatSize, $this->heatAdvance, $this->lobbyMinutes);
     }
 
     /**
@@ -141,7 +162,7 @@ final readonly class FormatOptions
     }
 
     /**
-     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int}
+     * @return array{bestOf: int, finalBestOf: int, thirdPlace: bool, grandFinal: string, split: bool, iterations: int, rankBy: string, swissRounds: int|null, pointsWin: float, pointsTie: float, pointsBye: float, swissTieBreaks: list<string>, roundRobinTieBreaks: list<string>, groupSize: int, advance: int, groupStage: string, finalStage: string, heatSize: int, heatAdvance: int, lobbyMinutes: int}
      */
     public function toArray(): array
     {
@@ -165,6 +186,7 @@ final readonly class FormatOptions
             'finalStage' => $this->finalStage,
             'heatSize' => $this->heatSize,
             'heatAdvance' => $this->heatAdvance,
+            'lobbyMinutes' => $this->lobbyMinutes,
         ];
     }
 }

@@ -623,6 +623,29 @@ final class RotationKit
     }
 
     /**
+     * The names on place 1 of a finished lobby tournament (P10, `sharedFirst`), across all its lobbies; printable ones
+     * only, none while it runs. A helper, not a view closure (stream views define none).
+     *
+     * @param  array<string, mixed>  $t
+     * @return list<string>
+     */
+    public static function sharedFirst(array $t): array
+    {
+        if (($t['phase'] ?? null) !== 'finished') {
+            return [];
+        }
+
+        $names = [];
+        foreach ((is_array($t['sharedFirst'] ?? null) ? $t['sharedFirst'] : []) as $name) {
+            if (is_string($name) && self::clean($name) !== '') {
+                $names[] = $name;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * "Rated" only when the contract says so; anything else is "Casual".
      *
      * @param  array<string, mixed>  $t
@@ -706,7 +729,8 @@ final class RotationKit
      * $minPitch does not fit, whole rows of boxes are dropped (counted in 'hidden'), and when one box alone is too
      * tall its last rows fold into "+N more". Boxes are as tall as their content, not stretched.
      *
-     * A group title is "Group A" (string keys of one to three characters are used as given, others count A, B, …).
+     * A group title is "Group A" (string keys of one to three characters are used as given, others count A, B, …);
+     * a lobby's (kind 'lobbies', P10) is "Lobby 1", counted.
      * A row with name null is an open spot. Coordinates: 'titleY' and each row's 'y' are text baselines.
      *
      * @param  array<string, mixed>|null  $preview
@@ -714,9 +738,14 @@ final class RotationKit
      */
     public static function previewBoxes(?array $preview, float $x, float $y, float $w, float $h, int $cols, float $gap, float $titleH, float $maxPitch, float $minPitch = 26, float $pad = 12): array
     {
-        $kind = in_array($preview['kind'] ?? null, ['groups', 'bracket'], true) ? $preview['kind'] : null;
+        $kind = in_array($preview['kind'] ?? null, ['groups', 'bracket', 'lobbies'], true) ? $preview['kind'] : null;
         $items = [];
-        if ($kind === 'groups') {
+        if ($kind === 'lobbies') {
+            $i = 0;
+            foreach ((is_array($preview['groups'] ?? null) ? $preview['groups'] : []) as $members) {
+                $items[] = ['title' => 'Lobby '.(++$i), 'rows' => self::slots(is_array($members) ? $members : [])];
+            }
+        } elseif ($kind === 'groups') {
             $i = 0;
             foreach ((is_array($preview['groups'] ?? null) ? $preview['groups'] : []) as $key => $members) {
                 $label = is_string($key) && ! is_numeric($key) && mb_strlen(self::clean($key)) >= 1 && mb_strlen(self::clean($key)) <= 3
@@ -748,7 +777,7 @@ final class RotationKit
         if ($items === []) {
             return $out;
         }
-        $tH = $kind === 'groups' ? $titleH : 0.0;
+        $tH = $kind === 'groups' || $kind === 'lobbies' ? $titleH : 0.0;
         // Pairings: one wide column when every pairing fits at a pitch of $minPitch + 4 (names get the whole width).
         if ($kind === 'bracket' && count($items) * (2 * ($minPitch + 4) + 2 * $pad) + (count($items) - 1) * $gap <= $h) {
             $cols = 1;
@@ -830,7 +859,11 @@ final class RotationKit
             return $p['stageNote'];
         }
 
-        return $p['kind'] === 'bracket' ? 'Round 1 if sign-up closed now' : 'Groups if sign-up closed now';
+        return match ($p['kind']) {
+            'bracket' => 'Round 1 if sign-up closed now',
+            'lobbies' => 'Lobbies if sign-up closed now',
+            default => 'Groups if sign-up closed now',
+        };
     }
 
     /**
@@ -845,7 +878,11 @@ final class RotationKit
             $parts[] = (count($p['byes']) === 1 ? 'Bye for seed ' : 'Byes for seeds ').implode(', ', array_slice($p['byes'], 0, 8)).(count($p['byes']) > 8 ? ', …' : '');
         }
         if ($p['hidden'] > 0) {
-            $parts[] = '+'.$p['hidden'].' more '.($p['kind'] === 'groups' ? ($p['hidden'] === 1 ? 'group' : 'groups') : ($p['hidden'] === 1 ? 'match' : 'matches'));
+            $parts[] = '+'.$p['hidden'].' more '.match ($p['kind']) {
+                'groups' => $p['hidden'] === 1 ? 'group' : 'groups',
+                'lobbies' => $p['hidden'] === 1 ? 'lobby' : 'lobbies',
+                default => $p['hidden'] === 1 ? 'match' : 'matches',
+            };
         }
 
         return $parts === [] ? '' : implode('. ', $parts).'.';
@@ -1087,7 +1124,7 @@ final class RotationKit
     public static function previewFaces(?array $preview, bool $clan = false): array
     {
         $lists = [];
-        if (($preview['kind'] ?? null) === 'groups') {
+        if (in_array($preview['kind'] ?? null, ['groups', 'lobbies'], true)) {
             foreach ((is_array($preview['groups'] ?? null) ? $preview['groups'] : []) as $members) {
                 $lists[] = is_array($members) ? $members : [];
             }
@@ -1218,6 +1255,25 @@ final class RotationKit
 
             return $cup;
         }, $cups)), 0, $limit);
+    }
+
+    /**
+     * The pitch line of d2: with an open lobby cup (P10, Lobbies::pitch() in
+     * the frame's `lobby`) it names the first one's format, "One per region.
+     * Age of Empires II: one 2 h diplomacy lobby, 3 to 8, wins shared.";
+     * else the sign-up call, for one cup game or many.
+     *
+     * @param  list<mixed>  $upcoming  TournamentSlides frames
+     */
+    public static function cupPitch(array $upcoming, int $shown): string
+    {
+        foreach ($upcoming as $t) {
+            if (is_array($t) && ($t['cup'] ?? false) === true && is_string($t['lobby'] ?? null) && $t['lobby'] !== '') {
+                return 'One per region. '.self::text($t, 'game').': '.self::text($t, 'lobby').'.';
+            }
+        }
+
+        return $shown === 1 ? 'Open now, one per region. Sign up on the site.' : 'One per region in every game. Sign up on the site.';
     }
 
     /**
@@ -1574,11 +1630,11 @@ final class RotationKit
      * (rank, face, name, points), `through` marking the places that go on.
      *
      * @param  array<string, mixed>|null  $board
-     * @return array{boxes: list<array{x: float, y: float, w: float, h: float, title: string, titleY: float, rows: list<array{rank: int, name: string, points: string, through: bool, face: array{uri: ?string, tag: ?string, fit: string}, y: float, top: float}>}>, pitch: float, size: float, fd: float, hidden: int}
+     * @return array{boxes: list<array{x: float, y: float, w: float, h: float, title: string, titleY: float, rows: list<array{rank: int|string, name: string, points: string, through: bool, face: array{uri: ?string, tag: ?string, fit: string}, y: float, top: float}>}>, pitch: float, size: float, fd: float, hidden: int}
      */
     public static function groupsLayout(?array $board, float $x, float $y, float $w, float $h, int $cols, float $gap = 16, float $titleH = 30, float $maxPitch = 36, float $minPitch = 24, bool $clan = false): array
     {
-        $groups = ($board['kind'] ?? null) === 'groups' && is_array($board['groups'] ?? null) ? array_values(array_filter($board['groups'], is_array(...))) : [];
+        $groups = in_array($board['kind'] ?? null, ['groups', 'lobbies'], true) && is_array($board['groups'] ?? null) ? array_values(array_filter($board['groups'], is_array(...))) : [];
         $out = ['boxes' => [], 'pitch' => $maxPitch, 'size' => 16.0, 'fd' => 0.0, 'hidden' => 0];
 
         if ($groups === []) {
@@ -1613,7 +1669,8 @@ final class RotationKit
                 $row = is_array($row) ? $row : [];
                 $rowTop = $by + $pad + $titleH + $ri * $pitch;
                 $rows[] = [
-                    'rank' => is_int($row['rank'] ?? null) ? $row['rank'] : $ri + 1,
+                    // A lobby still in play (P10) has no places yet: no number.
+                    'rank' => is_int($row['rank'] ?? null) ? $row['rank'] : (($row['live'] ?? false) === true ? '' : $ri + 1),
                     'name' => self::clean(is_string($row['name'] ?? null) ? $row['name'] : ''),
                     'points' => self::clean(is_string($row['points'] ?? null) ? $row['points'] : ''),
                     'through' => ($row['through'] ?? false) === true,

@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Models\Tournament;
 use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentLanding;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
@@ -224,8 +225,9 @@ class TournamentSlides
             'description' => $description === '' ? null : $description,
             'status' => 'Sign-up open',
             'game' => GameTitle::of($tournament->game),
-            'mode' => $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode,
-            'format' => $tournament->format->label(),
+            // A lobby tournament (P10) has no mode to name (no "1v1"), and its format is the lobby match.
+            'mode' => Lobbies::isLobby($tournament) ? '' : ($this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode),
+            'format' => Lobbies::isLobby($tournament) ? 'One lobby match' : $tournament->format->label(),
             'teamSize' => $tournament->teamSize(),
             'rated' => $tournament->openLadder() !== null,
             'where' => $tournament->on_site ? 'On site' : 'Online',
@@ -238,7 +240,7 @@ class TournamentSlides
             'roster' => $roster,
             'solos' => $solos,
             'openSpots' => $open,
-            'preview' => $this->preview($landing->projection(), $names),
+            'preview' => $this->preview($landing->projection(), $names, Lobbies::isLobby($tournament)),
             // How it runs (TournamentPlaybook), for the places it was set up for; the next-tournament slide (t?7) reads it.
             'howItRuns' => TournamentPlaybook::of($tournament, $places['places'], $timezone),
             'url' => rtrim((string) config('twentyone.stream.scene.url'), '/').'/tournaments/'.$tournament->id,
@@ -249,6 +251,8 @@ class TournamentSlides
             // The feature slides (d1 prize pots, d2 casual cups) read these.
             'pot' => app(PrizePool::class)->shownPotSats($tournament),
             'cup' => $tournament->isCasualCup(),
+            // A lobby tournament's format in a few words (P10, Lobbies::pitch()); d2 names it for a lobby cup. Null otherwise.
+            'lobby' => Lobbies::isLobby($tournament) ? Lobbies::pitch($tournament->game) : null,
             // "EU" / "US" for a casual cup (d2 lists every game's regions), null otherwise.
             'region' => $tournament->isCasualCup() ? CasualCups::regionLabel($tournament) : null,
             // When a casual cup starts on its region's clock: the weekday ("sunday") d2 files it under, and the time.
@@ -319,10 +323,20 @@ class TournamentSlides
      * @param  array<int, string>  $names  seed => public name
      * @return array<string, mixed>|null
      */
-    private function preview(?array $projection, array $names): ?array
+    private function preview(?array $projection, array $names, bool $lobbies = false): ?array
     {
         if ($projection === null) {
             return null;
+        }
+
+        // A lobby tournament (P10): the lobbies the draw would make now, each with its players.
+        if ($lobbies) {
+            return [
+                'kind' => 'lobbies',
+                'groups' => array_map(fn (array $match): array => array_map(fn (array $side): array => $this->side($side, $names), $match['sides']), $projection['matches']),
+                'byes' => [],
+                'stageNote' => 'Lobbies if sign-up closed now',
+            ];
         }
 
         if ($projection['groups'] !== []) {

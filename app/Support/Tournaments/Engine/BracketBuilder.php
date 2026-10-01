@@ -31,7 +31,7 @@ final class BracketBuilder
             TournamentFormat::RoundRobin => RoundRobin::schedule($slots, $options->iterations),
             TournamentFormat::Swiss => count($ordered) < 2 ? [] : Swiss::pairRound(1, $ordered, [], $options->pointsWin, $options->pointsTie, $options->pointsBye),
             TournamentFormat::TwoStage => self::twoStage($ordered, $options, $groups),
-            TournamentFormat::FreeForAll => self::freeForAll($slots, $options->heatSize, $options->heatAdvance),
+            TournamentFormat::FreeForAll => $options->lobbyMinutes > 0 ? self::lobbies($slots, $options->heatSize) : self::freeForAll($slots, $options->heatSize, $options->heatAdvance),
             TournamentFormat::Leaderboard => $slots === [] ? [] : [new BracketMatch('board', 1, null, 'board', 1, 1, $slots)],
         };
 
@@ -212,6 +212,37 @@ final class BracketBuilder
         }
 
         return $groups;
+    }
+
+    /**
+     * Lobbies (P10, App\Support\Tournaments\Lobbies): one round of the
+     * fewest heats of at most `$size`, filled in snake order so they come out
+     * as even as the count allows (9 = 5 + 4, 17 = 6 + 6 + 5). Nobody
+     * advances: each lobby's ranking is the result.
+     *
+     * @param  list<Slot>  $slots
+     * @return list<BracketMatch>
+     */
+    private static function lobbies(array $slots, int $size): array
+    {
+        if ($slots === []) {
+            return [];
+        }
+
+        $count = (int) ceil(count($slots) / $size);
+        $sizes = array_fill(0, $count, intdiv(count($slots), $count));
+
+        for ($i = 0; $i < count($slots) % $count; $i++) {
+            $sizes[$i]++;
+        }
+
+        $matches = [];
+
+        foreach (self::snake(array_keys($slots), array_values($sizes)) as $lobby => $indexes) {
+            $matches[] = new BracketMatch("h1-{$lobby}", 1, null, 'heat', 1, $lobby, array_map(fn (int $index): Slot => $slots[$index], $indexes));
+        }
+
+        return $matches;
     }
 
     /**

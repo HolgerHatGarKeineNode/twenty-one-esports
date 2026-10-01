@@ -52,12 +52,13 @@ final class FormatCopy
                 'pros' => ['Everyone plays at least 2 matches.', 'A second chance feels fair.'],
                 'cons' => ['Takes about twice as long as Single Elimination.', 'Harder to follow for people watching.'],
             ],
+            // Played only as lobbies (P10, Lobbies): Age of Empires II is the one game that runs it.
             TournamentFormat::FreeForAll => [
-                'short' => 'Several players in one match',
-                'how' => 'Several players compete in the same match. The best of each heat move on to the next round.',
-                'good' => 'Games where 3 or more players compete at once, like racing or party games.',
-                'pros' => [],
-                'cons' => [],
+                'short' => 'One lobby match, up to 8 players',
+                'how' => 'Everyone plays one match in a lobby of up to 8, split evenly at the draw. Nobody moves on: the lobby\'s places are the result, and place 1 can be shared.',
+                'good' => 'Games where many players fight in one match, like an Age of Empires II diplomacy game.',
+                'pros' => ['One evening, one match: everyone plays the whole time.', 'An odd number of players is fine: everyone starts alone.'],
+                'cons' => ['One match decides: a bad start is hard to make up.'],
             ],
             TournamentFormat::Leaderboard => [
                 'short' => 'Best score or time wins',

@@ -77,6 +77,13 @@ use Throwable;
  *   league starts every game at its round's start. The switch is the one
  *   new version of the 31923 with the evening's start and end.
  *
+ * - Lobby cups (P10, Lobbies): a lobby game's cup (Age of Empires II) is
+ *   Free for All in one round from the start, with Lobbies::cupCapacity()
+ *   places and no growth. At the close it plays with 3 or more
+ *   (Lobbies::minEntries()); fewer extend sign-up once, then call it off,
+ *   never a small cup's evening. Its one round opens with the draw, its
+ *   window the lobby's set-up, time limit and report time.
+ *
  * Each cup is handled on its own: one that fails is reported and the others
  * go on. Every transition is a conditional update or happens under the
  * tournament's lock, so a second run changes nothing.
@@ -304,6 +311,19 @@ final class CasualCups
         return max(2, (int) config('esports.casual_cups.min_players', 6));
     }
 
+    /**
+     * The entries a cup draws with at its close: a lobby cup's minimum
+     * (P10), 2 at a small cup's evening, else `min_players`.
+     */
+    public static function minEntries(Tournament $cup): int
+    {
+        return match (true) {
+            Lobbies::isLobby($cup) => Lobbies::minEntries($cup->game),
+            self::isEvening($cup) => 2,
+            default => self::minPlayers(),
+        };
+    }
+
     public static function maxDays(): int
     {
         return max(1, (int) config('esports.casual_cups.max_days', 14));
@@ -344,7 +364,8 @@ final class CasualCups
      */
     public static function isEvening(Tournament $cup): bool
     {
-        return $cup->isCasualCup() && $cup->format !== TournamentFormat::DoubleElimination;
+        // A lobby cup (P10) is Free for All from the start and never an evening.
+        return $cup->isCasualCup() && $cup->format !== TournamentFormat::DoubleElimination && ! Lobbies::isLobby($cup);
     }
 
     /**
@@ -515,16 +536,18 @@ final class CasualCups
         $number = (int) Tournament::query()->where('cup_series', $series)->max('cup_number') + 1;
         $closesAt = self::startFor($game, $region, now());
         $profile = GameProfile::for($game, $setup['mode']);
+        // A lobby game's cup (P10) is one lobby match from the start, with all its places.
+        $lobby = Lobbies::isLobbyGame($game);
 
         try {
-            return DB::transaction(function () use ($game, $series, $label, $setup, $number, $closesAt, $profile): Tournament {
+            return DB::transaction(function () use ($game, $series, $label, $setup, $number, $closesAt, $profile, $lobby): Tournament {
                 $cup = Tournament::query()->create([
                     'name' => self::cupName($setup['name'], $label, $number),
                     'game' => $game,
                     'mode' => $setup['mode'],
-                    'format' => TournamentFormat::DoubleElimination,
-                    'options' => FormatOptions::fromArray(['bestOf' => $setup['best_of'], 'finalBestOf' => $setup['final_best_of'], 'grandFinal' => 'single'], $profile)->toArray(),
-                    'capacity' => self::sizes()[0],
+                    'format' => $lobby ? TournamentFormat::FreeForAll : TournamentFormat::DoubleElimination,
+                    'options' => FormatOptions::fromArray($lobby ? Lobbies::options($game) : ['bestOf' => $setup['best_of'], 'finalBestOf' => $setup['final_best_of'], 'grandFinal' => 'single'], $profile)->toArray(),
+                    'capacity' => $lobby ? Lobbies::cupCapacity($game) : self::sizes()[0],
                     'starts_at' => $closesAt,
                     'time_window' => self::maxDays() * ($profile->isDaily() ? 1 : 1440),
                     'on_site' => false,
@@ -580,13 +603,14 @@ final class CasualCups
         }
 
         // Switched already (a draw that could not commit yet is tried again).
-        if ($signedUp >= self::minPlayers() || self::isEvening($cup)) {
+        if ($signedUp >= self::minEntries($cup) || self::isEvening($cup)) {
             $this->draws->close($cup);
 
             return null;
         }
 
-        if ($this->toEvening($cup, $signedUp)) {
+        // A lobby cup (P10) has no small format: too few extend sign-up once, then it is called off.
+        if (! Lobbies::isLobby($cup) && $this->toEvening($cup, $signedUp)) {
             $this->draws->close($cup->refresh());
 
             return 'evenings';
@@ -609,7 +633,7 @@ final class CasualCups
     {
         $next = self::nextSize($cup->capacity);
 
-        if ($next === null || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || self::growthFrozen($cup) || $cup->capacity - $signedUp > 1) {
+        if ($next === null || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || Lobbies::isLobby($cup) || self::growthFrozen($cup) || $cup->capacity - $signedUp > 1) {
             return false;
         }
 
@@ -634,7 +658,7 @@ final class CasualCups
      */
     public function fitCapacity(Tournament $cup): bool
     {
-        if (! $cup->isCasualCup() || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || self::growthFrozen($cup)) {
+        if (! $cup->isCasualCup() || $cup->status !== TournamentStatus::Signup || self::isEvening($cup) || Lobbies::isLobby($cup) || self::growthFrozen($cup)) {
             return false;
         }
 
@@ -997,7 +1021,10 @@ final class CasualCups
 
             $cap = $locked->starts_at->toImmutable()->addDays(self::maxDays());
             $players = $locked->participants()->count();
-            $endsAt = CarbonImmutable::now()->addHours(self::windowHours($players))->min($cap);
+            // A lobby cup's one round (P10) lasts the lobby: set-up, the time limit, then the players' report.
+            $endsAt = Lobbies::isLobby($locked)
+                ? CarbonImmutable::now()->addMinutes(Lobbies::plannedMinutes($locked->game) + max(0, (int) (Lobbies::config($locked->game)['report_minutes'] ?? 60)))
+                : CarbonImmutable::now()->addHours(self::windowHours($players))->min($cap);
 
             if (TournamentRound::query()->whereKey($round->id)->whereNull('window_ends_at')->update(['window_ends_at' => $endsAt]) !== 1) {
                 return false;
@@ -1105,8 +1132,8 @@ final class CasualCups
             return false;
         }
 
-        // A live evening's games start at their round's start (S2).
-        if ($invited || $match->chessGame !== null || $match->boardGame !== null || self::isEvening($match->tournament)) {
+        // A live evening's games start at their round's start (S2); a lobby (P10) is open once its round is.
+        if ($invited || $match->chessGame !== null || $match->boardGame !== null || self::isEvening($match->tournament) || Lobbies::isLobby($match->tournament)) {
             return true;
         }
 

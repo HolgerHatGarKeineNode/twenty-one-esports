@@ -45,6 +45,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             $this->redirectRoute('tournaments.scores', $tournament, navigate: false);
         }
 
+        // A lobby tournament (P10) has places, not winners of two sides: its directors decide each lobby on its card.
+        if (\App\Support\Tournaments\Lobbies::isLobby($tournament)) {
+            $this->redirect(route('tournaments.show', $tournament).'#bracket', navigate: false);
+        }
+
         $this->tournament = $tournament;
     }
 

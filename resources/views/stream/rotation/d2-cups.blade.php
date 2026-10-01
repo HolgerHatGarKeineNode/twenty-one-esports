@@ -8,7 +8,8 @@
     (Age of Empires II, the last slot of the weekend, never showed). Without an open cup the board gives way to one line.
 
     Data contract:
-      $upcoming  list<array>: TournamentSlides::frames() of every upcoming tournament; read are cup (bool), region
+      $upcoming  list<array>: TournamentSlides::frames() of every upcoming tournament; read are cup (bool), lobby (a lobby
+                 cup's format in words, P10: the pitch names it), region
                  ("EU", "US" or null), game, cupDay ("sunday"), cupTime ("20:00"), coverTile and cover (data URI or
                  null; the tile wins), taken, places
       $stats     array: the ticker counts (b-chrome)
@@ -41,7 +42,8 @@
         $columns[] = [...$day, 'label' => K::fit($day['label'], K::DISPLAY, 26, $day['w']), 'rows' => $rows,
             'moreText' => $day['more'] > 0 ? K::fit('and '.$day['more'].' more on the site', K::MONO, 16, $day['w']) : ''];
     }
-    $pitch = $shown === 1 ? 'Open now, one per region. Sign up on the site.' : 'One per region in every game. Sign up on the site.';
+    // A lobby cup (P10, Age of Empires II) is one lobby match, not a bracket: the pitch says so (RotationKit::cupPitch).
+    $pitch = K::cupPitch($upcoming ?? [], $shown);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
@@ -55,7 +57,7 @@
 <text data-unit="cup-slot-{{ $si }}" data-box="700 {{ 114 + $si * 30 }} 1241 {{ 138 + $si * 30 }}" x="1240" y="{{ 132 + $si * 30 }}" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#F7931A" text-anchor="end">{{ K::fit($slot, K::MONO, 20, 520) }}</text>
 @endforeach
 @if ($columns !== [])
-<text data-unit="pitch" data-box="39 182 1240 210" x="40" y="204" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#ADADB0">{{ $pitch }}</text>
+<text data-unit="pitch" data-box="39 182 1240 210" x="40" y="204" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#ADADB0">{{ K::fit($pitch, K::MONO, 22, 1200) }}</text>
 @foreach ($columns as $d => $col)
 <text data-unit="cup-day-{{ $d }}" data-box="{{ $col['x'] - 1 }} 240 {{ $col['x'] + $col['w'] + 1 }} 272" x="{{ $col['x'] }}" y="266" font-family="Unbounded" font-weight="800" font-size="26" fill="#FFFFFF">{{ $col['label'] }}</text>
 <rect x="{{ $col['x'] }}" y="280" width="{{ $col['w'] }}" height="3" fill="#F7931A"/>

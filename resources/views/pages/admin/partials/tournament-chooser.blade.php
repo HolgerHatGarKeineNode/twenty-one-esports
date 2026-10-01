@@ -7,6 +7,7 @@
     use App\Support\Tournaments\FormatCopy;
     use App\Support\Tournaments\FormatOptions;
     use App\Support\Tournaments\GameProfile;
+    use App\Support\Tournaments\Lobbies;
     use App\Support\Tournaments\Preview;
 
     /*
@@ -28,6 +29,10 @@
     $duration = fn (float $value): string => Estimator::format($value, $profile);
     $who = fn (int $count): string => $teams ? trans_choice(':count team|:count teams', $count) : trans_choice(':count player|:count players', $count);
     $gamesCount = fn (int $count): string => trans_choice(':count game|:count games', $count);
+    // A lobby game (P10, Lobbies): its tournaments are one lobby match, Free for All is the only format.
+    $lobbyGame = Lobbies::isLobbyGame($profile->game);
+    $lobbyFormat = $lobbyGame && $format === TournamentFormat::FreeForAll;
+    $lobbySizes = $lobbyGame ? Lobbies::split($profile->game, $n) : [];
 
     // The time axis of the bars: 30 % past the window, ticks every 30 or 60 min (daily: every month).
     $axis = $window * 1.3;
@@ -99,14 +104,18 @@
     $lever = $daily ? __('Allow more time or pick fewer rounds.')
         : ($series ? ($site ? __('Allow more time, add stations or play shorter series.') : __('Allow more time or play shorter series.'))
         : ($site ? __('Allow more time or add boards.') : __('Allow more time.')));
-    $recommendedWhy = $recommended === null ? '' : ($evaluation->nothingFits
+    $recommendedWhy = $recommended === null ? '' : ($lobbyGame
+        // A lobby game (P10): one match for everyone, no final, nobody to find; the time is the lobby's.
+        ? __('One lobby match for everyone, all lobbies at the same time: up to :limit of play with its Time Limit, about :duration with filling the lobby. No final, no opponent to find.', ['limit' => \App\Support\Pages\RulesPage::minutes(Lobbies::timeLimit($profile->game)), 'duration' => $duration($recommended->total())])
+            .($evaluation->nothingFits ? ' '.__('Allow at least :duration.', ['duration' => $duration($recommended->total())]) : '')
+        : ($evaluation->nothingFits
         ? __('Nothing fits into :window. This is the shortest: :duration.', ['window' => $duration($window), 'duration' => $duration($recommended->total())]).' '.$lever
         : ($profile->isSeries() && $recommended->format->hasFinal()
             // Series games recommend a format with a final first (user, 2026-09-26, for Rocket League), so the reason names it.
             ? ($teams
                 ? __('Ends with a final; every team plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])
                 : __('Ends with a final; every player plays at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))
-            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)])));
+            : __('Everyone gets at least :games, and it takes about :duration of your :window.', ['games' => $gamesCount($recommended->guaranteed()), 'duration' => $duration($recommended->total()), 'window' => $duration($window)]))));
 
     $chosen = $evaluation->row($format);
     $structure = $chosen->structure;
@@ -120,6 +129,7 @@
         TournamentFormat::RoundRobin => __('Everyone plays :games games.', ['games' => $structure?->guaranteed ?? 0]).($chosen->atOnce > 0 ? ' '.__('In daily chess all of them start at once: :count games running at the same time for each player.', ['count' => $chosen->atOnce]) : ''),
         TournamentFormat::TwoStage => __('Everyone plays at least :games games in the groups. The top :advance of each group play on.', ['games' => $structure?->guaranteed ?? 0, 'advance' => $structure?->advance ?? 0]),
         TournamentFormat::SingleElimination => __('The weakest may play only 1 match. The winner plays :rounds.', ['rounds' => $structure?->max ?? 0]).(($structure?->byes ?? 0) > 0 ? ' '.__(':byes of :n skip round 1 (bye), because :n does not fill the bracket.', ['byes' => $structure?->byes, 'n' => $n]) : ''),
+        TournamentFormat::FreeForAll => __('Everyone plays exactly 1 match: their lobby\'s game.'),
         default => ($structure?->guaranteed ?? 2) < 2
             ? __('The lowest seeds may play only 1 match, everyone else at least 2. The winner plays up to :max.', ['max' => $structure?->max ?? 0])
             : __('Everyone plays at least 2 matches. The winner plays up to :max.', ['max' => $structure?->max ?? 0]),
@@ -142,6 +152,7 @@
         TournamentFormat::RoundRobin => __(':who. One square per match, lit in the round it is played.', ['who' => $who($n)]),
         TournamentFormat::TwoStage => __(':who, :groups groups of :sizes, then :finalists in the final stage.', ['who' => $who($n), 'groups' => count($structure?->groups ?? []), 'sizes' => implode(', ', $structure?->groups ?? []), 'finalists' => $structure?->finalists ?? 0]),
         TournamentFormat::SingleElimination => ($structure?->byes ?? 0) > 0 ? __(':who, :byes dashed boxes are byes.', ['who' => $who($n), 'byes' => $structure?->byes]) : $who($n).'.',
+        TournamentFormat::FreeForAll => trans_choice(':who in :count lobby: :sizes.|:who in :count lobbies: :sizes.', count($lobbySizes), ['who' => $who($n), 'sizes' => implode(' + ', $lobbySizes)]),
         default => __(':who, upper and lower bracket.', ['who' => $who($n)]),
     };
 
@@ -149,11 +160,13 @@
     $previewMobile = Preview::for($format, $n, $options->withSwissRounds($rounds), 326, 196);
     $previewKey = md5(json_encode([$format->value, $n, $options->toArray(), $rounds]));
 
-    $assumption = $daily
+    $assumption = $lobbyFormat
+        ? __('One lobby game runs to its Time Limit of :limit, plus :setup min to fill the lobby. All lobbies play at the same time.', ['limit' => \App\Support\Pages\RulesPage::minutes(Lobbies::timeLimit($profile->game)), 'setup' => Lobbies::plannedMinutes($profile->game) - Lobbies::timeLimit($profile->game)])
+        : ($daily
         ? __('A daily chess game is planned at :days days, 1 move a day. :break day between rounds.', ['days' => $profile->gameLength + 0, 'break' => $profile->break + 0])
         : ($series
             ? __('One :game game: about :minutes min, plus :setup min to set up each series. A Bo:best series is planned at :slot min (all games played). :break min between rounds.', ['game' => GameNames::game($profile->game), 'minutes' => $profile->gameLength + 0, 'setup' => $profile->setup + 0, 'best' => $options->bestOf, 'slot' => $profile->slot($options->bestOf) + 0, 'break' => $profile->break + 0])
-            : __('One Blitz 5+3 game: up to :minutes min, including pairing. :break min between rounds.', ['minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0]));
+            : __('One Blitz 5+3 game: up to :minutes min, including pairing. :break min between rounds.', ['minutes' => $profile->gameLength + 0, 'break' => $profile->break + 0])));
 
     $tieBreakLabels = [
         'median-buchholz' => __('Buchholz, median'),
@@ -285,6 +298,9 @@
                         <span class="text-right leading-tight">{{ __('Min. games') }}</span>
                     </div>
 
+                    @if ($lobbyGame)
+                        <p class="m-0 rounded-md bg-btc-chip px-3 py-2.5 text-xs leading-normal text-ink shadow-[inset_0_0_0_1px_var(--color-btc)]" data-test="lobby-only">{{ __(':game tournaments are one lobby match: every player plays one game in a lobby of up to :max, the lobbies split evenly; nobody moves on. It is the only format for this game.', ['game' => GameNames::game($profile->game), 'max' => Lobbies::maxPlayers($profile->game)]) }}</p>
+                    @endif
                     @foreach ($rows as $entry)
                         @php($row = $entry['row'])
                         @if (! $row->enabled)
@@ -475,7 +491,14 @@
                         </div>
                     @endif
 
-                    @if ($series)
+                    @if ($lobbyFormat)
+                        <div class="flex flex-col gap-2 border-t border-hairline py-3" data-test="lobby-options">
+                            <span class="text-[13px] font-bold">{{ __('Lobbies') }}</span>
+                            <span class="{{ $help }}">{{ __('Set by the league, not here: lobbies of up to :max, split evenly at the draw, one diplomacy game each. The map size follows each lobby\'s players: :sizes.', ['max' => Lobbies::maxPlayers($profile->game), 'sizes' => Lobbies::mapSizesLine($profile->game)]) }}</span>
+                        </div>
+                    @endif
+
+                    @if ($series && ! $lobbyFormat)
                         <div class="{{ $optionRow }}">
                             <span class="flex flex-col items-start gap-2">
                                 <span id="bo-l" class="text-[13px] font-bold">{{ __('Series length') }}</span>

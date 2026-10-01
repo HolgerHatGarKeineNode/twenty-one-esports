@@ -31,7 +31,9 @@
                 ]) }}
             @endif
         </p>
-        <span class="text-xs leading-normal text-ink-2" data-test="duration-range-detail">{{ __('Planned play :planned, online about :typical with finding the opponent and reporting, at most :latest. The end stays open for the players.', [
+        <span class="text-xs leading-normal text-ink-2" data-test="duration-range-detail">{{ \App\Support\Tournaments\Lobbies::isLobbyGame($rangeProfile->game)
+            ? __('Every lobby plays at the same time, :planned with filling the lobby and the Time Limit. The end stays open for the players.', ['planned' => Estimator::format($range->planned, $rangeProfile)])
+            : __('Planned play :planned, online about :typical with finding the opponent and reporting, at most :latest. The end stays open for the players.', [
             'planned' => Estimator::format($range->planned, $rangeProfile), 'typical' => Estimator::format($range->typical, $rangeProfile), 'latest' => Estimator::format($range->latest, $rangeProfile),
         ]) }}</span>
         @foreach ($expected['warnings'] as $warning)

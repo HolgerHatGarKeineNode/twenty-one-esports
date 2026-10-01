@@ -12,6 +12,7 @@ use App\Support\Tournaments\DurationRange;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
 use App\Support\Tournaments\GameProfile;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentDeadlines;
 use Carbon\CarbonImmutable;
 use Database\Factories\TournamentFactory;
@@ -478,7 +479,12 @@ class Tournament extends Model
 
     public function formatOptions(): FormatOptions
     {
-        return FormatOptions::fromArray($this->options, $this->profile());
+        // Drawn (P10): the options it was drawn with hold, never the lobby game's current ones.
+        // Asked only for a lobby game's tournament: every other one reads its stored options either way.
+        $drawn = Lobbies::isLobbyGame($this->game) && in_array($this->status, [TournamentStatus::Running, TournamentStatus::Finished, TournamentStatus::Cancelled], true)
+            && $this->matches()->exists();
+
+        return FormatOptions::fromArray($this->options, $this->profile(), ! $drawn);
     }
 
     /**

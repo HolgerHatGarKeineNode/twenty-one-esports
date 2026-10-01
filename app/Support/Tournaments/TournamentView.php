@@ -202,9 +202,16 @@ final class TournamentView
             $index = $slot->slot;
             $score = null;
 
+            $rank = isset($result['ranks'][$index]) && ! in_array($slot->tournament_participant_id, (array) ($result['unplaced'] ?? []), true) ? (int) $result['ranks'][$index] : null;
+
             if ($result !== null && $match->bracket !== 'bye') {
                 $won = $result['games_won'][$index] ?? null;
                 $score = $chess ? (($result['double_loss'] ?? false) ? '0' : ($winner === null ? '½' : ($winner === $index ? '1' : '0'))) : ($won === null ? null : self::number((float) $won));
+            }
+
+            // A heat or a lobby (P10) shows each side's place; a shared place 1 is won by all who hold it.
+            if ($result !== null && isset($result['ranks']) && $match->bracket === 'heat') {
+                $score = $rank === null ? '–' : '#'.$rank;
             }
 
             $sides[] = [
@@ -214,7 +221,7 @@ final class TournamentView
                 'clan' => $participant?->lineup?->clan,
                 'mix' => $participant?->isMixTeam() ?? false,
                 'score' => $score,
-                'won' => $result !== null && $winner === $index,
+                'won' => $result !== null && (isset($result['ranks']) && $match->bracket === 'heat' ? $rank === 1 : $winner === $index),
             ];
         }
 
@@ -223,7 +230,8 @@ final class TournamentView
             'bracket' => $match->bracket,
             'status' => $match->status,
             'sides' => $sides,
-            'label' => $result['label'] ?? null,
+            // A lobby's result (P10) is worded in the viewer's language, not the one it was entered in.
+            'label' => $match->lobby !== null && is_array($result) ? LobbyResults::describe($result) : ($result['label'] ?? null),
             'number' => $match->seriesMatch !== null ? $match->seriesMatch->number : $match->chessGame?->number,
             'href' => $match->seriesMatch !== null
                 ? route('matches.show', $match->seriesMatch)

@@ -28,7 +28,7 @@
 <use href="#mark-dark" xlink:href="#mark-dark" x="40" y="48" width="64" height="64"/>
 <text x="124" y="92" font-family="Unbounded" font-weight="800" font-size="32" fill="#17120A">Join in three steps</text>
 {{-- COPY-CHECK: step 2 per copy-check.md (c): Google or Nostr (extension or remote signer), "No password to remember." (login.blade.php:26). --}}
-{{-- COPY-CHECK: step 3: chess plays on the site; the casual 1v1 (queue or invite, with a ready check) runs Rocket League, both EA Sports FC editions and Age of Empires II (config/esports.php 'casual' => games). The board games stay out: they are behind their own switch and this scene does not know it. --}}
+{{-- COPY-CHECK: step 3: chess plays on the site; the casual 1v1 (queue or invite, with a ready check) runs Rocket League, both EA Sports FC editions and Age of Empires II (config/esports.php 'casual' => games); the AoE2 queue stays a casual 1v1 even though its tournaments are one lobby match (P10, user decision 2026-10-01). The board games stay out: they are behind their own switch and this scene does not know it. --}}
 @foreach ($steps as $i => [$num, $title, $lines])
 @php($sx = 40 + $i * 413)
 <text x="{{ $sx }}" y="376" font-family="Unbounded" font-weight="800" font-size="200" fill="#17120A">{{ $num }}</text>

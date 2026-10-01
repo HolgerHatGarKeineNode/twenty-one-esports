@@ -38,6 +38,7 @@ use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use swentel\nostr\Event\Event;
 use swentel\nostr\Sign\Sign;
 
@@ -342,6 +343,33 @@ Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
 })->purpose('Move tournaments on and apply their due deadlines');
 
 Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
+ * Livewire's temporary uploads (livewire-tmp) older than a day (re-audit P10,
+ * L2): Livewire deletes them only when a later upload finishes, so a file
+ * nobody followed up would stay. Local disk only; S3 has its own lifecycle
+ * rule (livewire:configure-s3-upload-cleanup).
+ */
+Artisan::command('uploads:prune-tmp', function () {
+    if (FileUploadConfiguration::isUsingS3()) {
+        return;
+    }
+
+    $storage = FileUploadConfiguration::storage();
+    $before = now()->subDay()->getTimestamp();
+    $deleted = 0;
+
+    foreach ($storage->allFiles(FileUploadConfiguration::path()) as $file) {
+        if ($storage->exists($file) && $storage->lastModified($file) < $before) {
+            $storage->delete($file);
+            $deleted++;
+        }
+    }
+
+    $this->info("Deleted {$deleted} temporary upload(s) older than a day.");
+})->purpose('Delete temporary Livewire uploads older than a day');
+
+Schedule::command('uploads:prune-tmp')->hourly()->withoutOverlapping()->onOneServer();
 
 /*
  * Score games (plan "AoE2 und Trackmania", P4, ScoreLeaderboards::tick()): the

@@ -5,6 +5,7 @@
       places that go through with an $accent rank;
     - kind 'table': the table on the left (rank, face, name, record W-D-L, points) and the current round's pairings on
       the right;
+    - kind 'lobbies' (P10): as groups, one box per lobby, its players by place once decided;
     - anything else (heats, no stage yet): the line that the bracket comes with the first match.
     Style per look as partials/t-bracket ($panel, $rule, $accent, $nameFill, $muted, $chipInk, $bShape, $bId), plus
     $clanSeats (a team tournament's faces are clans).
@@ -14,7 +15,7 @@
     $kind = is_array($board ?? null) ? ($board['kind'] ?? null) : null;
     $clan = $clanSeats ?? false;
     $L = $kind === 'bracket' ? K::bracketLayout($board, $bx, $by, $bw, $bh - 26, 30, 40, 28, 32, $clan) : null;
-    $G = $kind === 'groups' ? K::groupsLayout($board, $bx, $by, $bw, $bh - 26, $groupCols ?? 4, 16, 30, 36, 24, $clan) : null;
+    $G = $kind === 'groups' || $kind === 'lobbies' ? K::groupsLayout($board, $bx, $by, $bw, $bh - 26, $groupCols ?? 4, 16, 30, 36, 24, $clan) : null;
     $tableW = round($bw * 0.58);
     $rowPitch = 38;
     $rows = $kind === 'table' ? K::tableRows($board, $by + 34, $rowPitch, 28, 18, max(1, min(8, (int) floor(($bh - 60) / $rowPitch))), $clan) : [];
@@ -44,7 +45,7 @@
 <text data-unit="g-{{ $gi }}-pts-{{ $ri }}" x="{{ $g['x'] + $g['w'] - 10 }}" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $G['size'] }}" fill="{{ $nameFill }}" text-anchor="end">{{ $r['points'] }}</text>
 @endforeach
 @endforeach
-@if ($G['hidden'] > 0)<text data-unit="board-note" x="{{ $bx }}" y="{{ $by + $bh - 4 }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $muted }}">+{{ $G['hidden'] }} more {{ $G['hidden'] === 1 ? 'group' : 'groups' }}</text>@endif
+@if ($G['hidden'] > 0)<text data-unit="board-note" x="{{ $bx }}" y="{{ $by + $bh - 4 }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $muted }}">+{{ $G['hidden'] }} more {{ $kind === 'lobbies' ? ($G['hidden'] === 1 ? 'lobby' : 'lobbies') : ($G['hidden'] === 1 ? 'group' : 'groups') }}</text>@endif
 @elseif ($rows !== [])
 <text data-unit="t-head" x="{{ $bx }}" y="{{ $by + 18 }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $muted }}">Table</text>
 <text data-unit="t-head-rec" data-box="{{ $bx + $tableW - 134 }} {{ $by }} {{ $bx + $tableW - 72 }} {{ $by + 24 }}" x="{{ $bx + $tableW - 76 }}" y="{{ $by + 18 }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $muted }}" text-anchor="end">W-D-L</text>

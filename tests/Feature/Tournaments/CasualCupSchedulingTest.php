@@ -183,7 +183,7 @@ test('nobody checked in: not replayed, the cup rule decides (the proposer tried 
         ->and($match->result['winner'])->toBe(1);
 });
 
-test('Rocket League, EA Sports FC and Age of Empires II cups open with their own series lengths, in each region', function (string $game, string $name, int $bestOf, int $finalBestOf, string $region = 'eu') {
+test('Rocket League and EA Sports FC cups open with their own series lengths, in each region', function (string $game, string $name, int $bestOf, int $finalBestOf, string $region = 'eu') {
     $cup = app(CasualCups::class)->ensure($game, $region);
 
     expect($cup->name)->toBe("{$name} Casual Cup ".strtoupper($region).' #1')
@@ -195,9 +195,19 @@ test('Rocket League, EA Sports FC and Age of Empires II cups open with their own
     ['rocket-league', 'Rocket League', 3, 3],
     ['ea-sports-fc-26', 'EA FC 26', 1, 3],
     ['ea-sports-fc-27', 'EA FC 27', 1, 3],
-    ['age-of-empires-2', 'AoE2', 1, 3, 'eu'],
-    ['age-of-empires-2', 'AoE2', 1, 3, 'us'],
+    ['rocket-league', 'Rocket League', 3, 3, 'us'],
 ]);
+
+test('Age of Empires II cups open as one lobby match with all their places, in each region', function (string $region) {
+    $cup = app(CasualCups::class)->ensure('age-of-empires-2', $region);
+
+    expect($cup->name)->toBe('AoE2 Casual Cup '.strtoupper($region).' #1')
+        ->and($cup->mode)->toBe('1v1')
+        ->and($cup->format)->toBe(TournamentFormat::FreeForAll)
+        ->and($cup->capacity)->toBe(40)
+        ->and($cup->formatOptions()->heatSize)->toBe(8)
+        ->and($cup->formatOptions()->lobbyMinutes)->toBe(135);
+})->with(['eu', 'us']);
 
 test('the cup card lets one player propose times and the other accept one', function () {
     [$cup, $match, $a, $b] = rlCupMatch();

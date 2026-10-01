@@ -69,7 +69,7 @@
 <text data-unit="title" data-box="223 106 817 144" x="224" y="136" font-family="{{ $title['font'] }}" font-weight="800" font-size="28" fill="#FFFFFF">{{ $title['text'] }}</text>
 <text data-unit="sub" x="224" y="170" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $sub }}</text>
 @if ($p['boxes'] === [])
-<text data-unit="no-preview" x="40" y="250" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">The bracket takes shape as players sign up.</text>
+<text data-unit="no-preview" x="40" y="250" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ ($t['lobby'] ?? null) !== null ? 'The lobbies take shape as players sign up.' : 'The bracket takes shape as players sign up.' }}</text>
 @else
 @include('stream.rotation.partials.t-preview', ['p' => $p, 'faces' => $faces, 'panel' => '#121215', 'rule' => '#2A2A30', 'titleFill' => '#F7931A', 'nameFill' => '#FFFFFF', 'openFill' => '#8B8B90', 'ring' => '#F7931A', 'pvId' => 'g'])
 @endif

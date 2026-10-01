@@ -93,7 +93,11 @@ final class TournamentTv
 
                     $part['rows'] = array_map(fn (array $row): array => $row + ['participant' => $this->byName($row['name'])], $part['rows']);
                 } else {
-                    $part['heats'] = array_map(fn (array $box): array => $this->enrich($box, __('Heat')), $part['heats']);
+                    // A lobby tournament's heats are its lobbies (P10): "Lobby 2", from the match key `h1-2`.
+                    $lobbies = Lobbies::isLobby($this->tournament);
+                    $part['heats'] = array_map(fn (array $box): array => $this->enrich($box, $lobbies
+                        ? __('Lobby :number', ['number' => (int) substr((string) strrchr((string) $box['key'], '-'), 1)])
+                        : __('Heat')), $part['heats']);
                 }
             }
         }

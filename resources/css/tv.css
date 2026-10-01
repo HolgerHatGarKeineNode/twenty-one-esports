@@ -633,6 +633,132 @@
     animation: tv-in-right 600ms var(--tv-ease) 200ms both;
 }
 
+/* ---------- Lobbies (P10): up to 8 players in one game, never a duel ---------------------------------------- */
+
+.tv-rooms {
+    position: relative;
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(var(--lobby-cols), minmax(0, 1fr));
+    grid-template-rows: repeat(var(--lobby-rows), minmax(0, 1fr));
+    gap: calc(var(--u) * 1.5);
+    min-height: 0;
+}
+
+.tv-room {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 0.75);
+    min-width: 0;
+    min-height: 0;
+    padding: calc(var(--u) * 1) calc(var(--u) * 1.25);
+    overflow: hidden;
+    border-radius: calc(var(--u) * 0.6);
+    background: var(--tv-panel);
+    box-shadow: inset 0 0 0 max(1px, calc(var(--u) * 0.08)) var(--tv-line);
+}
+
+.tv-room.is-live {
+    box-shadow: inset 0 0 0 calc(var(--u) * 0.12) var(--tv-btc);
+}
+
+.tv-room-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--u) * 0.75);
+    margin: 0;
+    font-family: var(--tv-display);
+    font-size: calc(var(--u) * 1.5);
+    font-weight: 700;
+}
+
+.tv-room-count {
+    color: var(--tv-ink-2);
+    font-family: var(--tv-mono);
+    font-size: calc(var(--u) * 1.25);
+    font-weight: 400;
+}
+
+.tv-room-players {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(var(--player-cols), minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    gap: calc(var(--u) * 0.5) calc(var(--u) * 1);
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tv-room-player {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: calc(var(--u) * 0.75);
+    min-width: 0;
+    min-height: 0;
+}
+
+.tv-room-player .tv-face {
+    --face: inherit;
+}
+
+.tv-room-name {
+    display: block;
+    overflow: hidden;
+    font-family: var(--tv-display);
+    font-size: clamp(calc(var(--u) * 1.25), calc(100cqi / (var(--chars) * 0.8)), calc(var(--u) * var(--name-max)));
+    font-weight: 800;
+    line-height: 1.1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.tv-room-player.is-won .tv-room-name {
+    color: var(--tv-btc-hi);
+}
+
+.tv-room-place {
+    padding: 0 calc(var(--u) * 0.5);
+    border-radius: calc(var(--u) * 0.2);
+    background: var(--tv-raised);
+    font-weight: 700;
+}
+
+/* Three lobbies and more: narrower panels, a smaller head, one player a line. */
+.tv-rooms.is-compact {
+    gap: calc(var(--u) * 1);
+}
+
+.tv-rooms.is-compact .tv-room {
+    gap: calc(var(--u) * 0.5);
+    padding: calc(var(--u) * 0.75) calc(var(--u) * 0.9);
+}
+
+.tv-rooms.is-compact .tv-room-head {
+    gap: calc(var(--u) * 0.5);
+    font-size: calc(var(--u) * 1.25);
+}
+
+.tv-rooms.is-compact .tv-room-count {
+    font-size: calc(var(--u) * 1);
+}
+
+.tv-rooms.is-compact .tv-room-players {
+    gap: calc(var(--u) * 0.25);
+}
+
+.tv-rooms.is-compact .tv-room-player {
+    gap: calc(var(--u) * 0.5);
+}
+
+.tv-room-player.is-won .tv-room-place {
+    background: var(--tv-btc);
+    color: var(--tv-on-btc);
+}
+
 /* ---------- Standings --------------------------------------------------------------------------------------- */
 
 .tv-tables {

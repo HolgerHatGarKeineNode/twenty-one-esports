@@ -54,7 +54,7 @@
 @include('stream.rotation.partials.defs')
 <rect width="1280" height="720" fill="#0A0A0B"/>
 @include('stream.rotation.partials.backdrop', ['uri' => $backdrop ?? ($t['backdrop'] ?? null), 'bdDim' => 0.76])
-@include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => 'bracket preview'])
+@include('stream.rotation.partials.c-chrome', ['stats' => $stats ?? [], 'section' => ($t['lobby'] ?? null) !== null ? 'lobby preview' : 'bracket preview'])
 
 <g data-unit="cover" data-box="38 86 298 234">
 <rect x="39" y="87" width="258" height="146" fill="#16161A" stroke="#F7931A" stroke-width="2"/>
@@ -73,7 +73,7 @@
 @if ($meta !== '')<text data-unit="meta" data-box="319 {{ $metaY - 16 }} 761 {{ $metaY + 5 }}" x="320" y="{{ $metaY }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0">{{ $meta }}</text>@endif
 <text data-unit="sub" data-box="319 {{ $metaY + 12 }} 761 {{ $metaY + 33 }}" x="320" y="{{ $metaY + 28 }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#F7931A">{{ $sub }}</text>
 @if ($p['boxes'] === [])
-<text data-unit="no-preview" x="40" y="290" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">The bracket takes shape as players sign up.</text>
+<text data-unit="no-preview" x="40" y="290" font-family="JetBrains Mono" font-weight="700" font-size="20" fill="#FFFFFF">{{ ($t['lobby'] ?? null) !== null ? 'The lobbies take shape as players sign up.' : 'The bracket takes shape as players sign up.' }}</text>
 @else
 @include('stream.rotation.partials.t-preview', ['p' => $p, 'faces' => $faces, 'panel' => '#0A0A0B', 'rule' => '#2A2A30', 'titleFill' => '#F7931A', 'nameFill' => '#FFFFFF', 'openFill' => '#A1A1A7', 'ring' => '#F7931A', 'pvShape' => 'square', 'pvId' => 'g'])
 @endif

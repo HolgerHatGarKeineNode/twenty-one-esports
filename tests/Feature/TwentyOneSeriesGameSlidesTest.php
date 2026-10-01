@@ -121,11 +121,13 @@ test('the casual cups board gives every open cup game its row under its weekday,
 
     expect(substr_count($svg, 'data-unit="cup-game-'))->toBe(7)
         ->and($text)->toContain('Friday', 'Saturday', 'Sunday', 'EA Sports FC 26', 'Rocket League', "Nine Men's Morris", 'Age of Empires II', 'EU · 0 / 4 signed up', 'US · 0 / 4 signed up')
+        // The Age of Empires II cups are one lobby match with all their places (P10), and the pitch says so.
+        ->and($text)->toContain('One per region. Age of Empires II: one 2 h diplomacy lobby, 3 to 8, wins shared.', 'EU · 0 / 40 signed up')
         // Sunday: Checkers in the afternoon, then Age of Empires II at its evening slot, on each region's clock.
         ->and(strpos($text, 'Sunday'))->toBeLessThan(strpos($text, 'Checkers'))
-        ->and(strpos($text, 'Checkers'))->toBeLessThan(strpos($text, 'Age of Empires II'))
+        ->and(strpos($text, 'Checkers'))->toBeLessThan(strrpos($text, 'Age of Empires II'))
         ->and(substr($text, strpos($text, 'Checkers') - 8, 5))->toBe('15:00')
-        ->and(substr($text, strpos($text, 'Age of Empires II') - 8, 5))->toBe('20:00')
+        ->and(substr($text, strrpos($text, 'Age of Empires II') - 8, 5))->toBe('20:00')
         ->and($text)->not->toContain('Definitive');
 });
 
@@ -178,9 +180,10 @@ test('the spotlight slide shows the newest series game, how it is played here an
 
     expect(RotationPlanner::TEASERS)->toContain('d6')
         ->and(RotationPlanner::FEATURE_SCENES)->toContain('d6')
-        ->and($data['spotlight'])->toMatchArray(['slug' => 'age-of-empires-2', 'name' => 'Age of Empires II', 'claim' => 'Best of 1 or 3. Every game has a winner.'])
+        // Its tournaments and cups are one lobby match (P10): the claim sells that, not a best of.
+        ->and($data['spotlight'])->toMatchArray(['slug' => 'age-of-empires-2', 'name' => 'Age of Empires II', 'claim' => 'Lobbies of 3 to 8. Diplomacy, 2 h, shared wins.'])
         ->and(array_column($data['spotlight']['facts'], 'label'))->toBe(['Casual 1v1', 'Lobby', 'Cups', 'Ladder'])
-        ->and(array_column($data['spotlight']['facts'], 'line'))->toContain('Sundays at 20:00 local time, EU and US.', '1v1 for you, 2v2 and 3v3 for your clan.')
+        ->and(array_column($data['spotlight']['facts'], 'line'))->toContain('Sundays at 20:00 local time, EU and US: one lobby match.', '1v1 for you, 2v2 and 3v3 for your clan.')
         ->and($data['spotlight']['leader'])->toMatchArray(['name' => 'Saladin <b>', 'elo' => 1210, 'ladder' => '1v1 casual ladder'])
         // Its leader comes out of the stats the stream already read: the slide costs no query of its own.
         ->and($sceneQueries)->toBe(0)

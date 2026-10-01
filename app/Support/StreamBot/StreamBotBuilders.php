@@ -19,6 +19,7 @@ use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\Ratings;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentLanding;
 use Carbon\CarbonImmutable;
@@ -166,7 +167,7 @@ final class StreamBotBuilders
 
             $messages[] = $this->message('tournament_signup', 'tournament-signup:'.$tournament->id, [
                 'name' => $name,
-                'game' => $this->gameLine($tournament->game, $tournament->mode),
+                'game' => Lobbies::isLobby($tournament) ? $this->games->name($tournament->game).', one lobby match' : $this->gameLine($tournament->game, $tournament->mode),
                 'starts' => $this->berlin($tournament->starts_at),
                 'spots' => $places['taken'].' of '.$places['places'].' spots taken',
                 'pot' => $pot === null ? '' : ' · 💰 '.number_format($pot).' sats in the pot',
@@ -204,7 +205,7 @@ final class StreamBotBuilders
                 'name' => $name,
                 'left' => $this->duration($closes->getTimestamp() - $now->getTimestamp()),
                 'open' => $open.' '.($open === 1 ? 'spot' : 'spots'),
-                'game' => $this->gameLine($tournament->game, $tournament->mode),
+                'game' => Lobbies::isLobby($tournament) ? $this->games->name($tournament->game).', one lobby match' : $this->gameLine($tournament->game, $tournament->mode),
                 'url' => route('tournaments.signup', $tournament),
             ]);
         }

@@ -100,6 +100,13 @@ final class CasualCupNotices
             ->where('bracket', '!=', 'bye')->with('slots.participant')->get();
 
         foreach ($matches as $match) {
+            // A lobby (P10): every player of it hears the lobby's name; the password is on the cup page only.
+            if ($match->lobby !== null) {
+                $this->lobbyOpened($cup, $match);
+
+                continue;
+            }
+
             foreach ($match->slots as $slot) {
                 $opponent = $match->slots->firstWhere('slot', 1 - $slot->slot)?->participant;
                 $player = User::query()->find($slot->participant?->memberIds()[0] ?? 0);
@@ -119,6 +126,31 @@ final class CasualCupNotices
 
                 $this->send($player, $cup, __(':tournament: your match is open', ['tournament' => $cup->name], $locale), $body, $locale);
             }
+        }
+    }
+
+    /**
+     * A lobby of a lobby cup opened (P10): its name and when the players
+     * report, to every player in it.
+     */
+    private function lobbyOpened(Tournament $cup, TournamentMatch $match): void
+    {
+        $reportBy = isset($match->lobby['report_by']) ? CarbonImmutable::parse((string) $match->lobby['report_by']) : null;
+
+        foreach ($match->slots as $slot) {
+            $player = User::query()->find($slot->participant?->memberIds()[0] ?? 0);
+
+            if ($player === null) {
+                continue;
+            }
+
+            $locale = $this->locale($player);
+            $body = __('Join lobby :name in the game now; its password is on the cup page. Report the places with a screenshot of the end screen by :deadline.', [
+                'name' => (string) ($match->lobby['name'] ?? ''),
+                'deadline' => $reportBy === null ? '' : $this->time($reportBy, $player, $cup),
+            ], $locale);
+
+            $this->send($player, $cup, __(':tournament: your lobby is open', ['tournament' => $cup->name], $locale), $body, $locale);
         }
     }
 

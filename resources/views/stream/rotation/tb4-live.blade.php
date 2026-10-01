@@ -20,7 +20,10 @@
     $right = implode(', ', array_filter([$standing, $progress]));
     $rightW = K::width($right, K::MONO, 18);
     $title = K::name(K::text($t, 'name'), 'Tournament', 30, 1160 - $rightW - 32);
-    $note = K::text($t, 'status', 'Live now').', '.($finished ? ($kind === 'bracket' ? 'final bracket' : 'final standings') : mb_strtolower(K::text($t, 'now', K::text($t, 'format'))));
+    $firsts = K::sharedFirst($t);
+    $note = K::text($t, 'status', 'Live now').', '.($finished ? match ($kind) { 'bracket' => 'final bracket', 'lobbies' => 'final places', default => 'final standings' } : mb_strtolower(K::text($t, 'now', K::text($t, 'format'))));
+    // A finished lobby tournament (P10): its place 1 across all lobbies, under the board.
+    $firstLine = $firsts === [] ? '' : K::fit((count($firsts) > 1 ? 'Shared 1st place: ' : '1st place: ').implode(', ', $firsts), K::MONO, 18, 1200);
     $groupCols = 4;
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
@@ -32,6 +35,7 @@
 <text data-unit="title" data-box="39 104 {{ 1200 - $rightW - 31 }} 146" x="40" y="136" font-family="{{ $title['font'] }}" font-weight="800" font-size="30" fill="#FFFFFF">{{ $title['text'] }}</text>
 @if ($right !== '')<text data-unit="progress" x="1240" y="134" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A" text-anchor="end">{{ $right }}</text>@endif
 <rect x="40" y="152" width="1200" height="2" fill="#F7931A"/>
+@if ($firstLine !== '')<text data-unit="first-line" data-box="39 652 1241 680" x="40" y="674" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ $firstLine }}</text>@endif
 
 @include('stream.rotation.partials.t-board', ['board' => $t['board'] ?? null, 'bx' => 40, 'by' => 172, 'bw' => 1200, 'bh' => 478, 'groupCols' => $groupCols, 'clanSeats' => $clanSeats,
     'panel' => '#121215', 'rule' => '#2A2A30', 'accent' => '#F7931A', 'nameFill' => '#FFFFFF', 'muted' => '#8B8B90', 'chipInk' => '#17120A', 'bShape' => 'round', 'bId' => 'tb4'])

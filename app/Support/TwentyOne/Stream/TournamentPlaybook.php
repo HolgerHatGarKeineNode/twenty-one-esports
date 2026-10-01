@@ -7,6 +7,7 @@ use App\Models\Tournament;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatCopy;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentDeadlines;
 use Carbon\CarbonInterface;
 use Throwable;
@@ -40,6 +41,20 @@ final class TournamentPlaybook
             $end = $expected === null ? null : 'Around '.$at($expected['typical'], 'H:i T');
         } catch (Throwable) {
             // An estimate that cannot be made leaves the line out; it is never guessed.
+        }
+
+        // A lobby tournament (P10): one diplomacy match per lobby, to its time limit.
+        if (Lobbies::isLobby($tournament)) {
+            $hours = Lobbies::timeLimit($tournament->game);
+
+            return [
+                'short' => FormatCopy::for($tournament->format)['short'],
+                'steps' => self::lobbySteps($tournament, $n),
+                'matches' => 'One lobby match, '.($hours % 60 === 0 ? intdiv($hours, 60).' h' : $hours.' min').' time limit',
+                'showUp' => 'Be in the lobby at the start',
+                'starts' => $at($tournament->starts_at, 'D j M, H:i T'),
+                'ends' => $end,
+            ];
         }
 
         return [
@@ -83,6 +98,24 @@ final class TournamentPlaybook
             // Not enabled for any live game (Estimator::disabledReason); described plainly, never drawn.
             default => [['title' => $tournament->format->label(), 'line' => FormatCopy::for($tournament->format)['how']]],
         };
+    }
+
+    /**
+     * A lobby tournament's run: the lobbies the draw makes of the field, the
+     * one diplomacy match, the shared place 1.
+     *
+     * @return list<array{title: string, line: string}>
+     */
+    private static function lobbySteps(Tournament $tournament, int $n): array
+    {
+        $sizes = Lobbies::split($tournament->game, $n);
+        $count = count($sizes);
+
+        return [
+            ['title' => $count === 1 ? '1 lobby' : $count.' lobbies', 'line' => $n.' players, '.($count === 1 ? 'all in one lobby' : implode(' + ', $sizes)).'. Nobody moves on.'],
+            ['title' => 'Diplomacy', 'line' => 'Everyone starts alone. Ally, betray, survive.'],
+            ['title' => 'Shared wins', 'line' => 'The allies left standing share place 1.'],
+        ];
     }
 
     /**

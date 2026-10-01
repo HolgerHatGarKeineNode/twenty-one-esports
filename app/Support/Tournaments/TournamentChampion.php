@@ -6,6 +6,7 @@ use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
+use App\Support\Payouts\TournamentPlacements;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
 use App\Support\Tournaments\Engine\MatchResult;
@@ -22,7 +23,8 @@ use App\Support\Tournaments\Engine\Standings;
  *   with the stage's points and tie-breaks as the tournament page ranks it.
  *
  * Null while the tournament is not finished or when no single winner can be
- * read (a stage of parallel heats, a table tie the tie-breaks cannot split).
+ * read (a stage of parallel heats, a lobby whose place 1 is shared, a table
+ * tie the tie-breaks cannot split).
  */
 final class TournamentChampion
 {
@@ -32,6 +34,15 @@ final class TournamentChampion
     {
         if ($tournament->status !== TournamentStatus::Finished) {
             return null;
+        }
+
+        // A lobby tournament (P10): its places across all lobbies; a shared or empty place 1 is no single champion.
+        if (Lobbies::isLobby($tournament)) {
+            $first = app(TournamentPlacements::class)->of($tournament)[0] ?? null;
+
+            return $first !== null && $first['place'] === 1 && count($first['participants']) === 1
+                ? TournamentParticipant::query()->whereKey($first['participants'][0])->where('tournament_id', $tournament->id)->first()
+                : null;
         }
 
         $bracket = $this->brackets->load($tournament);
@@ -65,6 +76,13 @@ final class TournamentChampion
             }
 
             $winner = ($last['status'] ?? null) === 'done' ? ($last['ranking'][0] ?? $last['winner'] ?? null) : null;
+
+            // A shared place 1 (the allies of a lobby, P10) is no single champion.
+            $ranks = $results[$terminal[0]->key]->ranks ?? null;
+
+            if ($ranks !== null && $ranks !== [] && count(array_keys($ranks, min($ranks), true)) > 1) {
+                return null;
+            }
 
             return $winner === null ? null : TournamentParticipant::query()->whereKey($winner)->where('tournament_id', $tournament->id)->first();
         }

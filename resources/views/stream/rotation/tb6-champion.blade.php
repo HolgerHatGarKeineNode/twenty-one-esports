@@ -33,7 +33,10 @@
             $rest[] = $f;
         }
     }
-    $rest = array_slice($rest, 0, 3);
+    // More on the podium than three cards (a shared place 1): two cards and "+N more" in the third place.
+    $podiumTotal = count($rest) + (is_int($t['podiumMore'] ?? null) ? max(0, $t['podiumMore']) : 0);
+    $rest = array_slice($rest, 0, $podiumTotal > 3 ? 2 : 3);
+    $podiumMore = $podiumTotal - count($rest);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
@@ -66,5 +69,6 @@
 @include('stream.rotation.partials.face', ['face' => $f['face'], 'x' => $px, 'y' => 596, 'd' => 40, 'id' => 'tb6-p'.$i, 'fUnit' => 'podium-face-'.$i, 'fRing' => '#17120A', 'fGround' => '#17120A', 'fGlyph' => '#6B4A1A'])
 <text data-unit="podium-{{ $i }}" data-box="{{ $px + 51 }} 604 {{ $px + 321 }} 632" x="{{ $px + 52 }}" y="624" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">{{ K::fit(($f['place'] === null ? '' : K::ordinal($f['place']).' ').($f['name'] === '' ? 'Player' : $f['name']), K::MONO, 18, 268) }}</text>
 @endforeach
+@if ($podiumMore > 0)<text data-unit="podium-more" x="896" y="624" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#17120A">+{{ $podiumMore }} more</text>@endif
 @endif
 </svg>

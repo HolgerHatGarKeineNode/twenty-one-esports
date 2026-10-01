@@ -12,6 +12,7 @@ use App\Support\Nostr\SignedEvent;
 use App\Support\Prizes\PrizePool;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Lobbies;
 use App\Support\TwentyOne\EventBuilder;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -37,7 +38,8 @@ use Throwable;
  * the backlog goes out a few at a time.
  *
  * A start that changes after the note went out (a cup extended or moved to
- * its game's slot, an organizer's edit) makes the note wrong: every run
+ * its game's slot, an organizer's edit), or a tournament switched to lobbies
+ * (P10: the game line names "one lobby match"), makes the note wrong: every run
  * first looks for notes of tournaments in sign-up whose text lacks the
  * current start (stale()), sends a NIP-09 deletion of each (kind 5, `e` on
  * the note, `k` 1) and posts a fresh note in its place, with the same copy
@@ -218,7 +220,10 @@ class TournamentNotes
         app()->setLocale(self::LOCALE);
 
         try {
-            return str_contains($note->content, $this->startStamp($tournament));
+            // A lobby tournament's note (P10) also names the format in its game line ("one lobby match"): a note from
+            // before the switch to lobbies announced another format.
+            return str_contains($note->content, $this->startStamp($tournament))
+                && (! Lobbies::isLobby($tournament) || str_contains($note->content, $this->gameLine($tournament)));
         } finally {
             app()->setLocale($previous);
         }
@@ -663,6 +668,11 @@ class TournamentNotes
 
     public function gameLine(Tournament $tournament): string
     {
+        // A lobby tournament (P10): no 1v1, one lobby match of everyone.
+        if (Lobbies::isLobby($tournament)) {
+            return $this->games->name($tournament->game).', one lobby match';
+        }
+
         $mode = $this->games->mode($tournament->game, $tournament->mode)->name ?? $tournament->mode;
 
         return trim($this->games->name($tournament->game).' '.$mode);

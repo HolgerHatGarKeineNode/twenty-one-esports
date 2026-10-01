@@ -6,6 +6,7 @@ use App\Http\Controllers\GeneratedAvatarController;
 use App\Http\Controllers\InviteCardController;
 use App\Http\Controllers\LiveStatusController;
 use App\Http\Controllers\LnurlPayController;
+use App\Http\Controllers\LobbyScreenshotController;
 use App\Http\Controllers\NostrJsonController;
 use App\Http\Controllers\NotificationDmOptOutController;
 use App\Http\Controllers\NotifyAtBlockZeroController;
@@ -179,6 +180,9 @@ Route::middleware('auth')->group(function () {
         ->middleware('can:manage-tournament,tournament')->name('tournaments.pool');
     Route::livewire('tournaments/{tournament}/director', 'pages::tournaments.director')->whereNumber('tournament')
         ->middleware('can:direct-tournament,tournament')->name('tournaments.director');
+    // A lobby report's end screen (P10), for the directors only: the file never has a public URL.
+    Route::get('tournaments/{tournament}/lobbies/{match}/screenshot', LobbyScreenshotController::class)->whereNumber(['tournament', 'match'])
+        ->name('tournaments.lobby-screenshot');
 });
 
 // The rules (P28) and the open protocol (P29): every number and kind read from the config, the code and the NIP at render time.

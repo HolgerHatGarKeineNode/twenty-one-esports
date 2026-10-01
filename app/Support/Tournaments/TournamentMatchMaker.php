@@ -208,6 +208,14 @@ final class TournamentMatchMaker
             return false;
         }
 
+        // A lobby (P10, Lobbies): its players meet in the game's lobby the league named at the draw, and report its
+        // places themselves (LobbyResults). No series starts: a series is two sides, a lobby up to eight.
+        if ($match->lobby !== null) {
+            TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
+
+            return true;
+        }
+
         // A casual cup (P25): only in its round's window, when its players agreed or at the auto slot.
         if ($locked->isCasualCup() && ! CasualCups::mayStart($match, $acceptedBy !== null)) {
             return false;
