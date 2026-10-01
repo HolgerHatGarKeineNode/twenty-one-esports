@@ -45,6 +45,8 @@ main{max-width:1500px;margin:0 auto;padding:22px}
 .note{font-size:11px;color:var(--muted);line-height:1.45}
 textarea{width:100%;min-height:150px;background:#0D0D0F;border:1px solid var(--line);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:12.5px;line-height:1.55;padding:10px;resize:vertical}
 textarea:focus{outline:1px solid var(--orange)}
+/* post texts are paragraphs now: the card grows with its text */
+textarea[data-id]{field-sizing:content}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .btn{background:var(--orange);border:1px solid var(--orange);color:#17120A;font-family:var(--mono);font-weight:700;font-size:12px;padding:7px 13px;border-radius:8px;cursor:pointer}
 .btn:hover{filter:brightness(1.08)}

@@ -107,14 +107,25 @@ export function parsePosts() {
     let id;
     try { id = motifId(sec.title); } catch { continue; }
     const p = { title: sec.title };
-    let key = null;
+    // A post runs from its marker to the next marker or `---`; a blank line
+    // starts a new paragraph (kept as "\n\n"), wrapped lines join with a space.
+    let paras = null;
+    const flush = () => { if (paras) p[paras.key] = paras.list.filter(Boolean).join('\n\n'); };
     for (const raw of sec.lines) {
       const line = raw.trim();
       let f;
-      if ((f = line.match(/^\*\*(Nostr|X) \((DE|EN)\):\*\*\s*(.*)$/))) { key = `${f[1].toLowerCase()}_${f[2].toLowerCase()}`; p[key] = f[3].trim(); continue; }
-      if (key && line && !line.startsWith('---')) p[key] = (p[key] ? p[key] + ' ' : '') + line;
-      if (!line || line.startsWith('---')) key = null;
+      if ((f = line.match(/^\*\*(Nostr|X) \((DE|EN)\):\*\*\s*(.*)$/))) {
+        flush();
+        paras = { key: `${f[1].toLowerCase()}_${f[2].toLowerCase()}`, list: [f[3].trim()] };
+        continue;
+      }
+      if (line.startsWith('---')) { flush(); paras = null; continue; }
+      if (!paras) continue;
+      const last = paras.list.length - 1;
+      if (!line) { if (paras.list[last]) paras.list.push(''); continue; }
+      paras.list[last] = paras.list[last] ? paras.list[last] + ' ' + line : line;
     }
+    flush();
     posts[id] = p;
   }
   const plan = [];
