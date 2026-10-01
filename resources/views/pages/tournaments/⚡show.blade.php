@@ -388,7 +388,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     #[Computed]
     public function pool(): ?array
     {
-        return app(TournamentPrizePool::class)->for($this->tournament);
+        // A Blockfill week (P6) has no prize pool.
+        return $this->tournament->isBlockfillWeek() ? null : app(TournamentPrizePool::class)->for($this->tournament);
     }
 
     /**
@@ -623,7 +624,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
             <div class="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-2 lg:self-start">
 
-                @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
+                {{-- A Blockfill week (P6): its Play button comes first, the start after it. --}}
+                @unless ($week)
+                    @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
+                @endunless
 
                 {{-- A casual cup names the other region's cup of its game (EU and US, user 2026-09-28). --}}
                 @if ($tournament->isCasualCup())
@@ -706,7 +710,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             </div>
                         </div>
 
-                        @if (! $drawn && ! $week)
+                        @if (! $drawn)
                             <div class="flex items-center gap-3 border-t border-hairline pt-4" data-test="who-is-in">
                                 @if ($faces !== [])
                                     <span class="flex shrink-0 -space-x-2">
@@ -721,6 +725,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                     </div>
                 @endif
 
+                @if ($week)
+                    @include('pages.tournaments.partials.when', ['tournament' => $tournament, 'startsIn' => $landing->startsIn(), 'published' => $published])
+                @endif
+
                 {{-- Invite: the page link to any chat, and the tournament's card as an image --}}
                 @if ($published && $status !== TournamentStatus::Cancelled && ! $week)
                     @include('pages.tournaments.partials.share', ['tournament' => $tournament, 'text' => $shareText, 'label' => $cta === 'open' || $cta === 'entered' ? __('Bring your friends') : __('Share this tournament')])
@@ -729,7 +737,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         </div>
 
         {{-- The places as seats: one block per spot, filled in the order people signed up --}}
-        @if (! $drawn && $published && ! $week)
+        @if (! $drawn && $published)
             <div class="mt-8 flex flex-col gap-2.5 px-4 lg:mt-10 lg:px-12" data-test="places-meter">
                 <div class="flex items-baseline justify-between gap-3">
                     <span class="text-[13px] text-ink-2"><b class="font-display text-lg text-ink tabular-nums" x-data="countUp({{ $places['taken'] }})">{{ $places['taken'] }}</b> {{ __('of :places spots taken', ['places' => $places['places']]) }}</span>
@@ -809,7 +817,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         @else
                             <span class="flex size-10 shrink-0 items-center justify-center rounded-md bg-raised text-ink-2"><x-icon name="clans" :size="18" /></span>
                         @endif
-                        @if ($row['seed'] !== null)
+                        @if ($row['seed'] !== null && ! $week)
                             <span class="font-display text-lg leading-none font-bold text-ink-3 tabular-nums" title="{{ __('Seed :seed', ['seed' => $row['seed']]) }}"><span class="sr-only">{{ __('Seed') }} </span>{{ $row['seed'] }}</span>
                         @endif
                     </span>
@@ -876,8 +884,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @endif
         </ul>
 
-        @if ($roster === [] && ($drawn || ! $published || $status === TournamentStatus::Cancelled))
-            <p class="m-0 text-[13px] text-ink-2">{{ __('Nobody has signed up yet.') }}</p>
+        @if ($roster === [] && $week)
+            <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('No verified run yet this week. Play the first one.') }}</p>
+        @elseif ($roster === [] && ($drawn || ! $published || $status === TournamentStatus::Cancelled))
+            <p class="m-0 text-[13px] text-ink-2" data-test="entries-empty">{{ __('Nobody has signed up yet.') }}</p>
         @endif
     </section>
 
@@ -994,7 +1004,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     @endif
 
     {{-- The pot's working part (P9): its state, "Add to the pot" (#pot-topup) and the payouts; the pot itself heads the page. --}}
-    @if ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true)))
+    @if (! $week && ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true))))
         <livewire:tournament-pool :tournament="$tournament" :key="'pool-'.$tournament->id" />
     @endif
 

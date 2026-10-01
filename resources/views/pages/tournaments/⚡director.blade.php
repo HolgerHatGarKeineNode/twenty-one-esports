@@ -38,6 +38,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function mount(Tournament $tournament): void
     {
         Gate::authorize('direct-tournament', $tournament);
+        // A Blockfill week (P6) has no sign-up, no directors' results and no prize pool.
+        abort_if($tournament->isBlockfillWeek(), 404);
 
         // A score leaderboard (plan "AoE2 und Trackmania", P4) has no match result to enter: its directors work on its
         // scores page (course, corrections with a reason, the end).

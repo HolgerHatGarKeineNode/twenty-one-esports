@@ -57,9 +57,10 @@ beforeEach(function () {
 });
 
 /** A page of `$user` in `$locale` at `$width` x `$height`, with the console collector installed before it loads. */
-function blockfillShellPage(User $user, string $locale, int $width, int $height): Page
+function blockfillShellPage(?User $user, string $locale, int $width, int $height): Page
 {
-    $page = visit(BrowserLogin::url($user))->page();
+    // A guest starts on the landing page without a login.
+    $page = visit($user === null ? BrowserLogin::LANDING : BrowserLogin::url($user))->page();
     $page->context()->addInitScript(BrowserConsole::COLLECTOR);
     $page->setViewportSize($width, $height);
     $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
@@ -184,9 +185,15 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
     'de 1440' => ['de', 1440, 900],
 ]);
 
-test('the page of a week: the Play button to /blockfill in the first screen, how a week works, no sign-up or invite row', function (string $locale, int $width, int $height) {
-    $page = blockfillShellPage($this->player, $locale, $width, $height);
+test('the page of a week: the Play button to /blockfill in the first screen, how a week works, no sign-up or invite row', function (string $locale, int $width, int $height, bool $guest = false, bool $empty = false) {
+    // An empty week: the next one, opened before anybody played it (every Monday until the first verified run).
+    if ($empty) {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00:00'));
+        app(BlockfillWeeks::class)->open();
+    }
+    $page = blockfillShellPage($guest ? null : $this->player, $locale, $width, $height);
     $week = app(BlockfillWeeks::class)->current();
+    $suffix = ($guest ? '-guest' : '').($empty ? '-empty' : '');
     blockfillShellGo($page, route('tournaments.show', $week, false), $locale);
 
     // [left, right, bottom, href, text, the top of what covers the window's bottom: the tab bar below lg, else the window's edge]
@@ -201,11 +208,15 @@ test('the page of a week: the Play button to /blockfill in the first screen, how
         ->and($play[4])->toBe($locale === 'de' ? 'Blockfill spielen' : 'Play Blockfill')
         ->and($how)->toContain($locale === 'de' ? 'Die Liga spielt deinen Lauf' : 'The league replays your run')
         ->and($page->evaluate('() => ["to-signup", "who-is-in", "places-meter", "tournament-share", "nostr-bar"].filter((t) => document.querySelector(`[data-test=${t}]`))'))->toBe([])
-        ->and($page->evaluate('() => document.querySelector("h1").innerText.trim()'))->toBe($locale === 'de' ? 'Blockfill Woche 41, 2026' : 'Blockfill Week 41, 2026');
+        ->and($page->evaluate('() => document.querySelector("h1").innerText.trim()'))->toBe(($locale === 'de' ? 'Blockfill Woche ' : 'Blockfill Week ').($empty ? '42' : '41').', 2026')
+        ->and($page->evaluate('() => document.querySelector("[data-test=entries-empty]")?.innerText ?? null'))->toBe(! $empty ? null
+            : ($locale === 'de' ? 'Diese Woche noch kein geprüfter Lauf. Spiel den ersten.' : 'No verified run yet this week. Play the first one.'));
 
-    shellShot($page, "blockfill-week-page-{$locale}-{$width}");
+    shellShot($page, "blockfill-week-page-{$locale}-{$width}{$suffix}");
+    $page->evaluate('() => document.querySelector("[data-test=entries]").scrollIntoView({ block: "start" })');
+    shellShot($page, "blockfill-week-page-entries-{$locale}-{$width}{$suffix}");
     $page->evaluate('() => document.querySelector("[data-test=how-it-works]").scrollIntoView({ block: "start" })');
-    shellShot($page, "blockfill-week-page-how-{$locale}-{$width}");
+    shellShot($page, "blockfill-week-page-how-{$locale}-{$width}{$suffix}");
     expect($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
 })->with([
@@ -213,4 +224,10 @@ test('the page of a week: the Play button to /blockfill in the first screen, how
     'en 1440' => ['en', 1440, 900],
     'de 375' => ['de', 375, 812],
     'de 1440' => ['de', 1440, 900],
+    // The guest's "New here?" banner sits above the page: the button stays above the tab bar.
+    'guest en 375' => ['en', 375, 812, true],
+    'guest de 375' => ['de', 375, 812, true],
+    'empty week en 375' => ['en', 375, 812, false, true],
+    'empty week en 1440' => ['en', 1440, 900, false, true],
+    'empty week guest de 375' => ['de', 375, 812, true, true],
 ]);

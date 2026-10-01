@@ -501,3 +501,57 @@ test('switched on, the Blockfill notes of the stream bot are scheduled every fiv
     expect($event)->not->toBeNull()
         ->and($event->expression)->toBe('*/5 * * * *');
 });
+
+test('an empty week says nobody has a verified run yet, in en and de, with no seats, sign-up line or places', function (string $locale, string $empty) {
+    BlockfillOn::play();
+    $week = app(BlockfillWeeks::class)->open();
+    $html = $this->get(route('tournaments.show', $week).'?lang='.$locale)->assertOk()->getContent();
+
+    expect($week->participants()->count())->toBe(0)
+        ->and(html_entity_decode($html, ENT_QUOTES))->toContain($empty)
+        ->and($html)->not->toContain('Nobody has signed up yet.')
+        ->and($html)->not->toContain('Noch hat sich niemand angemeldet.')
+        ->and($html)->not->toContain('data-test="places-meter"')
+        ->and($html)->not->toContain('data-test="open-seat"')
+        ->and($html)->not->toContain('data-test="who-is-in"')
+        // The places meter waits for the draw, and a week is drawn from its start: it is opened running.
+        ->and($week->status)->toBe(TournamentStatus::Running);
+})->with([
+    'en' => ['en', 'No verified run yet this week. Play the first one.'],
+    'de' => ['de', 'Diese Woche noch kein geprüfter Lauf. Spiel den ersten.'],
+]);
+
+test('a week shows no seed numbers and no prize pool, even to an admin, and has no sign-up, director or pool page, switched on or off', function () {
+    [$week] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000]);
+    $admin = User::factory()->create();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    $this->actingAs($admin)->get(route('tournaments.show', $week))->assertOk()
+        ->assertSee('Ada')
+        ->assertDontSee('title="Seed 1"', false)
+        ->assertDontSeeHtml('wire:name="tournament-pool"')
+        ->assertDontSee('data-test="prize-pool"', false);
+
+    foreach (['tournaments.signup', 'tournaments.director', 'tournaments.pool'] as $route) {
+        $this->actingAs($admin)->get(route($route, $week))->assertNotFound();
+    }
+
+    config(['esports.blockfill.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    foreach (['tournaments.signup', 'tournaments.director', 'tournaments.pool'] as $route) {
+        $this->actingAs($admin)->get(route($route, $week))->assertNotFound();
+    }
+});
+
+test('the calendar file of a week across a clock change ends with the week: 169 hours in October, 167 in March', function (string $at, string $start, string $end) {
+    BlockfillOn::play();
+    $this->travelTo(CarbonImmutable::parse($at));
+    $week = app(BlockfillWeeks::class)->open();
+    $ics = $this->get(route('tournaments.calendar', $week))->assertOk()->getContent();
+
+    expect($ics)->toContain('DTSTART:'.$start)->toContain('DTEND:'.$end);
+})->with([
+    'autumn, 169 h' => ['2026-10-21 12:00:00', '20261018T220000Z', '20261025T230000Z'],
+    'spring, 167 h' => ['2026-03-25 12:00:00', '20260322T230000Z', '20260329T220000Z'],
+]);
