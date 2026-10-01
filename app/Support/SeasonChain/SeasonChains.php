@@ -24,6 +24,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\Board;
 use App\Support\Rating\RatingService;
+use App\Support\Scores\ScoreLeaderboards;
 use App\Support\Scores\ScoreRuns;
 use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
@@ -558,8 +559,10 @@ final class SeasonChains
      * tournament never mines, an organizer's leaderboard included. Null when
      * nothing is due: not such a window, not finished, its `31923` not
      * signed, no live season, a window that began before Block 0 (it belongs
-     * to no chain), the review time `solo` after its end not over yet (the
-     * next tick tries again), or nobody placed.
+     * to no chain), the review time `solo` after its end not over yet, its
+     * top places not reviewed by an admin where the game asks for that
+     * (ScoreGame::reviewedPlaces(); the next tick tries again for both), or
+     * nobody placed.
      */
     public function attestScoreWindow(Tournament $tournament): ?SeasonAttestation
     {
@@ -573,6 +576,12 @@ final class SeasonChains
         $window = ScoreWindow::of($tournament);
 
         if ($live === null || $address === null || $window->start->lt(CarbonImmutable::instance($live->genesis_at))) {
+            return null;
+        }
+
+        // A game that asks for it (Blockfill, plan "Blockfill", P7): no attestation before an admin reviewed its top
+        // places. Not a consensus rule: the league signs nothing yet, and the next tick tries again.
+        if (! app(ScoreLeaderboards::class)->reviewed($tournament)) {
             return null;
         }
 

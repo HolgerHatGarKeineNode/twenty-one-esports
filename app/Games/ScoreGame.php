@@ -108,6 +108,17 @@ abstract class ScoreGame implements Game
     }
 
     /**
+     * How many of the top places of a window the league opened an admin
+     * has to review before the window may mine its solo block
+     * (ScoreLeaderboards::confirmReview(), SeasonChains::attestScoreWindow());
+     * 0 = the chain's review time alone.
+     */
+    public function reviewedPlaces(): int
+    {
+        return 0;
+    }
+
+    /**
      * The window a tournament of this game runs by default, in minutes (a week).
      */
     public function defaultWindowMinutes(): int

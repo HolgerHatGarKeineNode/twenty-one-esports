@@ -83,6 +83,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     'practice_rank' => __('Slower than your best: kept as practice'),
                     'pending' => __('Received, not checked yet: it counts once the league has replayed it'),
                     'rejected' => __('Not counted: the replay did not match'),
+                    'rejected_input' => __('Not counted: ranked runs need a keyboard'),
                     'toppedOut' => __('Topped out: the stack reached the top'),
                     'aborted' => __('Run stopped: you left the tab'),
                     'busy' => __('Not saved — the league is busy. Play the run again in a moment.'),

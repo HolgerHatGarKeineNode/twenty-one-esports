@@ -8,7 +8,9 @@
  * in this browser. Ranked (logged in): the run is asked for right before the
  * countdown (one-time token and seed), its start is announced and the game
  * clock starts only once the server has answered, the replay is submitted at
- * the end and the page asks for the verdict until it has one. Leaving the tab
+ * the end with how it was played (P7: only a keyboard run counts, a press on
+ * the on-screen buttons makes it a touch run) and the page asks for the
+ * verdict until it has one. Leaving the tab
  * during a ranked run aborts it. A mined block (a cleared row) flashes; the
  * flash is drawn over the running game and never holds it up.
  *
@@ -134,6 +136,8 @@ document.addEventListener('alpine:init', () => {
             cell: 24,
             recorded: null,
             holdSubmit: false,
+            // P7: a ranked run counts only played with the keyboard; one on-screen press makes it a touch run
+            touched: false,
             release: null,
             sound: null,
             wire: null,
@@ -292,6 +296,7 @@ document.addEventListener('alpine:init', () => {
             newSession(seed, settings = this.controls) {
                 trace(config, 'newSession');
                 rt.seed = seed;
+                rt.touched = false;
                 rt.session = createSession({ seed, settings: { das: settings.das, arr: settings.arr, sdf: settings.sdf } });
                 rt.flashUntil = 0;
                 this.lines = 0;
@@ -513,7 +518,7 @@ document.addEventListener('alpine:init', () => {
                 }
                 this.result = { ...base, status: 'submitting', previous: this.rankedBest };
                 const replay = encodeReplay({ v: REPLAY_VERSION, engine: ENGINE_VERSION, seed: rt.seed, settings: rt.session.game.settings }, rt.session.log);
-                const submitted = await request('POST', this.tokenUrl(config.urls.submit), { replay, ticks: outcome.ticks, hash: outcome.stateHash });
+                const submitted = await request('POST', this.tokenUrl(config.urls.submit), { replay, ticks: outcome.ticks, hash: outcome.stateHash, input: rt.touched ? 'touch' : 'keyboard' });
                 if (id !== rt.runId) {
                     return;
                 }
@@ -590,6 +595,7 @@ document.addEventListener('alpine:init', () => {
             /** On-screen buttons (touch, practice): a press and a release. */
             touch(action, down) {
                 if (this.mode === 'playing' || this.mode === 'countdown') {
+                    rt.touched = true;
                     rt.session.press(action, down);
                 }
             },
@@ -710,7 +716,9 @@ document.addEventListener('alpine:init', () => {
                     return '';
                 }
 
-                const status = this.result.kind === 'ranked' && this.result.status === 'practice' ? 'practice_rank' : this.result.status;
+                const status = this.result.kind === 'ranked' && this.result.status === 'practice'
+                    ? 'practice_rank'
+                    : this.result.status === 'rejected' && this.result.reason === 'input' ? 'rejected_input' : this.result.status;
 
                 return this.t.status[status] ?? status;
             },

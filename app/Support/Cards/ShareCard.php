@@ -245,13 +245,29 @@ final class ShareCard
         $size2 = $this->c->fitSize($height, 'display', array_map(fn (int $s): int => (int) round($s * $k), [150, 120, 96, 80]), $size - (int) round(52 * $k));
         $this->c->text($height, 'display', $size2, $inner, $y + (int) round(214 * $k), '#17120A');
         $this->c->text('+'.self::sats((int) $f['reward']).' sats', 'mono-bold', (int) round(30 * $k), $inner, $y + (int) round(288 * $k), '#17120A');
-        $this->c->text($this->c->fit($f['label'].' · '.self::inline($f['ladder']), 'mono', (int) round(20 * $k), $size - (int) round(52 * $k)), 'mono', (int) round(20 * $k), $inner, $y + (int) round(320 * $k), '#3A2A12');
+        // A score window's block (plan "Blockfill", P7): the winning value first (a long window name is cut, not the
+        // value), then the window; no ladder.
+        $detail = isset($f['window']) ? implode(' · ', array_filter([(string) ($f['value'] ?? ''), (string) $f['window']])) : $f['label'].' · '.self::inline($f['ladder']);
+        $this->c->text($this->c->fit($detail, 'mono', (int) round(20 * $k), $size - (int) round(52 * $k)), 'mono', (int) round(20 * $k), $inner, $y + (int) round(320 * $k), '#3A2A12');
     }
 
-    private function beat(): string
+    /**
+     * The card's sentence under the miner: whom the win beat on which ladder,
+     * or for a score window's block (plan "Blockfill", P7) the window, the
+     * winning value and the next places.
+     */
+    public function beat(): string
     {
         $f = $this->facts;
         $opponents = (array) $f['opponents'];
+
+        if (isset($f['window'])) {
+            $mined = ['height' => $f['height'], 'window' => $f['window'], 'value' => (string) ($f['value'] ?? '–')];
+
+            return $opponents === []
+                ? __('Mined block :height in :window with :value', $mined)
+                : __('Mined block :height in :window with :value, ahead of :opponents', [...$mined, 'opponents' => self::listing($opponents)]);
+        }
 
         return $opponents === []
             ? __('Won in :ladder', ['ladder' => self::inline($f['ladder'])])
@@ -551,6 +567,19 @@ final class ShareCard
     private static function inline(mixed $ladder): string
     {
         return App::getLocale() === 'en' ? mb_strtolower((string) $ladder) : (string) $ladder;
+    }
+
+    /**
+     * Names in a sentence: "A", "A and B", "A, B and C".
+     *
+     * @param  array<mixed>  $names
+     */
+    private static function listing(array $names): string
+    {
+        $names = array_map(strval(...), array_values($names));
+        $last = array_pop($names);
+
+        return $names === [] ? (string) $last : __(':first and :last', ['first' => implode(', ', $names), 'last' => $last]);
     }
 
     /** 195000 → "195 000", with a no-break space. */
