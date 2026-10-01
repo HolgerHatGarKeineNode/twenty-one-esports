@@ -321,14 +321,22 @@ test('tab, mini player and badge share the screen with the header, the match doc
 
     $page = livePage($width, $player, '/clans');
     BrowserWait::until($page, '() => [...document.querySelectorAll("[data-live-floor]")].some((el) => el.checkVisibility())', 10_000);
-    $page->evaluate('() => window.dispatchEvent(new CustomEvent("toast", { detail: { tone: "confirmed", title: "Result confirmed", text: "Pia vs Ben, 1-0" } }))');
-    Execution::instance()->wait(1.2);
+    // A toast lives 8 s, the video start below can take up to 20 s under load: each measurement gets a fresh one,
+    // sent once the previous toast is gone (one toast on screen, as measured), and waited for until it shows.
+    $toasts = '[...document.querySelectorAll("[aria-live=polite] > div")].filter((el) => el.checkVisibility()).length';
+    $freshToast = function () use ($page, $toasts): void {
+        BrowserWait::until($page, "() => {$toasts} === 0", 12_000);
+        $page->evaluate('() => window.dispatchEvent(new CustomEvent("toast", { detail: { tone: "confirmed", title: "Result confirmed", text: "Pia vs Ben, 1-0" } }))');
+        BrowserWait::until($page, "() => {$toasts} === 1", 5_000);
+        Execution::instance()->wait(1.2);
+    };
+    $freshToast();
 
     $tab = $page->evaluate(LIVE_LAYOUT);
     liveShot($page, 'badge-and-tab-with-dock-'.$width);
 
     livePlay($page);
-    Execution::instance()->wait(1.2);
+    $freshToast();
     $open = $page->evaluate(LIVE_LAYOUT);
     liveShot($page, 'player-open-with-dock-'.$width);
 
