@@ -385,22 +385,21 @@ kind exists or is mentioned.
 
 ## Reel 18 — Age of Empires II
 
-Sources: `facts.md` 45-60 (`app/Games/AgeOfEmpires2.php`, `config/esports.php` `casual` and
-`casual_cups`, `pages/matches/partials/casual-steps` and `card-composer`, `⚡room`, `lobbyCards.js`,
-prod /games/age-of-empires-2 and /tournaments read 2026-10-01). Five beats of 3 s, 18.4 s with the
-cuts, as every reel. The cup seats in beat 4 are kit players; the casual Elo is fact 54 (+20 for a
-first win). No automatic result check is shown or said (fact 53): players enter and confirm.
+Sources: `facts.md` 53, 58-60, 67-76 (plan step 10 "AoE2-Lobby-Turnier", `TournamentFormat::FreeForAll`,
+`lang/de.json`). Five beats of 3 s, 18.4 s with the cuts, as every reel. The six players are kit
+names with their pixel avatars. The lobby tournament is P10, **not built when this was written:
+post only once it is live on prod.** No automatic result check is shown or said (fact 53).
 
 **DE**
-1. (3s) Age of Empires II. Dein 1v1 wartet. — *das Cover-Logo, darunter „1v1-Gegner finden“; der Cursor klickt, „Gegner gefunden“: satsjaeger gegen kai_blitz*
-2. (3s) Lobby und Passwort, verschlüsselt im Chat — *Match-Chat: die Karte „Age-of-Empires-II-Lobby“ mit e21-58 und frischem Passwort, die Schritte haken ab: Bereit, Lobby geteilt, Beigetreten*
-3. (3s) Du gewinnst. Dein Name steigt. — *Sieger je Spiel: drei Linien, zwei fließen zu satsjaeger, 2 Spiele gewonnen; die 1v1-Ladder zählt +20*
-4. (3s) Sonntags 20 Uhr: der AoE2 Casual Cup — *zwei Cup-Karten, EU 20:00 Berlin und US 20:00 New York, die Plätze füllen sich, „Dein Platz?“ leuchtet*
+1. (3s) Age of Empires II. Ein Match, eine Lobby. — *das Cover-Logo mit „Free for All, 3–8 Spieler, ein Match“; acht Plätze einer Lobby, sechs Pixel-Avatare mit Namen springen hinein*
+2. (3s) Die Karte wächst mit der Lobby — *die Lobby-Einstellungen: die Spielerzahl zählt von 2 bis 6, die Kartengröße wandert Tiny, Small, Medium, Normal; darunter „Lock Teams“ aus, „Allied Victory“ an*
+3. (3s) Verbündet überleben, Platz 1 teilen — *das Ergebnis der Lobby: vier Spieler scheiden nacheinander aus, die Kette zwischen satsjaeger und hodlqueen leuchtet, „Platz 1, Pot zu gleichen Teilen“*
+4. (3s) Screenshot hoch, die Turnierleitung bestätigt — *dasselbe Ergebnis, die Schritte haken ab: Screenshot vom Endbildschirm, von der Turnierleitung bestätigt*
 5. (3s) esports.einundzwanzig.space — *Logo + URL*
 
 **EN**
-1. (3s) Age of Empires II. Your 1v1 awaits. — *the cover logo, "Find a 1v1 opponent" below it; the cursor clicks, "Opponent found": satsjaeger vs kai_blitz*
-2. (3s) Lobby and password, encrypted in chat — *match chat: the "Age of Empires II lobby" card with e21-58 and a fresh password, the steps tick off: Ready, Lobby shared, Joined*
-3. (3s) You win. Your name climbs. — *winner per game: three lines, two flow to satsjaeger, 2 games won; the 1v1 ladder counts +20*
-4. (3s) Sundays at 8 pm: the AoE2 Casual Cup — *two cup cards, EU 20:00 Berlin and US 20:00 New York, the seats fill up, "Your spot?" lights up*
+1. (3s) Age of Empires II. One match, one lobby. — *the cover logo with "Free for All, 3–8 players, one match"; eight seats of one lobby, six pixel avatars with names jump in*
+2. (3s) The map grows with the lobby — *the lobby settings: the player count runs from 2 to 6, the map size steps Tiny, Small, Medium, Normal; below it Lock Teams off, Allied Victory on*
+3. (3s) Survive allied, share 1st place — *the lobby's result: four players go out one by one, the link between satsjaeger and hodlqueen lights up, "1st place, pot split equally"*
+4. (3s) Upload the screenshot, the director confirms — *the same result, the steps tick: screenshot of the end screen, confirmed by the tournament director*
 5. (3s) esports.einundzwanzig.space — *logo + URL*

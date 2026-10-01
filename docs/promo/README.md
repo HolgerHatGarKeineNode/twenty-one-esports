@@ -85,11 +85,22 @@ never with a date or a countdown. Facts 28-44 in `src/copy/facts.md`.
 - `livecup`: the live bracket and champion slides are plan P5. **Post only once they air.**
 - The stream frame shows the stream's own English text in both cuts (the stream is English only).
 
-**Age of Empires II** (`aoe2`, added 2026-10-01): live on prod (game page, casual 1v1, the first EU
-and US cups read 2026-10-01), so no posting gate. Facts 45-60 in `src/copy/facts.md`. Pseudonymous:
-players are pixel avatars and names, never faces, and the cover (`public/images/games/age-of-empires-2-800.jpg`,
-read from the app) shows only its logo band. Nothing about mining (AoE2 has only a draft proposal)
-and no automatic result check (not built): players enter the winner, the other confirms.
+**Age of Empires II** (`aoe2`, added 2026-10-01, rewritten the same day for the new tournament
+format): the lobby tournament of plan step 10 (P10): one match per lobby of 3-8 players, bigger
+fields split evenly into parallel lobbies (9 → 5 + 4), Lock Teams off, Allied Victory on, 2 h time
+limit then the in-game score, allied survivors share 1st place and split its pot, the map size
+follows the lobby size, the result is an end-screen screenshot confirmed by the tournament
+director. Facts 53, 58-60 and 67-76 in `src/copy/facts.md`, sourced from the plan text and the
+code. **P10 was being built when this was written: post the motif only once the lobby tournament
+is live on prod**, and first run `UI_STRICT=1 node docs/promo/src/check-ui-strings.mjs`: the 18
+lobby-card strings tagged `plan: 'P10'` in `src/lib/ui-strings.js` must then be found in
+`lang/de.json` (align them with the built feature's wording, re-render). Pseudonymous: players are
+pixel avatars and names, and the cover (`public/images/games/age-of-empires-2-800.jpg`, read from
+the app) shows only its logo band (the square poster only its tag strip). Nothing about mining
+(AoE2 has only a draft proposal) and no automatic result check (not built). Casual matchmaking and
+the weekend cup are no longer this motif's subject. **Check before posting `cups`:** reel 12 and
+fact 61 still list AoE2's weekend cup in its old head-to-head mode; whether that cup changes
+format with P10 was open on 2026-10-01.
 
 **Pseudonymous copy (user, 2026-10-01):** no "face" / "Gesicht" anywhere in the copy; players
 are their avatar and their name.
@@ -108,7 +119,8 @@ after a first win, 1000 / 1000 after a draw) comes from the app's `EloRating` wi
 `season.casual` config.
 
 **Checks that run on every render** (a failing poster or reel is not written):
-positions replayed through chess.js · every mock-up string present in `lang/de.json` ·
+positions replayed through chess.js · every mock-up string present in `lang/de.json` (140 of
+158; the 18 tagged `plan` are listed as pending, `UI_STRICT=1` fails on them) ·
 DOM probe per poster (every text box inside the poster, no overflow, no collisions, hero
 parts inside the hero and apart from each other, hero fill >= 85 %, text >= 20 px copy /
 11 px UI) · pixel probe on the finished PNG (headline ink, CTA orange) · per reel beat:
