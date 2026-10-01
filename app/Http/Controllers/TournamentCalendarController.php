@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
 use App\Support\GameNames;
+use App\Support\Scores\ScoreWindow;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
 
@@ -20,11 +21,14 @@ class TournamentCalendarController extends Controller
     public function __invoke(Tournament $tournament): Response
     {
         abort_if($tournament->status === TournamentStatus::Draft || $tournament->published_at === null, 404);
+        // A Blockfill week while Blockfill is switched off (P6): no page to point to.
+        abort_if($tournament->isSwitchedOffBlockfillWeek(), 404);
 
         $planned = $tournament->plannedDuration();
-        $end = $tournament->profile()->isDaily()
+        // A score leaderboard ends with its window (a Blockfill week: the next Monday 00:00 Berlin, 167 to 169 hours).
+        $end = $tournament->profile()->isScore() ? ScoreWindow::of($tournament)->end : ($tournament->profile()->isDaily()
             ? $tournament->starts_at->copy()->addDays((int) max(1, ceil($planned)))
-            : $tournament->starts_at->copy()->addMinutes((int) max(30, ceil($planned)));
+            : $tournament->starts_at->copy()->addMinutes((int) max(30, ceil($planned))));
         $url = route('tournaments.show', $tournament);
 
         $lines = [
@@ -38,7 +42,8 @@ class TournamentCalendarController extends Controller
             'DTSTAMP:'.$this->utc(now()),
             'DTSTART:'.$this->utc($tournament->starts_at),
             'DTEND:'.$this->utc($end),
-            'SUMMARY:'.$this->text($tournament->name),
+            // A Blockfill week in the request's language (P6); any other tournament its own name.
+            'SUMMARY:'.$this->text($tournament->title()),
             'DESCRIPTION:'.$this->text(GameNames::full($tournament->game, $tournament->mode).', '.$tournament->format->label().". \n".$url),
             'URL:'.$url,
             'LOCATION:'.$this->text($tournament->on_site ? __('On site') : __('Online')),

@@ -480,6 +480,16 @@ class Tournament extends Model
     }
 
     /**
+     * A Blockfill week while Blockfill is not registered (its switch off): its
+     * pages answer 404 (P6), so no week left in the database renders without
+     * the game's routes behind it.
+     */
+    public function isSwitchedOffBlockfillWeek(): bool
+    {
+        return $this->isBlockfillWeek() && app(GameRegistry::class)->find(Blockfill::SLUG) === null;
+    }
+
+    /**
      * Every tournament but Blockfill's weekly leaderboards (isBlockfillWeek()).
      *
      * @param  Builder<Tournament>  $query

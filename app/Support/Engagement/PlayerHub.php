@@ -388,7 +388,9 @@ final class PlayerHub
                 'done' => $this->user->clanMember !== null],
             ['key' => 'tournament', 'label' => __('Sign up for a tournament'), 'href' => $next !== null ? route('tournaments.show', $next) : route('tournaments.index'),
                 'done' => TournamentSignup::query()->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))->exists()
-                    || TournamentParticipant::query()->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))->exists()],
+                    // A Blockfill week (P6) is joined by playing, not by signing up for a tournament.
+                    || TournamentParticipant::query()->where(fn ($query) => $query->where('user_id', $me)->orWhereJsonContains('members', $me))
+                        ->whereHas('tournament', fn ($query) => $query->exceptBlockfillWeeks())->exists()],
         ];
     }
 

@@ -80,6 +80,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function mount(Tournament $tournament): void
     {
         abort_unless($tournament->isVisibleTo(auth()->user()), 404);
+        // A Blockfill week while Blockfill is switched off (P6): no page, its game has none either.
+        abort_if($tournament->isSwitchedOffBlockfillWeek(), 404);
 
         $this->tournament = $tournament;
         $this->closesAt = LeagueTime::input($tournament->starts_at->copy()->subHour());
@@ -413,6 +415,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $playsHere = $chess || $profile->isBoard();
     // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no match, no Elo, no seeds that matter.
     $score = $profile->isScore();
+    // A Blockfill week (P6): the league opens it, a verified run enters the player; no sign-up, no no-shows, no invites.
+    $week = $tournament->isBlockfillWeek();
     $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
     $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
     $status = $tournament->status;
@@ -452,7 +456,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
         ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
         [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
-        ['shield-check', __('Results'), $score ? __('values read from the game, or submitted with a proof link an admin checks') : $tournament->results_mode->label(), 'results'],
+        ['shield-check', __('Results'), match (true) {
+            $week => __('every ranked run replayed by the league; only a run that reaches the same time counts'),
+            $score => __('values read from the game, or submitted with a proof link an admin checks'),
+            default => $tournament->results_mode->label(),
+        }, 'results'],
         ['ladder', __('Rated'), match (true) {
             $score => __('no: a leaderboard has no Elo ladder; its places score points on the game\'s points ladder'),
             $status === TournamentStatus::Draft => __('decided when it is published'),
@@ -463,10 +471,11 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             default => __('yes, on its ladder while that is open and the trust gate passes'),
         }, 'rated'],
         ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
-            ['flag', __($scoreGame->courseLabel()), $tournament->score_course ?? __('the directors set it before the start'), 'course'],
+            // A Blockfill week's course is its mode: by its name, not its slug (P6).
+            ['flag', __($scoreGame->courseLabel()), $week ? __((string) $scoreGame->mode($tournament->mode)?->name) : ($tournament->score_course ?? __('the directors set it before the start')), 'course'],
             ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],
         ] : [['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding']]),
-        ['mining', __('Season chain'), __('separate: tournament matches never mine season blocks'), 'chain'],
+        ['mining', __('Season chain'), $week ? __('separate: a week mines no season blocks') : __('separate: tournament matches never mine season blocks'), 'chain'],
     ];
 
     if (! $drawn && $tournament->signup_closes_at !== null) {
@@ -498,6 +507,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             $steps[0],
             [__('The window'), __('From the start until the end, play the course alone as often as you like. Your best value inside that time counts; a record set before or after does not.')],
             [__('Your value'), __('Submit your best with a link that proves it, and an admin checks it; or the league reads it from the game. When the window has closed, the best value wins.')],
+        ];
+    }
+
+    if ($week) {
+        $steps = [
+            [__('Play'), __('Play a ranked run of Blockfill, logged in and with a keyboard. No sign-up: your first verified run of the week puts you on this board.')],
+            [__('Verified'), __('The league replays your run from its seed and your inputs. Only a run that reaches the same time counts; practice runs never do.')],
+            [__('Leaderboard'), __('Your best verified run of the week ranks. The fastest time wins, a tie goes to the earlier run; after the week its places score points.')],
         ];
     }
 
@@ -615,7 +632,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
                 @if (filled($tournament->description))
                     <p class="m-0 max-w-[60ch] text-[15px] leading-relaxed whitespace-pre-line text-ink-2" data-test="tournament-description">{{ $tournament->description }}</p>
-                @else
+                @elseif (! $week)
+                    {{-- A Blockfill week (P6) goes straight to its Play button: its steps are below. --}}
                     <p class="m-0 max-w-[60ch] text-[15px] leading-relaxed text-ink-2">{{ __($formatCopy['how']) }}</p>
                 @endif
 
@@ -623,6 +641,13 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @if ($cta !== 'draft')
                     <div class="tl-cta flex flex-col gap-4 rounded-card bg-card p-4 shadow-ring lg:p-5" data-test="signup-cta" data-state="{{ $cta }}">
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-5">
+                            @if ($week && \Illuminate\Support\Facades\Route::has('stacker.play'))
+                                {{-- A Blockfill week (P6): played on the game page, no sign-up. --}}
+                                <a href="{{ route('stacker.play') }}" data-test="to-blockfill"
+                                   class="btn-p tl-go inline-flex min-h-14 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-base font-bold text-on-btc hover:text-on-btc">
+                                    <x-icon name="bolt" :size="20" />{{ __('Play Blockfill') }}
+                                </a>
+                            @else
                             @switch($cta)
                                 @case('open')
                                     <a href="{{ route('tournaments.signup', $tournament) }}" data-test="to-signup"
@@ -648,6 +673,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         <x-icon name="lock" :size="20" />{{ match ($cta) { 'full' => __('Sign-up is full'), 'cancelled' => __('Called off'), default => __('Sign-up closed') } }}
                                     </span>
                             @endswitch
+                            @endif
 
                             <div class="flex min-w-0 flex-col gap-1">
                                 @if ($countdown)
@@ -656,6 +682,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                           x-data="countdown({ at: {{ $countdown['ms'] }}, days: @js(__(':count day|:count days')) })" x-text="text">{{ $countdown['text'] }}</span>
                                 @endif
                                 <span class="text-[13px] leading-normal text-ink-2" data-test="cta-note">
+                                    @if ($week)
+                                        {{ $status === TournamentStatus::Finished
+                                            ? ($champion ? __('This week is over. Winner: :name. A new week is on.', ['name' => $champion->name]) : __('This week is over. A new week is on.'))
+                                            : __('No sign-up: your first verified ranked run puts you on the board below.') }}
+                                        <a href="#leaderboard" class="font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="to-leaderboard">{{ $status === TournamentStatus::Finished ? __('See the results') : __('See the leaderboard') }}</a>
+                                    @else
                                     @switch($cta)
                                         @case('open') {{ trans_choice(':count spot left. You can pull out until sign-up closes.|:count spots left. You can pull out until sign-up closes.', $open) }} @break
                                         @case('entered') {{ match (true) {
@@ -669,11 +701,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         @case('finished') {{ $champion ? __('Finished. Winner: :name.', ['name' => $champion->name]) : __('The tournament has finished.') }} @break
                                         @case('cancelled') {{ __('The tournament was called off.') }} @break
                                     @endswitch
+                                    @endif
                                 </span>
                             </div>
                         </div>
 
-                        @if (! $drawn)
+                        @if (! $drawn && ! $week)
                             <div class="flex items-center gap-3 border-t border-hairline pt-4" data-test="who-is-in">
                                 @if ($faces !== [])
                                     <span class="flex shrink-0 -space-x-2">
@@ -689,14 +722,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @endif
 
                 {{-- Invite: the page link to any chat, and the tournament's card as an image --}}
-                @if ($published && $status !== TournamentStatus::Cancelled)
+                @if ($published && $status !== TournamentStatus::Cancelled && ! $week)
                     @include('pages.tournaments.partials.share', ['tournament' => $tournament, 'text' => $shareText, 'label' => $cta === 'open' || $cta === 'entered' ? __('Bring your friends') : __('Share this tournament')])
                 @endif
             </div>
         </div>
 
         {{-- The places as seats: one block per spot, filled in the order people signed up --}}
-        @if (! $drawn && $published)
+        @if (! $drawn && $published && ! $week)
             <div class="mt-8 flex flex-col gap-2.5 px-4 lg:mt-10 lg:px-12" data-test="places-meter">
                 <div class="flex items-baseline justify-between gap-3">
                     <span class="text-[13px] text-ink-2"><b class="font-display text-lg text-ink tabular-nums" x-data="countUp({{ $places['taken'] }})">{{ $places['taken'] }}</b> {{ __('of :places spots taken', ['places' => $places['places']]) }}</span>
@@ -723,8 +756,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
-    {{-- P45: the tournament on Nostr (its NIP-52 calendar event), a message to its organizer --}}
-    @if ($published)
+    {{-- P45: the tournament on Nostr (its NIP-52 calendar event), a message to its organizer; a Blockfill week has neither to share (P6) --}}
+    @if ($published && ! $week)
         <x-nostr-bar :bar="\App\Support\Nostr\NostrBar::tournament($tournament)" class="mx-4 lg:mx-12" />
     @endif
 
@@ -1004,7 +1037,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <div class="grid gap-2 lg:grid-cols-2 lg:items-start">
             @foreach ([
                 [__('How does :format work?', ['format' => $tournament->format->label()]), __($formatCopy['how']).' '.__('Good for:').' '.__($formatCopy['good'])],
-                [__('What if someone does not show up?'), $noShow],
+                ...($week ? [] : [[__('What if someone does not show up?'), $noShow]]),
                 $score ? [__('How is the winner found?'), $scoreMetric?->lowerIsBetter()
                     ? __('By the fastest time on the course inside the window. A tie goes to whoever set it first.')
                     : __('By the highest score on the course inside the window. A tie goes to whoever set it first.')]

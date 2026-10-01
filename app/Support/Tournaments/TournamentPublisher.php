@@ -335,7 +335,10 @@ final class TournamentPublisher
             $lines = [...$lines, ...$this->matchLines($tournament)];
         }
 
-        $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
+        // A Blockfill week (P6) has neither matches nor a prize pool.
+        if (! $tournament->isBlockfillWeek()) {
+            $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
+        }
 
         if ($tournament->pool_opened_at !== null && $tournament->hasOwnWallet()) {
             $lines[] = $this->prizes($tournament);

@@ -183,3 +183,34 @@ test('/blockfill and scores/blockfill share Blockfill\'s context bar and tab bar
     'de 375' => ['de', 375, 812],
     'de 1440' => ['de', 1440, 900],
 ]);
+
+test('the page of a week: the Play button to /blockfill in the first screen, how a week works, no sign-up or invite row', function (string $locale, int $width, int $height) {
+    $page = blockfillShellPage($this->player, $locale, $width, $height);
+    $week = app(BlockfillWeeks::class)->current();
+    blockfillShellGo($page, route('tournaments.show', $week, false), $locale);
+
+    // [left, right, bottom, href, text, the top of what covers the window's bottom: the tab bar below lg, else the window's edge]
+    $play = $page->evaluate('() => { const a = document.querySelector("[data-test=to-blockfill]"); const r = a.getBoundingClientRect(); const bar = document.querySelector("[data-test=tab-bar]"); const floor = bar && bar.getClientRects().length > 0 ? bar.getBoundingClientRect().top : window.innerHeight; return [Math.round(r.left), Math.round(r.right), Math.round(r.bottom), a.getAttribute("href"), a.innerText.trim(), Math.round(floor)]; }');
+    $how = $page->evaluate('() => document.querySelector("[data-test=how-it-works]").innerText');
+    fwrite(STDERR, "blockfill week page {$locale} {$width}: ".json_encode($play).PHP_EOL);
+
+    expect($play[0])->toBeGreaterThanOrEqual(0)->and($play[1])->toBeLessThanOrEqual($width)
+        // Whole in the first screen, above the tab bar.
+        ->and($play[2])->toBeLessThanOrEqual($play[5])
+        ->and($play[3])->toBe(route('stacker.play'))
+        ->and($play[4])->toBe($locale === 'de' ? 'Blockfill spielen' : 'Play Blockfill')
+        ->and($how)->toContain($locale === 'de' ? 'Die Liga spielt deinen Lauf' : 'The league replays your run')
+        ->and($page->evaluate('() => ["to-signup", "who-is-in", "places-meter", "tournament-share", "nostr-bar"].filter((t) => document.querySelector(`[data-test=${t}]`))'))->toBe([])
+        ->and($page->evaluate('() => document.querySelector("h1").innerText.trim()'))->toBe($locale === 'de' ? 'Blockfill Woche 41, 2026' : 'Blockfill Week 41, 2026');
+
+    shellShot($page, "blockfill-week-page-{$locale}-{$width}");
+    $page->evaluate('() => document.querySelector("[data-test=how-it-works]").scrollIntoView({ block: "start" })');
+    shellShot($page, "blockfill-week-page-how-{$locale}-{$width}");
+    expect($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+})->with([
+    'en 375' => ['en', 375, 812],
+    'en 1440' => ['en', 1440, 900],
+    'de 375' => ['de', 375, 812],
+    'de 1440' => ['de', 1440, 900],
+]);

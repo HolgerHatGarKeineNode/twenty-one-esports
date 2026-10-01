@@ -8,6 +8,7 @@
 | nothing of it anywhere.
 */
 
+use App\Enums\ClanRole;
 use App\Enums\StackerRunStatus;
 use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
@@ -15,6 +16,8 @@ use App\Games\GameRegistry;
 use App\Jobs\VerifyStackerRun;
 use App\Models\Admin;
 use App\Models\BotPost;
+use App\Models\Clan;
+use App\Models\ClanMember;
 use App\Models\NostrEvent;
 use App\Models\StackerRun;
 use App\Models\Tournament;
@@ -24,6 +27,8 @@ use App\Support\Cards\PageCardFacts;
 use App\Support\Cards\ShareMoments;
 use App\Support\Cards\SharePosts;
 use App\Support\Cards\ShareRefused;
+use App\Support\Clans\ClanPride;
+use App\Support\Engagement\PlayerHub;
 use App\Support\Lightning\WinnerZaps;
 use App\Support\Navigation\ShellNavigation;
 use App\Support\Nostr\SignedEvent;
@@ -46,6 +51,7 @@ use App\Support\TwentyOne\Stream\RotationPlanner;
 use App\Support\TwentyOne\Stream\SceneRenderer;
 use App\Support\TwentyOne\Stream\SceneSource;
 use App\Support\TwentyOne\Stream\StreamStats;
+use App\Support\TwentyOne\Stream\TournamentLiveSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
@@ -255,6 +261,8 @@ test('each week gets one 31923, its slug as `d`, without a hashtag, however ofte
         ->and((int) $event->tag('end'))->toBe(CarbonImmutable::parse('2026-10-11 22:00:00')->getTimestamp())
         ->and($event->tagsNamed('t'))->toBe([])
         ->and($event->content)->toContain('replay')->not->toContain('#')
+        // A week has neither matches nor a prize pool (F3).
+        ->and($event->content)->not->toContain('Tournament matches never mine')->not->toContain('prize pool')
         // The organizers' tournament notes leave it to the week notes.
         ->and(app(TournamentNotes::class)->due(CarbonImmutable::now()))->toBe([]);
 });
@@ -410,4 +418,86 @@ test('a Blockfill week\'s winner gets no zap button and no tournament win to sha
     $this->actingAs($ada)->get(route('tournaments.show', $week))->assertOk()
         ->assertDontSeeHtml('wire:name="zap-winner"')
         ->assertDontSeeHtml('wire:name="share-button"');
+});
+
+test('the page of a week tells how a week works: play, verified, leaderboard, the replay as its results, a Play button; no sign-up, no no-show, no invite row', function (string $locale, array $seen, array $unseen) {
+    [$week] = goLiveWeek(['Ada' => 2900]);
+    $html = $this->get(route('tournaments.show', $week).'?lang='.$locale)->assertOk()->getContent();
+    preg_match('#data-test="how-it-works".*?</ol>#s', $html, $how);
+    preg_match('#data-fact="results".*?</div>#s', $html, $results);
+    preg_match('#data-fact="course".*?</div>#s', $html, $course);
+    preg_match('#data-fact="chain".*?</div>#s', $html, $chain);
+
+    expect($html)->toContain('data-test="to-blockfill"')->toContain('href="'.route('stacker.play').'"')
+        ->and($html)->not->toContain('data-test="to-signup"')
+        ->and($html)->not->toContain(route('tournaments.signup', $week))
+        ->and($html)->not->toContain('data-test="who-is-in"')
+        ->and($html)->not->toContain('data-test="places-meter"')
+        ->and($html)->not->toContain('data-test="tournament-share"')
+        ->and($html)->not->toContain('data-test="nostr-bar"');
+
+    foreach ($seen as $text) {
+        expect(html_entity_decode($how[0].$results[0].$course[0].$chain[0], ENT_QUOTES))->toContain($text);
+    }
+    foreach ($unseen as $text) {
+        expect(html_entity_decode($html, ENT_QUOTES))->not->toContain($text);
+    }
+})->with([
+    'en' => ['en', ['Play a ranked run of Blockfill', 'The league replays your run', 'Your best verified run of the week ranks', 'every ranked run replayed by the league', '40 blocks', 'a week mines no season blocks'],
+        ['What if someone does not show up?', 'link that proves it', 'values read from the game', 'Confirm with your Nostr key', 'tournament matches never mine']],
+    'de' => ['de', ['Spiel einen gewerteten Blockfill-Lauf', 'Die Liga spielt deinen Lauf', 'Dein bester geprüfter Lauf der Woche zählt', 'jeder gewertete Lauf von der Liga nachgespielt', '40 Blöcke', 'eine Woche schürft keine Season-Blöcke'],
+        ['Was, wenn jemand nicht erscheint?', 'Link, der ihn belegt']],
+]);
+
+test('the draw page of a week is 404; with Blockfill switched off its page, calendar file and TV are 404 too; on, the calendar file is in the language of the request and ends with the week', function () {
+    [$week] = goLiveWeek(['Ada' => 2900]);
+
+    $this->get(route('tournaments.draw', $week))->assertNotFound();
+    $ics = $this->get(route('tournaments.calendar', $week).'?lang=de')->assertOk()->getContent();
+    expect($ics)->toContain('SUMMARY:Blockfill Woche 41\, 2026')
+        ->and($ics)->toContain('DTSTART:20261004T220000Z')
+        ->and($ics)->toContain('DTEND:20261011T220000Z');
+
+    config(['esports.blockfill.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+
+    foreach (['tournaments.show', 'tournaments.draw', 'tournaments.calendar', 'tournaments.tv'] as $route) {
+        $this->get(route($route, $week))->assertNotFound();
+    }
+
+    // Any other tournament stays readable.
+    $other = Tournament::query()->where('name', 'Friday Blitz Cup')->firstOrFail();
+    $this->get(route('tournaments.show', $other))->assertOk();
+});
+
+test('an entry in a week does not tick "Sign up for a tournament" on the own page', function () {
+    [, , $users] = goLiveWeek(['Ada' => 2900]);
+    $step = collect((new PlayerHub($users['Ada']))->steps())->firstWhere('key', 'tournament');
+
+    expect($step['done'])->toBeFalse();
+});
+
+test('the podium of a week is no proud clan moment, and the live tournament slides leave the week out', function () {
+    [$week, $organizer, $users] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000]);
+    $clan = Clan::factory()->create(['created_at' => now()->subDays(60)]);
+    ClanMember::query()->create(['clan_id' => $clan->id, 'user_id' => $users['Ada']->id, 'role' => ClanRole::Member, 'joined_at' => now()->subDays(60)]);
+
+    expect(app(TournamentLiveSlides::class)->tournaments()->pluck('id')->all())->toBe([$organizer->id]);
+
+    goLiveFinish($week);
+    $moments = collect(app(ClanPride::class)->read()[$clan->id] ?? []);
+
+    expect($week->status)->toBe(TournamentStatus::Finished)
+        ->and($moments->where('type', 'tournament')->all())->toBe([])
+        // A finished week is no live tournament either.
+        ->and(app(TournamentLiveSlides::class)->tournaments()->pluck('id')->all())->not->toContain($week->id);
+});
+
+test('switched on, the Blockfill notes of the stream bot are scheduled every five minutes', function () {
+    BlockfillOn::play();
+    require base_path('routes/console.php');
+    $event = collect(app(Schedule::class)->events())->first(fn ($event): bool => str_contains((string) $event->command, 'twentyone:stream-bot:blockfill'));
+
+    expect($event)->not->toBeNull()
+        ->and($event->expression)->toBe('*/5 * * * *');
 });

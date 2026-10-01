@@ -5870,5 +5870,14 @@
     "Between the start of a ranked run and its submission at least its played time must pass, and at most :seconds seconds more, so a run played in slow motion does not count.": "Zwischen dem Start eines gewerteten Laufs und seiner Abgabe muss mindestens seine Spielzeit vergehen und höchstens :seconds Sekunden mehr, damit ein in Zeitlupe gespielter Lauf nicht zählt.",
     "After the week, its places score points on the Blockfill points ladder. A week is unrated: no Elo, no series, no season blocks.": "Nach der Woche bringen ihre Plätze Punkte auf der Blockfill-Punkteliste. Eine Woche ist ungewertet: kein Elo, keine Serien, keine Season-Blöcke.",
     "A replay shows that a run was possible, not that a person played it. Bots and tool-assisted runs cannot be ruled out completely.": "Ein Replay zeigt, dass ein Lauf möglich war, nicht dass ein Mensch ihn gespielt hat. Bots und werkzeuggestützte Läufe lassen sich nicht ganz ausschließen.",
-    "Pick a game from the list.": "Wähle ein Spiel aus der Liste."
+    "Pick a game from the list.": "Wähle ein Spiel aus der Liste.",
+    "every ranked run replayed by the league; only a run that reaches the same time counts": "jeder gewertete Lauf von der Liga nachgespielt; nur ein Lauf, der dieselbe Zeit erreicht, zählt",
+    "Verified": "Geprüft",
+    "Play a ranked run of Blockfill, logged in and with a keyboard. No sign-up: your first verified run of the week puts you on this board.": "Spiel einen gewerteten Blockfill-Lauf, angemeldet und mit Tastatur. Ohne Anmeldung zum Turnier: dein erster geprüfter Lauf der Woche bringt dich auf dieses Leaderboard.",
+    "The league replays your run from its seed and your inputs. Only a run that reaches the same time counts; practice runs never do.": "Die Liga spielt deinen Lauf aus seinem Seed und deinen Eingaben nach. Nur ein Lauf, der dieselbe Zeit erreicht, zählt; Übungsläufe zählen nie.",
+    "Your best verified run of the week ranks. The fastest time wins, a tie goes to the earlier run; after the week its places score points.": "Dein bester geprüfter Lauf der Woche zählt. Die schnellste Zeit gewinnt, bei Gleichstand der frühere Lauf; nach der Woche bringen die Plätze Punkte.",
+    "This week is over. Winner: :name. A new week is on.": "Diese Woche ist vorbei. Sieger: :name. Eine neue Woche läuft.",
+    "This week is over. A new week is on.": "Diese Woche ist vorbei. Eine neue Woche läuft.",
+    "No sign-up: your first verified ranked run puts you on the board below.": "Ohne Anmeldung: dein erster geprüfter gewerteter Lauf bringt dich auf das Leaderboard unten.",
+    "separate: a week mines no season blocks": "getrennt: eine Woche schürft keine Season-Blöcke"
 }
