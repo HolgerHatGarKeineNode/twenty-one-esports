@@ -8,7 +8,8 @@
     row share their height. A filter and an All / 1v1 / Clan vs clan toggle
     narrow the grid; they sit outside the scrolling list, so they stay put.
     From lg it drops below row 1 as a full-width panel that is as tall as its
-    cards (4 columns from xl: 4 games are one row, 8 are two), below lg it is
+    cards (4 columns from xl: 4 games are one row, 8 are two; 5 games are one
+    row of 5), below lg it is
     a bottom sheet above the tab bar. One element for both, so both widths
     reach the same links (P16): tests/Support/navigation.php counts its links
     through its openers ([aria-controls=game-hub]).
@@ -53,7 +54,8 @@
     </div>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 lg:px-6 lg:pb-6" x-ref="hubTiles">
-        <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4 xl:grid-cols-4" aria-label="{{ trans_choice('All :count game|All :count games', $count) }}">
+        {{-- Five games are one row of five from xl: a second row of one card scrolled the list at 1280 × 800 (P9). --}}
+        <ul @class(['m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4', 'xl:grid-cols-5' => count($games) === 5, 'xl:grid-cols-4' => count($games) !== 5]) aria-label="{{ trans_choice('All :count game|All :count games', $count) }}">
             @foreach ($games as $game)
                 <li class="hub-card" style="--game: {{ $game['colour'] }}" data-name="{{ mb_strtolower($game['name'].' '.$game['short'].' '.$game['slug']) }}" data-kinds="{{ implode(' ', $game['kinds']) }}"
                     x-show="shows($el)" data-test="hub-game-{{ $game['slug'] }}">

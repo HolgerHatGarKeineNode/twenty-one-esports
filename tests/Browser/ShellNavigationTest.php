@@ -111,35 +111,44 @@ const HUB_MEASURE = <<<'JS'
     }
     JS;
 
-test('the hub spends its width on one card grid and does not scroll with 4 games at 1280, 1440 and 1920 px', function () {
-    // Four games, one row: the registry's first four (Age of Empires II makes it five, a second row the 8/12 test measures).
-    app()->instance(GameRegistry::class, new GameRegistry(array_slice(array_values(app(GameRegistry::class)->all()), 0, 4)));
+test('the hub spends its width on one card grid and does not scroll with the 5 games of the registry or 4 games at 1280, 1440 and 1920 px', function () {
     $player = shellPlayer();
     $problems = [];
     $sizes = [];
 
-    foreach ([1280 => 800, 1440 => 900, 1920 => 1080] as $width => $height) {
-        $page = shellPage($player, $width, $height);
-        shellOpen($page, '/clans', $problems);
-        $page->locator('[data-test=games-menu]')->click();
-        BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
-        $page->evaluate(SHELL_SETTLE);
-        $m = $sizes[$width] = $page->evaluate(HUB_MEASURE);
-        shellShot($page, "shell-player-{$width}-hub");
+    // The real registry (chess, Rocket League, two EA Sports FC, Age of Empires II): one row of five from xl.
+    // Its first four: the four-game layout, one row of four, unchanged.
+    foreach ([5, 4] as $count) {
+        app()->forgetInstance(GameRegistry::class);
 
-        expect($m['scrollHeight'])->toBeLessThanOrEqual($m['clientHeight'], "inner scroll @{$width}: ".json_encode($m))
-            ->and($m['bottom'])->toBeLessThanOrEqual($height)
-            ->and($m['fill'])->toBeGreaterThanOrEqual(0.9, "first row fill @{$width}: ".json_encode($m))
-            ->and($m['columns'])->toBe(4)
-            ->and($m['heights'])->toHaveCount(1);
+        if ($count === 4) {
+            app()->instance(GameRegistry::class, new GameRegistry(array_slice(array_values(app(GameRegistry::class)->all()), 0, 4)));
+        }
+
+        foreach ([1280 => 800, 1440 => 900, 1920 => 1080] as $width => $height) {
+            $page = shellPage($player, $width, $height);
+            shellOpen($page, '/clans', $problems);
+            $page->locator('[data-test=games-menu]')->click();
+            BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
+            $page->evaluate(SHELL_SETTLE);
+            $m = $sizes["{$count}@{$width}"] = $page->evaluate(HUB_MEASURE);
+            shellShot($page, "shell-player-{$width}-hub-{$count}games");
+
+            expect($m['scrollHeight'])->toBeLessThanOrEqual($m['clientHeight'], "inner scroll {$count}@{$width}: ".json_encode($m))
+                ->and($m['bottom'])->toBeLessThanOrEqual($height)
+                ->and($m['fill'])->toBeGreaterThanOrEqual(0.9, "first row fill {$count}@{$width}: ".json_encode($m))
+                ->and($m['columns'])->toBe($count)
+                ->and($m['heights'])->toHaveCount(1);
+        }
+
+        // Your games first, marked; each card leads with its primary action.
+        expect($page->evaluate('() => [...document.querySelectorAll("#game-hub [data-test^=hub-game-]")].map((el) => el.dataset.test.replace("hub-game-", "") + (el.querySelector("[data-test=hub-yours]") ? "*" : ""))'))
+            ->toBe([...['rocket-league*', 'chess*', 'ea-sports-fc-27', 'ea-sports-fc-26'], ...($count === 5 ? ['age-of-empires-2'] : [])])
+            ->and($page->evaluate('() => ["chess", "rocket-league"].map((slug) => document.querySelector(`[data-test=hub-game-${slug}] .hub-action`).innerText.trim())'))
+            ->toBe(['Play blitz', 'Challenge a clan']);
     }
 
-    // Your games first, marked; each card leads with its primary action.
-    expect($page->evaluate('() => [...document.querySelectorAll("#game-hub [data-test^=hub-game-]")].map((el) => el.dataset.test.replace("hub-game-", "") + (el.querySelector("[data-test=hub-yours]") ? "*" : ""))'))
-        ->toBe(['rocket-league*', 'chess*', 'ea-sports-fc-27', 'ea-sports-fc-26'])
-        ->and($page->evaluate('() => ["chess", "rocket-league"].map((slug) => document.querySelector(`[data-test=hub-game-${slug}] .hub-action`).innerText.trim())'))
-        ->toBe(['Play blitz', 'Challenge a clan']);
-
+    app()->forgetInstance(GameRegistry::class);
     fwrite(STDERR, "\n[shell-hub-grid] ".json_encode($sizes));
     expect($problems)->toBe([]);
 });
