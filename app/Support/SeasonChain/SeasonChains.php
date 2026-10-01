@@ -530,7 +530,7 @@ final class SeasonChains
 
         $attested = 0;
         $due = Tournament::query()->where('status', TournamentStatus::Finished)->where('format', TournamentFormat::Leaderboard)
-            ->whereIn('game', $games)->whereNull('created_by_id')->where('starts_at', '>=', $live->genesis_at)
+            ->whereIn('game', $games)->where('opened_by_league', true)->whereNull('created_by_id')->where('starts_at', '>=', $live->genesis_at)
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('season_attestations')
                 ->where('season_attestations.source', SeasonAttestation::SCORE)->whereColumn('season_attestations.source_id', 'tournaments.id'))
             ->orderBy('id')->get();
@@ -554,9 +554,11 @@ final class SeasonChains
      * gate of the winner and the field pinned now, and the `block` tag; the
      * solo rules (ConsensusRules) decide whether it mines.
      *
-     * Only a window the league opened itself (a leaderboard without an
-     * organizer, such as a Blockfill week) is a candidate: every other
-     * tournament never mines, an organizer's leaderboard included. Null when
+     * Only a window the league opened itself (`opened_by_league`, set by the
+     * league's own code only, such as a Blockfill week; and still without an
+     * organizer) is a candidate: every other tournament never mines, an
+     * organizer's leaderboard included, also once the organizer deleted the
+     * account and `created_by_id` became null (audit F1). Null when
      * nothing is due: not such a window, not finished, its `31923` not
      * signed, no live season, a window that began before Block 0 (it belongs
      * to no chain), the review time `solo` after its end not over yet, its
@@ -567,7 +569,7 @@ final class SeasonChains
     public function attestScoreWindow(Tournament $tournament): ?SeasonAttestation
     {
         if (! app(GameRegistry::class)->isScore($tournament->game) || $tournament->format !== TournamentFormat::Leaderboard
-            || $tournament->created_by_id !== null || $tournament->status !== TournamentStatus::Finished) {
+            || ! $tournament->opened_by_league || $tournament->created_by_id !== null || $tournament->status !== TournamentStatus::Finished) {
             return null;
         }
 

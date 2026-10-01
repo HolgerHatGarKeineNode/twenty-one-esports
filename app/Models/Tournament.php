@@ -58,6 +58,7 @@ use Illuminate\Support\Carbon;
  * @property TournamentStatus $status
  * @property string|null $seed
  * @property int|null $created_by_id
+ * @property bool $opened_by_league a score window the league opened itself (BlockfillWeeks::open()); only such a window can mine (SeasonChains::attestScoreWindow()). Never mass assignable
  * @property string|null $slug `d` of the tournament's NIP-52 calendar event (31923)
  * @property Carbon|null $signup_closes_at
  * @property Carbon|null $published_at
@@ -156,6 +157,7 @@ class Tournament extends Model
             'starts_at' => 'datetime',
             'time_window' => 'integer',
             'on_site' => 'boolean',
+            'opened_by_league' => 'boolean',
             'stations' => 'integer',
             'times' => 'array',
             'results_mode' => TournamentResultsMode::class,

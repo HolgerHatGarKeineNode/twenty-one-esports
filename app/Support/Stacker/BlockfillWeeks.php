@@ -147,7 +147,8 @@ final class BlockfillWeeks
         $profile = GameProfile::for(Blockfill::SLUG, Blockfill::MODE);
 
         try {
-            return Tournament::query()->create([
+            // forceCreate: `opened_by_league` is never mass assignable (audit F1 of plan "AoE2 und Trackmania", P7).
+            return Tournament::query()->forceCreate([
                 // Stored in English; pages show it in their language (title()).
                 'name' => 'Blockfill Week '.$local->isoWeek().', '.$local->isoWeekYear(),
                 'game' => Blockfill::SLUG,
@@ -163,6 +164,8 @@ final class BlockfillWeeks
                 'results_mode' => TournamentResultsMode::Players,
                 'status' => TournamentStatus::Running,
                 'created_by_id' => null,
+                // The league's own window: the only kind that can mine a solo block (plan "Blockfill", P7).
+                'opened_by_league' => true,
                 'slug' => self::slugOf($start),
                 'published_at' => $start,
                 'score_course' => Blockfill::MODE,

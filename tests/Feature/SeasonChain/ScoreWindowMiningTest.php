@@ -10,6 +10,7 @@
  */
 
 use App\Enums\TournamentStatus;
+use App\Livewire\Actions\DeleteAccount;
 use App\Models\NostrEvent;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
@@ -38,7 +39,7 @@ use Tests\Support\TrustedFacts;
 
 /**
  * A running score-demo leaderboard of $n players with a published `31923`,
- * opened by the league ($organizer null) or by an organizer.
+ * opened by the league ($organizer null, `opened_by_league`) or by an organizer.
  *
  * @return array{0: Tournament, 1: list<User>}
  */
@@ -50,6 +51,8 @@ function soloWindow(int $n, ?User $organizer = null, string $slug = 'score-week-
         'capacity' => $n,
         'created_by_id' => $organizer?->id,
     ]);
+    // As the league's own code marks it (BlockfillWeeks::open()); never mass assignable.
+    $tournament->forceFill(['opened_by_league' => $organizer === null])->save();
     $users = [];
 
     foreach (range(1, $n) as $index) {
@@ -170,6 +173,25 @@ describe('mining', function () {
         expect($tournament->refresh()->status)->toBe(TournamentStatus::Finished)
             ->and(SeasonAttestation::query()->count())->toBe(0)
             ->and(app(SeasonChains::class)->attestScoreWindow($tournament))->toBeNull();
+    });
+
+    test('a window whose organizer deleted the account stays a tournament: never attested, never a block (audit F1)', function () {
+        $organizer = User::factory()->create();
+        [$tournament, $users] = soloWindow(5, $organizer);
+        soloPlay($tournament, $users);
+        $this->travelTo(ScoreWindow::of($tournament)->end->addHours(25));
+        app(ScoreLeaderboards::class)->tick();
+
+        $this->actingAs($organizer);
+        app(DeleteAccount::class)($organizer);
+        $this->travelTo(ScoreWindow::of($tournament)->end->addHours(49));
+        app(ScoreLeaderboards::class)->tick();
+        app(ScoreLeaderboards::class)->tick();
+
+        expect($tournament->refresh()->created_by_id)->toBeNull()
+            ->and(SeasonAttestation::query()->count())->toBe(0)
+            ->and(app(SeasonChains::class)->attestScoreWindow($tournament))->toBeNull()
+            ->and($tournament->opened_by_league)->toBeFalse();
     });
 
     test('attesting the same window twice keeps one attestation', function () {
