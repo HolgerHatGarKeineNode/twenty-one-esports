@@ -4,6 +4,7 @@ namespace App\Support\Navigation;
 
 use App\Enums\InviteStatus;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\Contracts\Game;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
@@ -224,6 +225,8 @@ final class ShellNavigation
             $name === 'board.lobby', $name === 'board.correspondence' => $known($route->parameter('board')),
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
             $name === 'scores.show' => $known($route->parameter('game')),
+            // Blockfill's game page (plan "Blockfill", P6): its own context bar, never the one of the game opened last.
+            $name === 'stacker.play' => $known(Blockfill::SLUG),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),
@@ -450,6 +453,16 @@ final class ShellNavigation
                 self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
                 self::strongest(),
             ]));
+        }
+
+        // Blockfill (plan "Blockfill", P6): the game page first, then its weekly leaderboards in the ladder's place
+        // (the tab bar is the same on both pages), and how a week works.
+        if ($slug === Blockfill::SLUG && Route::has('stacker.play') && Route::has('scores.show')) {
+            return [
+                self::link('play', route('stacker.play'), __('Play'), 'bolt', null, null, __('Play'), 'play'),
+                self::link('leaderboard', route('scores.show', $slug), __('Leaderboard'), 'trophy', null, null, null, 'ladder'),
+                self::link('rules', route('rules').'#'.$slug, __('Rules'), 'shield-check'),
+            ];
         }
 
         // A score game (plan "AoE2 und Trackmania", P4): its leaderboards and points ladder on one page; no matches,

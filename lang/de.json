@@ -5855,5 +5855,19 @@
     "Full table": "Ganze Tabelle",
     "40 blocks": "40 Blöcke",
     "Blockfill Week :week, :year": "Blockfill Woche :week, :year",
-    "Practice best": "Bestzeit beim Üben"
+    "Practice best": "Bestzeit beim Üben",
+    "How a week works": "So läuft eine Woche",
+    "Play Blockfill": "Blockfill spielen",
+    "Week": "Woche",
+    "Monday 00:00 to Monday 00:00, Berlin time": "Montag 00:00 bis Montag 00:00, Berliner Zeit",
+    "Place 1 to :places: :points": "Platz 1 bis :places: :points",
+    "The league's own stacking game: mine 40 blocks as fast as you can. One leaderboard a week, no sign-up, no matches.": "Das eigene Stapelspiel der Liga: schürfe 40 Blöcke so schnell du kannst. Ein Leaderboard pro Woche, ohne Anmeldung, ohne Matches.",
+    "A new week starts every Monday at 00:00 Berlin time. Your first verified ranked run puts you on its leaderboard, no sign-up needed.": "Jeden Montag um 00:00 Uhr Berliner Zeit beginnt eine neue Woche. Dein erster geprüfter gewerteter Lauf bringt dich auf ihr Leaderboard, ohne Anmeldung.",
+    "Your best verified ranked run of the week counts. The fastest time wins; with the same time, the earlier run is ahead.": "Es zählt dein bester geprüfter gewerteter Lauf der Woche. Die schnellste Zeit gewinnt; bei gleicher Zeit liegt der frühere Lauf vorn.",
+    "Ranked runs need a login and a keyboard. Each one starts from a seed the league hands out right before the countdown.": "Gewertete Läufe brauchen einen Login und eine Tastatur. Jeder beginnt mit einem Seed, den die Liga direkt vor dem Countdown ausgibt.",
+    "Practice runs are open to everyone, guests and phones included. They are played in the browser alone and never count.": "Übungsläufe stehen allen offen, auch Gästen und auf dem Handy. Sie laufen nur im Browser und zählen nie.",
+    "The league replays every ranked run from its seed and your inputs. Only a run that reaches the same time counts; a run the league could not check yet waits and counts once it is checked.": "Die Liga spielt jeden gewerteten Lauf aus seinem Seed und deinen Eingaben nach. Nur ein Lauf, der dieselbe Zeit erreicht, zählt; einen Lauf, den die Liga noch nicht prüfen konnte, hält sie zurück, und er zählt, sobald er geprüft ist.",
+    "Between the start of a ranked run and its submission at least its played time must pass, and at most :seconds seconds more, so a run played in slow motion does not count.": "Zwischen dem Start eines gewerteten Laufs und seiner Abgabe muss mindestens seine Spielzeit vergehen und höchstens :seconds Sekunden mehr, damit ein in Zeitlupe gespielter Lauf nicht zählt.",
+    "After the week, its places score points on the Blockfill points ladder. A week is unrated: no Elo, no series, no season blocks.": "Nach der Woche bringen ihre Plätze Punkte auf der Blockfill-Punkteliste. Eine Woche ist ungewertet: kein Elo, keine Serien, keine Season-Blöcke.",
+    "A replay shows that a run was possible, not that a person played it. Bots and tool-assisted runs cannot be ruled out completely.": "Ein Replay zeigt, dass ein Lauf möglich war, nicht dass ein Mensch ihn gespielt hat. Bots und werkzeuggestützte Läufe lassen sich nicht ganz ausschließen."
 }
