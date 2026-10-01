@@ -40,6 +40,24 @@ test('the rules state the numbers the league applies, read from the config at re
         ->assertSee('once it has 3 confirmations');
 });
 
+test('the league\'s Age of Empires II lobby rules come from the config, on the rules page and the game page, in English and German', function () {
+    config(['esports.series.lobby_rules.age-of-empires-2' => ['map' => 'Arena', 'civilizations' => 'free', 'spectator_delay_minutes' => 3, 'restart_minutes' => 4]]);
+
+    $rules = $this->get(route('rules'))->assertOk()->getContent();
+
+    expect($rules)->toContain('id="age-of-empires-2"')->toContain('href="#age-of-empires-2"')
+        ->toContain('Map Arena. Each player picks any civilisation.')
+        ->toContain('Spectators are allowed, with a delay of 3 minutes.')
+        ->toContain('A player disconnects in the first 4 minutes of a game: restart it once, with the same civilisations and colours.')
+        ->toContain('A later disconnect loses the game, unless both agree to restart.');
+
+    $this->get(route('games.series', 'age-of-empires-2'))->assertOk()
+        ->assertSeeHtml('data-test="game-lobby-rules"')->assertSee('Map Arena. Each player picks any civilisation.');
+    $this->get(route('games.series', ['slug' => 'age-of-empires-2', 'lang' => 'de']))->assertOk()
+        ->assertSee('Lobby-Regeln der Liga')->assertSee('Zuschauer sind erlaubt, mit 3 Minuten Verzögerung.');
+    $this->get(route('games.rocket-league'))->assertOk()->assertDontSeeHtml('data-test="game-lobby-rules"');
+});
+
 test('the games table comes from the game registry', function () {
     $table = collect(RulesPage::sections())->firstWhere('id', 'games')['table'];
 

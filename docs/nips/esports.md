@@ -3494,7 +3494,9 @@ EA ID: Satoshi_21
 (add me as a friend for match 1234)
 ```
 
-A withdrawal reads `Lobby closed (match 1234)` or `EA ID withdrawn (match 1234)`.
+A withdrawal reads `Lobby closed (match 1234)` or `EA ID withdrawn (match 1234)`. An open Age of Empires II lobby
+card adds the league's lobby rules as one line before the last (`League rules: map Arabia, …`); it is information for
+the reader, not a tag, and no client reads it.
 
 **Rendering.** The app draws a card from the tags only, never from `content`, with a copy button per
 field and the values as text (never as HTML). A card is valid when its marker names a known game or

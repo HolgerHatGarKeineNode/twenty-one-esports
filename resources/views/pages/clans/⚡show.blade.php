@@ -370,23 +370,30 @@ new #[Layout('layouts::app', ['section' => 'clans'])] class extends Component {
 
     {{-- Elo over time (P6/P7) --}}
     <section aria-labelledby="elo-h" class="flex flex-col gap-3 rounded-lg bg-card px-4 py-4 lg:px-6 lg:py-5">
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-1"><h2 id="elo-h" class="m-0 text-[15px] font-bold">{{ __('Elo over time') }}</h2><span class="text-xs text-ink-3">{{ __('Rocket League 3v3 lineup, per rated series') }}</span></div>
-        @if ($record !== null && count($record['line']) > 1)
-            @php($low = intdiv(min($record['line']), 50) * 50)
-            @php($high = max($low + 100, (intdiv(max($record['line']) - 1, 50) + 1) * 50))
-            @php($points = collect($record['line'])->map(fn ($elo, $i) => number_format($i / (count($record['line']) - 1) * 600, 1, '.', '').','.number_format(160 - ($elo - $low) / ($high - $low) * 160, 1, '.', ''))->implode(' '))
-            <div class="grid h-[200px] grid-cols-[44px_minmax(0,1fr)] gap-2">
-                <div class="flex flex-col justify-between pb-5 text-right text-[11px] text-ink-3"><span>{{ $high }}</span><span>{{ intdiv($high + $low, 2) }}</span><span>{{ $low }}</span></div>
-                <div class="flex flex-col gap-1.5">
-                    <div class="relative grow border-b border-line [background-image:linear-gradient(#1E1E22_1px,transparent_1px)] [background-size:100%_50%]">
-                        <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" class="absolute inset-0" role="img" aria-label="{{ __('Elo of the 3v3 lineup over :n series, from :start to :elo', ['n' => count($record['line']) - 1, 'start' => $record['line'][0], 'elo' => end($record['line'])]) }}">
-                            <polyline points="{{ $points }}" fill="none" stroke="#F7931A" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
-                        </svg>
-                        <span class="absolute top-1 right-0 bg-card px-1 text-xs font-bold">{{ end($record['line']) }}</span>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1"><h2 id="elo-h" class="m-0 text-[15px] font-bold">{{ __('Elo over time') }}</h2><span class="text-xs text-ink-3">{{ __('per lineup and rated series') }}</span></div>
+        @if ($record !== null && $record['lines'] !== [])
+            {{-- One line per series game the clan has a lineup in (ClanStats::record()). --}}
+            @foreach ($record['lines'] as ['game' => $lineGame, 'mode' => $lineMode, 'line' => $eloLine])
+                @php($low = intdiv(min($eloLine), 50) * 50)
+                @php($high = max($low + 100, (intdiv(max($eloLine) - 1, 50) + 1) * 50))
+                @php($points = collect($eloLine)->map(fn ($elo, $i) => number_format($i / (count($eloLine) - 1) * 600, 1, '.', '').','.number_format(160 - ($elo - $low) / ($high - $low) * 160, 1, '.', ''))->implode(' '))
+                @php($lineName = __(':game :mode lineup', ['game' => \App\Support\GameNames::game($lineGame), 'mode' => $lineMode]))
+                <div class="flex flex-col gap-1.5" data-test="elo-line" data-game="{{ $lineGame }}">
+                    <span class="text-xs font-bold text-ink-2">{{ $lineName }}</span>
+                    <div class="grid h-[200px] grid-cols-[44px_minmax(0,1fr)] gap-2">
+                        <div class="flex flex-col justify-between pb-5 text-right text-[11px] text-ink-3"><span>{{ $high }}</span><span>{{ intdiv($high + $low, 2) }}</span><span>{{ $low }}</span></div>
+                        <div class="flex flex-col gap-1.5">
+                            <div class="relative grow border-b border-line [background-image:linear-gradient(#1E1E22_1px,transparent_1px)] [background-size:100%_50%]">
+                                <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" class="absolute inset-0" role="img" aria-label="{{ __('Elo of the :lineup over :n series, from :start to :elo', ['lineup' => $lineName, 'n' => count($eloLine) - 1, 'start' => $eloLine[0], 'elo' => end($eloLine)]) }}">
+                                    <polyline points="{{ $points }}" fill="none" stroke="#F7931A" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+                                </svg>
+                                <span class="absolute top-1 right-0 bg-card px-1 text-xs font-bold">{{ end($eloLine) }}</span>
+                            </div>
+                            <div class="flex justify-between text-[11px] text-ink-3"><span>{{ __('start') }}</span><span>{{ __('series :n', ['n' => intdiv(count($eloLine) - 1, 2)]) }}</span><span>{{ __('series :n', ['n' => count($eloLine) - 1]) }}</span></div>
+                        </div>
                     </div>
-                    <div class="flex justify-between text-[11px] text-ink-3"><span>{{ __('start') }}</span><span>{{ __('series :n', ['n' => intdiv(count($record['line']) - 1, 2)]) }}</span><span>{{ __('series :n', ['n' => count($record['line']) - 1]) }}</span></div>
                 </div>
-            </div>
+            @endforeach
         @else
             <p class="m-0 py-6 text-center text-[13px] text-ink-2">{{ __('The Elo line starts with the first rated series.') }}</p>
         @endif

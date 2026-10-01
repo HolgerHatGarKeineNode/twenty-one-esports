@@ -160,7 +160,9 @@ test('an Age of Empires II 3v3 series is reported with its winners only: a score
 
     // The room asks for the winner of each game, never for goals.
     $room = Livewire::actingAs($captainA)->test('pages::matches.room', ['match' => $match])
-        ->assertSee('after each game, pick its winner')->assertDontSeeHtml('data-test="goals-0-c"')->html();
+        ->assertSee('after each game, pick its winner')->assertDontSeeHtml('data-test="goals-0-c"')
+        // The league's lobby rules sit in the lobby panel of a lineup series too (LobbyRules, P9).
+        ->assertSeeHtml('data-test="lobby-rules"')->assertSee('Map Arabia. Each player picks any civilisation.')->html();
     $this->series->report($match, $captainA, []);
     $this->series->respond($match, $captainB, 'confirmed', '', []);
 
@@ -171,7 +173,8 @@ test('an Age of Empires II 3v3 series is reported with its winners only: a score
     // Rocket League keeps its goals.
     [$rocket, [, $rocketCaptain]] = acceptedSeries();
     Livewire::actingAs($rocketCaptain)->test('pages::matches.room', ['match' => $rocket])
-        ->assertSee('after each game, enter the team goals from the end screen')->assertSeeHtml('data-test="goals-0-c"');
+        ->assertSee('after each game, enter the team goals from the end screen')->assertSeeHtml('data-test="goals-0-c"')
+        ->assertDontSeeHtml('data-test="lobby-rules"');
 
     // The room, the match page and the rules, in English and in German: no goals, no Tore.
     $text = fn (string $html): string => html_entity_decode(strip_tags((string) preg_replace('~<(script|style)\b.*?</\1>~s', '', $html)));

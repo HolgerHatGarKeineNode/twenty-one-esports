@@ -359,7 +359,7 @@ export function roomChat(config) {
             this.sending = true;
 
             try {
-                const rumor = await this.deliver({ content: cardContent(card, config.match), tags, needOpponent: true });
+                const rumor = await this.deliver({ content: cardContent(card, config.match, this.casual.lobbyRules ?? ''), tags, needOpponent: true });
 
                 if (rumor !== null) {
                     this.composer = '';

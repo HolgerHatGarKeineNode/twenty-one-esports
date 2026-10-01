@@ -70,7 +70,17 @@ test('players pair on the same platform, or across platforms only when both allo
     'FC on Switch against Switch' => ['ea-sports-fc-27', Platform::Switch, false, Platform::Switch, false, true],
     'FC across consoles with crossplay' => ['ea-sports-fc-27', Platform::PlayStation, true, Platform::Xbox, true, true],
     'AoE2 on PC against Xbox with crossplay' => ['age-of-empires-2', Platform::Pc, true, Platform::Xbox, true, true],
+    'AoE2 on PlayStation against PC with crossplay' => ['age-of-empires-2', Platform::PlayStation, true, Platform::Pc, true, true],
 ]);
+
+test('AoE2 excludes no platform from crossplay on purpose, and the rules list only the games that exclude one', function () {
+    expect(config('esports.casual.crossplay_excluded'))->toHaveKey('age-of-empires-2')
+        ->and(config('esports.casual.crossplay_excluded.age-of-empires-2'))->toBe([]);
+
+    $this->get(route('rules'))->assertOk()
+        ->assertSee('Never cross-platform: EA Sports FC 26: switch; EA Sports FC 27: switch.')
+        ->assertDontSee('Age of Empires II: Definitive Edition: .');
+});
 
 test('a player is paired with the longest waiting fitting opponent, never across games', function () {
     [$anna, $bert, $carl, $dora] = User::factory()->count(4)->create();

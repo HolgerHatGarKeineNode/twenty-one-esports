@@ -8,7 +8,8 @@
     row share their height. A filter and an All / 1v1 / Clan vs clan toggle
     narrow the grid; they sit outside the scrolling list, so they stay put.
     From lg it drops below row 1 as a full-width panel that is as tall as its
-    cards (4 columns from xl: 4 games are one row, 8 are two), below lg it is
+    cards (4 columns from xl: 4 games are one row, 8 are two; 5 games are one
+    row of 5), below lg it is
     a bottom sheet above the tab bar. One element for both, so both widths
     reach the same links (P16): tests/Support/navigation.php counts its links
     through its openers ([aria-controls=game-hub]).
@@ -53,7 +54,8 @@
     </div>
 
     <div class="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 lg:px-6 lg:pb-6" x-ref="hubTiles">
-        <ul class="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4 xl:grid-cols-4" aria-label="{{ trans_choice('All :count game|All :count games', $count) }}">
+        {{-- Five games are one row of five from xl: a second row of one card scrolled the list at 1280 × 800 (P9). --}}
+        <ul @class(['m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 lg:gap-4', 'xl:grid-cols-5' => count($games) === 5, 'xl:grid-cols-4' => count($games) !== 5]) aria-label="{{ trans_choice('All :count game|All :count games', $count) }}">
             @foreach ($games as $game)
                 <li class="hub-card" style="--game: {{ $game['colour'] }}" data-name="{{ mb_strtolower($game['name'].' '.$game['short'].' '.$game['slug']) }}" data-kinds="{{ implode(' ', $game['kinds']) }}"
                     x-show="shows($el)" data-test="hub-game-{{ $game['slug'] }}">
@@ -64,9 +66,12 @@
                                 <span class="hub-yours" data-test="hub-yours">{{ __('Yours') }}</span>
                             @endif
                         </span>
+                        {{-- The title without its subtitle ("Age of Empires II", not ": Definitive Edition"): five cards from xl leave no room for it (P9).
+                             The title never shrinks: only the modes give way. It truncates only when the whole card is narrower than the title. --}}
+                        @php($title = \Illuminate\Support\Str::before($game['name'], ': '))
                         <span class="flex min-w-0 items-baseline gap-2 max-sm:flex-col max-sm:gap-0.5 sm:mt-2">
-                            <b class="shrink-0 truncate text-sm font-bold text-ink max-sm:max-w-full">{{ $game['name'] }}</b>
-                            <small class="min-w-0 truncate text-xs text-ink-3 max-sm:max-w-full">{{ $game['formats'] }}</small>
+                            <b class="max-w-full shrink-0 truncate text-sm font-bold text-ink" title="{{ $game['name'] }}" data-test="hub-title">{{ $title }}@if ($title !== $game['name'])<span class="sr-only">{{ \Illuminate\Support\Str::after($game['name'], $title) }}</span>@endif</b>
+                            <small class="min-w-0 truncate text-xs text-ink-3 max-sm:max-w-full sm:flex-1">{{ $game['formats'] }}</small>
                         </span>
                     </a>
                     @php($cardLinks = $links($game))

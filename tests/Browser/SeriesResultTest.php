@@ -2,6 +2,7 @@
 
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Models\Clan;
 use App\Models\Lineup;
 use App\Models\NostrEvent;
 use App\Models\SeriesMatch;
@@ -146,4 +147,54 @@ test('one captain challenges, the other accepts, then submits and accepts the fi
         ->and($pageA->evaluate('() => window.__errors'))->toBe([])
         ->and($pageB->evaluate('() => window.__errors'))->toBe([])
         ->and($pageB->evaluate('() => document.documentElement.scrollWidth <= document.documentElement.clientWidth'))->toBeTrue();
+});
+
+/** The versus block of the room: the document's overflow, the clan tags against the score, what sticks out. */
+const P9_ROOM_MEASURE = <<<'JS'
+    () => {
+        const doc = document.documentElement;
+        const score = document.querySelector('[data-test=series-score]').getBoundingClientRect();
+        const versus = document.querySelector('[data-test=series-score]').closest('section');
+        const tags = [...versus.querySelectorAll('[data-test^=side-tag-]')].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect());
+        // What sticks out of the page itself: not inside a box that clips or scrolls it (the tab strips scroll sideways on purpose).
+        const clipped = (el) => { for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) { if (getComputedStyle(p).overflowX !== 'visible') return true; } return false; };
+        const wide = [...document.body.querySelectorAll('*')].filter((el) => el.checkVisibility() && el.getBoundingClientRect().right > doc.clientWidth + 0.5 && ! clipped(el))
+            .sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right)
+            .map((el) => (el.dataset.test ?? el.tagName.toLowerCase()) + ':' + Math.round(el.getBoundingClientRect().right) + ':' + (el.innerText ?? '').slice(0, 24).replace(/\s+/g, ' '));
+        return {
+            overflow: doc.scrollWidth - doc.clientWidth,
+            score: [Math.round(score.left), Math.round(score.right)],
+            tags: tags.map((r) => [Math.round(r.left), Math.round(r.right)]),
+            tagOverlap: Math.round(Math.max(0, ...tags.map((r) => r.right <= score.left + score.width / 2 ? r.right - score.left : score.right - r.left))),
+            wide: wide.slice(0, 6),
+            // Text wider than its box (an unbreakable name): the element rects alone do not show it.
+            spill: [...document.body.querySelectorAll('*')].filter((el) => el.checkVisibility() && getComputedStyle(el).overflowX === 'visible' && el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0)
+                .map((el) => (el.dataset.test ?? el.tagName.toLowerCase() + '.' + String(el.className).slice(0, 50)) + ':' + el.clientWidth + '/' + el.scrollWidth).slice(0, 16),
+        };
+    }
+    JS;
+
+test('long clan names, a wide clan tag and a long player name stay inside the match room at 320 and 375', function () {
+    $clan = fn (string $tag, string $name) => Clan::factory()->create(['clantag' => $tag, 'name' => $name]);
+    $challenger = Lineup::factory()->ready()->create(['clan_id' => $clan('WWWW', 'Satoshisunbreakablesuperlongclannamewithoutanyspaceatall')->id]);
+    $challenged = Lineup::factory()->ready()->create(['clan_id' => $clan('MMMM', 'Hodlersunbreakablesuperlongclannamewithoutanyspaceatall')->id]);
+    // A 37-character player name without a space in each lineup: its chips, the roster and the opponent's list.
+    foreach ([$challenger, $challenged] as $lineup) {
+        $lineup->seats()->where('user_id', '!=', $lineup->clan->owner_id)->first()->user->update(['name' => 'Abcdefghijklmnopqrstuvwxyzabcdefghijk']);
+    }
+    $match = SeriesMatch::factory()->accepted()->create(['challenger_lineup_id' => $challenger->id, 'challenged_lineup_id' => $challenged->id]);
+    $room = route('matches.room', $match, false);
+    $sizes = [];
+
+    foreach ([320, 375, 1440] as $width) {
+        $page = captainPage($challenger->clan->owner, $room, $width);
+        BrowserWait::until($page, '() => document.querySelector("[data-test=series-score]") !== null', 10_000);
+        $sizes[$width] = $m = $page->evaluate(P9_ROOM_MEASURE);
+
+        expect($m['overflow'])->toBe(0, "overflow @{$width}: ".json_encode($m))
+            ->and($m['tagOverlap'])->toBeLessThanOrEqual(0, "tag over the score @{$width}: ".json_encode($m))
+            ->and($page->evaluate('() => window.__errors'))->toBe([]);
+    }
+
+    fwrite(STDERR, "\n[p9-room] ".json_encode(array_map(fn (array $m): array => array_diff_key($m, ['spill' => 0]), $sizes)));
 });

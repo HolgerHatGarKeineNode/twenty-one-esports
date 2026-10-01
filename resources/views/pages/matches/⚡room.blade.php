@@ -538,6 +538,8 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 // Prefills of the composer, for this player only: a lobby name, and the EA ID from the private gamer tags.
                 'lobbyName' => 'e21-'.$match->number,
                 'eaId' => (string) ($this->user()->gamer_tags['ea'] ?? ''),
+                // The league's lobby defaults, one English line in the lobby card's text (LobbyRules, P9).
+                'lobbyRules' => \App\Support\Series\LobbyRules::line($match->game, 'en'),
             ];
 
             // Age of Empires II: the player's own Steam and Xbox names from the private gamer tags, sent only on Send card.
@@ -758,10 +760,11 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     <span class="text-xs text-ink-2 max-lg:hidden lg:text-[13px]" data-test="series-meta">{{ $seriesMeta }}</span>
                 </span>
             @else
-                <span @class(['flex items-center gap-3 lg:gap-4', 'flex-row-reverse text-right' => $cell === 'challenged'])>
+                {{-- Below lg the cell is a size container: a four-letter tag ("WWWW", Clan::TAG_PATTERN) scales down to the cell instead of running into the score at 320 and 375. --}}
+                <span @class(['flex items-center gap-3 max-lg:@container lg:gap-4', 'flex-row-reverse text-right' => $cell === 'challenged'])>
                     <x-clan-tag :clan="$m->sideClan($cell)" :tag="$m->sideTag($cell)" :tile="64" class="cube hidden size-16 shrink-0 items-center justify-center font-display text-[15px] font-extrabold lg:mt-2.5 lg:flex {{ $sideInk[$cell] }}" style="background: {{ $sideColor[$cell] }}" />
                     <span @class(['flex min-w-0 flex-col gap-1', 'lg:ml-2.5' => $cell === 'challenger', 'items-end lg:mr-6' => $cell === 'challenged'])>
-                        <b class="font-display text-[26px] font-extrabold lg:hidden" style="color: {{ $cell === 'challenger' ? '#F7931A' : '#ADADB0' }}">{{ $m->sideTag($cell) }}</b>
+                        <b @class(['max-w-full font-display font-extrabold whitespace-nowrap lg:hidden', 'text-[26px]' => mb_strlen($m->sideTag($cell)) < 4, 'text-[min(26px,calc(100cqi/5.6))]' => mb_strlen($m->sideTag($cell)) >= 4]) style="color: {{ $cell === 'challenger' ? '#F7931A' : '#ADADB0' }}" data-test="side-tag-{{ $cell }}">{{ $m->sideTag($cell) }}</b>
                         {{-- max-w-full: the right side's column aligns its items to the end, so a long name grew past its cell over the score (375 px, "Velit Consequatur"); below lg a long name wraps to two lines instead of losing most of it. The captain line below does the same (a 37-character player name without a space ran into the score at 320 and 375). --}}
                         <b class="max-w-full text-[13px] max-lg:line-clamp-2 max-lg:[overflow-wrap:anywhere] lg:truncate lg:font-display lg:text-xl">{{ $m->sideName($cell) }}</b>
                         <span class="max-w-full text-xs text-ink-2 max-lg:line-clamp-2 max-lg:[overflow-wrap:anywhere] lg:truncate lg:text-[13px]">{{ $captainSide === $cell ? __('you are captain') : __('captain :name', ['name' => $captainOf($cell)]) }}</span>
@@ -912,7 +915,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                 [__('Format'), \App\Support\GameNames::game($m->game).', '.$m->mode.', BO'.$m->best_of],
                 [__('Ladder'), $m->rated ? $m->mode : __('none, casual until Block 0')],
             ] as [$key, $value])
-                <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
+                <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-sm last:border-0 lg:grid-cols-[150px_minmax(0,1fr)]"><span class="text-ink-2">{{ $key }}</span><span class="[overflow-wrap:anywhere]">{{ $value }}</span></div>
             @endforeach
         </div>
         <div class="flex flex-col rounded-lg bg-card px-4 py-2 lg:px-6">
@@ -945,11 +948,12 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
         <span class="flex flex-wrap items-baseline justify-between gap-2"><h2 id="tl-h" class="m-0 text-[15px] font-bold">{{ __('Timeline') }}</h2><span class="text-xs text-ink-2">{{ __('your result and their OK make 2 of 2') }}</span></span>
         <ol class="m-0 grid list-none grid-cols-2 gap-y-4 p-0 lg:grid-cols-4">
             @foreach ($steps as $index => [$label, $when, $who, $done])
-                <li @class(['relative flex flex-col items-center gap-1 text-center', 'lg:after:absolute lg:after:top-[27px] lg:after:left-1/2 lg:after:h-0.5 lg:after:w-full' => $index < 3, 'lg:after:bg-ink' => $index < 3 && ($steps[$index + 1][3] ?? false), 'lg:after:bg-line' => $index < 3 && ! ($steps[$index + 1][3] ?? false)])>
+                <li @class(['relative flex min-w-0 flex-col items-center gap-1 text-center', 'lg:after:absolute lg:after:top-[27px] lg:after:left-1/2 lg:after:h-0.5 lg:after:w-full' => $index < 3, 'lg:after:bg-ink' => $index < 3 && ($steps[$index + 1][3] ?? false), 'lg:after:bg-line' => $index < 3 && ! ($steps[$index + 1][3] ?? false)])>
                     <span class="h-4 text-[11px] text-ink-3">{{ $when }}</span>
                     <span @class(['relative z-10 size-3.5 rounded-full border-2', 'border-ink bg-ink' => $done, 'border-btc bg-btc' => ! $done && ($steps[$index - 1][3] ?? true), 'border-edge bg-transparent' => ! $done && ! ($steps[$index - 1][3] ?? true)])></span>
                     <b class="text-xs">{{ $label }}</b>
-                    <span class="text-[11px] text-ink-2">{{ $who }}</span>
+                    {{-- A clan name without a space ("by …") breaks anywhere instead of widening the page at 320 and 375. --}}
+                    <span class="max-w-full text-[11px] text-ink-2 [overflow-wrap:anywhere]">{{ $who }}</span>
                 </li>
             @endforeach
         </ol>
@@ -1031,9 +1035,10 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                     </button>
                 </div>
             @endforeach
-            <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs leading-normal text-ink-2" data-test="opponent-roster">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}:
+            {{-- A clan or player name without a space breaks anywhere: a 37-character name widened the page at 320. --}}
+            <p class="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-xs leading-normal text-ink-2 [overflow-wrap:anywhere]" data-test="opponent-roster">{{ $m->sideName(SeriesMatch::otherSide($mine)) }}:
                 @foreach (array_filter($rosters[SeriesMatch::otherSide($mine)], fn ($r) => $r['on']) as ['seat' => $seat])
-                    <span class="inline-flex items-center gap-1"><x-player-link :user="$seat->user" class="inline-flex min-h-6 items-center" /><x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
+                    <span class="inline-flex max-w-full min-w-0 items-center gap-1"><x-player-link :user="$seat->user" class="inline-flex min-h-6 min-w-0 items-center" /><x-copy-npub :npub="$seat->user->npub" :name="$seat->user->displayName()" /></span>
                 @endforeach
             </p>
             <p class="m-0 text-xs text-ink-3">{{ __('their captain sets this') }}</p>
@@ -1050,7 +1055,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @endif
         @else
         <section aria-labelledby="lobby-h" class="flex flex-col gap-2 rounded-lg bg-card px-4 py-5 lg:px-6" data-test="lobby">
-            <span class="flex items-baseline justify-between"><h2 id="lobby-h" class="m-0 text-[15px] font-bold">{{ __('Private lobby') }}</h2><span class="text-xs text-ink-2">{{ __('host :clan', ['clan' => $m->challenger_name]) }}</span></span>
+            <span class="flex items-baseline justify-between gap-2"><h2 id="lobby-h" class="m-0 shrink-0 text-[15px] font-bold">{{ __('Private lobby') }}</h2><span class="min-w-0 text-right text-xs text-ink-2 [overflow-wrap:anywhere]">{{ __('host :clan', ['clan' => $m->challenger_name]) }}</span></span>
             @if ($editLobby)
                 <form wire:submit="saveLobby" class="flex flex-col gap-3">
                     <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Name') }}<input wire:model="lobbyName" maxlength="32" required data-test="lobby-name-input" class="h-11 rounded-md border border-edge bg-ground px-3 text-sm text-ink"></label>
@@ -1081,6 +1086,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
             @if ($captainSide !== null && $m->status->isRunning() && ! $editLobby)
                 <div><x-button variant="quiet" icon="brush" wire:click="openLobbyEditor" data-test="change-lobby">{{ $m->lobby_name === null ? __('Set lobby') : __('Change lobby') }}</x-button></div>
             @endif
+            @include('pages.matches.partials.lobby-rules')
             @if ($m->status === SeriesStatus::Accepted && $noshowFrom)
                 <div class="mt-2 flex flex-col gap-2 border-t border-hairline pt-3">
                     <b class="text-[13px]">{{ __('Opponent not in the lobby?') }}</b>
@@ -1212,7 +1218,7 @@ new #[Title('Match room')] #[Layout('layouts::app', ['section' => 'matches', 'sc
                             [__('Rating'), $m->rated ? __('with the league record') : __('casual Elo only, no rank')],
                             [__('Result'), __('Series :a : :b for :clan', ['a' => max($draftWins), 'b' => min($draftWins), 'clan' => $m->sideName($leader)])],
                         ] as [$key, $value])
-                            <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-[13px] last:border-0"><span class="text-ink-2">{{ $key }}</span><span>{{ $value }}</span></div>
+                            <div class="grid min-h-11 grid-cols-[110px_minmax(0,1fr)] items-center gap-3 border-b border-hairline py-2 text-[13px] last:border-0"><span class="text-ink-2">{{ $key }}</span><span class="[overflow-wrap:anywhere]">{{ $value }}</span></div>
                         @endforeach
                     </div>
                     <x-proof :rows="$m->rated ? [[__('Record'), __('kind 2152 result, with score and roster')], [__('From'), $viewer->shortNpub()]] : [[__('Record'), __('casual: no Nostr event, league data only')], [__('From'), $viewer->shortNpub()]]" />

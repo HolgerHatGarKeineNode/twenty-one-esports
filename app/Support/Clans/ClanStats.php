@@ -191,11 +191,12 @@ final class ClanStats
      * The clan's series record (ClanShow.dc.html): series, wins and team
      * goals in the last 30 days and in total (decided series only; goals
      * only while the clan played a game with goals, so a clan of Age of
-     * Empires II alone shows none), the Elo line of its Rocket League 3v3
-     * lineup on its headline ladder, and the latest series with a result or
-     * waiting for one. Empty for a clan without series.
+     * Empires II alone shows none), an Elo line per series game the clan has
+     * a lineup in (its largest lineup of that game, on its headline ladder,
+     * only once it has a rated series), and the latest series with a result
+     * or waiting for one. Empty for a clan without series.
      *
-     * @return array{stats: list<array{0: string, 1: int, 2: int}>, line: list<int>, matches: list<array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string, 6: string, 7: string}>}|null
+     * @return array{stats: list<array{0: string, 1: int, 2: int}>, lines: list<array{game: string, mode: string, line: list<int>}>, matches: list<array{0: string, 1: string, 2: string, 3: string, 4: string, 5: string, 6: string, 7: string}>}|null
      */
     public function record(Clan $clan, int $limit = 8): ?array
     {
@@ -252,38 +253,64 @@ final class ClanStats
             ];
         })->all();
 
-        $line = [];
-        // The headline ladder is the first series game's (Rocket League): the page names it so.
-        $lead = $lineups->first(fn (Lineup $lineup): bool => $lineup->mode === '3v3' && $lineup->game === array_key_first($registry->series()));
+        $lines = [];
 
-        if ($lead instanceof Lineup) {
-            $pool = Ratings::pool(Ladders::isOpen($lead->game, $lead->mode));
-            // In the order the results happened: a corrected result (RatingService::correct()) keeps its time
-            // but gets a newer id. The line adds the deltas up to the rating now; a corrected change's
-            // before/after were recorded at the correction and do not chain with its neighbours.
-            $changes = RatingChange::query()
-                ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
-                ->where(['ratings.pool' => $pool, 'ratings.season' => Ratings::season($pool, $lead->game, $lead->mode) ?? '', 'ratings.subject' => 'lineup:'.$lead->id])
-                ->orderBy('rating_changes.created_at')->orderBy('rating_changes.revision')->orderBy('rating_changes.id')
-                ->toBase()->get(['rating_changes.delta', 'ratings.rating as now']);
-            $deltas = $changes->map(fn (object $row): int => (int) $row->delta)->all();
+        // One line per series game the clan has a lineup in, in registry order: its largest lineup (3v3 before 2v2).
+        foreach ($registry->series() as $slug => $game) {
+            $lead = $lineups->filter(fn (Lineup $lineup): bool => $lineup->game === $slug)
+                ->sortByDesc(fn (Lineup $lineup): int => $game->modes()[$lineup->mode]->teamSize ?? 0)
+                ->first();
 
-            if ($deltas !== []) {
-                $point = (int) $changes->first()->now - array_sum($deltas);
-                $line = [$point];
+            if (! $lead instanceof Lineup) {
+                continue;
+            }
 
-                foreach ($deltas as $delta) {
-                    $point += $delta;
-                    $line[] = $point;
-                }
+            $line = $this->eloLine($lead);
+
+            if (count($line) > 1) {
+                $lines[] = ['game' => $slug, 'mode' => $lead->mode, 'line' => $line];
             }
         }
 
         return [
             'stats' => [['Series', $recentSeries, $series], ['Wins', $recentWins, $wins], ...($withGoals ? [['Goals (team)', $recentGoals, $goals]] : [])],
-            'line' => $line,
+            'lines' => $lines,
             'matches' => array_values($rows),
         ];
+    }
+
+    /**
+     * A lineup's Elo on its headline ladder, one point per rated series from
+     * its start to now; empty without any.
+     *
+     * @return list<int>
+     */
+    private function eloLine(Lineup $lead): array
+    {
+        $pool = Ratings::pool(Ladders::isOpen($lead->game, $lead->mode));
+        // In the order the results happened: a corrected result (RatingService::correct()) keeps its time
+        // but gets a newer id. The line adds the deltas up to the rating now; a corrected change's
+        // before/after were recorded at the correction and do not chain with its neighbours.
+        $changes = RatingChange::query()
+            ->join('ratings', 'ratings.id', '=', 'rating_changes.rating_id')
+            ->where(['ratings.pool' => $pool, 'ratings.season' => Ratings::season($pool, $lead->game, $lead->mode) ?? '', 'ratings.subject' => 'lineup:'.$lead->id])
+            ->orderBy('rating_changes.created_at')->orderBy('rating_changes.revision')->orderBy('rating_changes.id')
+            ->toBase()->get(['rating_changes.delta', 'ratings.rating as now']);
+        $deltas = $changes->map(fn (object $row): int => (int) $row->delta)->all();
+
+        if ($deltas === []) {
+            return [];
+        }
+
+        $point = (int) $changes->first()->now - array_sum($deltas);
+        $line = [$point];
+
+        foreach ($deltas as $delta) {
+            $point += $delta;
+            $line[] = $point;
+        }
+
+        return $line;
     }
 
     /**
