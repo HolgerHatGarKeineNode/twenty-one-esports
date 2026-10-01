@@ -12,8 +12,10 @@ use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerSettings;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 /*
@@ -53,6 +55,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         return [
             'signedIn' => $signedIn,
             'controls' => StackerSettings::of($signedIn ? $user : null),
+            // P8: effects and music; a guest's own choice in localStorage wins over these defaults
+            'sound' => StackerSettings::sound($signedIn ? $user : null),
             // P4: the week's best is the one a ranked run has to beat; the all-time best is shown beside it
             'best' => $signedIn ? app(StackerRuns::class)->best($user, StackerRuns::weekOf(now())) : null,
             'allTimeBest' => $signedIn ? app(StackerRuns::class)->best($user) : null,
@@ -86,6 +90,35 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 ],
             ],
         ];
+    }
+
+    /**
+     * The sound control on the game page (P8), for a logged-in player: effects
+     * and music, each on/off with a volume 0-100. Renderless: the game sits in
+     * `wire:ignore` and the leaderboard has nothing new to show.
+     *
+     * @param  array<string, mixed>  $sound
+     */
+    #[Renderless]
+    public function saveSound(array $sound): void
+    {
+        $user = Auth::user();
+        abort_unless($user instanceof User, 403);
+
+        $valid = Validator::make(['sound' => $sound], [
+            'sound' => ['required', 'array:effects,music,effectsOn,musicOn'],
+            'sound.effects' => ['required', 'integer', 'min:0', 'max:100'],
+            'sound.music' => ['required', 'integer', 'min:0', 'max:100'],
+            'sound.effectsOn' => ['required', 'boolean:strict'],
+            'sound.musicOn' => ['required', 'boolean:strict'],
+        ])->validate()['sound'];
+
+        $user->forceFill(['stacker_sound' => StackerSettings::normalizeSound([
+            'effects' => (int) $valid['effects'],
+            'music' => (int) $valid['music'],
+            'effectsOn' => $valid['effectsOn'],
+            'musicOn' => $valid['musicOn'],
+        ])])->save();
     }
 
     /**
@@ -150,9 +183,13 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
 
 <div class="flex grow flex-col px-4 pb-8 lg:px-12 lg:pb-10">
     <div wire:ignore x-data="stackerGame(@js($config))" class="mx-auto flex w-full max-w-[1340px] flex-col gap-5 lg:gap-8" data-test="stacker">
-        <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
-            <h1 class="m-0 font-display text-[28px] leading-[1.1] font-extrabold lg:text-[30px]">Blockfill</h1>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine 40 blocks as fast as you can.') }}</p>
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
+            <div class="flex flex-col gap-1 lg:flex-row lg:items-baseline lg:gap-4">
+                <h1 class="m-0 font-display text-[28px] leading-[1.1] font-extrabold lg:text-[30px]">Blockfill</h1>
+                <p class="m-0 text-[13px] leading-normal text-ink-2">{{ __('Mine 40 blocks as fast as you can.') }}</p>
+            </div>
+
+            @include('pages.stacker.partials.sound-control', ['class' => 'hidden lg:flex'])
         </div>
 
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12">
@@ -242,6 +279,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                         </template>
                     </div>
                 </div>
+
+                @include('pages.stacker.partials.sound-control', ['class' => 'flex lg:hidden'])
 
                 {{-- Touch controls: practice on a phone or tablet --}}
                 {{--

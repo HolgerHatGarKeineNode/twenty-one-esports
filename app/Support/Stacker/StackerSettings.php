@@ -34,6 +34,48 @@ final class StackerSettings
     public const KEYS_PER_ACTION = 2;
 
     /**
+     * Sound (P8): effects and music, each on/off with a volume 0-100. Effects
+     * start on, music off; the same shape as resources/js/stacker/sound.js
+     * normalizeSound(). Saved from the control on the game page.
+     */
+    public const DEFAULT_SOUND = ['effects' => 70, 'music' => 50, 'effectsOn' => true, 'musicOn' => false];
+
+    /**
+     * @return array{effects: int, music: int, effectsOn: bool, musicOn: bool}
+     */
+    public static function sound(?User $user): array
+    {
+        return self::normalizeSound($user?->stacker_sound);
+    }
+
+    /**
+     * A saved sound setting, each field checked on its own: a broken volume
+     * falls back to its default and leaves the other fields as saved.
+     *
+     * @return array{effects: int, music: int, effectsOn: bool, musicOn: bool}
+     */
+    public static function normalizeSound(mixed $saved): array
+    {
+        $saved = is_array($saved) ? $saved : [];
+        $sound = self::DEFAULT_SOUND;
+
+        foreach (['effects', 'music'] as $key) {
+            $value = $saved[$key] ?? null;
+            if (is_int($value) && $value >= 0 && $value <= 100) {
+                $sound[$key] = $value;
+            }
+        }
+
+        foreach (['effectsOn', 'musicOn'] as $key) {
+            if (is_bool($saved[$key] ?? null)) {
+                $sound[$key] = $saved[$key];
+            }
+        }
+
+        return $sound;
+    }
+
+    /**
      * A key code as people read it, as resources/js/stacker/keys.js keyLabel():
      * "ArrowLeft" as "←", "KeyJ" as "J", "Digit4" as "4", "ShiftLeft" as "Shift Left".
      */

@@ -5983,5 +5983,8 @@
     "No verified run yet this week. Play the first one.": "Diese Woche noch kein geprüfter Lauf. Spiel den ersten.",
     "One lobby match": "Ein Lobby-Match",
     ":game tournament, :format, for :who, :where, starting :date.": "Turnier in :game, :format, für :who, :where, Beginn :date.",
-    "How is the lobby match played?": "Wie wird das Lobby-Match gespielt?"
+    "How is the lobby match played?": "Wie wird das Lobby-Match gespielt?",
+    "Effects": "Effekte",
+    "Music": "Musik",
+    "Volume: :channel": "Lautstärke: :channel"
 }

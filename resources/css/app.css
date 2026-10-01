@@ -2855,3 +2855,59 @@ select:focus[data-flux-control] {
         }
     }
 }
+
+/*
+ * Blockfill's volume (plan "Blockfill", P8): a native range input drawn as ten
+ * blocks, like the chain of mined blocks under the well. A filled block is
+ * full height, an empty one a low bar, so the level reads without colour;
+ * orange while the channel is on, grey while it is off (data-off). --fill is
+ * the value in per cent, set by the page.
+ */
+@layer components {
+    .blockfill-volume {
+        --fill: 50%;
+        --block: var(--color-btc);
+        --gap: var(--color-ground);
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .blockfill-volume[data-off] {
+        --block: var(--color-ink-3);
+    }
+
+    .blockfill-volume::-webkit-slider-runnable-track {
+        height: 16px;
+        background:
+            repeating-linear-gradient(to right, transparent 0 calc(10% - 3px), var(--gap) calc(10% - 3px) 10%),
+            linear-gradient(to right, var(--block) 0 var(--fill), transparent var(--fill)),
+            linear-gradient(var(--color-edge), var(--color-edge)) center / 100% 4px no-repeat;
+    }
+
+    .blockfill-volume::-moz-range-track {
+        height: 16px;
+        background:
+            repeating-linear-gradient(to right, transparent 0 calc(10% - 3px), var(--gap) calc(10% - 3px) 10%),
+            linear-gradient(to right, var(--block) 0 var(--fill), transparent var(--fill)),
+            linear-gradient(var(--color-edge), var(--color-edge)) center / 100% 4px no-repeat;
+    }
+
+    .blockfill-volume::-webkit-slider-thumb {
+        appearance: none;
+        width: 4px;
+        height: 24px;
+        margin-top: -4px;
+        background: var(--color-ink);
+        border: 0;
+        border-radius: 0;
+    }
+
+    .blockfill-volume::-moz-range-thumb {
+        width: 4px;
+        height: 24px;
+        background: var(--color-ink);
+        border: 0;
+        border-radius: 0;
+    }
+}

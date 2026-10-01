@@ -65,6 +65,8 @@
         'clock' => '<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>',
         // The live stream's player (P20): sound on, full page, fold to the tab, play.
         'volume' => '<path d="M11 5 6 9H2v6h4l5 4z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path>',
+        'music' => '<path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle>',
+        'music-off' => '<path d="M9 18V9M21 13v3M9 5l12-2v5"></path><circle cx="6" cy="18" r="3"></circle><path d="m3 3 18 18"></path>',
         'expand' => '<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>',
         'minimize' => '<path d="M5 19h14"></path>',
         'play' => '<path d="M7 4v16l13-8z"></path>',

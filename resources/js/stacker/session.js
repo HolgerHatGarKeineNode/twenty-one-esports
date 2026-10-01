@@ -9,7 +9,9 @@
  * the page's ticker decides when a tick happens.
  */
 
-import { ACTIONS, MAX_TICKS, createGame, isOver, result, step } from './engine.js';
+import { ACTION, ACTIONS, MAX_TICKS, createGame, isOver, result, step } from './engine.js';
+
+const HARD = ACTION.HARD;
 
 /**
  * @param {{seed: string, settings: {das: number, arr: number, sdf: number}}} options
@@ -47,9 +49,13 @@ export function createSession({ seed, settings }) {
         },
 
         /**
-         * Plays one tick with the queued inputs.
+         * Plays one tick with the queued inputs. Besides the cleared rows and
+         * locked pieces it says what the player saw happen, read from the state
+         * before and after the tick (for the sound, P8; the engine knows
+         * nothing of it): the piece moved sideways, turned, was hard-dropped,
+         * or went into hold.
          *
-         * @returns {{cleared: number, locked: number}|null} null once the game is over
+         * @returns {{cleared: number, locked: number, moved: boolean, rotated: boolean, dropped: boolean, held: boolean}|null} null once the game is over
          */
         tick() {
             if (isOver(game)) {
@@ -57,6 +63,8 @@ export function createSession({ seed, settings }) {
             }
             const lines = game.lines;
             const pieces = game.pieces;
+            const hold = game.hold;
+            const before = game.current ? { piece: game.current.piece, x: game.current.x, rot: game.current.rot } : null;
             const inputs = queued;
             queued = [];
             for (const [code, state] of inputs) {
@@ -64,7 +72,20 @@ export function createSession({ seed, settings }) {
             }
             step(game, inputs);
 
-            return { cleared: game.lines - lines, locked: game.pieces - pieces };
+            const locked = game.pieces - pieces;
+            const held = game.hold !== hold;
+            // the same piece still falling: compare where it is now with where it was
+            const same = locked === 0 && !held && before !== null && game.current !== null && game.current.piece === before.piece;
+            const rotated = same && game.current.rot !== before.rot;
+
+            return {
+                cleared: game.lines - lines,
+                locked,
+                moved: same && !rotated && game.current.x !== before.x,
+                rotated,
+                dropped: locked > 0 && inputs.some(([code, state]) => code === HARD && state === 1),
+                held,
+            };
         },
 
         /**
