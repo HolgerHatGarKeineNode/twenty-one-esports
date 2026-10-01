@@ -235,13 +235,24 @@ document.addEventListener('alpine:init', () => {
             tabBarHeight() {
                 const bar = document.querySelector('[data-test=tab-bar]');
 
-                return bar && bar.offsetParent !== null ? bar.getBoundingClientRect().height : 0;
+                // not offsetParent: the bar is position: fixed, and a fixed element has none
+                return bar && bar.getClientRects().length > 0 ? bar.getBoundingClientRect().height : 0;
+            },
+
+            /**
+             * The room the sticky header takes at the top of the viewport: the root's
+             * scroll-padding-top (header plus a gap, resources/css/app.css). A scroll
+             * to the well stops there, so the well starts below it.
+             */
+            topInset() {
+                return parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
             },
 
             /**
              * A new run starts with the well in view: after a result the page may have
-             * scrolled down to it. On a touch screen the well goes to the top, above the
-             * touch panel; with a keyboard just far enough to be seen.
+             * scrolled down to it. On a touch screen the well goes to the top, below the
+             * sticky header and above the touch panel; with a keyboard just far enough to
+             * be seen.
              */
             revealWell() {
                 const slot = rt.el?.wellSlot;
@@ -252,7 +263,8 @@ document.addEventListener('alpine:init', () => {
                 requestAnimationFrame(() => {
                     const rect = slot.getBoundingClientRect();
                     const bottom = window.innerHeight - (this.coarse() ? this.tabBarHeight() + TOUCH_PANEL : 0);
-                    if (rect.top >= 0 && rect.bottom <= bottom) {
+                    // a slot within a pixel of where a scroll would put it (below the header) is where it belongs
+                    if (rect.top >= this.topInset() - 1 && rect.bottom <= bottom) {
                         return;
                     }
                     slot.scrollIntoView({ block: this.coarse() ? 'start' : 'nearest', behavior: this.reducedMotion ? 'auto' : 'smooth' });
@@ -264,9 +276,9 @@ document.addEventListener('alpine:init', () => {
                 const slot = rt.el.wellSlot;
                 const width = slot ? slot.clientWidth : 240;
                 const byWidth = Math.floor(width / 10);
-                // on a touch screen the well has to fit between the top of the viewport and the touch
+                // on a touch screen the well has to fit between the sticky header and the touch
                 // panel above the tab bar (the panel is fixed there while a practice run is on)
-                const reserved = this.coarse() ? this.tabBarHeight() + TOUCH_PANEL + 16 : 200;
+                const reserved = this.coarse() ? this.topInset() + this.tabBarHeight() + TOUCH_PANEL + 16 : 200;
                 const byHeight = Math.floor((window.innerHeight - reserved) / SHOWN_ROWS);
                 rt.cell = Math.max(12, Math.min(30, byWidth, byHeight));
                 this.sizeCanvas(rt.el.well, rt.cell * 10, rt.cell * SHOWN_ROWS);

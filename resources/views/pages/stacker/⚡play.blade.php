@@ -241,7 +241,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     </div>
 
                     {{-- The well: the mempool block template the pieces fill --}}
-                    <div x-ref="wellSlot" class="relative flex scroll-mt-8 min-w-0 max-w-[300px] grow justify-center pt-3 lg:pt-6">
+                    <div x-ref="wellSlot" class="relative flex min-w-0 max-w-[300px] grow justify-center pt-3 lg:pt-6">
                         <div class="relative border-2 border-[#24242B] bg-[#0E0E11]" style="box-shadow: -8px -8px 0 #141418;">
                             <canvas x-ref="well" class="block" role="img" aria-label="{{ __('The well with the falling piece') }}" data-test="well"></canvas>
 
