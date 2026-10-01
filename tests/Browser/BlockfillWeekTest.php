@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\Admin;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Scores\ScoreLeaderboards;
+use App\Support\Scores\ScoreWindow;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerSettings;
@@ -217,3 +219,50 @@ test('a real ranked run puts a new player on this week\'s board without a reload
     $page->evaluate(BLOCKFILL_WEEK_MEASURE, '[data-test=stacker-week]');
     shellShot($page, 'blockfill-week-ranked-1440');
 });
+
+test('an admin reviews the closed week\'s top 3 on its leaderboard page (P7): the box and its button fit, the confirmation is one round-trip, clean console', function (string $locale, int $width, int $height) {
+    $admin = User::factory()->create(['name' => 'Reviewer']);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+    $week = app(BlockfillWeeks::class)->current();
+    // The window has closed; the board runs until its own review time is over.
+    $this->travelTo(ScoreWindow::of($week)->end->addHours(2));
+
+    $page = blockfillWeekPage($admin, $locale, $width, $height, route('tournaments.scores', $week, false));
+    // wire:confirm asks the browser; the test answers yes.
+    $page->evaluate('() => { window.confirm = () => true; }');
+    BrowserWait::until($page, '() => document.querySelector("[data-test=score-review-confirm]") !== null', 10_000);
+    $box = '() => { const b = document.querySelector("[data-test=score-review]"); b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(); const c = document.querySelector("[data-test=score-review-confirm]")?.getBoundingClientRect(); return { box: [Math.round(r.left), Math.round(r.right), Math.round(r.height)], button: c ? [Math.round(c.left), Math.round(c.right), Math.round(c.height)] : null, text: b.innerText, scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, lang: document.documentElement.lang }; }';
+    $before = $page->evaluate($box);
+    shellShot($page, "blockfill-review-{$locale}-{$width}");
+
+    $page->locator('[data-test=score-review-confirm]')->click();
+    BrowserWait::until($page, '() => document.querySelector("[data-test=score-review-confirm]") === null && document.querySelector("[data-test=score-flash]") !== null', 10_000);
+    $after = $page->evaluate($box);
+    shellShot($page, "blockfill-review-done-{$locale}-{$width}");
+    fwrite(STDERR, "blockfill review {$locale} {$width}: ".json_encode(compact('before', 'after')).PHP_EOL);
+
+    expect($before['lang'])->toBe($locale)
+        ->and($before['text'])->toContain($locale === 'de' ? 'Top 3 geprüft' : 'Top 3 reviewed')
+        ->and($after['text'])->toContain($locale === 'de' ? 'sind geprüft' : 'are reviewed')
+        ->and(app(ScoreLeaderboards::class)->reviewed($week->refresh()))->toBeTrue()
+        ->and($page->evaluate('() => window.__errors'))->toBe([])
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
+
+    foreach (['before' => $before, 'after' => $after] as $where => $m) {
+        expect($m['scroll'])->toBeLessThanOrEqual($m['client'], $where)
+            ->and($m['box'][0])->toBeGreaterThanOrEqual(0, $where)
+            ->and($m['box'][1])->toBeLessThanOrEqual($width, $where);
+    }
+
+    expect($before['button'][0])->toBeGreaterThanOrEqual($before['box'][0])
+        ->and($before['button'][1])->toBeLessThanOrEqual($before['box'][1])
+        ->and($before['button'][2])->toBeGreaterThanOrEqual(44);
+
+    // Positive control: the collector sees a throw and a failed answer on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("blockfill review positive control"); }); fetch("/blockfill-review-positive-control-missing"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("blockfill review positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+})->with([
+    'en 390' => ['en', 390, 844],
+    'en 1440' => ['en', 1440, 900],
+    'de 390' => ['de', 390, 844],
+]);
