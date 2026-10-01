@@ -53,10 +53,10 @@ final class TournamentScheduler
 
     public const STALE_AFTER_SECONDS = 300;
 
-    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders) {}
+    public function __construct(private TournamentDraws $draws, private SeriesService $series, private CasualCups $cups, private TournamentReminders $reminders, private LobbyResults $lobbies, private LobbySwitch $lobbySwitch) {}
 
     /**
-     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int, reminded: int}
+     * @return array{cups: array{opened: int, grown: int, extended: int, evenings: int, cancelled: int, rounds: int, decided: int}, closed: int, drawn: int, forfeited: int, overdue: int, confirmed: int, reminded: int, lobbies: array{overdue: int, closed: int, pruned: int}, healed?: int}
      */
     public function tick(): array
     {
@@ -70,6 +70,13 @@ final class TournamentScheduler
         $done['confirmed'] = $this->each($this->timed()->where('status', SeriesStatus::Reported),
             fn (SeriesMatch $match): bool => $this->series->autoConfirm($match));
         $done['reminded'] = $this->reminders->tick();
+        // Lobbies (P10, security audit F3): overdue ones are told, a day later closed without a result.
+        $done['lobbies'] = $this->lobbies->tick();
+
+        // A lobby tournament's calendar event the switch could not republish (audit F4), every 15 minutes at most.
+        if (Cache::add('lobby-switch:heal', true, now()->addMinutes(15))) {
+            $done['healed'] = count($this->lobbySwitch->healCalendar());
+        }
 
         Cache::forever(self::HEARTBEAT, now()->getTimestamp());
 

@@ -72,9 +72,12 @@ new class extends Component {
         }
     }
 
-    public function confirm(int $matchId): void
+    /**
+     * Confirm the report this card showed (`$shown`: LobbyResults::reportIdentity()); a report changed since is refused.
+     */
+    public function confirm(int $matchId, string $shown): void
     {
-        $this->attempt($matchId, fn (TournamentMatch $match, User $user) => app(LobbyResults::class)->confirm($match, $user));
+        $this->attempt($matchId, fn (TournamentMatch $match, User $user) => app(LobbyResults::class)->confirm($match, $user, $shown));
     }
 
     public function enter(int $matchId): void
@@ -82,9 +85,9 @@ new class extends Component {
         $this->attempt($matchId, fn (TournamentMatch $match, User $user) => app(LobbyResults::class)->enter($match, $user, $this->places[$matchId] ?? []));
     }
 
-    public function reject(int $matchId): void
+    public function reject(int $matchId, string $shown): void
     {
-        if ($this->attempt($matchId, fn (TournamentMatch $match, User $user) => app(LobbyResults::class)->reject($match, $user, (string) ($this->reasons[$matchId] ?? '')))) {
+        if ($this->attempt($matchId, fn (TournamentMatch $match, User $user) => app(LobbyResults::class)->reject($match, $user, (string) ($this->reasons[$matchId] ?? ''), $shown))) {
             unset($this->reasons[$matchId]);
         }
     }
@@ -246,12 +249,12 @@ new class extends Component {
                             </ul>
                             <a href="{{ route('tournaments.lobby-screenshot', [$tournament, $match]) }}" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center self-start text-[13px]" data-test="lobby-screenshot">{{ __('Open the end screen') }}</a>
                             <div class="flex flex-wrap gap-3">
-                                <x-button type="button" icon="check" wire:click="confirm({{ $match->id }})" data-test="lobby-confirm">{{ __('Confirm') }}</x-button>
+                                <x-button type="button" icon="check" wire:click="confirm({{ $match->id }}, '{{ LobbyResults::reportIdentity($report) }}')" data-test="lobby-confirm">{{ __('Confirm') }}</x-button>
                             </div>
                             <label class="flex flex-col gap-1 text-xs text-ink-2">{{ __('Reason to reject') }}
                                 <input wire:model="reasons.{{ $match->id }}" maxlength="300" class="h-11 rounded-md border border-edge bg-ground px-3 text-sm text-ink" data-test="lobby-reject-reason">
                             </label>
-                            <div><x-button variant="quiet" type="button" wire:click="reject({{ $match->id }})" data-test="lobby-reject">{{ __('Reject the report') }}</x-button></div>
+                            <div><x-button variant="quiet" type="button" wire:click="reject({{ $match->id }}, '{{ LobbyResults::reportIdentity($report) }}')" data-test="lobby-reject">{{ __('Reject the report') }}</x-button></div>
                         </div>
                     @endif
                 @endif

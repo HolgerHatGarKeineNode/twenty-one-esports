@@ -217,13 +217,13 @@ test('a shared place 1 is reported with the end screen, confirmed by a director 
 
     // A place 2 after a shared place 1 does not exist; a player of the lobby cannot confirm.
     expect(fn () => app(LobbyResults::class)->enter($lobby, $director, lobbyPlaces($lobby, [1, 1, 2, 3])))->toThrow(TournamentRuleViolation::class)
-        ->and(fn () => app(LobbyResults::class)->confirm($lobby, $reporter))->toThrow(TournamentRuleViolation::class);
+        ->and(fn () => app(LobbyResults::class)->confirm($lobby, $reporter, LobbyResults::reportIdentity($lobby->lobby_report)))->toThrow(TournamentRuleViolation::class);
 
     // The end screen is the directors' only: a player of the lobby is refused.
     $this->actingAs($reporter)->get(route('tournaments.lobby-screenshot', [$tournament, $lobby]))->assertForbidden();
     $this->actingAs($director)->get(route('tournaments.lobby-screenshot', [$tournament, $lobby]))->assertOk();
 
-    app(LobbyResults::class)->confirm($lobby, $director);
+    app(LobbyResults::class)->confirm($lobby, $director, LobbyResults::reportIdentity($lobby->refresh()->lobby_report));
 
     $ids = $lobby->slots->pluck('tournament_participant_id')->all();
     $plan = app(PayoutPlan::class)->compute($tournament->refresh(), 1_000);

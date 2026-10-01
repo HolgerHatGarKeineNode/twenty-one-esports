@@ -72,11 +72,18 @@ final readonly class FormatOptions
      * range falls back to the default of the game, so a stale draft never
      * breaks the chooser.
      *
+     * `$lobbyFromGame` (P10): a lobby game's heat options come from the game
+     * (Lobbies::options()), whatever is stored; false for a tournament
+     * already drawn, whose stored options keep holding (a Free for All drawn
+     * before the game became a lobby game keeps its heats, see
+     * Tournament::formatOptions()).
+     *
      * @param  array<string, mixed>  $values
      */
-    public static function fromArray(array $values, GameProfile $profile): self
+    public static function fromArray(array $values, GameProfile $profile, bool $lobbyFromGame = true): self
     {
         $defaults = self::defaults($profile);
+        $forced = $lobbyFromGame && $defaults->lobbyMinutes > 0;
         $int = fn (string $key, int $default, int $min, int $max): int => is_numeric($values[$key] ?? null) && (int) $values[$key] >= $min && (int) $values[$key] <= $max ? (int) $values[$key] : $default;
         $float = fn (string $key, float $default): float => is_numeric($values[$key] ?? null) && (float) $values[$key] >= 0 && (float) $values[$key] <= 10 ? (float) $values[$key] : $default;
         $pick = fn (string $key, string $default, array $allowed): string => in_array($values[$key] ?? null, $allowed, true) ? (string) $values[$key] : $default;
@@ -112,9 +119,10 @@ final readonly class FormatOptions
             groupStage: $groupStage,
             finalStage: $finalStage,
             // A lobby game's lobbies are the game's (P10): stored or submitted heat values are not read.
-            heatSize: $defaults->lobbyMinutes > 0 ? $defaults->heatSize : $int('heatSize', $defaults->heatSize, 3, 16),
-            heatAdvance: $defaults->lobbyMinutes > 0 ? $defaults->heatAdvance : $int('heatAdvance', $defaults->heatAdvance, 1, 8),
-            lobbyMinutes: $defaults->lobbyMinutes,
+            heatSize: $forced ? $defaults->heatSize : $int('heatSize', 4, 3, 16),
+            heatAdvance: $forced ? $defaults->heatAdvance : $int('heatAdvance', 2, 1, 8),
+            // Not forced: what is stored; a tournament stored without it has heats, never lobbies.
+            lobbyMinutes: $forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000),
         );
     }
 

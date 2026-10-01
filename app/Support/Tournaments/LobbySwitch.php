@@ -105,4 +105,45 @@ final class LobbySwitch
 
         return $done;
     }
+
+    /**
+     * Heal what a failed republish left behind (security audit P10, F4): a
+     * published lobby tournament whose current calendar event (31923) does
+     * not name the lobby match yet gets a new version. Run by the
+     * tournament clock (TournamentScheduler); a refusal (the league key still
+     * missing) is logged and tried again on a later run. Idempotent: a healed
+     * event names the lobby match, so the next run skips it.
+     *
+     * @return list<int> the tournaments republished
+     */
+    public function healCalendar(): array
+    {
+        $games = array_values(array_filter(array_keys((array) config('esports.series.lobby_rules', [])), fn (mixed $game): bool => is_string($game) && Lobbies::isLobbyGame($game)));
+        $healed = [];
+
+        if ($games === []) {
+            return $healed;
+        }
+
+        $tournaments = Tournament::query()->whereIn('game', $games)->where('format', TournamentFormat::FreeForAll)->whereNotNull('event_id')
+            ->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running])->with('event')->orderBy('id')->get();
+
+        foreach ($tournaments as $tournament) {
+            $summary = collect((array) ($tournament->event?->payload()['tags'] ?? []))->first(fn (mixed $tag): bool => is_array($tag) && ($tag[0] ?? null) === 'summary');
+
+            if (is_array($summary) && str_contains((string) ($summary[1] ?? ''), 'one lobby match')) {
+                continue;
+            }
+
+            try {
+                DB::transaction(fn () => $this->publisher->republish(Tournament::query()->with('event')->lockForUpdate()->findOrFail($tournament->id)));
+                Log::info('Lobby switch: calendar event healed', ['id' => $tournament->id]);
+                $healed[] = $tournament->id;
+            } catch (Throwable $e) {
+                Log::warning('Lobby switch: the calendar event still names the old format', ['id' => $tournament->id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $healed;
+    }
 }

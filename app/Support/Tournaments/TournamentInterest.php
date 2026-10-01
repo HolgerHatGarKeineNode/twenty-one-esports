@@ -40,7 +40,40 @@ final class TournamentInterest
     public static function of(Tournament $tournament, TournamentMatch $match, User $user, bool $followAppointers = true): bool
     {
         $since = self::since($tournament);
-        [$players, $clans] = self::stakes($match, $since);
+
+        return self::heldThroughChain($tournament, $user, self::stakes($match, $since), $since, $followAppointers);
+    }
+
+    /**
+     * Whether the user has a stake in ANY entry of a drawn tournament, read
+     * like a match's stake (members, the clans of lineups and of every
+     * player, departures, the chain of appointments). For a lobby tournament
+     * (P10): its lobbies share one pot, so a player of lobby A who decides
+     * lobby B moves his own share (security audit P10, F1).
+     */
+    public static function ofTournament(Tournament $tournament, User $user, bool $followAppointers = true): bool
+    {
+        $since = self::since($tournament);
+        $players = [];
+        $clans = [];
+
+        foreach ($tournament->participants()->get() as $participant) {
+            array_push($players, ...$participant->memberIds());
+
+            if ($participant->lineup_id !== null) {
+                $clans[] = (int) Lineup::query()->whereKey($participant->lineup_id)->value('clan_id');
+            }
+        }
+
+        return self::heldThroughChain($tournament, $user, self::spread($players, $clans, $since), $since, $followAppointers);
+    }
+
+    /**
+     * @param  array{0: list<int>, 1: list<int>}  $stakes
+     */
+    private static function heldThroughChain(Tournament $tournament, User $user, array $stakes, ?\DateTimeInterface $since, bool $followAppointers): bool
+    {
+        [$players, $clans] = $stakes;
 
         if (self::holds($user->id, $players, $clans, $since)) {
             return true;
