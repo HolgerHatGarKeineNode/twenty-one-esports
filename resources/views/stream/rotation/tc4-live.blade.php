@@ -18,9 +18,10 @@
     $progress = $played !== null && $total !== null ? $played.'/'.$total.' decided' : '';
     $title = K::fit(K::text($t, 'name', 'Tournament'), K::MONO, 26, 1200 - K::width($progress, K::MONO, 18) - 32);
     $firsts = K::sharedFirst($t);
-    // A finished lobby tournament (P10): the line names its place 1 across all lobbies.
-    $line = K::fit(K::text($t, 'status', 'Live now').': '.($firsts !== [] ? (count($firsts) > 1 ? 'shared 1st place: ' : '1st place: ').implode(', ', $firsts)
-        : ($finished ? match ($kind) { 'bracket' => 'final bracket', 'lobbies' => 'final places', default => 'final standings' } : K::text($t, 'now', K::text($t, 'format')))), K::MONO, 18, 1200);
+    // A finished lobby tournament (P10): the line names its place 1 across all lobbies, as many names as fit whole, the rest counted (P8).
+    $firstLabel = K::text($t, 'status', 'Live now').': '.(count($firsts) > 1 ? 'shared 1st place: ' : '1st place: ');
+    $line = $firsts !== [] ? $firstLabel.(K::namesInLines($firsts, K::MONO, 18, 1200 - K::width($firstLabel, K::MONO, 18), 1)[0] ?? '')
+        : K::fit(K::text($t, 'status', 'Live now').': '.($finished ? match ($kind) { 'bracket' => 'final bracket', 'lobbies' => 'final places', default => 'final standings' } : K::text($t, 'now', K::text($t, 'format'))), K::MONO, 18, 1200);
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')

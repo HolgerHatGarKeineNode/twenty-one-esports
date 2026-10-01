@@ -422,6 +422,14 @@ final class TournamentTv
     }
 
     /**
+     * The stored match of a box key (the bracket's rows, read once), null for an unknown key.
+     */
+    public function match(string $key): ?TournamentMatch
+    {
+        return $this->matches()->get($key);
+    }
+
+    /**
      * @return Collection<string, TournamentMatch>
      */
     private function matches(): Collection

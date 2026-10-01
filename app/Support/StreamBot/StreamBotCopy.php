@@ -185,6 +185,11 @@ final class StreamBotCopy
             ['🏆 :winner wins :tournament', '⚔️ Deciding game over :loser (:mode)', '📈 :elo', '👉 See the tournament: :url'],
             ['🥇 :tournament goes to :winner', '⚔️ Beat :loser in :mode', '🎉 Well played to both', '👉 :url'],
         ],
+        // A lobby tournament's place 1 (plan "AoE2 und Trackmania", P8), in place of pride_note_win: every player on it tagged.
+        'pride_note_lobby_win' => [
+            ['🏆 :first in :tournament', '🎉 :winners', '🏰 :mode, one lobby match, :players players', '👉 See the places: :url'],
+            ['🥇 :tournament is decided', '🏆 :first: :winners', '🏰 Diplomacy in :mode, :players players', '👉 :url'],
+        ],
         // The same for a table (Swiss, round robin): the last game decided nothing on its own.
         'pride_note_tournament_table_win' => [
             ['🏆 :winner wins :tournament (:mode)', '📈 :elo', '👉 See the tournament: :url'],

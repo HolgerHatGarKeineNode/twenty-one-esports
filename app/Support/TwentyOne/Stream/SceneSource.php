@@ -173,8 +173,8 @@ class SceneSource
                 'd1', 'd2' => ['upcoming' => $upcoming, 'stats' => $stats, 'backdrop' => $brand],
                 // The invite slide names who brought the most new players (PrideSlides `inviters`).
                 'd3' => ['siteQrSvg' => $this->qr('site'), 'pride' => $this->pride->all(), 'stats' => $stats, 'backdrop' => $brand],
-                // A series game on a slide of its own (GameSpotlight), over its own blurred cover.
-                'd6' => ($spotlight = app(GameSpotlight::class)->data($stats)) === null ? ['spotlight' => null, 'stats' => $stats, 'backdrop' => $brand]
+                // A series game on a slide of its own (GameSpotlight), over its own blurred cover; a lobby game with its lobby match now (P8).
+                'd6' => ($spotlight = app(GameSpotlight::class)->data($stats, $nowMs, $upcoming)) === null ? ['spotlight' => null, 'stats' => $stats, 'backdrop' => $brand]
                     : ['spotlight' => $spotlight, 'stats' => $stats, 'backdrop' => $this->images->backdrop($spotlight['slug']) ?? $brand],
                 default => ['siteQrSvg' => $this->qr('site'), 'stats' => $stats, 'backdrop' => $brand],
             };

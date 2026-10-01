@@ -122,9 +122,9 @@ test('every tournament slide of an AoE2 lobby tournament, upcoming, running and 
         ->and(slideWords($svgs['upcoming-tc2']))->toContain('lobby 1')
         // The hero line names the lobby match.
         ->and(slideWords($svgs['upcoming-ta1'].$svgs['upcoming-tb1'].$svgs['upcoming-tc1']))->toContain('one lobby match')
-        // Running: every lobby with its players, how many are decided.
-        ->and(slideWords($svgs['running-ta4']))->toContain('lobby 1, live', 'lobby 2, live', 'player 9', 'one lobby match, 0 of 2 lobbies decided')
-        ->and(slideWords($svgs['running-tb4'].$svgs['running-tc4']))->toContain('lobby 2, live')
+        // Running: every lobby with its players and its countdown (P8), the time limit, how many are decided.
+        ->and(slideWords($svgs['running-ta4']))->toContain('lobby 1', 'lobby 2', ' left', 'player 9', 'one lobby match, 2 h time limit, 0 of 2 lobbies decided')
+        ->and(slideWords($svgs['running-tb4'].$svgs['running-tc4']))->toContain('lobby 2', ' left')
         // Finished: the lobbies by place, and place 1 shared across them.
         ->and(slideWords($svgs['finished-ta4']))->toContain('final places', 'shared 1st place', ...array_map(mb_strtolower(...), $winners))
         ->and(slideWords($svgs['finished-tb4']))->toContain('shared 1st place: '.mb_strtolower(implode(', ', $winners)))

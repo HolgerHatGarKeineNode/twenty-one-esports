@@ -8,6 +8,7 @@ use App\Support\Matches\MatchBlocks;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * The spotlight teaser (d6): a series game the league added, on a slide of
@@ -18,7 +19,9 @@ use InvalidArgumentException;
  *
  * A lobby game (P10, Age of Empires II) sells its tournaments in the claim:
  * lobbies of 3 to 8, diplomacy, the time limit, shared wins; its cups line
- * says they are one lobby match.
+ * says they are one lobby match. Under its cover it shows its lobby match
+ * now (P8, now()): running, finished with its shared 1st place, or none
+ * with the next start; the ladder's leader stays for the last.
  *
  * Every line is read from the code that runs the game: the casual 1v1 queue
  * (`esports.casual.games`), the host's room card (resources/js/lobbyCards.js
@@ -56,11 +59,13 @@ final class GameSpotlight
 
     /**
      * The slide's data; null without a series game (the view then shows the join line).
+     * With `$nowMs`, a lobby game (P8) also gets `now`, the state of its lobby match (now()).
      *
      * @param  array<string, mixed>  $stats  StreamStats::all()
-     * @return array{slug: string, name: string, claim: string, cover: string|null, colour: string, colourDeep: string, facts: list<array{label: string, line: string}>, leader: array{name: string, elo: int, avatar: string|null, ladder: string}|null, url: string}|null
+     * @param  list<array<string, mixed>>  $upcoming  TournamentSlides::frames() of this poll
+     * @return array{slug: string, name: string, claim: string, cover: string|null, colour: string, colourDeep: string, facts: list<array{label: string, line: string}>, leader: array{name: string, elo: int, avatar: string|null, ladder: string}|null, url: string, now: array<string, mixed>|null}|null
      */
-    public function data(array $stats): ?array
+    public function data(array $stats, ?int $nowMs = null, array $upcoming = []): ?array
     {
         $game = $this->game();
 
@@ -82,7 +87,83 @@ final class GameSpotlight
             'facts' => $this->facts($game),
             'leader' => $this->leader($slug, $stats),
             'url' => rtrim(preg_replace('#^https?://#', '', (string) config('twentyone.stream.scene.url')) ?? '', '/').'/games/'.$slug,
+            'now' => $nowMs !== null && Lobbies::isLobbyGame($slug) ? $this->now($slug, $nowMs, $upcoming) : null,
         ];
+    }
+
+    /**
+     * The state of the game's lobby match on the stream (plan "AoE2 und
+     * Trackmania", P8), from the live tournament slides' snapshots in the
+     * cache (TournamentLiveSlides::cachedSnapshots(), what the stream's poll
+     * read), so it costs no query of its own. Null while the cache holds
+     * none or a frame fails: the slide then says nothing about the match
+     * rather than claim that none is on.
+     *
+     * - `running`: the first running lobby tournament of the game, its
+     *   lobbies decided and the first lobby still in play with its
+     *   countdown or report state;
+     * - `finished`: else the latest finished one within the live slides'
+     *   window, with its place 1 (shared by the allies left standing);
+     * - `none`: else that no lobby match is on, and when the game's next
+     *   open tournament starts (a cup counts), when there is one.
+     *
+     * Names are the players' public (Nostr) names as the live slides show
+     * them; nothing of a game account is read.
+     *
+     * @param  list<array<string, mixed>>  $upcoming
+     * @return array{state: 'running'|'finished'|'none', label: string, name: string, lines: list<string>}|null
+     */
+    public function now(string $slug, int $nowMs, array $upcoming = []): ?array
+    {
+        $slides = app(TournamentLiveSlides::class);
+        $snapshots = $slides->cachedSnapshots();
+
+        if ($snapshots === null) {
+            return null;
+        }
+
+        $mine = array_values(array_filter($snapshots, fn (array $snapshot): bool => ($snapshot['gameSlug'] ?? null) === $slug
+            && in_array($snapshot['phase'] ?? null, ['running', 'finished'], true) && ($snapshot['board']['kind'] ?? null) === 'lobbies'));
+
+        try {
+            $frames = $slides->frames($mine, $nowMs);
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+        $running = array_values(array_filter($frames, fn (array $frame): bool => $frame['phase'] === 'running'))[0] ?? null;
+
+        if ($running !== null) {
+            $played = $running['progress']['played'] ?? null;
+            $total = $running['progress']['total'] ?? null;
+            $lines = is_int($played) && is_int($total) ? [$played.' of '.$total.' '.($total === 1 ? 'lobby' : 'lobbies').' decided'] : [];
+
+            foreach ($running['board']['groups'] ?? [] as $group) {
+                $status = (string) ($group['status'] ?? '');
+
+                if ($status !== '' && ! in_array($status, ['decided', 'no result'], true)) {
+                    $lines[] = $group['title'].': '.$status;
+
+                    break;
+                }
+            }
+
+            return ['state' => 'running', 'label' => $running['status'] === 'Paused' ? 'Paused' : 'Live now', 'name' => (string) $running['name'], 'lines' => $lines];
+        }
+
+        $finished = array_values(array_filter($frames, fn (array $frame): bool => $frame['phase'] === 'finished' && ($frame['sharedFirst'] ?? []) !== []))[0] ?? null;
+
+        if ($finished !== null) {
+            return ['state' => 'finished', 'label' => count($finished['sharedFirst']) > 1 ? 'Shared 1st place' : '1st place', 'name' => (string) $finished['name'],
+                'lines' => array_values(array_map(strval(...), $finished['sharedFirst']))];
+        }
+
+        $title = GameTitle::of($slug);
+        $next = array_values(array_filter($upcoming, fn (array $t): bool => ($t['game'] ?? null) === $title && is_string($t['startsAt'] ?? null)))[0] ?? null;
+
+        return ['state' => 'none', 'label' => '', 'name' => '',
+            'lines' => ['No lobby match on right now.'.($next === null ? '' : ' Next: '.$next['startsAt'])]];
     }
 
     /**
