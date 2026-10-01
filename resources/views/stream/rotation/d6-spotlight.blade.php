@@ -10,7 +10,11 @@
     Data contract (SceneSource, GameSpotlight::data()):
       $spotlight  array{name: string, claim: string, cover: ?string, colour: string, colourDeep: string,
                     facts: list<array{label: string, line: string}>,
-                    leader: array{name: string, elo: int, avatar: ?string, ladder: string}|null, url: string}|null
+                    leader: array{name: string, elo: int, avatar: ?string, ladder: string}|null, url: string,
+                    now?: array{state: 'running'|'finished'|'none', label: string, name: string, lines: list<string>}|null}|null
+                  `now` (P8, a lobby game's match, GameSpotlight::now()): running or finished takes the leader's place
+                  under the cover (label, tournament, its lobbies decided and a countdown, or the names on place 1);
+                  none keeps the leader and adds one line, that no lobby match is on and the next start
                   null without a series game: the slide invites to every game instead
       $stats      array: the stats bar counts (c-chrome)
       $backdrop   ?string, optional: the game's blurred cover, else the brand's
@@ -41,6 +45,21 @@
     $url = K::fit(K::text($s ?? [], 'url', 'esports.einundzwanzig.space'), K::MONO, 18, 592);
     // The call right under the facts, never into the stats bar (rule at y 625).
     $ctaY = min($y - 4, 510);
+    // A lobby game's match now (P8, GameSpotlight::now()): running or finished takes the leader's place, none adds a line.
+    $now = is_array($s['now'] ?? null) ? $s['now'] : null;
+    $nowState = $now['state'] ?? null;
+    $nowLive = in_array($nowState, ['running', 'finished'], true);
+    $nowName = $nowLive ? K::headline(K::text($now, 'name', 'Tournament'), [32, 26, 22], 560, 1) : null;
+    $nowLines = [];
+    if ($nowState === 'running') {
+        foreach (array_slice(array_values(array_filter((array) ($now['lines'] ?? []), 'is_string')), 0, 2) as $line) {
+            $nowLines[] = K::fit($line, K::MONO, 18, 560);
+        }
+    } elseif ($nowState === 'finished') {
+        // The names on place 1, as many as three lines hold whole, the rest counted.
+        $nowLines = K::namesInLines((array) ($now['lines'] ?? []), K::MONO, 18, 560, 3);
+    }
+    $noneLine = $nowState === 'none' && is_string($now['lines'][0] ?? null) ? K::fit($now['lines'][0], K::MONO, 16, 560) : '';
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1280" height="720" viewBox="0 0 1280 720">
 @include('stream.rotation.partials.defs')
@@ -55,7 +74,13 @@
 <image x="46" y="110" width="548" height="308" preserveAspectRatio="xMidYMid slice" xlink:href="{{ $cover }}"/>
 @endif
 </g>
-@if ($leader)
+@if ($nowLive)
+<text data-unit="now-label" data-box="39 450 601 474" x="40" y="468" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#F7931A">{{ K::fit(K::text($now, 'label'), K::MONO, 18, 560) }}</text>
+<text data-unit="now-name" data-box="39 {{ 512 - $nowName['size'] }} 601 {{ 512 + $nowName['size'] * 0.3 }}" x="40" y="512" font-family="{{ $nowName['font'] }}" font-weight="800" font-size="{{ $nowName['size'] }}" fill="#FFFFFF">{{ $nowName['lines'][0] ?? '' }}</text>
+@foreach ($nowLines as $li => $line)
+<text data-unit="now-line-{{ $li }}" data-box="39 {{ 532 + $li * 26 }} 601 {{ 556 + $li * 26 }}" x="40" y="{{ 550 + $li * 26 }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="{{ $li === 0 || $nowState === 'finished' ? '#FFFFFF' : '#ADADB0' }}">{{ $line }}</text>
+@endforeach
+@elseif ($leader)
 @include('stream.rotation.partials.face', ['face' => K::prideFace($leader), 'x' => 40, 'y' => 470, 'd' => 96, 'id' => 'spot', 'fUnit' => 'leader-face', 'fRing' => $accent, 'fCrown' => $accent])
 <text data-unit="leader-name" data-box="155 482 601 526" x="156" y="518" font-family="{{ $leaderName }}" font-weight="800" font-size="32" fill="#FFFFFF">{{ K::fit(K::text($leader, 'name'), $leaderName, 32, 440) }}</text>
 <text data-unit="leader-line" data-box="155 536 601 562" x="156" y="556" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $leaderLine }}</text>
@@ -64,6 +89,7 @@
 <text data-unit="leader-name" data-box="155 482 601 526" x="156" y="518" font-family="Unbounded" font-weight="800" font-size="32" fill="#FFFFFF">The top spot is open.</text>
 <text data-unit="leader-line" data-box="155 536 601 562" x="156" y="556" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">Win a game and it is yours.</text>
 @endif
+@if ($noneLine !== '')<text data-unit="now-none" data-box="39 586 601 608" x="40" y="602" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="#ADADB0">{{ $noneLine }}</text>@endif
 
 @foreach ($title['lines'] as $i => $line)
 <text data-unit="title-{{ $i }}" data-box="647 {{ 150 + $i * $titleStep - $title['size'] }} 1241 {{ 150 + $i * $titleStep + $title['size'] * 0.3 }}" x="648" y="{{ 150 + $i * $titleStep }}" font-family="{{ $title['font'] }}" font-weight="800" font-size="{{ $title['size'] }}" fill="#FFFFFF">{{ $line }}</text>

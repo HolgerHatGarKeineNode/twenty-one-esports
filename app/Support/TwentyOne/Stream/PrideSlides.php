@@ -7,6 +7,7 @@ use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesResolution;
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
@@ -21,14 +22,19 @@ use App\Models\SeasonBlockVoid;
 use App\Models\SeasonPayout;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
+use App\Models\TournamentParticipant;
 use App\Models\TournamentSignup;
 use App\Models\User;
+use App\Support\Payouts\TournamentPlacements;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\StrongestList;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -52,7 +58,9 @@ use Throwable;
  *   (`winnerLogoRef`, `team` faces; no `winnerRef`, so no single player is
  *   tagged for a team's win). A win that won its winner a finished
  *   tournament names it (`tournament`, `final` when a knockout's final
- *   decided it) and links it.
+ *   decided it) and links it. A finished lobby tournament (P8, Age of
+ *   Empires II) is a win too: its place 1 (`kind` lobby, every player on it
+ *   in `winners`, the first as the winner, the others as `team` faces).
  * - `climbers`: the three biggest Elo gains of the last seven days over
  *   every player ladder of every game (casual and rated; sum of the live
  *   rating changes, gains only), with the games they came from.
@@ -163,6 +171,8 @@ class PrideSlides
             // A failing board game or series read (their tables, their tournament) costs that win only, never the pride slides.
             $this->guarded('latestBoard', null),
             $this->guarded('latestSeries', null),
+            // A lobby tournament's place 1 (P8, plan "AoE2 und Trackmania"): no game of two sides to read it from.
+            $this->guarded('latestLobby', null),
         ]);
 
         if ($candidates === []) {
@@ -237,10 +247,37 @@ class PrideSlides
     }
 
     /**
+     * The latest finished lobby tournament (P10's lobbies) of a registered
+     * lobby game; its time is its last lobby's decision (as the live slides
+     * read it).
+     *
+     * @return array{0: CarbonInterface, 1: Tournament}|null
+     */
+    private function latestLobby(): ?array
+    {
+        $slugs = array_values(array_filter(array_keys($this->games->series()), Lobbies::isLobbyGame(...)));
+
+        if ($slugs === []) {
+            return null;
+        }
+
+        $tournament = Tournament::query()->exceptBlockfillWeeks()->where('status', TournamentStatus::Finished)->where('format', TournamentFormat::FreeForAll)->whereIn('game', $slugs)
+            ->addSelect(['decided_at' => TournamentMatch::query()->selectRaw('max(updated_at)')->whereColumn('tournament_id', 'tournaments.id')])
+            ->orderByDesc('decided_at')->orderByDesc('id')->first();
+        $at = $tournament?->getAttribute('decided_at') === null ? $tournament?->updated_at : Carbon::parse((string) $tournament->getAttribute('decided_at'));
+
+        return $tournament === null || $at === null ? null : [$at, $tournament];
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
-    private function describe(ChessGame|BoardGame|SeriesMatch $result): ?array
+    private function describe(ChessGame|BoardGame|SeriesMatch|Tournament $result): ?array
     {
+        if ($result instanceof Tournament) {
+            return $this->lobbyWin($result);
+        }
+
         if ($result instanceof SeriesMatch) {
             return $this->seriesWin($result);
         }
@@ -319,6 +356,68 @@ class PrideSlides
             'tournament' => $tournament === null ? null : PublicName::clean($tournament->name),
             'final' => $tournament !== null && $tournament->format->hasFinal(),
             'url' => $tournament === null ? route('matches.show', $match) : route('tournaments.show', $tournament),
+        ];
+    }
+
+    /**
+     * A finished lobby tournament's place 1 (P8): every player on it, the
+     * allies left standing across all lobbies, in placement order; the first
+     * is the slide's winner, the others its team faces; all of them are in
+     * `winners` for the pride note to tag. Players are their public (Nostr)
+     * names and avatars, never a game account. Null while place 1 names no
+     * player (every lobby closed without a result).
+     *
+     * @return array<string, mixed>|null
+     */
+    private function lobbyWin(Tournament $tournament): ?array
+    {
+        $ids = [];
+
+        foreach (app(TournamentPlacements::class)->of($tournament) ?? [] as $row) {
+            if ($row['place'] === 1) {
+                $ids = [...$ids, ...$row['participants']];
+            }
+        }
+
+        $participants = TournamentParticipant::query()->whereKey($ids)->with('user')->get()->sortBy(fn (TournamentParticipant $participant): int|false => array_search($participant->id, $ids, true))->values();
+        $winners = [];
+
+        foreach ($participants as $participant) {
+            $user = $participant->user;
+            $winners[] = ['name' => PublicName::clean($user?->displayName() ?? (string) $participant->name), 'ref' => StreamImages::avatarRef($user)];
+        }
+
+        if ($winners === []) {
+            return null;
+        }
+
+        $others = count($winners) - 1;
+        $players = $tournament->participants()->count();
+        $decided = $tournament->getAttribute('decided_at') === null ? $tournament->updated_at : Carbon::parse((string) $tournament->getAttribute('decided_at'));
+
+        return [
+            'kind' => 'lobby',
+            'gameId' => $tournament->id,
+            'winner' => $winners[0]['name'],
+            'winnerRef' => $winners[0]['ref'],
+            'team' => array_values(array_filter(array_map(fn (array $winner): ?array => $winner['ref'], array_slice($winners, 1, 4)))),
+            'winners' => $winners,
+            'loser' => '',
+            'loserRef' => null,
+            // The slide's line where a duel names whom it beat.
+            'shared' => $others > 0 ? 'shared 1st place with '.$others.' '.($others === 1 ? 'other' : 'others') : '1st place of '.$players.' players',
+            'players' => $players,
+            // The pride note words the game with `mode` (the full name); the slide prints the short title and the format.
+            'mode' => $this->games->name($tournament->game),
+            'shownMode' => GameTitle::of($tournament->game).', one lobby match',
+            'score' => null,
+            'delta' => null,
+            'ratedDelta' => null,
+            'block' => null,
+            'ago' => $decided?->diffForHumans(),
+            'tournament' => PublicName::clean($tournament->name),
+            'final' => false,
+            'url' => route('tournaments.show', $tournament),
         ];
     }
 

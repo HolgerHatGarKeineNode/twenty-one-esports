@@ -1681,10 +1681,81 @@ final class RotationKit
             }
 
             $boxes[] = ['x' => $bx, 'y' => $by, 'w' => round($bw, 1), 'h' => round($bh, 1), 'title' => self::clean(is_string($group['title'] ?? null) ? $group['title'] : ''),
+                // A lobby's countdown or report state (P8, TournamentLiveSlides::lobbyStatus()), empty for a group.
+                'status' => self::clean(is_string($group['status'] ?? null) ? $group['status'] : ''),
                 'titleY' => round($by + $pad + $titleH * 0.62, 1), 'rows' => $rows];
         }
 
         return ['boxes' => $boxes ?? [], 'pitch' => $pitch, 'size' => $size, 'fd' => $fd, 'hidden' => count($groups) - count($shown)];
+    }
+
+    /**
+     * Names as a comma list in at most $maxLines lines of $maxPx: as many as
+     * fit whole, in order, the rest counted as "+N more" (the d6 spotlight's
+     * shared 1st place, P8). A single name too long for the lines is cut
+     * like wrap() cuts it.
+     *
+     * @param  array<mixed>  $names
+     * @return list<string>
+     */
+    public static function namesInLines(array $names, string $font, float $size, float $maxPx, int $maxLines): array
+    {
+        $clean = [];
+        foreach ($names as $name) {
+            $name = self::clean(is_string($name) ? $name : '');
+            if ($name !== '') {
+                $clean[] = $name;
+            }
+        }
+
+        $lines = [];
+        for ($k = count($clean); $k >= 1; $k--) {
+            $listed = implode(', ', array_slice($clean, 0, $k)).($k < count($clean) ? ' +'.(count($clean) - $k).' more' : '');
+            $lines = self::wrap($listed, $font, $size, $maxPx, $maxLines);
+            if (implode(' ', $lines) === $listed) {
+                break;
+            }
+        }
+
+        return $lines;
+    }
+
+    /** The smallest row pitch a lobby board (P8) steps down to so that every lobby shows: 40 players are 5 lobbies of 8. */
+    public const LOBBY_MIN_PITCH = 22;
+
+    /**
+     * How many columns a lobby board (kind 'lobbies') takes in ($w × $h):
+     * of the layouts that show every lobby (groupsLayout() at
+     * LOBBY_MIN_PITCH), the one that gives a name the most room, counted as
+     * its font size times the characters it holds (14 at most, a longer
+     * room adds nothing). 1 for an empty board; when no layout shows all,
+     * the one that shows the most.
+     *
+     * @param  array<string, mixed>|null  $board
+     */
+    public static function lobbyColumns(?array $board, float $w, float $h, bool $clan = false): int
+    {
+        $count = is_array($board['groups'] ?? null) ? count($board['groups']) : 0;
+        $best = [1, -1.0, PHP_INT_MAX];
+
+        for ($cols = 1; $cols <= max(1, $count); $cols++) {
+            $layout = self::groupsLayout($board, 0, 0, $w, $h, $cols, 16, 30, 36, self::LOBBY_MIN_PITCH, $clan);
+            $box = $layout['boxes'][0] ?? null;
+
+            if ($box === null) {
+                return 1;
+            }
+
+            // The name's room: the box less its rank (34), face and gap (fd + 8) and the right margin (40), as t-board draws it.
+            $chars = max(0.0, ($box['w'] - 34 - $layout['fd'] - 8 - 40) / (0.6 * $layout['size']));
+            $score = $layout['size'] * min(14.0, $chars);
+
+            if ($layout['hidden'] < $best[2] || ($layout['hidden'] === $best[2] && $score > $best[1])) {
+                $best = [$cols, $score, $layout['hidden']];
+            }
+        }
+
+        return $best[0];
     }
 
     /**

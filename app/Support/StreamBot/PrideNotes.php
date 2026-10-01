@@ -26,7 +26,8 @@ use Throwable;
  *
  * Four types, each at most once a day at its own slot, spread for EU and
  * US (`esports.stream_bot.pride_notes.slots`): the latest win (e1; chess or
- * a board game, a board game's tournament win as such), the
+ * a board game, a board game's tournament win as such, a lobby
+ * tournament's shared 1st place with every player on it tagged), the
  * climbers of the week (e2), who just signed up (e3), the biggest pot's
  * prizes (e4). A type posts only when it has data and its text differs from
  * its last note, so a quiet day posts nothing.
@@ -49,6 +50,9 @@ class PrideNotes
         3 => ['signups', 'e3', 'pride_note_signups'],
         4 => ['prizes', 'e4', 'pride_note_prizes'],
     ];
+
+    /** Players of a lobby tournament's shared place 1 tagged in one note (P8); the rest are counted. */
+    public const LOBBY_MENTIONS = 8;
 
     /** Rendered slides older than this are deleted (days). */
     private const KEEP_IMAGES_DAYS = 30;
@@ -143,7 +147,10 @@ class PrideNotes
 
         // A board game that won its winner a tournament is told as the tournament win (plan "Mühle und Dame", P7):
         // "deciding game" only after a knockout's final; a name that cleans to nothing keeps the plain win.
-        if ($name === 'win' && StreamBotCopy::clean((string) ($data['win']['tournament'] ?? ''), 80) !== '') {
+        if ($name === 'win' && ($data['win']['kind'] ?? null) === 'lobby') {
+            // A lobby tournament's place 1 (plan "AoE2 und Trackmania", P8): shared by the allies left standing, all tagged.
+            $template = 'pride_note_lobby_win';
+        } elseif ($name === 'win' && StreamBotCopy::clean((string) ($data['win']['tournament'] ?? ''), 80) !== '') {
             $template = ($data['win']['final'] ?? false) === true ? 'pride_note_tournament_win' : 'pride_note_tournament_table_win';
         } elseif ($name === 'win' && ($data['win']['kind'] ?? null) === 'series') {
             // A Rocket League / EA FC series (PrideSlides): no game to watch, the match page instead.
@@ -198,6 +205,10 @@ class PrideNotes
      */
     private function winValues(?array $win, \Closure $mention): ?array
     {
+        if (($win['kind'] ?? null) === 'lobby') {
+            return $this->lobbyWinValues($win, $mention);
+        }
+
         $winner = $win === null ? null : $mention($win['winnerRef'] ?? null);
 
         if ($winner === null) {
@@ -215,6 +226,43 @@ class PrideNotes
             'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
             // The game's page (a chess game, a board game) or the tournament a board game won (PrideSlides).
             'url' => is_string($win['url'] ?? null) && $win['url'] !== '' ? $win['url'] : route('games.show', (int) $win['gameId']),
+        ];
+    }
+
+    /**
+     * A lobby tournament's place 1 (PrideSlides `kind` lobby): every player on
+     * it with a Nostr key tagged, at most LOBBY_MENTIONS, the rest counted;
+     * null when none has a key (nobody to congratulate by name).
+     *
+     * @param  array<string, mixed>  $win
+     * @return array<string, string|null>|null
+     */
+    private function lobbyWinValues(array $win, \Closure $mention): ?array
+    {
+        $winners = [];
+        $more = 0;
+
+        foreach (is_array($win['winners'] ?? null) ? $win['winners'] : [] as $winner) {
+            $who = is_array($winner) ? $mention($winner['ref'] ?? null) : null;
+
+            if ($who === null) {
+                continue;
+            }
+
+            if (count($winners) < self::LOBBY_MENTIONS) {
+                $winners[] = $who;
+            } else {
+                $more++;
+            }
+        }
+
+        return $winners === [] ? null : [
+            'first' => count($winners) + $more > 1 ? 'Shared 1st place' : '1st place',
+            'winners' => implode(', ', $winners).($more > 0 ? ' +'.$more.' more' : ''),
+            'tournament' => StreamBotCopy::clean((string) ($win['tournament'] ?? ''), 80),
+            'mode' => StreamBotCopy::clean((string) ($win['mode'] ?? ''), 60),
+            'players' => (string) (int) ($win['players'] ?? 0),
+            'url' => is_string($win['url'] ?? null) && $win['url'] !== '' ? $win['url'] : route('tournaments.index'),
         ];
     }
 

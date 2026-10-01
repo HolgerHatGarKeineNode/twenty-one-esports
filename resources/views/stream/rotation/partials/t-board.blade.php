@@ -5,7 +5,9 @@
       places that go through with an $accent rank;
     - kind 'table': the table on the left (rank, face, name, record W-D-L, points) and the current round's pairings on
       the right;
-    - kind 'lobbies' (P10): as groups, one box per lobby, its players by place once decided;
+    - kind 'lobbies' (P10): as groups, one box per lobby, its players by place once decided; its `status` (P8: the
+      countdown, the report state) right on its title line; the columns RotationKit::lobbyColumns() picks, so every
+      lobby shows;
     - anything else (heats, no stage yet): the line that the bracket comes with the first match.
     Style per look as partials/t-bracket ($panel, $rule, $accent, $nameFill, $muted, $chipInk, $bShape, $bId), plus
     $clanSeats (a team tournament's faces are clans).
@@ -15,7 +17,12 @@
     $kind = is_array($board ?? null) ? ($board['kind'] ?? null) : null;
     $clan = $clanSeats ?? false;
     $L = $kind === 'bracket' ? K::bracketLayout($board, $bx, $by, $bw, $bh - 26, 30, 40, 28, 32, $clan) : null;
-    $G = $kind === 'groups' || $kind === 'lobbies' ? K::groupsLayout($board, $bx, $by, $bw, $bh - 26, $groupCols ?? 4, 16, 30, 36, 24, $clan) : null;
+    // A lobby board (P8) takes the columns that show every lobby with the most room per name (40 players: 5 lobbies of 8).
+    $G = match ($kind) {
+        'groups' => K::groupsLayout($board, $bx, $by, $bw, $bh - 26, $groupCols ?? 4, 16, 30, 36, 24, $clan),
+        'lobbies' => K::groupsLayout($board, $bx, $by, $bw, $bh - 26, K::lobbyColumns($board, $bw, $bh - 26, $clan), 16, 30, 36, K::LOBBY_MIN_PITCH, $clan),
+        default => null,
+    };
     $tableW = round($bw * 0.58);
     $rowPitch = 38;
     $rows = $kind === 'table' ? K::tableRows($board, $by + 34, $rowPitch, 28, 18, max(1, min(8, (int) floor(($bh - 60) / $rowPitch))), $clan) : [];
@@ -36,7 +43,14 @@
 @elseif ($G && $G['boxes'] !== [])
 @foreach ($G['boxes'] as $gi => $g)
 <rect x="{{ $g['x'] }}" y="{{ $g['y'] }}" width="{{ $g['w'] }}" height="{{ $g['h'] }}" fill="{{ $panel }}"/>
-<text data-unit="g-{{ $gi }}-title" data-box="{{ $g['x'] }} {{ $g['y'] }} {{ $g['x'] + $g['w'] }} {{ $g['y'] + 40 }}" x="{{ $g['x'] + 10 }}" y="{{ $g['titleY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $accent }}">{{ K::fit($g['title'], K::MONO, 16, $g['w'] - 20) }}</text>
+@php($titleW = $g['status'] === '' ? $g['w'] - 20 : min($g['w'] - 20, K::width($g['title'], K::MONO, 16)))
+<text data-unit="g-{{ $gi }}-title" data-box="{{ $g['x'] }} {{ $g['y'] }} {{ $g['x'] + 10 + $titleW + 1 }} {{ $g['y'] + 40 }}" x="{{ $g['x'] + 10 }}" y="{{ $g['titleY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="16" fill="{{ $accent }}">{{ K::fit($g['title'], K::MONO, 16, $titleW) }}</text>
+@if ($g['status'] !== '')
+{{-- A lobby's countdown or report state (P8), right-aligned on its title line; it steps down in size before it loses letters. --}}
+@php($statusRoom = $g['w'] - 20 - $titleW - 12)
+@php($statusSize = K::monoSize($g['status'], 16, $statusRoom))
+<text data-unit="g-{{ $gi }}-status" data-box="{{ $g['x'] + $g['w'] - 10 - $statusRoom - 1 }} {{ $g['y'] }} {{ $g['x'] + $g['w'] - 9 }} {{ $g['y'] + 40 }}" x="{{ $g['x'] + $g['w'] - 10 }}" y="{{ $g['titleY'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $statusSize }}" fill="{{ str_ends_with($g['status'], 'left') || str_starts_with($g['status'], 'report due') ? $nameFill : $muted }}" text-anchor="end">{{ K::fit($g['status'], K::MONO, $statusSize, $statusRoom) }}</text>
+@endif
 @foreach ($g['rows'] as $ri => $r)
 @php($nameX = $g['x'] + 34 + $G['fd'] + 8)
 <text data-unit="g-{{ $gi }}-rank-{{ $ri }}" x="{{ $g['x'] + 26 }}" y="{{ $r['y'] }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $G['size'] }}" fill="{{ $r['through'] ? $accent : $muted }}" text-anchor="end">{{ $r['rank'] }}</text>

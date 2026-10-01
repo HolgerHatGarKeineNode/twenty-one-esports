@@ -12,6 +12,7 @@ use App\Support\Prizes\PrizePool;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\Lobbies;
+use App\Support\Tournaments\LobbyResults;
 use App\Support\Tournaments\TournamentLanding;
 use App\Support\Tournaments\TournamentTv;
 use Carbon\CarbonInterface;
@@ -130,6 +131,26 @@ class TournamentLiveSlides
 
             return $this->read();
         }
+    }
+
+    /**
+     * What snapshots() holds in the cache now, without reading the database:
+     * null on a miss or a failing cache store. For a slide that may only
+     * reuse what the stream's poll read (the d6 spotlight, P8).
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function cachedSnapshots(): ?array
+    {
+        try {
+            $snapshots = Cache::get(self::CACHE_KEY);
+        } catch (Throwable $e) {
+            report($e);
+
+            return null;
+        }
+
+        return is_array($snapshots) ? array_values(array_filter($snapshots, is_array(...))) : null;
     }
 
     /**
@@ -518,7 +539,7 @@ class TournamentLiveSlides
 
         // A lobby tournament (P10): one panel per lobby with its players; never a pairing.
         if (Lobbies::isLobby($tournament)) {
-            return $this->lobbies($stage, $name);
+            return $this->lobbies($tournament, $stage, $tv, $name);
         }
 
         $tables = array_values(array_filter($stage['parts'], fn (array $part): bool => $part['kind'] === 'table'));
@@ -582,40 +603,117 @@ class TournamentLiveSlides
 
     /**
      * The lobbies of a lobby tournament (P10) as a groups-like board (kind
-     * 'lobbies'): a box per lobby titled "Lobby N" (live or not), its players
-     * in slot order while it runs, by place once decided (place 1 shared by
-     * the allies left standing, `through`). `now` counts the lobbies decided.
+     * 'lobbies'): a box per lobby titled "Lobby N", its players in slot order
+     * while it runs, by place once decided (place 1 shared by the allies left
+     * standing, `through`). `now` names the time limit and counts the lobbies
+     * decided.
+     *
+     * Each box keeps its `clock` (P8): when its time limit ends as planned
+     * (the report deadline less `report_minutes`, Lobbies::reportBy()), the
+     * report deadline, whether a report waits for the directors, whether it
+     * is decided and with places; frame() words it as the box's `status`
+     * (lobbyStatus()). A waiting report's places stay private: the stream
+     * only says that one is in review.
      *
      * @param  array<string, mixed>  $stage
      * @param  callable(array<string, mixed>|null): (array{pic: string, seed: int|null, name: string}|null)  $name
      * @return array<string, mixed>
      */
-    private function lobbies(array $stage, callable $name): array
+    private function lobbies(Tournament $tournament, array $stage, TournamentTv $tv, callable $name): array
     {
         $groups = [];
         $decided = 0;
+        $limit = null;
+        $reportMinutes = max(0, (int) (Lobbies::config($tournament->game)['report_minutes'] ?? 60));
 
         foreach ($stage['parts'] as $part) {
             foreach ($part['heats'] ?? [] as $box) {
                 $done = $box['status'] === 'done';
                 $decided += $done ? 1 : 0;
                 $rows = [];
+                $placed = false;
 
                 foreach (array_values($box['sides']) as $index => $side) {
                     $entry = $name($side['entry'] ?? null);
                     $score = (string) ($side['score'] ?? '');
                     $place = $done && str_starts_with($score, '#') ? (int) substr($score, 1) : null;
+                    $placed = $placed || $place !== null;
                     $rows[] = ['pic' => $entry['pic'] ?? null, 'rank' => $place, 'live' => $place === null, 'index' => $index,
                         'name' => $entry['name'] ?? PublicName::clean((string) ($side['name'] ?? '')), 'points' => '', 'through' => $place === 1];
                 }
 
+                $match = $tv->match((string) $box['key']);
+                $lobby = is_array($match?->lobby) ? $match->lobby : [];
+                $limit ??= is_int($lobby['time_limit_minutes'] ?? null) ? $lobby['time_limit_minutes'] : null;
+                $reportBy = is_string($lobby['report_by'] ?? null) ? Carbon::parse($lobby['report_by']) : null;
+
                 usort($rows, fn (array $a, array $b): int => [$a['rank'] ?? 99, $a['index']] <=> [$b['rank'] ?? 99, $b['index']]);
-                $groups[] = ['title' => (string) $box['round'].($box['live'] ? ', live' : ''), 'rows' => array_map(fn (array $row): array => array_diff_key($row, ['index' => true]), $rows)];
+                $groups[] = ['title' => (string) $box['round'], 'rows' => array_map(fn (array $row): array => array_diff_key($row, ['index' => true]), $rows),
+                    'clock' => [
+                        'live' => (bool) $box['live'],
+                        'decided' => $done,
+                        'placed' => $placed,
+                        'reported' => ! $done && LobbyResults::currentReport($match?->lobby_report) !== null,
+                        'endsMs' => $reportBy?->copy()->subMinutes($reportMinutes)->getTimestampMs(),
+                        'reportByMs' => $reportBy?->getTimestampMs(),
+                    ]];
             }
         }
 
+        $limit ??= Lobbies::timeLimit($tournament->game);
+
         return ['kind' => 'lobbies', 'title' => $stage['title'], 'groups' => $groups,
-            'now' => 'One lobby match, '.$decided.' of '.count($groups).' '.(count($groups) === 1 ? 'lobby' : 'lobbies').' decided'];
+            'now' => 'One lobby match, '.self::minutes($limit).' time limit, '.$decided.' of '.count($groups).' '.(count($groups) === 1 ? 'lobby' : 'lobbies').' decided',
+            // The time limit alone, for a slide that counts the lobbies decided elsewhere (tb4).
+            'limit' => self::minutes($limit).' time limit'];
+    }
+
+    /** "2 h", "90 min": a time limit in the stream's words. */
+    private static function minutes(int $minutes): string
+    {
+        return $minutes % 60 === 0 ? intdiv($minutes, 60).' h' : $minutes.' min';
+    }
+
+    /**
+     * A lobby's state at `$nowMs` in a few words (P8), from its `clock`:
+     * "1:12 left" of the time limit as planned, then "report due 38:00"
+     * until the deadline, "overdue" after it (the directors decide); a
+     * report waiting for them "in review"; "decided", or "no result" for a
+     * lobby closed without places. Empty for a lobby not in play; "paused"
+     * while its tournament is.
+     *
+     * @param  array<string, mixed>  $clock
+     */
+    public static function lobbyStatus(array $clock, int $nowMs, bool $paused = false): string
+    {
+        if (($clock['decided'] ?? false) === true) {
+            return ($clock['placed'] ?? false) === true ? 'decided' : 'no result';
+        }
+
+        if (($clock['reported'] ?? false) === true) {
+            return 'in review';
+        }
+
+        if (($clock['live'] ?? false) !== true) {
+            return '';
+        }
+
+        if ($paused) {
+            return 'paused';
+        }
+
+        $ends = $clock['endsMs'] ?? null;
+        $due = $clock['reportByMs'] ?? null;
+
+        if (is_int($ends) && $nowMs < $ends) {
+            return SceneLayout::clock($ends - $nowMs).' left';
+        }
+
+        if (is_int($due) && $nowMs < $due) {
+            return 'report due '.SceneLayout::clock($due - $nowMs);
+        }
+
+        return is_int($due) ? 'overdue' : '';
     }
 
     /**
@@ -1018,6 +1116,12 @@ class TournamentLiveSlides
             } elseif ($board['kind'] === 'groups' || $board['kind'] === 'lobbies') {
                 foreach ($board['groups'] as $g => $group) {
                     $board['groups'][$g]['rows'] = array_map($face, $group['rows']);
+
+                    // A lobby's countdown and report state at this frame (P8); a finished tournament's lobbies need none.
+                    if (is_array($group['clock'] ?? null)) {
+                        $board['groups'][$g]['status'] = $snapshot['phase'] === 'running' ? self::lobbyStatus($group['clock'], $nowMs, $snapshot['status'] === 'Paused') : '';
+                        unset($board['groups'][$g]['clock']);
+                    }
                 }
             } else {
                 $board['rows'] = array_map($face, $board['rows']);
