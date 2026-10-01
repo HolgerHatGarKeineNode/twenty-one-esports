@@ -488,6 +488,11 @@ test('AdminSeason P38: the board plans the next season and releases it with the 
         ->and($page->evaluate('() => document.querySelector("[data-test=release-refusal]")?.innerText ?? ""'))->toContain('Winter Season is planned for Block 0');
 
     // From the planned Block 0 on, one board member releases it through the real signing path.
+    // The travel is exactly the session lifetime (120 min): the database session handler calls a session expired when
+    // its last write (whole seconds) lies before `now - lifetime`, i.e. in an earlier wall-clock second than this line.
+    // A loaded host makes that the rule: the board member is a guest after the travel, the draft form never appears and
+    // fill() times out after 15 s (measured: a 1.1 s pause before the travel failed this test every time). Keep the session alive.
+    config(['session.lifetime' => 24 * 60]);
     $this->travel(2)->hours();
     $page->goto(ComputeUrl::from(route('admin.season')));
     $page->locator('[data-test=draft-message]')->fill('Winter Season: every fair win is a block');
