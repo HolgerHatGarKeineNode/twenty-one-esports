@@ -529,7 +529,7 @@ document.addEventListener('alpine:init', () => {
 
                     return;
                 }
-                this.result = { ...this.result, status: submitted.data.status, reason: submitted.data.reason };
+                this.result = { ...this.result, status: submitted.data.status, reason: submitted.data.reason, moment: submitted.data.moment ?? null };
                 for (let i = 0; i < POLL_TRIES && this.result.status === 'verifying'; i++) {
                     await sleep(POLL_MS);
                     if (id !== rt.runId) {
@@ -537,7 +537,7 @@ document.addEventListener('alpine:init', () => {
                     }
                     const state = await request('GET', this.tokenUrl(config.urls.show));
                     if (state.status === 200 && state.data) {
-                        this.result = { ...this.result, status: state.data.status, reason: state.data.reason };
+                        this.result = { ...this.result, status: state.data.status, reason: state.data.reason, moment: state.data.moment ?? null };
                         if (state.data.best !== undefined) {
                             this.rankedBest = state.data.best;
                             this.allTimeBest = state.data.best_all_time ?? this.allTimeBest;
@@ -551,6 +551,20 @@ document.addEventListener('alpine:init', () => {
                     // the weekly leaderboard below the game reads itself again (P4). Sent on window itself:
                     // `$dispatch` starts at the element that called this method (the start button, gone by now)
                     window.dispatchEvent(new CustomEvent('stacker-verified'));
+                    if (!this.result.moment) {
+                        // the verdict came with the submission: one read for the moment to share
+                        const state = await request('GET', this.tokenUrl(config.urls.show));
+                        if (id === rt.runId && state.status === 200 && state.data?.moment) {
+                            this.result = { ...this.result, moment: state.data.moment };
+                        }
+                    }
+                }
+            },
+
+            /** The share sheet of the run just verified (components/⚡blockfill-share). */
+            shareMoment() {
+                if (this.result?.moment) {
+                    window.dispatchEvent(new CustomEvent('blockfill-share', { detail: { moment: this.result.moment } }));
                 }
             },
 

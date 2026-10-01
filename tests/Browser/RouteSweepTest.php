@@ -16,6 +16,7 @@ use App\Models\Rating;
 use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
@@ -238,6 +239,8 @@ function sweepFixtures(): array
             return $badge->versions()->create(['tier' => 'gold-2', 'previous_tier' => 'gold-1', 'season' => 'sweep-season', 'rating' => 1061, 'signed_at' => now()->getTimestamp()]);
         },
         'finished' => fn (?User $user, array $made): Model => shareTournament($made['npub'], User::factory()->create()),
+        // A Blockfill moment's card: the `npub` player's verified personal best (the card stays while Blockfill is off).
+        'run' => fn (?User $user, array $made): Model => StackerRun::factory()->for($made['npub'])->verified(2400)->create(),
 
         // A dispute screenshot of that series, served to admins only.
         'evidence' => function (?User $user, array $made): Model {
@@ -523,7 +526,7 @@ const SWEEP_FLUSH_PATHS = ['/'];
 
 /** @var list<string> Routes that answer without the app shell (JSON, images, the player card fragment, the full-screen tournament TV). */
 const SWEEP_NO_HEADER_ROUTES = ['tournaments.tv', 'nostr.nip05', 'admin.disputes.evidence', 'players.card', 'avatars.generated', 'invites.card',
-    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'cards.page', 'stream.cover', 'stream.pride-image'];
+    'badges.rank', 'badges.rank.thumb', 'cards.rank-up', 'cards.block', 'cards.tournament', 'cards.tournament-invite', 'cards.wrapped', 'cards.blockfill', 'cards.page', 'stream.cover', 'stream.pride-image'];
 
 const SWEEP_GAP_SCRIPT = <<<'JS'
     async () => {

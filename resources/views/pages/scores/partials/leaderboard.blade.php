@@ -4,10 +4,13 @@
     $standings: list<App\Support\Scores\ScoreStanding>; $metric: App\Games\ScoreMetric; $limit: rows shown (null: all);
     $viewerId: the logged-in player, marked "You"; $staff: directors and admins also see the source and the proof link
     (a player's link may name their game account, so it is never public).
+    $shareMoment: on a Blockfill week, the viewer's own run that is a moment (BlockfillMoments::shareableOn()): their row
+    gets the button that opens the share sheet (components/⚡blockfill-share, on the same page).
 --}}
 @php
     $limit ??= null;
     $staff ??= false;
+    $shareMoment ??= null;
     $rows = $limit === null ? $standings : array_slice($standings, 0, $limit);
     $grid = 'grid grid-cols-[32px_minmax(0,1fr)_minmax(88px,auto)] items-center gap-3 lg:grid-cols-[40px_minmax(0,1fr)_140px_180px]';
 @endphp
@@ -33,6 +36,12 @@
                     @endif
                     @if ($viewerId !== null && $row->participant->user_id === $viewerId)
                         <span class="inline-flex h-5 shrink-0 items-center rounded-xs bg-btc px-1.5 text-[11px] font-bold text-on-btc">{{ __('You') }}</span>
+                        @if ($shareMoment !== null)
+                            <button type="button" x-data x-on:click="window.dispatchEvent(new CustomEvent('blockfill-share', { detail: { moment: @js($shareMoment) } }))" data-test="score-row-share"
+                                    class="-my-2 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center rounded-md text-ink-2 hover:text-btc-hi" aria-label="{{ __('Share this moment') }}" title="{{ __('Share this moment') }}">
+                                <x-icon name="send" :size="16" />
+                            </button>
+                        @endif
                     @endif
                 </span>
                 <span class="flex flex-col items-end text-right">

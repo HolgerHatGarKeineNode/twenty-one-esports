@@ -305,6 +305,10 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     <span class="font-display text-[40px] leading-none font-extrabold tabular-nums lg:text-[48px]" x-text="result ? time(result.ticks) : ''" data-test="result-time"></span>
                     <span class="text-[13px] font-bold" x-bind:class="{ 'text-win': result?.status === 'verified', 'text-loss': result?.status === 'rejected', 'text-btc': ['verifying', 'pending', 'submitting', 'busy', 'unsent'].includes(result?.status) }" x-text="statusText()" data-test="result-status"></span>
                     <span class="text-[13px] text-ink-2" x-text="bestLine()" data-test="result-best"></span>
+                    {{-- A verified run that is a moment (a personal best, a first place, a week place): the share sheet --}}
+                    <div x-show="result?.status === 'verified' && result?.moment" x-cloak data-test="result-share">
+                        <x-button variant="secondary" icon="send" x-on:click="shareMoment()" data-test="result-share-open">{{ __('Share this moment') }}</x-button>
+                    </div>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <x-button x-on:click="restart()" data-test="play-again">{{ __('Play again') }} <kbd class="rounded-sm border border-on-btc/40 px-1.5 text-[11px]" x-text="keyText('restart')"></kbd></x-button>
                         <x-button variant="quiet" x-on:click="startPractice()" x-show="kind === 'ranked'">{{ __('Practice') }}</x-button>
@@ -371,7 +375,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             @if ($this->standings === [])
                 <p class="m-0 px-2 py-4 text-[13px] text-ink-2 lg:px-0" data-test="stacker-week-empty">{{ __('Nobody has a verified run this week yet. Yours could be the first.') }}</p>
             @else
-                @include('pages.scores.partials.leaderboard', ['standings' => $this->standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false])
+                @include('pages.scores.partials.leaderboard', ['standings' => $this->standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false,
+                    'shareMoment' => $week === null ? null : app(\App\Support\Stacker\BlockfillMoments::class)->shareableOn(auth()->user(), $week)])
             @endif
         </div>
 
@@ -417,4 +422,9 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             <a href="{{ route('rules') }}#blockfill" class="-mt-3 inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="stacker-week-rules">{{ __('How a week works') }}</a>
         </div>
     </section>
+
+    {{-- The share sheet of a moment: opened by the result screen and by the player's own row above --}}
+    @auth
+        <livewire:blockfill-share />
+    @endauth
 </div>

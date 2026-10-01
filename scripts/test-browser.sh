@@ -240,7 +240,7 @@ SHARD_FILES=(
     "tests/Browser/ShellNavigationTest.php tests/Browser/TournamentFlowTest.php tests/Browser/TournamentLandingTest.php tests/Browser/BoardLeagueTest.php#=two~players~meet|a~guest~watching tests/Browser/TournamentTimeTest.php tests/Browser/FairPlayAdminTest.php"
     "tests/Browser/SeasonChainTest.php tests/Browser/ChatAndDailyTest.php tests/Browser/StackerSoundTest.php tests/Browser/ChessCorrespondenceQuietTest.php tests/Browser/ClanEditTest.php tests/Browser/TournamentHonestDurationTest.php"
     "tests/Browser/ShellNavigationWidthsTest.php tests/Browser/NostrBarTest.php tests/Browser/SettingsTabsTest.php tests/Browser/ChessLobbyTest.php tests/Browser/OpponentRequestsTest.php tests/Browser/LeagueSettingsAdminTest.php"
-    "tests/Browser/ShareTest.php tests/Browser/TournamentTvTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentEditTest.php"
+    "tests/Browser/ShareTest.php tests/Browser/TournamentTvTest.php tests/Browser/BoardFindabilityTest.php tests/Browser/InvitePlacementTest.php tests/Browser/TournamentEditTest.php tests/Browser/BlockfillShareTest.php"
     "tests/Browser/LiveCountTest.php tests/Browser/StackerTest.php tests/Browser/BoardMiningAdminTest.php tests/Browser/StrongestListTest.php tests/Browser/MempoolStripTest.php"
     "tests/Browser/NavigationCrawlStaffTest.php tests/Browser/BoardFollowsTest.php tests/Browser/TournamentControlTest.php tests/Browser/BlockfillWeekTest.php tests/Browser/ClanLogoTest.php"
     "tests/Browser/NavigationCrawlTest.php tests/Browser/CasualCupRegionsTest.php tests/Browser/HomeHubTest.php tests/Browser/NotificationsTest.php tests/Browser/SeriesResultTest.php"

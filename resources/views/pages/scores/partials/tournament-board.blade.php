@@ -7,6 +7,8 @@
     $window = \App\Support\Scores\ScoreWindow::of($tournament);
     $standings = $drawn ? app(\App\Support\Scores\ScoreRuns::class)->standings($tournament) : [];
     $viewerId = auth()->id();
+    // A Blockfill week: the viewer's own run that is a moment gets its share button in their row
+    $shareMoment = $drawn ? app(\App\Support\Stacker\BlockfillMoments::class)->shareableOn(auth()->user(), $tournament) : null;
     $entered = $viewerId !== null && collect($standings)->contains(fn ($row): bool => $row->participant->user_id === $viewerId);
     $windowState = match (true) {
         ! $window->hasStarted() => __('opens :at', ['at' => \App\Support\LeagueTime::stamp($window->start)]),
@@ -33,9 +35,12 @@
 
     <div class="rounded-lg bg-card px-2 py-3 lg:px-6 lg:py-4">
         @if ($drawn)
-            @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => $viewerId])
+            @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => $viewerId, 'shareMoment' => $shareMoment])
         @else
             <p class="m-0 px-2 py-4 text-[13px] text-ink-2">{{ __('The leaderboard fills once sign-up has closed and the window is open.') }}</p>
         @endif
     </div>
+    @if ($shareMoment !== null)
+        <livewire:blockfill-share />
+    @endif
 </section>

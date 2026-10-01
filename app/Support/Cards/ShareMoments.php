@@ -10,6 +10,7 @@ use App\Models\RankBadgeVersion;
 use App\Models\Rating;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
@@ -30,7 +31,10 @@ use Illuminate\Support\Collection;
  * - block mined: a rated win that mined a block of the season chain, with the
  *   player among its winners ("every win is a block with you as the miner");
  * - tournament win: a finished tournament whose champion the player is part of;
- * - Season Wrapped: the player's season on one card, blocks, sats, best rank.
+ * - Season Wrapped: the player's season on one card, blocks, sats, best rank;
+ * - a Blockfill moment: a verified run that is a personal best, a new first
+ *   place of its week, or holds the player's week place
+ *   (App\Support\Stacker\BlockfillMoments).
  *
  * Only rated results and chain blocks count; casual play has no moments here.
  */
@@ -153,6 +157,22 @@ final class ShareMoments
             'wins' => (int) $ratings->sum('wins'),
             'tournaments' => count(self::tournamentWins($user, $season)),
             'best' => $best === null ? null : ['tier' => $best['tier'], 'rating' => $best['rating'], 'ladder' => $best['ladder']],
+        ];
+    }
+
+    /**
+     * A Blockfill moment (App\Support\Stacker\BlockfillMoments::of()) of a
+     * verified run: the player, the verified time in ticks and what it stands for.
+     *
+     * @param  array{kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string}  $moment
+     * @return array{name: string, pubkey: string, avatar_path: string|null, kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string, ticks: int}
+     */
+    public static function blockfill(StackerRun $run, array $moment): array
+    {
+        return [
+            ...self::person($run->user, $run->user->pubkey ?? str_repeat('0', 64)),
+            ...$moment,
+            'ticks' => (int) $run->ticks,
         ];
     }
 

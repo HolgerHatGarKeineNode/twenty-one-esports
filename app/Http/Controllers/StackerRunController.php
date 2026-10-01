@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\BlockfillMoments;
 use App\Support\Stacker\StackerBusy;
 use App\Support\Stacker\StackerRuns;
 use Illuminate\Http\JsonResponse;
@@ -70,7 +71,7 @@ class StackerRunController extends Controller
             return $this->gone($submitted);
         }
 
-        return response()->json(['status' => $submitted->status->value, 'reason' => $submitted->reason], 202);
+        return response()->json(['status' => $submitted->status->value, 'reason' => $submitted->reason, 'moment' => $this->moment($submitted)], 202);
     }
 
     /**
@@ -89,7 +90,21 @@ class StackerRunController extends Controller
             // P4: the best of this week is the one a run has to beat; the all-time best is shown beside it
             'best' => $runs->best($user, StackerRuns::weekOf(now())),
             'best_all_time' => $runs->best($user),
+            // A verified run that is a moment of the player's (a personal best, a first place, a week place): the result screen offers to share it
+            'moment' => $this->moment($run),
         ]);
+    }
+
+    /**
+     * The run's id when it is a Blockfill moment of its player, else null.
+     */
+    private function moment(StackerRun $run): ?string
+    {
+        if ($run->status !== StackerRunStatus::Verified) {
+            return null;
+        }
+
+        return app(BlockfillMoments::class)->run($run->id)?->id === $run->id ? (string) $run->id : null;
     }
 
     private function run(Request $request, string $token, StackerRuns $runs): StackerRun

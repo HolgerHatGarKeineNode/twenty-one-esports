@@ -147,15 +147,22 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
+    @php($shareable = false)
     @foreach ($this->running as ['tournament' => $tournament, 'standings' => $standings])
+        @php($shareMoment = app(\App\Support\Stacker\BlockfillMoments::class)->shareableOn(auth()->user(), $tournament))
+        @php($shareable = $shareable || $shareMoment !== null)
         <section aria-labelledby="running-h-{{ $tournament->id }}" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" wire:key="running-{{ $tournament->id }}" data-test="score-running">
             <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-2 lg:px-0">
                 <h2 id="running-h-{{ $tournament->id }}" class="m-0 text-[15px] font-bold">{{ BlockfillWeeks::title($tournament) }}</h2>
                 <a href="{{ route('tournaments.scores', $tournament) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink">{{ __('Full table') }}</a>
             </div>
-            @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => app(\App\Support\Scores\ScoreRuns::class)->metricOf($tournament), 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false])
+            @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => app(\App\Support\Scores\ScoreRuns::class)->metricOf($tournament), 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false, 'shareMoment' => $shareMoment])
         </section>
     @endforeach
+    {{-- A Blockfill moment of the viewer's on a running week: its row opens the share sheet --}}
+    @if ($shareable)
+        <livewire:blockfill-share />
+    @endif
 
     <section aria-labelledby="points-h" class="flex flex-col gap-3">
         <div class="flex flex-col gap-1">

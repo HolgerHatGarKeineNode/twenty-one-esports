@@ -7,6 +7,7 @@ use App\Games\GameRegistry;
 use App\Models\RankBadgeVersion;
 use App\Models\Season;
 use App\Models\SeasonAttestation;
+use App\Models\StackerRun;
 use App\Models\Tournament;
 use App\Models\TournamentParticipant;
 use App\Models\User;
@@ -14,13 +15,15 @@ use App\Support\Badges\BadgeCopy;
 use App\Support\GameNames;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Rating\RankTiers;
+use App\Support\Stacker\BlockfillMoments;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 
 /**
  * The share cards of P11 (ShareCards.dc.html): "Rank up", "Block mined",
- * "Tournament win" and "Season Wrapped", rendered on the server with GD like
+ * "Tournament win" and "Season Wrapped", and a Blockfill moment (a personal
+ * best, a new first place of the week, a week place), rendered on the server with GD like
  * the invite card, as a link preview (`wide`, 1200 × 630) and a story
  * (`story`, 1080 × 1920). Text stays inside a 48 px safe margin.
  *
@@ -34,7 +37,10 @@ final class ShareCard
 {
     public const FORMATS = ['wide' => [1200, 630], 'story' => [1080, 1920]];
 
-    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite'];
+    public const TYPES = ['rank-up', 'block', 'tournament', 'wrapped', 'tournament-invite', 'blockfill'];
+
+    /** Blockfill's fee colours (resources/js/stacker/palette.js FEE_SCALE), low to high. */
+    private const FEES = ['#7383A6', '#3B82E0', '#0FA394', '#5AAE3C', '#F2D45C', '#F7931A', '#F9A8D4'];
 
     /** Bump when a layout changes: every card gets a new file and URL. */
     private const LAYOUT = 2;
@@ -42,7 +48,7 @@ final class ShareCard
     private Canvas $c;
 
     /**
-     * @param  'rank-up'|'block'|'tournament'|'wrapped'|'tournament-invite'  $type
+     * @param  'rank-up'|'block'|'tournament'|'wrapped'|'tournament-invite'|'blockfill'  $type
      * @param  string  $key  the card's own part of its file name and URL
      * @param  array<string, mixed>  $facts
      */
@@ -76,6 +82,16 @@ final class ShareCard
     public static function wrapped(Season $season, User $user): self
     {
         return new self('wrapped', $season->slug.'-'.$user->npub, ShareMoments::wrapped($season, $user));
+    }
+
+    /**
+     * A Blockfill moment of a verified run (App\Support\Stacker\BlockfillMoments::of()).
+     *
+     * @param  array{kind: string, place: int|null, final: bool, pb: bool, first: bool, week: string}  $moment
+     */
+    public static function blockfill(StackerRun $run, array $moment): self
+    {
+        return new self('blockfill', (string) $run->id, ShareMoments::blockfill($run, $moment));
     }
 
     /** The PNG bytes in the current locale, from the cache when unchanged. */
@@ -126,6 +142,7 @@ final class ShareCard
             'tournament' => 'tournament/'.$this->key,
             'tournament-invite' => 'tournament-invite/'.$this->key,
             'wrapped' => 'wrapped/'.preg_replace('/-(npub1[0-9a-z]+)$/', '/$1', $this->key),
+            'blockfill' => 'blockfill/'.$this->key,
         };
 
         return rtrim((string) config('app.url'), '/').'/cards/'.App::getLocale().'/'.$path.'-'.$format.'.png?v='.$this->fingerprint($format);
@@ -149,6 +166,7 @@ final class ShareCard
             'tournament' => $story ? $this->tournamentStory() : $this->tournamentWide(),
             'tournament-invite' => $story ? $this->inviteStory() : $this->inviteWide(),
             'wrapped' => $story ? $this->wrappedStory() : $this->wrappedWide(),
+            'blockfill' => $story ? $this->blockfillStory() : $this->blockfillWide(),
         };
 
         if ($story) {
@@ -470,6 +488,114 @@ final class ShareCard
         $this->c->rankCube($colour, $x, $baseline - $big * 0.85, $big);
         $this->c->text(RankTiers::label((string) $best['tier']), 'display', $big, $x + $big + 18, $baseline, $colour);
         $this->c->text(__(':rating in :ladder', ['rating' => (int) $best['rating'], 'ladder' => self::inline($best['ladder'])]), 'mono', $small, $x, $baseline + $small + 24, Canvas::INK);
+    }
+
+    /* ---------- Blockfill moment -------------------------------------------------------------------------------- */
+
+    private function blockfillWide(): void
+    {
+        $this->well(64, 76, 30, 10, 14);
+
+        $x = 440;
+        $max = 1136 - $x;
+        $this->c->text($this->c->fit($this->blockfillHeadline(), 'mono-bold', 28, $max), 'mono-bold', 28, $x, 112, Canvas::ORANGE);
+        $this->person($x, 140, 44, 30, null);
+        $time = $this->blockfillTime();
+        $size = $this->c->fitSize($time, 'display', [120, 104, 88], $max);
+        $this->c->text($time, 'display', $size, $x, 330, Canvas::INK);
+        $this->c->paragraph($this->blockfillLine(), 'mono', 26, $x, 392, $max, 2, Canvas::INK_2);
+        $this->pill($x, 450, $this->blockfillStatus(), 22);
+    }
+
+    private function blockfillStory(): void
+    {
+        $this->kicker('Blockfill', 72, 150);
+        $this->well(315, 220, 45, 10, 14);
+
+        $this->c->paragraph($this->blockfillHeadline(), 'mono-bold', 44, 72, 960, 936, 2, Canvas::ORANGE);
+        // The name gets the card's full width here (person() keeps 560 px for the wide cards' columns).
+        $this->c->avatar($this->drawable($this->facts), 72, 1040, 64);
+        $name = (string) $this->facts['name'];
+        $nameSize = $this->c->fitSize($name, 'mono-bold', [40, 34, 30], 856);
+        $this->c->text($this->c->fit($name, 'mono-bold', $nameSize, 856), 'mono-bold', $nameSize, 152, 1040 + 64 * 0.72, Canvas::INK);
+        $time = $this->blockfillTime();
+        $size = $this->c->fitSize($time, 'display', [200, 170, 140, 120, 104], 936);
+        $this->c->text($time, 'display', $size, 72, 1340, Canvas::INK);
+        $this->c->paragraph($this->blockfillLine(), 'mono', 36, 72, 1430, 936, 3, Canvas::INK_2);
+        $this->pill(72, 1560, $this->blockfillStatus(), 30);
+    }
+
+    private function blockfillHeadline(): string
+    {
+        return BlockfillMoments::headline((string) $this->facts['kind'], $this->facts['place'] === null ? null : (int) $this->facts['place']);
+    }
+
+    private function blockfillTime(): string
+    {
+        return BlockfillMoments::time((int) $this->facts['ticks']);
+    }
+
+    /** "40 blocks mined · Blockfill Week 41, 2026" */
+    private function blockfillLine(): string
+    {
+        return __('40 blocks mined').' · '.BlockfillMoments::weekTitle((string) $this->facts['week']);
+    }
+
+    /** The place a personal best or first place holds now; for a place so far, when it is decided. */
+    private function blockfillStatus(): string
+    {
+        $f = $this->facts;
+
+        return match (true) {
+            $f['kind'] === 'place' => __('so far: the week ends Monday 00:00 Berlin'),
+            $f['place'] !== null && ! $f['final'] => __('Place :place this week so far', ['place' => (int) $f['place']]),
+            default => __('verified: the league replayed the run'),
+        };
+    }
+
+    /**
+     * Blockfill's well: a stack of pieces in the fee colours, the top rows
+     * open, one row lit as a mined block. The pattern follows the card's
+     * key, so a moment always shows the same stack.
+     */
+    private function well(int $x, int $y, int $cell, int $columns, int $rows): void
+    {
+        $w = $cell * $columns;
+        $h = $cell * $rows;
+        $this->c->rect($x - 6, $y - 6, $w + 12, $h + 12, '#24242B');
+        $this->c->rect($x - 2, $y - 2, $w + 4, $h + 4, '#0E0E11');
+        $bytes = hash('sha256', 'blockfill-card-'.$this->key, true);
+        $filled = (int) round($rows * 0.6);
+        $lit = $rows - 2;
+
+        for ($row = $rows - $filled; $row < $rows; $row++) {
+            $gap = ord($bytes[$row % 32]) % $columns;
+
+            for ($col = 0; $col < $columns; $col++) {
+                $cx = $x + $col * $cell;
+                $cy = $y + $row * $cell;
+
+                if ($row === $lit) {
+                    $this->c->rect($cx + 1, $cy + 1, $cell - 2, $cell - 2, '#F9B25F');
+                    $this->c->rect($cx + 1, $cy + $cell - 5, $cell - 2, 4, Canvas::ORANGE);
+
+                    continue;
+                }
+
+                // The top row of the stack is ragged; every other row leaves one gap.
+                if ($col === $gap || ($row === $rows - $filled && ord($bytes[($col + 7) % 32]) % 3 === 0)) {
+                    continue;
+                }
+
+                $fee = self::FEES[ord($bytes[($row * $columns + $col) % 32]) % count(self::FEES)];
+                $this->c->rect($cx + 1, $cy + 1, $cell - 2, $cell - 2, $fee);
+                $this->c->rect($cx + 1, $cy + 1, $cell - 2, max(2, intdiv($cell, 8)), $this->c->mix($fee, '#FFFFFF', 0.3));
+            }
+        }
+
+        // The falling piece: an orange bar above the stack.
+        $px = $x + $cell * (ord($bytes[31]) % ($columns - 3));
+        $this->c->rect($px + 1, $y + $cell * 2 + 1, $cell * 4 - 2, $cell - 2, Canvas::ORANGE);
     }
 
     /* ---------- Pieces ------------------------------------------------------------------------------------------- */

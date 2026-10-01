@@ -241,6 +241,8 @@ Route::prefix('cards/{locale}')
         Route::get('tournament/{finished}-{format}.png', [ShareCardController::class, 'tournament'])->where('finished', '[0-9]{1,18}')->name('cards.tournament');
         Route::get('tournament-invite/{tournament}-{format}.png', [ShareCardController::class, 'tournamentInvite'])->where('tournament', '[0-9]{1,18}')->name('cards.tournament-invite');
         Route::get('wrapped/{season}/{npub}-{format}.png', [ShareCardController::class, 'wrapped'])->where(['season' => '[a-z0-9-]{1,64}', 'npub' => 'npub1[0-9a-z]{58}'])->name('cards.wrapped');
+        // A Blockfill moment (BlockfillMoments::card()), also while Blockfill is off: a posted note keeps its picture.
+        Route::get('blockfill/{run}-{format}.png', [ShareCardController::class, 'blockfill'])->where('run', '[0-9]{1,18}')->name('cards.blockfill');
         // The link preview of every public page (P54), one per page and state: 1200 × 630.
         Route::get('page/{type}/{key}.png', PageCardController::class)
             ->where(['type' => implode('|', PageCard::TYPES), 'key' => '[a-z0-9][a-z0-9._-]{0,99}'])
