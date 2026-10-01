@@ -183,6 +183,20 @@
     endScreen: { en: 'Screenshot of the end screen', de: 'Screenshot des Endbildschirms' },
     reportedWaiting: { en: 'reported, waiting for a director', de: 'gemeldet, wartet auf die Turnierleitung' },
     decided: { en: 'decided', de: 'entschieden' },
+    // Blockfill (pages/stacker/⚡play, pages/scores/partials/leaderboard)
+    bfTagline: { en: 'Mine 40 blocks as fast as you can.', de: 'Schürfe 40 Blöcke so schnell du kannst.' },
+    bfTime: { en: 'Time', de: 'Zeit' },
+    bfNext: { en: 'Next', de: 'Als Nächstes' },
+    bfPps: { en: 'Pieces per second', de: 'Steine pro Sekunde' },
+    bfMined: { en: 'blocks mined', de: 'Blöcke geschürft' },
+    bfMinedIn: { en: '40 blocks mined in', de: '40 Blöcke geschürft in' },
+    bfVerified: { en: 'Verified: the league replayed your run to the same time', de: 'Bestätigt: Die Liga hat deinen Lauf zur selben Zeit nachgespielt' },
+    bfRanked: { en: 'Ranked run', de: 'Gewerteter Lauf' },
+    bfHunt: { en: 'This week\'s hunt', de: 'Die Jagd dieser Woche' },
+    bfWeekRules: { en: 'Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time.', de: 'Es zählt dein bester geprüfter gewerteter Lauf der Woche. Die schnellste Zeit gewinnt, bei Gleichstand der frühere Lauf. Jeden Montag um 00:00 Uhr Berliner Zeit beginnt eine neue Woche.' },
+    bfFirstRun: { en: 'Your first verified ranked run this week puts you on the board.', de: 'Dein erster geprüfter gewerteter Lauf dieser Woche bringt dich auf die Bestenliste.' },
+    bfPlayer: { en: 'Player', de: 'Spieler' },
+    bfBestTime: { en: 'Best time', de: 'Bestzeit' },
   };
   window.UI = (key, lang, vars) => {
     const e = S[key];

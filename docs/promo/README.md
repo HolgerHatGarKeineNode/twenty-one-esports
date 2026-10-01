@@ -29,23 +29,25 @@ with Pillow (contact sheet).
 
 ## What's in here
 
-**Posters**: 14 motifs, from `src/copy/posters.md`, each in DE and EN, 126 PNGs at @2x:
+**Posters**: 16 motifs, from `src/copy/posters.md`, each in DE and EN, 142 PNGs at @2x:
 
 | Format | Size (CSS px, PNG is @2x) | Folder | Motifs |
 |---|---|---|---|
-| Mobile / story | 1080×1920 | `posters/mobile/` | all 14 |
-| X | 1600×900 | `posters/x/` | all 14 |
-| Nostr square | 1080×1080 | `posters/nostr/` | all 14 |
-| Nostr / link card | 1200×630 | `posters/nostr/` | all 14 |
+| Mobile / story | 1080×1920 | `posters/mobile/` | all 16 |
+| X | 1600×900 | `posters/x/` | all but bfweek |
+| Nostr square | 1080×1080 | `posters/nostr/` | all 16 |
+| Nostr / link card | 1200×630 | `posters/nostr/` | all but bfweek |
 | Stream banner | 1920×480 | `posters/stream/` | blitz, watch, tournaments, mempool, onstream, livecup, aoe2 |
+| Feed 4:5 | 1080×1350 | `posters/feed/` | blockfill, bfweek (`MOTIF_FORMATS` in `render-posters.mjs`) |
 
 Motifs: `login` (Nostr login), `blitz` (blitz chess), `watch` (watch live), `daily`
 (Fernschach), `clans`, `tournaments`, `invite` (invite friends), `opensource` (optional),
 `morris` (Mühle), `checkers` (Dame), `mempool` (mempool to block), `onstream` (on the stream),
-`livecup` (tournaments live), `aoe2` (Age of Empires II).
+`livecup` (tournaments live), `aoe2` (Age of Empires II), `blockfill` (Blockfill), `bfweek`
+(Blockfill week board, a template).
 File name: `<motif>-<format>-<lang>.png`. Overview: `posters/contact-sheet.png`.
 
-**Reels**: 18 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup, aoe2), DE and
+**Reels**: 19 scripts from `src/copy/reels.md` (blitz, daily, clans, invite, watch, login, tournaments, opensource, grasp, satspot, fifa, cups, morris, checkers, mempool, onstream, livecup, aoe2, blockfill), DE and
 EN, 1080×1920 @60 fps, 18.4 s each, 5 beats (each caption stands >= 3.2 s), music per
 `src/reels/MUSIC.md` normalised to -14 LUFS. File name: `reels/<lang>/<reel>-<lang>.mp4`. `grasp` (the repo on Nostr git / GRASP servers) is reel-only, no
 poster; the gallery shows it as its own section.
@@ -104,6 +106,23 @@ square poster only its tag strip). Nothing about mining (AoE2 has only a draft p
 automatic result check (not built). Casual matchmaking and the weekend cup are not this motif's
 subject; the cup is a lobby cup (40 places, no growth, fact 77) and shows as such in reel 12.
 
+**Blockfill** (`blockfill`, `bfweek`, reel 19; added 2026-10-01, live on prod): facts 80-89.
+- Every well, piece and preview is drawn by the app's own `resources/js/stacker/renderer.js` on the
+  state of its own `engine.js` (`src/lib/blockfill.js`, an ES module the poster and the reel load
+  from the repo). The state is one run, `src/lib/blockfill.run.js`, written by
+  `node docs/promo/src/gen-blockfill-run.mjs`: a placement bot plays seed
+  `b10cf111000000000000000021e5b007` at a human pace, and the file is only written if the league's
+  verifier (`resources/js/stacker/verify.mjs`, limits of `config/esports.php`) answers ok. It is
+  the kit's run, not a player's: it stands on no board, and no copy says otherwise. If the engine
+  version changes (`ENGINE_VERSION`), run the generator again.
+- The reel loops: its last beat mines the leftover rows away and ends on tick 0, its first frame
+  (measured: 0.01 % of the well's pixels differ between the last and the first frame).
+- `bfweek` is a template: the board comes from `data/blockfill-week.js` (local only), written by
+  `node docs/promo/src/fetch-blockfill-week.mjs` from the public /blockfill page. **Fetch, render
+  `bfweek` and look at it right before posting**; it names real players exactly as the page does.
+- No fee legend (the page's "Fee rate of a piece"): no "fee" on a promo, the league never charges
+  players. No prize claim (a Blockfill week pays none, fact 85). No other game's name or wording.
+
 **Pseudonymous copy (user, 2026-10-01):** no "face" / "Gesicht" anywhere in the copy; players
 are their avatar and their name.
 
@@ -121,8 +140,8 @@ after a first win, 1000 / 1000 after a draw) comes from the app's `EloRating` wi
 `season.casual` config.
 
 **Checks that run on every render** (a failing poster or reel is not written):
-positions replayed through chess.js · every mock-up string present in `lang/de.json` (157 of
-157 against the P10 branch; an entry tagged `plan` would be listed as pending, `UI_STRICT=1`
+positions replayed through chess.js · every mock-up string present in `lang/de.json` (170 of
+170 on master `8dfce13a`; an entry tagged `plan` would be listed as pending, `UI_STRICT=1`
 fails on it) ·
 DOM probe per poster (every text box inside the poster, no overflow, no collisions, hero
 parts inside the hero and apart from each other, hero fill >= 85 %, text >= 20 px copy /
@@ -191,6 +210,8 @@ node docs/promo/src/build-gallery.mjs                  # manifest.json + gallery
 node docs/promo/src/check-positions.mjs                # chess positions only
 node docs/promo/src/check-ui-strings.mjs               # mock-up strings only
 php docs/promo/src/gen-boardgames.php                  # Mühle/Dame games -> src/lib/boardgames.data.js
+node docs/promo/src/gen-blockfill-run.mjs              # Blockfill seed run -> src/lib/blockfill.run.js (verifier must say ok)
+node docs/promo/src/fetch-blockfill-week.mjs           # this week's board from /blockfill -> data/blockfill-week.js
 ```
 
 Debug switches for `render-posters.mjs`: `PROBE_SOFT=1` also writes failing posters as

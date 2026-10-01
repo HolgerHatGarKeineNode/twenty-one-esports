@@ -384,6 +384,56 @@ esports.einundzwanzig.space
 
 ---
 
+## Blockfill
+
+Facts 80-89. Live on prod. No fee, no prize money, no hashtags, no other game's name.
+
+**Nostr (DE):**
+Blockfill ist das eigene Spiel der Liga, im Mempool-Look: Schürfe 40 Blöcke so schnell du
+kannst. Jede volle Reihe wird ein Block, und die Uhr stoppt, wenn der 40. Block geschürft ist.
+Üben geht sofort und ohne Login. Für einen gewerteten Lauf meldest du dich an und spielst mit
+Tastatur. Die Liga spielt deine Eingaben nach, und der Lauf zählt, sobald er dieselbe Zeit
+erreicht.
+Dein bester geprüfter Lauf der Woche kommt auf die Bestenliste, die schnellste Zeit gewinnt.
+Jeden Montag um 00:00 Uhr Berliner Zeit beginnt eine neue Woche.
+esports.einundzwanzig.space/blockfill
+
+**Nostr (EN):**
+Blockfill is the league's own game, in the mempool look: mine 40 blocks as fast as you can.
+Every full row becomes a block, and the clock stops when the 40th block is mined.
+Practice right away, no login needed. For a ranked run, log in and play on a keyboard. The
+league replays your inputs, and the run counts once it reaches the same time.
+Your best verified run of the week goes on the board, and the fastest time wins. A new week
+starts every Monday at 00:00 Berlin time.
+esports.einundzwanzig.space/blockfill
+
+**X (DE):** Blockfill: Schürfe 40 Blöcke so schnell du kannst. Üben ohne Login, gewertet mit Tastatur. Die schnellste Zeit der Woche gewinnt die Bestenliste. esports.einundzwanzig.space/blockfill
+**X (EN):** Blockfill: mine 40 blocks as fast as you can. Practice without a login, play ranked on a keyboard. Fastest this week wins the board. esports.einundzwanzig.space/blockfill
+
+---
+
+## Blockfill week board
+
+Facts 84, 85, 88. Post only with a freshly rendered board (fetch, render, look). The texts
+name nobody, so they stay true whatever the board shows.
+
+**Nostr (DE):**
+Die schnellsten Miner dieser Woche in Blockfill: 40 Blöcke gegen die Uhr. Es zählt der beste
+geprüfte Lauf der Woche, bei Gleichstand der frühere. Jeden Montag um 00:00 Uhr Berliner Zeit
+beginnt die Bestenliste von vorn.
+esports.einundzwanzig.space/blockfill
+
+**Nostr (EN):**
+This week's fastest miners in Blockfill: 40 blocks against the clock. The best verified run
+of the week counts, and a tie goes to the earlier run. Every Monday at 00:00 Berlin time the
+board starts fresh.
+esports.einundzwanzig.space/blockfill
+
+**X (DE):** Die schnellsten Miner dieser Woche in Blockfill. Es zählt dein bester geprüfter Lauf. esports.einundzwanzig.space/blockfill
+**X (EN):** This week's fastest miners in Blockfill. Your best verified run of the week counts. esports.einundzwanzig.space/blockfill
+
+---
+
 ## Hype-week plan
 
 Reihenfolge nach Ansprache-Priorität (casual, sofort spielbar zuerst; Aufbauendes

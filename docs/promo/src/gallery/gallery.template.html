@@ -160,7 +160,7 @@ const state = { type: 'all', lang: 'all', ratio: 'all', theme: 'all', motif: 'al
 // Themes group the motifs by what a post is about; a motif may sit in more than one.
 const THEMES = [
   { id: 'start', label: 'Get started', motifs: ['login', 'invite'], why: 'low threshold: how to get in, bring a friend' },
-  { id: 'play', label: 'Play', motifs: ['blitz', 'daily'], why: 'the games themselves: fast blitz, one move a day' },
+  { id: 'play', label: 'Play', motifs: ['blitz', 'daily', 'blockfill', 'bfweek'], why: 'the games themselves: fast blitz, one move a day, Blockfill against the clock (its week board is a template: fetch and re-render before posting, README)' },
   { id: 'community', label: 'Community & competition', motifs: ['clans', 'tournaments', 'aoe2'], why: 'play together, play for a result: clans, tournaments, the Age of Empires II lobby tournament (posting gate, README)' },
   { id: 'watch', label: 'Watch', motifs: ['watch', 'onstream'], why: 'lean back: live games and the 24/7 stream' },
   { id: 'trust', label: 'Trust', motifs: ['opensource', 'grasp', 'login'], why: 'Nostr login and open code: verify, do not trust' },
@@ -180,7 +180,7 @@ const URL_PARAMS = { type: 'type', lang: 'lang', ratio: 'ratio', theme: 'theme',
 const allowedValues = () => ({
   type: ['poster', 'reel', 'message'],
   lang: ['de', 'en'],
-  ratio: ['mobile', 'square', 'wide', 'banner'],
+  ratio: ['mobile', 'feed', 'square', 'wide', 'banner'],
   theme: THEMES.map((t) => t.id),
   motif: MANIFEST.motifs.map((m) => m.id),
 });
@@ -202,12 +202,13 @@ function writeFiltersToUrl() {
 }
 readFiltersFromUrl();
 
-// Ratio class per item: mobile (9:16), square (1:1), wide (16:9 & 1.91:1), banner (4:1), text (—)
+// Ratio class per item: mobile (9:16), feed (4:5), square (1:1), wide (16:9 & 1.91:1), banner (4:1), text (—)
 function ratioOf(item) {
   if (item.type === 'message') return 'text';
   if (item.type === 'reel') return 'mobile';
   if (item.format === 'mobile-9x16') return 'mobile';
   if (item.format === 'nostr-square') return 'square';
+  if (item.format === 'feed-4x5') return 'feed';
   if (item.format === 'stream-banner') return 'banner';
   return 'wide'; // x-16x9, nostr-wide
 }
@@ -346,7 +347,7 @@ function renderFilters() {
     $('#langFilters').appendChild(b);
   });
   const ratios = [
-    ['all', 'All ratios'], ['mobile', '9:16 mobile'], ['square', '1:1 square'],
+    ['all', 'All ratios'], ['mobile', '9:16 mobile'], ['feed', '4:5 feed'], ['square', '1:1 square'],
     ['wide', '16:9 wide'], ['banner', '4:1 banner'],
   ];
   $('#ratioFilters').innerHTML = '';

@@ -9,6 +9,9 @@ const COPY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'copy');
 
 /* Heading keyword -> motif id. An unknown heading fails loudly instead of being guessed. */
 const MOTIF_KEYS = [
+  // motifs 15-16 first: their texts name blocks, the mempool, the week and the league
+  [/fastest miners|week board|bestenliste/i, 'bfweek'],
+  [/blockfill/i, 'blockfill'],
   // before login: the GRASP copy mentions Nostr, the heading must not fall into /nostr/
   [/grasp/i, 'grasp'],
   // motif 14, first: its texts name the casual cup, tournaments, clans and the ladder

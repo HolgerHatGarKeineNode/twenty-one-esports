@@ -473,3 +473,70 @@
 @container (min-aspect-ratio: 3/1) {
   .h-aoe2 .ae-art { display: none; }
 }
+
+/* ---------------- Blockfill (motif 15) ----------------
+   pages/stacker/⚡play at hero scale. The well keeps the app's frame (2px #24242B border,
+   ground #0E0E11, the -8/-8 offset shadow #141418); the cell size is set by Heroes.paint()
+   from the height the layout gives it, so the well always shows all 22 rows whole. */
+.h-blockfill { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 4.5cqmin; align-items: stretch;
+  font-size: max(14px, min(3.2cqw, 3cqh)); padding-left: 1.4cqmin; --wellmax: .46; }
+.h-blockfill .bf-well { position: relative; height: 100%; aspect-ratio: 10 / 22; align-self: center; border: 2px solid #24242B; background: #0E0E11; box-shadow: -1.2cqmin -1.2cqmin 0 #141418; }
+.h-blockfill .bf-well canvas { position: absolute; left: 0; top: 0; display: block; }
+.h-blockfill .bf-side { display: grid; grid-template-rows: auto auto auto; align-content: space-between; row-gap: 1.2em; min-width: 0; padding: .2em 0; }
+.h-blockfill .lb, .h-blockfill dt { font: 700 .82em/1.2 var(--mono); color: var(--ink-2); }
+.h-blockfill .bf-next { display: grid; row-gap: .5em; }
+.h-blockfill .bf-next .q { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr 1fr; gap: .35em; align-items: end; }
+.h-blockfill .bf-next canvas { display: block; width: 100%; height: 2.4em; background: var(--card); }
+.h-blockfill .bf-next canvas:first-child { height: 3.2em; }
+.h-blockfill .bf-hud { display: grid; grid-template-columns: auto; justify-content: start; row-gap: .7em; }
+.h-blockfill .bf-hud dd { font: 800 1.5em/1.05 var(--disp); font-variant-numeric: tabular-nums; white-space: nowrap; margin-top: .2em; }
+.h-blockfill .bf-hud .tm dd { font-size: 2.6em; }
+.h-blockfill .bf-chain { display: grid; row-gap: .5em; }
+.h-blockfill .bf-chain .ct { font: 700 1.25em/1 var(--mono); white-space: nowrap; }
+.h-blockfill .bf-chain .ct b { font: 800 1.2em/1 var(--disp); }
+.h-blockfill .bf-chain .ct span { color: var(--ink-3); font-weight: 500; }
+.h-blockfill .bf-cubes { display: grid; grid-template-columns: repeat(10, minmax(0, 2em)); gap: .3em; }
+.h-blockfill .bf-cubes i { aspect-ratio: 1; border: max(1px, .08em) dashed #63636A; }
+.h-blockfill .bf-cubes i.on { background: var(--btc); border: 0; }
+/* landscape zones (X, the link card): the side gets the bigger share */
+@container (min-aspect-ratio: 4/5) {
+  .h-blockfill { font-size: max(14px, min(3.4cqw, 3.2cqh)); --wellmax: .4; }
+}
+/* a very flat zone (the square poster's hero): the well, then the clock and the chain */
+@container (min-aspect-ratio: 2/1) {
+  .h-blockfill { font-size: max(14px, min(1.8cqw, 4.4cqh)); --wellmax: .3; }
+  .h-blockfill .bf-side { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 1.6em; align-content: center; }
+  .h-blockfill .bf-next { grid-column: 1 / -1; }
+  .h-blockfill .bf-hud .pp { display: none; }
+}
+
+/* ---------------- Blockfill week board (motif 16, template) ---------------- */
+.h-bfweek { display: grid; align-items: stretch; font-size: max(14px, min(4.2cqw, 4.4cqh)); }
+.h-bfweek .bw-card { display: flex; flex-direction: column; row-gap: .7em; padding: 1.1em 1.2em 1em; height: 100%; }
+.h-bfweek .bw-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: .3em 1em; }
+.h-bfweek .bw-head b { font: 800 1.2em/1.15 var(--disp); }
+.h-bfweek .bw-head span { font: 700 .85em/1.2 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.h-bfweek .bw-th, .h-bfweek .bw-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto; column-gap: .8em; align-items: center; }
+.h-bfweek .bw-th { font: 700 .75em/1.2 var(--mono); color: var(--ink-3); padding: 0 .8em; }
+.h-bfweek .bw-th span:last-child { text-align: right; }
+.h-bfweek .bw-rows { list-style: none; display: grid; row-gap: .4em; align-content: space-evenly; flex: 1 1 auto; min-height: 0; }
+.h-bfweek .bw-row { padding: .55em .8em; background: var(--well); border-bottom: 2px solid var(--hairline); }
+.h-bfweek .bw-row .pl { font: 800 1.1em/1 var(--disp); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.h-bfweek .bw-row .nm { font: 700 1em/1.2 var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.h-bfweek .bw-row .tm { font: 700 1.05em/1 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* place 1: a freshly mined row (renderer.js MINED / MINED_EDGE); its time is the poster's number */
+.h-bfweek .bw-row.p1 { background: #F9B25F; border-bottom: .22em solid #F7931A; color: var(--on-btc); padding: .75em .8em; box-shadow: inset 0 .16em 0 #FFFFFF; }
+.h-bfweek .bw-row.p1 .pl { color: var(--on-btc); font-size: 1.6em; }
+.h-bfweek .bw-row.p1 .nm { font: 800 1.15em/1.2 var(--disp); }
+.h-bfweek .bw-row.p1 { grid-template-columns: 2.4em minmax(0, 1fr); row-gap: .35em; }
+.h-bfweek .bw-row.p1 .pl { grid-row: 1 / 3; }
+.h-bfweek .bw-row.p1 .tm { font: 800 2.3em/1 var(--disp); grid-column: 2; justify-self: end; }
+.h-bfweek .bw-row.open { background: none; border: max(1px, .1em) dashed #63636A; }
+.h-bfweek .bw-row.open .pl { color: var(--ink-3); }
+.h-bfweek .bw-row.open i { display: block; height: .5em; background: var(--hairline); }
+.h-bfweek .bw-row.open i.tm { width: 5em; }
+.h-bfweek .bw-foot { font: 500 .8em/1.4 var(--mono); color: var(--ink-2); }
+@container (min-aspect-ratio: 2/1) {
+  .h-bfweek { font-size: max(14px, min(2.4cqw, 4.6cqh)); }
+  .h-bfweek .bw-th { display: none; }
+}

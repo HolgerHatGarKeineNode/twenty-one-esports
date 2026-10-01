@@ -23,10 +23,17 @@ export const FORMATS = [
   { id: 'nostr-square', dir: 'nostr', w: 1080, h: 1080 },
   { id: 'nostr-wide', dir: 'nostr', w: 1200, h: 630 },
   { id: 'stream-banner', dir: 'stream', w: 1920, h: 480 },
+  { id: 'feed-4x5', dir: 'feed', w: 1080, h: 1350 },
 ];
 /* The stream banner only where a stream audience is the addressee. */
 export const STREAM_MOTIFS = ['blitz', 'watch', 'tournaments', 'mempool', 'onstream', 'livecup', 'aoe2'];
 export const LANGS = ['de', 'en'];
+/* Formats a motif is limited to; motifs not listed get every format but the feed 4:5.
+ * The feed format (Instagram-style 4:5) is the Blockfill set's, added on 2026-10-01. */
+export const MOTIF_FORMATS = {
+  blockfill: ['mobile-9x16', 'feed-4x5', 'nostr-square', 'x-16x9', 'nostr-wide'],
+  bfweek: ['mobile-9x16', 'feed-4x5', 'nostr-square'],
+};
 
 const bad = checkPositions();
 if (bad.length) { console.error('POSITIONS FAIL\n' + bad.join('\n')); process.exit(1); }
@@ -41,6 +48,7 @@ let ok = 0, fail = 0;
 for (const motif of motifs) {
   for (const f of FORMATS) {
     if (f.id === 'stream-banner' && !STREAM_MOTIFS.includes(motif)) continue;
+    if (MOTIF_FORMATS[motif] ? !MOTIF_FORMATS[motif].includes(f.id) : f.id === 'feed-4x5') continue;
     fs.mkdirSync(path.join(OUT, f.dir), { recursive: true });
     for (const lang of LANGS) {
       const ctx = await browser.newContext({ viewport: { width: f.w, height: f.h }, deviceScaleFactor: 2 });
