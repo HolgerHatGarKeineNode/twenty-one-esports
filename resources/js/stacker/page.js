@@ -259,16 +259,21 @@ document.addEventListener('alpine:init', () => {
                 if (!slot) {
                     return;
                 }
-                // after Alpine has shown the touch panel's spacer, so the page can scroll that far
-                requestAnimationFrame(() => {
+                // after Alpine has shown the touch panel and its spacer (nextTick), so the page can scroll that far
+                this.$nextTick(() => requestAnimationFrame(() => {
                     const rect = slot.getBoundingClientRect();
-                    const bottom = window.innerHeight - (this.coarse() ? this.tabBarHeight() + TOUCH_PANEL : 0);
-                    // a slot within a pixel of where a scroll would put it (below the header) is where it belongs
-                    if (rect.top >= this.topInset() - 1 && rect.bottom <= bottom) {
+                    // the touch panel's own top once it is shown; before that the room layout() reserves for it
+                    const panel = document.querySelector('[data-test=touch]');
+                    const bottom = !this.coarse() ? window.innerHeight
+                        : panel && panel.getClientRects().length > 0 ? panel.getBoundingClientRect().top
+                            : window.innerHeight - (this.tabBarHeight() + TOUCH_PANEL);
+                    // in view means below the sticky header, not under it
+                    const header = document.querySelector('body > header');
+                    if (rect.top >= (header ? header.getBoundingClientRect().bottom : 0) && rect.bottom <= bottom) {
                         return;
                     }
                     slot.scrollIntoView({ block: this.coarse() ? 'start' : 'nearest', behavior: this.reducedMotion ? 'auto' : 'smooth' });
-                });
+                }));
             },
 
             /** Cell size from the room the well has: its slot's width and the window's height. */
