@@ -31,6 +31,7 @@ use App\Support\Clans\ClanPride;
 use App\Support\Engagement\PlayerHub;
 use App\Support\Lightning\WinnerZaps;
 use App\Support\Navigation\ShellNavigation;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Pages\RulesPage;
 use App\Support\Players\PlayerStats;
@@ -267,9 +268,10 @@ test('each week gets one 31923, its slug as `d`, without a hashtag, however ofte
         ->and(app(TournamentNotes::class)->due(CarbonImmutable::now()))->toBe([]);
 });
 
-test('the bot announces a new week once, and after the week its winner with the top 3; both pass the copy rules without a hashtag or a fee', function () {
+test('the bot announces a new week once, and after the week its winner with the top 3, each tagged; both pass the copy rules without a hashtag or a fee', function () {
     $relays = goLiveRelays();
-    [$week] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000, 'Cy' => 3100, 'Dee' => 3200]);
+    [$week, , $users] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000, 'Cy' => 3100, 'Dee' => 3200]);
+    $npub = fn (string $name): string => 'nostr:'.NostrKeys::hexToNpub($users[$name]->pubkey);
 
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
@@ -280,7 +282,7 @@ test('the bot announces a new week once, and after the week its winner with the 
     $this->artisan('blockfill:weeks')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
     $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
-    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'Ada'));
+    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'goes to'));
 
     foreach ([$open, $winner] as $note) {
         expect($note->kind)->toBe(1)
@@ -291,9 +293,29 @@ test('the bot announces a new week once, and after the week its winner with the 
     }
 
     expect($open->content)->toContain('Blockfill Week 41, 2026')->toContain(route('stacker.play'))
-        ->and($winner->content)->toContain('Ada')->toContain('Ben')->toContain('Cy')->not->toContain('Dee')
+        ->and($winner->content)->toStartWith('🏆 Blockfill Week 41, 2026 goes to '.$npub('Ada').' in ')
+        ->and($winner->content)->toContain('1. '.$npub('Ada').' ')->toContain('2. '.$npub('Ben').' ')->toContain('3. '.$npub('Cy').' ')
+        ->and($winner->content)->not->toContain($npub('Dee'))->not->toContain('Dee')->not->toContain('Ada ')
+        // One p tag per player, the winner once although named twice.
+        ->and($winner->tagsNamed('p'))->toBe([[$users['Ada']->pubkey], [$users['Ben']->pubkey], [$users['Cy']->pubkey]])
         // The new week (opened by the hourly job after the old one ended) is announced too, each note once.
         ->and(BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->whereNotNull('published_at')->count())->toBe(3);
+});
+
+test('a winner note names a podium entry whose account is gone plainly and tags the others', function () {
+    $relays = goLiveRelays();
+    [$week, , $users] = goLiveWeek(['Ada' => 2900, 'Ben' => 3000, 'Cy' => 3100]);
+    $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
+
+    goLiveFinish($week);
+    TournamentParticipant::query()->where(['tournament_id' => $week->id, 'user_id' => $users['Cy']->id])->update(['user_id' => null]);
+    $this->artisan('twentyone:stream-bot:blockfill')->assertSuccessful();
+    $winner = collect($relays->sent)->first(fn (SignedEvent $event): bool => str_contains($event->content, 'goes to'));
+    [$text] = explode("\n\nnostr:", $winner->content, 2);
+
+    expect($text)->toContain('3. Cy ')->toContain('2. nostr:'.NostrKeys::hexToNpub($users['Ben']->pubkey).' ')
+        ->and($winner->tagsNamed('p'))->toBe([[$users['Ada']->pubkey], [$users['Ben']->pubkey]])
+        ->and(StreamBotCopy::violations($text, $winner->tags))->toBe([]);
 });
 
 test('the stream still f1 shows the top 5 and the leader\'s chain for an empty, a running and a finished week', function () {

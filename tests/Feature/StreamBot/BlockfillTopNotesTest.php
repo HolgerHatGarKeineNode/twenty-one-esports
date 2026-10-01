@@ -5,7 +5,9 @@
 | (BlockfillNotes::SLOT_TOP): a verified run that takes the week's first
 | place gets one kind-1 note, at most one per `top_minutes`, only the latest
 | of a burst, none in the week's last hour, none for runs without a verified
-| time, none with a switch off, and never twice.
+| time, none with a switch off, and never twice. The player is tagged as
+| PrideNotes tags them (`nostr:npub1…` and `p`), a player without a Nostr key
+| keeps the plain name.
 */
 
 use App\Enums\StackerRunStatus;
@@ -14,6 +16,7 @@ use App\Jobs\VerifyStackerRun;
 use App\Models\BotPost;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Nostr\NostrKeys;
 use App\Support\Nostr\SignedEvent;
 use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\Verifier;
@@ -92,6 +95,12 @@ function topNoteRun(string $name, int $ticks, StackerRunStatus $status = Stacker
     return $run->refresh();
 }
 
+/** How a note names the player called `$name`: their `nostr:npub1…`. */
+function topNoteNpub(string $name): string
+{
+    return 'nostr:'.NostrKeys::hexToNpub(User::query()->where('name', $name)->sole()->pubkey);
+}
+
 /** One scheduler tick of the Blockfill notes at `$at`. */
 function topNoteTick(string $at): void
 {
@@ -120,7 +129,7 @@ test('a verified run that takes the week\'s first place gives exactly one note, 
     $notes = topNotes($this->relays);
 
     expect($notes)->toHaveCount(1)
-        ->and($notes[0]->content)->toContain('Ada')->not->toContain('Ben')
+        ->and($notes[0]->content)->toContain(topNoteNpub('Ada'))->not->toContain(topNoteNpub('Ben'))
         // The week's first first place has nobody before it to beat.
         ->and($notes[0]->content)->not->toContain('faster')
         ->and(BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->where('slot', 'like', 'top-%')->whereNotNull('published_at')->count())->toBe(1);
@@ -146,7 +155,7 @@ test('a second first place within the window waits until the window ends, and th
     $notes = topNotes($this->relays);
 
     expect($notes)->toHaveCount(2)
-        ->and($notes[1]->content)->toContain('Cy')->not->toContain('Ben')
+        ->and($notes[1]->content)->toContain(topNoteNpub('Cy'))->not->toContain(topNoteNpub('Ben'))
         ->and(BotPost::query()->where('subject_type', BlockfillNotes::SUBJECT)->where('slot', 'like', 'top-%')->count())->toBe(2);
 });
 
@@ -184,7 +193,7 @@ test('practice, waiting, rejected and unverified runs never make a note, however
     topNoteTick('2026-10-07 13:30:00');
 
     expect(topNotes($this->relays))->toHaveCount(1)
-        ->and(topNotes($this->relays)[0]->content)->toContain('Ada')->not->toContain('Ben');
+        ->and(topNotes($this->relays)[0]->content)->toContain(topNoteNpub('Ada'))->not->toContain(topNoteNpub('Ben'));
 });
 
 test('nothing with the bot switched off or Blockfill switched off; switched back on the first place goes out', function () {
@@ -207,7 +216,7 @@ test('nothing with the bot switched off or Blockfill switched off; switched back
     expect(topNotes($this->relays))->toHaveCount(1);
 });
 
-test('the note names the player, the time, the gap to the first place before, the week and /blockfill; it passes the copy rules and carries the naddr and a q tag, no p tag', function () {
+test('the note tags the player (nostr:npub1… and p), names the time, the gap to the first place before, the week and /blockfill; it passes the copy rules and carries the naddr and a q tag', function () {
     topNoteRun('Ada', 3100);
     topNoteTick('2026-10-07 12:00:00');
 
@@ -222,14 +231,14 @@ test('the note names the player, the time, the gap to the first place before, th
 
     expect($note->kind)->toBe(1)
         ->and($note->content)->toBe(
-            "🥇 New first place in Blockfill Week 41, 2026: Ben\n"
+            '🥇 New first place in Blockfill Week 41, 2026: '.topNoteNpub('Ben')."\n"
             ."⏱️ 0:50.000, 1.666 s faster than the first place before\n"
             ."🗓️ The week runs until Mon, 12 Oct 2026, 12:00 AM CEST\n"
             .'👉 Beat it: '.route('stacker.play')."\n\nnostr:".$naddr)
         ->and(route('stacker.play'))->toEndWith('/blockfill')
         ->and(StreamBotCopy::violations($text, $note->tags))->toBe([])
-        ->and($note->tags)->toBe([['q', $week->address(), app(TournamentNotes::class)->relayHint() ?? '']])
-        ->and($note->tagsNamed('p'))->toBe([])
+        ->and($note->tags)->toBe([['p', User::query()->where('name', 'Ben')->sole()->pubkey], ['q', $week->address(), app(TournamentNotes::class)->relayHint() ?? '']])
+        ->and($note->content)->not->toContain(': Ben')
         ->and($note->tagsNamed('t'))->toBe([])
         ->and(mb_strtolower($note->content))->not->toContain('fee')->not->toContain('face')->not->toContain('#');
 });
@@ -285,7 +294,7 @@ test('a first place that reached the board long before the window allowed a note
     topNoteTick('2026-10-07 12:30:00');
 
     expect(topNotes($this->relays))->toHaveCount(1)
-        ->and(topNotes($this->relays)[0]->content)->toContain('Ben');
+        ->and(topNotes($this->relays)[0]->content)->toContain(topNoteNpub('Ben'));
 });
 
 test('a new week\'s own note goes first, and its first place waits the window after it', function () {
@@ -307,5 +316,20 @@ test('a new week\'s own note goes first, and its first place waits the window af
     topNoteTick('2026-10-11 23:10:00');
 
     expect(topNotes($this->relays))->toHaveCount(1)
-        ->and(topNotes($this->relays)[0]->content)->toContain('Blockfill Week 42, 2026')->toContain('Ada');
+        ->and(topNotes($this->relays)[0]->content)->toContain('Blockfill Week 42, 2026')->toContain(topNoteNpub('Ada'));
+});
+
+test('a player without a valid Nostr key is named plainly, with no p tag', function () {
+    $run = topNoteRun('Ada', 3100);
+    // A stand-in for an account without a usable key: the pubkey column cannot be empty.
+    User::query()->whereKey($run->user_id)->update(['pubkey' => 'not-a-nostr-key']);
+    topNoteTick('2026-10-07 12:00:00');
+
+    $note = topNotes($this->relays)[0];
+    [$text] = explode("\n\nnostr:", $note->content, 2);
+
+    expect($text)->toStartWith("🥇 New first place in Blockfill Week 41, 2026: Ada\n")
+        ->and($text)->not->toContain('nostr:')
+        ->and($note->tagsNamed('p'))->toBe([])
+        ->and(StreamBotCopy::violations($text, $note->tags))->toBe([]);
 });
