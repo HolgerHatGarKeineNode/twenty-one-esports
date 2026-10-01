@@ -162,7 +162,9 @@ without an opponent. **One new genesis tag (`solo`), one new tag in `2154` (`win
   with a block at stake that is the farming path, and rule 4 alone would not stop a dozen overlapping leaderboards.
 - **Chosen: the review is a time, not a person.** Rule 2 checks that the attestation's `created_at` is at least
   `review` seconds after the window's end, which every reader can verify; manual submissions still wait for an admin
-  before the places are final (rev. 9.17), and the season-end review can still void the block.
+  before the places are final (rev. 9.17), and the season-end review can still void the block. A game may ask for an
+  admin's look at its top places on top of that before the league signs ([Blockfill](#blockfill-rev-917-draft): the
+  top 3); that is the league's own policy, not a consensus rule, and no reader can check it.
 - **Chosen: the field counts trusted entrants with a verified value.** An entrant without a value, below the trust
   minimum, entered by a director only, or disqualified does not make a window count.
 - **Defaults are conservative and not decided by the board** (see [Open points](#open-points)): 5 entrants, 3 window
@@ -1231,6 +1233,13 @@ event exists, and carries no `t` tag, no `#` and no `p`: players are named, not 
 
 **Never on Nostr.** A run, its seed, its inputs, its replay and the network it came from stay league data. A replay
 proves that the inputs reach the time, not that a person played them.
+
+**Mining (rev. 9.18, draft).** A week is a score window the league opened itself, so its winner is a
+[solo block](#solo-blocks-rev-918-draft) candidate once Blockfill has a `weight` in the season's genesis. On top of
+the solo rules the league signs the attestation only after an admin has looked at the runs of the week's top 3; a
+correction that moves another run into them needs a look of its own. A ranked run counts only when the page says it
+was played with a keyboard (touch is practice). Neither can a reader check: the review and the input device are the
+league's word, as the replay is.
 
 ### Rocket League 1v1 (rev. 7.1)
 
@@ -2650,7 +2659,9 @@ and 8 read as follows; rules 5, 6 and 9 hold as above, and the reason is again t
    verified value in the window, the winner included, are at or above it.
 2. **A verified result, reviewed.** The winning value was verified by a source, not set by a director alone; it was
    set inside the window (`start` included, `end` excluded); and the attestation's `created_at` is at least `review`
-   seconds after the window's `end`, so a correction, a late approval or a dispute is in before the league signs.
+   seconds after the window's `end`. The places themselves are final earlier: a correction or a late approval is
+   possible only until the leaderboard ends, its own review time after the window (24 hours in the app), not up to
+   the attestation.
 3. **Not the winner's clan.** Without the winner's clan mates, the trusted field of rule 1 still reaches `entrants`.
    A clan mate shares at least one `clan` row with the winner: leaving the clan after the window's start, as the
    winner or as one of the field, does not make a player count.
@@ -6831,9 +6842,11 @@ record, and its post no `q`.
   "AoE2 und Trackmania", P7). Open: the values of `solo` (5 entrants, 3 window wins per player and share key,
   48 hours of review) and of the proposal for each score game (weight 1 per mode, 5 % share, 1 block a day); whether
   the window wins should count per share key or across all score games; whether the review should be an admin's
-  explicit look at the final places instead of a time (the league signs automatically once it is over); whether an
+  explicit look at the final places instead of a time for every score game (the league signs automatically once it is
+  over; only Blockfill waits for an admin's look at its top 3); whether an
   organizer's leaderboard should ever mine; whether the `gate` and `clan` rows of the field, which make rules 1, 3
-  and 7 checkable, are acceptable on Nostr, because they name every counted entrant of a window by pubkey (the
+  and 7 checkable, are acceptable on Nostr, because they name every entrant with a verified value in a window by
+  pubkey, whether rules 1, 3 and 7 count them or not (the
   tournament page already lists them by name); and how a tie for first place (split by the earlier record, then by
   the order of entry) should be treated. No signed example exists yet.
 
