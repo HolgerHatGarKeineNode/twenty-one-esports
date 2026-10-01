@@ -5648,5 +5648,6 @@
     "Save Blockfill controls": "Blockfill-Steuerung speichern",
     "Back to the defaults": "Zurück zu den Standardwerten",
     "Ranked runs need a keyboard. Here you can practise with touch.": "Gewertete Läufe brauchen eine Tastatur. Hier kannst du mit Touch üben.",
-    "The league is busy: your run was not sent. Play it again in a moment.": "Die Liga ist ausgelastet: Dein Lauf wurde nicht gesendet. Spiel ihn gleich noch einmal."
+    "Not saved — the league is busy. Play the run again in a moment.": "Nicht gespeichert – die Liga ist ausgelastet. Spiel den Lauf gleich noch einmal.",
+    "Not saved — the run did not reach the league. Play it again.": "Nicht gespeichert – der Lauf hat die Liga nicht erreicht. Spiel ihn noch einmal."
 }

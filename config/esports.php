@@ -1198,8 +1198,11 @@ return [
     | replays are kept per week; every other run keeps ticks and hash only,
     | practice and rejected runs keep no replay. Runs waiting for the
     | verifier (verifying, pending) hold their submitted replay; at most
-    | replay_inflight_max of them at once (a submission beyond that is
-    | answered 503 and nothing is stored), and a pending run drops its replay
+    | replay_inflight_max of them at once, inflight_per_account per account
+    | and inflight_per_network per network (a submission beyond that is
+    | answered 503 and nothing is stored). The sweep sends pending runs with
+    | a replay again by itself: redrive_batch of them while the verifier
+    | answers, one as a probe otherwise. A pending run drops its replay
     | after pending_replay_hours (it can then not be verified any more; the
     | player plays again). prune_days, after which runs
     | without a verified time are deleted (`model:prune`, daily).
@@ -1227,6 +1230,9 @@ return [
         'issue_global_per_minute' => 3000,
         'replay_keep_top' => 100,
         'replay_inflight_max' => 2000,
+        'inflight_per_account' => 3,
+        'inflight_per_network' => 50,
+        'redrive_batch' => 200,
         'pending_replay_hours' => 24,
         'prune_days' => 30,
         'verifier' => [

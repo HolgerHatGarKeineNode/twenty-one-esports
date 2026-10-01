@@ -55,9 +55,10 @@ class StackerRunController extends Controller
         $run = $this->run($request, $token, $runs);
 
         try {
-            $submitted = $runs->submit($run, $request->getContent(), $request->json('replay'), $request->json('ticks'), $request->json('hash'), now());
+            $submitted = $runs->submit($run, $request->getContent(), $request->json('replay'), $request->json('ticks'), $request->json('hash'), now(), StackerRuns::network($request->ip()));
         } catch (StackerBusy) {
-            return response()->json(['status' => 'busy', 'reason' => 'busy'], 503)->header('Retry-After', '30');
+            // below slack_seconds: a retry still fits the wall-clock bracket
+            return response()->json(['status' => 'busy', 'reason' => 'busy'], 503)->header('Retry-After', '10');
         }
 
         if ($submitted === null) {

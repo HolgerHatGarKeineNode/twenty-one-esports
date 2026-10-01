@@ -67,7 +67,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                     'rejected' => __('Not counted: the replay did not match'),
                     'toppedOut' => __('Topped out: the stack reached the top'),
                     'aborted' => __('Run stopped: you left the tab'),
-                    'busy' => __('The league is busy: your run was not sent. Play it again in a moment.'),
+                    'busy' => __('Not saved — the league is busy. Play the run again in a moment.'),
+                    'unsent' => __('Not saved — the run did not reach the league. Play it again.'),
                 ],
             ],
         ];

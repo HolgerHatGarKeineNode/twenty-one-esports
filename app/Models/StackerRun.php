@@ -35,12 +35,13 @@ use Illuminate\Support\Carbon;
  * @property string|null $replay base64url input log
  * @property string|null $reason
  * @property array<string, mixed>|null $flags
+ * @property string|null $network the submitter's network (StackerRuns::network()), while the run waits for the verifier
  * @property string|null $week Monday (Y-m-d, Europe/Berlin) of the week a verified run counts in
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User $user
  */
-#[Fillable(['user_id', 'token_hash', 'seed', 'engine', 'status', 'settings', 'issued_at', 'started_at', 'submitted_at', 'verified_at', 'ticks', 'state_hash', 'replay', 'reason', 'flags', 'week'])]
+#[Fillable(['user_id', 'token_hash', 'seed', 'engine', 'status', 'settings', 'issued_at', 'started_at', 'submitted_at', 'verified_at', 'ticks', 'state_hash', 'replay', 'reason', 'flags', 'week', 'network'])]
 class StackerRun extends Model
 {
     /** @use HasFactory<StackerRunFactory> */

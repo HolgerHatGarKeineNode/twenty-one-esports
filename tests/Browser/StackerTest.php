@@ -214,7 +214,9 @@ test('a guest practises with the real Practice button and real keys: the well mo
     expect([$state['kind'], $state['mode'], $state['pieces']])->toBe(['practice', 'playing', 3])
         ->and((float) $page->evaluate('() => document.querySelector("[data-test=hud] [x-ref=pps]")?.innerText ?? "0"'))->toBeGreaterThan(0.0)
         ->and($started)->not->toBe($idle)
-        ->and($final)->not->toBe($started)
+        ->and($final)->not->toBe($idle)
+        // the well was drawn after the keys were played
+        ->and($state['drawn']['tick'])->toBeGreaterThan(60)
         ->and($page->evaluate('() => document.querySelector("[data-test=time]").innerText'))->not->toBe('0:00.00')
         ->and($page->evaluate('() => window.__errors'))->toBe([])
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([]);
@@ -289,3 +291,31 @@ function stackerScrollY(Page $page): int
 {
     return (int) $page->evaluate('() => window.scrollY');
 }
+
+test('a ranked run the league turns away as busy says it was not saved, never that it arrived', function () {
+    $this->freezeTime();
+    $forty = stackerFixture('forty-lines');
+    config(['esports.blockfill.testing_seed' => $forty['seed']]);
+    $user = User::factory()->create(['stacker_settings' => $forty['settings'] + ['keys' => StackerSettings::DEFAULT_KEYS]]);
+
+    $page = stackerPage($user, 1440, 900);
+    $page->locator('[data-test=start-ranked]')->click();
+    BrowserWait::until($page, '() => window.__stacker.state().mode === "countdown" && window.__stacker.state().kind === "ranked" && document.querySelector("[data-test=countdown]") !== null', 5_000);
+    $page->evaluate('(inputs) => window.__stacker.feed(inputs, { hold: true })', $forty['inputs']);
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "held"', 8_000);
+
+    // every slot taken: the submission is answered 503
+    config(['esports.blockfill.replay_inflight_max' => 0]);
+    $this->travel(17)->seconds();
+    $page->evaluate('() => window.__stacker.release()');
+    BrowserWait::until($page, '() => window.__stacker.state().result?.status === "busy"', 10_000);
+
+    $text = $page->evaluate('() => document.querySelector("[data-test=result-status]").innerText');
+    $errors = $page->evaluate('() => window.__errors');
+    expect($text)->toBe('Not saved — the league is busy. Play the run again in a moment.')
+        ->and($text)->not->toContain('Received')
+        ->and(StackerRun::query()->sole())->status->value->toBe('issued')->replay->toBeNull()
+        // the only failed answer is the 503 itself
+        ->and(count($errors))->toBe(1)
+        ->and($errors[0])->toStartWith('503 ')->toContain('/stacker/runs/');
+});

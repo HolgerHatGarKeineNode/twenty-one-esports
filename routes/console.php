@@ -473,13 +473,16 @@ Schedule::command('esports:game-channels')->dailyAt('03:21')->withoutOverlapping
  * Blockfill runs (plan "Blockfill", P2 audit): a verification that never
  * came back (a lost job, a stopped worker) is given up as pending after
  * `esports.blockfill.verifier.stale_minutes`, and runs without a verified
- * time are pruned after `prune_days` (StackerRun::prunable()). Pending runs
- * are sent again only by hand (`stacker:reverify`), so a broken verifier is
- * not hammered in a loop.
+ * time are pruned after `prune_days` (StackerRun::prunable()). The sweep
+ * also sends pending runs that still hold a replay to the verifier again:
+ * `redrive_batch` of them while it answers, a single probe otherwise, so a
+ * broken verifier is not hammered (StackerRuns::redriveWaiting()).
+ * `stacker:reverify` does the same by hand.
  */
 Artisan::command('stacker:sweep', function (StackerRuns $runs) {
     $this->info('Gave up '.$runs->sweepStale(now()).' stale verification(s) as pending.');
-})->purpose('Move Blockfill runs stuck in verifying back to pending');
+    $this->info('Sent '.$runs->redriveWaiting(now()).' waiting run(s) to the verifier again.');
+})->purpose('Move Blockfill runs stuck in verifying back to pending, and send waiting runs to the verifier again');
 
 Artisan::command('stacker:reverify {--limit=50 : at most this many pending runs}', function (StackerRuns $runs) {
     $this->info('Sent '.$runs->reverifyPending(max(1, (int) $this->option('limit')), now()).' pending run(s) to the verifier again.');
