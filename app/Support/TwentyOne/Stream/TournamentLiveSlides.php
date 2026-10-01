@@ -94,7 +94,8 @@ class TournamentLiveSlides
     {
         $hours = max(1, (int) config('twentyone.stream.rotation.finished_tournament_hours', 48));
 
-        return Tournament::query()
+        // A Blockfill week (plan "Blockfill", P6) has a slide of its own (f1, BlockfillSlide), no bracket.
+        return Tournament::query()->exceptBlockfillWeeks()
             ->where(fn ($query) => $query->whereIn('status', [TournamentStatus::Drawing, TournamentStatus::Running])
                 ->orWhere(fn ($query) => $query->where('status', TournamentStatus::Finished)->where('updated_at', '>=', now()->subHours($hours))))
             ->orderBy('starts_at')->orderBy('id')->get()

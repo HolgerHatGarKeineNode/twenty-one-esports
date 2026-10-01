@@ -71,7 +71,7 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/liveChat.js']])] class
     #[Computed]
     public function tournaments(): Collection
     {
-        return Tournament::query()->where('status', TournamentStatus::Running)->orderBy('starts_at')->limit(4)->get();
+        return Tournament::query()->where('status', TournamentStatus::Running)->exceptBlockfillWeeks()->orderBy('starts_at')->limit(4)->get();
     }
 
     /**

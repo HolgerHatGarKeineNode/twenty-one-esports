@@ -3,6 +3,7 @@
 namespace App\Support\Pages;
 
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
 use App\Games\GameMode;
 use App\Games\GameRegistry;
 use App\Games\NineMensMorris;
@@ -14,6 +15,7 @@ use App\Support\GameNames;
 use App\Support\PreSeason;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RatingSettings;
+use App\Support\Scores\ScorePoints;
 use App\Support\SeasonChain\ChainDraft;
 use App\Support\SeasonChain\ChainOverview;
 use App\Support\SeasonChain\RatedTrustGate;
@@ -25,6 +27,7 @@ use App\Support\Settings\LeagueSettings;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentDeadlines;
+use Illuminate\Support\Facades\Route;
 
 /**
  * Every sentence of the rules page (P28, /rules) in one place, so its
@@ -57,6 +60,7 @@ final class RulesPage
             ...self::checkers(),
             self::series(),
             ...self::ageOfEmpires2(),
+            ...self::blockfill(),
             self::tournaments(),
             self::cups(),
             self::prizes(),
@@ -433,6 +437,51 @@ final class RulesPage
         }
 
         return $sections;
+    }
+
+    /**
+     * Blockfill (plan "Blockfill", P6), only while it is switched on: how a
+     * week works, ranked runs and practice, and how the league checks a run.
+     * The numbers are the ones StackerRuns, BlockfillWeeks and ScorePoints apply.
+     *
+     * @return list<Section>
+     */
+    private static function blockfill(): array
+    {
+        $game = app(GameRegistry::class)->find(Blockfill::SLUG);
+
+        if (! $game instanceof Blockfill) {
+            return [];
+        }
+
+        $points = ScorePoints::table($game);
+        $links = [[__('Play Blockfill'), GameNames::page(Blockfill::SLUG)]];
+
+        if (Route::has('scores.show')) {
+            $links[] = [__('All weeks and the points ladder'), route('scores.show', Blockfill::SLUG)];
+        }
+
+        return [[
+            'id' => Blockfill::SLUG,
+            'title' => GameNames::game(Blockfill::SLUG),
+            'lead' => __('The league\'s own stacking game: mine 40 blocks as fast as you can. One leaderboard a week, no sign-up, no matches.'),
+            'facts' => [
+                [__('Mode'), __('40 blocks')],
+                [__('Week'), __('Monday 00:00 to Monday 00:00, Berlin time')],
+                [__('Points'), __('Place 1 to :places: :points', ['places' => count($points), 'points' => implode(' / ', $points)])],
+            ],
+            'items' => [
+                __('A new week starts every Monday at 00:00 Berlin time. Your first verified ranked run puts you on its leaderboard, no sign-up needed.'),
+                __('Your best verified ranked run of the week counts. The fastest time wins; with the same time, the earlier run is ahead.'),
+                __('Ranked runs need a login and a keyboard. Each one starts from a seed the league hands out right before the countdown.'),
+                __('Practice runs are open to everyone, guests and phones included. They are played in the browser alone and never count.'),
+                __('The league replays every ranked run from its seed and your inputs. Only a run that reaches the same time counts; a run the league could not check yet waits and counts once it is checked.'),
+                __('Between the start of a ranked run and its submission at least its played time must pass, and at most :seconds seconds more, so a run played in slow motion does not count.', ['seconds' => (int) config('esports.blockfill.slack_seconds')]),
+                __('After the week, its places score points on the Blockfill points ladder. A week is unrated: no Elo, no series, no season blocks.'),
+                __('A replay shows that a run was possible, not that a person played it. Bots and tool-assisted runs cannot be ruled out completely.'),
+            ],
+            'links' => $links,
+        ]];
     }
 
     /**

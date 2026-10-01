@@ -149,6 +149,10 @@ inside a window, and the league reads that best. **No new kind and no new tag.**
   player's best or to match a finish on the league's own server. No event names it, and no event links a pubkey to
   it.
 - **Not decided yet.** Whether a score game's places mine season blocks (a later revision), and its game channel.
+- **Blockfill and its weekly event** ([Blockfill](#blockfill-rev-917-draft)): the league's own stacking game as a
+  score game whose only source is the league's replay of each run, and one leaderboard a week that the league opens
+  itself, without an organizer and without sign-up: its `31923` (`d` = `blockfill-<monday>`) is signed once per week,
+  and the stream bot announces the week and, after it, its winner in kind-1 notes that quote it.
 
 ### Changelog of revision 9.16 (2026-09-30)
 
@@ -1149,6 +1153,46 @@ from the published tournaments and the league's pages, not an event.
 
 **Privacy.** A player's game account id is never in an event, never on a public page, and never shown to another
 player; the league uses it only to ask the game's API or to map its own server's finish to the player.
+
+#### Blockfill (rev. 9.17, draft)
+
+**Blockfill** is the league's own stacking game, played in the browser on the league's site: clear 40 rows ("mine 40
+blocks") as fast as possible. It is a score game with one mode and no game account.
+
+| field | Blockfill |
+|---|---|
+| game, mode | `blockfill`: `40-blocks` |
+| metric | `ms`, lower is better: the run's ticks (60 a second) in whole milliseconds, rounded down |
+| course | `40-blocks` (the mode itself; every run is 40 rows on a fresh seed) |
+| source | only the league's **replay** of the run: the league hands out a one-time run with a random seed, the browser sends the player's inputs, and the league plays them again on the same frozen engine version; a run counts only when that replay reaches the same time and final state. Nothing is submitted by hand and nothing is read from a third party |
+| account | none: the player is the league account that played the run |
+
+**The weekly event.** Blockfill runs as one leaderboard tournament per week, the **week**, which the league opens by
+itself: from Monday 00:00 to the next Monday 00:00, `Europe/Berlin` (167 or 169 hours when the clocks change). It has
+no organizer and **no sign-up**: a player's first verified ranked run of the week enters them, so a week has no
+consent `22150`, no draw `2155` and no seats. Its `31923` is an ordinary score tournament event, signed **once** per
+week by the league key while the week runs; the week never changes, so a new version follows only when a deletion request forces one, as for every tournament:
+
+| tag | value |
+|---|---|
+| `d` | `blockfill-<YYYY-MM-DD>`, the Monday the week starts on, in `Europe/Berlin` |
+| `title` | `Blockfill Week <ISO week>, <ISO year>` |
+| `start`, `end` | Monday 00:00 and the next Monday 00:00 `Europe/Berlin`, as Unix seconds; `start_tzid` `Europe/Berlin` |
+| `D` | every UTC day the week touches |
+| `location` | the week's tournament page |
+| `a` | the league calendar `31924`; never a ladder |
+
+Its `content` names the mode, the window, that the fastest time wins with a tie to the earlier run, that values are
+the league's own replay of each run, and that the week is unrated. When the week has ended and the review time is
+over, the league writes the places as for every leaderboard; they score points on the Blockfill points ladder.
+
+**Notes.** The stream bot (the league's stream profile) posts two kind-1 notes per week: one when the week is open
+(the week, how it is played, its end and the game page) and one when it is finished (the winner with the time, the
+top 3 and the page of all weeks). Each quotes the week's `31923` with a NIP-18 `q` tag and a `nostr:naddr1…` once that
+event exists, and carries no `t` tag, no `#` and no `p`: players are named, not pinged. There are no notes per run.
+
+**Never on Nostr.** A run, its seed, its inputs, its replay and the network it came from stay league data. A replay
+proves that the inputs reach the time, not that a person played them.
 
 ### Rocket League 1v1 (rev. 7.1)
 

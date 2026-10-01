@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +43,11 @@ final class GameNames
         // A route table cached before the switch went on has no lobby yet: the list of all games then.
         if (app(GameRegistry::class)->isBoard($game)) {
             return Route::has('board.lobby') ? route('board.lobby', $game) : route('play');
+        }
+
+        // Blockfill (plan "Blockfill", P6): the game itself; its leaderboards are one link further.
+        if ($game === Blockfill::SLUG && app(GameRegistry::class)->isScore($game) && Route::has('stacker.play')) {
+            return route('stacker.play');
         }
 
         // A score game (plan "AoE2 und Trackmania", P4): its leaderboards, never the chess lobby.

@@ -58,9 +58,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title(__('Leaderboard').': '.$this->tournament->name);
-        app(\App\Support\PageMeta::class)->describe(__('Leaderboard').': '.$this->tournament->name,
-            __(':tournament: every player\'s best value inside the window, best first.', ['tournament' => $this->tournament->name]))->noindex = true;
+        $view->title(__('Leaderboard').': '.$this->tournament->title());
+        app(\App\Support\PageMeta::class)->describe(__('Leaderboard').': '.$this->tournament->title(),
+            __(':tournament: every player\'s best value inside the window, best first.', ['tournament' => $this->tournament->title()]))->noindex = true;
     }
 
     #[Computed]
@@ -246,7 +246,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 <div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-tournament" @if ($running) wire:poll.30s.visible @endif>
     <header class="flex flex-col gap-2">
         <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-ink-2 hover:text-ink">
-            <x-icon name="prev" :size="14" />{{ $tournament->name }}
+            <x-icon name="prev" :size="14" />{{ $tournament->title() }}
         </a>
         <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">{{ __('Leaderboard') }}</h1>
         <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">

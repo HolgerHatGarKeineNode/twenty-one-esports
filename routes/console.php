@@ -557,9 +557,6 @@ Artisan::command('stacker:reverify {--limit=50 : at most this many pending runs}
     $this->info('Sent '.$runs->reverifyPending(max(1, (int) $this->option('limit')), now()).' pending run(s) to the verifier again.');
 })->purpose('Send pending Blockfill runs to the verifier again');
 
-Schedule::command('stacker:sweep')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
-Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('04:41')->withoutOverlapping()->onOneServer();
-
 /*
  * The casual weekly hunt of Blockfill (plan "Blockfill", P4, BlockfillWeeks):
  * opens this week's leaderboard (Monday 00:00 Europe/Berlin, which every
@@ -570,10 +567,22 @@ Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('0
  */
 Artisan::command('blockfill:weeks', function (BlockfillWeeks $weeks) {
     $done = $weeks->sweep();
+    $announced = $weeks->announce();
 
-    $this->info(($done['opened'] ? 'This week\'s leaderboard is open.' : 'Blockfill is off: no leaderboard opened.')." Joined {$done['joined']} player(s), read {$done['read']} best run(s).");
-})->purpose('Open this week\'s Blockfill leaderboard and join every verified player');
+    $this->info(($done['opened'] ? 'This week\'s leaderboard is open.' : 'Blockfill is off: no leaderboard opened.')." Joined {$done['joined']} player(s), read {$done['read']} best run(s). Signed {$announced} calendar event(s).");
+})->purpose('Open this week\'s Blockfill leaderboard, join every verified player and sign its calendar event');
 
+/*
+ * Blockfill's jobs, scheduled only while it is registered (plan "Blockfill",
+ * P6), so with the switch off none of them runs: the weeks (above), the runs'
+ * sweep and prune (above), and the stream bot's week notes on its own profile
+ * (a new week once it is open, its winner and top 3 once it is finished,
+ * each exactly once; App\Support\StreamBot\BlockfillNotes, same flag and key
+ * as the other bot notes).
+ */
 if (app(GameRegistry::class)->find(Blockfill::SLUG) !== null) {
     Schedule::command('blockfill:weeks')->hourly()->withoutOverlapping()->onOneServer();
+    Schedule::command('stacker:sweep')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+    Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('04:41')->withoutOverlapping()->onOneServer();
+    Schedule::command('twentyone:stream-bot:blockfill')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 }

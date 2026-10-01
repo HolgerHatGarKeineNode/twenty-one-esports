@@ -78,8 +78,11 @@ final class Blockfill extends ScoreGame
         return intdiv($ticks * 1000, 60);
     }
 
+    /**
+     * The cover from the design drafts (plan "Blockfill", P6): `public/images/games/blockfill-{480,1280}.{webp,jpg}`.
+     */
     public function assets(): GameAssets
     {
-        return new GameAssets('grid', 'var(--color-btc)', 'var(--color-btc-deep)', 'Blockfill');
+        return new GameAssets('grid', 'var(--color-btc)', 'var(--color-btc-deep)', 'Blockfill', new GameCover(self::SLUG));
     }
 }

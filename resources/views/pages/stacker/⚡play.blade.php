@@ -374,6 +374,8 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             @if (\Illuminate\Support\Facades\Route::has('scores.show'))
                 <a href="{{ route('scores.show', Blockfill::SLUG) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="stacker-week-all">{{ __('All weeks and the points ladder') }}</a>
             @endif
+            {{-- P6: how a week, ranked runs, practice and the league's check work, on the rules page --}}
+            <a href="{{ route('rules') }}#blockfill" class="-mt-3 inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="stacker-week-rules">{{ __('How a week works') }}</a>
         </div>
     </section>
 </div>

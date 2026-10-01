@@ -2,6 +2,7 @@
 
 namespace App\Support\Tournaments;
 
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use InvalidArgumentException;
 
@@ -10,6 +11,10 @@ use InvalidArgumentException;
  * registry that has a tournament profile ({@see GameProfile::for}). A game
  * added to `config('esports.games')` with a profile shows up in the format
  * chooser without touching it. Keys are the profile keys (`blitz`, `rl3`, …).
+ *
+ * Never Blockfill (plan "Blockfill", P6): its only boards are the weeks the
+ * league opens itself (BlockfillWeeks), which take its runs; a tournament an
+ * organizer made of it would never get one.
  */
 final class TournamentGames
 {
@@ -21,6 +26,10 @@ final class TournamentGames
         $games = [];
 
         foreach (app(GameRegistry::class)->all() as $game) {
+            if ($game->slug() === Blockfill::SLUG) {
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 try {
                     $games[GameProfile::for($game->slug(), $mode->slug)->key] = [$game->slug(), $mode->slug];

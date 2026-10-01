@@ -38,6 +38,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function mount(Tournament $tournament): void
     {
         Gate::authorize('direct-tournament', $tournament);
+        // A Blockfill week (P6) has no sign-up, no directors' results and no prize pool.
+        abort_if($tournament->isBlockfillWeek(), 404);
 
         // A score leaderboard (plan "AoE2 und Trackmania", P4) has no match result to enter: its directors work on its
         // scores page (course, corrections with a reason, the end).
@@ -55,7 +57,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     public function rendering(\Illuminate\View\View $view): void
     {
-        $view->title(__('Director desk').': '.$this->tournament->name);
+        $view->title(__('Director desk').': '.$this->tournament->title());
     }
 
     /**
@@ -189,7 +191,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 @endphp
 
 <div class="flex flex-col gap-5 px-4 pt-6 pb-10 lg:px-12" data-test="director-desk">
-    <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex items-center gap-1 self-start text-[13px]"><x-icon name="prev" :size="14" />{{ $tournament->name }}</a>
+    <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex items-center gap-1 self-start text-[13px]"><x-icon name="prev" :size="14" />{{ $tournament->title() }}</a>
     <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
         <h1 class="m-0 font-display text-[28px] font-bold lg:text-[34px]">{{ __('Director desk') }}</h1>
         <span class="inline-flex min-h-7 items-center self-start rounded-sm bg-raised px-2.5 text-xs text-ink-2 lg:self-auto">{{ $chip }}</span>

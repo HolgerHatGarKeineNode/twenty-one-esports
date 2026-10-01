@@ -308,7 +308,7 @@ new #[Title('Score submissions')] #[Layout('layouts::app', ['section' => 'admin'
                             <span class="flex min-w-0 grow flex-col gap-0.5">
                                 <b class="text-[13px] [overflow-wrap:anywhere]">{{ $run->user?->displayName() ?? __('Deleted account') }} · <span class="font-mono tabular-nums">{{ $run->formatted() }}</span></b>
                                 <span class="text-xs text-ink-2 [overflow-wrap:anywhere]">
-                                    @if ($run->tournament)<a href="{{ route('tournaments.scores', $run->tournament) }}" class="text-ink-2 underline decoration-edge underline-offset-4">{{ $run->tournament->name }}</a> · @endif
+                                    @if ($run->tournament)<a href="{{ route('tournaments.scores', $run->tournament) }}" class="text-ink-2 underline decoration-edge underline-offset-4">{{ $run->tournament->title() }}</a> · @endif
                                     <span class="font-mono">{{ $run->course }}</span> · {{ __('set :at', ['at' => LeagueTime::stamp($run->achieved_at)]) }}
                                 </span>
                                 <a href="{{ $run->proof_url }}" rel="nofollow noopener noreferrer" target="_blank" class="text-xs text-ink underline decoration-edge underline-offset-4 [overflow-wrap:anywhere]" data-test="score-proof">{{ $run->proof_url }}</a>

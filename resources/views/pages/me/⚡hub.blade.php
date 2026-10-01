@@ -128,7 +128,7 @@ new #[Title('Your page')] #[Layout('layouts::app')] class extends Component {
                             <a href="{{ route('tournaments.show', $tournament) }}" class="grid min-h-16 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 px-3 py-2.5 text-ink hover:bg-row-hover hover:text-ink sm:grid-cols-[80px_minmax(0,1fr)_auto]" data-test="me-tournament" data-state="{{ $entry['state'] }}">
                                 <x-game-cover :game="$tournament->game" size="thumb" class="w-16 rounded-tag sm:w-20" />
                                 <span class="flex min-w-0 flex-col gap-0.5">
-                                    <b class="truncate text-[13px]">{{ $tournament->name }}</b>
+                                    <b class="truncate text-[13px]">{{ $tournament->title() }}</b>
                                     <span class="truncate text-xs text-ink-2">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}, <x-league-time :at="$tournament->starts_at" /></span>
                                 </span>
                                 <span class="col-start-2 flex items-center gap-2 text-xs sm:col-start-3 sm:justify-end">

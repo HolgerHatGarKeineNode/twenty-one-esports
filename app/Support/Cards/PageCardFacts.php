@@ -117,7 +117,7 @@ final class PageCardFacts
         $starts = $tournament->starts_at;
 
         return [
-            'name' => $tournament->name,
+            'name' => $tournament->title(),
             'game' => $tournament->game,
             'mode' => $tournament->mode,
             'format' => $tournament->format->value,
@@ -422,7 +422,7 @@ final class PageCardFacts
             'on_air' => LiveStatus::current()->live,
             'games' => ChessGame::query()->where('status', ChessGameStatus::Active)->count(),
             'first' => $games->isEmpty() ? null : ['white' => self::person($games[0]->white), 'black' => self::person($games[0]->black)],
-            'tournaments' => array_values(Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->orderBy('starts_at')->limit(2)->pluck('name')->all()),
+            'tournaments' => array_values(Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptBlockfillWeeks()->orderBy('starts_at')->limit(2)->pluck('name')->all()),
             // The slide the stream daemon last rendered (public at /stream/cover.png); its time is part of the facts, so a new slide is a new card.
             'slide' => is_file($cover) ? (int) filemtime($cover) : null,
         ];
@@ -464,7 +464,7 @@ final class PageCardFacts
             'clans' => [['clans', Clan::query()->count()], ['clan-players', ClanMember::query()->count()]],
             'matches' => [['series-played', SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'games', 'chess' => [['live-games', $liveGames()], ['daily-games', ChessGame::query()->daily()->where('status', ChessGameStatus::Active)->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
-            'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->where('status', TournamentStatus::Finished)->count()]],
+            'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Finished)->count()]],
             'play', 'rules' => [['games', count($offered)], ['modes', array_sum(array_map(fn ($game): int => count($game->modes()), $offered))]],
             // Without configured relays there is nothing to count; the figure is left out rather than drawn as 0.
             'protocol' => count((array) config('esports.relays', [])) > 0 ? [['relays', count((array) config('esports.relays', []))]] : [],

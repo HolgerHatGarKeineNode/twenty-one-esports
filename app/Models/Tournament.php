@@ -5,9 +5,11 @@ namespace App\Models;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentResultsMode;
 use App\Enums\TournamentStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Support\Nostr\NostrKeys;
 use App\Support\Series\Ladders;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\DurationRange;
 use App\Support\Tournaments\Estimator;
 use App\Support\Tournaments\FormatOptions;
@@ -459,6 +461,61 @@ class Tournament extends Model
     protected function casualCup(Builder $query): void
     {
         $query->whereNotNull('cup_series');
+    }
+
+    /** The `slug` of a Blockfill week, `blockfill-<monday>` (App\Support\Stacker\BlockfillWeeks::slugOf()), as a LIKE pattern. */
+    public const BLOCKFILL_WEEK_SLUG = 'blockfill-____-__-__';
+
+    /**
+     * One of Blockfill's weekly leaderboards (plan "Blockfill", P4), which
+     * the league opens by itself: a game's own board, not a tournament an
+     * organizer set up. The lists of tournaments, their counts, a player's
+     * played tournaments and the stream bot leave it out (P6,
+     * exceptBlockfillWeeks()); its page shows it in the page's language
+     * (title()). A Blockfill tournament an organizer made has another slug
+     * (its name and id).
+     */
+    public function isBlockfillWeek(): bool
+    {
+        return $this->game === Blockfill::SLUG && preg_match('/^blockfill-\d{4}-\d{2}-\d{2}$/', (string) $this->slug) === 1;
+    }
+
+    /**
+     * A Blockfill week while Blockfill is not registered (its switch off): its
+     * pages answer 404 (P6), so no week left in the database renders without
+     * the game's routes behind it.
+     */
+    public function isSwitchedOffBlockfillWeek(): bool
+    {
+        return $this->isBlockfillWeek() && app(GameRegistry::class)->find(Blockfill::SLUG) === null;
+    }
+
+    /**
+     * Every tournament but Blockfill's weekly leaderboards (isBlockfillWeek()).
+     *
+     * @param  Builder<Tournament>  $query
+     */
+    #[Scope]
+    protected function exceptBlockfillWeeks(Builder $query): void
+    {
+        // The slug condition is never NULL here, so NOT(...) keeps every row that is not a week (a draft has no slug yet).
+        $query->whereNot(fn (Builder $week) => $week->where('game', Blockfill::SLUG)->whereNotNull('slug')->where('slug', 'like', self::BLOCKFILL_WEEK_SLUG));
+    }
+
+    /**
+     * The tournament's name for a page, in the page's language: a Blockfill
+     * week as "Blockfill Week 41, 2026" / "Blockfill Woche 41, 2026" (its
+     * stored name is the English one); any other tournament its own name.
+     */
+    public function title(): string
+    {
+        if (! $this->isBlockfillWeek()) {
+            return $this->name;
+        }
+
+        $local = $this->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE);
+
+        return __('Blockfill Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]);
     }
 
     public function isDirectorMode(): bool

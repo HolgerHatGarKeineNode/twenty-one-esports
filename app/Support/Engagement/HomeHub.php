@@ -107,7 +107,7 @@ final class HomeHub
      */
     public function running(): EloquentCollection
     {
-        return Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->latest('starts_at')->limit(2)->get();
+        return Tournament::query()->where('status', TournamentStatus::Running)->whereNotNull('published_at')->exceptBlockfillWeeks()->latest('starts_at')->limit(2)->get();
     }
 
     /**

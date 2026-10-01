@@ -39,7 +39,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     #[Computed]
     public function tournaments(): Collection
     {
-        return Tournament::query()->where('status', '!=', TournamentStatus::Draft)
+        // Blockfill's weekly boards (plan "Blockfill", P6) live on the game's own pages.
+        return Tournament::query()->where('status', '!=', TournamentStatus::Draft)->exceptBlockfillWeeks()
             ->orderByRaw("case status when 'signup' then 0 when 'drawing' then 1 when 'running' then 2 else 3 end")
             ->orderByDesc('starts_at')->limit(100)->get();
     }

@@ -35,7 +35,9 @@ use InvalidArgumentException;
  *   games     finished chess games (live ones change every move, aborted ones never started)
  *   tournaments  published tournaments, whatever became of them since (a
  *             called-off one keeps its page); drafts never, like their pages
- *             (pages/tournaments/show), which describe themselves only once published
+ *             (pages/tournaments/show), which describe themselves only once published;
+ *             never a Blockfill week (plan "Blockfill", P6), whose boards are on
+ *             Blockfill's own pages (in `pages` while it is switched on)
  */
 final class Sitemap
 {
@@ -115,8 +117,13 @@ final class Sitemap
             }
 
             // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: its leaderboards' page instead.
+            // Blockfill (plan "Blockfill", P6) has a page of its own besides them.
             if ($game->kind() === GameKind::Score) {
                 $urls[] = GameNames::page($game->slug());
+
+                if (Route::has('scores.show')) {
+                    $urls[] = route('scores.show', $game->slug());
+                }
 
                 continue;
             }
@@ -128,7 +135,7 @@ final class Sitemap
 
         $urls[] = route('ladder.strongest');
 
-        return array_map(fn (string $url): array => ['url' => $url, 'lastmod' => null], $urls);
+        return array_map(fn (string $url): array => ['url' => $url, 'lastmod' => null], array_values(array_unique($urls)));
     }
 
     /**
@@ -141,7 +148,8 @@ final class Sitemap
             'clans' => Clan::query()->select(['id', 'slug', 'updated_at']),
             'matches' => SeriesMatch::query()->select(['id', 'number', 'updated_at'])->whereIn('status', self::LISTED_SERIES),
             'games' => ChessGame::query()->select(['id', 'updated_at'])->where('status', ChessGameStatus::Finished),
-            'tournaments' => Tournament::query()->select(['id', 'updated_at'])->where('status', '!=', TournamentStatus::Draft)->whereNotNull('published_at'),
+            // Blockfill's weekly boards (plan "Blockfill", P6) are listed on its own pages, not as tournaments.
+            'tournaments' => Tournament::query()->select(['id', 'updated_at'])->where('status', '!=', TournamentStatus::Draft)->whereNotNull('published_at')->exceptBlockfillWeeks(),
             default => throw new InvalidArgumentException("Unknown sitemap section [{$section}]."),
         };
     }

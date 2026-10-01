@@ -47,7 +47,8 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
     #[Computed]
     public function tournaments(): Collection
     {
-        return Tournament::query()
+        // Blockfill's weekly boards (plan "Blockfill", P6) are opened by the league, nobody manages them here.
+        return Tournament::query()->exceptBlockfillWeeks()
             ->when(! $this->isAdmin, fn ($query) => $query->where('created_by_id', auth()->id()))
             ->with('creator')
             ->latest('id')

@@ -290,8 +290,11 @@ test('old runs without a verified time are pruned, a stuck verification goes bac
     Queue::assertPushedOn('stacker-verify', VerifyStackerRun::class, fn (VerifyStackerRun $job): bool => $job->runId === $stuck->id);
     Queue::assertPushed(VerifyStackerRun::class, 1);
 
+    // routes/console.php schedules Blockfill's jobs only while it is registered (P6); the test app booted with it off.
+    BlockfillOn::play();
+    require base_path('routes/console.php');
     $scheduled = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
-    expect($scheduled)->toContain('stacker:sweep')->toContain('model:prune');
+    expect($scheduled)->toContain('stacker:sweep')->toContain(StackerRun::class);
 });
 
 test('a submission with more inputs than its played time allows is refused before the verifier, and nothing is stored', function () {
