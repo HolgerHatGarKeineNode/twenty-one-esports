@@ -2,11 +2,14 @@
 
 namespace App\Support\Cards;
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
+use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\ChessMove;
 use App\Models\Clan;
@@ -28,8 +31,12 @@ use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
 use App\Support\Rating\Ratings;
 use App\Support\Rating\StrongestList;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Tournaments\CasualCups;
 use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentSignups;
@@ -437,6 +444,139 @@ final class PageCardFacts
         return (string) config('twentyone.stream.cover.path');
     }
 
+    /* ---------- Board games ------------------------------------------------------------------------------------ */
+
+    /**
+     * One board game (plan "Mühle und Dame"): the position as the game's
+     * rules store it (the card draws it through the rules' view), the
+     * players and the state.
+     *
+     * @return array<string, mixed>
+     */
+    public static function board(BoardGame $game): array
+    {
+        $game->loadMissing(['white', 'black', 'tournamentMatch.tournament']);
+        $tournament = $game->tournamentMatch?->tournament;
+        // A deleted account has no face and no name of its own: the card draws "Deleted player".
+        $side = fn (?User $user): array => $user === null ? ['name' => null, 'pubkey' => str_repeat('0', 64), 'avatar_path' => null] : self::person($user);
+
+        return [
+            'game' => $game->game,
+            'mode' => $game->mode,
+            'number' => $game->number,
+            'rated' => (bool) $game->rated,
+            'status' => $game->status->value,
+            'result' => $game->status === BoardGameStatus::Finished ? $game->result : null,
+            'reason' => $game->status === BoardGameStatus::Active ? null : $game->end_reason,
+            'position' => $game->position,
+            'turn' => $game->turn,
+            'ply' => (int) $game->ply,
+            'white' => $side($game->white),
+            'black' => $side($game->black),
+            'tournament' => $tournament !== null && $tournament->isVisibleTo(null) ? $tournament->name : null,
+        ];
+    }
+
+    /**
+     * A board game's lobby (`games/<slug>`) or its correspondence page
+     * (`daily`): games running in that mode and games played.
+     *
+     * @return array<string, mixed>
+     */
+    public static function boardLobby(string $game, bool $daily): array
+    {
+        return Cache::remember('page-card:board:'.$game.':'.($daily ? 'daily' : 'live'), now()->addSeconds(self::COUNTS_TTL), function () use ($game, $daily): array {
+            $mode = $daily ? BoardGame::CORRESPONDENCE : 'blitz';
+            $games = fn () => BoardGame::query()->where(['game' => $game, 'mode' => $mode]);
+
+            return [
+                'game' => $game,
+                'daily' => $daily,
+                'cover' => ($cover = app(GameRegistry::class)->coverPath($game)) === null ? null : basename($cover),
+                'running' => $games()->where('status', BoardGameStatus::Active)->count(),
+                'played' => $games()->where('status', BoardGameStatus::Finished)->count(),
+            ];
+        });
+    }
+
+    /* ---------- Score games ------------------------------------------------------------------------------------ */
+
+    /**
+     * A score game's page (`scores/<slug>`): its leaderboards open, running and finished.
+     *
+     * @return array<string, mixed>
+     */
+    public static function scoreGame(string $game): array
+    {
+        return Cache::remember('page-card:scores:'.$game, now()->addSeconds(self::COUNTS_TTL), function () use ($game): array {
+            $boards = fn () => Tournament::query()->where(['game' => $game, 'format' => TournamentFormat::Leaderboard])->whereNotNull('published_at');
+
+            return [
+                'game' => $game,
+                'cover' => ($cover = app(GameRegistry::class)->coverPath($game)) === null ? null : basename($cover),
+                'open' => $boards()->whereIn('status', [TournamentStatus::Signup, TournamentStatus::Drawing])->count(),
+                'running' => $boards()->where('status', TournamentStatus::Running)->count(),
+                'finished' => $boards()->where('status', TournamentStatus::Finished)->count(),
+            ];
+        });
+    }
+
+    /**
+     * A leaderboard (`tournaments/<id>/scores`, a Blockfill week among them):
+     * its first three with their values, best first, and how many placed.
+     *
+     * @return array<string, mixed>
+     */
+    public static function leaderboard(Tournament $tournament): array
+    {
+        $runs = app(ScoreRuns::class);
+        $placed = array_values(array_filter($runs->standings($tournament), fn (ScoreStanding $row): bool => $row->place !== null && $row->value !== null));
+        $members = User::query()->whereKey(array_filter(array_map(fn (ScoreStanding $row): ?int => $row->participant->user_id, array_slice($placed, 0, self::FACES))))->get()->keyBy('id');
+        $week = $tournament->isBlockfillWeek() ? $tournament->starts_at->toImmutable()->setTimezone(BlockfillWeeks::TIMEZONE) : null;
+
+        return [
+            // A Blockfill week is named by the card in its language ("Blockfill Week 40, 2026"), every other by its name.
+            'name' => $week === null ? $tournament->name : null,
+            'week' => $week === null ? null : [$week->isoWeek(), $week->isoWeekYear()],
+            'game' => $tournament->game,
+            'mode' => $tournament->mode,
+            'unit' => $runs->metricOf($tournament)->unit,
+            'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
+            'ends_utc' => ScoreWindow::of($tournament)->end->copy()->utc()->format('Y-m-d H:i'),
+            'placed' => count($placed),
+            'top' => array_map(function (ScoreStanding $row) use ($members): array {
+                $user = $members->get((int) $row->participant->user_id);
+
+                return [
+                    'place' => (int) $row->place,
+                    'name' => (string) $row->participant->name,
+                    'pubkey' => $user instanceof User ? $user->pubkey : str_repeat('0', 64),
+                    'avatar_path' => $user instanceof User ? self::avatar($user) : null,
+                    'value' => (int) $row->value,
+                ];
+            }, array_slice($placed, 0, self::FACES)),
+        ];
+    }
+
+    /**
+     * The Blockfill page: this week's leaderboard (the week opens with the
+     * first verified run), cached like the counts of a fixed page.
+     *
+     * @return array<string, mixed>
+     */
+    public static function blockfill(): array
+    {
+        return Cache::remember('page-card:blockfill', now()->addSeconds(self::COUNTS_TTL), function (): array {
+            $week = app(BlockfillWeeks::class)->current();
+            $start = BlockfillWeeks::startOf(now()->toImmutable())->setTimezone(BlockfillWeeks::TIMEZONE);
+
+            return [
+                'week' => [$start->isoWeek(), $start->isoWeekYear()],
+                'board' => $week === null ? null : self::leaderboard($week),
+            ];
+        });
+    }
+
     /* ---------- The other pages -------------------------------------------------------------------------------- */
 
     /**
@@ -468,6 +608,7 @@ final class PageCardFacts
             'matches' => [['series-played', SeriesMatch::query()->whereIn('status', [SeriesStatus::Confirmed, SeriesStatus::Resolved])->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'games', 'chess' => [['live-games', $liveGames()], ['daily-games', ChessGame::query()->daily()->where('status', ChessGameStatus::Active)->count()], ['games-played', ChessGame::query()->where('status', ChessGameStatus::Finished)->count()]],
             'tournaments' => [['tournaments-open', self::openTournaments()], ['tournaments-running', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Running)->count()], ['tournaments-finished', Tournament::query()->whereNotNull('published_at')->exceptBlockfillWeeks()->where('status', TournamentStatus::Finished)->count()]],
+            'login' => [['players', $players()], ['games', count($offered)]],
             'play', 'rules' => [['games', count($offered)], ['modes', array_sum(array_map(fn ($game): int => count($game->modes()), $offered))]],
             // Without configured relays there is nothing to count; the figure is left out rather than drawn as 0.
             'protocol' => count((array) config('esports.relays', [])) > 0 ? [['relays', count((array) config('esports.relays', []))]] : [],

@@ -102,8 +102,10 @@ new #[Layout('layouts::app')] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
     {
         $name = GameNames::game($this->slug);
-        $view->title(__(':game correspondence', ['game' => $name]));
-        app(PageMeta::class)->describe($name, __('Play :game by correspondence against Bitcoiners: one move a day, a reminder before your deadline. Challenge a player; the server checks every move.', ['game' => $name]));
+        $title = __(':game correspondence', ['game' => $name]);
+        $view->title($title);
+        app(PageMeta::class)->describe($title, __('Play :game by correspondence against Bitcoiners: one move a day, a reminder before your deadline. Challenge a player; the server checks every move.', ['game' => $name]))
+            ->card(fn () => \App\Support\Cards\PageCard::page('board-daily.'.$this->slug));
     }
 
     public function pick(int $id): void

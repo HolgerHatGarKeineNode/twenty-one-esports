@@ -6005,5 +6005,15 @@
     "Score games": "Score-Spiele",
     "Best value": "Bester Wert",
     "Points per place": "Punkte je Platz",
-    "Everyone plays alone, as often as they like, for the best value inside a leaderboard's window. No series and no Elo: the places of every finished leaderboard score points on the game's points ladder.": "Alle spielen allein, so oft sie wollen, um den besten Wert im Zeitfenster eines Leaderboards. Keine Serie und kein Elo: Die Plätze jedes beendeten Leaderboards bringen Punkte auf der Punkte-Ladder des Spiels."
+    "Everyone plays alone, as often as they like, for the best value inside a leaderboard's window. No series and no Elo: the places of every finished leaderboard score points on the game's points ladder.": "Alle spielen allein, so oft sie wollen, um den besten Wert im Zeitfenster eines Leaderboards. Keine Serie und kein Elo: Die Plätze jedes beendeten Leaderboards bringen Punkte auf der Punkte-Ladder des Spiels.",
+    ":count player placed|:count players placed": ":count Spieler platziert|:count Spieler platziert",
+    "No values yet. The first valid value takes first place.": "Noch keine Werte. Der erste gültige Wert nimmt Platz 1.",
+    "No times yet this week. Mine 40 blocks and take first place.": "Diese Woche noch keine Zeiten. Schürfe 40 Blöcke und hol dir Platz 1.",
+    "Running until :utc UTC": "Läuft bis :utc UTC",
+    ":game leaderboards": "Leaderboards in :game",
+    "Everyone plays alone for the best value, and a points ladder.": "Jeder spielt allein auf den besten Wert, dazu eine Punkte-Ladder.",
+    "One move a day, a reminder before your deadline. The server checks every move.": "Ein Zug pro Tag, eine Erinnerung vor deiner Frist. Der Server prüft jeden Zug.",
+    "Blitz 5+3 live against Bitcoiners. The server checks every move.": "Blitz 5+3 live gegen Bitcoiner. Der Server prüft jeden Zug.",
+    "With Google or Nostr, then play against Bitcoiners in every game of the league.": "Mit Google oder Nostr, dann gegen Bitcoiner in jedem Spiel der Liga spielen.",
+    "Every game of the league, every mode in one place.": "Jedes Spiel der Liga, alle Modi an einem Ort."
 }

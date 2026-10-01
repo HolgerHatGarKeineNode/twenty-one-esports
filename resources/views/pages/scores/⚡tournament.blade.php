@@ -59,8 +59,14 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Leaderboard').': '.$this->tournament->title());
-        app(\App\Support\PageMeta::class)->describe(__('Leaderboard').': '.$this->tournament->title(),
-            __(':tournament: every player\'s best value inside the window, best first.', ['tournament' => $this->tournament->title()]))->noindex = true;
+        $meta = app(\App\Support\PageMeta::class)->describe(__('Leaderboard').': '.$this->tournament->title(),
+            __(':tournament: every player\'s best value inside the window, best first.', ['tournament' => $this->tournament->title()]));
+        $meta->noindex = true;
+
+        // The link preview: the first three with their values. A draft or private leaderboard keeps the brand card.
+        if (\App\Support\Cards\PageCard::hasPublicLeaderboard($this->tournament)) {
+            $meta->card(fn () => \App\Support\Cards\PageCard::leaderboard($this->tournament));
+        }
     }
 
     #[Computed]

@@ -1,16 +1,19 @@
 <?php
 
+use App\Enums\BoardGameStatus;
 use App\Enums\ChessEndReason;
 use App\Enums\ChessGameStatus;
 use App\Enums\InviteLinkType;
 use App\Enums\PayoutStatus;
 use App\Enums\SeriesStatus;
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\Rating;
 use App\Models\RatingChange;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
 use App\Models\TournamentPayout;
@@ -21,9 +24,16 @@ use App\Support\Cards\PageCardFacts;
 use App\Support\GameNames;
 use App\Support\Invites\InviteLinks;
 use App\Support\PageMeta;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Stacker\BlockfillWeeks;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Tests\Support\BlockfillOn;
+use Tests\Support\CheckersGame;
+use Tests\Support\NineMensMorrisOn;
+use Tests\Support\ScoreDemoOn;
 use Tests\Support\TestSigner;
 
 /*
@@ -151,11 +161,12 @@ test('every registered series game has a hub card', function () {
     }
 });
 
-test('every public page but the invite link and login has a card of its own, not the brand card', function () {
+test('every public page but the invite link has a card of its own, not the brand card', function () {
     foreach (cardPages() as $name => $page) {
         $path = previewOf($this->get($page())->getContent())['path'];
 
-        if (in_array($name, ['invite link', 'login'], true)) {
+        // The invite link shows the invite's own card (i/{code}/card-wide.png).
+        if ($name === 'invite link') {
             continue;
         }
 
@@ -362,7 +373,36 @@ test('no text on any card is cut or runs off the edge, in English or German, wit
     $series = SeriesMatch::factory()->accepted()->create(['challenger_name' => 'Lightning Network Lions', 'challenged_name' => 'Orange Pill Academy']);
     $series->forceFill(['status' => SeriesStatus::Confirmed, 'winner' => 'challenger', 'result_games' => [['winner' => 'challenger'], ['winner' => 'challenger']]])->save();
 
+    // Board games, score leaderboards and Blockfill (switched on here as in production): a live morris board, a
+    // checkers game won by resignation, a leaderboard and a Blockfill week with times, all with the long names.
+    NineMensMorrisOn::play();
+    CheckersGame::play();
+    ScoreDemoOn::play();
+    BlockfillOn::play();
+    $this->travelTo(CarbonImmutable::parse('2026-10-07 12:00:00'));
+    $morris = mempoolBoard('nine-mens-morris', ['white_id' => $satoshi->id, 'black_id' => $hodler->id, 'rated' => true]);
+    $checkers = mempoolBoard('checkers', ['white_id' => $hal->id, 'black_id' => $hodler->id, 'mode' => 'correspondence', 'status' => BoardGameStatus::Finished,
+        'result' => '1/2-1/2', 'end_reason' => 'no_progress', 'ply' => 131, 'rated' => true, 'tournament_match_id' => $cup->matches()->value('id')]);
+    [$leaderboard, $runners] = runningScoreBoard(3, attributes: ['published_at' => now(), 'name' => 'Genesis Blitz Cup Autumn']);
+    $week = app(BlockfillWeeks::class)->open();
+
+    foreach ([$satoshi, $hodler, $hal] as $index => $user) {
+        app(BlockfillWeeks::class)->join($week, $user);
+        ScoreRun::query()->create(['user_id' => $user->id, 'game' => Blockfill::SLUG, 'mode' => Blockfill::MODE, 'course' => app(ScoreRuns::class)->courseOf($week)->id,
+            'unit' => 'ms', 'achieved_at' => now(), 'value' => 3_723_456 + $index, 'source' => 'replay', 'verified_at' => now()]);
+        ScoreRun::query()->create(['user_id' => $runners[$index]->id, 'game' => 'score-demo', 'mode' => 'time-trial', 'course' => 'demo-1',
+            'unit' => 'ms', 'achieved_at' => now(), 'value' => 3_723_456 + $index, 'source' => 'fake', 'verified_at' => now()]);
+    }
+
+    $leaderboard->participants()->orderBy('id')->get()->each(fn ($entry, int $index) => $entry->forceFill(['name' => ['Satoshi Nakamoto', 'HalvingHodler21', 'Lightning Larry'][$index]])->save());
+
     $cards = [
+        fn () => PageCard::boardGame($morris->refresh()),
+        fn () => PageCard::boardGame($checkers->refresh()),
+        fn () => PageCard::leaderboard($leaderboard->refresh()),
+        fn () => PageCard::leaderboard($week->refresh()),
+        ...array_map(fn (string $page): Closure => fn () => PageCard::page($page), ['blockfill', 'board.nine-mens-morris', 'board.checkers', 'board-daily.nine-mens-morris',
+            'board-daily.checkers', 'scores.score-demo', 'scores.blockfill']),
         ...array_map(fn (ChessGame $game): Closure => fn () => PageCard::game($game->refresh()), $games),
         fn () => PageCard::tournament($open->refresh()),
         fn () => PageCard::tournament($cup->refresh()),

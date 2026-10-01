@@ -15,6 +15,7 @@
     // Shared links get a preview; search engines leave the page out.
     $meta = app(App\Support\PageMeta::class)->describe(__('Log in'), __('Log in to TWENTY ONE esports with Google or Nostr and play chess and Rocket League in the league.'));
     $meta->noindex = true;
+    $meta->card(fn () => App\Support\Cards\PageCard::page('login'));
 @endphp
 
 <x-layouts::app :title="__('Log in')">

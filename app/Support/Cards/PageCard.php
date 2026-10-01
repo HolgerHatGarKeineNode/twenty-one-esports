@@ -3,7 +3,11 @@
 namespace App\Support\Cards;
 
 use App\Enums\TournamentFormat;
+use App\Games\Blockfill;
+use App\Games\BoardGame as BoardGameDefinition;
 use App\Games\GameRegistry;
+use App\Games\ScoreMetric;
+use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\SeriesMatch;
@@ -43,10 +47,15 @@ final class PageCard
 
     public const HEIGHT = 630;
 
-    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'page'];
+    public const TYPES = ['game', 'tournament', 'player', 'clan', 'series', 'ladder', 'board', 'leaderboard', 'page'];
 
-    /** The fixed pages with a card of their own (type `page`). */
-    public const PAGES = ['home', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
+    /**
+     * The fixed pages with a card of their own (type `page`); next to them a
+     * series game's hub (`hub.<game>`), a board game's lobby
+     * (`board.<game>`) and correspondence page (`board-daily.<game>`), a
+     * score game's page (`scores.<game>`) and Blockfill (`blockfill`).
+     */
+    public const PAGES = ['home', 'login', 'clans', 'matches', 'games', 'chess', 'tournaments', 'play', 'rules', 'protocol', 'mining', 'live', 'strongest'];
 
     /** Bump when a layout changes: every card gets a new file and URL. */
     private const LAYOUT = 1;
@@ -106,14 +115,30 @@ final class PageCard
         return new self('ladder', $game.'.'.$mode, PageCardFacts::ladder($game, $mode));
     }
 
-    /** A fixed page (PAGES) or a series game's hub (`hub.<game>`). */
+    /** A board game, live or finished (plan "Mühle und Dame"). */
+    public static function boardGame(BoardGame $game): self
+    {
+        return new self('board', (string) $game->id, PageCardFacts::board($game));
+    }
+
+    /** A score leaderboard (`tournaments/<id>/scores`), a Blockfill week among them. */
+    public static function leaderboard(Tournament $tournament): self
+    {
+        return new self('leaderboard', (string) $tournament->id, PageCardFacts::leaderboard($tournament));
+    }
+
+    /** A fixed page (PAGES), or a game's page: `hub.`, `board.`, `board-daily.` or `scores.` and its slug, or `blockfill`. */
     public static function page(string $page): self
     {
         $facts = match (true) {
             $page === 'mining' => PageCardFacts::mining(),
             $page === 'live' => PageCardFacts::live(),
             $page === 'strongest' => PageCardFacts::strongest(),
+            $page === 'blockfill' => PageCardFacts::blockfill(),
             str_starts_with($page, 'hub.') => PageCardFacts::hub(substr($page, 4)),
+            str_starts_with($page, 'board.') => PageCardFacts::boardLobby(substr($page, 6), false),
+            str_starts_with($page, 'board-daily.') => PageCardFacts::boardLobby(substr($page, 12), true),
+            str_starts_with($page, 'scores.') => PageCardFacts::scoreGame(substr($page, 7)),
             in_array($page, self::PAGES, true) => PageCardFacts::page($page),
             default => throw new InvalidArgumentException("No page card for {$page}."),
         };
@@ -135,10 +160,35 @@ final class PageCard
             'clan' => ($clan = Clan::query()->where('slug', $key)->first()) !== null ? self::clan($clan) : null,
             'series' => ctype_digit($key) && ($match = SeriesMatch::query()->where('number', (int) $key)->first()) !== null ? self::series($match) : null,
             'ladder' => str_contains($key, '.') && app(GameRegistry::class)->mode(...explode('.', $key, 2)) !== null ? self::ladder(...explode('.', $key, 2)) : null,
-            'page' => in_array($key, self::PAGES, true) || (str_starts_with($key, 'hub.') && app(GameRegistry::class)->isSeries(substr($key, 4)))
-                ? self::page($key) : null,
+            'board' => ctype_digit($key) && ($board = BoardGame::query()->find((int) $key)) !== null && app(GameRegistry::class)->isBoard($board->game) ? self::boardGame($board) : null,
+            'leaderboard' => ctype_digit($key) && ($tournament = Tournament::query()->find((int) $key)) !== null && self::hasPublicLeaderboard($tournament)
+                ? self::leaderboard($tournament) : null,
+            'page' => self::isPage($key) ? self::page($key) : null,
             default => null,
         };
+    }
+
+    /** Whether a page key names a page that exists now: a fixed one, or the page of a game that is switched on. */
+    private static function isPage(string $key): bool
+    {
+        $games = app(GameRegistry::class);
+        $slug = Str::after($key, '.');
+
+        return match (true) {
+            in_array($key, self::PAGES, true) => true,
+            $key === 'blockfill' => $games->find(Blockfill::SLUG) !== null,
+            str_starts_with($key, 'hub.') => $games->isSeries($slug),
+            str_starts_with($key, 'board.') => $games->isBoard($slug),
+            str_starts_with($key, 'board-daily.') => $games->isBoard($slug) && $games->mode($slug, BoardGame::CORRESPONDENCE) !== null,
+            str_starts_with($key, 'scores.') => $games->isScore($slug),
+            default => false,
+        };
+    }
+
+    /** A leaderboard a guest may see: published, public, of a score game that is switched on. */
+    public static function hasPublicLeaderboard(Tournament $tournament): bool
+    {
+        return $tournament->published_at !== null && $tournament->isVisibleTo(null) && app(GameRegistry::class)->isScore($tournament->game);
     }
 
     /** The PNG bytes in the current locale, from the cache when the facts are unchanged. */
@@ -194,6 +244,12 @@ final class PageCard
             'clan' => $f['name'].'. '.trans_choice(':count player|:count players', (int) $f['members']).'.',
             'series' => $f['challenger']['name'].' vs '.$f['challenged']['name'].'.',
             'ladder' => $this->ladderTitle().'.',
+            'board' => match ($f['result']) {
+                '1-0' => __(':name won', ['name' => $this->sideName('white')]),
+                '0-1' => __(':name won', ['name' => $this->sideName('black')]),
+                default => $this->gameHeadline(),
+            }.'. '.$this->sideName('white').' '.__('(white)').', '.$this->sideName('black').' '.__('(black)').'. '.GameNames::game((string) $f['game']).'.',
+            'leaderboard' => $this->leaderboardTitle($f).'. '.$this->leaderboardStatus().'.',
             default => $this->pageTitle().'.',
         };
     }
@@ -211,11 +267,16 @@ final class PageCard
             'clan' => $this->drawClan(),
             'series' => $this->drawSeries(),
             'ladder' => $this->drawLadder(),
+            'board' => $this->drawBoard(),
+            'leaderboard' => $this->drawLeaderboard(),
             default => match (true) {
                 $this->key === 'mining' => $this->drawMining(),
                 $this->key === 'live' => $this->drawLive(),
                 $this->key === 'strongest' => $this->drawStrongest(),
+                $this->key === 'blockfill' => $this->drawBlockfill(),
                 str_starts_with($this->key, 'hub.') => $this->drawHub(),
+                str_starts_with($this->key, 'board.'), str_starts_with($this->key, 'board-daily.') => $this->drawBoardLobby(),
+                str_starts_with($this->key, 'scores.') => $this->drawScoreGame(),
                 default => $this->drawPage(),
             },
         };
@@ -325,13 +386,14 @@ final class PageCard
         $line = $y + $size / 2 + 38;
         $this->c->rect($tx, $line - 22, 24, 24, $colour === 'white' ? '#F4F4F5' : '#5C5C60');
         $this->c->rect($tx + 2, $line - 20, 20, 20, $colour === 'white' ? '#F4F4F5' : '#0A0A0B');
-        $delta = $p['delta'] !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
-        $rating = __(':rating Elo', ['rating' => $p['rating']]);
+        $delta = ($p['delta'] ?? null) !== null && $p['delta'] !== 0 ? ($p['delta'] > 0 ? '+' : '−').abs((int) $p['delta']) : null;
+        // A board game has no rating on its card: the side's colour is named instead.
+        $rating = ($p['rating'] ?? null) === null ? ($colour === 'white' ? __('White') : __('Black')) : __(':rating Elo', ['rating' => $p['rating']]);
         $provisional = __(':rating Elo, provisional', ['rating' => $p['rating']]);
         $room = $max - 40 - ($delta === null ? 0 : $this->c->width($delta, 'mono-bold', self::MIN) + 16);
 
         // "provisional" when there is room for it beside the change, else the rating alone.
-        if ($p['provisional'] && $this->c->width($provisional, 'mono', self::MIN) <= $room) {
+        if (($p['provisional'] ?? false) && $this->c->width($provisional, 'mono', self::MIN) <= $room) {
             $rating = $provisional;
         }
         $this->c->text($rating, 'mono', self::MIN, $tx + 40, $line, $lost ? Canvas::INK_3 : Canvas::INK_2);
@@ -426,7 +488,7 @@ final class PageCard
         // Over: the podium is the picture, the header one line each above it.
         if ($podium !== []) {
             $max = self::RIGHT - self::M;
-            $this->c->text($this->c->fit($this->tournamentStatus(), 'mono-bold', self::MIN, $max), 'mono-bold', self::MIN, self::M, 76, $statusColour);
+            $this->c->text($this->firstFitting($this->tournamentStatusForms(), 'mono-bold', self::MIN, $max), 'mono-bold', self::MIN, self::M, 76, $statusColour);
             $size = $this->c->fitSize((string) $f['name'], 'display', [48, 40, 34], $max);
             $this->c->text($this->c->fit((string) $f['name'], 'display', $size, $max), 'display', $size, self::M, 76 + 20 + $size, Canvas::INK);
             $this->c->text($this->c->fit($line, 'mono', self::MIN, $max), 'mono', self::MIN, self::M, 76 + 20 + $size + 44, Canvas::INK_2);
@@ -443,7 +505,7 @@ final class PageCard
 
         $this->tournamentCover(688, 48, 448, 210);
         $max = 580;
-        $this->c->text($this->c->fit($this->tournamentStatus(), 'mono-bold', self::MIN, $max), 'mono-bold', self::MIN, self::M, 84, $statusColour);
+        $this->c->text($this->firstFitting($this->tournamentStatusForms(), 'mono-bold', self::MIN, $max), 'mono-bold', self::MIN, self::M, 84, $statusColour);
         $size = $this->c->fitSize((string) $f['name'], 'display', [52, 44, 38], $max);
         $after = $this->c->paragraph((string) $f['name'], 'display', $size, self::M, 84 + 24 + $size, $max, 2, Canvas::INK, 1.15);
         $after = $this->c->paragraph($line, 'mono', self::MIN, self::M, $after + 4, $max, 1, Canvas::INK_2);
@@ -469,6 +531,18 @@ final class PageCard
 
     private function tournamentStatus(): string
     {
+        return $this->tournamentStatusForms()[0];
+    }
+
+    /**
+     * The status line, longest form first: a casual cup with its region, the
+     * cup without it ("Anmeldung geschlossen, Casual Cup US" is wider than the
+     * column beside the cover), the status alone.
+     *
+     * @return non-empty-list<string>
+     */
+    private function tournamentStatusForms(): array
+    {
         $f = $this->facts;
         $status = match ($f['status']) {
             'open' => __('Sign-up open'),
@@ -479,10 +553,28 @@ final class PageCard
         };
 
         if (! $f['cup']) {
-            return $status;
+            return [$status];
         }
 
-        return $f['region'] !== null ? __(':status, casual cup :region', ['status' => $status, 'region' => $f['region']]) : __(':status, casual cup', ['status' => $status]);
+        $cup = __(':status, casual cup', ['status' => $status]);
+
+        return $f['region'] !== null ? [__(':status, casual cup :region', ['status' => $status, 'region' => $f['region']]), $cup, $status] : [$cup, $status];
+    }
+
+    /**
+     * The first of the forms (longest first) that fits on one line; the last one, cut, when none does.
+     *
+     * @param  non-empty-list<string>  $forms
+     */
+    private function firstFitting(array $forms, string $face, int $px, int $max): string
+    {
+        foreach ($forms as $form) {
+            if ($this->c->width($form, $face, $px) <= $max) {
+                return $form;
+            }
+        }
+
+        return $this->c->fit((string) end($forms), $face, $px, $max);
     }
 
     /** The game's cover art, or the game's name on its colours. */
@@ -799,6 +891,291 @@ final class PageCard
         ], $top);
     }
 
+    /* ---------- Score leaderboards and Blockfill --------------------------------------------------------------- */
+
+    /** A leaderboard: its state, name and game above, the first three with their values as the podium. */
+    private function drawLeaderboard(): void
+    {
+        $f = $this->facts;
+        $colour = match ($f['status']) {
+            'open' => Canvas::ORANGE,
+            'running' => self::LIVE,
+            default => Canvas::INK_2,
+        };
+        $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.trans_choice(':count player placed|:count players placed', (int) $f['placed']);
+
+        $this->scoreBoard([$this->leaderboardStatus()], $colour, $this->leaderboardTitle($f), $line, $f, __('No values yet. The first valid value takes first place.'));
+    }
+
+    /** Blockfill's page: this week's first three with their times. */
+    private function drawBlockfill(): void
+    {
+        $f = $this->facts;
+        $board = is_array($f['board']) ? $f['board'] : ['game' => Blockfill::SLUG, 'unit' => 'ms', 'top' => [], 'placed' => 0];
+        $week = __('Blockfill Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]]);
+        // With the count when it fits beside the cover, else the week alone.
+        $state = (int) $board['placed'] > 0 ? [$week.', '.trans_choice(':count player placed|:count players placed', (int) $board['placed']), $week] : [$week];
+
+        $this->scoreBoard($state, Canvas::ORANGE, 'Blockfill', __('Mine 40 blocks as fast as you can.'), $board, __('No times yet this week. Mine 40 blocks and take first place.'));
+    }
+
+    /**
+     * The header of a leaderboard (state, title, line; the game's cover on
+     * the right) and its first three as a podium, each with its value.
+     *
+     * @param  non-empty-list<string>  $states  the state line, longest form first: the first that fits is drawn
+     * @param  array<string, mixed>  $board  `game`, `unit` and `top` as PageCardFacts::leaderboard() reads them
+     */
+    private function scoreBoard(array $states, string $stateColour, string $title, string $line, array $board, string $empty): void
+    {
+        $cover = app(GameRegistry::class)->coverPath((string) $board['game']);
+        $max = $cover !== null && $this->c->cover($cover, 856, 48, 280, 132) ? 760 : self::RIGHT - self::M;
+        $this->c->text($this->firstFitting($states, 'mono-bold', self::MIN, $max), 'mono-bold', self::MIN, self::M, 76, $stateColour);
+        $size = $this->c->fitSize($title, 'display', [48, 40, 34], $max);
+        $this->c->text($this->c->fit($title, 'display', $size, $max), 'display', $size, self::M, 76 + 20 + $size, Canvas::INK);
+        $this->c->text($this->c->fit($line, 'mono', self::MIN, $max), 'mono', self::MIN, self::M, 76 + 20 + $size + 44, Canvas::INK_2);
+
+        $metric = $board['unit'] === 'points' ? ScoreMetric::points() : ScoreMetric::time();
+        $this->podium(array_map(fn (array $entry): array => [
+            ...$entry,
+            'line' => $metric->format((int) $entry['value']),
+            'line_colour' => (int) $entry['place'] === 1 ? Canvas::ORANGE : Canvas::INK,
+        ], self::rows($board['top'])), $empty, 24);
+    }
+
+    /**
+     * "Blockfill Week 40, 2026" in the card's language, else the leaderboard's name.
+     *
+     * @param  array<string, mixed>  $f
+     */
+    private function leaderboardTitle(array $f): string
+    {
+        return is_array($f['week']) ? __('Blockfill Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]]) : (string) $f['name'];
+    }
+
+    private function leaderboardStatus(): string
+    {
+        $f = $this->facts;
+
+        return match ($f['status']) {
+            'open' => __('Sign-up open'),
+            'signup', 'drawing' => __('Sign-up closed'),
+            'running' => __('Running until :utc UTC', ['utc' => $f['ends_utc']]),
+            'finished' => __('Finished'),
+            default => __('Called off'),
+        };
+    }
+
+    /** A score game's page: its name, what it is, and its leaderboards open, running and finished. */
+    private function drawScoreGame(): void
+    {
+        $f = $this->facts;
+        $this->gameCover((string) $f['game']);
+        $title = __(':game leaderboards', ['game' => GameNames::game((string) $f['game'])]);
+        $size = $this->c->fitSize($title, 'display', [56, 48, 40], 500);
+        $after = $this->c->paragraph($title, 'display', $size, self::M, 48 + $size, 500, 3, Canvas::INK, 1.12);
+        $this->c->paragraph(__('Everyone plays alone for the best value, and a points ladder.'), 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
+        $this->figures([
+            [$this->figureLabel('tournaments-open', (int) $f['open']), (string) $f['open']],
+            [$this->figureLabel('tournaments-running', (int) $f['running']), (string) $f['running']],
+            [$this->figureLabel('tournaments-finished', (int) $f['finished']), (string) $f['finished']],
+        ], self::M, 440, 352);
+    }
+
+    /* ---------- Board games ------------------------------------------------------------------------------------ */
+
+    /** A board game: the position on the left, the players beside it (black above, white below) and the state between. */
+    private function drawBoard(): void
+    {
+        $f = $this->facts;
+        $size = 446;
+        $this->boardPosition((string) $f['game'], (string) $f['position'], self::M, 48, $size);
+
+        $x = self::M + $size + 56;
+        $width = self::RIGHT - $x;
+        $winner = match ($f['result']) {
+            '1-0' => 'white',
+            '0-1' => 'black',
+            default => null,
+        };
+        $side = fn (string $colour): array => [...$f[$colour], 'name' => $this->sideName($colour), 'rating' => null];
+        $this->gamePlayer($side('black'), 'black', $x, 48, $width, $winner, false);
+        $this->gamePlayer($side('white'), 'white', $x, 48 + $size, $width, $winner, true);
+
+        $block = 96;
+        $y = 176;
+        [$face, $label, $ink] = match ($f['status']) {
+            'active' => [self::LIVE, __('Live'), self::DARK],
+            'aborted' => ['#3A3A42', '–', Canvas::INK],
+            default => [Canvas::ORANGE, match ($f['result']) {
+                '1-0' => '1–0',
+                '0-1' => '0–1',
+                default => '½–½',
+            }, self::DARK],
+        };
+        $this->c->block($x, $y + 8, $block, $face);
+        $labelSize = $this->c->fitSize($label, 'display', [40, 34, 30], $block - 16);
+        $this->c->text($label, 'display', $labelSize, $x + ($block - $this->c->width($label, 'display', $labelSize)) / 2, $y + 8 + $block / 2 + $labelSize * 0.36, $ink);
+
+        $tx = $x + $block + 28;
+        $headline = $this->gameHeadline();
+        $headSize = $this->c->fitSize($headline, 'display', [40, 34, 30, 28], self::RIGHT - $tx);
+        $this->c->text($this->c->fit($headline, 'display', $headSize, self::RIGHT - $tx), 'display', $headSize, $tx, $y + 50, $f['status'] === 'active' ? self::LIVE : Canvas::INK);
+        $this->c->text($this->c->fit(GameNames::game((string) $f['game']), 'mono', self::MIN, self::RIGHT - $tx), 'mono', self::MIN, $tx, $y + 92, Canvas::INK_3);
+
+        // The full width of the column: rated or casual, the mode and the state when that fits, else the state alone.
+        $detail = $this->boardDetail();
+        $long = implode(' · ', [$f['rated'] ? __('Rated') : __('Casual'), GameNames::mode((string) $f['game'], (string) $f['mode']), $detail]);
+        $detail = $this->c->width($long, 'mono', self::MIN) <= $width ? $long : $detail;
+        // A rules' reason can take two lines ("25 moves without a capture or a man moving"); the tournament then stays off.
+        $after = $this->c->paragraph($detail, 'mono', self::MIN, $x, $y + 146, $width, 2, Canvas::INK_2, 1.25);
+
+        if ($f['tournament'] !== null && $after <= $y + 146 + self::MIN * 1.25) {
+            $this->c->text($this->c->fit((string) $f['tournament'], 'mono', self::MIN, $width), 'mono', self::MIN, $x, $y + 184, Canvas::ORANGE);
+        }
+    }
+
+    /** A side's name; a deleted account has none of its own. */
+    private function sideName(string $colour): string
+    {
+        return (string) ($this->facts[$colour]['name'] ?? __('Deleted player'));
+    }
+
+    /** Whose turn it is, or how the game ended (the rules' own reasons translated as the board page does). */
+    private function boardDetail(): string
+    {
+        $f = $this->facts;
+
+        if ($f['status'] === 'active') {
+            return $f['turn'] === 'b' ? __('Black to move') : __('White to move');
+        }
+
+        $definition = app(GameRegistry::class)->find((string) $f['game']);
+        $reasons = $definition instanceof BoardGameDefinition ? $definition->rules()->reasons() : [];
+        // A rules' reason is a sentence of lang/de.json; a key that names a group would give an array, and no reason.
+        $label = is_string($f['reason']) && isset($reasons[$f['reason']]) ? __($reasons[$f['reason']]) : null;
+        $reason = match ($f['reason']) {
+            null => null,
+            'resignation' => __('Resignation'),
+            'timeout' => __('Out of time'),
+            'agreement' => __('Draw by agreement'),
+            'aborted' => __('Aborted'),
+            'forfeit' => __('No first move'),
+            'voided' => __('Voided by the league'),
+            default => is_string($label) ? $label : null,
+        };
+        $count = trans_choice(':count move|:count moves', (int) ceil($f['ply'] / 2));
+
+        return is_string($reason) ? $reason : $count;
+    }
+
+    /**
+     * A board game's position as its rules show it (BoardRules::view()): the
+     * cells, the lines, the points without a piece and the pieces, scaled
+     * into a square with the chess board's frame. A king carries an orange
+     * ring.
+     */
+    private function boardPosition(string $game, string $position, int $x, int $y, int $size): void
+    {
+        $definition = app(GameRegistry::class)->find($game);
+        $this->c->rect($x, $y, $size, $size, '#3A3A42');
+        $border = 6;
+        $inner = $size - 2 * $border;
+
+        if (! $definition instanceof BoardGameDefinition) {
+            return;
+        }
+
+        $rules = $definition->rules();
+        $view = $rules->view($rules->deserialize($position));
+        $scale = $inner / max(1, $view['width'], $view['height']);
+        $ox = $x + $border;
+        $oy = $y + $border;
+        $s = $this->c->scale;
+        $image = $this->c->image;
+        // A board of cells (checkers) is light with dark cells to play on; a board of lines (morris) is wood-dark.
+        $this->c->rect($ox, $oy, $inner, $inner, $view['cells'] !== [] ? '#CFCFD4' : '#2A2A30');
+
+        foreach ($view['cells'] as $cell) {
+            $this->c->rect($ox + $cell['x'] * $scale, $oy + $cell['y'] * $scale, $cell['size'] * $scale + 0.5, $cell['size'] * $scale + 0.5, '#62626C');
+        }
+
+        imagesetthickness($image, (int) max(2, round(4 * $s)));
+
+        foreach ($view['lines'] as [$x1, $y1, $x2, $y2]) {
+            imageline($image, (int) round(($ox + $x1 * $scale) * $s), (int) round(($oy + $y1 * $scale) * $s), (int) round(($ox + $x2 * $scale) * $s), (int) round(($oy + $y2 * $scale) * $s), $this->c->color(Canvas::INK_2));
+        }
+
+        imagesetthickness($image, 1);
+
+        // The distance between neighbouring points sets the size of a piece: a cell, or the grid of the lines.
+        $unit = $view['cells'] !== [] ? (float) $view['cells'][0]['size'] : (float) $view['width'];
+
+        foreach ($view['points'] as $a) {
+            foreach ($view['points'] as $b) {
+                $d = abs($a['x'] - $b['x']);
+
+                if ($d > 0 && $d < $unit) {
+                    $unit = $d;
+                }
+            }
+        }
+
+        $radius = $unit * $scale * 0.38;
+
+        foreach ($view['points'] as $point) {
+            $cx = (int) round(($ox + $point['x'] * $scale) * $s);
+            $cy = (int) round(($oy + $point['y'] * $scale) * $s);
+            $piece = $view['pieces'][$point['id']] ?? null;
+
+            if ($piece === null) {
+                if ($view['cells'] === []) {
+                    imagefilledellipse($image, $cx, $cy, (int) round($radius * 0.5 * $s), (int) round($radius * 0.5 * $s), $this->c->color(Canvas::INK_2));
+                }
+
+                continue;
+            }
+
+            $white = $piece['side'] === 'w';
+            $d = (int) round(2 * $radius * $s);
+            imagefilledellipse($image, $cx, $cy, $d + 2 * $s, $d + 2 * $s, $this->c->color($white ? '#0A0A0B' : '#F4F4F5'));
+            imagefilledellipse($image, $cx, $cy, $d, $d, $this->c->color($white ? '#F4F4F5' : '#0A0A0B'));
+
+            if ($piece['kind'] === 'king') {
+                imagefilledellipse($image, $cx, $cy, (int) round($d * 0.56), (int) round($d * 0.56), $this->c->color(Canvas::ORANGE));
+                imagefilledellipse($image, $cx, $cy, (int) round($d * 0.36), (int) round($d * 0.36), $this->c->color($white ? '#F4F4F5' : '#0A0A0B'));
+            }
+        }
+    }
+
+    /** A board game's lobby or its correspondence page: the game's cover, what the page is for, and its games. */
+    private function drawBoardLobby(): void
+    {
+        $f = $this->facts;
+        $game = GameNames::game((string) $f['game']);
+        $this->gameCover((string) $f['game']);
+        $title = $f['daily'] ? __(':game correspondence', ['game' => $game]) : $game;
+        $size = $this->c->fitSize($title, 'display', [56, 48, 40], 500);
+        $after = $this->c->paragraph($title, 'display', $size, self::M, 48 + $size, 500, 2, Canvas::INK, 1.12);
+        $line = $f['daily'] ? __('One move a day, a reminder before your deadline. The server checks every move.') : __('Blitz 5+3 live against Bitcoiners. The server checks every move.');
+        $this->c->paragraph($line, 'mono', self::MIN, self::M, $after + 16, 500, 3, Canvas::INK_2, 1.3);
+        $running = (int) $f['running'];
+        $this->figures([
+            [$this->figureLabel($f['daily'] ? 'daily-games' : 'live-games', $running), (string) $running],
+            [$this->figureLabel('games-played', (int) $f['played']), (string) $f['played']],
+        ], self::M, 440, 352);
+    }
+
+    /** A game's cover art in the upper right, or an empty panel when it has none. */
+    private function gameCover(string $game): void
+    {
+        $cover = app(GameRegistry::class)->coverPath($game);
+
+        if ($cover === null || ! $this->c->cover($cover, 600, 48, 536, 252)) {
+            $this->c->rect(600, 48, 536, 252, '#1E1E24');
+        }
+    }
+
     /* ---------- Season chain ----------------------------------------------------------------------------------- */
 
     private function drawMining(): void
@@ -988,6 +1365,7 @@ final class PageCard
     {
         return match (true) {
             $this->key === 'home', $this->key === 'brand' => __('Chess and Rocket League ladder for Bitcoiners'),
+            $this->key === 'login' => __('Log in'),
             $this->key === 'clans' => __('Clans'),
             $this->key === 'matches' => __('Matches'),
             $this->key === 'games' => __('Live games'),
@@ -1000,6 +1378,10 @@ final class PageCard
             $this->key === 'live' => __('Live stream'),
             $this->key === 'strongest' => __('Strongest players'),
             str_starts_with($this->key, 'hub.') => GameNames::game(substr($this->key, 4)),
+            $this->key === 'blockfill' => 'Blockfill',
+            str_starts_with($this->key, 'board.') => GameNames::game(substr($this->key, 6)),
+            str_starts_with($this->key, 'board-daily.') => __(':game correspondence', ['game' => GameNames::game(substr($this->key, 12))]),
+            str_starts_with($this->key, 'scores.') => __(':game leaderboards', ['game' => GameNames::game(substr($this->key, 7))]),
             default => 'TWENTY ONE esports',
         };
     }
@@ -1009,6 +1391,7 @@ final class PageCard
     {
         // A name without its subtitle ("Age of Empires II", not "…: Definitive Edition"): the line lists every game and must fit the card.
         $games = implode(', ', array_map(fn (string $game): string => Str::before(GameNames::game($game), ':'), (array) ($this->facts['games'] ?? [])));
+        $named = __(':games, every mode in one place.', ['games' => $games]);
 
         return match ($this->key) {
             'clans' => __('Every clan of the league with its players, lineups and Clan Rating.'),
@@ -1016,9 +1399,11 @@ final class PageCard
             'games' => __('Every chess game running now. Watch without logging in.'),
             'chess' => __('Blitz 5+3 live or daily chess against Bitcoiners.'),
             'tournaments' => __('Open sign-ups, running brackets and results, drawn from a Bitcoin block.'),
-            'play' => __(':games, every mode in one place.', ['games' => $games]),
+            // With every game switched on the names outgrow the three lines of drawPage(): then the line names none.
+            'play' => ($this->c->lineCount($named, 'mono', 30, 740) ?? 4) <= 3 ? $named : __('Every game of the league, every mode in one place.'),
             'rules' => __('Casual and rated, games and modes, tournaments, prize pots and fair play.'),
             'protocol' => __('What the league publishes on Nostr, and how to check every result yourself.'),
+            'login' => __('With Google or Nostr, then play against Bitcoiners in every game of the league.'),
             default => __('The esports league of the Bitcoin community EINUNDZWANZIG.'),
         };
     }
