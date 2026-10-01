@@ -14,16 +14,20 @@ use Throwable;
  * in the child's environment. Never call it inside a database transaction;
  * the job (App\Jobs\VerifyStackerRun) holds none while it waits.
  *
- * Outcomes: the verifier's own answer (verified or rejected with its
- * reason); a timeout or a crash of the replay (non-zero exit, no answer)
- * rejects the run, since the same input would fail the same way again; a
- * verifier that cannot be started at all (no Node binary, exit 126/127, or
- * an exception before the run) is unavailable, so the run stays pending.
+ * Outcomes (security audit F2): only an answer of verify.mjs decides a
+ * run. Verified or rejected with its reason, `crash` included (the engine
+ * threw on this replay, caught and reported by verify.mjs itself). A
+ * timeout rejects as well: the engine stops at `limits.ticks`, so a replay
+ * that runs out of time is the input's doing (plan DoD P2). Everything else
+ * is no answer and says nothing about the run (no Node binary, a missing or
+ * broken script, a non-zero exit, death by a signal, output that is not
+ * the verdict format): unavailable, so the run stays pending and a deploy
+ * defect never rejects an honest run.
  */
 final class NodeVerifier implements Verifier
 {
-    /** Reasons verify.mjs may give; anything else is treated as a crash. */
-    private const REASONS = ['malformed', 'oversize', 'engine', 'seed', 'unfinished', 'mismatch'];
+    /** Reasons verify.mjs may give; an answer with any other is no answer. */
+    private const REASONS = ['malformed', 'oversize', 'engine', 'seed', 'unfinished', 'mismatch', 'crash'];
 
     public function verify(StackerRun $run): StackerVerdict
     {
@@ -55,17 +59,13 @@ final class NodeVerifier implements Verifier
             return StackerVerdict::unavailable('verifier-unavailable');
         }
 
-        if (in_array($result->exitCode(), [126, 127], true)) {
+        $answer = $result->exitCode() === 0 ? json_decode(trim($result->output()), true) : null;
+
+        if (! is_array($answer) || ! is_bool($answer['ok'] ?? null)) {
             return StackerVerdict::unavailable('verifier-unavailable');
         }
 
-        $answer = $result->successful() ? json_decode(trim($result->output()), true) : null;
-
-        if (! is_array($answer)) {
-            return StackerVerdict::rejected('crash');
-        }
-
-        if (($answer['ok'] ?? null) === true) {
+        if ($answer['ok'] === true) {
             $settings = $answer['settings'] ?? null;
             $exact = ($answer['ticks'] ?? null) === $run->ticks && ($answer['hash'] ?? null) === $run->state_hash;
 
@@ -78,6 +78,8 @@ final class NodeVerifier implements Verifier
 
         $reason = $answer['reason'] ?? null;
 
-        return StackerVerdict::rejected(in_array($reason, self::REASONS, true) ? $reason : 'crash');
+        return in_array($reason, self::REASONS, true)
+            ? StackerVerdict::rejected($reason)
+            : StackerVerdict::unavailable('verifier-unavailable');
     }
 }

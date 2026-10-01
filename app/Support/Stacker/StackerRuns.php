@@ -18,9 +18,11 @@ use Illuminate\Support\Str;
  *   128-bit seed on the current engine. A player has one active run: a new
  *   issue abandons every run of theirs still `issued`.
  * - start(): the browser says the run starts now. A token not started within
- *   `start_seconds` expires (abandoned, reason `expired`). The browser starts
- *   its clock only once this call has been answered, so the bracket below
- *   never undercuts an honest run.
+ *   `start_seconds` (10 s) expires (abandoned, reason `expired`), so the
+ *   page asks for a run right before its countdown and the seed is known at
+ *   most that long before the clock runs. The browser starts its clock only
+ *   once this call has been answered, so the bracket below never undercuts
+ *   an honest run.
  * - submit(): single-use (a compare-and-set out of `issued`). Checked here,
  *   in this order: body size (before the replay is looked at), shape of
  *   replay/ticks/hash, the wall-clock bracket (time from start, or issue if
@@ -31,6 +33,13 @@ use Illuminate\Support\Str;
  *   goes to the verifier's own queue (VerifyStackerRun).
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
+ *
+ * Storage stays bounded (security audit F1): a replay is kept only for a run
+ * that is verifying, pending or verified, and for the latest
+ * `practice_replays_kept` practice runs of a player; a rejected run keeps
+ * none. Runs without a verified time are pruned after `prune_days`
+ * (StackerRun::prunable()). sweepStale() gives up verifications that never
+ * came back, reverifyPending() sends pending runs again (console only).
  */
 final class StackerRuns
 {
@@ -121,8 +130,12 @@ final class StackerRuns
             || ! is_string($hash) || preg_match('/^[0-9a-f]{8}$/', $hash) !== 1) {
             $fields += ['status' => StackerRunStatus::Rejected, 'reason' => 'malformed'];
         } else {
-            $fields += ['replay' => $replay, 'ticks' => $ticks, 'state_hash' => $hash];
+            $fields += ['ticks' => $ticks, 'state_hash' => $hash];
             $fields += $this->outcome($run, $ticks, $now);
+
+            if (in_array($fields['status'], [StackerRunStatus::Verifying, StackerRunStatus::Practice], true)) {
+                $fields['replay'] = $replay;
+            }
         }
 
         $taken = StackerRun::query()
@@ -140,6 +153,10 @@ final class StackerRuns
             VerifyStackerRun::dispatch($run->id);
         }
 
+        if ($run->status === StackerRunStatus::Practice) {
+            $this->dropOldPracticeReplays($run->user_id);
+        }
+
         return $run;
     }
 
@@ -150,7 +167,7 @@ final class StackerRuns
     {
         $fields = match ($verdict->outcome) {
             StackerVerdict::VERIFIED => ['status' => StackerRunStatus::Verified, 'settings' => json_encode($verdict->settings), 'verified_at' => $now, 'reason' => null],
-            StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason],
+            StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null],
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
         };
 
@@ -158,6 +175,58 @@ final class StackerRuns
             ->whereKey($run->id)
             ->where('status', StackerRunStatus::Verifying)
             ->update($this->stored($fields + ['updated_at' => $now]));
+    }
+
+    /**
+     * Verifications still running `verifier.stale_minutes` after submission
+     * (a lost job, a stopped worker) become pending; returns how many.
+     */
+    public function sweepStale(CarbonInterface $now): int
+    {
+        $before = $now->copy()->subMinutes((int) config('esports.blockfill.verifier.stale_minutes'));
+
+        return StackerRun::query()
+            ->where('status', StackerRunStatus::Verifying)
+            ->where('submitted_at', '<', $before->format('Y-m-d H:i:s.v'))
+            ->update($this->stored(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-stale', 'updated_at' => $now]));
+    }
+
+    /**
+     * Sends up to `$limit` pending runs, oldest first, to the verifier again;
+     * returns how many. Console only (`stacker:reverify`).
+     */
+    public function reverifyPending(int $limit, CarbonInterface $now): int
+    {
+        $sent = 0;
+
+        foreach (StackerRun::query()->where('status', StackerRunStatus::Pending)->orderBy('id')->limit($limit)->pluck('id') as $id) {
+            $taken = StackerRun::query()
+                ->whereKey($id)
+                ->where('status', StackerRunStatus::Pending)
+                ->update($this->stored(['status' => StackerRunStatus::Verifying, 'reason' => null, 'submitted_at' => $now, 'updated_at' => $now])) === 1;
+
+            if ($taken) {
+                VerifyStackerRun::dispatch((int) $id);
+                $sent++;
+            }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * The rate-limit key of a client address: an IPv4 address as it is, an
+     * IPv6 address by its /64 (one household or one server gets a whole /64).
+     */
+    public static function network(?string $ip): string
+    {
+        $packed = $ip === null ? false : @inet_pton($ip);
+
+        if ($packed === false) {
+            return 'unknown';
+        }
+
+        return strlen($packed) === 16 ? bin2hex(substr($packed, 0, 8)).'::/64' : (string) $ip;
     }
 
     /**
@@ -193,6 +262,24 @@ final class StackerRuns
         }
 
         return ['status' => StackerRunStatus::Verifying];
+    }
+
+    private function dropOldPracticeReplays(int $userId): void
+    {
+        $keep = StackerRun::query()
+            ->where('user_id', $userId)
+            ->where('status', StackerRunStatus::Practice)
+            ->whereNotNull('replay')
+            ->orderByDesc('id')
+            ->limit(max(0, (int) config('esports.blockfill.practice_replays_kept')))
+            ->pluck('id');
+
+        StackerRun::query()
+            ->where('user_id', $userId)
+            ->where('status', StackerRunStatus::Practice)
+            ->whereNotNull('replay')
+            ->whereNotIn('id', $keep)
+            ->update(['replay' => null]);
     }
 
     private function expireIfDue(StackerRun $run, CarbonInterface $now): bool

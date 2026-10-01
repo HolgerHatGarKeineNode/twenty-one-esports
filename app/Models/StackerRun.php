@@ -5,7 +5,9 @@ namespace App\Models;
 use App\Enums\StackerRunStatus;
 use Database\Factories\StackerRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
@@ -14,6 +16,8 @@ use Illuminate\Support\Carbon;
  * One run of Blockfill, our own stacking game (plan "Blockfill", P2), from
  * the issued one-time token to the verifier's verdict
  * (App\Support\Stacker\StackerRuns). The token is stored only as its sha256.
+ * Runs without a verified time go after `esports.blockfill.prune_days`
+ * (`model:prune`, scheduled daily in routes/console.php).
  *
  * @property int $id
  * @property int $user_id
@@ -41,6 +45,8 @@ class StackerRun extends Model
     /** @use HasFactory<StackerRunFactory> */
     use HasFactory;
 
+    use MassPrunable;
+
     /**
      * Milliseconds: the wall-clock bracket compares issue, start and submission
      * against the played time (ticks of 1/60 s).
@@ -59,6 +65,16 @@ class StackerRun extends Model
             'verified_at' => 'datetime',
             'ticks' => 'integer',
         ];
+    }
+
+    /**
+     * @return Builder<static>
+     */
+    public function prunable(): Builder
+    {
+        return static::query()
+            ->where('status', '!=', StackerRunStatus::Verified)
+            ->where('created_at', '<', now()->subDays((int) config('esports.blockfill.prune_days'))->format($this->getDateFormat()));
     }
 
     /**

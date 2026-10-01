@@ -7,6 +7,7 @@ use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\StackerRun;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
@@ -24,6 +25,7 @@ use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesService;
+use App\Support\Stacker\StackerRuns;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentScheduler;
 use App\Support\Tournaments\TournamentSignups;
@@ -466,3 +468,22 @@ Schedule::command('twentyone:stream-bot:pride')->everyFiveMinutes()->withoutOver
  * the first publish.
  */
 Schedule::command('esports:game-channels')->dailyAt('03:21')->withoutOverlapping()->onOneServer();
+
+/*
+ * Blockfill runs (plan "Blockfill", P2 audit): a verification that never
+ * came back (a lost job, a stopped worker) is given up as pending after
+ * `esports.blockfill.verifier.stale_minutes`, and runs without a verified
+ * time are pruned after `prune_days` (StackerRun::prunable()). Pending runs
+ * are sent again only by hand (`stacker:reverify`), so a broken verifier is
+ * not hammered in a loop.
+ */
+Artisan::command('stacker:sweep', function (StackerRuns $runs) {
+    $this->info('Gave up '.$runs->sweepStale(now()).' stale verification(s) as pending.');
+})->purpose('Move Blockfill runs stuck in verifying back to pending');
+
+Artisan::command('stacker:reverify {--limit=50 : at most this many pending runs}', function (StackerRuns $runs) {
+    $this->info('Sent '.$runs->reverifyPending(max(1, (int) $this->option('limit')), now()).' pending run(s) to the verifier again.');
+})->purpose('Send pending Blockfill runs to the verifier again');
+
+Schedule::command('stacker:sweep')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('04:41')->withoutOverlapping()->onOneServer();

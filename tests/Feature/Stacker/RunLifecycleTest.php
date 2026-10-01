@@ -14,7 +14,9 @@ use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\BlockfillOn;
@@ -27,11 +29,11 @@ beforeEach(function () {
 });
 
 /**
- * Issues a run for `$user` (logged in from here on) and returns its JSON.
+ * Issues a run for `$user` (logged in from here on), starts it unless told not to, and returns its JSON.
  *
  * @return array{token: string, seed: string, engine: string}
  */
-function issueRun(User $user, bool $start = false): array
+function issueRun(User $user, bool $start = true): array
 {
     $issued = test()->actingAs($user)->postJson(route('stacker.runs.issue'))->assertCreated()->json();
 
@@ -78,7 +80,7 @@ test('a player gets a one-time token and a fresh seed, only the token\'s hash is
     $user = User::factory()->create();
 
     $this->postJson(route('stacker.runs.issue'))->assertUnauthorized();
-    $issued = issueRun($user);
+    $issued = issueRun($user, start: false);
 
     $run = runOf($issued);
     expect($issued['token'])->toMatch('/^[A-Za-z0-9]{40}$/')
@@ -92,32 +94,31 @@ test('a player gets a one-time token and a fresh seed, only the token\'s hash is
     // one issue per 2 s
     $this->postJson(route('stacker.runs.issue'))->assertTooManyRequests();
     $this->travel(2)->seconds();
-    issueRun($user);
+    issueRun($user, start: false);
 });
 
-test('one active run per player, a token expires 2 minutes unstarted, and a run starts once', function () {
+test('one active run per player, a token expires 10 s unstarted, and a run starts once', function () {
     BlockfillOn::play();
     $user = User::factory()->create();
 
-    $first = issueRun($user);
+    $first = issueRun($user, start: false);
     $this->travel(3)->seconds();
-    $second = issueRun($user);
+    $second = issueRun($user, start: false);
     expect(runOf($first))->status->toBe(StackerRunStatus::Abandoned)->reason->toBe('replaced');
     $this->postJson(route('stacker.runs.start', $first['token']))->assertStatus(410)->assertJson(['reason' => 'replaced']);
 
-    $this->travel(121)->seconds();
+    $this->travel(11)->seconds();
     $this->postJson(route('stacker.runs.start', $second['token']))->assertStatus(410)->assertJson(['status' => 'abandoned', 'reason' => 'expired']);
     expect(runOf($second)->status)->toBe(StackerRunStatus::Abandoned);
 
-    $third = issueRun($user);
-    $this->travel(119)->seconds();
+    $third = issueRun($user, start: false);
+    $this->travel(9)->seconds();
     $this->postJson(route('stacker.runs.start', $third['token']))->assertNoContent();
     $this->postJson(route('stacker.runs.start', $third['token']))->assertConflict();
 
-    // an unstarted token expires for a submission as well
+    // an unstarted token expires for a submission as well: the run has to be started
     $this->travel(3)->seconds();
-    $fourth = issueRun($user);
-    $this->travel(121)->seconds();
+    $fourth = issueRun($user, start: false);
     submitForty($fourth['token'])->assertStatus(410)->assertJson(['reason' => 'expired']);
     expect($this->verifier->asked)->toBe([]);
 });
@@ -145,7 +146,7 @@ test('a token is single-use and only its own player\'s: verified once on the ver
         ->and((new VerifyStackerRun($run->id))->tries)->toBe(1);
 });
 
-test('the wall clock from start (or issue) to submission covers the played time and at most 20 s more', function () {
+test('the wall clock from start to submission covers the played time and at most 20 s more', function () {
     BlockfillOn::play();
 
     $cases = [
@@ -153,14 +154,14 @@ test('the wall clock from start (or issue) to submission covers the played time 
         'exactly the played time' => [0, true, 'verifying', null],
         '20 s later' => [20000, true, 'verifying', null],
         'more than 20 s later' => [20001, true, 'rejected', 'clock'],
-        'never started, 30 s waited after the issue' => [30000, false, 'rejected', 'clock'],
     ];
     foreach ($cases as $case => [$extraMs, $start, $status, $reason]) {
         $issued = issueRun(User::factory()->create(), $start);
         $asked = count($this->verifier->asked);
 
         submitForty($issued['token'], $extraMs)->assertAccepted()->assertJson(['status' => $status, 'reason' => $reason]);
-        expect(count($this->verifier->asked) - $asked)->toBe($status === 'verifying' ? 1 : 0, $case);
+        expect(count($this->verifier->asked) - $asked)->toBe($status === 'verifying' ? 1 : 0, $case)
+            ->and(runOf($issued)->replay === null)->toBe($status === 'rejected', "{$case}: a rejected run keeps no replay");
     }
 });
 
@@ -212,6 +213,69 @@ test('a rejection keeps the verifier\'s reason; a verifier that is unavailable o
         expect(runOf($issued))
             ->status->toBe($status, $case)
             ->reason->toBe($reason)
-            ->verified_at->toBeNull();
+            ->verified_at->toBeNull()
+            // a rejected run keeps no replay; a pending one keeps it for the next try
+            ->and(runOf($issued)->replay === null)->toBe($status === StackerRunStatus::Rejected, $case);
     }
+});
+
+test('practice runs keep their replay only for the latest few per player', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.practice_replays_kept' => 2]);
+    $user = User::factory()->create();
+    StackerRun::factory()->for($user)->verified(900)->create();
+
+    $seeds = [];
+    foreach (range(1, 3) as $attempt) {
+        $this->travel(3)->seconds();
+        $issued = issueRun($user);
+        submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'practice']);
+        $seeds[] = $issued['seed'];
+    }
+
+    expect(array_map(fn (string $seed): bool => StackerRun::query()->where('seed', $seed)->sole()->replay !== null, $seeds))
+        ->toBe([false, true, true]);
+});
+
+test('issuing is also limited per network (IPv6 by /64) and in total per minute', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.issue_per_ip_per_hour' => 2, 'esports.blockfill.issue_global_per_minute' => 5]);
+    $issueFrom = fn (string $ip) => $this->actingAs(User::factory()->create())
+        ->withServerVariables(['REMOTE_ADDR' => $ip])
+        ->postJson(route('stacker.runs.issue'));
+
+    $issueFrom('2001:db8:1:2::1')->assertCreated();
+    $issueFrom('2001:db8:1:2:ffff::9')->assertCreated();
+    $issueFrom('2001:db8:1:2::77')->assertTooManyRequests();
+    $issueFrom('2001:db8:1:3::1')->assertCreated();
+    $issueFrom('192.0.2.10')->assertCreated();
+    $issueFrom('192.0.2.11')->assertCreated();
+    // the sixth issue of the minute, from a fresh network
+    $issueFrom('198.51.100.1')->assertTooManyRequests();
+
+    expect(StackerRun::query()->count())->toBe(5);
+});
+
+test('old runs without a verified time are pruned, a stuck verification goes back to pending, and pending runs can be sent again', function () {
+    Queue::fake();
+    $user = User::factory()->create();
+    $old = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Rejected, 'created_at' => now()->subDays(31)]);
+    $oldVerified = StackerRun::factory()->for($user)->verified(900)->create(['created_at' => now()->subDays(31)]);
+    $recent = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Practice, 'created_at' => now()->subDays(29)]);
+
+    $this->artisan('model:prune', ['--model' => StackerRun::class])->assertSuccessful();
+    expect(StackerRun::query()->pluck('id')->sort()->values()->all())->toBe([$oldVerified->id, $recent->id]);
+
+    $stuck = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(11), 'replay' => 'AQ']);
+    $fresh = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(9), 'replay' => 'AQ']);
+    $this->artisan('stacker:sweep')->assertSuccessful();
+    expect($stuck->refresh())->status->toBe(StackerRunStatus::Pending)->reason->toBe('verifier-stale')
+        ->and($fresh->refresh()->status)->toBe(StackerRunStatus::Verifying);
+
+    $this->artisan('stacker:reverify')->assertSuccessful();
+    expect($stuck->refresh()->status)->toBe(StackerRunStatus::Verifying);
+    Queue::assertPushedOn('stacker-verify', VerifyStackerRun::class, fn (VerifyStackerRun $job): bool => $job->runId === $stuck->id);
+
+    $scheduled = collect(app(Schedule::class)->events())->map(fn ($event): string => (string) $event->command)->implode("\n");
+    expect($scheduled)->toContain('stacker:sweep')->toContain('model:prune');
 });

@@ -4,7 +4,8 @@
 | The real Node verifier (App\Support\Stacker\NodeVerifier running
 | resources/js/stacker/verify.mjs) on the reference runs of
 | tests/Fixtures/stacker: it accepts the 40-line run at its exact time and
-| rejects everything else. The only tests that start Node for a run; the
+| rejects everything else; a verifier that does not answer leaves the run
+| pending. The only tests that start Node for a run; the
 | lifecycle tests use a fake. The timeout case waits about one second (the
 | smallest timeout the process API takes) on a script that sleeps.
 */
@@ -65,8 +66,65 @@ test('the verifier rejects what does not replay to the claim', function (string 
     'an engine it does not know' => ['forty-lines', ['engine' => 'bf9'], [], 'engine'],
     'a replay over the size limit' => ['forty-lines', [], ['esports.blockfill.limits.bytes' => 1000], 'oversize'],
     'a verifier that runs out of time' => ['forty-lines', [], ['esports.blockfill.verifier.timeout_seconds' => 1, 'esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/slow-verifier.mjs'], 'timeout'],
-    'a verifier that crashes' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/crashing-verifier.mjs'], 'crash'],
+    'a replay the engine throws on (answered by verify.mjs itself)' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/throwing-engine-verifier.mjs'], 'crash'],
 ]);
+
+test('a verifier that gives no valid answer leaves the run pending, never rejected', function () {
+    $cases = [
+        'it crashes before answering' => 'tests/Fixtures/stacker/crashing-verifier.mjs',
+        'its script does not parse' => 'tests/Fixtures/stacker/syntax-error-verifier.mjs',
+        'its script is missing' => 'tests/Fixtures/stacker/no-such-verifier.mjs',
+    ];
+    foreach ($cases as $case => $script) {
+        config(['esports.blockfill.verifier.script' => base_path($script)]);
+        $run = referenceRun('forty-lines');
+
+        VerifyStackerRun::dispatchSync($run->id);
+
+        expect($run->refresh())
+            ->status->toBe(StackerRunStatus::Pending, $case)
+            ->reason->toBe('verifier-unavailable', $case)
+            ->replay->not->toBeNull();
+        $run->delete();
+    }
+});
+
+test('the verifier runs from a symlinked path, as in a release directory', function () {
+    $dir = sys_get_temp_dir().'/stacker-link-'.bin2hex(random_bytes(4));
+    mkdir($dir);
+    symlink(resource_path('js/stacker/verify.mjs'), $dir.'/verify.mjs');
+    config(['esports.blockfill.verifier.script' => $dir.'/verify.mjs']);
+
+    try {
+        $verdict = app(NodeVerifier::class)->verify(referenceRun('forty-lines'));
+    } finally {
+        unlink($dir.'/verify.mjs');
+        rmdir($dir);
+    }
+
+    expect($verdict->outcome)->toBe(StackerVerdict::VERIFIED);
+});
+
+test('the verifier process sees no secret from the league\'s environment', function () {
+    // as Laravel loads .env: process environment and $_ENV/$_SERVER (Symfony Process passes on what is in both)
+    foreach (['STACKER_PROBE_TOKEN' => 'do-not-pass-me', 'STACKER_PROBE_PLAIN' => 'visible'] as $name => $value) {
+        putenv("{$name}={$value}");
+        $_ENV[$name] = $_SERVER[$name] = $value;
+    }
+    config(['esports.blockfill.verifier.script' => base_path('tests/Fixtures/stacker/env-verifier.mjs')]);
+
+    try {
+        $verdict = app(NodeVerifier::class)->verify(referenceRun('forty-lines'));
+    } finally {
+        foreach (['STACKER_PROBE_TOKEN', 'STACKER_PROBE_PLAIN'] as $name) {
+            putenv($name);
+            unset($_ENV[$name], $_SERVER[$name]);
+        }
+    }
+
+    // env-verifier.mjs answers `engine` if it sees the token, `oversize` if it misses the plain one
+    expect($verdict->reason)->toBe('seed');
+});
 
 test('without a Node binary the verifier is unavailable and the run stays pending', function () {
     config(['esports.blockfill.verifier.node' => '/nonexistent/node']);

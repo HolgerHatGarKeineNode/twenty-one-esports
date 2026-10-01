@@ -7,9 +7,13 @@
  *   {replay, seed, engine, claimed: {ticks, hash}, limits: {ticks, inputs, bytes}}
  * and answers one JSON line on stdout, exit code 0:
  *   {ok: true, ticks, lines, pieces, hash, settings}
- *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | mismatch
- * Anything else (a non-zero exit, no JSON) is a crash; the caller rejects the run.
+ *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | mismatch | crash
+ * `crash` is the engine throwing on this replay, caught here: the only crash that
+ * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
+ * a signal) says nothing about the run, so the caller leaves it pending.
  */
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { decodeReplay } from './replay.js';
 
 /** Frozen engines by version; a new version adds a line, an old one never goes. */
@@ -42,7 +46,7 @@ async function readStdin() {
  *
  * @param {any} request
  */
-export async function verify(request) {
+export async function verify(request, engines = ENGINES) {
     if (request === null || typeof request !== 'object') {
         return { ok: false, reason: 'malformed' };
     }
@@ -55,7 +59,7 @@ export async function verify(request) {
     if (replay.length > limits.bytes) {
         return { ok: false, reason: 'oversize' };
     }
-    if (!Object.hasOwn(ENGINES, engine)) {
+    if (!Object.hasOwn(engines, engine)) {
         return { ok: false, reason: 'engine' };
     }
 
@@ -76,8 +80,13 @@ export async function verify(request) {
         return { ok: false, reason: 'oversize' };
     }
 
-    const { run } = await ENGINES[engine]();
-    const result = run(header.seed, header.settings, inputs, { maxTicks: limits.ticks });
+    let result;
+    try {
+        const { run } = await engines[engine]();
+        result = run(header.seed, header.settings, inputs, { maxTicks: limits.ticks });
+    } catch {
+        return { ok: false, reason: 'crash' };
+    }
     if (!result.finished) {
         return { ok: false, reason: 'unfinished' };
     }
@@ -88,7 +97,12 @@ export async function verify(request) {
     return { ok: true, ticks: result.ticks, lines: result.lines, pieces: result.pieces, hash: result.stateHash, settings: header.settings };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+/**
+ * Reads the request from stdin and writes the verdict to stdout.
+ *
+ * @param {Record<string, () => Promise<{run: Function}>>} [engines]
+ */
+export async function main(engines = ENGINES) {
     const text = await readStdin();
     let request = null;
     try {
@@ -96,5 +110,21 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
     } catch {
         request = null;
     }
-    answer(text === null ? { ok: false, reason: 'oversize' } : await verify(request));
+    answer(text === null ? { ok: false, reason: 'oversize' } : await verify(request, engines));
+}
+
+/** True when this file is the script Node was started with, also through a symlink (a release directory). */
+function isMainModule() {
+    if (!process.argv[1]) {
+        return false;
+    }
+    try {
+        return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+    } catch {
+        return false;
+    }
+}
+
+if (isMainModule()) {
+    await main();
 }

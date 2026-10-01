@@ -1172,21 +1172,29 @@ return [
     | routes in routes/stacker.php are not registered at all. engine: the
     | engine version new runs are issued on (frozen versions stay playable
     | for replays). start_seconds: a token that is not started within this
-    | long expires. limits: what a submission may carry (ticks of play,
-    | inputs, bytes of the request body). slack_seconds: the wall-clock
-    | bracket, the time between start (or issue) and submission must be at
-    | least the played time and at most this much more. verifier: the Node
-    | process (binary, heap limit, timeout) and the queue its job runs on;
-    | the queue worker must listen on that queue too. issue_per_hour and
-    | submits_per_minute: rate limits per player (plus one issue per
-    | issue_every_seconds).
+    | long expires; the page asks for a run right before its countdown, so
+    | the seed is known at most this long before the clock runs. limits:
+    | what a submission may carry (ticks of play, inputs, bytes of the
+    | request body). slack_seconds: the wall-clock bracket, the time between
+    | start and submission must be at least the played time and at most
+    | this much more. verifier: the Node process (binary, heap limit,
+    | timeout), the queue its job runs on (the queue worker must listen on
+    | it too) and stale_minutes, after which a verification still running is
+    | given up as pending (`stacker:sweep`; `stacker:reverify` sends pending
+    | runs again). Rate limits: per player (issue_per_hour plus one issue per
+    | issue_every_seconds, submits_per_minute), per network (IPv4 address
+    | or IPv6 /64: issue_per_ip_per_hour, submits_per_ip_per_minute) and for
+    | everyone together (issue_global_per_minute). Storage:
+    | practice_replays_kept, the practice runs per player that keep their
+    | replay (older ones drop it); prune_days, after which runs without a
+    | verified time are deleted (`model:prune`, daily).
     |
     */
 
     'blockfill' => [
         'enabled' => (bool) env('ESPORTS_BLOCKFILL', false),
         'engine' => 'bf1',
-        'start_seconds' => 120,
+        'start_seconds' => 10,
         'limits' => [
             'ticks' => 36000,
             'inputs' => 20000,
@@ -1196,12 +1204,18 @@ return [
         'issue_every_seconds' => 2,
         'issue_per_hour' => 400,
         'submits_per_minute' => 30,
+        'issue_per_ip_per_hour' => 1200,
+        'submits_per_ip_per_minute' => 90,
+        'issue_global_per_minute' => 300,
+        'practice_replays_kept' => 20,
+        'prune_days' => 30,
         'verifier' => [
             'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),
             'script' => 'js/stacker/verify.mjs',
             'heap_mb' => 64,
             'timeout_seconds' => 5,
             'queue' => 'stacker-verify',
+            'stale_minutes' => 10,
         ],
     ],
 
