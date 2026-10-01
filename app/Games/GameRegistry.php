@@ -34,13 +34,16 @@ final class GameRegistry
      * their order, then every other game as registered, then the `last` slugs.
      * A slug of a game that is not registered is skipped.
      *
-     * @param  list<Game>  $games
-     * @param  list<string>  $first
-     * @param  list<string>  $last
+     * @param  array<array-key, Game>  $games
+     * @param  array<mixed>  $first  slugs from config
+     * @param  array<mixed>  $last  slugs from config
      * @return list<Game>
      */
     public static function ordered(array $games, array $first, array $last): array
     {
+        $games = array_values($games);
+        $first = array_values(array_filter($first, is_string(...)));
+        $last = array_values(array_filter($last, is_string(...)));
         $rank = function (Game $game) use ($first, $last): int {
             $head = array_search($game->slug(), $first, true);
             $tail = array_search($game->slug(), $last, true);
