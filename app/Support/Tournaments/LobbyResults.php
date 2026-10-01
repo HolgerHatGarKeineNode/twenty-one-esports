@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
@@ -63,10 +64,27 @@ final class LobbyResults
     /** Largest screenshot taken, in kilobytes. */
     public const SCREENSHOT_MAX_KB = 8192;
 
-    /** Largest screenshot taken, in pixels (a 4K end screen is 8.3 million): no decompression bomb reaches GD. */
-    public const SCREENSHOT_MAX_PIXELS = 40_000_000;
+    /** Longest side of a screenshot taken, in pixels, read from its header before decoding (a 4K end screen is 3840). */
+    public const SCREENSHOT_MAX_SIDE = 4096;
 
-    /** A lobby past its report deadline is closed without a result this many hours later (security audit P10, F3). */
+    /** Longest side an end screen is stored at: it is downscaled to this. */
+    public const SCREENSHOT_STORED_SIDE = 1920;
+
+    /** Largest stored end screen, in bytes, after the lossy re-encode. */
+    public const SCREENSHOT_STORED_MAX_BYTES = 2 * 1024 * 1024;
+
+    /** Reports one player may send for one lobby within REPORT_WINDOW_SECONDS. */
+    public const REPORTS_PER_WINDOW = 5;
+
+    public const REPORT_WINDOW_SECONDS = 600;
+
+    /** Reports kept per lobby until it is decided; the oldest goes beyond this. */
+    public const REPORTS_KEPT = 20;
+
+    /** A rejected report reopens reporting for this long, also after the deadline. */
+    public const REOPEN_MINUTES = 30;
+
+    /** A lobby past its report deadline is closed without a result this many hours after its deciders were told (audit P10, F3 and M1). */
     public const NO_RESULT_AFTER_HOURS = 24;
 
     /** End screens are deleted this many days after their lobby was decided or its tournament called off. */
@@ -126,11 +144,64 @@ final class LobbyResults
         return is_string($at) ? CarbonImmutable::parse($at) : null;
     }
 
-    public static function reportOpen(TournamentMatch $match): bool
+    /**
+     * Until when the players report: the deadline, or later while a reject
+     * has reopened reporting (REOPEN_MINUTES); null for a lobby without one.
+     */
+    public static function reportUntil(TournamentMatch $match): ?CarbonImmutable
     {
         $by = self::reportBy($match);
+        $reopened = $match->lobby['reopened_until'] ?? null;
 
-        return $by === null || $by->isFuture();
+        if ($by === null || ! is_string($reopened)) {
+            return $by;
+        }
+
+        $reopened = CarbonImmutable::parse($reopened);
+
+        return $reopened->gt($by) ? $reopened : $by;
+    }
+
+    public static function reportOpen(TournamentMatch $match): bool
+    {
+        $until = self::reportUntil($match);
+
+        return $until === null || $until->isFuture();
+    }
+
+    /**
+     * The report waiting for a decision, without the earlier ones; null when
+     * there is none (nobody reported, or the last one was rejected).
+     *
+     * @param  array<string, mixed>|null  $stored  TournamentMatch::$lobby_report
+     * @return array{places: array<int|string, int>, user_id: int|null, name: string, at: string|null, screenshot: string|null}|null
+     */
+    public static function currentReport(?array $stored): ?array
+    {
+        if (! is_array($stored['places'] ?? null)) {
+            return null;
+        }
+
+        return [
+            'places' => array_map(intval(...), $stored['places']),
+            'user_id' => is_int($stored['user_id'] ?? null) ? $stored['user_id'] : null,
+            'name' => (string) ($stored['name'] ?? ''),
+            'at' => is_string($stored['at'] ?? null) ? $stored['at'] : null,
+            'screenshot' => is_string($stored['screenshot'] ?? null) ? $stored['screenshot'] : null,
+        ];
+    }
+
+    /**
+     * Every earlier report of the lobby still undecided (audit P10, L1): a
+     * later report or a reject never deletes one, the deciders see them all,
+     * oldest first as stored (index = the screenshot route's `report`).
+     *
+     * @param  array<string, mixed>|null  $stored
+     * @return list<array<string, mixed>>
+     */
+    public static function earlierReports(?array $stored): array
+    {
+        return array_values(array_filter((array) ($stored['earlier'] ?? []), is_array(...)));
     }
 
     /**
@@ -155,10 +226,19 @@ final class LobbyResults
         }
 
         $parsed = self::places($match, $places);
+
+        // Every attempt counts, before the picture is decoded (audit P10, M2: a replayed upload costs nothing more).
+        $limit = 'lobby-report:'.$user->id.':'.$match->id;
+
+        if (RateLimiter::tooManyAttempts($limit, self::REPORTS_PER_WINDOW)) {
+            throw new TournamentRuleViolation('rate', __('Too many reports for this lobby. Try again in :minutes min.', ['minutes' => max(1, (int) ceil(RateLimiter::availableIn($limit) / 60))]));
+        }
+
+        RateLimiter::hit($limit, self::REPORT_WINDOW_SECONDS);
         $path = self::storeScreenshot($match, $screenshot);
 
         try {
-            $replaced = DB::transaction(function () use ($match, $user, $parsed, $path): ?string {
+            $dropped = DB::transaction(function () use ($match, $user, $parsed, $path): array {
                 Tournament::query()->lockForUpdate()->findOrFail($match->tournament_id);
                 $locked = TournamentMatch::query()->lockForUpdate()->findOrFail($match->id);
 
@@ -166,16 +246,25 @@ final class LobbyResults
                     throw new TournamentRuleViolation('decided', __('This lobby is decided already.'));
                 }
 
-                $previous = $locked->lobby_report['screenshot'] ?? null;
+                // The report before stays, with its end screen (audit P10, L1): a last-minute report replaces nothing.
+                $earlier = self::earlierReports($locked->lobby_report);
+                $previous = self::currentReport($locked->lobby_report);
+
+                if ($previous !== null) {
+                    $earlier[] = $previous;
+                }
+
+                $dropped = array_splice($earlier, 0, max(0, count($earlier) - (self::REPORTS_KEPT - 1)));
                 $locked->forceFill(['lobby_report' => [
                     'places' => array_map(intval(...), $parsed['places']),
                     'user_id' => $user->id,
                     'name' => mb_substr($user->displayName(), 0, 80),
                     'at' => now()->toIso8601String(),
                     'screenshot' => $path,
+                    'earlier' => $earlier,
                 ]])->save();
 
-                return is_string($previous) ? $previous : null;
+                return array_values(array_filter(array_map(fn (array $report): mixed => $report['screenshot'] ?? null, $dropped), is_string(...)));
             });
         } catch (Throwable $e) {
             // Not accepted: the new file goes with it (N1, no orphans).
@@ -184,8 +273,8 @@ final class LobbyResults
             throw $e;
         }
 
-        if ($replaced !== null) {
-            Storage::disk('local')->delete($replaced);
+        if ($dropped !== []) {
+            Storage::disk('local')->delete($dropped);
         }
 
         Broadcasts::send(new TournamentChanged($match->tournament_id, 'result'));
@@ -220,10 +309,11 @@ final class LobbyResults
     }
 
     /**
-     * A director rejects the report they were shown: it is gone, the players
-     * see the reason and may report again while the time to report runs.
-     * Under the same locks as a confirmation, so of a confirm and a reject at
-     * once only one applies.
+     * A director rejects the report they were shown: it waits no longer (it
+     * stays in the earlier reports, marked rejected, with its end screen),
+     * the players see the reason and may report again for REOPEN_MINUTES,
+     * also after the deadline. Under the same locks as a confirmation, so of
+     * a confirm and a reject at once only one applies.
      *
      * @throws TournamentRuleViolation
      */
@@ -237,34 +327,30 @@ final class LobbyResults
             throw new TournamentRuleViolation('reason', __('Give a reason of 3 to 300 characters: the players see it.'));
         }
 
-        $screenshot = DB::transaction(function () use ($match, $director, $reason, $shown): ?string {
+        DB::transaction(function () use ($match, $director, $reason, $shown): void {
             Tournament::query()->lockForUpdate()->findOrFail($match->tournament_id);
             $locked = TournamentMatch::query()->lockForUpdate()->findOrFail($match->id);
             $this->assertSameReport($locked, $shown);
 
-            $screenshot = $locked->lobby_report['screenshot'] ?? null;
+            $rejected = ['name' => mb_substr($director->displayName(), 0, 80), 'at' => now()->toIso8601String(), 'reason' => $reason];
             $locked->forceFill([
-                'lobby_report' => null,
-                'lobby' => [...(array) $locked->lobby, 'rejected' => ['name' => mb_substr($director->displayName(), 0, 80), 'at' => now()->toIso8601String(), 'reason' => $reason]],
+                'lobby_report' => ['earlier' => [...self::earlierReports($locked->lobby_report), [...(array) self::currentReport($locked->lobby_report), 'rejected' => $rejected]]],
+                'lobby' => [...(array) $locked->lobby, 'rejected' => $rejected, 'reopened_until' => now()->addMinutes(self::REOPEN_MINUTES)->toIso8601String()],
             ])->save();
-
-            return is_string($screenshot) ? $screenshot : null;
         });
-
-        if ($screenshot !== null) {
-            Storage::disk('local')->delete($screenshot);
-        }
 
         Broadcasts::send(new TournamentChanged($match->tournament_id, 'result'));
     }
 
     /**
      * The scheduler's step (TournamentScheduler::tick()): a lobby past its
-     * report deadline tells the people who decide it once; one still
-     * undecided NO_RESULT_AFTER_HOURS later is closed without a result, so
-     * the tournament (and a cup series) moves on; end screens past their
-     * keeping time are deleted. A waiting player report is never confirmed
-     * by the league.
+     * report deadline tells the people who may decide it, once, and notes
+     * when (`overdue_noticed_at`); one still undecided NO_RESULT_AFTER_HOURS
+     * after that notice is closed without a result, so the tournament (and
+     * a cup series) moves on. A scheduler that was down tells first and
+     * closes a day later, never at once (audit P10, M1). End screens past
+     * their keeping time are deleted. A waiting player report is never
+     * confirmed by the league.
      *
      * @return array{overdue: int, closed: int, pruned: int}
      */
@@ -276,17 +362,19 @@ final class LobbyResults
             ->with(['tournament', 'slots.participant'])->orderBy('id')->get();
 
         foreach ($open as $match) {
-            $by = self::reportBy($match);
+            $until = self::reportUntil($match);
 
-            if ($by === null || $by->isFuture()) {
+            if ($until === null || $until->isFuture()) {
                 continue;
             }
 
+            $noticed = $match->lobby['overdue_noticed_at'] ?? null;
+
             try {
-                if ($by->addHours(self::NO_RESULT_AFTER_HOURS)->isPast()) {
-                    $done['closed'] += $this->closeWithoutResult($match) ? 1 : 0;
-                } elseif (! isset($match->lobby['overdue_at'])) {
+                if (! is_string($noticed)) {
                     $done['overdue'] += $this->tellOverdue($match) ? 1 : 0;
+                } elseif (CarbonImmutable::parse($noticed)->addHours(self::NO_RESULT_AFTER_HOURS)->isPast()) {
+                    $done['closed'] += $this->closeWithoutResult($match) ? 1 : 0;
                 }
             } catch (Throwable $e) {
                 report($e);
@@ -302,19 +390,22 @@ final class LobbyResults
     }
 
     /**
-     * Tell the people who decide an overdue lobby, once: the admins for a
-     * casual cup (the league runs it), the directors otherwise.
+     * Tell the people who may decide an overdue lobby, once: the organizer
+     * and the directors (a casual cup has none: the league runs it), each
+     * only if they may decide it (mayDecide(): no stake in the tournament);
+     * when none of them may, the admins who may. Marked as told even when
+     * nobody qualifies (logged), so the lobby still closes a day later.
      */
     private function tellOverdue(TournamentMatch $match): bool
     {
         $marked = DB::transaction(function () use ($match): bool {
             $locked = TournamentMatch::query()->lockForUpdate()->findOrFail($match->id);
 
-            if ($locked->result !== null || isset($locked->lobby['overdue_at'])) {
+            if ($locked->result !== null || isset($locked->lobby['overdue_noticed_at'])) {
                 return false;
             }
 
-            $locked->forceFill(['lobby' => [...(array) $locked->lobby, 'overdue_at' => now()->toIso8601String()]])->save();
+            $locked->forceFill(['lobby' => [...(array) $locked->lobby, 'overdue_noticed_at' => now()->toIso8601String()]])->save();
 
             return true;
         });
@@ -324,17 +415,26 @@ final class LobbyResults
         }
 
         $tournament = $match->tournament;
-        $deciders = $tournament->isCasualCup()
-            ? User::query()->whereIn('pubkey', Admin::query()->pluck('pubkey'))->get()
-            : User::query()->whereKey(array_filter([$tournament->created_by_id, ...$tournament->directors()->pluck('users.id')->all()]))->get();
-        $closesAt = self::reportBy($match)?->addHours(self::NO_RESULT_AFTER_HOURS);
+        $may = fn (User $user): bool => self::mayDecide($tournament, $match, $user);
+        $deciders = $tournament->isCasualCup() ? collect()
+            : User::query()->whereKey(array_filter([$tournament->created_by_id, ...$tournament->directors()->pluck('users.id')->all()]))->get()->filter($may);
+
+        if ($deciders->isEmpty()) {
+            $deciders = User::query()->whereIn('pubkey', Admin::query()->pluck('pubkey'))->get()->filter($may);
+        }
+
+        if ($deciders->isEmpty()) {
+            Log::warning('Lobby overdue, but nobody may decide it: no director and no admin without a stake', ['tournament' => $tournament->id, 'match' => $match->id]);
+        }
+
+        $closesAt = now()->addHours(self::NO_RESULT_AFTER_HOURS);
 
         foreach ($deciders as $user) {
             $locale = (string) ($user->locale ?? config('app.locale'));
             $this->notifier->send($user, NotificationKind::TournamentNews, new Notice(
                 __(':tournament: lobby :number waits for a decision', ['tournament' => $tournament->name, 'number' => $match->position], $locale),
                 __('Its players had until now to report. Confirm their report or enter the places on its card; otherwise the league closes the lobby without a result at :time.', [
-                    'time' => $closesAt?->setTimezone((string) ($user->timezone ?? config('esports.preseason.display_timezone')))->format('D j M, H:i') ?? '',
+                    'time' => $closesAt->setTimezone((string) ($user->timezone ?? config('esports.preseason.display_timezone')))->format('D j M, H:i'),
                 ], $locale),
                 route('tournaments.show', $tournament).'#bracket', null, __('Open tournament', [], $locale)));
         }
@@ -384,7 +484,7 @@ final class LobbyResults
                 'user_name' => 'League',
                 'action' => 'lobby_no_result',
                 'subject' => mb_substr(__('Lobby :number', ['number' => $locked->position]), 0, 80),
-                'reason' => 'Nobody decided the lobby within '.self::NO_RESULT_AFTER_HOURS.' hours after its report deadline; nobody of it is placed.',
+                'reason' => 'Nobody decided the lobby within '.self::NO_RESULT_AFTER_HOURS.' hours after its deciders were told it was overdue; nobody of it is placed.',
                 'details' => null,
                 'created_at' => now(),
             ]);
@@ -426,9 +526,13 @@ final class LobbyResults
     }
 
     /**
-     * The end screen stored on the private disk, re-encoded as PNG with GD so
-     * no EXIF or GPS of the player's device is kept. Without GD the bytes are
-     * stored as sent (logged once a day, so it is seen).
+     * The end screen stored on the private disk (audit P10, N1 and M2): its
+     * header is read first and a picture longer than SCREENSHOT_MAX_SIDE on
+     * either side is refused before anything is decoded; then it is
+     * downscaled to SCREENSHOT_STORED_SIDE and re-encoded lossy (WebP, else
+     * JPEG, quality 80, lower until it fits SCREENSHOT_STORED_MAX_BYTES), so
+     * no EXIF or GPS of the player's device is kept and no file outgrows its
+     * cap. Without GD the bytes are stored as sent (logged once a day).
      *
      * @throws TournamentRuleViolation
      */
@@ -442,8 +546,12 @@ final class LobbyResults
 
         $size = @getimagesize((string) $screenshot->getRealPath());
 
-        if ($size === false || $size[0] < 1 || $size[1] < 1 || $size[0] * $size[1] > self::SCREENSHOT_MAX_PIXELS) {
+        if ($size === false || $size[0] < 1 || $size[1] < 1) {
             throw $refused;
+        }
+
+        if (max($size[0], $size[1]) > self::SCREENSHOT_MAX_SIDE) {
+            throw new TournamentRuleViolation('screenshot', __('The screenshot is too large: at most :max pixels on its longest side.', ['max' => self::SCREENSHOT_MAX_SIDE]));
         }
 
         $directory = "lobby-results/{$match->id}";
@@ -468,14 +576,42 @@ final class LobbyResults
             throw $refused;
         }
 
-        ob_start();
-        imagepng($image);
-        $png = (string) ob_get_clean();
+        $longest = max(imagesx($image), imagesy($image));
+
+        if ($longest > self::SCREENSHOT_STORED_SIDE) {
+            $scale = self::SCREENSHOT_STORED_SIDE / $longest;
+            $scaled = imagescale($image, max(1, (int) round(imagesx($image) * $scale)), max(1, (int) round(imagesy($image) * $scale)));
+            imagedestroy($image);
+
+            if ($scaled === false) {
+                throw $refused;
+            }
+
+            $image = $scaled;
+        }
+
+        $webp = function_exists('imagewebp');
+        $bytes = '';
+
+        foreach ([80, 60, 40] as $quality) {
+            ob_start();
+            $webp ? imagewebp($image, null, $quality) : imagejpeg($image, null, $quality);
+            $bytes = (string) ob_get_clean();
+
+            if (strlen($bytes) <= self::SCREENSHOT_STORED_MAX_BYTES) {
+                break;
+            }
+        }
+
         imagedestroy($image);
 
-        $path = $directory.'/'.Str::random(40).'.png';
+        if ($bytes === '' || strlen($bytes) > self::SCREENSHOT_STORED_MAX_BYTES) {
+            throw new TournamentRuleViolation('screenshot', __('The screenshot could not be saved. Try again.'));
+        }
 
-        if (! Storage::disk('local')->put($path, $png)) {
+        $path = $directory.'/'.Str::random(40).($webp ? '.webp' : '.jpg');
+
+        if (! Storage::disk('local')->put($path, $bytes)) {
             throw new TournamentRuleViolation('screenshot', __('The screenshot could not be saved. Try again.'));
         }
 
@@ -491,11 +627,13 @@ final class LobbyResults
             throw new TournamentRuleViolation('decided', __('This lobby is decided already.'));
         }
 
-        if ($locked->lobby_report === null) {
+        $current = self::currentReport($locked->lobby_report);
+
+        if ($current === null) {
             throw new TournamentRuleViolation('no_report', __('Nobody has reported this lobby yet.'));
         }
 
-        if (! hash_equals(self::reportIdentity($locked->lobby_report), $shown)) {
+        if (! hash_equals(self::reportIdentity($current), $shown)) {
             throw new TournamentRuleViolation('report_changed', __('The report changed — look again.'));
         }
     }
@@ -693,7 +831,7 @@ final class LobbyResults
                 $this->assertSameReport($locked, $shown);
             }
 
-            $report = $locked->lobby_report;
+            $report = self::currentReport($locked->lobby_report);
             $parsed = self::places($match, $shown !== null && $report !== null ? $report['places'] : (array) $places);
             $winners = array_keys(array_filter($parsed['places'], fn (int $place): bool => $place === 1));
             $winnerSlot = array_search(1, $parsed['ranks'], true);

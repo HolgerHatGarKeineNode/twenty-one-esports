@@ -5883,5 +5883,9 @@
     "closed a lobby without a result": "hat eine Lobby ohne Ergebnis geschlossen",
     "Finished. Shared 1st place: :names.": "Beendet. Geteilter 1. Platz: :names.",
     "Winners": "Gewinner",
-    "Shared 1st place: :names": "Geteilter 1. Platz: :names"
+    "Shared 1st place: :names": "Geteilter 1. Platz: :names",
+    "Too many reports for this lobby. Try again in :minutes min.": "Zu viele Meldungen für diese Lobby. Versuch es in :minutes Min. noch einmal.",
+    "The screenshot is too large: at most :max pixels on its longest side.": "Der Screenshot ist zu groß: höchstens :max Pixel an der längsten Seite.",
+    "Earlier reports": "Frühere Meldungen",
+    "Rejected: :reason": "Abgelehnt: :reason"
 }

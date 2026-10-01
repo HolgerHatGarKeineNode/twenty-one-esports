@@ -122,7 +122,8 @@ final readonly class FormatOptions
             heatSize: $forced ? $defaults->heatSize : $int('heatSize', 4, 3, 16),
             heatAdvance: $forced ? $defaults->heatAdvance : $int('heatAdvance', 2, 1, 8),
             // Not forced: what is stored; a tournament stored without it has heats, never lobbies.
-            lobbyMinutes: $forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000),
+            // A game that plays no lobbies never has lobby minutes, whatever is stored (re-audit P10, R9b).
+            lobbyMinutes: $defaults->lobbyMinutes === 0 ? 0 : ($forced ? $defaults->lobbyMinutes : $int('lobbyMinutes', 0, 0, 10_000)),
         );
     }
 

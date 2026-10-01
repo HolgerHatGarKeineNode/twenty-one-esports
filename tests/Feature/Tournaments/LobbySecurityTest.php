@@ -290,7 +290,8 @@ test('N1: an end screen is stored re-encoded without EXIF, a refused report leav
     $stored = (string) Storage::disk('local')->get($lobby->refresh()->lobby_report['screenshot']);
 
     expect($stored)->not->toContain('GPSLatitude')->not->toContain('Exif')
-        ->and(substr($stored, 0, 8))->toBe("\x89PNG\r\n\x1a\n");
+        // Re-encoded lossy as WebP (re-audit M2): RIFF, then WEBP.
+        ->and(substr($stored, 0, 4))->toBe('RIFF')->and(substr($stored, 8, 4))->toBe('WEBP');
 
     // Refused inside the transaction that would accept it (here: its save fails under the lock): the new file goes with it.
     $before = Storage::disk('local')->allFiles("lobby-results/{$lobby->id}");
@@ -328,4 +329,205 @@ test('the stored heat options of a drawn free-for-all win over the lobby game\'s
 
     expect([$drawn->heatSize, $drawn->heatAdvance, $drawn->lobbyMinutes])->toBe([5, 3, 0])
         ->and([$undrawn->heatSize, $undrawn->heatAdvance, $undrawn->lobbyMinutes > 0])->toBe([8, 1, true]);
+});
+
+/** The overdue notices each user got, by user id. */
+function securedNotices(): array
+{
+    return DB::table('notifications')->get(['notifiable_id', 'data'])
+        ->filter(fn (object $row): bool => str_contains((string) (json_decode($row->data, true)['title'] ?? ''), 'waits for a decision'))
+        ->countBy(fn (object $row): int => (int) $row->notifiable_id)->all();
+}
+
+test('M1 (R5): the overdue notice skips a playing organizer and his director and goes to an admin who may decide', function () {
+    $tournament = securedLobby(9);
+    [$first, $second] = securedLobbies($tournament);
+    $organizer = securedPlayer($first, 0);
+    $tournament->forceFill(['created_by_id' => $organizer->id])->save();
+    $alt = User::factory()->create();
+    securedDirector($tournament->refresh(), $alt, $organizer->id);
+    [$admin] = keyedPlayer();
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    $this->travelTo(LobbyResults::reportBy($second)->addMinute());
+    $done = app(LobbyResults::class)->tick();
+    $notices = securedNotices();
+
+    expect($done)->toMatchArray(['overdue' => 2, 'closed' => 0])
+        ->and($notices[$organizer->id] ?? 0)->toBe(0)
+        ->and($notices[$alt->id] ?? 0)->toBe(0)
+        ->and($notices[$admin->id] ?? 0)->toBe(2)
+        ->and(LobbyResults::mayDecide($tournament, $second, $admin))->toBeTrue();
+});
+
+test('M1 (R12): after a scheduler outage the first tick tells the deciders and closes nothing; the close comes a day after that notice', function () {
+    $tournament = securedLobby(4);
+    [$lobby] = securedLobbies($tournament);
+    $results = app(LobbyResults::class);
+
+    // Nothing ran until a day and an hour after the deadline.
+    $this->travelTo(LobbyResults::reportBy($lobby)->addHours(25));
+    expect($results->tick())->toMatchArray(['overdue' => 1, 'closed' => 0])
+        ->and($lobby->refresh()->result)->toBeNull()
+        ->and(securedNotices()[$tournament->created_by_id] ?? 0)->toBe(1);
+
+    $this->travel(23)->hours();
+    expect($results->tick())->toMatchArray(['overdue' => 0, 'closed' => 0]);
+
+    $this->travel(2)->hours();
+    expect($results->tick())->toMatchArray(['overdue' => 0, 'closed' => 1])
+        ->and($lobby->refresh()->result['decided'])->toBe('no_result');
+});
+
+/** A PNG of only a header claiming `$width` × `$height` (no pixels to decode). */
+function securedPngHeader(int $width, int $height): UploadedFile
+{
+    $chunk = fn (string $type, string $data): string => pack('N', strlen($data)).$type.$data.pack('N', crc32($type.$data));
+    $path = (string) tempnam(sys_get_temp_dir(), 'png');
+    file_put_contents($path, "\x89PNG\r\n\x1a\n".$chunk('IHDR', pack('NNCCCCC', $width, $height, 8, 6, 0, 0, 0)).$chunk('IDAT', '').$chunk('IEND', ''));
+
+    return new UploadedFile($path, 'huge.png', 'image/png', null, true);
+}
+
+/** A busy 4K end screen: many coloured boxes, so it does not compress to nothing. */
+function securedEndScreen4k(): UploadedFile
+{
+    $image = imagecreatetruecolor(3840, 2160);
+    mt_srand(21);
+    foreach (range(1, 4000) as $ignored) {
+        $x = mt_rand(0, 3800);
+        $y = mt_rand(0, 2120);
+        imagefilledrectangle($image, $x, $y, $x + mt_rand(4, 120), $y + mt_rand(4, 60), (int) imagecolorallocate($image, mt_rand(0, 255), mt_rand(0, 255), mt_rand(0, 255)));
+    }
+    $path = tempnam(sys_get_temp_dir(), 'shot').'.png';
+    imagepng($image, $path);
+    imagedestroy($image);
+
+    return new UploadedFile($path, 'end-screen.png', 'image/png', null, true);
+}
+
+test('M2: a picture over 4096 px is refused from its header before decoding; a 4K end screen is stored at 1920 px and under 2 MB; a sixth report in ten minutes is refused', function () {
+    $tournament = securedLobby(4);
+    [$lobby] = securedLobbies($tournament);
+    $player = securedPlayer($lobby, 0);
+    $results = app(LobbyResults::class);
+
+    $started = microtime(true);
+    expect(fn () => $results->report($lobby, $player, securedPlaces($lobby, [1, 2, 3, 4]), securedPngHeader(6000, 6000)))
+        ->toThrow(TournamentRuleViolation::class, 'The screenshot is too large: at most 4096 pixels on its longest side.');
+    expect(microtime(true) - $started)->toBeLessThan(0.5)
+        ->and(Storage::disk('local')->allFiles("lobby-results/{$lobby->id}"))->toBe([]);
+
+    $shot = securedEndScreen4k();
+    // The downscale is measured on a picture with content, not on one flat colour.
+    expect(filesize((string) $shot->getRealPath()))->toBeGreaterThan(100_000);
+    $results->report($lobby, $player, securedPlaces($lobby, [1, 2, 3, 4]), $shot);
+    $stored = (string) Storage::disk('local')->get($lobby->refresh()->lobby_report['screenshot']);
+    $size = getimagesizefromstring($stored);
+
+    expect([$size[0], $size[1]])->toBe([1920, 1080])
+        ->and(strlen($stored))->toBeLessThanOrEqual(2 * 1024 * 1024)
+        ->and($size['mime'])->toBe('image/webp');
+
+    // Two reports counted so far (the refused one too); three more pass, the sixth is refused.
+    foreach (range(1, 3) as $ignored) {
+        $results->report($lobby, $player, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('e.png', 64, 64));
+    }
+    expect(fn () => $results->report($lobby, $player, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('e.png', 64, 64)))
+        ->toThrow(TournamentRuleViolation::class, 'Too many reports for this lobby.');
+
+    // Another player of the lobby is not held by it, and eleven minutes later the first one reports again.
+    $results->report($lobby, securedPlayer($lobby, 1), securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('e.png', 64, 64));
+    $this->travel(11)->minutes();
+    $results->report($lobby, $player, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('e.png', 64, 64));
+
+    expect($lobby->refresh()->lobby_report['user_id'])->toBe($player->id);
+});
+
+test('L1 (R6): a last-minute report keeps the honest end screen, the deciders see every report, and a reject reopens reporting for 30 minutes', function () {
+    $tournament = securedLobby(4);
+    [$lobby] = securedLobbies($tournament);
+    $honest = securedPlayer($lobby, 0);
+    $cheat = securedPlayer($lobby, 3);
+    $director = $tournament->creator;
+    $results = app(LobbyResults::class);
+    $reportBy = LobbyResults::reportBy($lobby);
+
+    $this->travelTo($reportBy->subMinutes(5));
+    $results->report($lobby, $honest, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('honest.png', 64, 64));
+    $honestShot = $lobby->refresh()->lobby_report['screenshot'];
+    $this->travelTo($reportBy->subMinute());
+    $results->report($lobby, $cheat, securedPlaces($lobby, [4, 2, 3, 1]), UploadedFile::fake()->image('cheat.png', 64, 64));
+
+    expect(Storage::disk('local')->exists($honestShot))->toBeTrue()
+        ->and(LobbyResults::earlierReports($lobby->refresh()->lobby_report))->toHaveCount(1)
+        ->and(LobbyResults::earlierReports($lobby->lobby_report)[0]['user_id'])->toBe($honest->id);
+
+    // After the deadline: the honest player cannot report; the director rejects the last-minute report.
+    $this->travelTo($reportBy->addMinutes(10));
+    expect(fn () => $results->report($lobby, $honest, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('again.png', 64, 64)))
+        ->toThrow(TournamentRuleViolation::class, 'The time to report this lobby is over.');
+
+    Livewire::actingAs($director)->test('tournament-lobbies', ['tournament' => $tournament])
+        ->assertSee('data-test="lobby-earlier"', false)->assertSee('Earlier reports');
+    $results->reject($lobby, $director, 'Wrong end screen.', LobbyResults::reportIdentity(LobbyResults::currentReport($lobby->refresh()->lobby_report)));
+
+    expect(LobbyResults::reportOpen($lobby->refresh()))->toBeTrue()
+        ->and(LobbyResults::currentReport($lobby->lobby_report))->toBeNull()
+        ->and(LobbyResults::earlierReports($lobby->lobby_report))->toHaveCount(2);
+
+    $results->report($lobby, $honest, securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('again.png', 64, 64));
+    $earlier = LobbyResults::earlierReports($lobby->refresh()->lobby_report);
+
+    expect(Storage::disk('local')->allFiles("lobby-results/{$lobby->id}"))->toHaveCount(3)
+        ->and(array_column($earlier, 'user_id'))->toBe([$honest->id, $cheat->id])
+        ->and($earlier[1]['rejected']['reason'])->toBe('Wrong end screen.');
+
+    // The deciders open every earlier end screen; the list shows the latest first.
+    $this->actingAs($director)->get(route('tournaments.lobby-screenshot', [$tournament, $lobby, 'report' => 0]))->assertOk();
+    $this->actingAs($director)->get(route('tournaments.lobby-screenshot', [$tournament, $lobby, 'report' => 5]))->assertNotFound();
+    Livewire::actingAs($director)->test('tournament-lobbies', ['tournament' => $tournament])
+        ->assertSeeInOrder(['Rejected: Wrong end screen.', 'Reported by '.$honest->displayName()]);
+
+    // The reopening ends after 30 minutes.
+    $this->travel(31)->minutes();
+    expect(LobbyResults::reportOpen($lobby->refresh()))->toBeFalse();
+});
+
+test('L2: only a logged-in player of a lobby in its report window gets an upload URL; old temporary uploads are deleted', function () {
+    Storage::fake('tmp-for-tests');
+    $tournament = securedLobby(4);
+    [$lobby] = securedLobbies($tournament);
+    $player = securedPlayer($lobby, 0);
+    $file = [['name' => 'a.png', 'size' => 1024, 'type' => 'image/png']];
+
+    Livewire::test('tournament-lobbies', ['tournament' => $tournament])->call('_startUpload', 'shot', $file, false)->assertForbidden();
+    Livewire::actingAs(User::factory()->create())->test('tournament-lobbies', ['tournament' => $tournament])->call('_startUpload', 'shot', $file, false)->assertForbidden();
+    Livewire::actingAs($player)->test('tournament-lobbies', ['tournament' => $tournament])->call('_startUpload', 'places', $file, false)->assertForbidden();
+    Livewire::actingAs($player)->test('tournament-lobbies', ['tournament' => $tournament])->call('_startUpload', 'shot', $file, false)
+        ->assertOk()->assertDispatched('upload:generatedSignedUrl');
+
+    $this->travelTo(LobbyResults::reportBy($lobby)->addMinute());
+    Livewire::actingAs($player)->test('tournament-lobbies', ['tournament' => $tournament])->call('_startUpload', 'shot', $file, false)->assertForbidden();
+
+    // The hourly prune: a day-old temporary upload goes, a fresh one stays.
+    $disk = Storage::disk('tmp-for-tests');
+    $disk->put('livewire-tmp/old.png', 'old');
+    $disk->put('livewire-tmp/new.png', 'new');
+    touch($disk->path('livewire-tmp/old.png'), now()->subHours(25)->getTimestamp());
+    touch($disk->path('livewire-tmp/new.png'), now()->subHours(2)->getTimestamp());
+    $this->artisan('uploads:prune-tmp')->assertSuccessful();
+
+    expect($disk->exists('livewire-tmp/old.png'))->toBeFalse()
+        ->and($disk->exists('livewire-tmp/new.png'))->toBeTrue();
+});
+
+test('a game that plays no lobbies never reads lobby minutes from stored options, and the reports never leave the model', function () {
+    expect(FormatOptions::fromArray(['lobbyMinutes' => 500], GameProfile::for('rocket-league', '3v3'))->lobbyMinutes)->toBe(0);
+
+    $tournament = securedLobby(4);
+    [$lobby] = securedLobbies($tournament);
+    app(LobbyResults::class)->report($lobby, securedPlayer($lobby, 0), securedPlaces($lobby, [1, 2, 3, 4]), UploadedFile::fake()->image('e.png', 64, 64));
+
+    expect($lobby->refresh()->toArray())->not->toHaveKey('lobby_report')->not->toHaveKey('lobby_password');
 });

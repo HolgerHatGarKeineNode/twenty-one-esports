@@ -45,7 +45,7 @@ use Illuminate\Support\Carbon;
  * @property array{by: int, proposals: list<int>, respond_by: int, agreed_at: int|null, accepted_by: int|null}|null $schedule a casual cup series match's proposed and agreed start (P25 S3, CupSchedules)
  * @property array<string, mixed>|null $lobby a lobby tournament's lobby (P10, App\Support\Tournaments\Lobbies): its settings as fixed at the draw, `name` and `report_by`
  * @property string|null $lobby_password the lobby's password, encrypted at rest, for its players and the directors only
- * @property array{places: array<string, int>, user_id: int, name: string, at: string, screenshot: string}|null $lobby_report a player's report of the places (participant id => place) waiting for a director (LobbyResults)
+ * @property array<string, mixed>|null $lobby_report the reports of a lobby until it is decided (LobbyResults::currentReport(), ::earlierReports()): the one waiting for a director, and every earlier one with its end screen; private, never serialized
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TournamentRound $round
@@ -56,7 +56,7 @@ use Illuminate\Support\Carbon;
  * @property-read BoardGame|null $boardGame
  */
 #[Fillable(['tournament_id', 'tournament_round_id', 'key', 'group', 'bracket', 'position', 'if_needed', 'status', 'result', 'pairing', 'held', 'replaced_through', 'schedule', 'lobby', 'lobby_password', 'lobby_report'])]
-#[Hidden(['lobby_password'])]
+#[Hidden(['lobby_password', 'lobby_report'])]
 class TournamentMatch extends Model
 {
     protected function casts(): array

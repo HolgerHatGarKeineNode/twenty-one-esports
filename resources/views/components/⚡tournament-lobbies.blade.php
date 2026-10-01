@@ -9,6 +9,7 @@ use App\Support\Tournaments\TournamentRuleViolation;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
@@ -25,7 +26,10 @@ use Livewire\WithFileUploads;
  * deadline (App\Support\Tournaments\LobbyResults).
  */
 new class extends Component {
-    use WithFileUploads;
+    use WithFileUploads {
+        _startUpload as private livewireStartUpload;
+        _finishUpload as private livewireFinishUpload;
+    }
 
     #[Locked]
     public int $tournamentId;
@@ -61,6 +65,37 @@ new class extends Component {
     {
         return TournamentMatch::query()->where('tournament_id', $this->tournamentId)->whereNotNull('lobby')
             ->with(['slots.participant', 'tournament'])->orderBy('position')->get();
+    }
+
+    /**
+     * An upload starts only for a logged-in player of a lobby of this
+     * tournament whose report window is open (audit P10, L2): nobody else
+     * gets a signed upload URL from this card.
+     *
+     * @param  array<int, array<string, mixed>>  $fileInfo
+     */
+    #[Renderless]
+    public function _startUpload($name, $fileInfo, $isMultiple): void
+    {
+        $this->assertMayUpload((string) $name);
+        $this->livewireStartUpload($name, $fileInfo, $isMultiple);
+    }
+
+    /**
+     * @param  string|list<string>  $tmpPath
+     */
+    public function _finishUpload($name, $tmpPath, $isMultiple, $append = true): void
+    {
+        $this->assertMayUpload((string) $name);
+        $this->livewireFinishUpload($name, $tmpPath, $isMultiple, $append);
+    }
+
+    private function assertMayUpload(string $name): void
+    {
+        $user = auth()->user();
+
+        abort_unless($name === 'shot' && $user instanceof User && $this->lobbies->contains(fn (TournamentMatch $match): bool => $match->result === null
+            && $match->status === 'ready' && LobbyResults::plays($match, $user) && LobbyResults::reportOpen($match)), 403);
     }
 
     public function report(int $matchId): void
@@ -143,7 +178,9 @@ new class extends Component {
                 $decides = LobbyResults::mayDecide($tournament, $match, $viewer);
                 $sees = $plays || ($viewer instanceof User && \Illuminate\Support\Facades\Gate::forUser($viewer)->allows('direct-tournament', $tournament));
                 $done = $match->result !== null;
-                $report = is_array($match->lobby_report) ? $match->lobby_report : null;
+                $report = LobbyResults::currentReport($match->lobby_report);
+                $earlier = array_reverse(LobbyResults::earlierReports($match->lobby_report), true);
+                $reportUntil = LobbyResults::reportUntil($match);
                 $open = ! $done && $match->status === 'ready' && $tournament->status === \App\Enums\TournamentStatus::Running;
                 $reportOpen = LobbyResults::reportOpen($match);
                 $count = $match->slots->count();
@@ -204,8 +241,8 @@ new class extends Component {
                 @endif
 
                 @if ($open)
-                    @if (isset($lobby['report_by']))
-                        <p class="m-0 text-xs leading-normal text-ink-2" data-test="lobby-deadline">{{ $reportOpen ? __('Players report by :time; after that a director decides.', ['time' => $time($lobby['report_by'])]) : __('The time to report is over: a director decides this lobby.') }}</p>
+                    @if ($reportUntil !== null)
+                        <p class="m-0 text-xs leading-normal text-ink-2" data-test="lobby-deadline">{{ $reportOpen ? __('Players report by :time; after that a director decides.', ['time' => $time($reportUntil->toIso8601String())]) : __('The time to report is over: a director decides this lobby.') }}</p>
                     @endif
                     @if (isset($lobby['rejected']) && $report === null)
                         <p class="m-0 text-xs leading-normal text-loss" data-test="lobby-rejected">{{ __('A report was rejected by :name: :reason', ['name' => (string) ($lobby['rejected']['name'] ?? ''), 'reason' => (string) ($lobby['rejected']['reason'] ?? '')]) }}</p>
@@ -255,6 +292,23 @@ new class extends Component {
                                 <input wire:model="reasons.{{ $match->id }}" maxlength="300" class="h-11 rounded-md border border-edge bg-ground px-3 text-sm text-ink" data-test="lobby-reject-reason">
                             </label>
                             <div><x-button variant="quiet" type="button" wire:click="reject({{ $match->id }}, '{{ LobbyResults::reportIdentity($report) }}')" data-test="lobby-reject">{{ __('Reject the report') }}</x-button></div>
+                        </div>
+                    @endif
+
+                    {{-- Every earlier report of this lobby, the latest first: a later one never hides it (audit P10, L1). --}}
+                    @if ($decides && $earlier !== [])
+                        <div class="flex flex-col gap-2 border-t border-hairline pt-3" data-test="lobby-earlier">
+                            <span class="text-[13px] font-bold">{{ __('Earlier reports') }}</span>
+                            <ul class="m-0 flex list-none flex-col gap-2 p-0 text-xs text-ink-2">
+                                @foreach ($earlier as $index => $old)
+                                    <li class="flex min-w-0 flex-col gap-0.5" data-test="lobby-earlier-report">
+                                        <span class="[overflow-wrap:anywhere]">{{ __('Reported by :name at :time.', ['name' => (string) ($old['name'] ?? ''), 'time' => $time(is_string($old['at'] ?? null) ? $old['at'] : null)]) }}
+                                            @if (is_array($old['rejected'] ?? null)) <b class="text-loss">{{ __('Rejected: :reason', ['reason' => (string) ($old['rejected']['reason'] ?? '')]) }}</b> @endif</span>
+                                        <span class="[overflow-wrap:anywhere]">{{ $sides->map(fn (array $side): string => ((($old['places'] ?? [])[$side['id']] ?? null) !== null ? '#'.$old['places'][$side['id']] : '–').' '.$side['name'])->implode(' · ') }}</span>
+                                        <a href="{{ route('tournaments.lobby-screenshot', [$tournament, $match, 'report' => $index]) }}" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center self-start text-[13px]">{{ __('Open the end screen') }}</a>
+                                    </li>
+                                @endforeach
+                            </ul>
                         </div>
                     @endif
                 @endif

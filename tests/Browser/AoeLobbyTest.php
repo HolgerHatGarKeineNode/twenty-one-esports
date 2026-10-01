@@ -258,7 +258,7 @@ test('a player reports a shared place 1 with the end screen, and a director conf
 
     $winners = $lobby->slots->take(2)->map(fn ($slot): string => $slot->participant->name)->all();
 
-    expect($shot)->toBe([200, 'image/png'])
+    expect($shot)->toBe([200, 'image/webp'])
         ->and($result['label'])->toBe('Shared place 1: '.implode(', ', $winners))
         ->and($result['places'])->toBe(['#1', '#1', '#3', '#4'])
         ->and($lobby->refresh()->result['ranks'])->toBe($places)
