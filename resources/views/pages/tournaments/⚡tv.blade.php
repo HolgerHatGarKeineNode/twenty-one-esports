@@ -91,7 +91,7 @@ new #[Layout('layouts::tv')] class extends Component {
     $pageUrl = route('tournaments.show', $tournament);
     $shortUrl = preg_replace('#^https?://#', '', $pageUrl);
     $qr = QrCode::svg($pageUrl, label: __('QR code for :url', ['url' => $shortUrl]));
-    $gameLine = $lobbyTv ? __(':game, one lobby match', ['game' => \App\Support\GameNames::game($tournament->game)]) : \App\Support\GameNames::full($tournament->game, $tournament->mode);
+    $gameLine = \App\Support\Tournaments\Lobbies::gameLine($tournament);
     $sats = fn (int $amount): string => \App\Support\Cards\ShareCard::sats($amount);
     $placeLabel = fn (int $place): string => match ($place) { 1 => __('1st place'), 2 => __('2nd place'), 3 => __('3rd place'), default => __(':place. place', ['place' => $place]) };
 
@@ -154,7 +154,7 @@ new #[Layout('layouts::tv')] class extends Component {
                 <span class="tv-fit" style="--chars: {{ max(8, mb_strlen($tournament->name)) }}"><h1 class="tv-name">{{ $tournament->name }}</h1></span>
                 <p class="tv-meta">
                     <span>{{ $gameLine }}</span>
-                    <span>{{ $tournament->format->label() }}</span>
+                    <span>{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</span>
                     @if ($running)
                         <span class="tv-status is-live" data-test="tv-live"><span class="tv-dot"></span>{{ __('Live') }}</span>
                         <span data-test="tv-progress">{{ __(':played of :total matches played', $progress) }}</span>

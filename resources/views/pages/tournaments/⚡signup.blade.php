@@ -381,7 +381,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <aside class="flex flex-col gap-4 self-start">
             @include('pages.tournaments.partials.cover', ['tournament' => $tournament, 'class' => 'w-full'])
             <dl class="m-0 grid grid-cols-2 gap-2 text-[13px]">
-                <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Format') }}</dt><dd class="m-0">{{ $tournament->format->label() }}</dd></div>
+                <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Format') }}</dt><dd class="m-0">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</dd></div>
                 <div class="flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Places') }}</dt><dd class="m-0 tabular-nums" data-test="places">{{ $places['taken'] }} / {{ $places['places'] }}</dd></div>
                 <div class="col-span-2 flex flex-col gap-0.5 rounded-md bg-card px-3.5 py-3"><dt class="text-xs text-ink-3">{{ __('Starts') }}</dt><dd class="m-0">{{ $at($tournament->starts_at) }}</dd></div>
             </dl>

@@ -31,6 +31,7 @@ use App\Support\Rating\StrongestList;
 use App\Support\SeasonChain\SeasonChains;
 use App\Support\SeasonChain\Seasons;
 use App\Support\Tournaments\CasualCups;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentSignups;
 use App\Support\TwentyOne\LiveStatus;
 use Illuminate\Support\Facades\Cache;
@@ -121,6 +122,8 @@ final class PageCardFacts
             'game' => $tournament->game,
             'mode' => $tournament->mode,
             'format' => $tournament->format->value,
+            // A lobby tournament (P10) draws "One lobby match" without its mode.
+            'lobby' => Lobbies::isLobby($tournament),
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
             'cup' => $cup,
             'region' => $cup ? CasualCups::regionLabel($tournament) : null,

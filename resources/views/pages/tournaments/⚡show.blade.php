@@ -127,14 +127,18 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         $date = fn (\Carbon\CarbonInterface $at): string => $at->copy()->timezone($zone)->format('Y-m-d H:i T');
         $teams = $tournament->profile()->entersTeams();
 
-        $description = __(':game tournament (:mode), :format, for :who, :where, starting :date.', [
+        $facts = [
             'game' => \App\Support\GameNames::game($tournament->game),
             'mode' => $tournament->mode === 'correspondence' ? __('Daily') : ($tournament->mode === 'blitz' ? __('Blitz 5+3') : $tournament->mode),
-            'format' => $tournament->format->label(),
+            'format' => \App\Support\Tournaments\Lobbies::formatLabel($tournament),
             'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity),
             'where' => $tournament->on_site ? __('on site') : __('online'),
             'date' => $date($tournament->starts_at),
-        ]);
+        ];
+        // A lobby tournament (P10) names no mode: one lobby holds up to 8 players, its "1v1" is no duel.
+        $description = \App\Support\Tournaments\Lobbies::isLobby($tournament)
+            ? __(':game tournament, :format, for :who, :where, starting :date.', $facts)
+            : __(':game tournament (:mode), :format, for :who, :where, starting :date.', $facts);
 
         $champion = $this->champion;
 
@@ -460,7 +464,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $yourSeed = $landing->yourSeed();
     $champion = $this->champion;
     $pageUrl = route('tournaments.show', $tournament);
-    $gameLine = \App\Support\GameNames::full($tournament->game, $tournament->mode);
+    // A lobby tournament names its game alone and "One lobby match", never "1v1" or Free for All.
+    $gameLine = \App\Support\Tournaments\Lobbies::gameLine($tournament);
+    $formatLabel = \App\Support\Tournaments\Lobbies::formatLabel($tournament);
     $at = fn (\Carbon\CarbonInterface $moment): string => LeagueTime::stamp($moment);
     $poll = in_array($status, [TournamentStatus::Signup, TournamentStatus::Drawing, TournamentStatus::Running], true) && $published;
 
@@ -481,7 +487,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         : __(':tournament on TWENTY ONE Esports: :game.', ['tournament' => $tournament->title(), 'game' => $gameLine]);
 
     $chips = [
-        ['tournaments', __('Format'), $tournament->format->label().($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
+        ['tournaments', __('Format'), $formatLabel.($tournament->format === TournamentFormat::Swiss && $options->swissRounds !== null ? ', '.trans_choice(':count round|:count rounds', $options->swissRounds) : ''), 'format'],
         // Online the end is open (P18): the start, and when it is expected to end, never a planned duration.
         ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
         ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
@@ -642,7 +648,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         <span @class(['size-1.5 rounded-full bg-btc', 'animate-live' => in_array($cta, ['open', 'live'], true)])></span>{{ $status->label() }}
                     </span>
                     <span class="inline-flex h-8 items-center gap-1.5 rounded-sm bg-raised px-3 text-ink-2"><x-icon :name="$chess ? 'pawn' : (app(\App\Games\GameRegistry::class)->find($tournament->game)?->assets()->icon ?? 'trophy')" :size="14" />{{ $gameLine }}</span>
-                    <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->format->label() }}</span>
+                    <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2" data-test="tournament-format">{{ $formatLabel }}</span>
                     <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2">{{ $tournament->on_site ? __('On site') : __('Online') }}</span>
                     @if ($tournament->isCasualCup())
                         <span class="inline-flex h-8 items-center rounded-sm bg-raised px-3 text-ink-2" data-test="casual-marker">{{ __('Casual') }}</span>
@@ -982,7 +988,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 <figure class="m-0 flex flex-col gap-2 rounded-card bg-card p-4" x-data x-ref="figure">
                     @foreach ([['desktop', $preview, 480, 208, 'hidden lg:block'], ['mobile', $previewSmall, 326, 196, 'lg:hidden']] as [$size, $shape, $width, $height, $visibility])
                         <svg viewBox="0 0 {{ $width }} {{ $height }}" class="tf-preview {{ $visibility }} h-auto w-full" role="img" wire:key="pv-{{ $size }}"
-                             aria-label="{{ __('Preview of :format for :who', ['format' => $tournament->format->label(), 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}">
+                             aria-label="{{ __('Preview of :format for :who', ['format' => $formatLabel, 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}">
                             @foreach ($shape['lines'] as $line)
                                 <path d="{{ $line['d'] }}" fill="none" stroke="#3A3A42" stroke-width="1" style="animation-delay: {{ $line['delay'] }}s" />
                             @endforeach
@@ -997,7 +1003,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                         </svg>
                     @endforeach
                     <figcaption class="flex items-start gap-3 text-xs leading-normal text-ink-2">
-                        <span class="grow">{{ __(':format for :who. Each block is one match, lit in the round it is played.', ['format' => $tournament->format->label(), 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}</span>
+                        <span class="grow">{{ __(':format for :who. Each block is one match, lit in the round it is played.', ['format' => $formatLabel, 'who' => $teams ? trans_choice(':count team|:count teams', $tournament->capacity) : trans_choice(':count player|:count players', $tournament->capacity)]) }}</span>
                         <button type="button" class="min-h-6 shrink-0 cursor-pointer text-btc hover:text-btc-hi" data-test="preview-replay"
                                 x-on:click="$refs.figure.querySelectorAll('svg').forEach((svg) => { svg.classList.remove('tf-preview'); void svg.getBoundingClientRect(); svg.classList.add('tf-preview'); })">{{ __('Play again') }}</button>
                     </figcaption>
@@ -1103,7 +1109,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         <h2 id="faq-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Questions') }}</h2>
         <div class="grid gap-2 lg:grid-cols-2 lg:items-start">
             @foreach ([
-                [__('How does :format work?', ['format' => $tournament->format->label()]), __($formatCopy['how']).' '.__('Good for:').' '.__($formatCopy['good'])],
+                [$lobbies ? __('How is the lobby match played?') : __('How does :format work?', ['format' => $formatLabel]), __($formatCopy['how']).' '.__('Good for:').' '.__($formatCopy['good'])],
                 ...($week ? [] : [[__('What if someone does not show up?'), $noShow]]),
                 $score ? [__('How is the winner found?'), $scoreMetric?->lowerIsBetter()
                     ? __('By the fastest time on the course inside the window. A tie goes to whoever set it first.')

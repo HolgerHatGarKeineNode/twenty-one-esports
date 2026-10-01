@@ -102,9 +102,9 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'admin'])] cl
                                     {{-- Prize pool, Edit and Payouts as buttons in the name column, reachable on a phone without scrolling the table sideways. --}}
                                     <x-tournaments.manage-actions :tournament="$tournament" class="pt-2" />
                                 </td>
-                                <td class="py-2.5 pr-3">{{ \App\Support\GameNames::full($tournament->game, $tournament->mode) }}</td>
+                                <td class="py-2.5 pr-3">{{ \App\Support\Tournaments\Lobbies::gameLine($tournament) }}</td>
                                 <td class="py-2.5 pr-3 whitespace-nowrap"><x-league-time :at="$tournament->starts_at" /></td>
-                                <td class="py-2.5 pr-3">{{ $tournament->format->label() }}
+                                <td class="py-2.5 pr-3">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}
                                     <span class="block text-xs text-ink-3">{{ __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $tournament->profile())]) }}</span>
                                 </td>
                                 <td class="py-2.5 text-right">{{ $tournament->capacity }}</td>

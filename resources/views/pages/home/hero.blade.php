@@ -9,8 +9,8 @@
 --}}
 @php
     use App\Support\Cards\ShareCard;
-    use App\Support\GameNames;
     use App\Support\LeagueTime;
+    use App\Support\Tournaments\Lobbies;
 
     $tournament = $cup['tournament'];
     $places = $cup['places'];
@@ -33,7 +33,7 @@
     <figure class="hh-cover relative m-0 lg:order-1" data-test="hero-cover">
         <x-game-cover :game="$tournament->game" size="hero" loading="eager" class="w-full rounded-card" />
         <figcaption class="absolute inset-x-2 bottom-2 flex flex-wrap items-center gap-1.5 text-xs font-bold lg:inset-x-4 lg:bottom-4">
-            <span class="inline-flex h-7 items-center rounded-tag bg-ground/90 px-2.5 text-ink">{{ GameNames::mode($tournament->game, $tournament->mode) }}, {{ $tournament->format->label() }}</span>
+            <span class="inline-flex h-7 items-center rounded-tag bg-ground/90 px-2.5 text-ink">{{ implode(', ', array_filter([Lobbies::modeLabel($tournament), Lobbies::formatLabel($tournament)])) }}</span>
             @if ($pot !== null)
                 <span class="inline-flex h-7 items-center gap-1 rounded-tag bg-btc px-2.5 whitespace-nowrap text-on-btc" data-test="hero-pot">
                     <x-icon name="bolt" :size="14" />

@@ -18,7 +18,8 @@
     <div class="flex flex-wrap items-center justify-between gap-3">
         <span class="flex min-w-0 flex-col gap-1">
             <h2 id="leaderboard-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Leaderboard') }}</h2>
-            <span class="text-xs text-ink-2" data-test="score-window">{{ __('Window :state', ['state' => $windowState]) }}@if ($tournament->score_course !== null) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
+            {{-- A course that is the mode itself (Blockfill's "40-blocks") is named by the mode, as on the leaderboards page, never by its slug --}}
+            <span class="text-xs text-ink-2" data-test="score-window">{{ __('Window :state', ['state' => $windowState]) }}@if ($tournament->score_course === $tournament->mode) · {{ \App\Support\GameNames::mode($tournament->game, $tournament->mode) }}@elseif ($tournament->score_course !== null) · <span class="font-mono">{{ $tournament->score_course }}</span>@endif</span>
         </span>
         @if (\Illuminate\Support\Facades\Route::has('tournaments.scores') && $tournament->status !== \App\Enums\TournamentStatus::Draft)
             <span class="flex flex-wrap items-center gap-2">

@@ -367,13 +367,14 @@ final class ShareCard
         };
     }
 
-    /** Game and mode, format, start. */
+    /** Game and mode, format, start; a lobby tournament (P10) its game and "One lobby match". */
     private function inviteLine(): string
     {
         $f = $this->facts;
-        $game = GameNames::full((string) $f['game'], (string) $f['mode']);
+        $game = $f['lobby'] ? GameNames::game((string) $f['game']) : GameNames::full((string) $f['game'], (string) $f['mode']);
+        $format = $f['lobby'] ? __('One lobby match') : TournamentFormat::from((string) $f['format'])->label();
 
-        return __(':game, :format. Starts :date.', ['game' => $game, 'format' => TournamentFormat::from((string) $f['format'])->label(), 'date' => $f['starts']]);
+        return __(':game, :format. Starts :date.', ['game' => $game, 'format' => $format, 'date' => $f['starts']]);
     }
 
     /** One block per place, taken ones orange, and the count. */

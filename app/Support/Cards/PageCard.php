@@ -421,7 +421,7 @@ final class PageCard
             'running' => self::LIVE,
             default => Canvas::INK_2,
         };
-        $line = GameNames::full((string) $f['game'], (string) $f['mode']).', '.TournamentFormat::from((string) $f['format'])->label();
+        $line = $this->tournamentLine();
 
         // Over: the podium is the picture, the header one line each above it.
         if ($podium !== []) {
@@ -455,6 +455,16 @@ final class PageCard
         }
 
         $this->seats(self::M, 424, self::RIGHT - self::M, 56);
+    }
+
+    /** "Chess Blitz 5+3, Swiss"; a lobby tournament (P10) "Age of Empires II: Definitive Edition, One lobby match". */
+    private function tournamentLine(): string
+    {
+        $f = $this->facts;
+
+        return $f['lobby']
+            ? GameNames::game((string) $f['game']).', '.__('One lobby match')
+            : GameNames::full((string) $f['game'], (string) $f['mode']).', '.TournamentFormat::from((string) $f['format'])->label();
     }
 
     private function tournamentStatus(): string

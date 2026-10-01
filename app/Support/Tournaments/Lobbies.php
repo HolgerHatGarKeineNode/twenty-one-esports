@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentFormat;
 use App\Models\Tournament;
+use App\Support\GameNames;
 use App\Support\Pages\RulesPage;
 use Carbon\CarbonImmutable;
 use Illuminate\Container\Container;
@@ -61,6 +62,30 @@ final class Lobbies
     public static function isLobby(Tournament $tournament): bool
     {
         return $tournament->format === TournamentFormat::FreeForAll && self::isLobbyGame($tournament->game);
+    }
+
+    /**
+     * The format a tournament's chips and lines name: "Swiss"; a lobby
+     * tournament "One lobby match", as the stream slides say it.
+     */
+    public static function formatLabel(Tournament $tournament): string
+    {
+        return self::isLobby($tournament) ? __('One lobby match') : $tournament->format->label();
+    }
+
+    /**
+     * Game and mode, "Chess Blitz 5+3"; a lobby tournament names its game
+     * alone: up to 8 players share one match, so "1v1" would promise a duel.
+     */
+    public static function gameLine(Tournament $tournament): string
+    {
+        return self::isLobby($tournament) ? GameNames::game($tournament->game) : GameNames::full($tournament->game, $tournament->mode);
+    }
+
+    /** The mode alone ("Blitz 5+3"), null for a lobby tournament (see {@see gameLine()}). */
+    public static function modeLabel(Tournament $tournament): ?string
+    {
+        return self::isLobby($tournament) ? null : GameNames::mode($tournament->game, $tournament->mode);
     }
 
     /** Most players in one lobby (Age of Empires II: 8). */

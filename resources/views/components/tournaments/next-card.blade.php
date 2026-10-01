@@ -12,8 +12,8 @@
     $card: an OrganizerBoard entry of the tournament.
 --}}
 @php
-    use App\Support\GameNames;
     use App\Support\LeagueTime;
+    use App\Support\Tournaments\Lobbies;
 
     $tournament = $card['tournament'];
     $show = route('tournaments.show', $tournament);
@@ -40,7 +40,7 @@
             <h3 id="{{ $headingId }}" class="m-0 font-display text-[26px] leading-[1.15] font-bold break-words sm:text-[32px] xl:text-[40px]">
                 <a href="{{ $show }}" class="text-ink hover:text-btc-hi" data-test="next-tournament-name">{{ $tournament->name }}</a>
             </h3>
-            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ GameNames::full($tournament->game, $tournament->mode) }}, {{ $tournament->format->label() }}</p>
+            <p class="m-0 text-[13px] leading-normal text-ink-2">{{ Lobbies::gameLine($tournament) }}, {{ Lobbies::formatLabel($tournament) }}</p>
         </div>
 
         <div class="grid grid-cols-2 gap-4">

@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\Badges\BadgeCopy;
 use App\Support\Prizes\PrizePool;
 use App\Support\Rating\RankTiers;
+use App\Support\Tournaments\Lobbies;
 use App\Support\Tournaments\TournamentChampion;
 use App\Support\Tournaments\TournamentSignups;
 use Illuminate\Support\Collection;
@@ -85,7 +86,8 @@ final class ShareMoments
         return [
             'tournament' => $tournament->name,
             'winner' => $winner->name,
-            'detail' => BadgeCopy::ladder($tournament->game, $tournament->mode).' · '.$tournament->format->label().' · '.trans_choice(':count entry|:count entries', $tournament->participants()->count()),
+            // A lobby tournament (P10): its game and "One lobby match", never its 1v1 ladder.
+            'detail' => (Lobbies::isLobby($tournament) ? Lobbies::gameLine($tournament) : BadgeCopy::ladder($tournament->game, $tournament->mode)).' · '.Lobbies::formatLabel($tournament).' · '.trans_choice(':count entry|:count entries', $tournament->participants()->count()),
             'members' => array_values($members->map(fn (User $user): array => self::person($user, $user->pubkey))->all()),
         ];
     }
@@ -95,7 +97,7 @@ final class ShareMoments
      * is, when it starts and how many places are taken. Raw values; the card
      * translates them when it draws.
      *
-     * @return array{tournament: string, game: string, mode: string, format: string, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null, first_prize: int|null}
+     * @return array{tournament: string, game: string, mode: string, format: string, lobby: bool, status: string, starts: string, taken: int, places: int, cover: string|null, pot: int|null, first_prize: int|null}
      */
     public static function tournamentInvite(Tournament $tournament): array
     {
@@ -106,6 +108,8 @@ final class ShareMoments
             'game' => $tournament->game,
             'mode' => $tournament->mode,
             'format' => $tournament->format->value,
+            // A lobby tournament (P10) draws "One lobby match" without its mode.
+            'lobby' => Lobbies::isLobby($tournament),
             'status' => $tournament->isSignupOpen() ? 'open' : $tournament->status->value,
             'starts' => $tournament->starts_at->copy()->timezone((string) config('esports.preseason.display_timezone'))->format('Y-m-d H:i T'),
             'taken' => $places['taken'],
