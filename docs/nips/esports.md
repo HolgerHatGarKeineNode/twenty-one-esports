@@ -50,7 +50,9 @@ board games; **revision 9.14** (2026-09-29): correspondence board games, one mov
 from a challenge, with a ladder, a weight and a tournament profile of their own; **revision 9.15** (2026-09-30):
 a game channel for each board game, nine men's morris and checkers, while the league runs it;
 **revision 9.16** (2026-09-30): Age of Empires II: Definitive Edition in the game registry as a series game
-whose games have a winner and no points, with its game channel and lobby cards). Not
+whose games have a winner and no points, with its game channel and lobby cards; **revision 9.17**
+(2026-10-01, draft): score games, a highscore or time attack read per player, run as leaderboard
+tournaments without a new kind). Not
 submitted to
 `nostr-protocol/nips`. Kind
 numbers are checked against the official NIP index and other registries (see
@@ -127,6 +129,26 @@ The rules marked "rev. 9.16" add Age of Empires II as a series game. No existing
 ladders open like any ladder: at Block 0 of a season the league releases after adopting revision 9.16, or in a live
 season with the first parameter change after it; a genesis without a weight for `age-of-empires-2/<mode>` mines
 nothing for it (see the changelog of revision 9.16).
+The rules marked "rev. 9.17" are a draft: they add score games, which no league runs yet (the league's test game is
+off). No existing kind, tag, ladder or rule changes; they apply to every tournament of a score game whose first
+`31923` version the league signs after it adopts revision 9.17.
+
+### Changelog of revision 9.17 (2026-10-01, draft)
+
+[Score games](#score-games-rev-917-draft): a game where every player tries alone for a best value on a course
+inside a window, and the league reads that best. **No new kind and no new tag.**
+
+- **Chosen: no event for values or standings.** A tournament event never carries results (see
+  [Tournaments](#tournaments)), and a score leaderboard has no match to report, confirm or attest. The values, the
+  leaderboard and the points ladder are league data on the tournament page, like a bracket. What a score
+  tournament signs is what every tournament signs: its `31923` versions, the sign-up consent `22150` of each player,
+  the draw `2155` if it has a solo pool of teams (a score game has none), and the Payout `2157` of every paid place.
+- **Nothing of the match flow.** A score game has no `32152` ladder, and no `2150`, `2151`, `2152`, `2153` or `2154`
+  is valid for it; a lineup `32151` naming a score game's mode is invalid. Its tournaments carry no ladder `a`.
+- **Never a game account.** A player's account id in the game is stored privately by the league to read the
+  player's best or to match a finish on the league's own server. No event names it, and no event links a pubkey to
+  it.
+- **Not decided yet.** Whether a score game's places mine season blocks (a later revision), and its game channel.
 
 ### Changelog of revision 9.16 (2026-09-30)
 
@@ -1089,6 +1111,44 @@ correspondence games (rev. 9.14) are no live games.
 game (see the changelog of revision 9.13 for the tags), without an `e`: it has no challenge, answer or
 game record. The two board games form the share group `board-games` in a genesis the league signs after
 adopting revision 9.13.
+
+### Score games (rev. 9.17, draft)
+
+A **score game** is a highscore or time attack: every player plays alone, as often as they like, for the best value
+on one **course** (a track, a level, a fixed game mode) inside a **window**, and the league reads each player's best.
+Nobody is paired, there is no lobby, no casual queue, no series and no Elo.
+
+| field | score game |
+|---|---|
+| game, mode | the registry slug and mode, e.g. a time trial and a highscore mode of one game |
+| metric | per mode: a time in whole milliseconds (`ms`, lower is better) or a score in whole points (`points`, higher is better); a game may name the other direction |
+| course | the game's own id of the course (a map UID, a level, a mode name), set per tournament before its window opens |
+| window | `[start, end)` of the tournament: a record counts when it was set at or after `start` and before `end` |
+| rated | no: no ladder `32152`, no attestation; a points ladder off Nostr instead (below) |
+| match size, team size, draws | none: every entry is one player; equal values are split by the earlier record |
+| moves, chat | none |
+
+**How the league reads a value.** From a **source**: a value the player submitted with a proof link that an admin
+approved; a record the league reads from the game's API with its own credentials; or a finish the league's own
+dedicated server of the game reported. A source answers "the best of this player on this course inside this window",
+or that it could not be asked; "could not be asked" never counts as "no record". The league keeps every best it read
+inside the window and never replaces it with a later one, so a record set after the window cannot hide the window's
+best. A director or admin can enter or correct an entry's value, always with a reason that stays public on the
+tournament page; nobody enters their own.
+
+**Tournaments.** A score game runs only as a **leaderboard** tournament: an ordinary `31923` (format `leaderboard`)
+without a ladder `a`, whose `content` names the course, the window, which value wins, the tie rule, where values come
+from, and that it is unrated. Sign-up is the consent `22150` as for every tournament. When the window has closed, the
+league writes the places from the best values: best first, a tie to the earlier record; an entry without a valid
+value, or disqualified, gets no place and no share of a pot. The places feed the [prize pool](#prize-pool-funding)
+and its Payouts `2157` unchanged.
+
+**Points ladder.** Each finished leaderboard gives points per place (by default 25, 18, 15, 12, 10, 8, 6, 4, 2, 1,
+then 0; places shared by a tie share their points), summed per player and game mode. It is league data, recomputable
+from the published tournaments and the league's pages, not an event.
+
+**Privacy.** A player's game account id is never in an event, never on a public page, and never shown to another
+player; the league uses it only to ask the game's API or to map its own server's finish to the player.
 
 ### Rocket League 1v1 (rev. 7.1)
 

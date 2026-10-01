@@ -3,6 +3,10 @@
 namespace App\Support\Tournaments;
 
 use App\Games\BoardGame;
+use App\Games\GameRegistry;
+use App\Games\ScoreGame;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 /**
@@ -28,7 +32,7 @@ final readonly class GameProfile
      * @param  string  $key  opaque id of the profile in the chooser (`blitz`, `rl3`, `ea-sports-fc-27/1v1`)
      * @param  'min'|'day'  $unit
      * @param  list<int>  $bestOfOptions
-     * @param  'game'|'series'  $what
+     * @param  'game'|'series'|'score'|'none'  $what
      */
     public function __construct(
         public string $key,
@@ -70,8 +74,55 @@ final readonly class GameProfile
             'ea-sports-fc-26/2v2', 'ea-sports-fc-27/2v2' => new self("{$game}/{$mode}", $game, $mode, 'min', 15, 5, 5, 1, 3, [1, 3], false, 'series', 2, 10, 1.3),
             // Age of Empires II: planned at about 21 min a game (the median of a small sample, plan "AoE2 und Trackmania"), Bo1 rounds and a Bo3 final.
             'age-of-empires-2/1v1', 'age-of-empires-2/2v2', 'age-of-empires-2/3v3' => new self("{$game}/{$mode}", $game, $mode, 'min', 21, 5, 5, 1, 3, [1, 3], false, 'series', (int) $mode[0], 10, 1.5),
-            default => throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
+            default => self::score($game, $mode) ?? throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
+    }
+
+    /**
+     * The profile of a stored tournament's game and mode: the league
+     * default, or for a game no longer registered (a score or board game
+     * switched off) a stand-in that plans nothing: no duration, no estimate,
+     * no wait, and nothing starts ({@see isUnknown()}). Pages that list or
+     * show such a tournament keep working instead of failing. The stand-in
+     * is only for a game the registry does not know (a mode missing from a
+     * registered game is a defect and still throws), kept for the request,
+     * and logged as one line at most once a day per game and mode (round-4
+     * F2: a report per call wrote ~250 KB per guest page view).
+     */
+    public static function ofTournament(string $game, string $mode): self
+    {
+        try {
+            return self::for($game, $mode);
+        } catch (InvalidArgumentException $e) {
+            if (app(GameRegistry::class)->find($game) !== null) {
+                throw $e;
+            }
+
+            return once(function () use ($game, $mode): self {
+                if (Cache::add("game-profile:stand-in:{$game}/{$mode}", true, now()->addDay())) {
+                    Log::warning("No tournament profile for [{$game}/{$mode}]: the game is not registered, so its tournaments use the stand-in that plans nothing.");
+                }
+
+                return new self("{$game}/{$mode}", $game, $mode, 'min', 0, 0, 0, 1, 1, [1], false, 'none');
+            });
+        }
+    }
+
+    /**
+     * A score game's mode (plan "AoE2 und Trackmania", P4): one leaderboard
+     * whose single "game" is the submission window, in days (the game's
+     * default window; the organizer's "Change times" sets another). Everyone
+     * plays at once, nothing is set up between rounds, there is no break.
+     */
+    private static function score(string $game, string $mode): ?self
+    {
+        $score = app(GameRegistry::class)->find($game);
+
+        if (! $score instanceof ScoreGame || $score->mode($mode) === null) {
+            return null;
+        }
+
+        return new self("{$game}/{$mode}", $game, $mode, 'day', $score->defaultWindowMinutes() / 1440, 0, 0, 1, 1, [1], true, 'score');
     }
 
     /**
@@ -97,6 +148,23 @@ final readonly class GameProfile
     public function isBoard(): bool
     {
         return in_array($this->game, BoardGame::RESERVED_SLUGS, true);
+    }
+
+    /**
+     * A leaderboard of a score game (plan "AoE2 und Trackmania", P4): no
+     * match between sides, every entry's best value in the window ranks it.
+     */
+    /**
+     * The stand-in of a game no longer registered ({@see ofTournament()}).
+     */
+    public function isUnknown(): bool
+    {
+        return $this->what === 'none';
+    }
+
+    public function isScore(): bool
+    {
+        return $this->what === 'score';
     }
 
     /**

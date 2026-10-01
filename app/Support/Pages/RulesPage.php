@@ -187,7 +187,8 @@ final class RulesPage
         // Each row's game, for its cover in the first cell (P53: the table read as text only).
         $covers = [];
 
-        foreach (app(GameRegistry::class)->all() as $game) {
+        // The games with a ladder and series; a score game (plan "AoE2 und Trackmania", P4) has neither.
+        foreach (app(GameRegistry::class)->versus() as $game) {
             foreach ($game->modes() as $mode) {
                 /** @var GameMode $mode */
                 $covers[] = $game->slug();

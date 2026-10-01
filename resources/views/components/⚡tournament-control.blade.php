@@ -307,7 +307,13 @@ new class extends Component {
         <livewire:tournament-waits :tournament="$tournament" :wire:key="'waits-'.$tournament->id" />
     @endif
 
-    @if ($this->rounds->isNotEmpty())
+    @if ($tournament->profile()->isScore())
+        {{-- A score leaderboard (plan "AoE2 und Trackmania", P4): no match result, no round; its values are corrected per player. --}}
+        @if (\Illuminate\Support\Facades\Route::has('tournaments.scores') && $status !== TournamentStatus::Draft)
+            <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="control-scores">{{ __('A leaderboard has no match result. Enter or correct the players\' values on its scores page.') }}
+                <a href="{{ route('tournaments.scores', $tournament) }}" class="font-bold text-ink underline decoration-edge underline-offset-4">{{ __('Open the scores page') }}</a></p>
+        @endif
+    @elseif ($this->rounds->isNotEmpty())
         <div class="flex flex-col gap-3" data-test="control-rounds">
             @foreach ($this->rounds as $round)
                 @php

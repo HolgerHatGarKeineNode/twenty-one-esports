@@ -59,6 +59,11 @@ final class ChainOverview
     {
         $game = explode('/', $key, 2)[0];
 
+        // A score game mines nothing yet (plan "AoE2 und Trackmania", P7 is a concept).
+        if (app(GameRegistry::class)->isScore($game)) {
+            return false;
+        }
+
         if (in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game)) {
             return app(GameRegistry::class)->isBoard($game) && RatedBoard::offered();
         }

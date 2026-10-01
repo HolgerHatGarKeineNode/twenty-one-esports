@@ -27,7 +27,7 @@ new #[Title('Gamer tags')] class extends Component {
 
     public function save(): void
     {
-        $services = array_keys(config('esports.gamer_tags'));
+        $services = array_keys(\App\Support\Scores\ScoreAccounts::tagServices());
 
         $validated = $this->validate([
             'gamerTags' => ['array:'.implode(',', $services)],
@@ -45,7 +45,7 @@ new #[Title('Gamer tags')] class extends Component {
      */
     public function clear(string $service): void
     {
-        if (! array_key_exists($service, config('esports.gamer_tags'))) {
+        if (! array_key_exists($service, \App\Support\Scores\ScoreAccounts::tagServices())) {
             return;
         }
 
@@ -81,7 +81,7 @@ new #[Title('Gamer tags')] class extends Component {
      */
     private function fields(array $saved): array
     {
-        $fields = array_fill_keys(array_keys(config('esports.gamer_tags')), '');
+        $fields = array_fill_keys(array_keys(\App\Support\Scores\ScoreAccounts::tagServices()), '');
 
         foreach ($fields as $service => $empty) {
             $fields[$service] = (string) ($saved[$service] ?? '');
@@ -101,7 +101,7 @@ new #[Title('Gamer tags')] class extends Component {
 
 @php
     $saved = array_filter(auth()->user()->gamer_tags ?? []);
-    $labels = config('esports.gamer_tags');
+    $labels = \App\Support\Scores\ScoreAccounts::tagServices();
     $registry = app(GameRegistry::class);
 
     // Which tags each game's card holds, and what reads them today. A registered game in no card needs no tag.
@@ -114,6 +114,9 @@ new #[Title('Gamer tags')] class extends Component {
         [['rocket-league'], ['epic', 'steam', 'psn', 'xbox', 'nintendo'], __('Only for you: nothing on this site reads these. In a Rocket League 1v1 the host shares a private match name and password in the room chat instead.')],
         [['ea-sports-fc-27', 'ea-sports-fc-26'], ['ea'], __('Fills in the EA ID card of your EA Sports FC 1v1 room. It goes out only when you press Send card, and only to your opponent.')],
         [['age-of-empires-2'], ['steam', 'xbox'], __('Only for you: nothing on this site reads these. In an Age of Empires II 1v1 the host shares a lobby name and password in the room chat instead.')],
+        // A score game (plan "AoE2 und Trackmania", P4): the league reads the account id, and only to read the player's best.
+        ...array_map(fn ($game): array => [[$game->slug()], [(string) $game->accountService()], __('Read by the league only: to fetch your best times and scores from the game, or to match a finish on our own server to you. Never shown on a page, never sent to another player, never published on Nostr.')],
+            array_filter($registry->scores(), fn ($game): bool => $game->accountService() !== null)),
     ] as [$games, $services, $use]) {
         $games = array_values(array_filter($games, fn (string $slug): bool => $registry->find($slug) !== null));
         $services = array_values(array_filter($services, fn (string $service): bool => isset($labels[$service])));

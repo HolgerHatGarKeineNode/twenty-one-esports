@@ -609,7 +609,9 @@ final class TournamentRunner
             ->with(['round.stage', 'slots.participant', 'seriesMatch', 'chessGame', 'boardGame'])->orderBy('id')->get();
 
         foreach ($matches as $match) {
-            if (count($match->slots) !== 2) {
+            // A score leaderboard (plan "AoE2 und Trackmania", P4) is no duel: a withdrawn or disqualified entry stays
+            // without a place when it is finalized (ScoreRuns), even with two entries.
+            if (count($match->slots) !== 2 || $match->bracket === 'board') {
                 continue;
             }
 
@@ -755,9 +757,7 @@ final class TournamentRunner
             }
 
             // A board game's result is entered as a chess result (one game, 1-0 / ½-½ / 0-1).
-            $result = $tournament->profile()->isChess() || $tournament->profile()->isBoard()
-                ? $this->chessInput($match, $input)
-                : $this->seriesInput($tournament, $match, $input);
+            $result = $this->parseResult($tournament, $match, $input);
 
             $previous = $match->isDirectorResult() ? $match->result : null;
 
@@ -973,6 +973,12 @@ final class TournamentRunner
      */
     public function parseResult(Tournament $tournament, TournamentMatch $match, array $input): array
     {
+        // A score leaderboard (plan "AoE2 und Trackmania", P4) has no match result to enter: its values are entered and
+        // corrected per player, with a reason (ScoreLeaderboards::correct()), and the league writes the end.
+        if ($tournament->profile()->isScore()) {
+            throw new TournamentRuleViolation('score', __('A leaderboard has no match result. Enter or correct the players\' values on its scores page.'));
+        }
+
         return $tournament->profile()->isChess() || $tournament->profile()->isBoard() ? $this->chessInput($match, $input) : $this->seriesInput($tournament, $match, $input);
     }
 

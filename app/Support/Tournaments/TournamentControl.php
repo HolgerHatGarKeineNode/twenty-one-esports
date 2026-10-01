@@ -114,6 +114,7 @@ final class TournamentControl
     public function setResult(Tournament $tournament, User $actor, int $matchId, array $input, string $reason): bool
     {
         $this->authorize($tournament, $actor);
+        $this->refuseScore($tournament);
         $reason = $this->reason($reason);
         $match = TournamentMatch::query()->where('tournament_id', $tournament->id)->find($matchId)
             ?? throw new TournamentRuleViolation('no_match', __('This match is not part of the tournament.'));
@@ -209,6 +210,19 @@ final class TournamentControl
         }
 
         return $changed;
+    }
+
+    /**
+     * A score leaderboard (plan "AoE2 und Trackmania", P4) has no match result to set and no round to restart: its
+     * values are corrected per player with a reason on its scores page (ScoreLeaderboards::correct()).
+     *
+     * @throws TournamentRuleViolation
+     */
+    private function refuseScore(Tournament $tournament): void
+    {
+        if ($tournament->profile()->isScore()) {
+            throw new TournamentRuleViolation('score', __('A leaderboard has no match result. Enter or correct the players\' values on its scores page.'));
+        }
     }
 
     /**
@@ -773,6 +787,7 @@ final class TournamentControl
     public function restartRound(Tournament $tournament, User $actor, int $roundId, int $restarts, string $reason): bool
     {
         $this->authorize($tournament, $actor);
+        $this->refuseScore($tournament);
         $reason = $this->reason($reason);
 
         $restarted = DB::transaction(function () use ($tournament, $actor, $roundId, $restarts, $reason): bool {

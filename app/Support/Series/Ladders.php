@@ -34,6 +34,11 @@ final class Ladders
      */
     public static function address(string $game, string $mode, ?CarbonImmutable $at = null): ?string
     {
+        // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: nothing of it is rated or pinned.
+        if (app(GameRegistry::class)->isScore($game)) {
+            return null;
+        }
+
         $board = in_array($game, BoardGame::RESERVED_SLUGS, true) || app(GameRegistry::class)->isBoard($game);
 
         // A board game that is switched off (reserved, not in the registry) has no ladder (fail closed):

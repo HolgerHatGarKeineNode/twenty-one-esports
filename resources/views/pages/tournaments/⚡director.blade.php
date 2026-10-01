@@ -39,6 +39,12 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     {
         Gate::authorize('direct-tournament', $tournament);
 
+        // A score leaderboard (plan "AoE2 und Trackmania", P4) has no match result to enter: its directors work on its
+        // scores page (course, corrections with a reason, the end).
+        if ($tournament->profile()->isScore() && \Illuminate\Support\Facades\Route::has('tournaments.scores')) {
+            $this->redirectRoute('tournaments.scores', $tournament, navigate: false);
+        }
+
         $this->tournament = $tournament;
     }
 

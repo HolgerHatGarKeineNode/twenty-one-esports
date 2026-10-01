@@ -89,6 +89,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $cup_open_series the series while the cup is open, null once it ended (unique: one open cup per game and region)
  * @property Carbon|null $cup_extended_at when its sign-up was extended (once)
  * @property Carbon|null $cup_ended_at when it finished or was called off
+ * @property string|null $score_course the course a score game's leaderboard is played on (plan "AoE2 und Trackmania", P4); null for every other tournament
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read User|null $creator
@@ -109,7 +110,7 @@ use Illuminate\Support\Carbon;
     'prize_target_sats', 'prize_split', 'pool_opened_at', 'pool_closed_at', 'payouts_approved_at', 'payouts_approved_by_id',
     'pot_source', 'pot_nwc_uri', 'pot_lud16', 'pot_balance_sats', 'pot_balance_at', 'pot_balance_error', 'paused_at',
     'prize_mode', 'prize_fixed', 'pot_can_receive',
-    'cup_series', 'cup_number', 'cup_open_series', 'cup_extended_at', 'cup_ended_at'])]
+    'cup_series', 'cup_number', 'cup_open_series', 'cup_extended_at', 'cup_ended_at', 'score_course'])]
 #[Hidden(['pot_nwc_uri'])]
 class Tournament extends Model
 {
@@ -471,7 +472,8 @@ class Tournament extends Model
     {
         $times = $this->times ?? [];
 
-        return GameProfile::for($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
+        // A game switched off since keeps its tournaments readable (a stand-in that plans and starts nothing).
+        return GameProfile::ofTournament($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
     }
 
     public function formatOptions(): FormatOptions

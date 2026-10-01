@@ -14,12 +14,19 @@ namespace App\Games;
  *   phase opens a feature (P5 play and ladders, P6 mining) every switch
  *   leaves it out.
  *
- * A further kind (the time attack of the AoE2/Trackmania plan) is one more
- * case here plus its answer at each switch.
+ * - Score: a highscore or time attack (plan "AoE2 und Trackmania", P4): every
+ *   player tries alone for a best value on a course inside a window, and the
+ *   league reads that best (App\Support\Scores). No pairing, no lobby, no
+ *   casual queue, no Elo: its tournaments are leaderboards and its ladder
+ *   sums points per place. Every switch that serves chess, the series or the
+ *   board games leaves it out.
+ *
+ * A further kind is one more case here plus its answer at each switch.
  */
 enum GameKind: string
 {
     case Chess = 'chess';
     case Series = 'series';
     case Board = 'board';
+    case Score = 'score';
 }

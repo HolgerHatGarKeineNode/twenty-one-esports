@@ -206,7 +206,8 @@ final class PlayerHub
         $registry = app(GameRegistry::class);
         $standings = [];
 
-        foreach ($registry->all() as $game) {
+        // No score game (plan "AoE2 und Trackmania", P4): it has no Elo rating.
+        foreach ($registry->versus() as $game) {
             foreach ($game->modes() as $mode) {
                 if ($mode->rates !== 'player') {
                     continue;

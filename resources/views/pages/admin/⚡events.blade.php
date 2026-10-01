@@ -50,8 +50,9 @@ new #[Title('Weekly events')] #[Layout('layouts::app', ['section' => 'admin'])] 
     {
         $ladders = [];
 
-        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6).
-        foreach (app(GameRegistry::class)->all() as $game) {
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no score
+        // game, which has no Elo ladder (plan "AoE2 und Trackmania", P4).
+        foreach (app(GameRegistry::class)->versus() as $game) {
             foreach ($game->modes() as $mode) {
                 $ladders[$game->slug().'/'.$mode->slug] = __($game->name()).' · '.__($mode->name);
             }

@@ -95,8 +95,8 @@ final class TournamentMatchMaker
      */
     public function startReady(Tournament $tournament): void
     {
-        // Paused (P18): nothing new starts until it is resumed.
-        if ($tournament->status !== TournamentStatus::Running || $tournament->isPaused()) {
+        // Paused (P18): nothing new starts until it is resumed. A game switched off since (its profile is a stand-in) starts nothing.
+        if ($tournament->status !== TournamentStatus::Running || $tournament->isPaused() || $tournament->profile()->isUnknown()) {
             return;
         }
 
@@ -214,6 +214,12 @@ final class TournamentMatchMaker
         }
 
         TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
+
+        // A score leaderboard (plan "AoE2 und Trackmania", P4): nobody meets anyone, so nothing starts. Every entry plays
+        // alone inside the window, and the league writes the end (ScoreLeaderboards).
+        if ($tournament->profile()->isScore()) {
+            return true;
+        }
 
         if ($tournament->profile()->isChess()) {
             if ($tournament->isDirectorMode()) {

@@ -110,7 +110,8 @@ final class CasualCups
         $registry = app(GameRegistry::class);
 
         return array_values(array_filter(array_map(strval(...), (array) config('esports.casual_cups.enabled', [])),
-            fn (string $game): bool => isset($games[$game]) && (! in_array($game, BoardGame::RESERVED_SLUGS, true) || $registry->isBoard($game))));
+            // Never a score game (plan "AoE2 und Trackmania", P4): a cup pairs players, a score game has no pairing.
+            fn (string $game): bool => isset($games[$game]) && ! $registry->isScore($game) && (! in_array($game, BoardGame::RESERVED_SLUGS, true) || $registry->isBoard($game))));
     }
 
     /**

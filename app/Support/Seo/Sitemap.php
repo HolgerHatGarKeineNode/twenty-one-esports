@@ -114,6 +114,13 @@ final class Sitemap
                 $urls[] = route('board.lobby', $game->slug());
             }
 
+            // A score game (plan "AoE2 und Trackmania", P4) has no Elo ladder: its leaderboards' page instead.
+            if ($game->kind() === GameKind::Score) {
+                $urls[] = GameNames::page($game->slug());
+
+                continue;
+            }
+
             foreach ($game->modes() as $mode) {
                 $urls[] = route('ladder.show', [$game->slug(), $mode->slug]);
             }

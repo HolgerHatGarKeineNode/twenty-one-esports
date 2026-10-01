@@ -7,6 +7,8 @@ use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\NostrEvent;
+use App\Models\ScoreRun;
+use App\Models\ScoreServer;
 use App\Support\Board\BoardGameService;
 use App\Support\Chess\ChessGameService;
 use App\Support\Chess\ChessSettings;
@@ -20,6 +22,8 @@ use App\Support\Notifications\ChessNotifications;
 use App\Support\Notifications\DmDigest;
 use App\Support\Notifications\NotificationDm;
 use App\Support\Notifications\WebPush;
+use App\Support\Scores\ScoreLeaderboards;
+use App\Support\Scores\ScoreServers;
 use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\CasualScheduler;
@@ -334,6 +338,41 @@ Artisan::command('tournaments:tick', function (TournamentScheduler $scheduler) {
 })->purpose('Move tournaments on and apply their due deadlines');
 
 Schedule::command('tournaments:tick')->everyMinute()->withoutOverlapping()->onOneServer();
+
+/*
+ * Score games (plan "AoE2 und Trackmania", P4, ScoreLeaderboards::tick()): the
+ * snapshots of every running leaderboard's automatic sources, and the end of
+ * those whose review time is over. Scheduled only while a score game is
+ * registered, so with none nothing of it runs.
+ */
+Artisan::command('scores:tick', function (ScoreLeaderboards $leaderboards) {
+    $done = $leaderboards->tick();
+
+    $this->info("Stored {$done['snapshots']} new score run(s), finalized {$done['finalized']} leaderboard(s).");
+})->purpose('Read the score sources and finalize the leaderboards that are due');
+
+if (app(GameRegistry::class)->scores() !== []) {
+    Schedule::command('scores:tick')->hourly()->withoutOverlapping()->onOneServer();
+    // Round-4 F6: finishes of account ids nobody stored or confirmed, older than `prune_days`.
+    Schedule::command('model:prune', ['--model' => [ScoreRun::class]])->daily()->withoutOverlapping()->onOneServer();
+}
+
+/*
+ * A dedicated server that reports finishes to a score game (P4,
+ * ScoreIngestController): its token is shown once here and stored hashed.
+ */
+Artisan::command('scores:server {game} {name}', function (string $game, string $name) {
+    $issued = ScoreServers::issue($name, $game);
+
+    $this->info("Server #{$issued['server']->id} ({$issued['server']->name}) for {$game}. Its token, shown only now:");
+    $this->line($issued['token']);
+})->purpose('Issue a token for a dedicated server that reports score finishes');
+
+Artisan::command('scores:server-revoke {server}', function (string $server) {
+    ScoreServers::revoke(ScoreServer::query()->findOrFail((int) $server));
+
+    $this->info("Server #{$server} is revoked: its token is refused from now on.");
+})->purpose('Revoke the token of a score server');
 
 /*
  * The casual 1v1 clock (P23, CasualScheduler): a ready check that ran out

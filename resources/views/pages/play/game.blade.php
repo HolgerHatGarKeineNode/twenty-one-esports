@@ -24,7 +24,11 @@
         <dl class="m-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-[13px]">
             @foreach ($modes as $mode)
                 @php
-                    $facts = [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')];
+                    $scoreGame = $registry->get($game['slug']);
+                    // A score game (plan "AoE2 und Trackmania", P4): no Elo ladder, a value per player and points per place.
+                    $facts = $scoreGame instanceof \App\Games\ScoreGame
+                        ? [$scoreGame->metric($mode)->lowerIsBetter() ? __('Time attack, the fastest time wins') : __('Highscore, the highest score wins'), __('points per place')]
+                        : [$mode->rates === 'player' ? __('Player ladder') : __('Clan lineup')];
                     if ($mode->bestOf !== []) {
                         $facts[] = __('best of :list', ['list' => implode(' / ', $mode->bestOf)]);
                     }

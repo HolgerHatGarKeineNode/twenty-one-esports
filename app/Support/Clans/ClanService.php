@@ -396,6 +396,11 @@ final class ClanService
         $gameMode = $this->games->mode($game, $mode)
             ?? throw new ClanRuleViolation(__('This game mode does not exist.'));
 
+        // A score game (plan "AoE2 und Trackmania", P4) has no lineups: everyone plays alone.
+        if ($this->games->isScore($game)) {
+            throw new ClanRuleViolation(__('This game mode does not exist.'));
+        }
+
         $members = ClanMember::query()->where('clan_id', $clan->id)->with('user')->get()->keyBy('user_id');
         $placed = [];
 

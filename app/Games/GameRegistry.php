@@ -99,6 +99,36 @@ final class GameRegistry
     }
 
     /**
+     * The highscore and time attack games (plan "AoE2 und Trackmania", P4),
+     * in display order. Registered only through `esports.score_games` (the
+     * demo behind its own switch, off by default); every switch between
+     * chess, the series and the board games leaves these out.
+     *
+     * @return array<string, ScoreGame>
+     */
+    public function scores(): array
+    {
+        return array_filter($this->games, fn (Game $game): bool => $game instanceof ScoreGame);
+    }
+
+    public function isScore(string $slug): bool
+    {
+        return $this->find($slug) instanceof ScoreGame;
+    }
+
+    /**
+     * The games two sides play against each other: every kind but a score
+     * game. Lists that pair players (match filters, hubs of open matches,
+     * the mempool of played games) read these.
+     *
+     * @return array<string, Game>
+     */
+    public function versus(): array
+    {
+        return array_filter($this->games, fn (Game $game): bool => ! $game instanceof ScoreGame);
+    }
+
+    /**
      * Display name of a game; the slug itself for a game no longer registered.
      */
     public function name(string $slug): string

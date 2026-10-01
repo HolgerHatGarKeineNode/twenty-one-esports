@@ -4,6 +4,7 @@ use App\Enums\ChessEndReason;
 use App\Enums\InviteLinkType;
 use App\Enums\InviteStatus;
 use App\Enums\TournamentFormat;
+use App\Enums\TournamentStatus;
 use App\Models\Admin;
 use App\Models\ChessGame;
 use App\Models\Clan;
@@ -12,13 +13,17 @@ use App\Models\DisputeEvidence;
 use App\Models\Lineup;
 use App\Models\RankBadge;
 use App\Models\Rating;
+use App\Models\ScoreRun;
 use App\Models\Season;
 use App\Models\SeriesMatch;
 use App\Models\Tournament;
+use App\Models\TournamentParticipant;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
 use App\Support\Invites\InviteLinks;
 use App\Support\StreamBot\PrideNotes;
+use App\Support\Tournaments\TournamentBrackets;
+use App\Support\Tournaments\TournamentRunner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\File;
@@ -32,6 +37,7 @@ use Pest\Browser\Support\ComputeUrl;
 use PHPUnit\Framework\ExpectationFailedException;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
+use Tests\Support\ScoreDemoOn;
 
 pest()->group('browser');
 
@@ -792,3 +798,100 @@ test('a Livewire roundtrip stays clean: submitting the admin form without a key'
         // the admin created in this test's setup exists.
         ->and(Admin::query()->count())->toBe(1);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Score games (plan "AoE2 und Trackmania", P4)
+|--------------------------------------------------------------------------
+|
+| The score pages exist only while a score game is registered, so the sweep
+| above (the app boots with the demo off) never sees them. Here the demo is
+| switched on and its pages are swept the same way, at 375 and 1440, for a
+| guest and for an admin who also plays the leaderboard (submission form,
+| director part, review queue), with one Livewire roundtrip: a submission.
+| The positive controls above prove the collector.
+|
+*/
+
+test('the score pages render clean with the demo on, and a submission roundtrip stays clean', function (bool $authenticated) {
+    ScoreDemoOn::play();
+    $tournament = Tournament::factory()->scoreDemo()->create(['status' => TournamentStatus::Running, 'starts_at' => now()->subHours(2), 'published_at' => now()->subDay(), 'name' => 'Score Week With A Rather Long Name']);
+    $players = User::factory()->count(5)->create();
+    $admin = User::factory()->create(['name' => 'admin-and-racer', 'gamer_tags' => ['score-demo' => 'acct-browser-sweep']]);
+    Admin::query()->create(['pubkey' => $admin->pubkey]);
+
+    foreach ([$admin, ...$players] as $player) {
+        TournamentParticipant::query()->create(['tournament_id' => $tournament->id, 'user_id' => $player->id, 'name' => $player->displayName(), 'rating' => 1500, 'members' => [$player->id]]);
+    }
+
+    app(TournamentBrackets::class)->generate($tournament, str_repeat('ab', 32));
+    app(TournamentRunner::class)->sync($tournament);
+
+    foreach ($players->take(3)->values() as $index => $player) {
+        ScoreRun::query()->create(['user_id' => $player->id, 'game' => 'score-demo', 'mode' => 'time-trial', 'course' => 'demo-1', 'unit' => 'ms',
+            'source' => 'manual', 'tournament_id' => $tournament->id, 'value' => 61_000 + 1_234 * $index, 'achieved_at' => now()->subHour(),
+            'proof_url' => 'https://example.org/proof/'.$index, 'verified_at' => $index < 2 ? now() : null]);
+    }
+
+    if ($authenticated) {
+        test()->actingAs($admin);
+    }
+
+    $pages = [
+        ['scores.show', route('scores.show', 'score-demo')],
+        ['tournaments.show', route('tournaments.show', $tournament)],
+        ['tournaments.scores', route('tournaments.scores', $tournament)],
+        ['play', route('play')],
+        ...($authenticated ? [['admin.scores', route('admin.scores')], ['gaming.edit', route('gaming.edit')]] : []),
+    ];
+    $page = freshSweepPage('/');
+    $violations = [];
+
+    foreach ($pages as [$name, $url]) {
+        foreach ([[375, 800], [1440, 900]] as [$width, $height]) {
+            $page->setViewportSize($width, $height);
+            $page->goto(ComputeUrl::from($url));
+            $data = sweepProbe($page);
+            recordSweepViolations($data['read'], "{$name} at {$width}px", $violations);
+            recordOverflowViolation($data['read'], "{$name} at {$width}px", $violations);
+            recordGapViolation($data['gap'], $name, $name, $width, $violations);
+            fwrite(STDERR, 'SCORE-MEASURE '.json_encode(['who' => $authenticated ? 'admin' : 'guest', 'page' => $name, 'width' => $width,
+                'scrollWidth' => $data['read']['scrollWidth'], 'clientWidth' => $data['read']['clientWidth'], 'status' => $data['read']['navStatus'],
+                'boxes' => $page->evaluate(SCORE_BOXES_SCRIPT)])."\n");
+
+            // Never the account id on a page another player can open (the admin's own settings excepted).
+            if ($name !== 'gaming.edit') {
+                expect($page->content())->not->toContain('acct-browser-sweep');
+            }
+        }
+    }
+
+    if ($authenticated) {
+        $page->setViewportSize(375, 800);
+        $page->goto(ComputeUrl::from(route('tournaments.scores', $tournament)));
+        $page->locator('[data-test="score-value-input"]')->fill('0:58.765');
+        $page->locator('[data-test="score-proof-input"]')->fill('https://example.org/my-run');
+        $page->locator('[data-test="score-submit-button"]')->click();
+        BrowserWait::until($page, '() => (document.querySelector(\'[data-test="score-mine"]\')?.innerText ?? "").includes("0:58.765")', 10_000);
+        recordSweepViolations(sweepProbe($page)['read'], 'tournaments.scores submission roundtrip', $violations);
+
+        expect(ScoreRun::query()->where('user_id', $admin->id)->value('value'))->toBe(58_765);
+    }
+
+    expect($violations)->toBe([]);
+})->with([
+    'guest' => [false],
+    'admin who plays' => [true],
+]);
+
+/** The boxes of the score pages' main parts (P4 measurement): width, height and right edge in CSS px. */
+const SCORE_BOXES_SCRIPT = <<<'JS'
+    () => Object.fromEntries(["score-leaderboard", "tournament-leaderboard", "score-submit", "score-direct", "score-game", "admin-scores", "score-row", "tag-field-score-demo"]
+        .map((key) => {
+            const node = document.querySelector(`[data-test="${key}"]`);
+            if (! node) return [key, null];
+            const box = node.getBoundingClientRect();
+            return [key, { w: Math.round(box.width), h: Math.round(box.height), right: Math.round(box.right) }];
+        })
+        .filter(([, box]) => box !== null))
+    JS;

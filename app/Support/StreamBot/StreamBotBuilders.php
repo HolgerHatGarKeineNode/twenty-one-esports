@@ -518,8 +518,9 @@ final class StreamBotBuilders
      */
     private function allGames(): array
     {
-        // A board game is announced once it is playable (plan "Mühle und Dame", P5).
-        $names = array_values(array_unique(array_map(fn ($game): string => $game->name(), array_diff_key($this->games->all(), $this->games->boards()))));
+        // A board game is announced once it is playable (plan "Mühle und Dame", P5); a score game (plan "AoE2 und
+        // Trackmania", P4) not before its own announcement is decided.
+        $names = array_values(array_unique(array_map(fn ($game): string => $game->name(), array_diff_key($this->games->versus(), $this->games->boards()))));
 
         if ($names === []) {
             return [];

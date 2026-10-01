@@ -3,9 +3,12 @@
 namespace App\Support\Navigation;
 
 use App\Enums\PayoutStatus;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\TournamentPayout;
 use App\Models\User;
+use App\Support\Scores\ScoreAccounts;
+use Illuminate\Support\Facades\Route;
 
 /**
  * The map of the admin area (P17): every admin page in one of four groups,
@@ -29,6 +32,7 @@ final class AdminNavigation
         'settings' => 'league',
         'tournaments' => 'tournaments',
         'payouts' => 'tournaments',
+        'scores' => 'tournaments',
         'admins' => 'people',
         'organizers' => 'people',
         'trust' => 'people',
@@ -76,6 +80,8 @@ final class AdminNavigation
                 // Not „Tournaments“ again: the group already says it, the strip would read it twice.
                 self::item('tournaments', __('All tournaments'), route('admin.tournaments')),
                 self::item('payouts', __('Payouts'), route('admin.payouts'), $payable),
+                // Score submissions waiting for a check (plan "AoE2 und Trackmania", P4), only while a score game is registered.
+                ...(Route::has('admin.scores') ? [self::item('scores', __('Score submissions'), route('admin.scores'), ScoreRun::query()->pendingReview()->count() + ScoreAccounts::pendingAccounts())] : []),
             ]],
             ['key' => 'people', 'label' => self::groupLabel('people'), 'items' => [
                 self::item('admins', __('Admins'), route('admin.admins')),

@@ -56,8 +56,9 @@ final class LadderEvents
     {
         $events = [];
 
-        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6).
-        foreach ($this->games->all() as $game) {
+        // Every game of the registry, the board games that are switched on included (plan "Mühle und Dame", P6); no
+        // score game: it has no Elo ladder (plan "AoE2 und Trackmania", P4).
+        foreach ($this->games->versus() as $game) {
             foreach ($game->modes() as $mode) {
                 $events[] = $this->publishOne($season, $league, $trustKey, $game->slug(), $mode->slug, $content);
             }
@@ -78,7 +79,7 @@ final class LadderEvents
     {
         $events = [];
 
-        foreach ($this->games->all() as $game) {
+        foreach ($this->games->versus() as $game) {
             foreach ($game->modes() as $mode) {
                 $latest = NostrEvent::query()->where(['kind' => Ladders::KIND, 'pubkey' => $league->pubkey(), 'd' => $game->slug().'/'.$mode->slug.'/'.$season->slug])
                     ->orderByDesc('signed_at')->orderByDesc('id')->first();

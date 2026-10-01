@@ -411,6 +411,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $chess = $profile->isChess();
     // Chess and the board games (plan "Mühle und Dame", P5) play their games here, with a clock; the series are reported.
     $playsHere = $chess || $profile->isBoard();
+    // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no match, no Elo, no seeds that matter.
+    $score = $profile->isScore();
+    $scoreGame = $score ? app(\App\Games\GameRegistry::class)->get($tournament->game) : null;
+    $scoreMetric = $scoreGame instanceof \App\Games\ScoreGame ? $scoreGame->metric($scoreGame->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
     $status = $tournament->status;
     $drawn = $landing->drawn();
     $published = $status !== TournamentStatus::Draft && $tournament->published_at !== null;
@@ -448,8 +452,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         ['flag', __('Starts'), $at($tournament->starts_at).(($openEnd = $landing->openEndLine($zone)) !== null ? ' · '.$openEnd : ''), 'starts'],
         ...($openEnd === null ? [['clock', __('Planned duration'), __('about :duration', ['duration' => Estimator::format($tournament->plannedDuration(), $profile)]), 'duration']] : []),
         [$tournament->on_site ? 'home' : 'wifi', __('Where'), $tournament->on_site ? __('On site').', '.trans_choice(':count station|:count stations', (int) $tournament->stations) : __('Online'), 'where'],
-        ['shield-check', __('Results'), $tournament->results_mode->label(), 'results'],
+        ['shield-check', __('Results'), $score ? __('values read from the game, or submitted with a proof link an admin checks') : $tournament->results_mode->label(), 'results'],
         ['ladder', __('Rated'), match (true) {
+            $score => __('no: a leaderboard has no Elo ladder; its places score points on the game\'s points ladder'),
             $status === TournamentStatus::Draft => __('decided when it is published'),
             $tournament->ladder_address === null => __('no: published before Block 0, so every match is casual'),
             // A board game (plan "Mühle und Dame", P6) is rated like chess when played here.
@@ -457,7 +462,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             ! $chess && ! $profile->isBoard() && ! $tournament->isDirectorMode() => __('yes, if its ladder is open at the pairing and the trust gate passes; counts once the other side confirms. Mix teams and same-clan pairings play casual'),
             default => __('yes, on its ladder while that is open and the trust gate passes'),
         }, 'rated'],
-        ['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding'],
+        ...($score && $scoreGame instanceof \App\Games\ScoreGame ? [
+            ['flag', __($scoreGame->courseLabel()), $tournament->score_course ?? __('the directors set it before the start'), 'course'],
+            ['award', __('Wins'), $scoreMetric?->lowerIsBetter() ? __('the fastest time; a tie goes to the earlier record') : __('the highest score; a tie goes to the earlier record'), 'wins'],
+        ] : [['award', __('Seeding'), __('by Elo at sign-up close'), 'seeding']]),
         ['mining', __('Season chain'), __('separate: tournament matches never mine season blocks'), 'chain'],
     ];
 
@@ -485,12 +493,22 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             : ($playsHere ? __('Your games start here on the site, with a clock. Winners move on until the last round decides.') : __('Report your series; the other side confirms it. Winners move on until the last match decides.'))],
     ];
 
+    if ($score) {
+        $steps = [
+            $steps[0],
+            [__('The window'), __('From the start until the end, play the course alone as often as you like. Your best value inside that time counts; a record set before or after does not.')],
+            [__('Your value'), __('Submit your best with a link that proves it, and an admin checks it; or the league reads it from the game. When the window has closed, the best value wins.')],
+        ];
+    }
+
     $formatCopy = FormatCopy::for($tournament->format);
-    $noShow = $tournament->isDirectorMode()
+    $noShow = $score
+        ? __('Nobody waits for anybody here: whoever sets no value inside the window gets no place.')
+        : ($tournament->isDirectorMode()
         ? __('A tournament director can record a no-show. The other side wins by forfeit, and no Elo changes hands.')
         : ($playsHere
             ? __('Games run here with a clock, like every game on the site.')
-            : __('Results come from the players: one side reports, the other confirms. If they disagree, an admin decides.'));
+            : __('Results come from the players: one side reports, the other confirms. If they disagree, an admin decides.')));
 
     // Projected bracket before the draw: the chooser's animated preview for the planned size, and round 1 if sign-up closed now.
     $projection = $landing->projection();
@@ -595,9 +613,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                     @break
                                 @case('live')
                                 @case('finished')
-                                    <a href="#bracket" data-test="to-bracket"
+                                    <a href="{{ $score ? '#leaderboard' : '#bracket' }}" data-test="to-bracket"
                                        class="btn-p inline-flex min-h-14 shrink-0 items-center justify-center gap-2.5 rounded-md bg-btc px-6 font-display text-base font-bold text-on-btc hover:text-on-btc">
-                                        <x-icon :name="$cta === 'live' ? 'eye' : 'trophy'" :size="20" />{{ $cta === 'live' ? __('Watch live') : __('See the results') }}
+                                        <x-icon :name="$cta === 'live' ? 'eye' : 'trophy'" :size="20" />{{ $cta === 'live' ? ($score ? __('See the leaderboard') : __('Watch live')) : __('See the results') }}
                                     </a>
                                     @break
                                 @default
@@ -622,7 +640,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                                         } }} @break
                                         @case('full') {{ __('Every spot is taken. Places open up when someone pulls out.') }} @break
                                         @case('closed') {{ $status === TournamentStatus::Drawing ? __('Sign-up is closed. The draw waits for Bitcoin block :height; its hash seeds the mix teams and the bracket.', ['height' => $tournament->draw_height]) : __('Sign-up has closed. The draw follows.') }} @break
-                                        @case('live') {{ __('The matches are on. Results land in the bracket as they come in.') }} @break
+                                        @case('live') {{ $score ? __('The window is open. The leaderboard moves as values come in.') : __('The matches are on. Results land in the bracket as they come in.') }} @break
                                         @case('finished') {{ $champion ? __('Finished. Winner: :name.', ['name' => $champion->name]) : __('The tournament has finished.') }} @break
                                         @case('cancelled') {{ __('The tournament was called off.') }} @break
                                     @endswitch
@@ -725,7 +743,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     <section aria-labelledby="entries-h" class="flex flex-col gap-4 px-4 lg:px-12" data-test="entries">
         <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id="entries-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Who plays') }}</h2>
-            <span class="text-xs text-ink-3">{{ $drawn ? __('Seeded by Elo at sign-up close') : __('Seeds if sign-up closed now, by Elo; equal Elo by earlier sign-up') }}</span>
+            @unless ($score)
+                <span class="text-xs text-ink-3">{{ $drawn ? __('Seeded by Elo at sign-up close') : __('Seeds if sign-up closed now, by Elo; equal Elo by earlier sign-up') }}</span>
+            @endunless
         </div>
 
         <ul class="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2 p-0 sm:gap-3" x-data="{ settled: false }" x-init="setTimeout(() => settled = true, 50)">
@@ -757,7 +777,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                             @if ($row['kind'] !== 'lineup' && $row['clan'])
                                 <x-clan-tag :clan="$row['clan']" size="sm" />
                             @endif
-                            @if ($row['rating'] !== null)
+                            @if ($row['rating'] !== null && ! $score)
                                 <span class="tabular-nums">{{ __(':rating Elo', ['rating' => $row['rating']]) }}</span>
                             @elseif ($row['kind'] === 'solo')
                                 <span>{{ __('Solo, drawn into a mix team') }}</span>
@@ -813,6 +833,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         @endif
     </section>
 
+    @if ($score)
+        @include('pages.scores.partials.tournament-board', ['tournament' => $tournament, 'metric' => $scoreMetric, 'drawn' => $drawn])
+    @else
     {{-- The bracket: projected before the draw, the real one after it --}}
     <section id="bracket" aria-labelledby="bracket-h" class="flex scroll-mt-24 flex-col gap-4 px-4 lg:px-12" data-test="bracket">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -920,6 +943,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </details>
         @endif
     </section>
+    @endif
 
     {{-- The pot's working part (P9): its state, "Add to the pot" (#pot-topup) and the payouts; the pot itself heads the page. --}}
     @if ($tournament->pool_opened_at !== null || ($this->canManage && ! in_array($tournament->status, [TournamentStatus::Draft, TournamentStatus::Cancelled], true)))
@@ -966,7 +990,10 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @foreach ([
                 [__('How does :format work?', ['format' => $tournament->format->label()]), __($formatCopy['how']).' '.__('Good for:').' '.__($formatCopy['good'])],
                 [__('What if someone does not show up?'), $noShow],
-                [__('How are seeds set?'), \Illuminate\Support\Str::ucfirst($teams
+                $score ? [__('How is the winner found?'), $scoreMetric?->lowerIsBetter()
+                    ? __('By the fastest time on the course inside the window. A tie goes to whoever set it first.')
+                    : __('By the highest score on the course inside the window. A tie goes to whoever set it first.')]
+                : [__('How are seeds set?'), \Illuminate\Support\Str::ucfirst($teams
                     ? __('by Elo at sign-up close, equal Elo by earlier sign-up; mix teams after the lineups, in draw order')
                     : __('by Elo at sign-up close, equal Elo by earlier sign-up')).'.'],
                 ...($this->pool !== null ? [[__('How is the prize pool paid out?'), __('When the tournament has ended, an admin checks it and closes the pool. The pool is split by place as shown; tied places share their percentages and a team’s share is split equally among its roster. Each player’s share goes to the Lightning address in their Nostr profile, and the league publishes every payment on Nostr with its proof.')]] : []),
