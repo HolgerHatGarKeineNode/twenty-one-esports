@@ -165,3 +165,28 @@ test('the live season kept on the request is forgotten when a season is released
 
     expect(Seasons::live())->toBeNull();
 });
+
+test('the live season kept on the request is forgotten when the season is deleted', function () {
+    $season = openSeason();
+
+    expect(Seasons::live()?->id)->toBe($season->id);
+
+    $season->delete();
+
+    expect(Seasons::live())->toBeNull();
+});
+
+test('a console process (queue worker, daemon) never keeps the live season: it sees a change made elsewhere', function () {
+    $season = openSeason();
+    // Outside the test runner, in the console: what a queue worker or the stream daemon is.
+    app()->detectEnvironment(fn (): string => 'production');
+
+    expect(app()->runningInConsole())->toBeTrue()
+        ->and(app()->runningUnitTests())->toBeFalse()
+        ->and(Seasons::live()?->id)->toBe($season->id);
+
+    // Another process ends the season: no model event reaches this one.
+    Season::query()->update(['ends_at' => now()->subSecond()]);
+
+    expect(Seasons::live())->toBeNull();
+});

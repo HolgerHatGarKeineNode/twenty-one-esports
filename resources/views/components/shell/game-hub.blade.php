@@ -66,9 +66,11 @@
                                 <span class="hub-yours" data-test="hub-yours">{{ __('Yours') }}</span>
                             @endif
                         </span>
+                        {{-- The title without its subtitle ("Age of Empires II", not ": Definitive Edition"): five cards from xl leave no room for it (P9). It truncates with an ellipsis if even that does not fit; the modes give way first. --}}
+                        @php($title = \Illuminate\Support\Str::before($game['name'], ': '))
                         <span class="flex min-w-0 items-baseline gap-2 max-sm:flex-col max-sm:gap-0.5 sm:mt-2">
-                            <b class="shrink-0 truncate text-sm font-bold text-ink max-sm:max-w-full">{{ $game['name'] }}</b>
-                            <small class="min-w-0 truncate text-xs text-ink-3 max-sm:max-w-full">{{ $game['formats'] }}</small>
+                            <b class="min-w-0 truncate text-sm font-bold text-ink max-sm:max-w-full" title="{{ $game['name'] }}" data-test="hub-title">{{ $title }}@if ($title !== $game['name'])<span class="sr-only">{{ \Illuminate\Support\Str::after($game['name'], $title) }}</span>@endif</b>
+                            <small class="min-w-0 shrink-[100] truncate text-xs text-ink-3 max-sm:max-w-full">{{ $game['formats'] }}</small>
                         </span>
                     </a>
                     @php($cardLinks = $links($game))

@@ -132,11 +132,24 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
             BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
             $page->evaluate(SHELL_SETTLE);
             $m = $sizes["{$count}@{$width}"] = $page->evaluate(HUB_MEASURE);
+            // Every title inside its card and the list, none cut (P9: "Age of Empires II: Definitiv" ran 99 px past its card at 1280).
+            $m['titles'] = $sizes["{$count}@{$width}"]['titles'] = $page->evaluate(<<<'JS'
+                () => {
+                    const list = document.querySelector('#game-hub [x-ref=hubTiles]').getBoundingClientRect();
+                    return [...document.querySelectorAll('#game-hub [data-test^=hub-game-]')].filter((card) => card.checkVisibility()).map((card) => {
+                        const b = card.querySelector('.hub-tile-main b');
+                        const r = b.getBoundingClientRect();
+                        const c = card.getBoundingClientRect();
+                        return card.dataset.test.replace('hub-game-', '') + ' ' + b.innerText.trim() + (r.right > c.right + 0.5 || r.right > list.right + 0.5 ? ' OUT ' + Math.round(r.right - c.right) : '') + (b.scrollWidth > b.clientWidth + 1 ? ' CUT' : '');
+                    });
+                }
+                JS);
             shellShot($page, "shell-player-{$width}-hub-{$count}games");
 
             expect($m['scrollHeight'])->toBeLessThanOrEqual($m['clientHeight'], "inner scroll {$count}@{$width}: ".json_encode($m))
                 ->and($m['bottom'])->toBeLessThanOrEqual($height)
                 ->and($m['fill'])->toBeGreaterThanOrEqual(0.9, "first row fill {$count}@{$width}: ".json_encode($m))
+                ->and(array_filter($m['titles'], fn (string $title): bool => str_contains($title, ' OUT') || str_contains($title, ' CUT')))->toBe([], "titles {$count}@{$width}: ".json_encode($m['titles']))
                 ->and($m['columns'])->toBe($count)
                 ->and($m['heights'])->toHaveCount(1);
         }
