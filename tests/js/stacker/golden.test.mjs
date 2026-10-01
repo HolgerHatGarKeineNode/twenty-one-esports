@@ -10,8 +10,9 @@
  *   hard drops); top-out.json: a run without hard drops (soft drop, gravity, lock
  *   delay, DAS to the walls) that tops out at an exact tick; hard-drops.json: hard
  *   drops only, until the stack tops out.
- * - The input logs were produced once by a scripted player that is not part of the
- *   repo; the logs themselves are the reference, not the player.
+ * - The input logs were produced once by the scripted players in
+ *   tests/js/stacker/tools/build-fixtures.mjs (not part of the test run); the logs
+ *   themselves are the reference, not the players.
  * - Regenerate ONLY on purpose. The bf1 fixtures never change: engine versions are
  *   frozen, so a red test here means the engine changed, not the fixture. A rule
  *   change ships as a new ENGINE_VERSION with its own fixtures next to these.
@@ -29,20 +30,6 @@ const NAMES = ['forty-lines', 'top-out', 'hard-drops'];
 
 function fixture(name) {
     return JSON.parse(readFileSync(new URL(`../../Fixtures/stacker/${name}.json`, import.meta.url), 'utf8'));
-}
-
-/** The log with input `index` moved `by` ticks, still in tick order. */
-function shifted(inputs, index, by) {
-    const moved = inputs.map((input) => [...input]);
-    moved[index][0] += by;
-    const [entry] = moved.splice(index, 1);
-    let at = moved.findIndex(([tick]) => tick > entry[0]);
-    if (at < 0) {
-        at = moved.length;
-    }
-    moved.splice(at, 0, entry);
-
-    return moved;
 }
 
 for (const name of NAMES) {
@@ -72,8 +59,13 @@ test('the reference runs end the way their names say', () => {
 
 test('one input a tick later gives a different run', () => {
     const f = fixture('forty-lines');
-    const index = f.inputs.findIndex(([, action, down]) => action === ACTION.HARD && down === 1);
-    const late = run(f.seed, f.settings, shifted(f.inputs, index, 1));
+    // input 12 starts a DAS slide to the right at tick 11; its release follows at
+    // tick 20, so moving it to tick 12 keeps the log in order and changes only its timing
+    assert.deepEqual(f.inputs[12], [11, ACTION.RIGHT, 1]);
+    assert.equal(f.inputs[13][0], 20);
+    const late = f.inputs.map((input, index) => (index === 12 ? [12, ACTION.RIGHT, 1] : input));
 
-    assert.notEqual(late.stateHash, f.expected.stateHash);
+    const result = run(f.seed, f.settings, late);
+    assert.notEqual(result.stateHash, f.expected.stateHash);
+    assert.deepEqual([result.ticks, result.lines, result.toppedOut], [347, 1, true]);
 });
