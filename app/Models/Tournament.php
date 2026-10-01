@@ -472,7 +472,8 @@ class Tournament extends Model
     {
         $times = $this->times ?? [];
 
-        return GameProfile::for($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
+        // A game switched off since keeps its tournaments readable (a stand-in that plans and starts nothing).
+        return GameProfile::ofTournament($this->game, $this->mode)->withTimes($times['game'] ?? null, $times['setup'] ?? null, $times['break'] ?? null);
     }
 
     public function formatOptions(): FormatOptions

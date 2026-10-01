@@ -95,8 +95,8 @@ final class TournamentMatchMaker
      */
     public function startReady(Tournament $tournament): void
     {
-        // Paused (P18): nothing new starts until it is resumed.
-        if ($tournament->status !== TournamentStatus::Running || $tournament->isPaused()) {
+        // Paused (P18): nothing new starts until it is resumed. A game switched off since (its profile is a stand-in) starts nothing.
+        if ($tournament->status !== TournamentStatus::Running || $tournament->isPaused() || $tournament->profile()->isUnknown()) {
             return;
         }
 

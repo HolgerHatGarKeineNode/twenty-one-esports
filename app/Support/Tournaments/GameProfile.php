@@ -30,7 +30,7 @@ final readonly class GameProfile
      * @param  string  $key  opaque id of the profile in the chooser (`blitz`, `rl3`, `ea-sports-fc-27/1v1`)
      * @param  'min'|'day'  $unit
      * @param  list<int>  $bestOfOptions
-     * @param  'game'|'series'|'score'  $what
+     * @param  'game'|'series'|'score'|'none'  $what
      */
     public function __construct(
         public string $key,
@@ -74,6 +74,22 @@ final readonly class GameProfile
             'age-of-empires-2/1v1', 'age-of-empires-2/2v2', 'age-of-empires-2/3v3' => new self("{$game}/{$mode}", $game, $mode, 'min', 21, 5, 5, 1, 3, [1, 3], false, 'series', (int) $mode[0], 10, 1.5),
             default => self::score($game, $mode) ?? throw new InvalidArgumentException("No tournament profile for [{$game}/{$mode}]."),
         };
+    }
+
+    /**
+     * The profile of a stored tournament's game and mode: the league
+     * default, or for a game no longer registered (a score or board game
+     * switched off) a stand-in that plans nothing: no duration, no estimate,
+     * no wait, and nothing starts ({@see isUnknown()}). Pages that list or
+     * show such a tournament keep working instead of failing.
+     */
+    public static function ofTournament(string $game, string $mode): self
+    {
+        try {
+            return self::for($game, $mode);
+        } catch (InvalidArgumentException) {
+            return new self("{$game}/{$mode}", $game, $mode, 'min', 0, 0, 0, 1, 1, [1], false, 'none');
+        }
     }
 
     /**
@@ -122,6 +138,14 @@ final readonly class GameProfile
      * A leaderboard of a score game (plan "AoE2 und Trackmania", P4): no
      * match between sides, every entry's best value in the window ranks it.
      */
+    /**
+     * The stand-in of a game no longer registered ({@see ofTournament()}).
+     */
+    public function isUnknown(): bool
+    {
+        return $this->what === 'none';
+    }
+
     public function isScore(): bool
     {
         return $this->what === 'score';

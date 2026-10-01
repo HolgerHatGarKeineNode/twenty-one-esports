@@ -45,7 +45,7 @@ final class TournamentWaits
     public static function of(Tournament $tournament): array
     {
         // A score leaderboard (plan "AoE2 und Trackmania", P4) has no match anybody waits for.
-        if ($tournament->status !== TournamentStatus::Running || $tournament->profile()->isScore()) {
+        if ($tournament->status !== TournamentStatus::Running || $tournament->profile()->isScore() || $tournament->profile()->isUnknown()) {
             return [];
         }
 
@@ -103,7 +103,7 @@ final class TournamentWaits
         $slots = $match->slots;
 
         // A score leaderboard's board is no duel, even with two entries (plan "AoE2 und Trackmania", P4).
-        if ($tournament->profile()->isScore() || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
+        if ($tournament->profile()->isScore() || $tournament->profile()->isUnknown() || count($slots) !== 2 || $slots->contains(fn (TournamentMatchSlot $slot): bool => $slot->participant === null)) {
             return null;
         }
 
