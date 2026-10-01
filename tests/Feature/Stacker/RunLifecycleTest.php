@@ -277,8 +277,8 @@ test('old runs without a verified time are pruned, a stuck verification goes bac
     $this->artisan('model:prune', ['--model' => StackerRun::class])->assertSuccessful();
     expect(StackerRun::query()->pluck('id')->sort()->values()->all())->toBe([$oldVerified->id, $recent->id]);
 
-    $stuck = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(11), 'replay' => 'AQ']);
-    $fresh = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(9), 'replay' => 'AQ']);
+    $stuck = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(11), 'updated_at' => now()->subMinutes(11), 'replay' => 'AQ']);
+    $fresh = StackerRun::factory()->for($user)->create(['status' => StackerRunStatus::Verifying, 'submitted_at' => now()->subMinutes(9), 'updated_at' => now()->subMinutes(9), 'replay' => 'AQ']);
     $this->artisan('stacker:sweep')->assertSuccessful();
     expect($stuck->refresh())->status->toBe(StackerRunStatus::Pending)->reason->toBe('verifier-stale')
         ->and($fresh->refresh()->status)->toBe(StackerRunStatus::Verifying);
@@ -385,4 +385,65 @@ test('the week of a run starts on Monday 00:00 Berlin time, summer and winter', 
         ->and(StackerRuns::weekOf(Carbon::parse('2026-10-04 22:00:00', 'UTC')))->toBe('2026-10-05')
         ->and(StackerRuns::weekOf(Carbon::parse('2026-12-06 22:59:59', 'UTC')))->toBe('2026-11-30')
         ->and(StackerRuns::weekOf(Carbon::parse('2026-12-06 23:00:00', 'UTC')))->toBe('2026-12-07');
+});
+
+test('at most replay_inflight_max runs wait for the verifier with a replay; beyond that a submission is turned away and its token kept', function () {
+    BlockfillOn::play();
+    config(['esports.blockfill.replay_inflight_max' => 1]);
+    $waiting = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-unavailable', 'replay' => 'AQ', 'submitted_at' => now()]);
+    $issued = issueRun(User::factory()->create());
+
+    submitForty($issued['token'])->assertStatus(503)->assertJson(['status' => 'busy']);
+    expect(runOf($issued))->status->toBe(StackerRunStatus::Issued)->replay->toBeNull()->submitted_at->toBeNull()
+        ->and($this->verifier->asked)->toBe([]);
+
+    // once the queue has room, the same token is taken
+    $waiting->forceFill(['replay' => null])->save();
+    submitForty($issued['token'])->assertAccepted()->assertJson(['status' => 'verifying']);
+    expect(runOf($issued)->status)->toBe(StackerRunStatus::Verified);
+});
+
+test('a late job still decides a run the sweep gave up as stale', function () {
+    BlockfillOn::play();
+    $run = StackerRun::factory()->create([
+        'status' => StackerRunStatus::Pending, 'reason' => 'verifier-stale', 'replay' => BlockfillOn::fixture('forty-lines')['replay'],
+        'ticks' => 958, 'state_hash' => '6102773e', 'submitted_at' => now()->subMinutes(20),
+    ]);
+
+    VerifyStackerRun::dispatchSync($run->id);
+
+    expect($run->refresh())->status->toBe(StackerRunStatus::Verified)->reason->toBeNull()
+        ->and($this->verifier->asked)->toBe([$run->id]);
+});
+
+test('a pending run drops its replay after pending_replay_hours, and is then never sent to the verifier again', function () {
+    Queue::fake();
+    $old = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-unavailable', 'replay' => 'AQ', 'submitted_at' => now()->subHours(25)]);
+    $timedOut = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-timeout', 'replay' => 'AQ', 'submitted_at' => now()->subHours(25)]);
+    $recent = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-unavailable', 'replay' => 'AQ', 'submitted_at' => now()->subHours(23)]);
+
+    $this->artisan('stacker:sweep')->assertSuccessful();
+
+    expect($old->refresh())->replay->toBeNull()->reason->toBe('replay-dropped')->status->toBe(StackerRunStatus::Pending)
+        ->and($timedOut->refresh()->replay)->toBeNull()
+        ->and($recent->refresh()->replay)->toBe('AQ');
+
+    $this->artisan('stacker:reverify')->assertSuccessful();
+    expect($old->refresh()->status)->toBe(StackerRunStatus::Pending)
+        ->and($recent->refresh()->status)->toBe(StackerRunStatus::Verifying);
+    Queue::assertPushed(VerifyStackerRun::class, 1);
+});
+
+test('sending a pending run again keeps the time it was submitted, so it stays in its week', function () {
+    Queue::fake();
+    $submitted = now()->subDays(8);
+    $run = StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-stale', 'replay' => 'AQ', 'submitted_at' => $submitted]);
+
+    $this->artisan('stacker:reverify')->assertSuccessful();
+
+    expect($run->refresh()->status)->toBe(StackerRunStatus::Verifying)
+        ->and($run->submitted_at->format('Y-m-d H:i:s'))->toBe($submitted->format('Y-m-d H:i:s'));
+    // the sweep measures a fresh verification from when it was sent again, not from the old submission
+    $this->artisan('stacker:sweep')->assertSuccessful();
+    expect($run->refresh()->status)->toBe(StackerRunStatus::Verifying);
 });

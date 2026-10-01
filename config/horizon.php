@@ -213,6 +213,22 @@ return [
             'timeout' => 60,
             'nice' => 0,
         ],
+        // Blockfill (plan "Blockfill", P2): the Node verifier's own queue, one process, so a
+        // backlog of replays never holds the default queue. One try (VerifyStackerRun::$tries);
+        // job timeout 30 s < this supervisor's 60 s < redis retry_after 90 s.
+        'supervisor-stacker' => [
+            'connection' => 'redis',
+            'queue' => ['stacker-verify'],
+            'balance' => false,
+            'minProcesses' => 1,
+            'maxProcesses' => 1,
+            'maxTime' => 3600,
+            'maxJobs' => 1000,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
     ],
 
     'environments' => [

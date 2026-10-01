@@ -39,7 +39,11 @@ class VerifyStackerRun implements ShouldQueue
     {
         $run = StackerRun::query()->find($this->runId);
 
-        if ($run === null || $run->status !== StackerRunStatus::Verifying) {
+        // a run the sweep gave up as stale is decided too: the backlog turns into verdicts
+        $open = $run !== null && $run->replay !== null && ($run->status === StackerRunStatus::Verifying
+            || ($run->status === StackerRunStatus::Pending && $run->reason === 'verifier-stale'));
+
+        if (! $open) {
             return;
         }
 

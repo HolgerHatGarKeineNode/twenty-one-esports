@@ -162,6 +162,10 @@ final class StackerRuns
             $fields += $this->outcome($run, $ticks, $now);
 
             if ($fields['status'] === StackerRunStatus::Verifying) {
+                if ($this->inflightFull()) {
+                    throw new StackerBusy('Too many runs are waiting for the verifier.');
+                }
+
                 $fields['replay'] = $replay;
             }
         }
@@ -202,9 +206,12 @@ final class StackerRuns
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
         };
 
+        // a run the sweep gave up as stale is still decided when its job comes late
         $finished = StackerRun::query()
             ->whereKey($run->id)
-            ->where('status', StackerRunStatus::Verifying)
+            ->where(fn ($open) => $open->where('status', StackerRunStatus::Verifying)
+                ->orWhere(fn ($stale) => $stale->where('status', StackerRunStatus::Pending)->where('reason', 'verifier-stale')))
+            ->whereNotNull('replay')
             ->update($this->stored($fields + ['updated_at' => $now])) === 1;
 
         if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
@@ -313,24 +320,31 @@ final class StackerRuns
     /**
      * Only the `replay_keep_top` fastest verified runs of a week keep their
      * replay; every other verified run of that week drops it. One indexed
-     * query for the week's fastest (week, status, ticks), one update.
+     * query for the week's fastest (week, status, ticks) and one update over
+     * the week's runs that still hold a replay, in one transaction.
      */
     public function keepWeekTop(string $week): void
     {
-        $keep = StackerRun::query()
-            ->where('week', $week)
-            ->where('status', StackerRunStatus::Verified)
-            ->orderBy('ticks')
-            ->orderBy('id')
-            ->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))
-            ->pluck('id');
+        // one transaction: a second worker's verification cannot fall between the top and the update
+        DB::transaction(function () use ($week): void {
+            $keep = StackerRun::query()
+                ->where('week', $week)
+                ->where('status', StackerRunStatus::Verified)
+                ->orderBy('ticks')
+                ->orderBy('id')
+                ->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))
+                ->pluck('id')
+                ->all();
 
-        StackerRun::query()
-            ->where('week', $week)
-            ->where('status', StackerRunStatus::Verified)
-            ->whereNotNull('replay')
-            ->whereNotIn('id', $keep)
-            ->update(['replay' => null]);
+            // only the week's runs that still hold a replay (partial index on week where replay is not null)
+            StackerRun::query()
+                ->whereIn('id', fn ($holding) => $holding->select('id')->from('stacker_runs')
+                    ->where('week', $week)
+                    ->where('status', StackerRunStatus::Verified->value)
+                    ->whereNotNull('replay'))
+                ->when($keep !== [], fn ($outside) => $outside->whereNotIn('id', $keep))
+                ->update(['replay' => null]);
+        });
     }
 
     /**
@@ -341,10 +355,42 @@ final class StackerRuns
     {
         $before = $now->copy()->subMinutes((int) config('esports.blockfill.verifier.stale_minutes'));
 
-        return StackerRun::query()
+        // measured from when the run went to the verifier (submission or reverifyPending()), kept in updated_at
+        $stale = StackerRun::query()
             ->where('status', StackerRunStatus::Verifying)
-            ->where('submitted_at', '<', $before->format('Y-m-d H:i:s.v'))
+            ->where('updated_at', '<', $before->format('Y-m-d H:i:s.v'))
             ->update($this->stored(['status' => StackerRunStatus::Pending, 'reason' => 'verifier-stale', 'updated_at' => $now]));
+
+        $this->dropOldPendingReplays($now);
+
+        return $stale;
+    }
+
+    /**
+     * A run pending longer than `pending_replay_hours` after its submission
+     * drops its replay (reason `replay-dropped`): it is never verified, the
+     * player plays again. Keeps what an outage leaves behind small.
+     */
+    public function dropOldPendingReplays(CarbonInterface $now): int
+    {
+        $before = $now->copy()->subHours((int) config('esports.blockfill.pending_replay_hours'));
+
+        return StackerRun::query()
+            ->where('status', StackerRunStatus::Pending)
+            ->whereNotNull('replay')
+            ->where('submitted_at', '<', $before->format('Y-m-d H:i:s.v'))
+            ->update($this->stored(['replay' => null, 'reason' => 'replay-dropped', 'updated_at' => $now]));
+    }
+
+    /**
+     * Whether `replay_inflight_max` runs already wait for the verifier with a replay.
+     */
+    public function inflightFull(): bool
+    {
+        return StackerRun::query()
+            ->whereIn('status', [StackerRunStatus::Verifying, StackerRunStatus::Pending])
+            ->whereNotNull('replay')
+            ->count() >= (int) config('esports.blockfill.replay_inflight_max');
     }
 
     /**
@@ -355,11 +401,13 @@ final class StackerRuns
     {
         $sent = 0;
 
-        foreach (StackerRun::query()->where('status', StackerRunStatus::Pending)->orderBy('id')->limit($limit)->pluck('id') as $id) {
+        // submitted_at stays: it is the time of play and decides the week the run counts in
+        foreach (StackerRun::query()->where('status', StackerRunStatus::Pending)->whereNotNull('replay')->orderBy('id')->limit($limit)->pluck('id') as $id) {
             $taken = StackerRun::query()
                 ->whereKey($id)
                 ->where('status', StackerRunStatus::Pending)
-                ->update($this->stored(['status' => StackerRunStatus::Verifying, 'reason' => null, 'submitted_at' => $now, 'updated_at' => $now])) === 1;
+                ->whereNotNull('replay')
+                ->update($this->stored(['status' => StackerRunStatus::Verifying, 'reason' => null, 'updated_at' => $now])) === 1;
 
             if ($taken) {
                 VerifyStackerRun::dispatch((int) $id);

@@ -1196,7 +1196,12 @@ return [
     | run keeps its replay only while it is among the replay_keep_top
     | fastest of its week (Monday 00:00 Berlin), so at most that many
     | replays are kept per week; every other run keeps ticks and hash only,
-    | practice and rejected runs keep no replay. prune_days, after which runs
+    | practice and rejected runs keep no replay. Runs waiting for the
+    | verifier (verifying, pending) hold their submitted replay; at most
+    | replay_inflight_max of them at once (a submission beyond that is
+    | answered 503 and nothing is stored), and a pending run drops its replay
+    | after pending_replay_hours (it can then not be verified any more; the
+    | player plays again). prune_days, after which runs
     | without a verified time are deleted (`model:prune`, daily).
     |
     */
@@ -1221,6 +1226,8 @@ return [
         'submits_per_ip_per_minute' => 90,
         'issue_global_per_minute' => 3000,
         'replay_keep_top' => 100,
+        'replay_inflight_max' => 2000,
+        'pending_replay_hours' => 24,
         'prune_days' => 30,
         'verifier' => [
             'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),

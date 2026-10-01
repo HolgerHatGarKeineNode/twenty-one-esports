@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Stacker\StackerBusy;
 use App\Support\Stacker\StackerRuns;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,7 +54,11 @@ class StackerRunController extends Controller
     {
         $run = $this->run($request, $token, $runs);
 
-        $submitted = $runs->submit($run, $request->getContent(), $request->json('replay'), $request->json('ticks'), $request->json('hash'), now());
+        try {
+            $submitted = $runs->submit($run, $request->getContent(), $request->json('replay'), $request->json('ticks'), $request->json('hash'), now());
+        } catch (StackerBusy) {
+            return response()->json(['status' => 'busy', 'reason' => 'busy'], 503)->header('Retry-After', '30');
+        }
 
         if ($submitted === null) {
             return response()->json(['status' => $run->refresh()->status->value, 'reason' => 'used'], 409);
