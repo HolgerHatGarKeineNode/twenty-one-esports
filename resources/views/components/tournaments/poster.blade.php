@@ -12,8 +12,8 @@
 --}}
 @php
     use App\Support\Cards\ShareCard;
-    use App\Support\GameNames;
     use App\Support\LeagueTime;
+    use App\Support\Tournaments\Lobbies;
 
     $cup = (new \App\Support\Engagement\HomeHub(auth()->user()))->cupOf($tournament);
     $places = $cup['places'];
@@ -43,8 +43,10 @@
         </a>
         <p class="m-0 flex flex-wrap gap-1.5 text-xs font-bold">
             <span class="inline-flex h-7 items-center gap-1.5 rounded-tag bg-btc-chip px-2.5 text-btc-hi"><x-icon name="trophy" :size="14" />{{ __('Next tournament') }}</span>
-            <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ GameNames::mode($tournament->game, $tournament->mode) }}</span>
-            <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ $tournament->format->label() }}</span>
+            @if (($mode = Lobbies::modeLabel($tournament)) !== null)
+                <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ $mode }}</span>
+            @endif
+            <span class="inline-flex h-7 items-center rounded-tag bg-raised px-2.5 text-ink-2">{{ Lobbies::formatLabel($tournament) }}</span>
         </p>
     </div>
 

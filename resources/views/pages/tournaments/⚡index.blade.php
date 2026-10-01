@@ -73,7 +73,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
     ];
     $countTotal = array_sum(array_column($counts, 1));
     $next = $this->next;
-    $modeLabel = fn (Tournament $t): string => \App\Support\GameNames::full($t->game, $t->mode);
+    $modeLabel = fn (Tournament $t): string => \App\Support\Tournaments\Lobbies::gameLine($t);
     // The organizers' tournaments, the hero taken out of its group; the covers of the first screen load at once.
     $organizers = $this->organizers;
     $hero = null;
@@ -166,7 +166,7 @@ new #[Title('Tournaments')] #[Layout('layouts::app', ['section' => 'tournaments'
                             <x-prize-chip :tournament="$tournament" class="sm:ml-[58px]" />
                         </span>
                         <x-league-time :at="$tournament->starts_at" class="text-ink-2 sm:w-[22%]" />
-                        <span class="text-ink-2 sm:w-[20%]">{{ $tournament->format->label() }}</span>
+                        <span class="text-ink-2 sm:w-[20%]">{{ \App\Support\Tournaments\Lobbies::formatLabel($tournament) }}</span>
                         <span class="text-ink-2 sm:grow">{{ $modeLabel($tournament) }}</span>
                         <span class="inline-flex h-6 items-center self-start rounded-xs bg-btc-chip px-2 text-xs font-bold text-btc-hi sm:self-auto">{{ $tournament->status->label() }}</span>
                     </li>

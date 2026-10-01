@@ -12,7 +12,7 @@
     first screen, lazy below.
 --}}
 @php
-    use App\Support\GameNames;
+    use App\Support\Tournaments\Lobbies;
 
     $tournament = $card['tournament'];
     [$stateIcon, $stateLabel, $stateTone] = match ($card['state']) {
@@ -43,7 +43,7 @@
             <a href="{{ route('tournaments.show', $tournament) }}" class="text-ink after:absolute after:inset-0 hover:text-btc-hi focus-visible:outline-none" data-card-link data-test="organizer-card-name">{{ $tournament->name }}</a>
         </h3>
 
-        <p class="m-0 text-[13px] leading-normal text-ink-2">{{ GameNames::full($tournament->game, $tournament->mode) }}, {{ $tournament->format->label() }}</p>
+        <p class="m-0 text-[13px] leading-normal text-ink-2">{{ Lobbies::gameLine($tournament) }}, {{ Lobbies::formatLabel($tournament) }}</p>
 
         <time datetime="{{ $tournament->starts_at->copy()->utc()->format('Y-m-d\TH:i:s\Z') }}" class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px] text-ink-2" data-test="organizer-card-start"
               @unless ($fixed) x-data="cupStart({ at: {{ (int) $tournament->starts_at->getTimestampMs() }}, zone: @js($card['zone']) })" @endunless>

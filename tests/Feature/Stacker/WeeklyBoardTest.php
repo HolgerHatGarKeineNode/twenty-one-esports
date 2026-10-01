@@ -353,3 +353,18 @@ test('the game page shows this week\'s board, your place and last week\'s winner
     $this->get(route('tournaments.scores', blockfillWeek()))->assertOk()->assertSee($me->displayName());
     $this->get(route('tournaments.show', blockfillWeek()))->assertOk();
 });
+
+test('the week\'s page names its course by the mode above the board, "40 blocks", never the slug', function () {
+    BlockfillOn::play();
+    weeklyRun(User::factory()->create(), 3000, now());
+
+    // The line above the board alone: the slug still stands in links and data attributes.
+    $windowLine = function (string $url): string {
+        preg_match('/data-test="score-window">(.*?)<\/span>\s*<\/span>/s', $this->get($url)->assertOk()->getContent(), $line);
+
+        return trim((string) preg_replace('/\s+/', ' ', strip_tags($line[1] ?? '')));
+    };
+
+    expect($windowLine(route('tournaments.show', blockfillWeek())))->toEndWith('· 40 blocks')->not->toContain('40-blocks')
+        ->and($windowLine(route('tournaments.show', blockfillWeek()).'?lang=de'))->toEndWith('· 40 Blöcke')->not->toContain('40-blocks');
+});

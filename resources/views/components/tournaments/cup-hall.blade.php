@@ -25,8 +25,8 @@
     $winner: CupBoard::lastWinner(). $next: a CupBoard row or null. $empty: no cup is open or running.
 --}}
 @php
-    use App\Support\GameNames;
     use App\Support\Pages\RulesPage;
+    use App\Support\Tournaments\Lobbies;
 
     if ($next !== null) {
         $nextCup = $next['tournament'];
@@ -86,7 +86,7 @@
                     <h3 id="cup-next-h" class="m-0 font-display text-lg leading-tight font-bold break-words lg:text-xl">
                         <a href="{{ $nextShow }}" class="text-ink hover:text-btc-hi" data-test="cup-next-name">{{ $nextCup->name }}</a>
                     </h3>
-                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :places places', ['mode' => GameNames::full($nextCup->game, $nextCup->mode), 'places' => $next['places']]) }}</p>
+                    <p class="m-0 text-[13px] leading-normal text-ink-2" data-test="cup-next-facts">{{ __(':mode tournament, :places places', ['mode' => Lobbies::gameLine($nextCup), 'places' => $next['places']]) }}</p>
                     {{-- The format is not known before the close: CasualCups::formatFor() picks it by how many signed up. --}}
                     <p class="m-0 text-xs leading-normal text-ink-3" data-test="cup-next-format">{{ __('The format is set at the start, by how many play.') }}</p>
                 </div>

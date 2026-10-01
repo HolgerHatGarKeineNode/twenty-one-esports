@@ -256,7 +256,7 @@
                                     </span>
                                     @if ($running)
                                         {{-- Set at the close by the field (CasualCups::formatFor()); before it, the stored format is a placeholder. --}}
-                                        <span class="text-ink-2" data-test="cup-format">{{ $cupRow->format->label() }}</span>
+                                        <span class="text-ink-2" data-test="cup-format">{{ \App\Support\Tournaments\Lobbies::formatLabel($cupRow) }}</span>
                                     @endif
                                 </a>
                             </li>

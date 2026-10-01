@@ -433,3 +433,54 @@ test('a director\'s reject reason of one long unbroken word wraps inside the lob
         ->and($measured['page'])->toBeLessThanOrEqual($measured['viewport'])
         ->and($problems)->toBe([]);
 })->with(['en', 'de']);
+
+/** A box's words, and how many of its visible parts stick out of the viewport. */
+const AOE_LOBBY_CHIPS = <<<'JS'
+    (selector) => {
+        const box = document.querySelector(selector);
+        const rects = [...box.querySelectorAll('span, p, a, b')].filter((el) => el.checkVisibility()).map((el) => el.getBoundingClientRect());
+        return {
+            lang: document.documentElement.lang,
+            text: box.innerText.replace(/\s+/g, ' ').trim(),
+            outside: rects.filter((r) => r.left < -0.5 || r.right > window.innerWidth + 0.5).length,
+            scroll: document.documentElement.scrollWidth,
+            client: document.documentElement.clientWidth,
+        };
+    }
+    JS;
+
+test('a live lobby tournament says "One lobby match" without a 1v1 on its page and on its /tournaments card, at 375 and 1440 in English and 1440 in German', function (int $width, int $height, string $locale) {
+    [$tournament] = aoeLobbyTournament();
+    $page = shellPage(null, $width, $height);
+    $problems = [];
+    $page->goto(ComputeUrl::from(route('locale.switch', $locale, false)));
+
+    shellOpen($page, route('tournaments.show', $tournament, false), $problems);
+    shellShot($page, "aoe-lobby-chips-{$locale}-{$width}");
+    $hero = $page->evaluate(AOE_LOBBY_CHIPS, '[data-test=tournament-hero]');
+
+    $card = "[data-test=organizer-card][data-tournament=\"{$tournament->id}\"]";
+    shellOpen($page, route('tournaments.index', [], false), $problems);
+    $page->evaluate('(selector) => { const card = document.querySelector(selector); window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - 80); }', $card);
+    shellShot($page, "aoe-lobby-index-{$locale}-{$width}");
+    $listed = $page->evaluate(AOE_LOBBY_CHIPS, $card);
+    fwrite(STDERR, "\n[aoe chips] {$locale} {$width}: ".json_encode(['hero' => $hero, 'card' => $listed]));
+
+    foreach ([$hero, $listed] as $measured) {
+        expect($measured['lang'])->toBe($locale)
+            ->and($measured['text'])->toContain('Age of Empires II', $locale === 'de' ? 'Ein Lobby-Match' : 'One lobby match')
+            ->and($measured['text'])->not->toContain('1v1')
+            ->and($measured['text'])->not->toContain('Free for All')
+            ->and($measured['outside'])->toBe(0)
+            ->and($measured['scroll'])->toBeLessThanOrEqual($measured['client']);
+    }
+    expect($problems)->toBe([]);
+
+    // Positive control: the collector sees a throw and a failed fetch on this very page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("aoe chips positive control"); }); fetch("/tournaments/0"); }');
+    BrowserWait::until($page, '() => window.__errors.some((e) => e.includes("aoe chips positive control")) && window.__errors.some((e) => e.startsWith("404 "))', 5_000);
+})->with([
+    'phone 375, en' => [375, 812, 'en'],
+    'desktop 1440, en' => [1440, 900, 'en'],
+    'desktop 1440, de' => [1440, 900, 'de'],
+]);

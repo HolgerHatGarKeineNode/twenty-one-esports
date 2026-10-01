@@ -4,8 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
-use App\Support\GameNames;
 use App\Support\Scores\ScoreWindow;
+use App\Support\Tournaments\Lobbies;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Response;
 
@@ -44,7 +44,8 @@ class TournamentCalendarController extends Controller
             'DTEND:'.$this->utc($end),
             // A Blockfill week in the request's language (P6); any other tournament its own name.
             'SUMMARY:'.$this->text($tournament->title()),
-            'DESCRIPTION:'.$this->text(GameNames::full($tournament->game, $tournament->mode).', '.$tournament->format->label().". \n".$url),
+            // A lobby tournament (P10): its game and "One lobby match", never "1v1, Free for All".
+            'DESCRIPTION:'.$this->text(Lobbies::gameLine($tournament).', '.Lobbies::formatLabel($tournament).". \n".$url),
             'URL:'.$url,
             'LOCATION:'.$this->text($tournament->on_site ? __('On site') : __('Online')),
             'STATUS:'.($tournament->status === TournamentStatus::Cancelled ? 'CANCELLED' : 'CONFIRMED'),
