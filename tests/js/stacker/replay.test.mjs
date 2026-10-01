@@ -61,6 +61,14 @@ test('malformed replays are refused', () => {
     }
 });
 
+test('the committed .replay files are the encoded reference runs (the PHP verifier tests submit them)', () => {
+    for (const name of ['forty-lines', 'top-out']) {
+        const f = fixture(name);
+        const text = readFileSync(new URL(`../../Fixtures/stacker/${name}.replay`, import.meta.url), 'utf8').trim();
+        assert.equal(text, encodeReplay(header(f), f.inputs), name);
+    }
+});
+
 test('an encoder refuses what a run would refuse', () => {
     const f = fixture('hard-drops');
     assert.throws(() => encodeReplay({ ...header(f), v: 2 }, f.inputs), RangeError);

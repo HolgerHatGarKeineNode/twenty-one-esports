@@ -1160,4 +1160,49 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Blockfill (plan "Blockfill", P2)
+    |--------------------------------------------------------------------------
+    |
+    | Our own stacking game: the league hands out a run (one-time token and
+    | seed), the browser plays it on resources/js/stacker, and a queued Node
+    | verifier replays the submitted inputs (App\Support\Stacker\StackerRuns).
+    | enabled: the switch (`ESPORTS_BLOCKFILL`, off by default); off, the
+    | routes in routes/stacker.php are not registered at all. engine: the
+    | engine version new runs are issued on (frozen versions stay playable
+    | for replays). start_seconds: a token that is not started within this
+    | long expires. limits: what a submission may carry (ticks of play,
+    | inputs, bytes of the request body). slack_seconds: the wall-clock
+    | bracket, the time between start (or issue) and submission must be at
+    | least the played time and at most this much more. verifier: the Node
+    | process (binary, heap limit, timeout) and the queue its job runs on;
+    | the queue worker must listen on that queue too. issue_per_hour and
+    | submits_per_minute: rate limits per player (plus one issue per
+    | issue_every_seconds).
+    |
+    */
+
+    'blockfill' => [
+        'enabled' => (bool) env('ESPORTS_BLOCKFILL', false),
+        'engine' => 'bf1',
+        'start_seconds' => 120,
+        'limits' => [
+            'ticks' => 36000,
+            'inputs' => 20000,
+            'bytes' => 65536,
+        ],
+        'slack_seconds' => 20,
+        'issue_every_seconds' => 2,
+        'issue_per_hour' => 400,
+        'submits_per_minute' => 30,
+        'verifier' => [
+            'node' => env('ESPORTS_BLOCKFILL_NODE', 'node'),
+            'script' => 'js/stacker/verify.mjs',
+            'heap_mb' => 64,
+            'timeout_seconds' => 5,
+            'queue' => 'stacker-verify',
+        ],
+    ],
+
 ];
