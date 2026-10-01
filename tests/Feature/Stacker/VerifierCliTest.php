@@ -37,7 +37,23 @@ function referenceRun(string $name, array $overrides = []): StackerRun
     ]);
 }
 
+test('the 40-line reference run is a program at 6.45 pieces per second: replayed exactly, held for review with its hint (P5)', function () {
+    $run = referenceRun('forty-lines');
+
+    VerifyStackerRun::dispatchSync($run->id);
+
+    expect($run->refresh())
+        ->status->toBe(StackerRunStatus::Review)
+        ->verified_at->toBeNull()
+        ->ticks->toBe(958)
+        ->settings->toBe(['das' => 8, 'arr' => 1, 'sdf' => 20])
+        ->replay->toBe(BlockfillOn::fixture('forty-lines')['replay'])
+        ->and($run->flags['hints'])->toMatchArray(['flags' => ['pps'], 'pps' => 6.45, 'maxPressesPerTick' => 1]);
+});
+
 test('the 40-line reference run is verified at its exact time, with its settings', function () {
+    // P5: the reference run is a program at 6.45 pieces per second; under a bound of 7 it carries no hint
+    config(['esports.blockfill.hints' => ['pps' => 7]]);
     $run = referenceRun('forty-lines');
 
     VerifyStackerRun::dispatchSync($run->id);

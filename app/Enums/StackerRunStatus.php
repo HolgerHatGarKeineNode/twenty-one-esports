@@ -12,6 +12,10 @@ namespace App\Enums;
  * Pending: the verifier was not available; no score until it is checked.
  * Practice: a valid submission that does not beat the player's verified
  * best, kept but not verified (it could not change any standing).
+ * Review (P5): the verifier replayed exactly the claimed time, but the run
+ * carries cheat hints (resources/js/stacker/hints.js): held, with its
+ * replay, until an admin approves it (then Verified) or rejects it. It
+ * counts nowhere while held.
  */
 enum StackerRunStatus: string
 {
@@ -22,4 +26,5 @@ enum StackerRunStatus: string
     case Abandoned = 'abandoned';
     case Pending = 'pending';
     case Practice = 'practice';
+    case Review = 'review';
 }

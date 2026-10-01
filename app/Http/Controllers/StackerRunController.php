@@ -6,10 +6,12 @@ use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Stacker\StackerBusy;
+use App\Support\Stacker\StackerReplays;
 use App\Support\Stacker\StackerRuns;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Route;
 
 /**
  * Blockfill runs over JSON (plan "Blockfill", P2; routes/stacker.php, only
@@ -89,6 +91,8 @@ class StackerRunController extends Controller
             // P4: the best of this week is the one a run has to beat; the all-time best is shown beside it
             'best' => $runs->best($user, StackerRuns::weekOf(now())),
             'best_all_time' => $runs->best($user),
+            // P5: the run's replay page, once the league keeps its replay (verified among the week's fastest, or held)
+            'replay' => StackerReplays::watchable($run) && Route::has('stacker.replay') ? route('stacker.replay', $run->id) : null,
         ]);
     }
 

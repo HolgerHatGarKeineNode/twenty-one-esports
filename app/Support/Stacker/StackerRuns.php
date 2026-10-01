@@ -34,7 +34,10 @@ use Illuminate\Support\Str;
  *   `practice` and never verified: it could not change any standing. The
  *   rest is `verifying` and goes to the verifier's own queue (VerifyStackerRun).
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
- *   `pending` (fail-closed: no score until it is checked).
+ *   `pending` (fail-closed: no score until it is checked). A verified run
+ *   with cheat hints (P5) is held as `review` with its replay (keepHeld()
+ *   bounds them) until an admin approves it (approve(): verified, on the
+ *   board) or rejects it (reject()).
  *
  * Storage stays bounded (security audits F1, N1, R1, round 3). Before
  * anything is stored the whole replay is read (replayInputCount(): canonical
@@ -200,15 +203,18 @@ final class StackerRuns
      */
     public function finish(StackerRun $run, StackerVerdict $verdict, CarbonInterface $now): void
     {
+        // P5: a run with cheat hints is held for an admin's look (Review) and counts nowhere until approved
+        $held = $verdict->outcome === StackerVerdict::VERIFIED && ($verdict->hints['flags'] ?? []) !== [];
         $fields = match ($verdict->outcome) {
             StackerVerdict::VERIFIED => [
-                'status' => StackerRunStatus::Verified,
+                'status' => $held ? StackerRunStatus::Review : StackerRunStatus::Verified,
                 'settings' => json_encode($verdict->settings),
-                'verified_at' => $now,
+                'verified_at' => $held ? null : $now,
                 'reason' => null,
                 'replay' => $verdict->replay,
                 'week' => self::weekOf($run->submitted_at ?? $now),
                 'network' => null,
+                'flags' => json_encode(['hints' => $verdict->hints ?? ['flags' => []]]),
             ],
             StackerVerdict::REJECTED => ['status' => StackerRunStatus::Rejected, 'reason' => $verdict->reason, 'replay' => null, 'network' => null],
             default => ['status' => StackerRunStatus::Pending, 'reason' => $verdict->reason],
@@ -223,7 +229,7 @@ final class StackerRuns
             ->update($this->stored($fields + ['updated_at' => $now])) === 1;
 
         if ($finished && $verdict->outcome === StackerVerdict::VERIFIED) {
-            $this->keepWeekTop(self::weekOf($run->submitted_at ?? $now));
+            $held ? $this->keepHeld($run->refresh(), $now) : $this->keepWeekTop(self::weekOf($run->submitted_at ?? $now));
         }
 
         // what the verifier said last: the sweep re-sends waiting runs only to a verifier that answers
@@ -248,6 +254,74 @@ final class StackerRuns
             && (int) ($last['at'] ?? 0) >= $now->copy()->subMinutes(10)->getTimestamp();
 
         return $this->reverifyPending($answering ? max(1, (int) config('esports.blockfill.redrive_batch')) : 1, $now);
+    }
+
+    /**
+     * Held runs stay bounded like verified replays (P5): per player and week
+     * only the fastest held run waits (an earlier tie stays), and per week
+     * only the `replay_keep_top` fastest held runs. Every other one becomes
+     * practice without its replay (reason `review-superseded`): it could not
+     * change a standing the kept one would not.
+     */
+    public function keepHeld(StackerRun $run, CarbonInterface $now): void
+    {
+        DB::transaction(function () use ($run, $now): void {
+            $week = (string) $run->week;
+            $held = fn () => StackerRun::query()->where('week', $week)->where('status', StackerRunStatus::Review);
+            $mine = $held()->where('user_id', $run->user_id)->orderBy('ticks')->orderBy('id')->pluck('id')->all();
+            $keep = $held()->orderBy('ticks')->orderBy('id')->limit(max(0, (int) config('esports.blockfill.replay_keep_top')))->pluck('id')->all();
+            $drop = [...array_slice($mine, 1), ...$held()->whereNotIn('id', $keep)->pluck('id')->all()];
+
+            if ($drop !== []) {
+                StackerRun::query()->whereIn('id', array_unique($drop))->where('status', StackerRunStatus::Review)
+                    ->update($this->stored(['status' => StackerRunStatus::Practice, 'reason' => 'review-superseded', 'replay' => null, 'updated_at' => $now]));
+            }
+        });
+    }
+
+    /**
+     * An admin approves a held run (P5): it is verified from now on, keeps its
+     * replay while among its week's fastest (keepWeekTop()) and joins its
+     * week's leaderboard (BlockfillWeeks::record()). False when the run is
+     * no longer held (another admin decided first).
+     */
+    public function approve(StackerRun $run, User $admin, CarbonInterface $now): bool
+    {
+        $approved = StackerRun::query()
+            ->whereKey($run->id)
+            ->where('status', StackerRunStatus::Review)
+            ->update($this->stored([
+                'status' => StackerRunStatus::Verified,
+                'verified_at' => $now,
+                'flags' => json_encode([...(array) $run->flags, 'review' => ['decision' => 'approved', 'by' => $admin->id, 'at' => $now->toIso8601ZuluString()]]),
+                'updated_at' => $now,
+            ])) === 1;
+
+        if ($approved) {
+            $run->refresh();
+            $this->keepWeekTop((string) $run->week);
+            app(BlockfillWeeks::class)->record($run, $now);
+        }
+
+        return $approved;
+    }
+
+    /**
+     * An admin rejects a held run (P5): it never counts, its replay goes
+     * (reason `review`). False when the run is no longer held.
+     */
+    public function reject(StackerRun $run, User $admin, CarbonInterface $now): bool
+    {
+        return StackerRun::query()
+            ->whereKey($run->id)
+            ->where('status', StackerRunStatus::Review)
+            ->update($this->stored([
+                'status' => StackerRunStatus::Rejected,
+                'reason' => 'review',
+                'replay' => null,
+                'flags' => json_encode([...(array) $run->flags, 'review' => ['decision' => 'rejected', 'by' => $admin->id, 'at' => $now->toIso8601ZuluString()]]),
+                'updated_at' => $now,
+            ])) === 1;
     }
 
     /**

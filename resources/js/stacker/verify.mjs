@@ -6,7 +6,7 @@
  * with one JSON object on stdin:
  *   {replay, seed, engine, claimed: {ticks, hash}, limits: {ticks, inputs, bytes, inputsPerTick, inputSlack}}
  * and answers one JSON line on stdout, exit code 0:
- *   {ok: true, ticks, lines, pieces, hash, settings, replay}
+ *   {ok: true, ticks, lines, pieces, hash, settings, replay, hints}
  *   {ok: false, reason}  reason: malformed | oversize | engine | seed | unfinished | trailing | mismatch | crash
  * `replay` is the run re-encoded from its decoded inputs (for a valid run the same bytes
  * as submitted). Its size is bounded by the checks, not by the encoding: inputs after the
@@ -14,12 +14,16 @@
  * ceil(ticks * inputsPerTick) + inputSlack) and non-canonical varints (`malformed`,
  * refused by the decoder). Within that bound no-op inputs can still pad a run up to its
  * played time; the league limits what it keeps instead (StackerRuns::keepWeekTop()).
+ * `hints` (P5, hints.js): what in a verified run looks like a program ({flags, pps,
+ * maxPressesPerTick, timingCv, finesse}); `request.hints` may lower or raise its bounds.
+ * A hint never rejects: the league holds a run with flags for an admin's look.
  * `crash` is the engine throwing on this replay, caught here: the only crash that
  * rejects a run. No answer at all (a non-zero exit, a missing or broken script,
  * a signal) says nothing about the run, so the caller leaves it pending.
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { hintsFor } from './hints.js';
 import { decodeReplay, encodeReplay } from './replay.js';
 
 /** Frozen engines by version; a new version adds a line, an old one never goes. */
@@ -108,6 +112,13 @@ export async function verify(request, engines = ENGINES) {
         return { ok: false, reason: 'mismatch' };
     }
 
+    let hints;
+    try {
+        hints = hintsFor(header.seed, header.settings, inputs, request.hints);
+    } catch {
+        return { ok: false, reason: 'crash' };
+    }
+
     return {
         ok: true,
         ticks: result.ticks,
@@ -116,6 +127,7 @@ export async function verify(request, engines = ENGINES) {
         hash: result.stateHash,
         settings: header.settings,
         replay: encodeReplay(header, inputs),
+        hints,
     };
 }
 

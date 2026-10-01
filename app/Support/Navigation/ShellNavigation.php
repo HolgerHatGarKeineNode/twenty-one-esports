@@ -226,7 +226,7 @@ final class ShellNavigation
             $name === 'board.show' => $known($this->gameOfBoardGame($route->parameter('boardGame'))),
             $name === 'scores.show' => $known($route->parameter('game')),
             // Blockfill's game page (plan "Blockfill", P6): its own context bar, never the one of the game opened last.
-            $name === 'stacker.play' => $known(Blockfill::SLUG),
+            $name === 'stacker.play', $name === 'stacker.replay' => $known(Blockfill::SLUG),
             // The match list files board games too (plan "Mempool-Streifen", P2), but a board game's filter keeps row 2
             // on the game opened last: a board game's context bar has no Matches link, its games are in its lobby.
             $name === 'matches.index' => $this->registry->isBoard((string) $request->query('game')) ? null : $known($request->query('game')),

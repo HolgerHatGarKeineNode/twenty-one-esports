@@ -14,6 +14,14 @@ use Illuminate\Support\Facades\Route;
  */
 // The game page (P3): practice for everyone, guests included; ranked runs need a login (the routes below).
 Route::livewire('blockfill', 'pages::stacker.play')->name('stacker.play');
+// P5: the replay of one run, for its player, admins (runs with cheat hints) and everybody once its week has ended
+// among the board's first ten (StackerReplays::canView(), checked in the page).
+Route::livewire('blockfill/replays/{run}', 'pages::stacker.replay')->whereNumber('run')->name('stacker.replay');
+
+// P5: runs held for cheat hints, for an admin's look (approve or reject).
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::livewire('blockfill', 'pages::admin.blockfill')->name('blockfill');
+});
 
 Route::middleware('auth')->group(function () {
     Route::post('stacker/runs', [StackerRunController::class, 'issue'])->middleware('throttle:stacker-issue')->name('stacker.runs.issue');
