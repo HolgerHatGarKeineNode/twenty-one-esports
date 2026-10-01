@@ -47,7 +47,9 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     public function rendering(\Illuminate\View\View $view): void
     {
         $view->title(__('Matches'));
-        app(PageMeta::class)->describe(__('Matches'), __('Every series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.'));
+        app(PageMeta::class)->describe(__('Matches'), ScoreAttempts::slugs() === []
+            ? __('Every series and chess game of the TWENTY ONE esports league by match number: live, scheduled, waiting for confirmation and done.')
+            : __('Every match of the TWENTY ONE esports league by match number, and every highscore attempt: live, scheduled, waiting for confirmation and done.'));
         app(\App\Support\PageMeta::class)->card(fn () => \App\Support\Cards\PageCard::page('matches'));
     }
 
@@ -407,9 +409,14 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     $filterBtn = 'h-[42px] shrink-0 cursor-pointer border-0 px-3.5 text-[13px] whitespace-nowrap';
     $gameFilters = array_intersect_key(app(GameRegistry::class)->all(), array_flip($this->gameFilters()));
     // The strip's one line says what the chosen chain is; casual matches never mine, so their line never promises it.
+    // Highscore attempts are named while a score game may show them; the season chain never has any.
+    $attempts = ScoreAttempts::slugs() !== [];
     $lead = match (true) {
+        $chain === 'casual' && $attempts => __('Casual matches and highscore attempts of every game, played and waiting. They mine no blocks; casual matches move the casual rating.'),
         $chain === 'casual' => __('Casual matches of every game, played and waiting. They move the casual rating and mine no blocks.'),
         $chain === 'season' => $strip['live'] ? __('Rated matches of every game, played and waiting. A fair rated win mines a block of the season chain.') : __('Rated matches of every game, played and waiting. Rated wins mine blocks only while a season runs.'),
+        $attempts && $strip['live'] => __('Matches and highscore attempts of every game, played and waiting. A fair rated win mines a block of the season chain.'),
+        $attempts => __('Matches and highscore attempts of every game, played and waiting. Rated wins mine blocks only while a season runs.'),
         $strip['live'] => __('Matches of every game, played and waiting. A fair rated win mines a block of the season chain.'),
         default => __('Matches of every game, played and waiting. Rated wins mine blocks only while a season runs.'),
     };

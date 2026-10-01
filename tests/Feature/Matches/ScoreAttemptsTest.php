@@ -11,13 +11,16 @@
 
 use App\Enums\StackerRunStatus;
 use App\Games\Blockfill;
+use App\Games\GameRegistry;
 use App\Games\ScoreDemo;
+use App\Models\ChessGame;
 use App\Models\Clan;
 use App\Models\ClanMember;
 use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
 use App\Models\StackerRun;
 use App\Models\User;
+use App\Support\Matches\MempoolStrip;
 use App\Support\Stacker\BlockfillWeeks;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -249,4 +252,52 @@ test('/matches asks the same number of queries for 1, 5 and 25 runs', function (
     $twentyFive = $count();
 
     expect($five)->toBe($one)->and($twentyFive)->toBe($five)->and(StackerRun::query()->count())->toBe(50);
+});
+
+test('attempts take at most two cubes a side of the strip: a busy week never pushes the matches out', function () {
+    BlockfillOn::play();
+    $this->freezeTime();
+
+    foreach (range(1, 5) as $i) {
+        // Older matches, newer attempts: merged by time alone, the attempts would take all ten cubes.
+        ChessGame::factory()->finished('1-0')->create(['ended_at' => now()->subMinutes(30 + $i)]);
+        ChessGame::factory()->create(['ply' => 4, 'updated_at' => now()->subMinutes(30 + $i)]);
+        StackerRun::factory()->verified(ATTEMPT_TICKS + $i)->create(['verified_at' => now()->subMinutes($i)]);
+        StackerRun::factory()->create(['status' => StackerRunStatus::Verifying, 'ticks' => ATTEMPT_TICKS, 'submitted_at' => now()->subMinutes($i), 'created_at' => now()->subMinutes($i)]);
+    }
+
+    $strip = MempoolStrip::build(null, null, runs: true);
+    $kinds = fn (array $side): array => array_map(fn (array $cube): string => $cube['slug'] === Blockfill::SLUG ? 'run' : 'match', $side);
+
+    // Finished: oldest left, the newest next to the divider; waiting: latest activity first.
+    expect($kinds($strip['finished']))->toBe(['match', 'match', 'match', 'run', 'run'])
+        ->and($kinds($strip['running']))->toBe(['run', 'run', 'match', 'match', 'match']);
+
+    // The cap is the strip's, not the table's: every attempt is still in it.
+    Livewire::test('pages::matches.index')->assertSee(__('done').' 10')->assertSee(__('to confirm').' 5');
+});
+
+test('the header\'s mempool count includes the attempts waiting for the verifier or an admin, and only while their game shows', function () {
+    BlockfillOn::play();
+    ScoreDemoOn::play();
+    ChessGame::factory()->create();
+    StackerRun::factory()->create(['status' => StackerRunStatus::Verifying, 'ticks' => ATTEMPT_TICKS, 'submitted_at' => now()]);
+    StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'ticks' => ATTEMPT_TICKS, 'submitted_at' => now()]);
+    $base = ['user_id' => attemptPlayer('Demo Runner')->id, 'game' => ScoreDemo::SLUG, 'mode' => 'time-trial', 'course' => 'demo-1', 'unit' => 'ms', 'achieved_at' => now()];
+    ScoreRun::query()->create([...$base, 'value' => 59_000, 'source' => ScoreRun::MANUAL, 'proof_url' => 'https://example.com/proof']);
+    // Not waiting: a verified run, a practice and a rejected run, a decided value, a director's entry.
+    StackerRun::factory()->verified(ATTEMPT_TICKS)->create();
+    StackerRun::factory()->create(['status' => StackerRunStatus::Practice, 'ticks' => ATTEMPT_TICKS, 'submitted_at' => now()]);
+    StackerRun::factory()->create(['status' => StackerRunStatus::Rejected, 'ticks' => ATTEMPT_TICKS, 'submitted_at' => now()]);
+    ScoreRun::query()->create([...$base, 'value' => 61_000, 'source' => 'fake', 'verified_at' => now()]);
+    ScoreRun::query()->create([...$base, 'value' => 1_000, 'source' => ScoreRun::DIRECTOR, 'verified_at' => now()]);
+
+    // 1 chess game, 2 Blockfill runs, 1 manual value.
+    expect(MempoolStrip::waiting())->toBe(4);
+    $this->get('/rules')->assertOk()->assertSee('data-test="mempool-count">4<', false);
+
+    // Blockfill switched off: its runs leave the count with it.
+    config(['esports.blockfill.enabled' => false]);
+    app()->forgetInstance(GameRegistry::class);
+    expect(MempoolStrip::waiting())->toBe(2);
 });
