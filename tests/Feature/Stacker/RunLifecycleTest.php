@@ -17,6 +17,7 @@ use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
@@ -496,6 +497,53 @@ test('one account holds at most inflight_per_account waiting runs, one network a
     $submitFrom(User::factory()->create(), '198.51.100.3')->assertAccepted();
     $submitFrom(User::factory()->create(), '198.51.100.3')->assertStatus(503);
     $submitFrom(User::factory()->create(), '203.0.113.9')->assertAccepted();
+});
+
+test('a waiting run stores a keyed hash of its network, never the address, and drops it once decided or after pending_replay_hours', function () {
+    BlockfillOn::play();
+    $submitFrom = function (string $ip) {
+        $issued = test()->actingAs(User::factory()->create())->withServerVariables(['REMOTE_ADDR' => $ip])->postJson(route('stacker.runs.issue'))->assertCreated()->json();
+        test()->withServerVariables(['REMOTE_ADDR' => $ip])->postJson(route('stacker.runs.start', $issued['token']))->assertNoContent();
+        submitForty($issued['token'])->assertAccepted();
+
+        return runOf($issued);
+    };
+
+    $this->verifier->verdict = StackerVerdict::unavailable('verifier-unavailable');
+    $waiting = $submitFrom('198.51.100.7');
+    $waitingV6 = $submitFrom('2001:db8:1:2::1');
+    expect($waiting)->status->toBe(StackerRunStatus::Pending)
+        ->network->toBe(StackerRuns::networkKey('198.51.100.7'))
+        ->network->not->toContain('198.51.100')
+        ->and($waitingV6->network)->toBe(StackerRuns::networkKey(StackerRuns::network('2001:db8:1:2::1')))
+        ->and($waitingV6->network)->not->toContain('2001');
+
+    $this->verifier->verdict = StackerVerdict::rejected('mismatch');
+    expect($submitFrom('198.51.100.8'))->status->toBe(StackerRunStatus::Rejected)->network->toBeNull();
+    $this->verifier->verdict = StackerVerdict::verified(['das' => 10, 'arr' => 2, 'sdf' => 20], BlockfillOn::fixture('forty-lines')['replay']);
+    expect($submitFrom('198.51.100.9'))->status->toBe(StackerRunStatus::Verified)->network->toBeNull();
+
+    // a waiting run that is never decided loses it with its replay
+    $this->travel(25)->hours();
+    app(StackerRuns::class)->dropOldPendingReplays(now());
+    expect($waiting->refresh())->reason->toBe('replay-dropped')->network->toBeNull();
+});
+
+test('a failed job on a run that is decided already does not tell the sweep the verifier is down', function () {
+    BlockfillOn::play();
+    Cache::put(StackerRuns::LAST_VERDICT_KEY, ['at' => now()->getTimestamp(), 'answered' => true], now()->addDay());
+    $verified = StackerRun::factory()->verified(900)->create();
+
+    (new VerifyStackerRun($verified->id))->failed(null);
+
+    expect(Cache::get(StackerRuns::LAST_VERDICT_KEY)['answered'])->toBeTrue()
+        ->and($verified->refresh()->status)->toBe(StackerRunStatus::Verified);
+
+    $verifying = StackerRun::factory()->create(['status' => StackerRunStatus::Verifying, 'replay' => 'AQ', 'submitted_at' => now()]);
+    (new VerifyStackerRun($verifying->id))->failed(null);
+
+    expect(Cache::get(StackerRuns::LAST_VERDICT_KEY)['answered'])->toBeFalse()
+        ->and($verifying->refresh())->status->toBe(StackerRunStatus::Pending)->reason->toBe('verifier-failed');
 });
 
 test('on SQLite the week top update finds the runs holding a replay through the partial index', function () {

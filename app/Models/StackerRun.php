@@ -35,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $replay base64url input log
  * @property string|null $reason
  * @property array<string, mixed>|null $flags
- * @property string|null $network the submitter's network (StackerRuns::network()), while the run waits for the verifier
+ * @property string|null $network keyed hash of the submitter's network (StackerRuns::networkKey()), only while the run waits for the verifier
  * @property string|null $week Monday (Y-m-d, Europe/Berlin) of the week a verified run counts in
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
