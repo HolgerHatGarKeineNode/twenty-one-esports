@@ -49,6 +49,6 @@
         @endif
     </div>
     @if ($shareMoment !== null)
-        <livewire:blockfill-share />
+        <livewire:blockfill-share key="blockfill-share" />
     @endif
 </section>

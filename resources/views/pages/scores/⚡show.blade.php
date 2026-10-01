@@ -204,7 +204,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     @endforeach
     {{-- A Blockfill moment of the viewer's on a running week: its row opens the share sheet --}}
     @if ($shareable)
-        <livewire:blockfill-share />
+        <livewire:blockfill-share key="blockfill-share" />
     @endif
 
     <section id="points" aria-labelledby="points-h" class="flex scroll-mt-24 flex-col gap-3">

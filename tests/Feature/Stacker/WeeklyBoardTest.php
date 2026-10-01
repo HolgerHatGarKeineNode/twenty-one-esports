@@ -392,6 +392,33 @@ test('the game page shows this week\'s board, your place and last week\'s winner
     $this->get(route('tournaments.show', blockfillWeek()))->assertOk();
 });
 
+test('the share sheet stays the same component when the board grows on a refresh, so Share on a fresh verified run still opens it', function () {
+    BlockfillOn::play();
+    $me = User::factory()->create();
+    // The sheet's tag in the page: its id, which a refresh must hand back unchanged (a new id is a new sheet,
+    // and the browser's Share button asks the old one, which the server has dropped: nothing opens).
+    $sheet = function (string $html): array {
+        // the sheet's own tag: a first render carries its snapshot, a refresh hands back the bare tag of the one it knows
+        preg_match('/<div[^>]*(?:wire:name="blockfill-share"|name&quot;:&quot;blockfill-share&quot;)[^>]*>/', $html, $tag);
+        preg_match('/wire:id="([^"]+)"|&quot;id&quot;:&quot;([^&]+)&quot;,&quot;name&quot;:&quot;blockfill-share/', $tag[0] ?? '', $id);
+        preg_match('/wire:key="([^"]+)"/', $tag[0] ?? '', $key);
+
+        return [$id[1] ?: ($id[2] ?? null), $key[1] ?? null];
+    };
+
+    // An empty board: the sheet is mounted.
+    $page = Livewire::actingAs($me)->test('pages::stacker.play');
+    [$id, $key] = $sheet($page->html());
+
+    // The verdict lands, the board has a row more, and the page refreshes itself: the same sheet, not a new one.
+    weeklyRun($me, 3000, now()->subMinutes(30));
+    $page->call('$refresh')->assertSeeHtml('data-test="stacker-week-place">#1</b>');
+
+    expect($id)->not->toBeNull()
+        ->and($sheet($page->html())[0])->toBe($id)
+        ->and($key)->toBe('blockfill-share');
+});
+
 test('the week\'s page names its course by the mode above the board, "40 blocks", never the slug', function () {
     BlockfillOn::play();
     weeklyRun(User::factory()->create(), 3000, now());

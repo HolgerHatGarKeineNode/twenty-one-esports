@@ -113,6 +113,6 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     </div>
 
     @if ($own)
-        <livewire:blockfill-share />
+        <livewire:blockfill-share key="blockfill-share" />
     @endif
 </div>

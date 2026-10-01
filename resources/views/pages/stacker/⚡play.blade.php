@@ -442,6 +442,6 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
 
     {{-- The share sheet of a moment: opened by the result screen and by the player's own row above --}}
     @auth
-        <livewire:blockfill-share />
+        <livewire:blockfill-share key="blockfill-share" />
     @endauth
 </div>
