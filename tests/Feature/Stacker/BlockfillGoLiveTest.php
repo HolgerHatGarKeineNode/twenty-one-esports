@@ -530,7 +530,9 @@ test('a week shows no seed numbers and no prize pool, even to an admin, and has 
         ->assertSee('Ada')
         ->assertDontSee('title="Seed 1"', false)
         ->assertDontSeeHtml('wire:name="tournament-pool"')
-        ->assertDontSee('data-test="prize-pool"', false);
+        ->assertDontSee('data-test="prize-pool"', false)
+        ->assertDontSee('data-test="manage-pool"', false);
+    $this->actingAs($admin)->get(route('admin.tournaments.edit', $week))->assertDontSee('data-test="manage-pool"', false);
 
     foreach (['tournaments.signup', 'tournaments.director', 'tournaments.pool'] as $route) {
         $this->actingAs($admin)->get(route($route, $week))->assertNotFound();
