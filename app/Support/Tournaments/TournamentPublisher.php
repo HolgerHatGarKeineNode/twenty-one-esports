@@ -4,6 +4,7 @@ namespace App\Support\Tournaments;
 
 use App\Enums\TournamentStatus;
 use App\Games\GameRegistry;
+use App\Games\ScoreGame;
 use App\Jobs\PublishTournamentCalendar;
 use App\Models\NostrEvent;
 use App\Models\Tournament;
@@ -289,6 +290,62 @@ final class TournamentPublisher
     {
         $profile = $tournament->profile();
         $lines = [$this->summary($tournament)];
+
+        // A score game's leaderboard (plan "AoE2 und Trackmania", P4): no pairing, no match, no Elo.
+        if ($profile->isScore()) {
+            $lines = [...$lines, ...$this->scoreLines($tournament)];
+        } else {
+            $lines = [...$lines, ...$this->matchLines($tournament)];
+        }
+
+        $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
+
+        if ($tournament->pool_opened_at !== null && $tournament->hasOwnWallet()) {
+            $lines[] = $this->prizes($tournament);
+        }
+        $lines[] = 'Page: '.route('tournaments.show', $tournament);
+        $rules = implode(' ', $lines);
+        $description = trim((string) $tournament->description);
+
+        // The organizer's own words come first, as their own paragraph; the rules follow unchanged.
+        $content = $description === '' ? $rules : $description."\n\n".$rules;
+
+        // Called off (P18): said first, in the league's words; the organizer's typed reason stays league data.
+        return $tournament->status === TournamentStatus::Cancelled
+            ? "This tournament was called off by the league. Its open matches are closed, and nothing is rated after the call-off.\n\n".$content
+            : $content;
+    }
+
+    /**
+     * How a score leaderboard is played, in words (plan "AoE2 und Trackmania",
+     * P4): the course, the window, which value wins, where values come from,
+     * and that it is unrated. Never a player's game account.
+     *
+     * @return list<string>
+     */
+    private function scoreLines(Tournament $tournament): array
+    {
+        $game = app(GameRegistry::class)->get($tournament->game);
+        $metric = $game instanceof ScoreGame ? $game->metric($game->mode($tournament->mode) ?? throw new \LogicException('A score profile has its mode.')) : null;
+
+        return [
+            'A leaderboard: every player plays alone, as often as they like, for the best value'
+                .($tournament->score_course !== null ? ' on '.strtolower($game instanceof ScoreGame ? $game->courseLabel() : 'course').' '.$tournament->score_course : '')
+                .' from the start until the end of the event; '.($metric?->lowerIsBetter() ? 'the fastest time' : 'the highest score').' wins, a tie goes to the earlier record, a record outside that time does not count.',
+            'Values are read from the game or submitted with a proof link an admin checks; the directors can correct a value, always with a reason.',
+            'Unrated: a leaderboard has no Elo ladder. Its places score points on the game\'s points ladder.',
+        ];
+    }
+
+    /**
+     * How the matches of every other tournament are seeded, reported and rated, in words.
+     *
+     * @return list<string>
+     */
+    private function matchLines(Tournament $tournament): array
+    {
+        $profile = $tournament->profile();
+        $lines = [];
         $lines[] = CasualCups::isEvening($tournament)
             ? 'A casual cup the league opens on its own, played as one live evening because few signed up: the rounds follow each other after a short break and the league starts every game at its round\'s start; players are seeded at random from the draw\'s block hash; a game nobody played is lost by both, one only one side showed up for is won by that side.'
             : ($tournament->isCasualCup()
@@ -313,21 +370,6 @@ final class TournamentPublisher
                 : "Places: {$tournament->capacity}.";
         }
 
-        $lines[] = 'Tournament matches never mine season blocks. The prize pool is the tournament\'s own.';
-
-        if ($tournament->pool_opened_at !== null && $tournament->hasOwnWallet()) {
-            $lines[] = $this->prizes($tournament);
-        }
-        $lines[] = 'Page: '.route('tournaments.show', $tournament);
-        $rules = implode(' ', $lines);
-        $description = trim((string) $tournament->description);
-
-        // The organizer's own words come first, as their own paragraph; the rules follow unchanged.
-        $content = $description === '' ? $rules : $description."\n\n".$rules;
-
-        // Called off (P18): said first, in the league's words; the organizer's typed reason stays league data.
-        return $tournament->status === TournamentStatus::Cancelled
-            ? "This tournament was called off by the league. Its open matches are closed, and nothing is rated after the call-off.\n\n".$content
-            : $content;
+        return $lines;
     }
 }

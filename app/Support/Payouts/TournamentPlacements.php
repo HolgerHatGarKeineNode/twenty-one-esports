@@ -5,6 +5,7 @@ namespace App\Support\Payouts;
 use App\Enums\TournamentFormat;
 use App\Enums\TournamentStatus;
 use App\Models\Tournament;
+use App\Models\TournamentMatch;
 use App\Models\TournamentParticipant;
 use App\Support\Tournaments\Engine\Advancement;
 use App\Support\Tournaments\Engine\BracketMatch;
@@ -27,7 +28,8 @@ use App\Support\Tournaments\TournamentBrackets;
  *   (the two losing semi-finalists without a match for third place are both
  *   third, and the next place is fifth);
  * - a final stage that ends in one heat (Free for All, Leaderboard): the
- *   heat's ranking;
+ *   heat's ranking, without the entries its result names `unplaced` (a score
+ *   leaderboard's entries without a valid value, App\Support\Scores);
  * - a final stage that is a table (round robin, Swiss): the table's ranks,
  *   ties shared as the tie-breaks leave them.
  *
@@ -85,7 +87,12 @@ final class TournamentPlacements
             }
 
             if (count($terminal[0]->slots) > 2) {
-                return self::numbered(array_map(fn (int $id): array => [$id], $last['ranking']));
+                // A score leaderboard (plan "AoE2 und Trackmania", P4) leaves the entries without a valid value unplaced.
+                $stored = TournamentMatch::query()->where('tournament_id', $tournament->id)->where('key', $terminal[0]->key)->first()?->result;
+                $unplaced = array_map(intval(...), (array) ($stored['unplaced'] ?? []));
+                $ranking = array_values(array_filter($last['ranking'], fn (int $id): bool => ! in_array($id, $unplaced, true)));
+
+                return self::numbered(array_map(fn (int $id): array => [$id], $ranking));
             }
 
             $champion = $last['ranking'][0] ?? $last['winner'] ?? null;

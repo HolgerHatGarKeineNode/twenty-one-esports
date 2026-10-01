@@ -215,6 +215,12 @@ final class TournamentMatchMaker
 
         TournamentRound::query()->whereKey($match->tournament_round_id)->whereNull('started_at')->update(['started_at' => now()]);
 
+        // A score leaderboard (plan "AoE2 und Trackmania", P4): nobody meets anyone, so nothing starts. Every entry plays
+        // alone inside the window, and the league writes the end (ScoreLeaderboards).
+        if ($tournament->profile()->isScore()) {
+            return true;
+        }
+
         if ($tournament->profile()->isChess()) {
             if ($tournament->isDirectorMode()) {
                 $this->pinPairing($tournament, $match, $a, $b);
