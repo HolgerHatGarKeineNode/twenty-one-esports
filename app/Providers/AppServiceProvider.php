@@ -47,11 +47,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry([
+        $this->app->singleton(GameRegistry::class, fn (): GameRegistry => new GameRegistry(GameRegistry::ordered([
             ...array_map(fn (string $class): Game => $this->app->make($class), config('esports.games', [])),
             ...$this->boardGames(),
             ...$this->scoreGames(),
-        ]));
+        ], (array) config('esports.game_order.first', []), (array) config('esports.game_order.last', []))));
 
         // The stream daemon keeps one bounded map of data URIs (StreamImages).
         $this->app->singleton(StreamImages::class);

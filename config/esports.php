@@ -173,6 +173,17 @@ return [
     |
     */
 
+    /*
+    | The order games are shown in everywhere (GameRegistry::ordered): the
+    | `first` slugs in this order, then every other game as registered, then
+    | the `last` slugs. User 2026-10-01: Blockfill third, Nine Men's Morris
+    | and Checkers at the very end.
+    */
+    'game_order' => [
+        'first' => ['chess', 'rocket-league', 'blockfill'],
+        'last' => ['nine-mens-morris', 'checkers'],
+    ],
+
     'games' => [
         Chess::class,
         RocketLeague::class,

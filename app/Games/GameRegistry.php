@@ -29,6 +29,36 @@ final class GameRegistry
     }
 
     /**
+     * The display order every surface shows (user 2026-10-01: Blockfill third,
+     * Nine Men's Morris and Checkers at the very end): the `first` slugs in
+     * their order, then every other game as registered, then the `last` slugs.
+     * A slug of a game that is not registered is skipped.
+     *
+     * @param  list<Game>  $games
+     * @param  list<string>  $first
+     * @param  list<string>  $last
+     * @return list<Game>
+     */
+    public static function ordered(array $games, array $first, array $last): array
+    {
+        $rank = function (Game $game) use ($first, $last): int {
+            $head = array_search($game->slug(), $first, true);
+            $tail = array_search($game->slug(), $last, true);
+
+            return match (true) {
+                $head !== false => $head,
+                $tail !== false => 2000 + $tail,
+                default => 1000,
+            };
+        };
+
+        $indexed = array_map(fn (Game $game, int $index): array => [$rank($game), $index, $game], $games, array_keys($games));
+        usort($indexed, fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        return array_column($indexed, 2);
+    }
+
+    /**
      * @return array<string, Game>
      */
     public function all(): array
