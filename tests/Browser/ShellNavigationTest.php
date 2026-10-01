@@ -111,6 +111,44 @@ const HUB_MEASURE = <<<'JS'
     }
     JS;
 
+/**
+ * Every visible hub card title: its box width against its natural (max-content) width, and its right
+ * edge against its card and the list. An ellipsis leaves scrollWidth equal to clientWidth, so only the
+ * natural width shows a cut title. `(shrink)`: the title and the modes get the flex values of 9dfb9b55
+ * first (title may shrink, modes shrink 100×) — the positive control that this check sees an ellipsis.
+ */
+const HUB_TITLES = <<<'JS'
+    (shrink = false) => {
+        const list = document.querySelector('#game-hub [x-ref=hubTiles]').getBoundingClientRect();
+        return [...document.querySelectorAll('#game-hub [data-test^=hub-game-]')].filter((card) => card.checkVisibility()).map((card) => {
+            const b = card.querySelector('.hub-tile-main b');
+            if (shrink) { b.style.flex = '0 1 auto'; b.style.minWidth = '0'; b.nextElementSibling.style.flex = '0 100 auto'; }
+            const clone = b.cloneNode(true);
+            clone.style.cssText = 'position:absolute;visibility:hidden;width:max-content;max-width:none';
+            b.parentElement.append(clone);
+            const natural = clone.getBoundingClientRect().width;
+            clone.remove();
+            const r = b.getBoundingClientRect();
+            const c = card.getBoundingClientRect();
+            const out = Math.max(r.right - c.right, r.right - list.right);
+            if (shrink) { b.style.cssText = ''; b.nextElementSibling.style.cssText = ''; }
+            return { slug: card.dataset.test.replace('hub-game-', ''), box: Math.round(r.width * 10) / 10, natural: Math.round(natural * 10) / 10, out: Math.round(out) };
+        });
+    }
+    JS;
+
+/**
+ * The cut or outside titles of a HUB_TITLES result.
+ *
+ * @param  list<array{slug: string, box: float, natural: float, out: int}>  $titles
+ * @return list<string>
+ */
+function hubTitlesWrong(array $titles): array
+{
+    return array_values(array_map(fn (array $t): string => $t['slug'].' '.$t['box'].'<'.$t['natural'].' out '.$t['out'],
+        array_filter($titles, fn (array $t): bool => $t['natural'] > $t['box'] + 0.5 || $t['out'] > 0)));
+}
+
 test('the hub spends its width on one card grid and does not scroll with the 5 games of the registry or 4 games at 1280, 1440 and 1920 px', function () {
     $player = shellPlayer();
     $problems = [];
@@ -132,24 +170,20 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
             BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
             $page->evaluate(SHELL_SETTLE);
             $m = $sizes["{$count}@{$width}"] = $page->evaluate(HUB_MEASURE);
-            // Every title inside its card and the list, none cut (P9: "Age of Empires II: Definitiv" ran 99 px past its card at 1280).
-            $m['titles'] = $sizes["{$count}@{$width}"]['titles'] = $page->evaluate(<<<'JS'
-                () => {
-                    const list = document.querySelector('#game-hub [x-ref=hubTiles]').getBoundingClientRect();
-                    return [...document.querySelectorAll('#game-hub [data-test^=hub-game-]')].filter((card) => card.checkVisibility()).map((card) => {
-                        const b = card.querySelector('.hub-tile-main b');
-                        const r = b.getBoundingClientRect();
-                        const c = card.getBoundingClientRect();
-                        return card.dataset.test.replace('hub-game-', '') + ' ' + b.innerText.trim() + (r.right > c.right + 0.5 || r.right > list.right + 0.5 ? ' OUT ' + Math.round(r.right - c.right) : '') + (b.scrollWidth > b.clientWidth + 1 ? ' CUT' : '');
-                    });
-                }
-                JS);
+            // Every title whole and inside its card and the list (P9: "Age of Empires II: Definitiv" ran 99 px past its card at 1280, then "Rocket Leag…").
+            $m['titles'] = $sizes["{$count}@{$width}"]['titles'] = $page->evaluate(HUB_TITLES);
+
+            if ($count === 5 && $width === 1280) {
+                // Positive control: with the flex values of 9dfb9b55 the same check sees the ellipsis.
+                $sizes['control'] = hubTitlesWrong($page->evaluate(HUB_TITLES, true));
+                expect($sizes['control'])->not->toBe([], 'the title check is blind to an ellipsis');
+            }
             shellShot($page, "shell-player-{$width}-hub-{$count}games");
 
             expect($m['scrollHeight'])->toBeLessThanOrEqual($m['clientHeight'], "inner scroll {$count}@{$width}: ".json_encode($m))
                 ->and($m['bottom'])->toBeLessThanOrEqual($height)
                 ->and($m['fill'])->toBeGreaterThanOrEqual(0.9, "first row fill {$count}@{$width}: ".json_encode($m))
-                ->and(array_filter($m['titles'], fn (string $title): bool => str_contains($title, ' OUT') || str_contains($title, ' CUT')))->toBe([], "titles {$count}@{$width}: ".json_encode($m['titles']))
+                ->and(hubTitlesWrong($m['titles']))->toBe([], "titles {$count}@{$width}: ".json_encode($m['titles']))
                 ->and($m['columns'])->toBe($count)
                 ->and($m['heights'])->toHaveCount(1);
         }
@@ -162,6 +196,17 @@ test('the hub spends its width on one card grid and does not scroll with the 5 g
     }
 
     app()->forgetInstance(GameRegistry::class);
+
+    // The phone's sheet stacks title and modes: every title whole there too.
+    $page = shellPage($player, 375, 667);
+    shellOpen($page, '/clans', $problems);
+    $page->locator('[data-test=mobile-games-menu]')->click();
+    BrowserWait::until($page, '() => document.getElementById("game-hub").checkVisibility()', 5_000);
+    $page->evaluate(SHELL_SETTLE);
+    $sizes['5@375']['titles'] = $page->evaluate(HUB_TITLES);
+    expect($sizes['5@375']['titles'])->toHaveCount(5)
+        ->and(hubTitlesWrong($sizes['5@375']['titles']))->toBe([], 'titles 5@375: '.json_encode($sizes['5@375']['titles']));
+
     fwrite(STDERR, "\n[shell-hub-grid] ".json_encode($sizes));
     expect($problems)->toBe([]);
 });
