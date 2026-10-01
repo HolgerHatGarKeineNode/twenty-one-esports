@@ -1,9 +1,11 @@
 {{--
     One player's replays on the replays page (StackerReplays::ofPlayer()), newest first: the time large, its ISO week,
     the place the run holds on that week's board (a medal for the first three; held runs say so), and the play square.
-    The whole row is the link. $entries: list<array{run, week, place, href}>; $test: the rows' data-test.
+    The whole row is the link. $entries: list<array{run, week, place, href}>; $test: the rows' data-test; $named (optional):
+    the runs are everybody's (StackerReplays::latest(), the run's `user` loaded), so each row names its player first.
 --}}
 @php
+    $named ??= false;
     $medal = [1 => 'bg-rank-gold', 2 => 'bg-rank-silver', 3 => 'bg-rank-bronze'];
     $metric = \App\Games\ScoreMetric::time();
 @endphp
@@ -19,6 +21,14 @@
             <a href="{{ $entry['href'] }}" data-test="{{ $test }}" @if ($entry['place'] !== null) data-place="{{ $entry['place'] }}" @endif
                class="group grid min-h-14 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-3 rounded-md px-3 py-2 text-ink hover:bg-row-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-btc">
                 <span class="flex min-w-0 flex-col">
+                    @if ($named)
+                        <span class="flex min-w-0 items-center gap-2 text-[13px]" data-test="replay-row-player">
+                            @if ($run->user)
+                                <span aria-hidden="true" class="shrink-0"><x-avatar :user="$run->user" :size="20" class="rounded-xs" /></span>
+                            @endif
+                            <b class="min-w-0 truncate whitespace-nowrap">{{ $run->user?->displayName() ?? __('Deleted player') }}</b>
+                        </span>
+                    @endif
                     <b class="font-display text-[18px] leading-tight font-bold tabular-nums">{{ $metric->format(\App\Games\Blockfill::milliseconds((int) $run->ticks)) }}</b>
                     <span class="truncate text-xs text-ink-2">{{ $local ? __('Week :week, :year', ['week' => $local->isoWeek(), 'year' => $local->isoWeekYear()]) : '' }}</span>
                 </span>

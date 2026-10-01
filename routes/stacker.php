@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\Route;
  */
 // The game page (P3): practice for everyone, guests included; ranked runs need a login (the routes below).
 Route::livewire('blockfill', 'pages::stacker.play')->name('stacker.play');
-// Every replay the viewer may watch in one place: their own, an ended week's first ten, for admins the held ones
-// (StackerReplays::ofPlayer(), top(), held()). Public; `?player=<npub>` narrows it to one player's.
+// Every replay the viewer may watch in one place: their own, an ended week's first ten, everybody's newest, for admins
+// the held ones (StackerReplays::ofPlayer(), top(), latest(), held()). Public; `?player=<npub>` narrows it to one player's.
 Route::livewire('blockfill/replays', 'pages::stacker.replays')->name('stacker.replays');
-// P5: the replay of one run, for its player, admins (runs with cheat hints) and everybody once its week has ended
-// among the board's first ten (StackerReplays::canView(), checked in the page).
+// P5: the replay of one run: a verified run's for everybody, guests included; a held run's for its player and admins
+// (StackerReplays::canView(), checked in the page).
 Route::livewire('blockfill/replays/{run}', 'pages::stacker.replay')->whereNumber('run')->name('stacker.replay');
 
 // P5: runs held for cheat hints, for an admin's look (approve or reject).

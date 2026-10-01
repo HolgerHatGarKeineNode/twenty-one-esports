@@ -930,7 +930,7 @@ final class PageCard
         $state = is_array($f['week']) ? [__('Top replays of :week', ['week' => __('Week :week, :year', ['week' => $f['week'][0], 'year' => $f['week'][1]])])] : [__('Replays')];
 
         $this->scoreBoard($state, Canvas::ORANGE, __('Blockfill replays'), __('Every run played again, block by block.'), $board,
-            __('No week has ended yet. The first ten go public here.'));
+            __('No week has ended yet. Its first ten show up here.'));
     }
 
     /**

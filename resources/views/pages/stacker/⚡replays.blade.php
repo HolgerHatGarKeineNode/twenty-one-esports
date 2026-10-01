@@ -18,13 +18,14 @@ use Livewire\Component;
 
 /*
  * Every Blockfill replay the viewer may watch, in one place: the Replays tab
- * of Blockfill's context bar. Three shelves, each read through
+ * of Blockfill's context bar. Four shelves, each read through
  * StackerReplays, so nothing shows that StackerReplays::canView() would
  * refuse:
  * - Your replays (logged in): your runs that keep a replay, newest first,
  *   with time, week and the place the run holds on its week's board;
  * - Top replays: an ended week's first ten (the newest ended week, or the
  *   one picked in the week chips, `?week=<slug>`), its first place large;
+ * - Latest replays: everybody's newest verified runs that keep a replay;
  * - for admins, the runs held for a check, with the way to the review list.
  * `?player=<npub>` (a player page's Blockfill card) shows only that
  * player's replays the viewer may watch.
@@ -41,7 +42,7 @@ new #[Layout('layouts::app')] class extends Component
     {
         $title = $this->subject() !== null ? __('Blockfill replays of :name', ['name' => $this->subject()->displayName()]) : __('Blockfill replays');
         $view->title($title);
-        app(PageMeta::class)->describe($title, __('Watch the fastest Blockfill runs of each finished week again, block by block, and your own.'))
+        app(PageMeta::class)->describe($title, __('Watch Blockfill runs again, block by block: everybody\'s newest, the fastest of each finished week and your own.'))
             ->card(fn () => PageCard::page('blockfill-replays'));
     }
 
@@ -84,6 +85,17 @@ new #[Layout('layouts::app')] class extends Component
     public function top(): array
     {
         return app(StackerReplays::class)->top($this->shownWeek);
+    }
+
+    /**
+     * Everybody's newest verified replays, as rows of the replays list.
+     *
+     * @return list<array{run: StackerRun, week: null, place: null, href: string}>
+     */
+    #[Computed]
+    public function latest(): array
+    {
+        return array_map(fn (StackerRun $run): array => ['run' => $run, 'week' => null, 'place' => null, 'href' => route('stacker.replay', $run)], app(StackerReplays::class)->latest());
     }
 
     /**
@@ -180,7 +192,7 @@ new #[Layout('layouts::app')] class extends Component
             <h2 id="theirs-h" class="sr-only">{{ $subject ? __('Replays of :name', ['name' => $subject->displayName()]) : __('Replays') }}</h2>
             @if ($this->theirs === [])
                 <x-empty-state class="px-2" :heading="__('No replay to watch yet')"
-                               :text="__('An ended week\'s first ten replays are public. Play a ranked run and set a time of your own.')" data-test="replays-player-empty">
+                               :text="__('The league keeps the replays of each week\'s fastest runs. Play a ranked run and set a time of your own.')" data-test="replays-player-empty">
                     <x-button :href="route('stacker.play')">{{ __('Play Blockfill') }}</x-button>
                 </x-empty-state>
             @else
@@ -189,7 +201,7 @@ new #[Layout('layouts::app')] class extends Component
         </section>
     @else
         <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
-            {{-- The left column: your replays, and for admins the held runs --}}
+            {{-- The left column: your replays, everybody's newest, and for admins the held runs --}}
             <div class="flex min-w-0 flex-col gap-6 lg:gap-8">
                 <section aria-labelledby="mine-h" class="{{ $section }}" data-test="replays-mine">
                     <h2 id="mine-h" class="m-0 px-2 text-[15px] font-bold">{{ __('Your replays') }}</h2>
@@ -204,6 +216,18 @@ new #[Layout('layouts::app')] class extends Component
                         </x-empty-state>
                     @else
                         @include('pages.stacker.partials.replay-runs', ['entries' => $this->mine, 'test' => 'replays-mine-row'])
+                    @endif
+                </section>
+
+                {{-- Latest replays: everybody's newest verified runs that keep a replay --}}
+                <section aria-labelledby="latest-h" class="{{ $section }}" data-test="replays-latest">
+                    <h2 id="latest-h" class="m-0 px-2 text-[15px] font-bold">{{ __('Latest replays') }}</h2>
+                    @if ($this->latest === [])
+                        <x-empty-state class="px-2" :heading="__('No recent replay')" :text="__('Every verified run of this week and the last shows up here while the league keeps its replay.')" data-test="replays-latest-empty">
+                            <x-button :href="route('stacker.play')">{{ __('Play Blockfill') }}</x-button>
+                        </x-empty-state>
+                    @else
+                        @include('pages.stacker.partials.replay-runs', ['entries' => $this->latest, 'test' => 'replays-latest-row', 'named' => true])
                     @endif
                 </section>
 
@@ -258,7 +282,7 @@ new #[Layout('layouts::app')] class extends Component
 
                 @if ($featured === null)
                     <x-empty-state class="px-2" :heading="$shown ? __('No replay kept from this week') : __('No week has ended yet')"
-                                   :text="__('Each Monday the first ten of the week just ended go public here. Set a time and be among them.')" data-test="replays-top-empty">
+                                   :text="__('Each Monday the first ten of the week just ended show up here. Set a time and be among them.')" data-test="replays-top-empty">
                         <x-button :href="route('stacker.play')">{{ __('Play Blockfill') }}</x-button>
                     </x-empty-state>
                 @else

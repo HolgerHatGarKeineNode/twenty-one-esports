@@ -20,10 +20,10 @@ use Livewire\Component;
  * 40 mined blocks is the seek bar: a cube stands at the moment its row was
  * cleared, a click jumps there. Play at 0.5x to 4x, step one tick.
  *
- * Who may watch: StackerReplays::canView() (the player, admins for runs with
- * cheat hints, everybody for an ended week's first ten). A run without a
- * replay to show answers 404, one the viewer may not watch 403. Of the
- * player only their avatar and name show.
+ * Who may watch: StackerReplays::canView() (everybody a verified run, the
+ * player and admins a held one). A run without a replay to show answers
+ * 404, one the viewer may not watch 403. Of the player only their avatar
+ * and name show.
  */
 new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component
 {

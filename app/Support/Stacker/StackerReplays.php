@@ -20,24 +20,24 @@ use App\Support\Scores\Sources\ReplayScoreSource;
  *
  * A run has a replay to watch while it keeps one (StackerRuns::keepWeekTop(),
  * keepHeld()) and is verified or held for review. Then:
- * - its player watches it, held or not;
- * - an admin watches it when it carries cheat hints (held, or decided);
- * - everybody watches it once its week has ended (the leaderboard's window,
- *   Monday 00:00 Berlin) when it is the time of one of that week's first
- *   PUBLIC_TOP places on the board.
- * Nobody else, guests included. The page shows the player's avatar and
- * name, nothing else of theirs.
+ * - everybody watches a verified one, guests included, while its week runs
+ *   too;
+ * - a held one only its player and admins (it carries cheat hints);
+ * - an admin also a decided one with hints.
+ * Rejected and practice runs keep no replay. A run whose replay was pruned
+ * has nothing to watch. The page shows the player's avatar and name,
+ * nothing else of theirs.
  */
 final class StackerReplays
 {
-    /** The places of an ended week whose replays everybody may watch. */
+    /** The places of an ended week the replays page shows as its top replays. */
     public const PUBLIC_TOP = 10;
 
     /** Replays per player on the replays page (`stacker.replays`). */
     public const LIST_LIMIT = 12;
 
-    /** Another player's newest runs read to find their public replays among them. */
-    public const SCAN_LIMIT = 60;
+    /** Everybody's newest replays on the replays page. */
+    public const LATEST_LIMIT = 12;
 
     /** Finished weeks the replays page offers. */
     public const WEEKS = 6;
@@ -116,31 +116,7 @@ final class StackerReplays
             return false;
         }
 
-        if ($viewer !== null && ($viewer->id === $run->user_id || ($viewer->isAdmin() && self::flagged($run)))) {
-            return true;
-        }
-
-        return $run->status === StackerRunStatus::Verified && in_array($run->id, $this->publicIn($this->weekOf($run)), true);
-    }
-
-    /**
-     * The runs of an ended week everybody may watch: the board's first
-     * PUBLIC_TOP places. Empty while the week runs.
-     *
-     * @return list<int>
-     */
-    public function publicIn(?Tournament $week): array
-    {
-        if ($week === null || ! ScoreWindow::of($week)->hasEnded()) {
-            return [];
-        }
-
-        $top = array_values(array_filter(
-            $this->scores->standings($week),
-            fn (ScoreStanding $row): bool => $row->place !== null && $row->place <= self::PUBLIC_TOP && $row->runId !== null,
-        ));
-
-        return array_values(self::runIds(array_map(fn (ScoreStanding $row): int => (int) $row->runId, $top)));
+        return self::allowed($viewer, $run);
     }
 
     /**
@@ -174,24 +150,16 @@ final class StackerReplays
         }
 
         $stacker = self::runIds(array_map(fn (ScoreStanding $row): int => (int) $row->runId, $rows));
-        $runs = StackerRun::query()->whereKey(array_values($stacker))->whereNotNull('replay')
-            ->get(['id', 'user_id', 'status', 'flags'])->keyBy('id');
-        $ended = ScoreWindow::of($week)->hasEnded();
+        $runs = StackerRun::query()->whereKey(array_values($stacker))->where('status', StackerRunStatus::Verified)->whereNotNull('replay')
+            ->pluck('id')->flip();
         $links = [];
 
+        // a board's run is verified: everybody watches it while it keeps its replay
         foreach ($rows as $row) {
-            $run = $runs->get($stacker[(int) $row->runId] ?? 0);
+            $id = $stacker[(int) $row->runId] ?? 0;
 
-            if (! $run instanceof StackerRun || $run->status !== StackerRunStatus::Verified) {
-                continue;
-            }
-
-            $public = $ended && $row->place !== null && $row->place <= self::PUBLIC_TOP;
-            $own = $viewer !== null && $viewer->id === $run->user_id;
-            $admin = $viewer !== null && $viewer->isAdmin() && self::flagged($run);
-
-            if ($public || $own || $admin) {
-                $links[$row->participant->id] = route('stacker.replay', $run->id);
+            if ($runs->has($id)) {
+                $links[$row->participant->id] = route('stacker.replay', $id);
             }
         }
 
@@ -200,8 +168,7 @@ final class StackerReplays
 
     /**
      * Replay links of stacker runs the viewer may watch, by run id (the
-     * attempts on /matches). A public replay needs its week's board, read
-     * once per ended week.
+     * attempts on /matches), by canView()'s rule. No query.
      *
      * @param  iterable<StackerRun>  $runs
      * @return array<int, string>
@@ -213,21 +180,9 @@ final class StackerReplays
         }
 
         $links = [];
-        $public = [];
 
         foreach ($runs as $run) {
-            if (! self::watchable($run)) {
-                continue;
-            }
-
-            $allowed = $viewer !== null && ($viewer->id === $run->user_id || ($viewer->isAdmin() && self::flagged($run)));
-
-            if (! $allowed && $run->status === StackerRunStatus::Verified && $run->week !== null) {
-                $public[$run->week] ??= $this->publicIn($this->weekOf($run));
-                $allowed = in_array($run->id, $public[$run->week], true);
-            }
-
-            if ($allowed) {
+            if (self::watchable($run) && self::allowed($viewer, $run)) {
                 $links[$run->id] = route('stacker.replay', $run->id);
             }
         }
@@ -236,7 +191,28 @@ final class StackerReplays
     }
 
     /**
-     * The finished weeks whose first ten everybody may watch, newest first:
+     * Everybody's newest verified replays, newest first, with their players:
+     * the runs of this week and the last that still keep a replay (one read
+     * of the partial index per week, StackerRuns::weekReplayHolders()). Every
+     * one of them anybody may watch (canView()).
+     *
+     * @return list<StackerRun>
+     */
+    public function latest(int $limit = self::LATEST_LIMIT): array
+    {
+        if (! $this->routed()) {
+            return [];
+        }
+
+        $now = BlockfillWeeks::startOf(now());
+        $weeks = [StackerRuns::weekOf($now), StackerRuns::weekOf($now->subSecond())];
+
+        return array_values(StackerRun::query()->whereIn('week', $weeks)->where('status', StackerRunStatus::Verified)->whereNotNull('replay')
+            ->with('user')->latest('submitted_at')->latest('id')->limit($limit)->get()->all());
+    }
+
+    /**
+     * The finished weeks whose first ten the replays page shows, newest first:
      * the weeks before the running one (each ended Monday 00:00 Berlin).
      *
      * @return list<Tournament>
@@ -285,7 +261,7 @@ final class StackerReplays
      * The replays of `$player` that `$viewer` may watch, newest first, each
      * with its week and, for the run that holds the player's place on that
      * week's board, the place. The player sees all of their own (held ones
-     * included); anybody else only the public ones (forRuns()).
+     * included); anybody else the verified ones (canView()).
      *
      * @return list<array{run: StackerRun, week: ?Tournament, place: ?int, href: string}>
      */
@@ -298,9 +274,9 @@ final class StackerReplays
         $own = $viewer !== null && $viewer->id === $player->id;
         $runs = StackerRun::query()->where('user_id', $player->id)->whereNotNull('replay')
             ->whereIn('status', $own ? [StackerRunStatus::Verified, StackerRunStatus::Review] : [StackerRunStatus::Verified])
-            ->latest('submitted_at')->latest('id')->limit($own ? $limit : self::SCAN_LIMIT)->get();
+            ->latest('submitted_at')->latest('id')->limit($limit)->get();
         $links = $this->forRuns($runs, $viewer);
-        $shown = array_slice(array_values($runs->filter(fn (StackerRun $run): bool => isset($links[$run->id]))->all()), 0, $limit);
+        $shown = array_values($runs->filter(fn (StackerRun $run): bool => isset($links[$run->id]))->all());
         $weeks = [];
         $places = [];
 
@@ -362,6 +338,16 @@ final class StackerReplays
         }
 
         return $places;
+    }
+
+    /**
+     * The rule of canView() for a run that holds a replay to show: verified
+     * for everybody, held for its player and admins, with hints for admins.
+     */
+    private static function allowed(?User $viewer, StackerRun $run): bool
+    {
+        return $run->status === StackerRunStatus::Verified
+            || ($viewer !== null && ($viewer->id === $run->user_id || ($viewer->isAdmin() && self::flagged($run))));
     }
 
     private function routed(): bool

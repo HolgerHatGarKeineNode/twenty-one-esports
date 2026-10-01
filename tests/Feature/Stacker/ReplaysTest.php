@@ -3,13 +3,14 @@
 /*
 | Blockfill replays and the admin check (plan "Blockfill", P5).
 |
-| Who watches which replay (StackerReplays): the player their own, admins the
-| runs with cheat hints, everybody an ended week's first ten; 403 for anyone
+| Who watches which replay (StackerReplays): everybody a verified run's,
+| guests included; a held run's only its player and admins; 403 for anyone
 | else, 404 for a run without a replay to show. A verified run with cheat
-| hints is held (`review`): it counts nowhere until an admin approves it on
-| /admin/blockfill. The boards, /matches and the game page link the replays
-| the viewer may watch. The verifier is a fake (FakeStackerVerifier); the
-| verdict goes through the real job.
+| hints that would place in its week's top 10 is held (`review`): it counts
+| nowhere until an admin approves it on /admin/blockfill; outside the top 10
+| it is verified as any other. The boards, /matches and the game page link
+| the replays the viewer may watch. The verifier is a fake
+| (FakeStackerVerifier); the verdict goes through the real job.
 */
 
 use App\Enums\StackerRunStatus;
@@ -76,9 +77,10 @@ function adminUser(): User
     return $admin;
 }
 
-test('a player watches their own replay; a guest and another player get 403 while the week runs', function () {
-    [$ada, $bob] = User::factory()->count(2)->create();
+test('everybody watches a verified replay while its week runs, guests included; a held one only its player and admins', function () {
+    [$ada, $bob, $cy] = User::factory()->count(3)->create();
     $run = replayRun($ada, 958);
+    $held = replayRun($cy, 940, hints: ['timing']);
 
     $this->actingAs($ada)->get(route('stacker.replay', $run))->assertOk()
         ->assertSee('data-test="replay-chain"', false)
@@ -88,11 +90,15 @@ test('a player watches their own replay; a guest and another player get 403 whil
         ->assertDontSee($ada->npub)
         ->assertDontSee('data-test="replay-hints"', false);
 
-    $this->actingAs($bob)->get(route('stacker.replay', $run))->assertForbidden();
+    $this->actingAs($bob)->get(route('stacker.replay', $run))->assertOk()->assertSee($ada->displayName());
+    $this->actingAs($bob)->get(route('stacker.replay', $held))->assertForbidden();
     auth()->logout();
-    $this->get(route('stacker.replay', $run))->assertForbidden();
+    $this->get(route('stacker.replay', $run))->assertOk()->assertSee('data-test="replay-chain"', false);
+    $this->get(route('stacker.replay', $held))->assertForbidden();
+    expect($held->status)->toBe(StackerRunStatus::Review);
 
     Livewire::actingAs($ada)->test('pages::stacker.replay', ['run' => $run])->assertOk()->call('$refresh')->assertOk();
+    Livewire::test('pages::stacker.replay', ['run' => $run])->assertOk()->call('$refresh')->assertOk();
 });
 
 test('a run without a replay to show answers 404 to everybody, its player included', function () {
@@ -133,8 +139,52 @@ test('a verified run with cheat hints is held: on no board, no best, and only it
         ->assertSee('More than 5 pieces per second (6.45)');
     $this->actingAs($bob)->get(route('stacker.replay', $held))->assertForbidden();
 
-    // an admin sees runs with hints, not every run
-    $this->actingAs($admin)->get(route('stacker.replay', $clean))->assertForbidden();
+    // a verified run is everybody's, an admin's too
+    $this->actingAs($admin)->get(route('stacker.replay', $clean))->assertOk();
+});
+
+test('a run with cheat hints that would not place in its week\'s top 10 is verified as any other', function () {
+    $faster = User::factory()->count(10)->create();
+    $faster->values()->each(fn (User $user, int $i) => replayRun($user, 900 + $i, now()->subHours(30 - $i)));
+    [$ada, $bob] = User::factory()->count(2)->create();
+
+    // ten other players are faster: eleventh at best, so a look could change nothing
+    $outside = replayRun($ada, 1000, hints: ['same-tick']);
+    // a tie with the tenth may take the place: held
+    $tie = replayRun($bob, 909, hints: ['pps']);
+
+    expect($outside->status)->toBe(StackerRunStatus::Verified)
+        ->and($outside->verified_at)->not->toBeNull()
+        ->and($outside->flags['hints']['flags'])->toBe(['same-tick'])
+        ->and(app(StackerRuns::class)->best($ada))->toBe(1000)
+        ->and(ScoreRun::query()->where(['user_id' => $ada->id, 'external_id' => (string) $outside->id])->exists())->toBeTrue()
+        ->and($tie->status)->toBe(StackerRunStatus::Review);
+
+    // the player's own faster time stands already: a slower run with hints changes no place
+    $cy = $faster->first();
+    $slower = replayRun($cy, 950, hints: ['timing']);
+    expect($slower->status)->toBe(StackerRunStatus::Verified);
+
+    $standings = app(ScoreRuns::class)->standings(app(BlockfillWeeks::class)->current());
+    expect(collect($standings)->firstWhere(fn ($row) => $row->participant->user_id === $ada->id)->place)->toBe(11);
+});
+
+test('a held run that no longer places in its week\'s top 10 is released without the verifier, once', function () {
+    $ada = User::factory()->create();
+    $held = replayRun($ada, 1000, now()->subHours(40), ['same-tick']);
+    User::factory()->count(10)->create()->values()->each(fn (User $user, int $i) => replayRun($user, 900 + $i, now()->subHours(30 - $i)));
+    $asked = count($this->verifier->asked);
+
+    expect($held->refresh()->status)->toBe(StackerRunStatus::Review)
+        ->and(app(StackerRuns::class)->releaseHeld(now()))->toBe(1)
+        ->and(count($this->verifier->asked))->toBe($asked)
+        ->and($held->refresh())->status->toBe(StackerRunStatus::Verified)
+        ->and($held->flags['review']['decision'])->toBe('released')
+        ->and($held->flags['hints']['flags'])->toBe(['same-tick'])
+        ->and(app(StackerRuns::class)->releaseHeld(now()))->toBe(0);
+
+    $standings = app(ScoreRuns::class)->standings(app(BlockfillWeeks::class)->current());
+    expect(collect($standings)->firstWhere(fn ($row) => $row->participant->user_id === $ada->id)->place)->toBe(11);
 });
 
 test('a player keeps one held run per week, the fastest: a slower one held later becomes practice without its replay', function () {
@@ -148,26 +198,24 @@ test('a player keeps one held run per week, the fastest: a slower one held later
         ->and($faster->refresh())->status->toBe(StackerRunStatus::Review)->replay->not->toBeNull();
 });
 
-test('the week\'s first ten replays are public once the week has ended, and only those', function () {
+test('every verified replay is public while the week runs and after it, the eleventh place too, until its replay is pruned', function () {
     $players = User::factory()->count(11)->create();
     $runs = $players->values()->map(fn (User $user, int $i): StackerRun => replayRun($user, 1000 + 10 * $i, now()->subHours(20 - $i)));
-    $tenth = $runs[9];
-    $eleventh = $runs[10];
 
-    // while the week runs: nobody but the player
-    $this->get(route('stacker.replay', $runs[0]))->assertForbidden();
-    expect(app(StackerReplays::class)->publicIn(app(BlockfillWeeks::class)->current()))->toBe([]);
+    $this->get(route('stacker.replay', $runs[0]))->assertOk();
+    $this->get(route('stacker.replay', $runs[10]))->assertOk();
 
     // Monday 2026-10-12 00:00 Berlin has passed
     $this->travelTo(CarbonImmutable::parse('2026-10-12 06:00:00'));
     $week = Tournament::query()->where('slug', 'blockfill-2026-10-05')->sole();
     expect(collect(app(ScoreRuns::class)->standings($week))->pluck('place')->all())->toBe(range(1, 11));
 
-    $this->get(route('stacker.replay', $runs[0]))->assertOk();
-    $this->get(route('stacker.replay', $tenth))->assertOk();
-    $this->get(route('stacker.replay', $eleventh))->assertForbidden();
-    $this->actingAs($players[10])->get(route('stacker.replay', $eleventh))->assertOk();
-    expect(app(StackerReplays::class)->publicIn($week))->toEqualCanonicalizing($runs->take(10)->pluck('id')->all());
+    $this->get(route('stacker.replay', $runs[9]))->assertOk();
+    $this->get(route('stacker.replay', $runs[10]))->assertOk();
+
+    // a run whose replay the league pruned has nothing to watch
+    $runs[10]->forceFill(['replay' => null])->save();
+    $this->get(route('stacker.replay', $runs[10]))->assertNotFound();
 });
 
 test('admins list the held runs with their hints, approve one so it counts and reject another for good', function () {
@@ -179,6 +227,7 @@ test('admins list the held runs with their hints, approve one so it counts and r
 
     $this->actingAs($cy)->get(route('admin.blockfill'))->assertForbidden();
     $this->actingAs($admin)->get(route('admin.blockfill'))->assertOk()
+        ->assertSee('Only suspicious runs that would land in their week&#039;s top 10 wait here', false)
         ->assertSee('More than 5 pieces per second (6.45)')
         ->assertSee('More than 3 key presses in one tick (1)')
         ->assertSee('Every piece placed with the fewest presses (39 of 69)')
@@ -219,29 +268,31 @@ test('boards, /matches and the game page link the replays the viewer may watch',
     $theirs = replayRun($bob, 1000);
     $week = app(BlockfillWeeks::class)->current();
 
-    // the week's board: only the own row while the week runs
+    // the week's board: every row while the week runs
     $this->actingAs($ada)->get(route('tournaments.scores', $week))->assertOk()
         ->assertSee(route('stacker.replay', $mine), false)
-        ->assertDontSee(route('stacker.replay', $theirs), false);
+        ->assertSee(route('stacker.replay', $theirs), false);
     $this->actingAs($ada)->get(route('stacker.play'))->assertOk()
         ->assertSee('data-test="stacker-week-replay"', false)
         ->assertSee(route('stacker.replay', $mine), false);
 
-    // /matches: the own attempt opens its replay, the other one its week's board
+    // /matches: both attempts open their replay; one whose replay was pruned its week's board
     $this->actingAs($ada);
     $links = ScoreAttempts::links([$mine, $theirs]);
     expect($links['run-'.$mine->id])->toBe(route('stacker.replay', $mine))
-        ->and($links['run-'.$theirs->id])->toBe(route('tournaments.scores', $week));
+        ->and($links['run-'.$theirs->id])->toBe(route('stacker.replay', $theirs));
     $this->get(route('matches.index', ['status' => 'finished']))->assertOk()
         ->assertSee(route('stacker.replay', $mine), false)
-        ->assertDontSee(route('stacker.replay', $theirs), false);
+        ->assertSee(route('stacker.replay', $theirs), false);
+    $theirs->forceFill(['replay' => null])->save();
+    expect(ScoreAttempts::links([$theirs->refresh()])['run-'.$theirs->id])->toBe(route('tournaments.scores', $week));
 
-    // the week over: both are public on the board, for guests too
+    // for guests too, the week over: a row without its replay has no play square
     $this->travelTo(CarbonImmutable::parse('2026-10-12 06:00:00'));
     auth()->logout();
     $this->get(route('tournaments.scores', $week))->assertOk()
         ->assertSee(route('stacker.replay', $mine), false)
-        ->assertSee(route('stacker.replay', $theirs), false);
+        ->assertDontSee(route('stacker.replay', $theirs), false);
 });
 
 test('the run status a player polls names the replay page once the league keeps it', function () {
@@ -258,8 +309,8 @@ test('the run status a player polls names the replay page once the league keeps 
 
 /*
 | The replays page (`stacker.replays`, the Replays tab): your own replays, an
-| ended week's first ten, and the held runs for admins, each only when
-| StackerReplays::canView() would let the viewer watch it.
+| ended week's first ten, everybody's newest, and the held runs for admins,
+| each only when StackerReplays::canView() would let the viewer watch it.
 */
 
 /**
@@ -296,6 +347,7 @@ test('the replays page lists your own replays newest first with time, week and p
 
     preg_match('#data-test="replays-mine".*?</section>#s', $html, $mine);
     preg_match('#data-test="replays-top".*?</section>#s', $html, $top);
+    preg_match('#data-test="replays-latest".*?</section>#s', $html, $latest);
     preg_match('#<a href="([^"]+)"[^>]*?data-test="replays-featured".*?</a>#s', $html, $featured);
     preg_match_all('#href="([^"]+)"\s+data-test="replays-mine-row"\s*(?:data-place="(\d+)")?#', $mine[0], $mineRows);
 
@@ -307,22 +359,48 @@ test('the replays page lists your own replays newest first with time, week and p
         ->and(substr_count($top[0], 'data-test="replays-top-row"'))->toBe(9)
         ->and($top[0])->toContain('"'.route('stacker.replay', $lastWeek[9]).'"')
         ->and($top[0])->not->toContain('"'.route('stacker.replay', $lastWeek[10]).'"')
-        ->and($html)->not->toContain('"'.route('stacker.replay', $bobNow).'"')
+        ->and($top[0])->not->toContain('"'.route('stacker.replay', $bobNow).'"')
+        // everybody's newest: Bob's run of this week too, with his name
+        ->and($latest[0])->toContain('"'.route('stacker.replay', $bobNow).'"')->toContain('Bob This Week')
         ->and($html)->not->toContain('data-test="replays-held"');
 });
 
-test('a guest sees the ended week\'s first ten and a way in, never a replay of the running week or the eleventh place', function () {
+test('the replays page lists everybody\'s newest verified replays, other players\' included, never a held one', function () {
     ['lastWeek' => $lastWeek, 'adaNow' => $adaNow, 'bobNow' => $bobNow] = replayShelves();
+    $held = replayRun(User::factory()->create(['name' => 'Cy Held']), 900, hints: ['pps']);
+    $pruned = $lastWeek[10];
+    $pruned->forceFill(['replay' => null])->save();
+
+    foreach ([null, $lastWeek[3]->user] as $viewer) {
+        $viewer ? $this->actingAs($viewer) : auth()->logout();
+        $html = $this->get(route('stacker.replays'))->assertOk()->getContent();
+        preg_match('#data-test="replays-latest".*?</section>#s', $html, $latest);
+        preg_match_all('#href="([^"]+)"\s+data-test="replays-latest-row"#', $latest[0] ?? '', $rows);
+
+        // newest first: this week's two (handed in at the same moment, the later one first), then week 40's from its newest
+        expect($rows[1])->toBe([
+            route('stacker.replay', $bobNow), route('stacker.replay', $adaNow),
+            ...array_map(fn (int $i): string => route('stacker.replay', $lastWeek[$i]), range(9, 0, -1)),
+        ])
+            ->and($latest[0])->toContain('Bob This Week')
+            ->and($latest[0])->not->toContain('Cy Held')
+            ->and($html)->not->toContain('"'.route('stacker.replay', $held).'"')
+            ->and($html)->not->toContain('"'.route('stacker.replay', $pruned).'"');
+    }
+});
+
+test('a guest sees the ended week\'s first ten as its top replays and a way in', function () {
+    ['lastWeek' => $lastWeek, 'adaNow' => $adaNow] = replayShelves();
 
     $html = $this->get(route('stacker.replays'))->assertOk()
         ->assertSee('data-test="replays-mine-guest"', false)
         ->assertSee(route('login'), false)
         ->getContent();
-    preg_match_all('#/blockfill/replays/(\d+)#', $html, $linked);
+    preg_match('#data-test="replays-top".*?</section>#s', $html, $top);
+    preg_match_all('#/blockfill/replays/(\d+)#', $top[0], $linked);
 
     expect(array_map('intval', array_values(array_unique($linked[1]))))->toBe($lastWeek->take(10)->pluck('id')->all())
-        ->and($html)->not->toContain('"'.route('stacker.replay', $adaNow).'"')
-        ->and($html)->not->toContain('"'.route('stacker.replay', $bobNow).'"');
+        ->and($top[0])->not->toContain('"'.route('stacker.replay', $adaNow).'"');
 });
 
 test('without an ended week the replays page invites to play, for players and guests', function () {
@@ -378,21 +456,25 @@ test('admins see the held runs with their number and the way to the review list;
         ->assertDontSee('href="'.route('stacker.replay', $held).'"', false);
 });
 
-test('?player= lists that player\'s replays the viewer may watch: the public ones for others, all for the player', function () {
+test('?player= lists that player\'s replays the viewer may watch: the verified ones for others, held ones too for the player', function () {
     ['lastWeek' => $lastWeek, 'ada' => $ada, 'adaNow' => $adaNow] = replayShelves();
+    $heldNow = replayRun($ada, 900, hints: ['pps']);
     $url = route('stacker.replays', ['player' => $ada->npub]);
 
     $this->get($url)->assertOk()
         ->assertSee('Replays of '.$ada->displayName())
         ->assertSee('href="'.route('stacker.replay', $lastWeek[1]).'"', false)
-        ->assertDontSee('href="'.route('stacker.replay', $adaNow).'"', false)
+        ->assertSee('href="'.route('stacker.replay', $adaNow).'"', false)
+        ->assertDontSee('href="'.route('stacker.replay', $heldNow).'"', false)
         ->assertDontSee('href="'.route('stacker.replay', $lastWeek[0]).'"', false);
 
     $this->actingAs($ada)->get($url)->assertOk()
         ->assertSee('href="'.route('stacker.replay', $lastWeek[1]).'"', false)
-        ->assertSee('href="'.route('stacker.replay', $adaNow).'"', false);
+        ->assertSee('href="'.route('stacker.replay', $adaNow).'"', false)
+        ->assertSee('href="'.route('stacker.replay', $heldNow).'"', false);
 
-    // a player without a public replay: the empty state with Play
+    // a player whose replay was pruned: the empty state with Play
+    $lastWeek[10]->forceFill(['replay' => null])->save();
     $this->get(route('stacker.replays', ['player' => $lastWeek[10]->user->npub]))->assertOk()
         ->assertSee('data-test="replays-player-empty"', false)
         ->assertDontSee('href="'.route('stacker.replay', $lastWeek[10]).'"', false);
@@ -446,10 +528,15 @@ test('the board hero, every row the viewer may watch and the player page lead to
         ->assertSee('href="'.e(route('stacker.replays', ['week' => $week40->slug])).'"', false)
         ->getContent();
 
-    // a play square per public row, named for its player, never the word under the time
+    // a play square in every row that keeps its replay, the eleventh too, named for its player, never the word under the time
     preg_match_all('#<a href="([^"]+)" aria-label="Watch the replay of ([^"]+)" title="Watch replay"\s+class="inline-flex size-11#', $board, $squares);
-    expect($squares[1])->toBe($lastWeek->take(10)->map(fn (StackerRun $run): string => route('stacker.replay', $run))->all())
+    expect($squares[1])->toBe($lastWeek->map(fn (StackerRun $run): string => route('stacker.replay', $run))->all())
         ->and($squares[2][0])->toBe('Week Forty Player 1');
+
+    // a row whose replay was pruned has none
+    $lastWeek[4]->forceFill(['replay' => null])->save();
+    preg_match_all('#<a href="([^"]+)" aria-label="Watch the replay of#', $this->get(route('tournaments.scores', $week40))->assertOk()->getContent(), $kept);
+    expect($kept[1])->toBe($lastWeek->reject(fn (StackerRun $run): bool => $run->is($lastWeek[4]))->map(fn (StackerRun $run): string => route('stacker.replay', $run))->values()->all());
 
     // the player page's Blockfill card: that player's replays
     $this->get(route('players.show', $ada->npub))->assertOk()

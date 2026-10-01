@@ -268,7 +268,7 @@ const REPLAYS_MEASURE = <<<'JS'
             .map((el) => ({ test: el.dataset.test || el.textContent.trim().slice(0, 24), r: el.getBoundingClientRect() }))
             .filter(({ r }) => r.height < 44 || r.width < 44 || r.left < 0 || r.right > width)
             .map(({ test, r }) => `${test} ${Math.round(r.width)}x${Math.round(r.height)} @${Math.round(r.left)}`);
-        const names = [...main.querySelectorAll('[data-test=replays-top-row] b.truncate, [data-test=replays-featured-name], [data-test=replays-held-row] b.truncate')]
+        const names = [...main.querySelectorAll('[data-test=replays-top-row] b.truncate, [data-test=replays-featured-name], [data-test=replays-held-row] b.truncate, [data-test=replay-row-player] b')]
             .map((b) => Math.round(b.getBoundingClientRect().width));
         const squares = [...main.querySelectorAll('[data-test$=-row] .size-11')].map((s) => [Math.round(s.getBoundingClientRect().width), Math.round(s.getBoundingClientRect().height)]);
         return { scroll: document.documentElement.scrollWidth, client: width, small, names, squares,
@@ -276,7 +276,7 @@ const REPLAYS_MEASURE = <<<'JS'
     }
     JS;
 
-test('the replays page: your replays, the ended week\'s first ten with the winner large, the held runs; measured, clean console', function (string $locale, int $width, int $height) {
+test('the replays page: your replays, the ended week\'s first ten with the winner large, everybody\'s newest, the held runs; measured, clean console', function (string $locale, int $width, int $height) {
     ['admin' => $admin, 'lastWeek' => $lastWeek, 'adminNow' => $adminNow, 'held' => $held] = replayShelfWorld();
 
     $page = replayPage($admin, $locale, $width, $height, route('stacker.replays', absolute: false));
@@ -288,6 +288,7 @@ test('the replays page: your replays, the ended week\'s first ten with the winne
             featured: document.querySelector('[data-test=replays-featured]')?.getAttribute('href'),
             top: [...document.querySelectorAll('[data-test=replays-top-row]')].map((a) => [a.getAttribute('href'), a.dataset.place]),
             held: [...document.querySelectorAll('[data-test=replays-held-row]')].map((a) => a.getAttribute('href')),
+            latest: [...document.querySelectorAll('[data-test=replays-latest-row]')].map((a) => [a.getAttribute('href'), a.querySelector('[data-test=replay-row-player] b').innerText.trim()]),
             title: document.querySelector('#top-h').innerText.trim(),
         })
         JS);
@@ -298,6 +299,11 @@ test('the replays page: your replays, the ended week\'s first ten with the winne
         ->and($shelves['featured'])->toBe(route('stacker.replay', $lastWeek[0]))
         ->and($shelves['top'])->toBe(array_map(fn (int $i): array => [route('stacker.replay', $lastWeek[$i]), (string) ($i + 1)], range(1, 9)))
         ->and($shelves['held'])->toBe([route('stacker.replay', $held)])
+        // everybody's newest: the admin's run of this week, then week 40's from its newest; never the held run
+        ->and($shelves['latest'])->toBe([
+            [route('stacker.replay', $adminNow), 'Ada Admin Who Watches Every Replay Here'],
+            ...array_map(fn (int $i): array => [route('stacker.replay', $lastWeek[$i]), $lastWeek[$i]->user->name], range(10, 0, -1)),
+        ])
         ->and($shelves['title'])->toBe($locale === 'de' ? 'Top-Replays der Woche 40, 2026' : 'Top replays of Week 40, 2026')
         ->and($measure['scroll'])->toBeLessThanOrEqual($measure['client'])
         ->and($measure['small'])->toBe([])
@@ -326,8 +332,9 @@ test('the replays page: your replays, the ended week\'s first ten with the winne
     'de 375' => ['de', 375, 812],
 ]);
 
-test('an ended week\'s board: a 44 px play square in each of the first ten rows, none in the eleventh; measured, clean console', function (string $locale, int $width, int $height) {
+test('an ended week\'s board: a 44 px play square in every row that keeps its replay, the eleventh too, none where it was pruned; measured, clean console', function (string $locale, int $width, int $height) {
     ['lastWeek' => $lastWeek] = replayShelfWorld();
+    $lastWeek[4]->forceFill(['replay' => null])->save();
     $guest = visit(BrowserLogin::LANDING)->page();
     $guest->context()->addInitScript(BrowserConsole::COLLECTOR);
     $guest->setViewportSize($width, $height);
@@ -349,7 +356,11 @@ test('an ended week\'s board: a 44 px play square in each of the first ten rows,
     [$scroll, $client] = $guest->evaluate(BrowserConsole::WIDTHS);
     fwrite(STDERR, "board replays {$locale} {$width}: ".json_encode([$rows, $hero]).PHP_EOL);
 
-    foreach (array_slice($rows, 0, 10) as $i => $row) {
+    foreach ($rows as $i => $row) {
+        if ($i === 4) {
+            continue;
+        }
+
         expect($row[1])->not->toBeNull("place {$row[0]} has no play square")
             ->and([$row[1][0], $row[1][1]])->toBe([44, 44])
             ->and($row[1][2])->toBeGreaterThanOrEqual(0)
@@ -358,7 +369,7 @@ test('an ended week\'s board: a 44 px play square in each of the first ten rows,
     }
 
     expect($rows[0][1][4])->toBe(($locale === 'de' ? 'Replay von ' : 'Watch the replay of ').'SatoshiNakamotoStackedFortyBlocksFirst'.($locale === 'de' ? ' ansehen' : ''))
-        ->and($rows[10][1])->toBeNull()
+        ->and($rows[4][1])->toBeNull()
         ->and($hero[0])->toBe(route('stacker.replays', ['week' => $week->slug]))
         ->and($hero[1])->toBeGreaterThanOrEqual(44)
         ->and($hero[2])->toBeLessThanOrEqual($width)
@@ -379,6 +390,7 @@ test('a shared moment\'s link plays the run for a guest, under its headline with
     $run = replayFixtureRun($player);
     app(BlockfillWeeks::class)->record($run, now());
     $other = replayFixtureRun(User::factory()->create(), ownSeed: true);
+    $held = replayFixtureRun(User::factory()->create(), ['pps'], ownSeed: true);
 
     $guest = visit(BrowserLogin::LANDING)->page();
     $guest->context()->addInitScript(BrowserConsole::COLLECTOR);
@@ -422,9 +434,10 @@ test('a shared moment\'s link plays the run for a guest, under its headline with
     $guest->evaluate('() => { window.__stackerReplay.seek(560); window.scrollTo(0, 0); }');
     shellShot($guest, "blockfill-moment-{$locale}-{$width}");
 
-    // The moment opens its own run only: another run's replay stays closed to the guest.
-    expect($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $other, false)))->toBe(403)
-        ->and($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $run, false)))->toBe(403);
+    // Every verified run's replay page is open to the guest too; a held run's stays closed.
+    expect($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $other, false)))->toBe(200)
+        ->and($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $run, false)))->toBe(200)
+        ->and($guest->evaluate('(path) => fetch(path).then((r) => r.status)', route('stacker.replay', $held, false)))->toBe(403);
 })->with([
     'en 375' => ['en', 375, 812],
     'en 1440' => ['en', 1440, 900],

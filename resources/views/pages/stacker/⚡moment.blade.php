@@ -21,9 +21,9 @@ use Livewire\Component;
  *
  * The page is the run's replay (components/stacker/replay-viewer) under the
  * moment's headline: sharing a moment is its owner's consent to show that
- * one run, so this URL plays it for anyone, guests included. It opens no
- * other run: StackerReplays::canView() and `stacker.replay` stay as they
- * are. A shared moment keeps its replay (StackerRuns::keepWeekTop()); a run
+ * one run, so this URL plays it for anyone, guests included, as
+ * `stacker.replay` does for every verified run (StackerReplays::canView()).
+ * A shared moment keeps its replay (StackerRuns::keepWeekTop()); a run
  * that has none any more shows its share card and Play instead.
  */
 new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component {

@@ -305,13 +305,13 @@ test('a guest opening a moment\'s link sees that run\'s replay under the moment,
         ->and($html)->toContain('<meta name="robots" content="noindex, nofollow">');
 });
 
-test('a moment opens only its own run: the replay page of it and of any other run stays closed to a guest', function () {
+test('a moment page plays its own run; a run that is no moment has none, its replay page is open as every verified one', function () {
     $m = shareMomentsOfWeek();
     $other = shareRun($m['ada'], 3300, 1);
 
     $this->get('/scores/blockfill/moment/'.$m['first']->id)->assertOk()->assertSee('data-test="replay"', false);
-    $this->get(route('stacker.replay', $m['first']))->assertForbidden();
-    $this->get(route('stacker.replay', $other))->assertForbidden();
+    $this->get(route('stacker.replay', $m['first']))->assertOk();
+    $this->get(route('stacker.replay', $other))->assertOk();
     // a run that is no moment has no moment page, so no replay through it
     expect(app(BlockfillMoments::class)->of($other))->toBeNull();
     $this->get('/scores/blockfill/moment/'.$other->id)->assertNotFound();

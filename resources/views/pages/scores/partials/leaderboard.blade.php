@@ -7,7 +7,7 @@
     proof link (a player's link may name their game account, so it is never public); $beat: where "Beat this time" next
     to the first place leads (null: not shown).
     Blockfill (plan "Blockfill", P5): a row whose replay the viewer may watch ends in a 44 px play square to it
-    (App\Support\Stacker\StackerReplays::forStandings(): their own, an ended week's first ten, admins' flagged ones).
+    (App\Support\Stacker\StackerReplays::forStandings(): every row whose verified run still keeps its replay).
     $shareMoment: on a Blockfill week, the viewer's own run that is a moment (BlockfillMoments::shareableOn()): their row
     gets the button that opens the share sheet (components/⚡blockfill-share, on the same page).
 --}}
