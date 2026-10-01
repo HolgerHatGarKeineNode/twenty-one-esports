@@ -3,18 +3,22 @@
 use App\Enums\BoardGameStatus;
 use App\Enums\SeriesResolution;
 use App\Enums\SeriesStatus;
+use App\Enums\StackerRunStatus;
 use App\Games\Checkers;
 use App\Games\NineMensMorris;
 use App\Models\ChessGame;
 use App\Models\SeasonAttestation;
 use App\Models\SeasonBlockVoid;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Models\User;
 use App\Support\Matches\MempoolStrip;
+use App\Support\Stacker\BlockfillWeeks;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Pest\Browser\Playwright\Page;
 use Pest\Browser\Support\ComputeUrl;
+use Tests\Support\BlockfillOn;
 use Tests\Support\BrowserConsole;
 use Tests\Support\BrowserLogin;
 use Tests\Support\BrowserWait;
@@ -150,5 +154,86 @@ test('/matches keeps the mempool strip and the table whole at 320, 375 and 1280 
     BrowserWait::until($page, '() => window.__errors.length >= 2', 5_000);
 
     expect(implode(' ', $page->evaluate('() => window.__errors')))->toContain('mempool positive control')
+        ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->not->toBe([]);
+});
+
+/*
+| Highscore attempts (App\Support\Matches\ScoreAttempts): Blockfill runs,
+| verified and waiting for the verifier, among the matches in strip and
+| table, at 375 and 1440 px in English and German. The same channels as
+| above: no sideways scroll, nothing cut (cubes, attempt rows, the game
+| filter with its Blockfill button), a clean console and no answer >= 400
+| on the first load and after a round trip, with a positive control.
+*/
+test('/matches keeps highscore attempts and matches whole together at 375 and 1440 px, in English and German, with a clean console', function () {
+    BlockfillOn::play();
+    app(BlockfillWeeks::class)->open();
+
+    $ben = User::factory()->create(['name' => 'El Presidento Ben']);
+    StackerRun::factory()->verified(18_990)->create(['user_id' => $ben->id, 'created_at' => now()->subMinutes(6), 'submitted_at' => now()->subMinutes(5), 'verified_at' => now()->subMinutes(5)]);
+    StackerRun::factory()->verified(21_337)->create(['user_id' => User::factory()->create(['name' => 'Satoshis Stapelmeisterin mit langem Namen'])->id, 'created_at' => now()->subMinutes(26), 'submitted_at' => now()->subMinutes(25), 'verified_at' => now()->subMinutes(25)]);
+    StackerRun::factory()->create(['status' => StackerRunStatus::Pending, 'ticks' => 17_000, 'submitted_at' => now()->subMinutes(2)]);
+    StackerRun::factory()->create(['status' => StackerRunStatus::Practice, 'ticks' => 30_000, 'submitted_at' => now()->subMinute()]);
+    mempoolSeries(['rated' => true, 'finished_at' => now()->subMinutes(40)]);
+    ChessGame::factory()->finished('1-0')->create(['ended_at' => now()->subMinutes(15)]);
+    mempoolBoard(NineMensMorris::SLUG, ['status' => BoardGameStatus::Finished, 'result' => '0-1', 'ended_at' => now()->subMinutes(10)]);
+    ChessGame::factory()->create(['ply' => 17]);
+    SeriesMatch::factory()->accepted()->create(['start_at' => now()->addHour()]);
+
+    $strip = MempoolStrip::build(null, null, runs: true);
+    expect(count($strip['finished']) + count($strip['running']))->toBe(8);
+
+    $viewer = User::factory()->create();
+    $shots = getenv('MEMPOOL_SHOTS');
+    $cuts = <<<'JS'
+        () => {
+            const cut = (el) => el.scrollWidth > el.clientWidth + 1;
+            return [...document.querySelectorAll('[data-test=block-strip] .bs-when, [data-test=block-strip] .bs-r1, [data-test=block-strip] .bs-score, [data-test=score-row], [data-test=score-row-value], [role=group][aria-labelledby=f-game], [role=group][aria-labelledby=f-game] button')]
+                .filter((el) => el.offsetParent !== null && cut(el))
+                .map((el) => (el.dataset.test || el.className) + ': ' + el.innerText.replace(/\s+/g, ' ') + ' (' + el.scrollWidth + ' > ' + el.clientWidth + ')');
+        }
+        JS;
+
+    foreach (['en', 'de'] as $locale) {
+        foreach ([375, 1440] as $width) {
+            $where = "/matches with runs {$locale} at {$width}";
+            $page = mempoolPage($viewer, $width, $locale);
+
+            expect($page->evaluate('() => document.documentElement.lang'))->toBe($locale, $where)
+                ->and($page->evaluate('() => document.querySelectorAll("[data-test=strip-cube][data-game=blockfill]").length'))->toBe(3, $where)
+                ->and($page->evaluate('() => [...document.querySelectorAll("[data-test=score-row]")].map((el) => el.dataset.state)'))->toBe(['waiting', 'done', 'done'], $where)
+                ->and($page->evaluate('() => document.querySelectorAll("[data-test=match-row], [data-test=chess-row], [data-test=board-row]").length'))->toBe(5, $where)
+                ->and($page->evaluate('() => document.querySelector("[data-test=score-row][data-state=done]").innerText'))->toContain('El Presidento Ben')->toContain('5:16.500');
+
+            [$scroll, $client] = $page->evaluate(BrowserConsole::WIDTHS);
+            expect($scroll)->toBeLessThanOrEqual($client, "{$where}: the page scrolls sideways ({$scroll} > {$client})")
+                ->and($page->evaluate($cuts))->toBe([], "{$where}: cut text");
+
+            if (is_string($shots) && $shots !== '') {
+                File::ensureDirectoryExists($shots);
+                $page->screenshot(true, "runs-{$locale}-{$width}");
+                File::move(base_path("tests/Browser/Screenshots/runs-{$locale}-{$width}.png"), "{$shots}/runs-{$locale}-{$width}.png");
+            }
+
+            // A Livewire round trip: the game filter narrows the table to Blockfill's runs (a select below sm, buttons from sm).
+            if ($width >= 640) {
+                $page->locator('[data-test=game-blockfill]')->click();
+            } else {
+                $page->locator('[data-test=game-filter-select]')->selectOption('blockfill');
+            }
+            BrowserWait::until($page, '() => location.search.includes("game=blockfill") && document.querySelectorAll("[data-test=match-row], [data-test=chess-row], [data-test=board-row]").length === 0', 10_000);
+
+            expect($page->evaluate('() => document.querySelectorAll("[data-test=score-row]").length'))->toBe(3, "{$where}: Blockfill filter")
+                ->and($page->evaluate('() => window.__errors'))->toBe([], "{$where}: console")
+                ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->toBe([], "{$where}: responses")
+                ->and($page->evaluate(BrowserConsole::WIDTHS)[0])->toBeLessThanOrEqual($client, "{$where}: after the round trip");
+        }
+    }
+
+    // Positive control: the collector sees a thrown error and a broken image on this page.
+    $page->evaluate('() => { setTimeout(() => { throw new Error("runs positive control"); }); const img = new Image(); img.src = "/images/games/missing-runs.jpg"; document.body.appendChild(img); }');
+    BrowserWait::until($page, '() => window.__errors.length >= 2', 5_000);
+
+    expect(implode(' ', $page->evaluate('() => window.__errors')))->toContain('runs positive control')
         ->and($page->evaluate(BrowserConsole::BAD_RESPONSES))->not->toBe([]);
 });

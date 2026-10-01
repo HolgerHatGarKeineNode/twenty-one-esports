@@ -3,14 +3,18 @@
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
 use App\Enums\SeriesStatus;
+use App\Games\Blockfill;
 use App\Games\GameKind;
 use App\Games\GameRegistry;
 use App\Models\BoardGame;
 use App\Models\ChessGame;
 use App\Models\Clan;
+use App\Models\ScoreRun;
 use App\Models\SeriesMatch;
+use App\Models\StackerRun;
 use App\Support\GameNames;
 use App\Support\Matches\MempoolStrip;
+use App\Support\Matches\ScoreAttempts;
 use App\Support\PageMeta;
 use App\Support\Series\SeriesPresenter;
 use Illuminate\Database\Eloquent\Builder;
@@ -33,7 +37,11 @@ use Livewire\WithPagination;
  * (P7b); a casual board game has none. The Chain filter (`?chain=season`
  * or `casual`, P4 of plan "Mempool-Streifen") narrows strip and table to
  * the rated matches, whose wins mine the season chain, or the casual ones;
- * row 1 of the header links the casual view.
+ * row 1 of the header links the casual view. The highscore attempts of the
+ * score games (Blockfill and every other registered one) share strip and
+ * table too (App\Support\Matches\ScoreAttempts): an unconfirmed run waits
+ * "to confirm", a verified one is "done"; they are unrated, so the season
+ * chain has none.
  */
 new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -113,8 +121,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $registry = app(GameRegistry::class);
         $boards = MempoolStrip::boardSlugs();
 
-        // No score game (plan "AoE2 und Trackmania", P4): it plays no matches, its values are on its leaderboards.
-        return array_values(array_filter(array_keys($registry->versus()), fn (string $slug): bool => ! $registry->isBoard($slug) || in_array($slug, $boards, true)));
+        // The score games while their leaderboards are routed: their highscore attempts are listed with the matches.
+        return [
+            ...array_values(array_filter(array_keys($registry->versus()), fn (string $slug): bool => ! $registry->isBoard($slug) || in_array($slug, $boards, true))),
+            ...ScoreAttempts::slugs(),
+        ];
     }
 
     private function listable(string $game): bool
@@ -247,6 +258,56 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     }
 
     /**
+     * The attempt state (ScoreAttempts) a status filter stands for; null when
+     * no attempt shows under it: attempts only wait "to confirm" or are
+     * "done", and they never sit on the season chain.
+     */
+    private function runState(string $status): ?string
+    {
+        if ($this->chain === 'season') {
+            return null;
+        }
+
+        return match ($status) {
+            'all' => 'all',
+            'to_confirm' => 'waiting',
+            'done' => 'done',
+            default => null,
+        };
+    }
+
+    /**
+     * The score games read from score_runs under the game filter (every one but Blockfill).
+     *
+     * @return list<string>
+     */
+    private function listedScores(): array
+    {
+        return ScoreAttempts::scoreSlugs($this->game === 'all' ? ScoreAttempts::slugs() : [$this->game]);
+    }
+
+    private function listsStacker(string $status): bool
+    {
+        return $this->runState($status) !== null && ScoreAttempts::blockfill() && in_array($this->game, ['all', Blockfill::SLUG], true);
+    }
+
+    private function listsScores(string $status): bool
+    {
+        return $this->runState($status) !== null && $this->listedScores() !== [];
+    }
+
+    /**
+     * How many attempts show under a status filter.
+     */
+    private function runCount(string $status): int
+    {
+        $state = (string) $this->runState($status);
+
+        return ($this->listsStacker($status) ? ScoreAttempts::stacker($state, $this->selectedClan)->count() : 0)
+            + ($this->listsScores($status) ? ScoreAttempts::scores($this->listedScores(), $state, $this->selectedClan)->count() : 0);
+    }
+
+    /**
      * Whether series (Rocket League, EA Sports FC) show under the game filter.
      */
     private function listsSeries(): bool
@@ -256,9 +317,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
 
     /**
      * Rows of the table, newest first: `series` rows carry a SeriesMatch,
-     * `chess` rows a ChessGame, `board` rows a BoardGame.
+     * `chess` rows a ChessGame, `board` rows a BoardGame, `run` rows a
+     * highscore attempt (a StackerRun of Blockfill or a ScoreRun) and its link.
      *
-     * @return LengthAwarePaginator<int, array{type: 'series'|'chess'|'board', model: SeriesMatch|ChessGame|BoardGame}>
+     * @return LengthAwarePaginator<int, array{type: 'series'|'chess'|'board'|'run', model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, href?: string}>
      */
     #[Computed]
     public function matches(): LengthAwarePaginator
@@ -269,17 +331,29 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
         $series = ! $this->listsSeries() ? collect() : $this->filtered(SeriesMatch::query()->with(['latestReport', 'challengerLineup.clan', 'challengedLineup.clan']), $this->status)->latest()->limit($take)->get();
         $chess = $this->listsChess($this->status) ? $this->filteredChess(ChessGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
         $boards = $this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query()->with(['white', 'black']), $this->status)->latest()->limit($take)->get() : collect();
+        $state = (string) $this->runState($this->status);
+        $runs = collect([
+            ...($this->listsStacker($this->status) ? ScoreAttempts::stacker($state, $this->selectedClan)->with('user')->latest()->limit($take)->get()->all() : []),
+            ...($this->listsScores($this->status) ? ScoreAttempts::scores($this->listedScores(), $state, $this->selectedClan)->with('user')->latest()->limit($take)->get()->all() : []),
+        ]);
         $total = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $this->status)->count())
             + ($this->listsChess($this->status) ? $this->filteredChess(ChessGame::query(), $this->status)->count() : 0)
-            + ($this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query(), $this->status)->count() : 0);
+            + ($this->listsBoards($this->status) ? $this->filteredBoards(BoardGame::query(), $this->status)->count() : 0)
+            + $this->runCount($this->status);
 
         $rows = $series->map(fn (SeriesMatch $match) => ['type' => 'series', 'model' => $match])
             ->concat($chess->map(fn (ChessGame $game) => ['type' => 'chess', 'model' => $game]))
             ->concat($boards->map(fn (BoardGame $game) => ['type' => 'board', 'model' => $game]))
+            ->concat($runs->map(fn (StackerRun|ScoreRun $run) => ['type' => 'run', 'model' => $run]))
             ->sortByDesc(fn (array $row) => $row['model']->created_at)
             ->values()
             ->slice(($page - 1) * $perPage, $perPage)
             ->values();
+
+        // Where the attempts on this page link: one query for the week leaderboards of all of them.
+        $attempts = $rows->where('type', 'run')->pluck('model')->all();
+        $links = $attempts === [] ? [] : ScoreAttempts::links($attempts);
+        $rows = $rows->map(fn (array $row) => $row['type'] === 'run' ? [...$row, 'href' => $links[ScoreAttempts::key($row['model'])]] : $row);
 
         return new LengthAwarePaginator($rows, $total, $perPage, $page);
     }
@@ -296,7 +370,8 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
             if ($status !== 'all') {
                 $counts[$status] = (! $this->listsSeries() ? 0 : $this->filtered(SeriesMatch::query(), $status)->count())
                     + ($this->listsChess($status) ? $this->filteredChess(ChessGame::query(), $status)->count() : 0)
-                    + ($this->listsBoards($status) ? $this->filteredBoards(BoardGame::query(), $status)->count() : 0);
+                    + ($this->listsBoards($status) ? $this->filteredBoards(BoardGame::query(), $status)->count() : 0)
+                    + $this->runCount($status);
             }
         }
 
@@ -321,7 +396,7 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
     #[Computed]
     public function strip(): array
     {
-        return MempoolStrip::build(auth()->user(), $this->chain);
+        return MempoolStrip::build(auth()->user(), $this->chain, runs: true);
     }
 }; ?>
 
@@ -419,6 +494,10 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                     @include('pages.matches.partials.board-row', ['boardGame' => $row['model'], 'viewer' => $viewer])
                     @continue
                 @endif
+                @if ($row['type'] === 'run')
+                    @include('pages.matches.partials.score-row', ['run' => $row['model'], 'href' => $row['href']])
+                    @continue
+                @endif
                 @php($match = $row['model'])
                 @php($chip = SeriesPresenter::chip($match))
                 @php($result = SeriesPresenter::result($match, $viewer))
@@ -453,7 +532,11 @@ new #[Layout('layouts::app', ['section' => 'matches'])] class extends Component 
                 </a>
             @empty
                 <div class="px-2 py-6">
-                    @if ($game !== 'all' && app(GameRegistry::class)->isBoard($game))
+                    @if ($game !== 'all' && app(GameRegistry::class)->isScore($game))
+                        <x-empty-state :heading="__('No runs yet')" :text="__('The first run opens the list.')">
+                            <x-button :href="GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
+                        </x-empty-state>
+                    @elseif ($game !== 'all' && app(GameRegistry::class)->isBoard($game))
                         <x-empty-state :heading="__('No games yet')" :text="__('The first game opens the list.')">
                             <x-button :href="\App\Support\GameNames::page($game)">{{ __('Play :game', ['game' => GameNames::game($game)]) }}</x-button>
                         </x-empty-state>

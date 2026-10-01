@@ -135,12 +135,13 @@ test('it has no casual queue, no lobby, no cup and no lineup, even listed by mis
         ->toThrow(ClanRuleViolation::class);
 });
 
-test('match lists, hubs, rules and weekly events leave it out', function () {
+test('hubs, rules and weekly events leave it out; /matches lists its highscore attempts', function () {
     ScoreDemoOn::play();
 
+    // Its attempts are listed with the matches (tests/Feature/Matches/ScoreAttemptsTest.php), so it has a filter there.
     Livewire\Livewire::withQueryParams(['game' => ScoreDemo::SLUG])->test('pages::matches.index')
-        ->assertSet('game', 'all')
-        ->assertDontSeeHtml('data-test="game-'.ScoreDemo::SLUG.'"');
+        ->assertSet('game', ScoreDemo::SLUG)
+        ->assertSeeHtml('data-test="game-'.ScoreDemo::SLUG.'"');
 
     expect(collect(app(HomeHub::class)->ladders())->pluck('game')->all())->not->toContain(ScoreDemo::SLUG);
 

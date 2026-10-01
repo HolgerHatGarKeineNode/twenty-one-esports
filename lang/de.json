@@ -5992,5 +5992,10 @@
     "No verified run yet. Play the first one.": "Noch kein geprüfter Lauf. Spiel den ersten.",
     "Full leaderboard": "Ganzes Leaderboard",
     "One lobby match: everyone plays at once, in lobbies of at most 8.": "Ein Lobby-Match: Alle spielen gleichzeitig, in Lobbys mit höchstens 8 Spielern.",
-    "The lobbies are on. A player reports the places after the time limit.": "Die Lobbys laufen. Nach dem Zeitlimit meldet ein Spieler die Platzierungen."
+    "The lobbies are on. A player reports the places after the time limit.": "Die Lobbys laufen. Nach dem Zeitlimit meldet ein Spieler die Platzierungen.",
+    "highscore": "Highscore",
+    "unconfirmed": "unbestätigt",
+    "confirmed": "bestätigt",
+    "No runs yet": "Noch keine Läufe",
+    "The first run opens the list.": "Der erste Lauf eröffnet die Liste."
 }
