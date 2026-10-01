@@ -46,10 +46,10 @@ use Illuminate\Support\Facades\Route;
  *
  * `runs` adds the highscore attempts of the score games (ScoreAttempts):
  * a verified run on the finished side, an unconfirmed one on the waiting
- * side, merged by time as every other kind, but at most ATTEMPTS_PER_SIDE
- * of them a side, so matches always keep the rest; never on the `season`
- * chain, they mine nothing. /matches asks for them; the stream's mempool slide
- * (App\Support\TwentyOne\Stream\MempoolSlides) does not.
+ * side, merged by time as every other kind, at most `runsPerSide` of them
+ * a side (ATTEMPTS_PER_SIDE on /matches, fewer on the stream's mempool
+ * slide), the latest across every score game, so matches always keep the
+ * rest; never on the `season` chain, they mine nothing.
  */
 final class MempoolStrip
 {
@@ -73,9 +73,10 @@ final class MempoolStrip
      *
      * @return array{finished: list<array<string, mixed>>, running: list<array<string, mixed>>, live: bool}
      */
-    public static function build(?User $viewer = null, ?string $chain = null, bool $runs = false): array
+    public static function build(?User $viewer = null, ?string $chain = null, bool $runs = false, int $runsPerSide = self::ATTEMPTS_PER_SIDE): array
     {
         $runs = $runs && $chain !== 'season';
+        $runsPerSide = max(0, min(self::SIDE, $runsPerSide));
         $boards = self::boardSlugs();
         $sides = ['challengerLineup.clan', 'challengedLineup.clan'];
         $players = ['white', 'black'];
@@ -91,7 +92,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Finished)
                 ->orderByDesc('ended_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->ended_at))->all()),
-            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('done', self::ATTEMPTS_PER_SIDE)) : []),
+            ...($runs ? self::attempts('done', $runsPerSide) : []),
         ];
 
         $running = [
@@ -104,7 +105,7 @@ final class MempoolStrip
             ...($boards === [] ? [] : self::onChain(BoardGame::query(), $chain)->with($players)->whereIn('game', $boards)->where('status', BoardGameStatus::Active)
                 ->orderByDesc('updated_at')->limit(self::SIDE)->get()
                 ->map(fn (BoardGame $game): array => self::item('board', $game, $game->updated_at))->all()),
-            ...($runs ? array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest('waiting', self::ATTEMPTS_PER_SIDE)) : []),
+            ...($runs ? self::attempts('waiting', $runsPerSide) : []),
         ];
 
         usort($finished, fn (array $a, array $b): int => $b['at'] <=> $a['at']);
@@ -177,6 +178,24 @@ final class MempoolStrip
     public static function boardSlugs(): array
     {
         return Route::has('board.show') ? array_keys(app(GameRegistry::class)->boards()) : [];
+    }
+
+    /**
+     * The latest highscore attempts in a state across every score game, at
+     * most `$limit` of them (ScoreAttempts::latest() limits per source).
+     *
+     * @return list<array{kind: string, model: SeriesMatch|ChessGame|BoardGame|StackerRun|ScoreRun, at: int}>
+     */
+    private static function attempts(string $state, int $limit): array
+    {
+        if ($limit === 0) {
+            return [];
+        }
+
+        $items = array_map(fn (StackerRun|ScoreRun $run): array => self::item('run', $run, ScoreAttempts::at($run)), ScoreAttempts::latest($state, $limit));
+        usort($items, fn (array $a, array $b): int => $b['at'] <=> $a['at']);
+
+        return array_slice($items, 0, $limit);
     }
 
     /**

@@ -2,7 +2,10 @@
 
 namespace App\Support\TwentyOne\Stream;
 
+use App\Games\GameRegistry;
 use App\Support\TwentyOne\Stream\RotationKit as K;
+use Illuminate\Support\Facades\Blade;
+use Throwable;
 
 /**
  * Where everything of the mempool slide (m1) sits on the 1280x720 still, as
@@ -16,7 +19,14 @@ use App\Support\TwentyOne\Stream\RotationKit as K;
  * mempool) after it. A cube is the game's colour and logo, its score big;
  * under it the people: a winner's face big and crowned with who they beat,
  * the miners of a block with the block's reward in sats, two faces for a
- * game still on. An empty side is an invitation, never a gap.
+ * game still on, one face and the game's name for a highscore attempt. An
+ * empty side is an invitation, never a gap.
+ *
+ * Colour, logo and the legend's names come from the registry
+ * (App\Games\GameRegistry), so a game registered later shows with its own
+ * mark and name: the families of the strip keep their gradients, any other
+ * game takes its registry colour token (resources/css/app.css), its logo is
+ * its registry icon (components/icon.blade.php).
  */
 final class MempoolLayout
 {
@@ -88,13 +98,23 @@ final class MempoolLayout
         'trophy' => '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></g>',
     ];
 
+    /** The CSS file whose `--color-*` tokens the registry's GameAssets name. */
+    private const THEME_CSS = 'resources/css/app.css';
+
+    /** @var array<string, string|null> icon name => inner SVG, rendered from components/icon.blade.php (static markup) */
+    private static array $icons = [];
+
+    /** @var array{mtime: int, tokens: array<string, string>}|null */
+    private static ?array $theme = null;
+
     /**
      * The inner SVG of a game's logo on a 24 px grid (the registry's icon
-     * names), the trophy for a game without one.
+     * names): the stream's own drawing where it has one, else the site's
+     * icon of that name, the trophy for an icon neither knows.
      */
     public static function logo(string $icon): string
     {
-        return self::LOGOS[$icon] ?? self::LOGOS['trophy'];
+        return self::LOGOS[$icon] ?? self::siteIcon($icon) ?? self::LOGOS['trophy'];
     }
 
     /**
@@ -103,6 +123,112 @@ final class MempoolLayout
     public static function colours(string $family): array
     {
         return self::FAMILIES[$family] ?? self::FAMILIES['other'];
+    }
+
+    /**
+     * The colours of a game on the slide: its family's (MatchBlocks::family())
+     * where it has one, else built from its registry colour tokens
+     * (GameAssets::$colour, ::$colourDeep). A grey token or one that does not
+     * resolve gives the neutral `other` colours.
+     *
+     * @return array{0: string, 1: string, 2: string, 3: string, 4: string}
+     */
+    public static function gameColours(string $slug, string $family): array
+    {
+        if ($family !== 'other' && isset(self::FAMILIES[$family])) {
+            return self::FAMILIES[$family];
+        }
+
+        $assets = app(GameRegistry::class)->find($slug)?->assets();
+        $colour = $assets === null ? null : self::token($assets->colour);
+
+        if ($colour === null || self::isGrey($colour)) {
+            return self::FAMILIES['other'];
+        }
+
+        $deep = self::token($assets->colourDeep) ?? self::mix($colour, '#000000', 0.4);
+
+        return [$colour, self::mix($colour, $deep, 0.5), self::mix($colour, '#FFFFFF', 0.4), $deep, self::mix($deep, '#000000', 0.35)];
+    }
+
+    /**
+     * A `var(--color-x)` token (or a plain hex colour) as `#RRGGBB`, null
+     * when the theme does not define it.
+     */
+    private static function token(string $value): ?string
+    {
+        $value = trim($value);
+
+        if (preg_match('/^#[0-9a-fA-F]{6}$/', $value) === 1) {
+            return strtoupper($value);
+        }
+
+        if (preg_match('/^var\(\s*--color-([a-z0-9-]+)\s*\)$/', $value, $match) !== 1) {
+            return null;
+        }
+
+        $path = base_path(self::THEME_CSS);
+        $mtime = is_file($path) ? (int) filemtime($path) : 0;
+
+        if (self::$theme === null || self::$theme['mtime'] !== $mtime) {
+            $tokens = [];
+
+            if ($mtime > 0 && preg_match_all('/--color-([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\s*;/', (string) file_get_contents($path), $found, PREG_SET_ORDER) > 0) {
+                foreach ($found as [, $name, $hex]) {
+                    $tokens[$name] ??= strtoupper($hex);
+                }
+            }
+
+            self::$theme = ['mtime' => $mtime, 'tokens' => $tokens];
+        }
+
+        return self::$theme['tokens'][$match[1]] ?? null;
+    }
+
+    private static function isGrey(string $hex): bool
+    {
+        [$r, $g, $b] = self::rgb($hex);
+
+        return max($r, $g, $b) - min($r, $g, $b) < 24;
+    }
+
+    /** `$a` moved by `$t` (0..1) towards `$b`, as `#RRGGBB`. */
+    private static function mix(string $a, string $b, float $t): string
+    {
+        [$r1, $g1, $b1] = self::rgb($a);
+        [$r2, $g2, $b2] = self::rgb($b);
+        $step = fn (int $x, int $y): string => sprintf('%02X', (int) round($x + ($y - $x) * $t));
+
+        return '#'.$step($r1, $r2).$step($g1, $g2).$step($b1, $b2);
+    }
+
+    /**
+     * @return array{0: int, 1: int, 2: int}
+     */
+    private static function rgb(string $hex): array
+    {
+        return [(int) hexdec(substr($hex, 1, 2)), (int) hexdec(substr($hex, 3, 2)), (int) hexdec(substr($hex, 5, 2))];
+    }
+
+    /**
+     * The paths of the site's icon of that name in the stroke style of the
+     * stream's logos, null for a name the site has no icon for.
+     */
+    private static function siteIcon(string $icon): ?string
+    {
+        if (! array_key_exists($icon, self::$icons)) {
+            try {
+                $svg = Blade::render('<x-icon :name="$name" :size="24" />', ['name' => $icon]);
+                $inner = preg_match('#<svg[^>]*>(.*)</svg>#s', $svg, $match) === 1 ? trim($match[1]) : '';
+            } catch (Throwable) {
+                // An icon name the site does not know (components/icon throws): the trophy stands in.
+                $inner = '';
+            }
+
+            self::$icons[$icon] = $inner === '' ? null : '<g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$inner.'</g>';
+        }
+
+        return self::$icons[$icon];
     }
 
     /**
@@ -147,7 +273,7 @@ final class MempoolLayout
      * Everything the view draws, from MempoolSlides::all().
      *
      * @param  array<string, mixed>  $m
-     * @return array{season: bool, empty: bool, bugNote: string, headline: string, lead: string, cta: string, labels: list<array{text: string, x: float}>, divider: float|null, cubes: list<array<string, mixed>>, legend: list<array{name: string, colour: string, x: float, textX: float}>}
+     * @return array{season: bool, empty: bool, bugNote: string, headline: string, lead: string, cta: string, labels: list<array{text: string, x: float}>, divider: float|null, cubes: list<array<string, mixed>>, legend: list<array{name: string, colour: string, x: float, textX: float, size: int}>}
      */
     public static function layout(array $m): array
     {
@@ -225,30 +351,58 @@ final class MempoolLayout
             'labels' => $labels,
             'divider' => $cols['divider'],
             'cubes' => $cubes,
-            'legend' => self::legend(array_values($legend), 40 + K::width($cta, K::MONO, 22) + 48),
+            'legend' => self::legend(self::inRegistryOrder($legend), 40 + K::width($cta, K::MONO, 22) + 48),
         ];
     }
 
     /**
+     * The legend's games in the registry's display order; a game no longer
+     * registered after them, in the order it appeared.
+     *
+     * @param  array<string, array{name: string, colour: string}>  $games  by slug
+     * @return list<array{name: string, colour: string}>
+     */
+    private static function inRegistryOrder(array $games): array
+    {
+        $order = array_flip(array_keys(app(GameRegistry::class)->all()));
+        $slugs = array_keys($games);
+        // usort is stable: games outside the registry keep the order they appeared in.
+        usort($slugs, fn (string $a, string $b): int => ($order[$a] ?? PHP_INT_MAX) <=> ($order[$b] ?? PHP_INT_MAX));
+
+        return array_map(fn (string $slug): array => $games[$slug], $slugs);
+    }
+
+    /**
      * The games on screen, each a colour chip and its name, left to right
-     * after the call to act, as long as they fit the line.
+     * after the call to act. Every game keeps its place: the line steps down
+     * in size and gap until all of them fit, and only at the smallest size
+     * does each name give up characters to its equal share of the line.
      *
      * @param  list<array{name: string, colour: string}>  $games
-     * @return list<array{name: string, colour: string, x: float, textX: float}>
+     * @return list<array{name: string, colour: string, x: float, textX: float, size: int}>
      */
     private static function legend(array $games, float $x): array
     {
+        $count = count($games);
+        $size = 14;
+        $gap = 20;
+        $fits = false;
+
+        foreach ([[18, 40], [16, 28], [14, 20]] as [$size, $gap]) {
+            $width = array_sum(array_map(fn (array $game): float => 24 + K::width($game['name'], K::MONO, $size), $games)) + $gap * max(0, $count - 1);
+
+            if ($fits = $x + $width <= 1240) {
+                break;
+            }
+        }
+
+        $share = $fits || $count === 0 ? PHP_FLOAT_MAX : (1240 - $x - $gap * max(0, $count - 1)) / $count - 24;
         $out = [];
 
         foreach ($games as $game) {
-            $width = 24 + K::width($game['name'], K::MONO, 18);
-
-            if ($x + $width > 1240) {
-                break;
-            }
-
-            $out[] = [...$game, 'x' => $x, 'textX' => $x + 24];
-            $x += $width + 40;
+            $name = K::fit($game['name'], K::MONO, $size, $share);
+            $out[] = [...$game, 'name' => $name, 'x' => $x, 'textX' => $x + 24, 'size' => $size];
+            $x += 24 + K::width($name, K::MONO, $size) + $gap;
         }
 
         return $out;
@@ -268,7 +422,7 @@ final class MempoolLayout
             $kind === 'mined' => 'mined',
             default => in_array($item['state'] ?? 'fin', ['fin', 'live', 'next'], true) ? (string) $item['state'] : 'fin',
         };
-        $c = self::colours($ghost ? 'other' : (string) ($item['game'] ?? 'other'));
+        $c = $ghost ? self::colours('other') : self::gameColours((string) ($item['slug'] ?? ''), (string) ($item['game'] ?? 'other'));
         $dark = in_array($state, ['fin', 'mined'], true);
         $casual = ! $ghost && $kind !== 'mined' && (bool) ($item['casual'] ?? false);
         // The casual chip takes 60 px and a gap from the right of the line.
@@ -352,6 +506,19 @@ final class MempoolLayout
                     $team && $perPlayer > 0 => [['text' => 'block reward', 'y' => self::LINE3_Y], ['text' => K::fit(K::sats($perPlayer).' sats each', K::MONO, 16, $max), 'y' => self::LINE4_Y]],
                     default => [['text' => 'block reward', 'y' => self::LINE3_Y]],
                 },
+            ];
+        }
+
+        if (count($sides) === 1) {
+            // A highscore attempt (ScoreAttempts): one player, the game's name under them; nobody was beaten.
+            $name = K::name((string) ($sides[0]['name'] ?? ''), 'Player', 22, $max);
+
+            return [
+                'faces' => [self::face($sides[0], $x, self::SIDES_Y, 72, $id.'p', null, null)],
+                'vs' => null,
+                'extra' => [],
+                'line1' => ['text' => $name['text'], 'font' => $name['font'], 'size' => 22],
+                'line2' => ['text' => K::fit(K::clean((string) ($item['name'] ?? '')), K::MONO, 18, $max), 'ink' => self::MUTED, 'size' => 18],
             ];
         }
 

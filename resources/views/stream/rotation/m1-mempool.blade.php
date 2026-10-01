@@ -96,7 +96,7 @@
 @endforeach
 @foreach ($lay['legend'] as $i => $key)
 <rect x="{{ $key['x'] }}" y="{{ L::FOOT_Y - 14 }}" width="16" height="16" rx="3" fill="{{ $key['colour'] }}"/>
-<text data-unit="legend-{{ $i }}" data-box="{{ $key['textX'] - 1 }} {{ L::FOOT_Y - 17 }} {{ $key['textX'] + mb_strlen($key['name']) * 10.8 + 2 }} {{ L::FOOT_Y + 6 }}" x="{{ $key['textX'] }}" y="{{ L::FOOT_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="18" fill="#ADADB0">{{ $key['name'] }}</text>
+<text data-unit="legend-{{ $i }}" data-box="{{ $key['textX'] - 1 }} {{ L::FOOT_Y - 17 }} {{ $key['textX'] + mb_strlen($key['name']) * 0.6 * $key['size'] + 2 }} {{ L::FOOT_Y + 6 }}" x="{{ $key['textX'] }}" y="{{ L::FOOT_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="{{ $key['size'] }}" fill="#ADADB0">{{ $key['name'] }}</text>
 @endforeach
 <text data-unit="cta" data-box="39 {{ L::FOOT_Y - 20 }} {{ $lay['legend'][0]['x'] ?? 1241 }} {{ L::FOOT_Y + 8 }}" x="40" y="{{ L::FOOT_Y }}" font-family="JetBrains Mono" font-weight="700" font-size="22" fill="#FFFFFF">{{ $lay['cta'] }}</text>
 </svg>
