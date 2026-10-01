@@ -128,7 +128,8 @@ class SceneSource
      * site's QR code (d3 with the top inviters), the pride slides (e*)
      * PrideSlides::all(), the board scene (d5) a live board game or the board
      * games' teaser (BoardScene), the mempool slide (m1) the games of every
-     * game and, while a season runs, its latest blocks (MempoolSlides).
+     * game and, while a season runs, its latest blocks (MempoolSlides), Blockfill's
+     * set (f2-f5) its week's board, fresh blocks, new #1 and call to play (BlockfillSlides).
      *
      * @param  list<ChessGame>  $games  the games on show, in display order
      * @param  array<string, mixed>  $stats  StreamStats::all()
@@ -149,6 +150,11 @@ class SceneSource
 
             return ['blockfill' => $blockfill, 'stats' => $stats,
                 'backdrop' => ($blockfill === null ? null : $this->images->backdrop(Blockfill::SLUG)) ?? $this->images->backdrop(StreamImages::BRAND)];
+        }
+
+        // Blockfill's slide set while a week runs: the board, the fresh blocks, a new #1, the call to play (BlockfillSlides).
+        if (in_array($scene, BlockfillSlides::SCENES, true)) {
+            return app(BlockfillSlides::class)->scene($nowMs, $stats);
         }
 
         // The mempool of every game, and the season chain's blocks while a season runs (MempoolSlides).

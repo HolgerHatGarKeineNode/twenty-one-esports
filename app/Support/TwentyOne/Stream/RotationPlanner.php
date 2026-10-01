@@ -50,7 +50,15 @@ use App\Games\GameRegistry;
  *
  * Blockfill (plan "Blockfill", P6) has one teaser, BLOCKFILL_SCENE (f1,
  * BlockfillSlide): while it is registered it joins the end of the pool
- * (teasers()); switched off, never.
+ * (teasers()); switched off, never. While a week runs (BlockfillSlides::state(),
+ * as the caller reports it) every round that is not the loop has one more
+ * slot after the EVERY_ROUND teasers: the week's board, its fresh blocks and
+ * the call to play in turn (BLOCKFILL_ROUND); while nobody is on the running
+ * week's board yet, the call to play alone. A new #1 (its key from the
+ * caller) comes once, as the next slot, before the rest of the round; the
+ * next one waits MOMENT_COOLDOWN_SECONDS. That keeps Blockfill at one
+ * teaser slot a round plus a moment at most every five minutes. A Blockfill
+ * slot ends at once when the week is no longer running or the switch is off.
  */
 final class RotationPlanner
 {
@@ -95,6 +103,15 @@ final class RotationPlanner
     /** Blockfill's week (BlockfillSlide), in the pool only while Blockfill is registered. */
     public const BLOCKFILL_SCENE = 'f1';
 
+    /** A slot of Blockfill's slide set (BlockfillSlides). */
+    public const BLOCKFILL = 'blockfill';
+
+    /** Blockfill's slots while a week runs, one a round, in turn: the board, the fresh blocks, the call to play. */
+    public const BLOCKFILL_ROUND = [BlockfillSlides::BOARD, BlockfillSlides::FRESH, BlockfillSlides::PLAY];
+
+    /** A new #1 comes at most once this often, whatever the board does. */
+    public const MOMENT_COOLDOWN_SECONDS = 300;
+
     /** The feature teasers: prize pots (d1), casual cups (d2), invite links (d3), the league on Nostr (d4), the spotlight game (d6). */
     public const FEATURE_SCENES = ['d1', 'd2', 'd3', 'd4', 'd6'];
 
@@ -115,6 +132,7 @@ final class RotationPlanner
         'e5' => 'stream.rotation.e5-block', 'e6' => 'stream.rotation.e6-strongest', 'e7' => 'stream.rotation.e7-rank-up', 'e8' => 'stream.rotation.e8-streak', 'e9' => 'stream.rotation.e9-payouts',
         'm1' => 'stream.rotation.m1-mempool',
         'f1' => 'stream.rotation.f1-blockfill',
+        'f2' => 'stream.rotation.f2-board', 'f3' => 'stream.rotation.f3-fresh', 'f4' => 'stream.rotation.f4-moment', 'f5' => 'stream.rotation.f5-play',
     ];
 
     /**
@@ -174,6 +192,17 @@ final class RotationPlanner
     /** Rounds planned while board games were switched on (the idle teaser counts them). */
     private int $boardRounds = 0;
 
+    /** BlockfillSlides::OFF, IDLE, EMPTY or RUNNING, as the last call to at() reported it. */
+    private string $blockfillWeek = BlockfillSlides::OFF;
+
+    /** Rounds that took a slot of BLOCKFILL_ROUND (the three take turns by it). */
+    private int $blockfillTurn = 0;
+
+    /** The key of the last new #1 shown, and when. */
+    private ?string $lastMoment = null;
+
+    private ?float $lastMomentAt = null;
+
     public function __construct(
         private float $matchSeconds = 45,
         private float $blitzMatchSeconds = 60,
@@ -218,12 +247,15 @@ final class RotationPlanner
      * @param  list<int>  $tournaments  the upcoming tournaments' ids, soonest sign-up close first
      * @param  string  $boards  BoardScene::OFF, IDLE or LIVE
      * @param  list<array{id: int, phase: string, fomo: bool}>  $live  the tournaments past sign-up (TournamentLiveSlides::entries()), in turn order
+     * @param  string  $blockfillWeek  BlockfillSlides::OFF, IDLE, EMPTY or RUNNING
+     * @param  string|null  $blockfillMoment  the key of a new #1 of the last minutes (BlockfillSlides::state())
      * @return array{kind: string, scene: string|null, gameId: int|null, tournamentId: int|null, until: float}
      */
-    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = []): array
+    public function at(float $now, array $games, array $tournaments = [], string $boards = BoardScene::OFF, array $live = [], string $blockfillWeek = BlockfillSlides::OFF, ?string $blockfillMoment = null): array
     {
         $ids = array_column($games, 'id');
         $this->boards = $boards;
+        $this->blockfillWeek = $blockfillWeek;
         $this->tournamentKeys = [];
 
         foreach ($live as $entry) {
@@ -240,7 +272,7 @@ final class RotationPlanner
         $tournaments = array_keys($this->tournamentKeys);
 
         if ($this->slot === null || $now >= $this->slot['until'] || $this->endsEarly($ids, $tournaments)) {
-            $this->advance($now, $games, $tournaments);
+            $this->advance($now, $games, $tournaments, $blockfillMoment);
         }
 
         assert($this->slot !== null);
@@ -263,6 +295,8 @@ final class RotationPlanner
             self::GALLERY => count($ids) < 2,
             // Gone, or in another phase now (its slides would show the wrong one).
             self::TOURNAMENT => ! in_array($this->slotTournament, $tournaments, true),
+            // The week ended, or the switch went off.
+            self::BLOCKFILL => ! $this->blockfillApplies((string) $this->slot['scene']),
             default => false,
         };
     }
@@ -271,7 +305,7 @@ final class RotationPlanner
      * @param  list<array{id: int, blitz: bool}>  $games
      * @param  list<string>  $tournaments
      */
-    private function advance(float $now, array $games, array $tournaments): void
+    private function advance(float $now, array $games, array $tournaments, ?string $moment = null): void
     {
         // Back to back on schedule; after a stall (or early end) from now.
         $start = $this->slot !== null && $now >= $this->slot['until'] && $now - $this->slot['until'] < 1 ? $this->slot['until'] : $now;
@@ -279,6 +313,14 @@ final class RotationPlanner
         // A round without games gives way as soon as a game is there.
         if (! $this->roundWithGames && $games !== []) {
             $this->queue = [];
+        }
+
+        // A new #1 is next, once, at most every MOMENT_COOLDOWN_SECONDS; the round goes on after it.
+        if ($moment !== null && $moment !== $this->lastMoment && $this->blockfillWeek === BlockfillSlides::RUNNING
+            && ($this->lastMomentAt === null || $start - $this->lastMomentAt >= self::MOMENT_COOLDOWN_SECONDS)) {
+            $this->lastMoment = $moment;
+            $this->lastMomentAt = $start;
+            array_unshift($this->queue, ['kind' => self::BLOCKFILL, 'scene' => BlockfillSlides::MOMENT]);
         }
 
         while (true) {
@@ -311,9 +353,9 @@ final class RotationPlanner
             if ($this->idleRounds++ % max(1, $this->loopEvery) === 0) {
                 $this->queue = [['kind' => self::LOOP]];
             } elseif ($tournaments !== []) {
-                $this->queue = [...$this->board(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ['kind' => self::TEASER]];
+                $this->queue = [...$this->board(), ...$this->tournamentSlides($this->nextLook(), $tournaments), ...$this->everyRound(), ...$this->blockfillRound(), ['kind' => self::TEASER]];
             } else {
-                $this->queue = [...$this->board(), ...$this->everyRound(), ...$teasers];
+                $this->queue = [...$this->board(), ...$this->everyRound(), ...$this->blockfillRound(), ...$teasers];
             }
 
             return;
@@ -329,8 +371,34 @@ final class RotationPlanner
             ...$this->board(),
             ...($tournaments === [] ? [] : $this->tournamentSlides($look, $tournaments)),
             ...$this->everyRound(),
+            ...$this->blockfillRound(),
             ...$teasers,
         ];
+    }
+
+    /**
+     * This round's Blockfill slot: one of BLOCKFILL_ROUND in turn while a week
+     * runs, the call to play while its board is empty, none otherwise.
+     *
+     * @return list<array{kind: string, scene: string}>
+     */
+    private function blockfillRound(): array
+    {
+        return match ($this->blockfillWeek) {
+            BlockfillSlides::RUNNING => [['kind' => self::BLOCKFILL, 'scene' => self::BLOCKFILL_ROUND[$this->blockfillTurn++ % count(self::BLOCKFILL_ROUND)]]],
+            BlockfillSlides::EMPTY => [['kind' => self::BLOCKFILL, 'scene' => BlockfillSlides::PLAY]],
+            default => [],
+        };
+    }
+
+    /** Whether a Blockfill slide may show in the week's state as last reported: all of them while it runs, the call to play while its board is empty. */
+    private function blockfillApplies(string $scene): bool
+    {
+        return match ($this->blockfillWeek) {
+            BlockfillSlides::RUNNING => in_array($scene, BlockfillSlides::SCENES, true),
+            BlockfillSlides::EMPTY => $scene === BlockfillSlides::PLAY,
+            default => false,
+        };
     }
 
     /**
@@ -434,6 +502,11 @@ final class RotationPlanner
                 return $slot;
             case self::LOOP:
                 return $this->slot(self::LOOP, null, null, $start + $this->loopSeconds);
+            case self::BLOCKFILL:
+                $scene = (string) ($entry['scene'] ?? '');
+
+                // The week ended or the switch went off since the round was planned: skipped.
+                return $this->blockfillApplies($scene) ? $this->slot(self::BLOCKFILL, $scene, null, $start + $this->teaserSeconds) : null;
             case self::BOARD:
                 // Switched off since the round was planned: skipped.
                 return $this->boards === BoardScene::OFF ? null

@@ -6,6 +6,7 @@ use App\Models\ChessGame;
 use App\Support\TwentyOne\EventBuilder;
 use App\Support\TwentyOne\RelayPublisher;
 use App\Support\TwentyOne\Stream\Backoff;
+use App\Support\TwentyOne\Stream\BlockfillSlides;
 use App\Support\TwentyOne\Stream\BoardScene;
 use App\Support\TwentyOne\Stream\ChildEnvironment;
 use App\Support\TwentyOne\Stream\EncoderRun;
@@ -274,6 +275,10 @@ class TwentyOneStreamCommand extends Command
         // The board games next to chess (BoardScene::state()), read after the games; `off` while either read fails.
         $boards = BoardScene::OFF;
         $boardPollFailing = false;
+        // Blockfill's week (BlockfillSlides::state()): `off` while the read fails, so no slide of the set shows.
+        $blockfillSlides = app(BlockfillSlides::class);
+        $blockfill = ['week' => BlockfillSlides::OFF, 'moment' => null];
+        $blockfillPollFailing = false;
         /** @var array<string, mixed> $stats the last counts that could be read */
         $stats = [];
         /** @var list<array<string, mixed>> $tournamentSnapshots the last upcoming tournaments that could be read */
@@ -346,6 +351,23 @@ class TwentyOneStreamCommand extends Command
                     $boards = BoardScene::OFF;
                 }
 
+                // Blockfill's week on its own, like the board games: a failing read only drops its slides. Logged once per series.
+                try {
+                    $blockfill = $pollFailures === 0 ? $blockfillSlides->state() : ['week' => BlockfillSlides::OFF, 'moment' => null];
+
+                    if ($blockfillPollFailing && $pollFailures === 0) {
+                        $this->log('blockfill poll recovered');
+                        $blockfillPollFailing = false;
+                    }
+                } catch (Throwable $e) {
+                    if (! $blockfillPollFailing) {
+                        $this->log('blockfill poll failed, showing none of its slides: '.$this->describe($e));
+                        $blockfillPollFailing = true;
+                    }
+
+                    $blockfill = ['week' => BlockfillSlides::OFF, 'moment' => null];
+                }
+
                 // Upcoming tournaments (cached like the counts); their countdown ticks with this poll.
                 $tournamentSnapshots = $this->readTournaments($slides, $tournamentSnapshots, $pollFailures === 0);
                 $tournaments = $this->tournamentFrames($slides, $tournamentSnapshots, (int) ($now * 1000));
@@ -357,7 +379,7 @@ class TwentyOneStreamCommand extends Command
                     $this->advanceCover($cover, $source, $tournaments, $sceneGames, $sceneMore, $stats, $now);
                 }
 
-                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments));
+                $slot = $planner->at($now, array_map(fn (ChessGame $game): array => ['id' => $game->id, 'blitz' => ! $game->isCorrespondence()], $sceneGames), TournamentSlides::featured($tournaments), $boards, TournamentLiveSlides::entries($liveFrames, $tournaments), $blockfill['week'], $blockfill['moment']);
                 $modes->tick($slot['kind'] !== RotationPlanner::LOOP, (int) $now);
 
                 if ($slot['scene'] !== null) {
