@@ -7,7 +7,8 @@
 | rejects everything else; a verifier that does not answer leaves the run
 | pending. The only tests that start Node for a run; the
 | lifecycle tests use a fake. The timeout case waits about one second (the
-| smallest timeout the process API takes) on a script that sleeps.
+| smallest timeout the process API takes) on a script that sleeps; a timeout
+| leaves the run pending.
 */
 
 use App\Enums\StackerRunStatus;
@@ -65,25 +66,26 @@ test('the verifier rejects what does not replay to the claim', function (string 
     'fewer than 40 lines (the top-out run)' => ['top-out', [], [], 'unfinished'],
     'an engine it does not know' => ['forty-lines', ['engine' => 'bf9'], [], 'engine'],
     'a replay over the size limit' => ['forty-lines', [], ['esports.blockfill.limits.bytes' => 1000], 'oversize'],
-    'a verifier that runs out of time' => ['forty-lines', [], ['esports.blockfill.verifier.timeout_seconds' => 1, 'esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/slow-verifier.mjs'], 'timeout'],
     'a replay the engine throws on (answered by verify.mjs itself)' => ['forty-lines', [], ['esports.blockfill.verifier.script' => 'tests/Fixtures/stacker/throwing-engine-verifier.mjs'], 'crash'],
 ]);
 
 test('a verifier that gives no valid answer leaves the run pending, never rejected', function () {
+    // a timeout too: the worst crafted replay takes well under 100 ms, so 5 s means an overloaded host, not a bad run
     $cases = [
-        'it crashes before answering' => 'tests/Fixtures/stacker/crashing-verifier.mjs',
-        'its script does not parse' => 'tests/Fixtures/stacker/syntax-error-verifier.mjs',
-        'its script is missing' => 'tests/Fixtures/stacker/no-such-verifier.mjs',
+        'it crashes before answering' => ['tests/Fixtures/stacker/crashing-verifier.mjs', 'verifier-unavailable'],
+        'its script does not parse' => ['tests/Fixtures/stacker/syntax-error-verifier.mjs', 'verifier-unavailable'],
+        'its script is missing' => ['tests/Fixtures/stacker/no-such-verifier.mjs', 'verifier-unavailable'],
+        'it runs out of time' => ['tests/Fixtures/stacker/slow-verifier.mjs', 'verifier-timeout'],
     ];
-    foreach ($cases as $case => $script) {
-        config(['esports.blockfill.verifier.script' => base_path($script)]);
+    foreach ($cases as $case => [$script, $reason]) {
+        config(['esports.blockfill.verifier.script' => base_path($script), 'esports.blockfill.verifier.timeout_seconds' => 1]);
         $run = referenceRun('forty-lines');
 
         VerifyStackerRun::dispatchSync($run->id);
 
         expect($run->refresh())
             ->status->toBe(StackerRunStatus::Pending, $case)
-            ->reason->toBe('verifier-unavailable', $case)
+            ->reason->toBe($reason, $case)
             ->replay->not->toBeNull();
         $run->delete();
     }

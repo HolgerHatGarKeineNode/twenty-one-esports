@@ -16,13 +16,14 @@ use Throwable;
  *
  * Outcomes (security audit F2): only an answer of verify.mjs decides a
  * run. Verified or rejected with its reason, `crash` included (the engine
- * threw on this replay, caught and reported by verify.mjs itself). A
- * timeout rejects as well: the engine stops at `limits.ticks`, so a replay
- * that runs out of time is the input's doing (plan DoD P2). Everything else
- * is no answer and says nothing about the run (no Node binary, a missing or
- * broken script, a non-zero exit, death by a signal, output that is not
- * the verdict format): unavailable, so the run stays pending and a deploy
- * defect never rejects an honest run.
+ * threw on this replay, caught and reported by verify.mjs itself).
+ * Everything else is no answer and says nothing about the run (no Node
+ * binary, a missing or broken script, a non-zero exit, death by a signal,
+ * output that is not the verdict format, and a timeout: the engine stops at
+ * `limits.ticks` and the worst crafted replay measured well under 100 ms, so
+ * running out of the 5 s means an overloaded host). Unavailable: the run
+ * stays pending, never scores, and `stacker:reverify` can send it again; a
+ * deploy defect or a busy host never rejects an honest run.
  */
 final class NodeVerifier implements Verifier
 {
@@ -54,7 +55,7 @@ final class NodeVerifier implements Verifier
                 ->input($input)
                 ->run([(string) $verifier['node'], '--max-old-space-size='.(int) $verifier['heap_mb'], $script]);
         } catch (ProcessTimedOutException) {
-            return StackerVerdict::rejected('timeout');
+            return StackerVerdict::unavailable('verifier-timeout');
         } catch (Throwable) {
             return StackerVerdict::unavailable('verifier-unavailable');
         }
