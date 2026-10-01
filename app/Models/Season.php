@@ -29,7 +29,7 @@ use Illuminate\Support\Carbon;
  * @property int $halving_seconds
  * @property int $claim_seconds
  * @property int $minimum_trust
- * @property array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, groups?: array<string, list<string>>} $parameters the genesis; `groups` from P43 on (NIP rev. 9.5)
+ * @property array{weights: array<string, int>, shares: array<string, int>, daily: array<string, int>, pairlimit: array{0: int, 1: int}, subtree: int, moves: int, groups?: array<string, list<string>>, solo?: array{0: int, 1: int, 2: int}} $parameters the genesis; `groups` from P43 on (NIP rev. 9.5), `solo` [entrants, window wins, review seconds] only when a score game mines in it (NIP rev. 9.18)
  * @property array{rating: array{start: int, k: int, provisional_k: int, provisional: int, scale: int, daily_pair_limit: int|null}, tiers: array<string, int>, hashrate: array{win: int, draw: int, loss: int, team_win_bonus: int}}|null $rating_parameters frozen at Block 0 (RatingSettings), null before P35
  * @property string $genesis_message
  * @property string $digest
@@ -171,7 +171,8 @@ class Season extends Model
             $this->supply,
             $this->subsidy,
             $this->halving_seconds,
-            new ConsensusParameters($p['weights'], $p['shares'], $p['daily'], $p['pairlimit'][0], $p['pairlimit'][1], $p['subtree'], $p['moves'], $p['groups'] ?? []),
+            new ConsensusParameters($p['weights'], $p['shares'], $p['daily'], $p['pairlimit'][0], $p['pairlimit'][1], $p['subtree'], $p['moves'], $p['groups'] ?? [],
+                ...(isset($p['solo']) ? array_map(intval(...), $p['solo']) : [])),
             $this->claim_seconds,
         );
 

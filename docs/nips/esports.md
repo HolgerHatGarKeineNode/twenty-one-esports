@@ -59,7 +59,7 @@ numbers are checked against the official NIP index and other registries (see
 [Kind numbers and collision check](#kind-numbers-and-collision-check)); every example in this
 document is a real signed event that was published to and read back from local relays
 (`docs/plans/2026-09-25T1212-esports-v1-ladder/p1-relay-proof.md`, rounds 1 to 6). Revision 7 adds
-no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15 and 9.16 (see [Open points](#open-points)).
+no example yet, and neither do revisions 8, 8.1, 9, 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8, 9.9, 9.10, 9.11, 9.12, 9.13, 9.14, 9.15, 9.16 and 9.18 (see [Open points](#open-points)).
 Revision 9.10 needs none: it adds no event and no tag. Neither does revision 9.11: the league signs nothing new, and the zap
 request it describes is plain NIP-57. Nor does revision 9.12: a board game's tournament is an ordinary `31923` whose summary
 names the game and mode, and a board game has no ladder yet. Revision 9.13 does sign new events for the
@@ -132,6 +132,42 @@ nothing for it (see the changelog of revision 9.16).
 The rules marked "rev. 9.17" are a draft: they add score games, which no league runs yet (the league's test game is
 off). No existing kind, tag, ladder or rule changes; they apply to every tournament of a score game whose first
 `31923` version the league signs after it adopts revision 9.17.
+The rules marked "rev. 9.18" are a draft as well, written before the first Block 0: they bring score windows into the
+season chain as **solo blocks**. They apply to every chain season whose genesis the league signs after adopting
+revision 9.18; a genesis without the `solo` tag has its defaults. No versus candidate, ladder, tag or rule changes: a
+genesis without a score game's `weight` signs exactly the tags it signed before.
+
+### Changelog of revision 9.18 (2026-10-01, draft)
+
+[Solo blocks](#solo-blocks-rev-918-draft): the winner of a score window the league opened itself mines one block,
+without an opponent. **One new genesis tag (`solo`), one new tag in `2154` (`window`), no new kind.**
+
+- **An exception to "tournament matches are not candidates"** (rev. 7, [Blocks](#blocks-block-in-2154)). A
+  [score game](#score-games-rev-917-draft)'s leaderboard that the league opens itself, without an organizer (such as a
+  [Blockfill](#blockfill-rev-917-draft) week), is one block candidate once its places are final: its first place. A
+  leaderboard an organizer opened stays a tournament and never mines; the league signs no `2154` for it.
+- **Consensus rules 0 to 4, 7 and 8 restated for a field instead of an opponent**; rules 5, 6 and 9 hold unchanged
+  ([Solo blocks](#solo-blocks-rev-918-draft)). The six solo rules of the plan, mapped: a verified result in the
+  window and the review before the attestation are rule 2, the trust minimum and the minimum of entrants rule 1, at
+  most one block per window and game rule 4, the cap of window wins per player and season rule 8. Rules 3 and 7 keep
+  their sense: the field that makes a window count may not be the winner's clan or anchor subtree.
+- **`solo` in the genesis**: `<entrants>`, `<window wins>`, `<review seconds>`; absent means `5`, `3`, `172800` (48 hours).
+  In the parameter digest; a parameter change cannot alter it, as it cannot alter the share groups.
+- **The attestation of a score window** ([League Attestation](#league-attestation-2154)): the window's `31923`
+  `a`, `game`, `mode`, the winner as `p` with role `winner`, `resolution` `admin`, `window`, the `trust` and `gate`
+  rows pinned at the attestation for the winner and the field, their `clan` rows, and `block`. No `elo`, no `prev`, no
+  `winner` side, no values: a score game has no ladder, and its values stay league data (rev. 9.17).
+- **Replaces** revision 9.17's "no `2154` is valid for a score game" for exactly these windows.
+- **Chosen: only windows the league opens itself.** An organizer controls a leaderboard's course, window and sign-up;
+  with a block at stake that is the farming path, and rule 4 alone would not stop a dozen overlapping leaderboards.
+- **Chosen: the review is a time, not a person.** Rule 2 checks that the attestation's `created_at` is at least
+  `review` seconds after the window's end, which every reader can verify; manual submissions still wait for an admin
+  before the places are final (rev. 9.17), and the season-end review can still void the block.
+- **Chosen: the field counts trusted entrants with a verified value.** An entrant without a value, below the trust
+  minimum, entered by a director only, or disqualified does not make a window count.
+- **Defaults are conservative and not decided by the board** (see [Open points](#open-points)): 5 entrants, 3 window
+  wins per player and share key, 48 hours of review; the app proposes weight 1 per mode, a 5 % share and 1 block a day
+  for a score game, and it mines only once the board saves that (or its own values) into the chain draft.
 
 ### Changelog of revision 9.17 (2026-10-01, draft)
 
@@ -1003,8 +1039,8 @@ it and returns non-matching events; see the relay proof).
 | `clantag` | `<text>` | 32150 (optional) | short clan tag shown next to names, `^[A-Z0-9]{2,4}$` |
 | `picture` | `<url>` | 32150 | logo |
 | `r` | `<url>` | 32150 | external link, e.g. a meetup page (NIP-24 style web reference) |
-| `game` | `<slug>` | 32151, 32152 | game identifier |
-| `mode` | `<slug>` | 32151, 32152 | mode identifier |
+| `game` | `<slug>` | 32151, 32152; 2154 of a score window (rev. 9.18) | game identifier |
+| `mode` | `<slug>` | 32151, 32152; 2154 of a score window (rev. 9.18) | mode identifier |
 | `bo` | `<odd integer>` | 2150 | best-of length of the series (series games) |
 | `boards` | `<integer>` | 2150 | number of boards of a chess team match |
 | `color` | `white` \| `black` | 2150 | the challenger's color in a solo chess game |
@@ -1040,6 +1076,8 @@ it and returns non-matching events; see the relay proof).
 | `pairlimit` | `<per UTC day>`, `<per season>` | 2156, 2158 (rev. 5) | blocks per pairing (rules 4 and 8) |
 | `subtree` | `<percent>` | 2156, 2158 (rev. 5) | threshold of rule 7 |
 | `moves` | `<full moves>` | 2156, 2158 (rev. 5) | minimum length of a chess game that mines (rule 2) |
+| `solo` | `<entrants>`, `<window wins>`, `<review seconds>` | 2156 (rev. 9.18) | the [solo rules](#solo-blocks-rev-918-draft) of a score window |
+| `window` | `<start>`, `<end>` | 2154 of a score window (rev. 9.18) | the window in Unix seconds, `start` included, `end` excluded |
 | `effective` | `<unix seconds>` | 2158 (rev. 5) | from when a parameter change is in force |
 | `tip` | `<block id>` | 2158 (rev. 5) | the newest block when the change was signed |
 | `zap` | `<pool key>`, `<relay>`, `1` | 2150 (rev. 5, never in a tournament challenge), 31923 (rev. 7: optional in a tournament; rev. 9.1: never, see [Tournaments](#tournaments)), 9041 | NIP-57 appendix G: zaps to this event go to the league's LNURL endpoint |
@@ -1128,7 +1166,7 @@ Nobody is paired, there is no lobby, no casual queue, no series and no Elo.
 | metric | per mode: a time in whole milliseconds (`ms`, lower is better) or a score in whole points (`points`, higher is better); a game may name the other direction |
 | course | the game's own id of the course (a map UID, a level, a mode name), set per tournament before its window opens |
 | window | `[start, end)` of the tournament: a record counts when it was set at or after `start` and before `end` |
-| rated | no: no ladder `32152`, no attestation; a points ladder off Nostr instead (below) |
+| rated | no: no ladder `32152`, no attestation; a points ladder off Nostr instead (below). Rev. 9.18: the winner of a window the league opened itself gets one attestation, a [solo block](#solo-blocks-rev-918-draft) candidate |
 | match size, team size, draws | none: every entry is one player; equal values are split by the earlier record |
 | moves, chat | none |
 
@@ -1605,6 +1643,24 @@ the confirming response of the other. The league only adds the rating arithmetic
 recompute from the ladder's `rating` and the `elo` chain. With `admin`, `forfeit` or `void` the
 league decides; the resolution says so openly, so a reader can weigh admin decisions differently
 from confirmed results.
+
+**Score window** (rev. 9.18). The one attestation of a score window the league opened itself
+([Solo blocks](#solo-blocks-rev-918-draft)) has no challenge, no report, no ladder and no `elo`:
+
+| tag | value |
+|---|---|
+| `a` | the window's `31923`, the only `a` |
+| `game`, `mode` | the score game and its mode, as in the registry |
+| `p` | `<winner>`, `""`, `winner`: the first place, the only `p` |
+| `resolution` | `admin`: the league read the values |
+| `window` | `<start>`, `<end>`: Unix seconds of the window, `start` included, `end` excluded |
+| `trust`, `gate` | the trust gate pinned when the league signs: one `gate` row for the winner and for every entrant of the field |
+| `clan` | one row for the winner and for every entrant of the field who is in a clan |
+| `block` | as for every candidate |
+| `alt` | NIP-31 text |
+
+`content` says that the league opened the window, that the best verified value inside it wins, and the review time.
+No value, no time, no course record and no game account is in it.
 
 #### Director results (rev. 7)
 
@@ -2467,6 +2523,7 @@ Its `created_at` is the time of Block 0 (`T0`), and its id is the hash that bloc
 | `pairlimit` | `<per UTC day>`, `<per season>` | blocks per pairing (rules 4 and 8); absent means `1`, `3` |
 | `subtree` | `<percent>` | rule 7: two players are in the same anchor subtree if both shares of the same anchor are at least this; absent means `51`; `101` switches rule 7 off |
 | `moves` | `<full moves>` | rule 2: the minimum length of a chess game; absent means `20` |
+| `solo` | `<entrants>`, `<window wins>`, `<review seconds>` | rev. 9.18, optional: the [solo rules](#solo-blocks-rev-918-draft) of a score window: trusted entrants with a verified value a window needs (the winner included), blocks from score windows per player, share key and season, and the time after a window's end before it can be attested; absent means `5`, `3`, `172800`. The league signs it when a score game has a `weight` |
 | `e` | the release label (`1985`); the admin list version (`30000`); optionally the reserve (`9041`, rev. 9.5: optional) | which reference is which follows from the kind |
 | `p` | `<admin>`, `<relay>`, `release` | the admin who released Block 0 |
 | `alt` | NIP-31 text | |
@@ -2479,7 +2536,7 @@ in the ladders, where they were; the genesis holds only what spans all games: on
 reward schedule, one set of caps.
 
 **Parameter digest.** `P` is the list of the genesis tags whose name is one of `season`, `supply`,
-`subsidy`, `weight`, `group` (rev. 9.5), `share`, `daily`, `pairlimit`, `subtree`, `moves`, `halving`,
+`subsidy`, `weight`, `group` (rev. 9.5), `share`, `daily`, `pairlimit`, `subtree`, `moves`, `solo` (rev. 9.18), `halving`,
 `ends`, `claim`, `consensus`, in event order. The
 digest is `SHA-256` of the UTF-8 JSON serialization of `[<content>, P]`, without whitespace and with
 the escaping rules of NIP-01's event serialization.
@@ -2517,8 +2574,8 @@ ratings go on until `ends`.
 
 Every attestation of a chain season that is a rated result with a winner (it has `elo`, its
 `resolution` is `confirmed`, `admin` or `forfeit`, its `winner` is `challenger` or `challenged`; for
-a chess board the board has a winner) and that is not a tournament match (rev. 7, below) carries
-exactly one `block` tag:
+a chess board the board has a winner) and that is not a tournament match (rev. 7, below), and every
+attestation of a score window (rev. 9.18, below), carries exactly one `block` tag:
 
 - `["block", "<height>", "<previous block id>"]` if it mines; block 1 names the genesis;
 - `["block", "", "<tip id>"]` if it does not: the id of the newest block (or the genesis) at the time
@@ -2535,6 +2592,12 @@ block visible, as `prev` does within a ladder.
 against the consensus rules, it does not count for rules 4, 5, 8 and 9, and it pays no reward. It
 stays in its ladder's `prev` chain and moves ratings as usual. This holds for every rated result of a
 tournament, including [director results](#director-results-rev-7), also while a chain season runs.
+
+**Score windows are the exception** (rev. 9.18). The leaderboard of a [score game](#score-games-rev-917-draft)
+that the league opened itself, without an organizer, is one candidate once its places are final: the league
+attests its first place once, with the window's `31923` as `a` and a `block` tag, and the
+[solo rules](#solo-blocks-rev-918-draft) decide whether it mines. A score window has no other attestation and no
+loser. A leaderboard an organizer opened is a tournament like any other: no attestation, no block.
 
 ### Consensus rules (`season-chain-v1`)
 
@@ -2573,6 +2636,35 @@ the first rule it fails, in this order.
 9. **Share cap per game and era.** The rewards of the blocks of the game's share key (its `group`,
    otherwise the game) in this era, this one included, stay within `floor(B_n * share / 100)`.
 
+#### Solo blocks (rev. 9.18, draft)
+
+A **solo candidate** is the first place of a score window the league opened itself ([Blocks](#blocks-block-in-2154)):
+one winning player and no opponent. Its **field** is every other entrant with a value inside the window that a source
+verified (an approved submission, an API record, the league's own server or replay; never a director's entry alone,
+never a disqualified entry). Trust ranks and anchors are the `gate` rows of its attestation, pinned when the league
+signs it; clans are its `clan` rows. With `solo` = `<entrants>`, `<window wins>`, `<review>` in force, rules 0 to 4, 7
+and 8 read as follows; rules 5, 6 and 9 hold as above, and the reason is again the first rule it fails.
+
+0. **Season.** As above, and the window starts at or after `T0`: a window that began before Block 0 never mines.
+1. **Trusted, and a field.** The winner is at or above the trust minimum, and at least `entrants` players with a
+   verified value in the window, the winner included, are at or above it.
+2. **A verified result, reviewed.** The winning value was verified by a source, not set by a director alone; it was
+   set inside the window (`start` included, `end` excluded); and the attestation's `created_at` is at least `review`
+   seconds after the window's `end`, so a correction, a late approval or a dispute is in before the league signs.
+3. **Not the winner's clan.** Without the winner's clan mates, the trusted field of rule 1 still reaches `entrants`.
+4. **One block per window and game.** No earlier block names the same game and window. Rev. 9.18 needs no
+   `pairlimit` here: whoever wins it, a window mines at most once.
+7. **Not the winner's anchor subtree.** Without the clan mates of rule 3 and the players who share the winner's
+   `anchor` with both shares at least `subtree` percent, the field still reaches `entrants` (`101` switches this
+   part off, as for rule 7 above).
+8. **Window wins per player and season.** The winner has fewer earlier blocks from score windows of this game's share
+   key in the season than `window wins`.
+
+A reader recomputes every solo rule from the attestation alone: the `window` tag, the `gate` and `clan` rows of the
+winner and the field, the genesis' `solo` and `subtree`, and the earlier blocks. What it cannot check is that the
+field's values were verified: those values stay league data (rev. 9.17), so rule 1 rests on the league's word
+that each `gate` row of the field belongs to an entrant with a verified value, as rule 2 rests on it for the winner.
+
 Rules 4, 5, 8, 9 and the supply part of 0 depend on earlier blocks; that is why the tip is pinned.
 Blocks that the review voids later keep their place for all counters: a correction never changes a
 later block or its reward.
@@ -2591,8 +2683,8 @@ re-forecasts from the live data. Every change is a regular event signed by the l
 | `p` | `<admin>`, `<relay>`, `change`: who made the change, a key of the admin list |
 | `alt` | NIP-31 text |
 
-`content` states why. Supply, subsidy, eras, `ends`, `claim`, the share groups and the rule set cannot
-change during a season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
+`content` states why. Supply, subsidy, eras, `ends`, `claim`, the share groups, `solo` (rev. 9.18) and the rule
+set cannot change during a season. Changes apply in the order of `effective` (then `created_at`, then id); the last one that sets
 a parameter wins.
 
 **Never retroactive.** A change applies only to attestations signed at or after `effective`, and the
@@ -6732,6 +6824,16 @@ record, and its post no `q`.
 ```
 
 ## Open points
+
+- **Revision 9.18 (solo blocks) is a draft with conservative defaults the board has not decided** (plan
+  "AoE2 und Trackmania", P7). Open: the values of `solo` (5 entrants, 3 window wins per player and share key,
+  48 hours of review) and of the proposal for each score game (weight 1 per mode, 5 % share, 1 block a day); whether
+  the window wins should count per share key or across all score games; whether the review should be an admin's
+  explicit look at the final places instead of a time (the league signs automatically once it is over); whether an
+  organizer's leaderboard should ever mine; whether the `gate` and `clan` rows of the field, which make rules 1, 3
+  and 7 checkable, are acceptable on Nostr, because they name every counted entrant of a window by pubkey (the
+  tournament page already lists them by name); and how a tie for first place (split by the earlier record, then by
+  the order of entry) should be treated. No signed example exists yet.
 
 - **Revision 9.4 was read back from a local `nak serve` relay only**, not from rnostr, strfry and
   khatru. Not printed: the attestation that references the record, and a casual game's post without

@@ -10,6 +10,7 @@ use App\Models\TournamentMatch;
 use App\Models\User;
 use App\Support\LeagueTime;
 use App\Support\Scores\Contracts\ScoreSource;
+use App\Support\SeasonChain\SeasonChains;
 use App\Support\Tournaments\TournamentInterest;
 use App\Support\Tournaments\TournamentRuleViolation;
 use App\Support\Tournaments\TournamentRunner;
@@ -308,7 +309,9 @@ final class ScoreLeaderboards
 
     /**
      * Take the snapshots of every running leaderboard, then finalize those
-     * whose review time is over and that have no manual submission waiting.
+     * whose review time is over and that have no manual submission waiting,
+     * and attest the league's own finished windows that are due for the
+     * season chain (their count is not part of the return).
      *
      * @return array{finalized: int, snapshots: int}
      */
@@ -335,6 +338,10 @@ final class ScoreLeaderboards
                 report($e);
             }
         }
+
+        // Plan "AoE2 und Trackmania", P7: the windows the league opened itself go to the season chain once final and
+        // reviewed (SeasonChains::attestDueScoreWindows(), each on its own; nothing without a live season).
+        app(SeasonChains::class)->attestDueScoreWindows();
 
         return ['finalized' => $finalized, 'snapshots' => $snapshots];
     }

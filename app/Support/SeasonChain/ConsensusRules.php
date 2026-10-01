@@ -2,6 +2,8 @@
 
 namespace App\Support\SeasonChain;
 
+use Carbon\CarbonImmutable;
+
 /**
  * `season-chain-v1` (docs/nips/esports.md, "Consensus rules"): whether a
  * candidate mines, checked against the chain before it and with the
@@ -12,6 +14,14 @@ namespace App\Support\SeasonChain;
  * Every missing input fails closed: a player without a pinned trust rank is
  * below the minimum, a chess result without a move count is not a real game,
  * a game and mode without a weight does not mine.
+ *
+ * A solo candidate (the winner of a score window, NIP rev. 9.18) is checked
+ * in the same order with rules 0 to 4, 7 and 8 restated for a field instead
+ * of an opponent (soloRule()); rules 5 and 9 are the same for both, rule 6
+ * never fails. The field is the other entrants with a verified value in the
+ * window: rule 1 counts the trusted ones, rule 3 those of them outside the
+ * winner's clan, rule 7 those of them also outside the winner's anchor
+ * subtree, and each needs `soloEntrants` with the winner.
  */
 final class ConsensusRules
 {
@@ -38,15 +48,18 @@ final class ConsensusRules
         $reward = $perPlayer * count($candidate->winners);
 
         foreach (ConsensusRule::cases() as $rule) {
-            $failure = match ($rule) {
+            $failure = $candidate->isSolo() ? $this->soloRule($rule, $candidate, $season, $parameters, $chain) : null;
+
+            $failure ??= match ($rule) {
                 ConsensusRule::Season => $this->season($candidate, $season, $parameters, $chain, $reward),
-                ConsensusRule::TrustedAndConnected => $this->trustedAndConnected($candidate),
-                ConsensusRule::RealGame => $this->realGame($candidate, $parameters),
-                ConsensusRule::SameClan => $this->sameClan($candidate),
-                ConsensusRule::PairingPerDay => $chain->pairingBlocksOn($candidate) >= $parameters->pairLimitPerDay ? ['pairing-daily-limit', null] : null,
+                // A solo candidate's rules 1 to 4, 7 and 8 were decided by soloRule(): it passed them.
+                ConsensusRule::TrustedAndConnected => $candidate->isSolo() ? null : $this->trustedAndConnected($candidate),
+                ConsensusRule::RealGame => $candidate->isSolo() ? null : $this->realGame($candidate, $parameters),
+                ConsensusRule::SameClan => $candidate->isSolo() ? null : $this->sameClan($candidate),
+                ConsensusRule::PairingPerDay => ! $candidate->isSolo() && $chain->pairingBlocksOn($candidate) >= $parameters->pairLimitPerDay ? ['pairing-daily-limit', null] : null,
                 ConsensusRule::DailyLimit => $this->dailyLimit($candidate, $parameters, $chain),
-                ConsensusRule::SameSubtree => $this->sameSubtree($candidate, $parameters->subtree),
-                ConsensusRule::PairingPerSeason => $chain->pairingBlocks($candidate) >= $parameters->pairLimitPerSeason ? ['pairing-season-limit', null] : null,
+                ConsensusRule::SameSubtree => $candidate->isSolo() ? null : $this->sameSubtree($candidate, $parameters->subtree),
+                ConsensusRule::PairingPerSeason => ! $candidate->isSolo() && $chain->pairingBlocks($candidate) >= $parameters->pairLimitPerSeason ? ['pairing-season-limit', null] : null,
                 ConsensusRule::ShareCap => $chain->minedIn($parameters->shareKey($candidate->game), $era) + $reward > $season->shareCap($parameters->shareFor($candidate->game), $era)
                     ? ['share-cap', $parameters->shareKey($candidate->game)] : null,
             };
@@ -72,6 +85,106 @@ final class ConsensusRules
         }
 
         return $chain->mined() + $reward > $season->supply ? ['supply-exhausted', null] : null;
+    }
+
+    /**
+     * The solo restatement of a rule for the winner of a score window (NIP
+     * rev. 9.18, "Solo blocks"); null when it passes or the rule is the same
+     * for both (0's weight and supply, 5, 9), which check() then applies.
+     *
+     *   0. The window lies inside the season: it starts at or after Block 0.
+     *   1. The winner at or above the trust minimum, and at least
+     *      `soloEntrants` trusted players with a verified value in the
+     *      window, the winner included.
+     *   2. The winning value is verified by a source (never a director's
+     *      entry), set inside [start, end), and the review time `soloReview`
+     *      after the end is over at the attestation.
+     *   3. Without the winner's clan mates the field still reaches `soloEntrants`.
+     *   4. No earlier block of this window and game (the pairing is the window).
+     *   7. Without clan mates and the players of the winner's anchor subtree
+     *      (both shares at least `subtree`) the field still reaches it.
+     *   8. Fewer earlier window blocks of the winner for this share key in the
+     *      season than `soloWins`.
+     *
+     * @return array{0: string, 1: ?string}|null
+     */
+    private function soloRule(ConsensusRule $rule, Candidate $candidate, SeasonParameters $season, ConsensusParameters $parameters, ChainState $chain): ?array
+    {
+        $winner = $candidate->winners[0] ?? '';
+        $solo = $candidate->solo ?? [];
+
+        return match ($rule) {
+            ConsensusRule::Season => $candidate->windowStart()->lt($season->genesisAt) ? ['window-outside-season', null] : null,
+            ConsensusRule::TrustedAndConnected => match (true) {
+                count($candidate->winners) !== 1 || ($candidate->trust[$winner] ?? 0) < $this->minimumTrust => ['not-trusted', $winner],
+                count($this->field($candidate, 1, $parameters->subtree)) + 1 < $parameters->soloEntrants => ['too-few-entrants', (string) (count($this->field($candidate, 1, $parameters->subtree)) + 1)],
+                default => null,
+            },
+            ConsensusRule::RealGame => $this->soloRealGame($candidate, $solo, $parameters),
+            ConsensusRule::SameClan => count($this->field($candidate, 3, $parameters->subtree)) + 1 < $parameters->soloEntrants ? ['same-clan', $candidate->clans[$winner] ?? null] : null,
+            ConsensusRule::PairingPerDay => $chain->pairingBlocks($candidate) >= 1 ? ['window-block', null] : null,
+            ConsensusRule::SameSubtree => count($this->field($candidate, 7, $parameters->subtree)) + 1 < $parameters->soloEntrants ? ['same-subtree', $candidate->anchors[$winner][0] ?? null] : null,
+            ConsensusRule::PairingPerSeason => $chain->windowWins($winner, $parameters->shareKey($candidate->game)) >= $parameters->soloWins ? ['window-wins-limit', $winner] : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Solo rule 2: a verified value of a source inside the window, and the
+     * review time over. A forfeit never mines, as for every candidate.
+     *
+     * @param  array<string, mixed>  $solo
+     * @return array{0: string, 1: ?string}|null
+     */
+    private function soloRealGame(Candidate $candidate, array $solo, ConsensusParameters $parameters): ?array
+    {
+        if ($candidate->resolution === Resolution::Forfeit) {
+            return ['forfeit', null];
+        }
+
+        if (($solo['verified'] ?? false) !== true || ($solo['source'] ?? 'director') === 'director') {
+            return ['unverified', null];
+        }
+
+        $achieved = CarbonImmutable::parse((string) ($solo['achieved_at'] ?? '1970-01-01T00:00:00Z'));
+
+        if ($achieved->lt($candidate->windowStart()) || ! $achieved->lt($candidate->windowEnd())) {
+            return ['outside-window', null];
+        }
+
+        return $candidate->attestedAt->lt($candidate->windowEnd()->addSeconds($parameters->soloReview)) ? ['not-reviewed', null] : null;
+    }
+
+    /**
+     * The entrants of a score window that count for a solo rule, the winner
+     * not included: from rule 1 on those at or above the trust minimum, from
+     * rule 3 on without the winner's clan mates, from rule 7 on also without
+     * the players of the winner's anchor subtree.
+     *
+     * @return list<string>
+     */
+    private function field(Candidate $candidate, int $upTo, int $subtree): array
+    {
+        $winner = $candidate->winners[0] ?? '';
+        $clan = $candidate->clans[$winner] ?? null;
+        $anchor = $candidate->anchors[$winner] ?? null;
+        $field = [];
+
+        foreach (array_unique((array) ($candidate->solo['entrants'] ?? [])) as $entrant) {
+            $entrant = (string) $entrant;
+            $theirs = $candidate->anchors[$entrant] ?? null;
+
+            $out = $entrant === $winner
+                || ($candidate->trust[$entrant] ?? 0) < $this->minimumTrust
+                || ($upTo >= 3 && $clan !== null && ($candidate->clans[$entrant] ?? null) === $clan)
+                || ($upTo >= 7 && $anchor !== null && $theirs !== null && $anchor[0] === $theirs[0] && $anchor[1] >= $subtree && $theirs[1] >= $subtree);
+
+            if (! $out) {
+                $field[] = $entrant;
+            }
+        }
+
+        return $field;
     }
 
     /**

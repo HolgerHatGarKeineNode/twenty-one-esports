@@ -13,14 +13,30 @@ namespace App\Support\SeasonChain;
  * cap and one daily limit, so a player who owns both does not mine twice as
  * much. `share` and `daily` are keyed by the share key: the group a game
  * belongs to, otherwise the game itself.
+ *
+ * The solo rules of a score window (NIP rev. 9.18, genesis tag `solo`):
+ * how many trusted entrants a window needs, how many windows one player may
+ * win in a season, and how long the league waits after a window before it
+ * attests it. Like the share groups they are the genesis's and no change can
+ * alter them; a genesis without `solo` has the NIP defaults below.
  */
 final class ConsensusParameters
 {
+    /** NIP rev. 9.18 defaults of `solo`, chosen conservative (plan "AoE2 und Trackmania", P7; open for the board). */
+    public const SOLO_ENTRANTS = 5;
+
+    public const SOLO_WINS = 3;
+
+    public const SOLO_REVIEW = 48 * 3600;
+
     /**
      * @param  array<string, int>  $weights  `<game>/<mode>` => factor per winning player in thousandths; 0 or absent = does not mine
      * @param  array<string, int>  $shares  share key => share cap per era in percent; absent = 100
      * @param  array<string, int>  $daily  share key => blocks per winning player and UTC day; absent = no limit
      * @param  array<string, list<string>>  $groups  share key => the games that count as one
+     * @param  int  $soloEntrants  solo rules 1, 3, 7: trusted entrants with a verified value a window needs, the winner included
+     * @param  int  $soloWins  solo rule 8: blocks from score windows per player, share key and season
+     * @param  int  $soloReview  solo rule 2: seconds after the window's end before the league attests it
      */
     public function __construct(
         public readonly array $weights,
@@ -31,6 +47,9 @@ final class ConsensusParameters
         public readonly int $subtree = 51,
         public readonly int $moves = 20,
         public readonly array $groups = [],
+        public readonly int $soloEntrants = self::SOLO_ENTRANTS,
+        public readonly int $soloWins = self::SOLO_WINS,
+        public readonly int $soloReview = self::SOLO_REVIEW,
     ) {}
 
     public function weightFor(string $weightKey): int
@@ -63,7 +82,7 @@ final class ConsensusParameters
     /**
      * A copy with the rows and values of a change replaced; a `weight`,
      * `share` or `daily` row replaces the row for its game (and mode), or
-     * adds it. The groups stay as the genesis set them.
+     * adds it. The groups and the solo values stay as the genesis set them.
      */
     public function with(ParameterChange $change): self
     {
@@ -76,6 +95,9 @@ final class ConsensusParameters
             $change->subtree ?? $this->subtree,
             $change->moves ?? $this->moves,
             $this->groups,
+            $this->soloEntrants,
+            $this->soloWins,
+            $this->soloReview,
         );
     }
 }
