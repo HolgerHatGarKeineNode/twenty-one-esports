@@ -6,6 +6,7 @@ use App\Enums\TournamentStatus;
 use App\Games\Blockfill;
 use App\Games\ScoreMetric;
 use App\Models\BotPost;
+use App\Models\ScoreRun;
 use App\Models\Tournament;
 use App\Support\LeagueTime;
 use App\Support\Nostr\SignedEvent;
@@ -14,6 +15,7 @@ use App\Support\Scores\ScoreStanding;
 use App\Support\Scores\ScoreWindow;
 use App\Support\SeasonChain\LeagueKey;
 use App\Support\Stacker\BlockfillWeeks;
+use App\Support\TwentyOne\Stream\BlockfillSlides;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -31,6 +33,16 @@ use Throwable;
  * - The winner note goes out once the score kind finished the week (its
  *   review time is over, ScoreLeaderboards), within WINNER_DAYS of its end,
  *   and only when somebody is on the board.
+ * - The first-place note (slot "top-<score run id>") names a verified run
+ *   that holds the running week's first place on its board (ScoreRuns, so
+ *   practice, waiting and rejected runs never count), its time and how much
+ *   faster it is than the first place before it. Not sooner than
+ *   `esports.stream_bot.blockfill_notes.top_minutes` after the bot's last
+ *   Blockfill note of any slot, and not while another Blockfill note is due:
+ *   a burst of first places posts only the one on top when the time is up.
+ *   None in the week's last QUIET_MINUTES (the winner note is next), and none
+ *   for a first place that reached the board more than LATE_MINUTES before
+ *   the window allowed it (a switch that was off does not post old news).
  *
  * Exactly once per week and slot (BotPost, subject SUBJECT, one row per
  * slot), claimed before signing as in FreePlaceNotes: a rival run at the
@@ -51,6 +63,18 @@ final class BlockfillNotes
     public const SLOT_OPEN = 'open';
 
     public const SLOT_WINNER = 'winner';
+
+    /** The first-place note's slot is this prefix and the id of the score run on top. */
+    public const SLOT_TOP = 'top-';
+
+    /** First-place notes are at least this many minutes apart from any Blockfill note, unless configured. */
+    public const TOP_MINUTES = 60;
+
+    /** No first-place note this close to the week's end: the winner note follows. */
+    public const QUIET_MINUTES = 60;
+
+    /** A first place older than the window plus this many minutes is no news any more. */
+    public const LATE_MINUTES = 60;
 
     /** A finished week's winner is announced within this many days of the week's end, never later. */
     public const WINNER_DAYS = 7;
@@ -104,8 +128,9 @@ final class BlockfillNotes
 
     /**
      * The notes this run would post: the winners of weeks finished within
-     * WINNER_DAYS, oldest first, then the running week of `$now`; none that
-     * was delivered or freshly claimed. Empty while Blockfill is off.
+     * WINNER_DAYS, oldest first, then the running week of `$now`, then its
+     * first place when nothing else is due; none that was delivered or
+     * freshly claimed. Empty while Blockfill is off.
      *
      * @return list<array{week: Tournament, slot: string}>
      */
@@ -132,12 +157,19 @@ final class BlockfillNotes
             $due[] = ['week' => $current, 'slot' => self::SLOT_OPEN];
         }
 
+        // The first place waits for every other Blockfill note, and then for its window.
+        $top = $due === [] && $current !== null ? $this->topSlot($current, $now) : null;
+
+        if ($top !== null) {
+            $due[] = ['week' => $current, 'slot' => $top];
+        }
+
         return $due;
     }
 
     /**
-     * The note's text, in English: the week and how to play it, or its
-     * winner and top 3; then the week's calendar event as `nostr:naddr1…`
+     * The note's text, in English: the week and how to play it, its new
+     * first place, or its winner and top 3; then the week's calendar event as `nostr:naddr1…`
      * after a blank line, once it is published.
      */
     public function content(Tournament $week, string $slot): string
@@ -146,11 +178,15 @@ final class BlockfillNotes
         app()->setLocale(self::LOCALE);
 
         try {
-            $body = $slot === self::SLOT_WINNER ? $this->winner($week) : StreamBotCopy::render('blockfill_note_week', 0, [
-                'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
-                'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
-                'url' => route('stacker.play'),
-            ]);
+            $body = match (true) {
+                $slot === self::SLOT_WINNER => $this->winner($week),
+                str_starts_with($slot, self::SLOT_TOP) => $this->firstPlace($week, (int) substr($slot, strlen(self::SLOT_TOP))),
+                default => StreamBotCopy::render('blockfill_note_week', 0, [
+                    'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
+                    'ends' => LeagueTime::stamp(ScoreWindow::of($week)->end),
+                    'url' => route('stacker.play'),
+                ]),
+            };
         } finally {
             app()->setLocale($previous);
         }
@@ -192,6 +228,72 @@ final class BlockfillNotes
             'podium' => implode(' · ', $podium),
             'url' => route('scores.show', Blockfill::SLUG),
         ]);
+    }
+
+    /**
+     * The running week's first place by a verified run: the player, the time,
+     * how much faster than the first place before it (none for the week's
+     * first), the week's end and the game page.
+     */
+    private function firstPlace(Tournament $week, int $runId): string
+    {
+        $run = ScoreRun::query()->find($runId) ?? throw new LogicException('The first place of Blockfill week '.$week->id.' has no score run '.$runId.'.');
+        $userIds = $week->participants()->pluck('user_id')->filter()->all();
+        $participant = $week->participants()->where('user_id', $run->user_id)->first()
+            ?? throw new LogicException('The first place of Blockfill week '.$week->id.' is nobody on its board.');
+        $window = ScoreWindow::of($week);
+        $metric = ScoreMetric::time();
+
+        // The best time on the board before this run came in, read as ScoreRuns::standings() reads the board.
+        $before = ScoreRun::query()->where(['game' => $run->game, 'mode' => $run->mode, 'course' => $run->course])
+            ->whereIn('user_id', $userIds)->where('source', '!=', ScoreRun::DIRECTOR)
+            ->whereNotNull('verified_at')->whereNull('rejected_at')->whereNotNull('value')
+            ->where(fn ($query) => $query->whereNull('tournament_id')->orWhere('tournament_id', $week->id))
+            ->where('achieved_at', '>=', $window->start)->where('achieved_at', '<', $window->end)
+            ->where('id', '<', $run->id)->min('value');
+        $gap = $before === null ? 0 : (int) $before - (int) $run->value;
+
+        return StreamBotCopy::render('blockfill_note_top', 0, [
+            'name' => StreamBotCopy::clean($week->title(), self::NAME_LENGTH),
+            'player' => StreamBotCopy::clean($participant->name, self::NAME_LENGTH),
+            'time' => $metric->format((int) $run->value),
+            'gap' => $gap > 0 ? ', '.BlockfillSlides::seconds($gap).' faster than the first place before' : '',
+            'ends' => LeagueTime::stamp($window->end),
+            'url' => route('stacker.play'),
+        ]);
+    }
+
+    /**
+     * The slot of the running week's first place when its note is due:
+     * outside the week's last QUIET_MINUTES, on the board since at most the
+     * window plus LATE_MINUTES, not delivered or freshly claimed, and no
+     * Blockfill note delivered within the window. Null otherwise.
+     */
+    private function topSlot(Tournament $week, CarbonImmutable $now): ?string
+    {
+        $window = ScoreWindow::of($week);
+        $minutes = max(1, (int) config('esports.stream_bot.blockfill_notes.top_minutes', self::TOP_MINUTES));
+
+        if ($week->status !== TournamentStatus::Running || ! $window->contains($now) || $now->greaterThanOrEqualTo($window->end->subMinutes(self::QUIET_MINUTES))) {
+            return null;
+        }
+
+        $first = $this->runs->standings($week)[0] ?? null;
+
+        if ($first === null || $first->place !== 1 || $first->value === null || $first->runId === null) {
+            return null;
+        }
+
+        $run = ScoreRun::query()->find($first->runId);
+
+        if ($run?->verified_at === null || $run->verified_at->lessThan($now->subMinutes($minutes + self::LATE_MINUTES))) {
+            return null;
+        }
+
+        $slot = self::SLOT_TOP.$run->id;
+        $recent = BotPost::query()->where('subject_type', self::SUBJECT)->where('published_at', '>', $now->subMinutes($minutes))->exists();
+
+        return $recent || $this->taken($week, $slot, $now) ? null : $slot;
     }
 
     /**

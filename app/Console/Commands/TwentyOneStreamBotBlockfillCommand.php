@@ -11,7 +11,9 @@ use Illuminate\Console\Command;
 /**
  * The stream bot's Blockfill week notes on its own profile
  * (App\Support\StreamBot\BlockfillNotes, plan "Blockfill", P6): a new week
- * once it is open, its winner and top 3 once it is finished. Scheduled every
+ * once it is open, a verified run that takes its first place (at most one
+ * such note per `esports.stream_bot.blockfill_notes.top_minutes`), its winner
+ * and top 3 once it is finished. Scheduled every
  * five minutes while Blockfill is registered. Off unless
  * ESPORTS_STREAM_BOT_ENABLED and ESPORTS_STREAM_BOT_NSEC are set.
  *
@@ -20,7 +22,7 @@ use Illuminate\Console\Command;
  */
 #[Signature('twentyone:stream-bot:blockfill
     {--dry-run : Print the notes the next run would post; claim, sign, send and store nothing}')]
-#[Description('Post a kind-1 note on the stream bot profile for a new Blockfill week and for the winner of the last one')]
+#[Description('Post a kind-1 note on the stream bot profile for a new Blockfill week, its new first place and the winner of the last one')]
 class TwentyOneStreamBotBlockfillCommand extends Command
 {
     public function handle(BlockfillNotes $notes): int
