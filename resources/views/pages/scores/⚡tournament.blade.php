@@ -241,6 +241,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     $grace = (int) config('esports.score_games.manual.grace_minutes', 60);
     $submitOpen = $running && $game->acceptsManual() && $tournament->score_course !== null && $window->hasStarted() && now()->lessThan($window->end->addMinutes($grace));
     $label = __($game->courseLabel());
+    // Blockfill leads with its game (Play now), not with a submission form: its runs are read from the game itself.
+    $blockfill = $tournament->game === \App\Games\Blockfill::SLUG && \Illuminate\Support\Facades\Route::has('stacker.play');
     $statusOf = fn (ScoreRun $run): array => match (true) {
         $run->verified_at !== null => [__('counts'), 'text-win'],
         $run->rejected_at !== null => [__('rejected: :reason', ['reason' => (string) $run->note]), 'text-loss'],
@@ -250,6 +252,9 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 @endphp
 
 <div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-tournament" @if ($running) wire:poll.30s.visible @endif>
+    @if ($blockfill)
+        @include('pages.scores.partials.blockfill-hero', ['heading' => $tournament->title(), 'week' => $tournament, 'standings' => $standings, 'metric' => $metric])
+    @else
     <header class="flex flex-col gap-2">
         <a href="{{ route('tournaments.show', $tournament) }}" class="inline-flex min-h-6 items-center gap-1.5 self-start text-xs text-ink-2 hover:text-ink">
             <x-icon name="prev" :size="14" />{{ $tournament->title() }}
@@ -277,6 +282,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             </div>
         @endforeach
     </dl>
+    @endif
 
     @if ($flash !== '')
         <p class="m-0 text-[13px] text-win" role="status" data-test="score-flash">{{ $flash }}</p>
@@ -284,11 +290,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
 
     <section aria-labelledby="table-h" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-6 lg:py-5">
         <h2 id="table-h" class="m-0 px-2 text-[15px] font-bold lg:px-0">{{ $tournament->status === TournamentStatus::Finished ? __('Final standings') : __('Standings') }}</h2>
-        @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff])
+        @if ($blockfill && $standings === [])
+            @include('pages.scores.partials.blockfill-empty', ['finished' => $tournament->status === TournamentStatus::Finished])
+        @else
+            @include('pages.scores.partials.leaderboard', ['standings' => $standings, 'metric' => $metric, 'viewerId' => auth()->id(), 'staff' => $staff, 'beat' => $blockfill && $running && $window->hasStarted() && ! $window->hasEnded() ? route('stacker.play') : null])
+        @endif
     </section>
 
-    {{-- A game the league checks itself (Blockfill) takes no submission: Play instead, for everyone while it runs --}}
-    @if ($running && ! $game->acceptsManual())
+    @if ($blockfill)
+        @include('pages.scores.partials.blockfill-nav', ['week' => $tournament])
+    {{-- Another game the league checks itself takes no submission: Play instead, for everyone while it runs --}}
+    @elseif ($running && ! $game->acceptsManual())
         @include('pages.scores.partials.play-auto', ['slug' => $tournament->game])
     @endif
 
