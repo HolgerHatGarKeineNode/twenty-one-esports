@@ -76,6 +76,17 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     }
 
     /**
+     * Blockfill's running week (null: another game, or the week is not opened yet), shown first under the Play button.
+     */
+    #[Computed]
+    public function week(): ?Tournament
+    {
+        return $this->game === \App\Games\Blockfill::SLUG && \Illuminate\Support\Facades\Route::has('stacker.play')
+            ? app(BlockfillWeeks::class)->current()
+            : null;
+    }
+
+    /**
      * The points ladder of each mode, the top 20.
      *
      * @return array<string, list<array{user: User, points: int}>>
@@ -105,9 +116,33 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         TournamentStatus::Running => ScoreWindow::of($tournament)->hasEnded() ? __('Window closed') : __('Window open'),
         default => __('Finished'),
     };
+    $week = $this->week;
+    $blockfill = $this->game === \App\Games\Blockfill::SLUG && \Illuminate\Support\Facades\Route::has('stacker.play');
+    $weekStandings = $week !== null ? (collect($this->running)->first(fn ($entry): bool => $entry['tournament']->is($week))['standings'] ?? app(\App\Support\Scores\ScoreRuns::class)->standings($week)) : [];
+    $weekMetric = $week !== null ? app(\App\Support\Scores\ScoreRuns::class)->metricOf($week) : null;
 @endphp
 
 <div class="flex flex-col gap-6 px-4 pt-6 pb-12 lg:gap-8 lg:px-12 lg:pt-8" data-test="score-game" style="--game: {{ $score->assets()->colour }}">
+    @if ($blockfill)
+        {{-- Blockfill: the game first (Play now), then this week's board, then the way around the weeks. --}}
+        @include('pages.scores.partials.blockfill-hero', ['heading' => $name, 'week' => $week, 'standings' => $weekStandings, 'metric' => $weekMetric])
+
+        <section aria-labelledby="week-h" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" @if ($week) wire:key="running-{{ $week->id }}" @endif data-test="score-running">
+            <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-2 lg:px-0">
+                <h2 id="week-h" class="m-0 text-[15px] font-bold">{{ $week !== null ? BlockfillWeeks::title($week) : __('This week') }}</h2>
+                @if ($week !== null)
+                    <a href="{{ route('tournaments.scores', $week) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="score-full-table">{{ __('Full table') }}</a>
+                @endif
+            </div>
+            @if ($weekStandings === [])
+                @include('pages.scores.partials.blockfill-empty', ['finished' => false])
+            @else
+                @include('pages.scores.partials.leaderboard', ['standings' => $weekStandings, 'metric' => $weekMetric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false, 'beat' => route('stacker.play')])
+            @endif
+        </section>
+
+        @include('pages.scores.partials.blockfill-nav', ['week' => null])
+    @else
     <header class="flex flex-col gap-2">
         <h1 class="m-0 font-display text-[28px] leading-[1.15] font-bold lg:text-4xl">{{ $name }}</h1>
         <p class="m-0 max-w-[68ch] text-[13px] leading-normal text-ink-2">{{ __('Everyone plays alone, as often as they like, for the best value on the course inside the window. No lobby, no opponent to wait for. Each leaderboard\'s places score points on the ladder below.') }}</p>
@@ -119,6 +154,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
             @endforeach
         </ul>
     </header>
+    @endif
 
     <section aria-labelledby="boards-h" class="flex flex-col gap-3">
         <h2 id="boards-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Leaderboards') }}</h2>
@@ -131,7 +167,8 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
                 @foreach ($this->leaderboards as $tournament)
                     @php($window = ScoreWindow::of($tournament))
                     <li wire:key="board-{{ $tournament->id }}" data-test="score-board-card">
-                        <a href="{{ route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
+                        {{-- A Blockfill week opens on its board; any other leaderboard on its tournament page --}}
+                        <a href="{{ $blockfill ? route('tournaments.scores', $tournament) : route('tournaments.show', $tournament) }}" class="flex h-full flex-col gap-2 rounded-lg bg-card p-4 text-ink shadow-ring hover:text-ink hover:shadow-[inset_0_0_0_1px_var(--color-btc)]">
                             {{-- The title wraps rather than cutting a translated name short --}}
                             <span class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                                 <b class="min-w-0 text-[15px] [overflow-wrap:anywhere]" data-test="score-board-title">{{ BlockfillWeeks::title($tournament) }}</b>
@@ -148,6 +185,7 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
     </section>
 
     @foreach ($this->running as ['tournament' => $tournament, 'standings' => $standings])
+        @continue($week !== null && $tournament->is($week))
         <section aria-labelledby="running-h-{{ $tournament->id }}" class="flex flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5" wire:key="running-{{ $tournament->id }}" data-test="score-running">
             <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-2 lg:px-0">
                 <h2 id="running-h-{{ $tournament->id }}" class="m-0 text-[15px] font-bold">{{ BlockfillWeeks::title($tournament) }}</h2>
@@ -157,10 +195,16 @@ new #[Layout('layouts::app', ['section' => 'tournaments'])] class extends Compon
         </section>
     @endforeach
 
-    <section aria-labelledby="points-h" class="flex flex-col gap-3">
-        <div class="flex flex-col gap-1">
+    <section id="points" aria-labelledby="points-h" class="flex scroll-mt-24 flex-col gap-3">
+        <div class="flex flex-col gap-2">
             <h2 id="points-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('Points ladder') }}</h2>
-            <p class="m-0 text-xs text-ink-2">{{ __('Points per place of every finished leaderboard: :table, then 0.', ['table' => implode(' · ', ScorePoints::table($score))]) }}</p>
+            {{-- The points per place of every finished leaderboard, as chips: place, then its points --}}
+            <ol class="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="{{ __('Points per place') }}" data-test="score-points-table">
+                @foreach (ScorePoints::table($score) as $index => $points)
+                    <li class="inline-flex h-7 items-center gap-1.5 rounded-xs bg-card px-2 text-xs tabular-nums"><span class="text-ink-3">#{{ $index + 1 }}</span><b>{{ $points }}</b></li>
+                @endforeach
+                <li class="inline-flex h-7 items-center px-1 text-xs text-ink-3">{{ __('then 0') }}</li>
+            </ol>
         </div>
         <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
             @foreach ($score->modes() as $mode)

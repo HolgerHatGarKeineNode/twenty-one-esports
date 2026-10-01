@@ -5997,5 +5997,21 @@
     "unconfirmed": "unbestätigt",
     "confirmed": "bestätigt",
     "No runs yet": "Noch keine Läufe",
-    "The first run opens the list.": "Der erste Lauf eröffnet die Liste."
+    "The first run opens the list.": "Der erste Lauf eröffnet die Liste.",
+    "Closes in": "Noch",
+    "Time to beat": "Zu schlagen",
+    "How a run counts": "So zählt ein Lauf",
+    "Ranked, logged in": "Ranked, eingeloggt",
+    "The server replays it": "Server spielt ihn nach",
+    "Your best time counts": "Deine Bestzeit zählt",
+    "Beat this time": "Diese Zeit schlagen",
+    "No time yet this week. The first verified run takes #1.": "Noch keine Zeit diese Woche. Der erste geprüfte Lauf holt #1.",
+    "Nobody set a time this week.": "In dieser Woche hat niemand eine Zeit gesetzt.",
+    "Blockfill weeks": "Blockfill-Wochen",
+    "Last week": "Letzte Woche",
+    "Week before": "Woche davor",
+    "All runs": "Alle Läufe",
+    "Points per place": "Punkte pro Platz",
+    "then 0": "danach 0",
+    "#1 is free": "#1 ist frei"
 }

@@ -329,7 +329,8 @@ test('the game page shows this week\'s board, your place and last week\'s winner
 
     Livewire::test('pages::scores.show', ['game' => Blockfill::SLUG])
         ->assertSee('Blockfill Week 41, 2026')
-        ->assertSeeInOrder([__('Leaderboards'), $other->displayName(), $me->displayName(), __('Points ladder')])
+        // This week's board leads, under Play now; every week's card and the points ladder follow
+        ->assertSeeInOrder([$other->displayName(), $me->displayName(), __('Leaderboards'), __('Points ladder')])
         // the course is the mode itself: the card names the mode, not its slug
         ->assertSeeHtml('data-test="score-board-mode">40 blocks')
         ->assertDontSeeHtml('font-mono">40-blocks')
