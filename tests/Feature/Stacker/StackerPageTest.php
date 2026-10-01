@@ -43,6 +43,7 @@ test('a guest gets the page to practise, a player gets their controls and best t
     expect($config['signedIn'])->toBeTrue()
         ->and($config['controls'])->toBe(['das' => 7, 'arr' => 0, 'sdf' => 41, 'keys' => $keys])
         ->and($config['best'])->toBe(1234)
+        ->and($config['allTimeBest'])->toBe(1234)
         ->and($config['testing'])->toBeTrue()
         ->and($config['urls']['submit'])->toEndWith('/stacker/runs/__TOKEN__');
 
@@ -57,7 +58,7 @@ test('the result screen reads its own run\'s status, nobody else\'s', function (
     $issued = $this->actingAs($user)->postJson(route('stacker.runs.issue'))->assertCreated()->json();
     expect($issued['seed'])->toBe(str_repeat('ab', 16));
 
-    $this->getJson(route('stacker.runs.show', $issued['token']))->assertOk()->assertExactJson(['status' => 'issued', 'reason' => null, 'ticks' => null, 'best' => null]);
+    $this->getJson(route('stacker.runs.show', $issued['token']))->assertOk()->assertExactJson(['status' => 'issued', 'reason' => null, 'ticks' => null, 'best' => null, 'best_all_time' => null]);
     $this->actingAs(User::factory()->create())->getJson(route('stacker.runs.show', $issued['token']))->assertNotFound();
 });
 

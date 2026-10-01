@@ -30,9 +30,9 @@ use Illuminate\Support\Str;
  *   replay/ticks/hash, the wall-clock bracket (time from start, or issue if
  *   never started, to submission at least the played time and at most
  *   `slack_seconds` more), and whether the claim beats the player's
- *   verified best. A claim that does not is stored as `practice` and never
- *   verified: it could not change any standing. The rest is `verifying` and
- *   goes to the verifier's own queue (VerifyStackerRun).
+ *   verified best of this week (P4). A claim that does not is stored as
+ *   `practice` and never verified: it could not change any standing. The
+ *   rest is `verifying` and goes to the verifier's own queue (VerifyStackerRun).
  * - finish(): the verifier's verdict; an unavailable verifier leaves the run
  *   `pending` (fail-closed: no score until it is checked).
  *
@@ -507,13 +507,16 @@ final class StackerRuns
     }
 
     /**
-     * The player's best verified time in ticks, or null.
+     * The player's best verified time in ticks, or null: of all time, or of
+     * one week (`$week` as weekOf() gives it, P4: the weekly hunt starts
+     * every player afresh on Monday).
      */
-    public function best(User|int $user): ?int
+    public function best(User|int $user, ?string $week = null): ?int
     {
         $best = StackerRun::query()
             ->where('user_id', $user instanceof User ? $user->id : $user)
             ->where('status', StackerRunStatus::Verified)
+            ->when($week !== null, fn ($query) => $query->where('week', $week))
             ->min('ticks');
 
         return $best === null ? null : (int) $best;
@@ -532,7 +535,8 @@ final class StackerRuns
             return ['status' => StackerRunStatus::Rejected, 'reason' => 'clock'];
         }
 
-        $best = $this->best($run->user_id);
+        // P4: the week's best, not the all-time one, so every week's first run is verified and joins its leaderboard
+        $best = $this->best($run->user_id, self::weekOf($now));
 
         if ($best !== null && $ticks >= $best) {
             return ['status' => StackerRunStatus::Practice];

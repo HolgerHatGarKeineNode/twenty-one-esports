@@ -1,10 +1,18 @@
 <?php
 
+use App\Games\Blockfill;
+use App\Games\ScoreMetric;
+use App\Models\Tournament;
 use App\Models\User;
 use App\Support\PageMeta;
+use App\Support\Scores\ScoreRuns;
+use App\Support\Scores\ScoreStanding;
+use App\Support\Scores\ScoreWindow;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerSettings;
 use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -18,7 +26,11 @@ use Livewire\Component;
  * Practice for everyone, guests included (a local seed, nothing is sent);
  * ranked runs need a login and go through StackerRuns (issue, start, submit,
  * verdict). The route exists only while `esports.blockfill.enabled` is on
- * (routes/stacker.php). No weekly board yet (P4).
+ * (routes/stacker.php).
+ *
+ * Below the game, the casual weekly hunt (P4, BlockfillWeeks): this week's
+ * leaderboard, the player's own place, and last week's winner. Refreshed
+ * when the game reports a verified run (`stacker-verified`).
  */
 new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] class extends Component {
     public function rendering(\Illuminate\View\View $view): void
@@ -41,7 +53,9 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
         return [
             'signedIn' => $signedIn,
             'controls' => StackerSettings::of($signedIn ? $user : null),
-            'best' => $signedIn ? app(StackerRuns::class)->best($user) : null,
+            // P4: the week's best is the one a ranked run has to beat; the all-time best is shown beside it
+            'best' => $signedIn ? app(StackerRuns::class)->best($user, StackerRuns::weekOf(now())) : null,
+            'allTimeBest' => $signedIn ? app(StackerRuns::class)->best($user) : null,
             'testing' => app()->environment('testing'),
             'urls' => [
                 'issue' => route('stacker.runs.issue'),
@@ -72,6 +86,49 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                 ],
             ],
         ];
+    }
+
+    /**
+     * This week's leaderboard, if it was opened.
+     */
+    #[Computed]
+    public function week(): ?Tournament
+    {
+        return app(BlockfillWeeks::class)->current();
+    }
+
+    /**
+     * Its standings, best first.
+     *
+     * @return list<ScoreStanding>
+     */
+    #[Computed]
+    public function standings(): array
+    {
+        return $this->week === null ? [] : app(ScoreRuns::class)->standings($this->week);
+    }
+
+    /**
+     * The logged-in player's row of this week, if they are in.
+     */
+    #[Computed]
+    public function mine(): ?ScoreStanding
+    {
+        $id = Auth::id();
+
+        return $id === null ? null : collect($this->standings)->first(fn (ScoreStanding $row): bool => $row->participant->user_id === $id);
+    }
+
+    /**
+     * Last week's winner: the first place of its leaderboard (final once it ended).
+     */
+    #[Computed]
+    public function lastWinner(): ?ScoreStanding
+    {
+        $previous = app(BlockfillWeeks::class)->previous();
+        $first = $previous === null ? null : (app(ScoreRuns::class)->standings($previous)[0] ?? null);
+
+        return $first?->place === 1 ? $first : null;
     }
 }; ?>
 
@@ -116,10 +173,22 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
                                 <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Pieces per second') }}</dt>
                                 <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[30px]" x-ref="pps">0.00</dd>
                             </div>
-                            <div>
-                                <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Your best') }}</dt>
-                                <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[20px]" x-text="time(kind === 'ranked' || signedIn ? (rankedBest ?? practiceBest) : practiceBest)" data-test="best"></dd>
-                            </div>
+                            @auth
+                                {{-- P4: the week's best is the one a ranked run has to beat; the all-time best is information only --}}
+                                <div>
+                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Best this week') }}</dt>
+                                    <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[20px]" x-text="time(rankedBest)" data-test="best"></dd>
+                                </div>
+                                <div>
+                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('All-time best') }}</dt>
+                                    <dd class="m-0 text-[13px] leading-tight font-bold text-ink-2 tabular-nums lg:text-[16px]" x-text="time(allTimeBest)" data-test="best-all-time"></dd>
+                                </div>
+                            @else
+                                <div>
+                                    <dt class="text-[12px] text-ink-3 lg:text-sm">{{ __('Your best') }}</dt>
+                                    <dd class="m-0 text-[15px] leading-tight font-bold tabular-nums lg:text-[20px]" x-text="time(practiceBest)" data-test="best"></dd>
+                                </div>
+                            @endauth
                         </dl>
                     </div>
 
@@ -237,4 +306,69 @@ new #[Layout('layouts::app', ['scripts' => ['resources/js/stacker/page.js']])] c
             </aside>
         </div>
     </div>
+
+    {{-- The casual weekly hunt (P4): this week's leaderboard, your place, last week's winner --}}
+    @php
+        $week = $this->week;
+        $metric = ScoreMetric::time();
+        $mine = $this->mine;
+        $winner = $this->lastWinner;
+        $window = $week === null ? null : ScoreWindow::of($week);
+    @endphp
+    <section x-data x-on:stacker-verified.window="$wire.$refresh()" class="mx-auto mt-8 grid w-full max-w-[1340px] grid-cols-1 gap-6 lg:mt-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-12" aria-labelledby="stacker-week-h" data-test="stacker-week">
+        <div class="flex min-w-0 flex-col gap-3 rounded-lg bg-card px-2 py-4 lg:px-5">
+            <div class="flex flex-col gap-1 px-2 lg:px-0">
+                <h2 id="stacker-week-h" class="m-0 font-display text-xl font-bold lg:text-2xl">{{ __('This week\'s hunt') }}</h2>
+                <p class="m-0 text-xs leading-normal text-ink-2">{{ __('Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time.') }}</p>
+                @if ($window)
+                    <p class="m-0 text-xs text-ink-3 tabular-nums" data-test="stacker-week-window">{{ \App\Support\LeagueTime::stamp($window->start) }} – {{ \App\Support\LeagueTime::stamp($window->end) }}</p>
+                @endif
+            </div>
+            @if ($this->standings === [])
+                <p class="m-0 px-2 py-4 text-[13px] text-ink-2 lg:px-0" data-test="stacker-week-empty">{{ __('Nobody has a verified run this week yet. Yours could be the first.') }}</p>
+            @else
+                @include('pages.scores.partials.leaderboard', ['standings' => $this->standings, 'metric' => $metric, 'limit' => 10, 'viewerId' => auth()->id(), 'staff' => false])
+            @endif
+        </div>
+
+        <div class="flex min-w-0 flex-col gap-4">
+            <div class="flex flex-col gap-2 rounded-lg bg-card p-4" data-test="stacker-week-mine">
+                <h3 class="m-0 text-sm font-bold text-ink-2">{{ __('Your place') }}</h3>
+                @auth
+                    @if ($mine?->place !== null)
+                        <p class="m-0 flex items-baseline gap-3">
+                            <b class="font-display text-[32px] leading-none font-extrabold tabular-nums" data-test="stacker-week-place">#{{ $mine->place }}</b>
+                            <span class="font-mono text-[15px] tabular-nums">{{ $metric->format((int) $mine->value) }}</span>
+                        </p>
+                    @else
+                        <p class="m-0 text-[13px] text-ink-2">{{ __('Your first verified ranked run this week puts you on the board.') }}</p>
+                    @endif
+                @else
+                    <p class="m-0 text-[13px] text-ink-2">{{ __('Log in and play a ranked run to get on the board.') }}</p>
+                @endauth
+            </div>
+
+            <div class="flex flex-col gap-2 rounded-lg bg-card p-4" data-test="stacker-week-winner">
+                <h3 class="m-0 text-sm font-bold text-ink-2">{{ __('Last week\'s winner') }}</h3>
+                @if ($winner)
+                    @php($winnerUser = $winner->participant->user)
+                    <p class="m-0 flex min-w-0 items-center gap-2">
+                        @if ($winnerUser)
+                            <x-avatar :user="$winnerUser" :size="32" class="shrink-0 rounded-sm" />
+                            <a href="{{ route('players.show', $winnerUser->npub) }}" class="min-w-0 truncate font-bold text-ink hover:text-btc-hi" data-test="stacker-week-winner-name">{{ $winner->participant->name }}</a>
+                        @else
+                            <span class="min-w-0 truncate font-bold text-ink-2" data-test="stacker-week-winner-name">{{ $winner->participant->name }}</span>
+                        @endif
+                        <span class="ml-auto shrink-0 font-mono text-[13px] tabular-nums">{{ $metric->format((int) $winner->value) }}</span>
+                    </p>
+                @else
+                    <p class="m-0 text-[13px] text-ink-2">{{ __('No winner last week.') }}</p>
+                @endif
+            </div>
+
+            @if (\Illuminate\Support\Facades\Route::has('scores.show'))
+                <a href="{{ route('scores.show', Blockfill::SLUG) }}" class="inline-flex min-h-11 items-center text-[13px] font-bold text-ink underline decoration-edge underline-offset-4 hover:decoration-ink" data-test="stacker-week-all">{{ __('All weeks and the points ladder') }}</a>
+            @endif
+        </div>
+    </section>
 </div>

@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\StackerRunStatus;
 use App\Models\StackerRun;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Stacker\StackerVerdict;
 use App\Support\Stacker\Verifier;
@@ -17,7 +18,9 @@ use Throwable;
  * replay never holds a web worker or the default queue. One attempt; the
  * verifier runs outside any database transaction, and only the verdict is
  * written, by compare-and-set out of `verifying`. A job that fails or times
- * out leaves the run `pending`: no score without a verdict.
+ * out leaves the run `pending`: no score without a verdict. A verified run
+ * then joins its week's leaderboard (BlockfillWeeks::record(), P4); if that
+ * fails the verdict stands and the hourly `blockfill:weeks` sweep joins it.
  */
 class VerifyStackerRun implements ShouldQueue
 {
@@ -35,7 +38,7 @@ class VerifyStackerRun implements ShouldQueue
         $this->afterCommit();
     }
 
-    public function handle(Verifier $verifier, StackerRuns $runs): void
+    public function handle(Verifier $verifier, StackerRuns $runs, BlockfillWeeks $weeks): void
     {
         $run = StackerRun::query()->find($this->runId);
 
@@ -51,6 +54,16 @@ class VerifyStackerRun implements ShouldQueue
         }
 
         $runs->finish($run, $verdict, now());
+
+        $run->refresh();
+
+        if ($run->status === StackerRunStatus::Verified) {
+            try {
+                $weeks->record($run);
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+        }
     }
 
     public function failed(?Throwable $exception): void
