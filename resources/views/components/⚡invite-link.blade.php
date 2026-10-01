@@ -5,6 +5,7 @@ use App\Games\GameRegistry;
 use App\Models\Clan;
 use App\Models\User;
 use App\Support\Chess\DailyChallenges;
+use App\Support\Invites\InviteGames;
 use App\Support\Invites\InviteLinkRefused;
 use App\Support\Invites\InviteLinks;
 use Illuminate\Support\Facades\Auth;
@@ -18,8 +19,12 @@ use Livewire\Component;
  * player to bring a friend: the chess lobby, the series game pages, the
  * player's own page, their clan page, an empty ladder and a finished game.
  *
- * What the link opens follows the page's game:
+ * What the link opens follows the game: the page's `game`, else the game
+ * the player is in (InviteGames::contextGame(), the context bar's game):
  *  - chess: a daily chess link anyone can take (InviteLinks, type Daily);
+ *  - a board game: a casual game of it, correspondence or blitz (type Board);
+ *  - a score game such as Blockfill: "beat my time" (type Score), no seat,
+ *    no options: the link shows the player's best of the week;
  *  - a series game: the join link of the clan this player captains (a series
  *    is played by clan lineups); a player without a clan is sent to start
  *    one, a player of a clan they don't captain is told who makes the links.
@@ -30,6 +35,7 @@ use Livewire\Component;
  * it, how long it works, the colour) open inline. Full (the challenge page):
  * options open and the long explanation shown. A guest sees the login state.
  * Making the link opens its landing page, where it is copied and shared.
+ * "Other game" opens the picker (/invite) with every game.
  * Invite links are casual and allowed before Block 0: nothing to gate here.
  */
 new class extends Component
@@ -57,11 +63,15 @@ new class extends Component
 
     public string $linkColor = 'random';
 
+    /** A board game's link mode: correspondence or blitz (InviteGames::BOARD_MODES). */
+    public string $mode = '';
+
     public string $error = '';
 
-    public function mount(string $game = 'chess', ?int $clanId = null, bool $compact = true, string $place = 'page', ?string $color = null): void
+    public function mount(?string $game = null, ?int $clanId = null, bool $compact = true, string $place = 'page', ?string $color = null): void
     {
-        $this->game = $game;
+        $this->game = $game ?? app(InviteGames::class)->contextGame();
+        $this->mode = app(InviteGames::class)->find($this->game)['modes'][0] ?? '';
         $this->clanId = $clanId;
         $this->compact = $compact;
         $this->place = $place;
@@ -76,18 +86,12 @@ new class extends Component
     }
 
     /**
-     * The viewer's state: guest | daily | clan | no-clan | member.
+     * The viewer's state: guest | daily | board | score | clan | no-clan | member | hidden.
      */
     #[Computed]
     public function state(): string
     {
         $user = Auth::user();
-
-        // A board game gets its own invite links in P5 of plan "Mühle und Dame", never a chess daily link.
-        // A score game (plan "AoE2 und Trackmania", P4) has nobody to invite to a match.
-        if (app(GameRegistry::class)->isBoard($this->game) || app(GameRegistry::class)->isScore($this->game)) {
-            return 'hidden';
-        }
 
         if (! $user instanceof User) {
             return $this->clanId !== null ? 'hidden' : 'guest';
@@ -97,8 +101,15 @@ new class extends Component
             return $this->clan?->isCaptain($user) ? 'clan' : 'hidden';
         }
 
+        // Never a chess link for another game: a board game's own link, a score game's "beat my time".
+        $kind = app(InviteGames::class)->find($this->game)['kind'] ?? null;
+
+        if ($kind === 'board' || $kind === 'score' || $kind === 'chess') {
+            return $kind === 'chess' ? 'daily' : $kind;
+        }
+
         if (! app(GameRegistry::class)->isSeries($this->game)) {
-            return 'daily';
+            return 'hidden';
         }
 
         return match (true) {
@@ -139,6 +150,8 @@ new class extends Component
 
         if ($type === InviteLinkType::Daily) {
             $options['color'] = $this->color ?? $this->linkColor;
+        } elseif ($type === InviteLinkType::Board || $type === InviteLinkType::Score) {
+            $options += ['game' => $this->game, 'mode' => $this->mode, 'color' => $this->linkColor];
         } else {
             $options['clan'] = $this->clan;
         }
@@ -158,6 +171,8 @@ new class extends Component
     {
         return match ($this->state) {
             'daily' => InviteLinkType::Daily,
+            'board' => InviteLinkType::Board,
+            'score' => InviteLinkType::Score,
             'clan' => InviteLinkType::Clan,
             default => null,
         };
@@ -166,16 +181,22 @@ new class extends Component
 
 @php
     $state = $this->state;
-    $type = match ($state) { 'daily' => InviteLinkType::Daily, 'clan' => InviteLinkType::Clan, default => null };
+    $type = match ($state) { 'daily' => InviteLinkType::Daily, 'board' => InviteLinkType::Board, 'score' => InviteLinkType::Score, 'clan' => InviteLinkType::Clan, default => null };
     $clan = in_array($state, ['clan', 'member'], true) ? $this->clan : null;
     $id = 'invite-'.$place;
+    $gameName = \App\Support\GameNames::game($game);
+    $boardModes = $state === 'board' ? (app(InviteGames::class)->find($game)['modes'] ?? []) : [];
     $heading = match ($state) {
         'clan' => __('Invite a friend to :clan', ['clan' => $clan?->name]),
+        'board' => __('Invite a friend to :game', ['game' => $gameName]),
+        'score' => __('Challenge a friend to beat your time'),
         default => __('Invite a friend by link'),
     };
     $text = match ($state) {
         'guest' => __('Log in, make a link and send it on Signal, Telegram or Nostr. Your friend lands right in the game.'),
         'daily' => __('A daily chess game with whoever opens the link and accepts. Casual, so it never counts toward ratings or rewards.'),
+        'board' => __('A casual :game game with whoever opens the link and accepts.', ['game' => $gameName]),
+        'score' => __('Your best this week in :game. Your friend plays and tries to beat it.', ['game' => $gameName]),
         'clan' => __('Everyone who uses the link sends a join request; a captain confirms each one.'),
         'no-clan' => __('Series are played by clan lineups. Start a clan, then invite your friends by link.'),
         'member' => __('Join links for :clan come from its captains. Ask one of them, or challenge a friend to daily chess.', ['clan' => $clan?->name]),
@@ -191,7 +212,7 @@ new class extends Component
 @if ($state !== 'hidden')
     <section aria-labelledby="{{ $id }}-h" x-data="{ open: @js(! $compact) }"
              class="@container flex flex-col gap-4 rounded-lg bg-card px-4 py-4 shadow-ring-btc lg:px-6"
-             data-test="invite-module" data-place="{{ $place }}" data-state="{{ $state }}">
+             data-test="invite-module" data-place="{{ $place }}" data-state="{{ $state }}" data-game="{{ $game }}">
         {{-- On a game page (P56) the module sits in a side column from lg: its own width decides the row, not the window's. --}}
         <div @class(['flex flex-col gap-3', 'sm:flex-row sm:items-center sm:gap-6' => $place !== 'game', '@xl:flex-row @xl:items-center @xl:gap-6' => $place === 'game'])>
             {{-- The icon centres on a lone heading (compact, below sm) and tops a heading with its text. --}}
@@ -222,23 +243,40 @@ new class extends Component
                     @default
                         <button type="button" wire:click="createLink" wire:loading.attr="disabled" data-test="invite-create"
                                 class="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-btc bg-transparent px-[18px] max-sm:grow text-[13px] font-bold whitespace-nowrap text-btc-hi hover:bg-btc-press disabled:opacity-70">
-                            <x-icon name="link" :size="16" />{{ $state === 'clan' ? __('Create join link') : __('Create invite link') }}
+                            <x-icon name="link" :size="16" />{{ match ($state) { 'clan' => __('Create join link'), 'score' => __('Create challenge link'), default => __('Create invite link') } }}
                         </button>
-                        @if ($compact)
+                        @if ($compact && $state !== 'score')
                             <button type="button" x-on:click="open = ! open" :aria-expanded="open.toString()" aria-expanded="false" aria-controls="{{ $id }}-options" data-test="invite-options-toggle"
                                     class="inline-flex h-11 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 text-[13px] text-ink-2 hover:text-ink">
                                 {{ __('Options') }}<x-icon name="chevron-down" :size="14" class="transition-transform duration-150 motion-reduce:transition-none" ::class="open ? 'rotate-180' : ''" />
                             </button>
                         @endif
+                        @if ($state !== 'clan')
+                            {{-- Every game in the picker, this one picked. --}}
+                            <a href="{{ route('invites.create', ['game' => $game]) }}" data-test="invite-other-game"
+                               class="inline-flex h-11 items-center px-2 text-[13px] whitespace-nowrap text-ink-2 hover:text-ink">{{ __('Other game') }}</a>
+                        @endif
                 @endswitch
             </span>
         </div>
 
-        @if ($type !== null)
+        {{-- A score link has no options: one link a week, open to everyone. --}}
+        @if ($type !== null && $type !== InviteLinkType::Score)
             <div id="{{ $id }}-options" x-show="open" @if ($compact) x-cloak @endif
                  x-transition:enter="transition duration-200 ease-out motion-reduce:transition-none" x-transition:enter-start="opacity-0 -translate-y-1"
                  class="grid grid-cols-1 gap-4 border-t border-hairline pt-4 sm:grid-cols-2 lg:grid-cols-3" data-test="invite-options">
                 @if ($compact)<p class="m-0 text-[13px] leading-normal text-ink-2 sm:hidden">{{ $text }}</p>@endif
+                @if (count($boardModes) > 1)
+                    <div class="flex flex-col gap-2 sm:col-span-2 lg:col-span-3">
+                        <span id="{{ $id }}-mode" class="text-xs text-ink-2">{{ __('Game type') }}</span>
+                        <div role="radiogroup" aria-labelledby="{{ $id }}-mode" class="grid grid-cols-2 gap-2">
+                            @foreach ($boardModes as $value)
+                                <button type="button" role="radio" wire:click="$set('mode', '{{ $value }}')" aria-checked="{{ $mode === $value ? 'true' : 'false' }}" data-test="invite-mode-{{ $value }}"
+                                        @class(['h-11 cursor-pointer rounded-md border bg-ground px-2 text-[13px] text-ink', 'border-btc' => $mode === $value, 'border-line' => $mode !== $value])>{{ \App\Support\GameNames::mode($game, $value) }}</button>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
                 <div class="flex flex-col gap-2">
                     <span id="{{ $id }}-uses" class="text-xs text-ink-2">{{ __('Who can use it') }}</span>
                     <div role="radiogroup" aria-labelledby="{{ $id }}-uses" class="grid grid-cols-2 gap-2">
@@ -256,7 +294,7 @@ new class extends Component
                         @endforeach
                     </select>
                 </label>
-                @if ($type === InviteLinkType::Daily && $color === null)
+                @if (($type === InviteLinkType::Daily && $color === null) || ($type === InviteLinkType::Board && $mode === \App\Models\BoardGame::CORRESPONDENCE))
                     <div class="flex flex-col gap-2 sm:col-span-2 lg:col-span-1">
                         <span id="{{ $id }}-color" class="text-xs text-ink-2">{{ __('Your color') }}</span>
                         <div role="radiogroup" aria-labelledby="{{ $id }}-color" class="grid grid-cols-3 gap-2">

@@ -363,6 +363,8 @@ final class ShellNavigation
                 $invite !== null => self::link('invite', route('invites.show', $invite), __('Clan invite from :clan', ['clan' => $invite->clan->name]), 'clans', 'account-clan-invite', 'mobile-clan-invite'),
                 default => null,
             },
+            // "Invite a friend": the picker, with the game of the context bar picked (InviteGames::contextGame()).
+            self::link('invite-friend', route('invites.create'), __('Invite a friend'), 'link', 'account-invite', 'mobile-invite'),
             self::link('daily', route('me.correspondence'), __('Your daily games'), 'calendar'),
             self::link('settings', route('gaming.edit'), __('Settings'), 'settings', null, 'mobile-settings'),
             self::link('notifications', route('settings.notifications'), __('Notifications'), 'bell', 'account-menu-notifications', 'mobile-notifications'),

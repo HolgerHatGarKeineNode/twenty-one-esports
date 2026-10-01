@@ -145,16 +145,16 @@ test('the match list never files chess games under a board game, and lists a boa
         ->assertDontSeeHtml('data-test="chess-row"');
 });
 
-test('the invite link module shows nothing for a board game, not the chess daily link', function () {
+test('the invite link module invites to the board game itself, never with the chess daily link', function () {
     FixtureBoardGame::register();
 
     $player = User::factory()->create();
 
-    expect(Livewire::actingAs($player)->test('invite-link', ['game' => FIXTURE_BOARD])->assertDontSeeHtml('data-state=')->instance()->state)->toBe('hidden')
+    expect(Livewire::actingAs($player)->test('invite-link', ['game' => FIXTURE_BOARD])->assertSeeHtml('data-state="board"')->assertDontSeeHtml('data-state="daily"')->instance()->state)->toBe('board')
         ->and(Livewire::actingAs($player)->test('invite-link', ['game' => 'chess'])->assertSeeHtml('data-state="daily"')->instance()->state)->toBe('daily');
 
     auth()->logout();
-    expect(Livewire::test('invite-link', ['game' => FIXTURE_BOARD])->instance()->state)->toBe('hidden');
+    expect(Livewire::test('invite-link', ['game' => FIXTURE_BOARD])->instance()->state)->toBe('guest');
 });
 
 test('a board game has its ladder page, card and sitemap entries (P5), and a place in the weekly events (P6)', function () {
