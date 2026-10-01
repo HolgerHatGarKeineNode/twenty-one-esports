@@ -35,7 +35,8 @@ class StackerRunController extends Controller
             'engine' => $run->engine,
             'expires_at' => $runs->expiresAt($run)->toIso8601ZuluString('millisecond'),
             'limits' => config('esports.blockfill.limits'),
-            'best' => $runs->best($user),
+            'best' => $runs->best($user, StackerRuns::weekOf(now())),
+            'best_all_time' => $runs->best($user),
         ], 201);
     }
 
@@ -85,7 +86,9 @@ class StackerRunController extends Controller
             'status' => $run->status->value,
             'reason' => $run->reason,
             'ticks' => $run->ticks,
-            'best' => $runs->best($user),
+            // P4: the best of this week is the one a run has to beat; the all-time best is shown beside it
+            'best' => $runs->best($user, StackerRuns::weekOf(now())),
+            'best_all_time' => $runs->best($user),
         ]);
     }
 

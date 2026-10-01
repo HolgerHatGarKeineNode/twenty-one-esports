@@ -60,7 +60,9 @@ test('the ticker runs 60 ticks a second at any frame rate and drops a long stall
 
 test('times read as minutes, seconds and hundredths or thousandths', () => {
     assert.equal(formatTicks(0), '0:00.00');
-    assert.equal(formatTicks(958, 3), '0:15.967');
+    // rounded down like Blockfill::milliseconds(): 958 ticks are 15966.67 ms
+    assert.equal(formatTicks(958, 3), '0:15.966');
+    assert.equal(formatTicks(2, 3), '0:00.033');
     assert.equal(formatTicks(958), '0:15.96');
     assert.equal(formatTicks(36000), '10:00.00');
 });

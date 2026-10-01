@@ -2,6 +2,7 @@
 
 use App\Enums\BoardGameStatus;
 use App\Enums\ChessGameStatus;
+use App\Games\Blockfill;
 use App\Games\GameRegistry;
 use App\Jobs\NotifyBlockZero;
 use App\Models\BoardGame;
@@ -29,6 +30,7 @@ use App\Support\SeasonChain\TrustJob;
 use App\Support\SeasonChain\TrustJobRefused;
 use App\Support\Series\CasualScheduler;
 use App\Support\Series\SeriesService;
+use App\Support\Stacker\BlockfillWeeks;
 use App\Support\Stacker\StackerRuns;
 use App\Support\Tournaments\TournamentDraws;
 use App\Support\Tournaments\TournamentScheduler;
@@ -529,3 +531,21 @@ Artisan::command('stacker:reverify {--limit=50 : at most this many pending runs}
 
 Schedule::command('stacker:sweep')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 Schedule::command('model:prune', ['--model' => [StackerRun::class]])->dailyAt('04:41')->withoutOverlapping()->onOneServer();
+
+/*
+ * The casual weekly hunt of Blockfill (plan "Blockfill", P4, BlockfillWeeks):
+ * opens this week's leaderboard (Monday 00:00 Europe/Berlin, which every
+ * hourly run at minute 0 hits), joins verified players a run's own hook
+ * missed, and reads the week's runs again. Its end is the score kind's own
+ * (`scores:tick`). Scheduled only while Blockfill is registered, so with the
+ * switch off nothing of it runs.
+ */
+Artisan::command('blockfill:weeks', function (BlockfillWeeks $weeks) {
+    $done = $weeks->sweep();
+
+    $this->info(($done['opened'] ? 'This week\'s leaderboard is open.' : 'Blockfill is off: no leaderboard opened.')." Joined {$done['joined']} player(s), read {$done['read']} best run(s).");
+})->purpose('Open this week\'s Blockfill leaderboard and join every verified player');
+
+if (app(GameRegistry::class)->find(Blockfill::SLUG) !== null) {
+    Schedule::command('blockfill:weeks')->hourly()->withoutOverlapping()->onOneServer();
+}

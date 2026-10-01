@@ -5840,5 +5840,20 @@
     "Back to the defaults": "Zurück zu den Standardwerten",
     "Ranked runs need a keyboard. Here you can practise with touch.": "Gewertete Läufe brauchen eine Tastatur. Hier kannst du mit Touch üben.",
     "Not saved — the league is busy. Play the run again in a moment.": "Nicht gespeichert – die Liga ist ausgelastet. Spiel den Lauf gleich noch einmal.",
-    "Not saved — the run did not reach the league. Play it again.": "Nicht gespeichert – der Lauf hat die Liga nicht erreicht. Spiel ihn noch einmal."
+    "Not saved — the run did not reach the league. Play it again.": "Nicht gespeichert – der Lauf hat die Liga nicht erreicht. Spiel ihn noch einmal.",
+    "Best this week": "Beste Zeit dieser Woche",
+    "All-time best": "Bestzeit insgesamt",
+    "This week's hunt": "Die Jagd dieser Woche",
+    "Your best verified ranked run of the week counts. The fastest time wins, a tie goes to the earlier run. A new week starts every Monday at 00:00 Berlin time.": "Es zählt dein bester geprüfter gewerteter Lauf der Woche. Die schnellste Zeit gewinnt, bei Gleichstand der frühere Lauf. Jeden Montag um 00:00 Uhr Berliner Zeit beginnt eine neue Woche.",
+    "Nobody has a verified run this week yet. Yours could be the first.": "Diese Woche hat noch niemand einen geprüften Lauf. Deiner könnte der erste sein.",
+    "Your place": "Dein Platz",
+    "Your first verified ranked run this week puts you on the board.": "Dein erster geprüfter gewerteter Lauf dieser Woche bringt dich auf die Bestenliste.",
+    "Log in and play a ranked run to get on the board.": "Melde dich an und spiel einen gewerteten Lauf, um auf die Bestenliste zu kommen.",
+    "Last week's winner": "Sieger der letzten Woche",
+    "No winner last week.": "Letzte Woche gab es keinen Sieger.",
+    "All weeks and the points ladder": "Alle Wochen und die Punkteliste",
+    "Full table": "Ganze Tabelle",
+    "40 blocks": "40 Blöcke",
+    "Blockfill Week :week, :year": "Blockfill Woche :week, :year",
+    "Practice best": "Bestzeit beim Üben"
 }

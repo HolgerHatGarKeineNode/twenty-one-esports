@@ -164,6 +164,9 @@ final class ScoreRuns
             $placed[] = [$order, $run, $participant];
         }
 
+        // A tie goes to the earlier `achieved_at`, then to the seed. score_runs stores whole seconds, so two equal
+        // values set within the same second fall to the seed: in a Blockfill week that is the earlier joiner
+        // (BlockfillWeeks seeds in the order players came). An accepted limit (plan "Blockfill", P4 review).
         usort($placed, fn (array $a, array $b): int => $metric->compare((int) $a[1]->value, (int) $b[1]->value)
             ?: $a[1]->achieved_at->getTimestamp() <=> $b[1]->achieved_at->getTimestamp()
             ?: $a[0] <=> $b[0]);

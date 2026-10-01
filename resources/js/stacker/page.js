@@ -140,7 +140,9 @@ document.addEventListener('alpine:init', () => {
             result: null,
             error: '',
             practiceBest: readStored(STORE_BEST),
+            // the best of this week (the one a ranked run has to beat) and of all time (shown beside it)
             rankedBest: config.best,
+            allTimeBest: config.allTimeBest,
 
             init() {
                 trace(config, 'init');
@@ -305,6 +307,11 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 rt.token = issued.data.token;
+                // a page left open over Monday 00:00 learns the new week's best here
+                if (issued.data.best !== undefined) {
+                    this.rankedBest = issued.data.best;
+                    this.allTimeBest = issued.data.best_all_time ?? this.allTimeBest;
+                }
                 this.newSession(issued.data.seed);
                 this.beginCountdown(id, async () => {
                     const started = await request('POST', this.tokenUrl(config.urls.start));
@@ -479,8 +486,14 @@ document.addEventListener('alpine:init', () => {
                         this.result = { ...this.result, status: state.data.status, reason: state.data.reason };
                         if (state.data.best !== undefined) {
                             this.rankedBest = state.data.best;
+                            this.allTimeBest = state.data.best_all_time ?? this.allTimeBest;
                         }
                     }
+                }
+                if (this.result.status === 'verified') {
+                    // the weekly leaderboard below the game reads itself again (P4). Sent on window itself:
+                    // `$dispatch` starts at the element that called this method (the start button, gone by now)
+                    window.dispatchEvent(new CustomEvent('stacker-verified'));
                 }
             },
 

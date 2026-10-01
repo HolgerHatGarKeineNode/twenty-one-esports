@@ -2,24 +2,33 @@
 
 namespace Tests\Support;
 
+use App\Games\GameRegistry;
 use Illuminate\Support\Facades\Route;
 
 /**
- * Blockfill switched on for one test (plan "Blockfill", P2): the switch on
- * and routes/stacker.php routed, as routes/web.php does when the switch is
- * on at boot (the test app boots with it off).
+ * Blockfill switched on for one test (plan "Blockfill", P2): the switch on,
+ * the registry rebuilt from the config as at boot (P4: Blockfill is then a
+ * score game), and routes/stacker.php and routes/score.php routed, as
+ * routes/web.php does when the switch is on at boot (the test app boots
+ * with it off).
  */
 final class BlockfillOn
 {
     public static function play(): void
     {
         config(['esports.blockfill.enabled' => true]);
+        app()->forgetInstance(GameRegistry::class);
 
         if (! Route::has('stacker.runs.issue')) {
             Route::middleware('web')->group(base_path('routes/stacker.php'));
-            app('router')->getRoutes()->refreshNameLookups();
-            app('router')->getRoutes()->refreshActionLookups();
         }
+
+        if (! Route::has('scores.show')) {
+            Route::middleware('web')->group(base_path('routes/score.php'));
+        }
+
+        app('router')->getRoutes()->refreshNameLookups();
+        app('router')->getRoutes()->refreshActionLookups();
     }
 
     /**
